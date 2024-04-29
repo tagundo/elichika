@@ -13,7 +13,7 @@ pkg install golang git -y || echo "assuming go and git are already installed"
 pkg install git -y || echo "assuming go and git are already installed"
 pkg install python -y || echo "assuming go and git are already installed"
 # clone the source code
-git clone --depth 1 https://codeberg.org/RusdiNgawi/elichika.git --branch $BRANCH --single-branch && \
+git clone --depth 1 https://gitlab.com/tatara_hisoka/elichika.git --branch $BRANCH --single-branch && \
 cd elichika && \
 # get the submodules (i.e. assets and other)
 git submodule update --init --remote && \
