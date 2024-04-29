@@ -11,7 +11,7 @@ To install the server, first install termux, you can get it from [f-droid](https
 
 Then run the install script inside termux, this will take care of everything:
 ```
-curl -L https://codeberg.org/RusdiNgawi/elichika/raw/branch/master/bin/install.sh | bash
+curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash
 ```
 
 To run a command, copy (or type) it and hit the enter button.
@@ -19,7 +19,7 @@ To run a command, copy (or type) it and hit the enter button.
 You can setup the server in a desktop machine to play on android or ios. To do this, use the same install script with termux (on Windows, run inside git bash or some other linux shell emulator):
 
 ```
-curl -L https://codeberg.org/RusdiNgawi/elichika/raw/branch/master/bin/install.sh | bash
+curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash
 ```
 
 This will leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
