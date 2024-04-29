@@ -2,8 +2,8 @@
 # set the environmental variable BRANCH to pick a specific branch (latest version only)
 # this can be set with export or just set when invoking bash
 # Honestly this is only for testing but you can think of it as a hidden feature
-# if BRANCH is not provided, then default to master
-BRANCH=${BRANCH:-"master"}
+# if BRANCH is not provided, then default to main
+BRANCH=${BRANCH:-"main"}
 # install git and golang
 clear
 echo "Installing Elichika... PLEASE DO NOT DISCONNECT INTERNET"
