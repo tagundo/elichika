@@ -1,0 +1,51 @@
+package enum
+
+const (
+	InfoTriggerTypeUserLevelUp                                       int32 = 0x00000001
+	InfoTriggerTypeGachaPointExchange                                int32 = 0x00000002
+	InfoTriggerTypeGiftBoxExpired                                    int32 = 0x00000003
+	InfoTriggerTypeMemberLoveLevelUp                                 int32 = 0x00000004
+	InfoTriggerTypeCardGradeUp                                       int32 = 0x00000005
+	InfoTriggerTypeMissionComplete                                   int32 = 0x00000006
+	InfoTriggerTypeSchoolIdolFestivalIdRewardMissionComplete         int32 = 0x00000007
+	InfoTriggerTypeEventMarathonShowResult                           int32 = 0x00000008
+	InfoTriggerTypeEventMarathonShowResultRedirect                   int32 = 0x00000009
+	InfoTriggerTypeEventMarathonFirstRuleDescription                 int32 = 0x0000000a
+	InfoTriggerTypeStoryMainSectionSelectChapterClear                int32 = 0x0000000b
+	InfoTriggerTypeStoryMainSectionSelectLatestChapterClear          int32 = 0x0000000c
+	InfoTriggerTypeSchoolIdolFestivalIdRewardSifIdNotActive          int32 = 0x0000000d
+	InfoTriggerTypeSchoolIdolFestivalIdRewardSifIdRefreshTokenExpire int32 = 0x0000000e
+	InfoTriggerTypeSchoolIdolFestivalIdRewardMissionLlUserNotFound   int32 = 0x0000000f
+	InfoTriggerTypeReferenceBookStart                                int32 = 0x00000010
+	InfoTriggerTypeReferenceBookAllRead                              int32 = 0x00000011
+	InfoTriggerTypeEventMiningShowResult                             int32 = 0x00000012
+	InfoTriggerTypeEventMiningShowResultRedirect                     int32 = 0x00000013
+	InfoTriggerTypeEventMiningFirstRuleDescription                   int32 = 0x00000014
+	InfoTriggerTypeChallengeBeginnerFirstRuleDescription             int32 = 0x00000015
+	InfoTriggerTypeEventCoopShowResult                               int32 = 0x00000016
+	InfoTriggerTypeEventCoopShowResultRedirect                       int32 = 0x00000017
+	InfoTriggerTypeEventCoopFirstRuleDescription                     int32 = 0x00000018
+	InfoTriggerTypeEventCoopShowDailyRankingReward                   int32 = 0x00000019
+	InfoTriggerTypeEventCoopShowGlobalReward                         int32 = 0x0000001a
+	InfoTriggerTypeTowerTopClearRewardReceived                       int32 = 0x0000001b
+	InfoTriggerTypeMemberLovePanelNew                                int32 = 0x0000001c
+	InfoTriggerTypeTowerTopProgressRewardReceived                    int32 = 0x0000001d
+	InfoTriggerTypeStoryMemberReward                                 int32 = 0x0000001e
+	InfoTriggerTypeTowerTopFirstRuleDescription                      int32 = 0x0000001f
+	InfoTriggerTypeTowerSelectFirstRuleDescription                   int32 = 0x00000020
+	InfoTriggerTypeSubscriptionTrialEnd                              int32 = 0x00000021
+	InfoTriggerTypeSubscriptionEnd                                   int32 = 0x00000022
+	InfoTriggerTypeStoryLinkageSectionSelectChapterClear             int32 = 0x00000023
+	InfoTriggerTypeStoryLinkageSectionSelectLatestChapterClear       int32 = 0x00000024
+	InfoTriggerTypeStoryLinkageSectionSelectSingleRewardReceive      int32 = 0x00000025
+	InfoTriggerTypeStoryLinkageSectionSelectRewardUseSuggestion      int32 = 0x00000026
+	InfoTriggerTypeStoryLinkageSectionSelectSpecialRewardReceive     int32 = 0x00000027
+	InfoTriggerTypeStoryLinkageSectionSelectSpecialRewardNotReceive  int32 = 0x00000028
+	InfoTriggerTypeStoryMainSectionSelectLatestPartClear             int32 = 0x00000029
+	InfoTriggerTypeStoryLinkageSectionSelectExpired                  int32 = 0x0000002a
+	InfoTriggerTypeGameFlowV2FirstRuleDescription                    int32 = 0x0000002b
+	InfoTriggerTypeMemberGuildTopRewardReceived                      int32 = 0x0000002c
+	InfoTriggerTypeMemberGuildSupportItemExpired                     int32 = 0x0000002d
+	InfoTriggerTypeMemberGuildRankingShowResult                      int32 = 0x0000002e
+	InfoTriggerTypeMemberGuildRankingShowResultRedirect              int32 = 0x0000002f
+)

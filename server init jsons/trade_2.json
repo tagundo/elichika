@@ -1,0 +1,3872 @@
+[
+	{
+		"trade_id": 50001,
+		"banner_image_path": {
+			"v": "s3<"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50001,
+		"source_thumbnail_asset_path": {
+			"v": "iNk"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50001001,
+				"trade_id": 50001001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28001,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50001002,
+				"trade_id": 50001002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18001,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50001003,
+				"trade_id": 50001003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8001,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50001004,
+				"trade_id": 50001004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50001005,
+				"trade_id": 50001005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50001006,
+				"trade_id": 50001006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50001007,
+				"trade_id": 50001007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50001008,
+				"trade_id": 50001008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50002,
+		"banner_image_path": {
+			"v": "<bm"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50002,
+		"source_thumbnail_asset_path": {
+			"v": "<t%"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50002001,
+				"trade_id": 50002001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28002,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50002002,
+				"trade_id": 50002002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18002,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50002003,
+				"trade_id": 50002003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8002,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50002004,
+				"trade_id": 50002004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50002005,
+				"trade_id": 50002005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50002006,
+				"trade_id": 50002006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50002007,
+				"trade_id": 50002007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50002008,
+				"trade_id": 50002008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50003,
+		"banner_image_path": {
+			"v": "=3W"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50003,
+		"source_thumbnail_asset_path": {
+			"v": "EWN"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50003001,
+				"trade_id": 50003001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28003,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50003002,
+				"trade_id": 50003002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18003,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50003003,
+				"trade_id": 50003003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8003,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50003004,
+				"trade_id": 50003004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50003005,
+				"trade_id": 50003005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50003006,
+				"trade_id": 50003006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50003007,
+				"trade_id": 50003007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50003008,
+				"trade_id": 50003008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50004,
+		"banner_image_path": {
+			"v": "<=v"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50004,
+		"source_thumbnail_asset_path": {
+			"v": "zxY"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50004001,
+				"trade_id": 50004001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28004,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50004002,
+				"trade_id": 50004002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18004,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50004003,
+				"trade_id": 50004003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8004,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50004004,
+				"trade_id": 50004004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50004005,
+				"trade_id": 50004005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50004006,
+				"trade_id": 50004006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50004007,
+				"trade_id": 50004007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50004008,
+				"trade_id": 50004008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50005,
+		"banner_image_path": {
+			"v": "Ke|"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50005,
+		"source_thumbnail_asset_path": {
+			"v": "alq"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50005001,
+				"trade_id": 50005001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28005,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50005002,
+				"trade_id": 50005002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18005,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50005003,
+				"trade_id": 50005003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8005,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50005004,
+				"trade_id": 50005004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50005005,
+				"trade_id": 50005005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50005006,
+				"trade_id": 50005006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50005007,
+				"trade_id": 50005007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50005008,
+				"trade_id": 50005008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50006,
+		"banner_image_path": {
+			"v": "&=M"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50006,
+		"source_thumbnail_asset_path": {
+			"v": "hpC"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50006001,
+				"trade_id": 50006001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28006,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50006002,
+				"trade_id": 50006002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18006,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50006003,
+				"trade_id": 50006003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8006,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50006004,
+				"trade_id": 50006004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50006005,
+				"trade_id": 50006005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50006006,
+				"trade_id": 50006006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50006007,
+				"trade_id": 50006007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50006008,
+				"trade_id": 50006008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50007,
+		"banner_image_path": {
+			"v": "KF0"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50007,
+		"source_thumbnail_asset_path": {
+			"v": "MC1"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50007001,
+				"trade_id": 50007001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28007,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50007002,
+				"trade_id": 50007002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18007,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50007003,
+				"trade_id": 50007003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8007,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50007004,
+				"trade_id": 50007004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50007005,
+				"trade_id": 50007005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50007006,
+				"trade_id": 50007006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50007007,
+				"trade_id": 50007007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50007008,
+				"trade_id": 50007008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50008,
+		"banner_image_path": {
+			"v": "$eg"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50008,
+		"source_thumbnail_asset_path": {
+			"v": "T'A"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50008001,
+				"trade_id": 50008001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28008,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50008002,
+				"trade_id": 50008002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18008,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50008003,
+				"trade_id": 50008003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8008,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50008004,
+				"trade_id": 50008004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50008005,
+				"trade_id": 50008005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50008006,
+				"trade_id": 50008006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50008007,
+				"trade_id": 50008007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50008008,
+				"trade_id": 50008008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50009,
+		"banner_image_path": {
+			"v": "SQ_"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50009,
+		"source_thumbnail_asset_path": {
+			"v": "o!K"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50009001,
+				"trade_id": 50009001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28009,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50009002,
+				"trade_id": 50009002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18009,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50009003,
+				"trade_id": 50009003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8009,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50009004,
+				"trade_id": 50009004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50009005,
+				"trade_id": 50009005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50009006,
+				"trade_id": 50009006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50009007,
+				"trade_id": 50009007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50009008,
+				"trade_id": 50009008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50101,
+		"banner_image_path": {
+			"v": "86r"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50101,
+		"source_thumbnail_asset_path": {
+			"v": "B}*"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50101001,
+				"trade_id": 50101001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28101,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50101002,
+				"trade_id": 50101002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18101,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50101003,
+				"trade_id": 50101003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8101,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50101004,
+				"trade_id": 50101004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50101005,
+				"trade_id": 50101005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50101006,
+				"trade_id": 50101006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50101007,
+				"trade_id": 50101007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50101008,
+				"trade_id": 50101008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50102,
+		"banner_image_path": {
+			"v": "-YP"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50102,
+		"source_thumbnail_asset_path": {
+			"v": "'Pv"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50102001,
+				"trade_id": 50102001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28102,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50102002,
+				"trade_id": 50102002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18102,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50102003,
+				"trade_id": 50102003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8102,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50102004,
+				"trade_id": 50102004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50102005,
+				"trade_id": 50102005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50102006,
+				"trade_id": 50102006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50102007,
+				"trade_id": 50102007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50102008,
+				"trade_id": 50102008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50103,
+		"banner_image_path": {
+			"v": "lgc"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50103,
+		"source_thumbnail_asset_path": {
+			"v": "j@S"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50103001,
+				"trade_id": 50103001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28103,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50103002,
+				"trade_id": 50103002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18103,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50103003,
+				"trade_id": 50103003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8103,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50103004,
+				"trade_id": 50103004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50103005,
+				"trade_id": 50103005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50103006,
+				"trade_id": 50103006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50103007,
+				"trade_id": 50103007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50103008,
+				"trade_id": 50103008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50104,
+		"banner_image_path": {
+			"v": "ad8"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50104,
+		"source_thumbnail_asset_path": {
+			"v": "wk-"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50104001,
+				"trade_id": 50104001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28104,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50104002,
+				"trade_id": 50104002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18104,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50104003,
+				"trade_id": 50104003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8104,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50104004,
+				"trade_id": 50104004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50104005,
+				"trade_id": 50104005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50104006,
+				"trade_id": 50104006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50104007,
+				"trade_id": 50104007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50104008,
+				"trade_id": 50104008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50105,
+		"banner_image_path": {
+			"v": "Z_M"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50105,
+		"source_thumbnail_asset_path": {
+			"v": "\"5}"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50105001,
+				"trade_id": 50105001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28105,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50105002,
+				"trade_id": 50105002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18105,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50105003,
+				"trade_id": 50105003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8105,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50105004,
+				"trade_id": 50105004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50105005,
+				"trade_id": 50105005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50105006,
+				"trade_id": 50105006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50105007,
+				"trade_id": 50105007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50105008,
+				"trade_id": 50105008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50106,
+		"banner_image_path": {
+			"v": "u[L"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50106,
+		"source_thumbnail_asset_path": {
+			"v": "7TY"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50106001,
+				"trade_id": 50106001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28106,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50106002,
+				"trade_id": 50106002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18106,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50106003,
+				"trade_id": 50106003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8106,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50106004,
+				"trade_id": 50106004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50106005,
+				"trade_id": 50106005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50106006,
+				"trade_id": 50106006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50106007,
+				"trade_id": 50106007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50106008,
+				"trade_id": 50106008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50107,
+		"banner_image_path": {
+			"v": ":d#"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50107,
+		"source_thumbnail_asset_path": {
+			"v": "|w="
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50107001,
+				"trade_id": 50107001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 9,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28107,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50107002,
+				"trade_id": 50107002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 10,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18107,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50107003,
+				"trade_id": 50107003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8107,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50107004,
+				"trade_id": 50107004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50107005,
+				"trade_id": 50107005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50107006,
+				"trade_id": 50107006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50107007,
+				"trade_id": 50107007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50107008,
+				"trade_id": 50107008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50108,
+		"banner_image_path": {
+			"v": "CwX"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50108,
+		"source_thumbnail_asset_path": {
+			"v": "Qxr"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50108001,
+				"trade_id": 50108001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28108,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50108002,
+				"trade_id": 50108002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18108,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50108003,
+				"trade_id": 50108003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8108,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50108004,
+				"trade_id": 50108004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50108005,
+				"trade_id": 50108005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50108006,
+				"trade_id": 50108006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50108007,
+				"trade_id": 50108007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50108008,
+				"trade_id": 50108008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50109,
+		"banner_image_path": {
+			"v": "bK0"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50109,
+		"source_thumbnail_asset_path": {
+			"v": "xdJ"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50109001,
+				"trade_id": 50109001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28109,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50109002,
+				"trade_id": 50109002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18109,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50109003,
+				"trade_id": 50109003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8109,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50109004,
+				"trade_id": 50109004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50109005,
+				"trade_id": 50109005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50109006,
+				"trade_id": 50109006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50109007,
+				"trade_id": 50109007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50109008,
+				"trade_id": 50109008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50201,
+		"banner_image_path": {
+			"v": "CXj"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50201,
+		"source_thumbnail_asset_path": {
+			"v": "!WU"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50201001,
+				"trade_id": 50201001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28201,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50201002,
+				"trade_id": 50201002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18201,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50201003,
+				"trade_id": 50201003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8201,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50201004,
+				"trade_id": 50201004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50201005,
+				"trade_id": 50201005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50201006,
+				"trade_id": 50201006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50201007,
+				"trade_id": 50201007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50201008,
+				"trade_id": 50201008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50202,
+		"banner_image_path": {
+			"v": "rph"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50202,
+		"source_thumbnail_asset_path": {
+			"v": "tmi"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50202001,
+				"trade_id": 50202001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28202,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50202002,
+				"trade_id": 50202002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18202,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50202003,
+				"trade_id": 50202003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8202,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50202004,
+				"trade_id": 50202004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50202005,
+				"trade_id": 50202005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50202006,
+				"trade_id": 50202006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50202007,
+				"trade_id": 50202007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50202008,
+				"trade_id": 50202008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50203,
+		"banner_image_path": {
+			"v": "cEf"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50203,
+		"source_thumbnail_asset_path": {
+			"v": "g3'"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50203001,
+				"trade_id": 50203001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28203,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50203002,
+				"trade_id": 50203002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18203,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50203003,
+				"trade_id": 50203003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8203,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50203004,
+				"trade_id": 50203004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50203005,
+				"trade_id": 50203005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50203006,
+				"trade_id": 50203006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50203007,
+				"trade_id": 50203007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50203008,
+				"trade_id": 50203008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50204,
+		"banner_image_path": {
+			"v": "p^g"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50204,
+		"source_thumbnail_asset_path": {
+			"v": "\"Q-"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50204001,
+				"trade_id": 50204001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28204,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50204002,
+				"trade_id": 50204002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18204,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50204003,
+				"trade_id": 50204003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8204,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50204004,
+				"trade_id": 50204004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50204005,
+				"trade_id": 50204005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50204006,
+				"trade_id": 50204006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50204007,
+				"trade_id": 50204007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50204008,
+				"trade_id": 50204008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50205,
+		"banner_image_path": {
+			"v": "{dQ"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50205,
+		"source_thumbnail_asset_path": {
+			"v": "wL#"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50205001,
+				"trade_id": 50205001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28205,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50205002,
+				"trade_id": 50205002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18205,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50205003,
+				"trade_id": 50205003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8205,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50205004,
+				"trade_id": 50205004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50205005,
+				"trade_id": 50205005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50205006,
+				"trade_id": 50205006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50205007,
+				"trade_id": 50205007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50205008,
+				"trade_id": 50205008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50206,
+		"banner_image_path": {
+			"v": "dy?"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50206,
+		"source_thumbnail_asset_path": {
+			"v": "$#C"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50206001,
+				"trade_id": 50206001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28206,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50206002,
+				"trade_id": 50206002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18206,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50206003,
+				"trade_id": 50206003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8206,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50206004,
+				"trade_id": 50206004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50206005,
+				"trade_id": 50206005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50206006,
+				"trade_id": 50206006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50206007,
+				"trade_id": 50206007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50206008,
+				"trade_id": 50206008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50207,
+		"banner_image_path": {
+			"v": "1B&"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50207,
+		"source_thumbnail_asset_path": {
+			"v": "Q6#"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50207001,
+				"trade_id": 50207001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28207,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50207002,
+				"trade_id": 50207002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18207,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50207003,
+				"trade_id": 50207003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8207,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50207004,
+				"trade_id": 50207004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50207005,
+				"trade_id": 50207005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50207006,
+				"trade_id": 50207006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50207007,
+				"trade_id": 50207007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50207008,
+				"trade_id": 50207008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50208,
+		"banner_image_path": {
+			"v": "hT5"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50208,
+		"source_thumbnail_asset_path": {
+			"v": "Z]r"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50208001,
+				"trade_id": 50208001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28208,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50208002,
+				"trade_id": 50208002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18208,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50208003,
+				"trade_id": 50208003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8208,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50208004,
+				"trade_id": 50208004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50208005,
+				"trade_id": 50208005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50208006,
+				"trade_id": 50208006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50208007,
+				"trade_id": 50208007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50208008,
+				"trade_id": 50208008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50209,
+		"banner_image_path": {
+			"v": "7Du"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50209,
+		"source_thumbnail_asset_path": {
+			"v": "'`Z"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50209001,
+				"trade_id": 50209001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28209,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50209002,
+				"trade_id": 50209002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18209,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50209003,
+				"trade_id": 50209003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8209,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50209004,
+				"trade_id": 50209004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50209005,
+				"trade_id": 50209005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50209006,
+				"trade_id": 50209006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50209007,
+				"trade_id": 50209007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50209008,
+				"trade_id": 50209008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50210,
+		"banner_image_path": {
+			"v": "r.w"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50210,
+		"source_thumbnail_asset_path": {
+			"v": "t+x"
+		},
+		"start_at": 1617008400,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50210001,
+				"trade_id": 50210001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28210,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50210002,
+				"trade_id": 50210002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18210,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50210003,
+				"trade_id": 50210003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8210,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50210004,
+				"trade_id": 50210004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50210005,
+				"trade_id": 50210005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50210006,
+				"trade_id": 50210006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50210007,
+				"trade_id": 50210007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50210008,
+				"trade_id": 50210008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50211,
+		"banner_image_path": {
+			"v": "r7+"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50211,
+		"source_thumbnail_asset_path": {
+			"v": "`S+"
+		},
+		"start_at": 1630918800,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50211001,
+				"trade_id": 50211001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28211,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50211002,
+				"trade_id": 50211002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18211,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50211003,
+				"trade_id": 50211003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8211,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50211004,
+				"trade_id": 50211004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50211005,
+				"trade_id": 50211005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50211006,
+				"trade_id": 50211006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50211007,
+				"trade_id": 50211007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50211008,
+				"trade_id": 50211008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	},
+	{
+		"trade_id": 50212,
+		"banner_image_path": {
+			"v": "_U!"
+		},
+		"source_content_type": 21,
+		"source_content_id": 50212,
+		"source_thumbnail_asset_path": {
+			"v": "+F:"
+		},
+		"start_at": 1630918800,
+		"end_at": 1893423600,
+		"reset_at": 1688137200,
+		"monthly_reset": true,
+		"products": [
+			{
+				"product_id": 50212001,
+				"trade_id": 50212001,
+				"source_amount": 500,
+				"stock_amount": 9,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 28212,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50212002,
+				"trade_id": 50212002,
+				"source_amount": 400,
+				"stock_amount": 10,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 18212,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50212003,
+				"trade_id": 50212003,
+				"source_amount": 20,
+				"stock_amount": 100,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 8212,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50212004,
+				"trade_id": 50212004,
+				"source_amount": 30,
+				"stock_amount": 15,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 12,
+						"content_id": 1700,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50212005,
+				"trade_id": 50212005,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 10,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50212006,
+				"trade_id": 50212006,
+				"source_amount": 3,
+				"stock_amount": 500,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 4,
+						"content_id": 0,
+						"content_amount": 1000
+					}
+				]
+			},
+			{
+				"product_id": 50212007,
+				"trade_id": 50212007,
+				"source_amount": 50,
+				"stock_amount": 27,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 6,
+						"content_id": 1400,
+						"content_amount": 1
+					}
+				]
+			},
+			{
+				"product_id": 50212008,
+				"trade_id": 50212008,
+				"source_amount": 100,
+				"stock_amount": 1,
+				"traded_count": 0,
+				"contents": [
+					{
+						"content_type": 30,
+						"content_id": 17001,
+						"content_amount": 1
+					}
+				]
+			}
+		]
+	}
+]
