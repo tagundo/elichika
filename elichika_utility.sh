@@ -45,12 +45,12 @@ while true; do
 			rm config.json
 			clear
 			python elichika_reset.py
-			git fetch origin master
-			git reset --hard origin/master
+			git fetch origin main
+			git reset --hard origin/main
 			git clean -fd
 			cd ~/elichika/assets
-			git fetch origin master
-			git reset --hard origin/master
+			git fetch origin main
+			git reset --hard origin/main
 			git clean -fd
 			cd ~/elichika
 			go build
