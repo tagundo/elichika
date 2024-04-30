@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,11 @@ func cli() {
 }
 
 func main() {
+    packageName1 := "com.klab.lovelive.allstars.global"
+    activityName1 := "com.klab.lovelive.allstars.global.GlobalUnsafeMainActivity"
+    packageName2 := "com.klab.lovelive.allstars"
+    activityName2 := "com.klab.lovelive.allstars.MainActivity"
+
 	if len(os.Args) > 1 {
 		cli()
 		return
@@ -31,6 +37,29 @@ func main() {
 
 	r := gin.Default()
 	router.Router(r)
+    if *config.Conf.AutorunClient == "gl" {
+        // Build the shell command to start the app for "gl" case
+        cmd := exec.Command("am", "start", "-n", packageName1+"/"+activityName1)
+
+        // Execute the command
+        err := cmd.Run()
+        if err != nil {
+            fmt.Println("Error:", err)
+            return
+        }
+    } else if *config.Conf.AutorunClient == "jp" {
+        // Build the shell command to start the app for "jp" case
+        cmd := exec.Command("am", "start", "-n", packageName2+"/"+activityName2)
+
+        // Execute the command
+        err := cmd.Run()
+        if err != nil {
+            fmt.Println("Error:", err)
+            return
+        }
+    } else {
+        fmt.Println("Unknown configuration value for AutorunClient.")
+    }
 	fmt.Println("server address: ", *config.Conf.ServerAddress)
 	fmt.Println("WebUI address: ", *config.Conf.ServerAddress+"/webui")
 	fmt.Println("Type 'exit' to close the program.")
