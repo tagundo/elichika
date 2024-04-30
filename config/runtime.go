@@ -20,7 +20,6 @@ type RuntimeConfig struct {
 	TimeZone             *string `json:"timezone" of_label:"Timezone (from tz database)"`                                              // https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
 	DefaultContentAmount *int32  `json:"default_content_amount" of_label:"Default item count" of_attrs:"min=\"0\" max=\"1000000000\""` // the amount of items to give an user if they don't have that item
 	MissionMultiplier    *int32  `json:"mission_multiplier" of_label:"Mission progress multiplier" of_attrs:"min=\"0\" max=\"10000\""` // multiply the progress of missions. Only work for do "x" of things, not for "get x different thing or reach x level"
-	AutorunClient        *string `json:"autorun_client" of_label:"TEST"`
 }
 
 func defaultConfigs() *RuntimeConfig {
@@ -36,7 +35,6 @@ func defaultConfigs() *RuntimeConfig {
 		TimeZone:             new(string),
 		DefaultContentAmount: new(int32),
 		MissionMultiplier:    new(int32),
-		AutorunClient:             new(string),
 	}
 	*configs.CdnServer = "https://llsifas.catfolk.party/static/"
 	*configs.ServerAddress = "0.0.0.0:8080"
@@ -48,7 +46,6 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.TimeZone = "Asia/Tokyo"
 	*configs.DefaultContentAmount = 0
 	*configs.MissionMultiplier = 1
-	*configs.AutorunClient = "jp"
 	return &configs
 }
 
