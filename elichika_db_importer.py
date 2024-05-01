@@ -4,7 +4,13 @@ import shutil
 import sys
 import platform
 
-folder_path = "assets/data/sql"
+check_json_config = "config.json"
+
+if not os.path.exists(check_json_config):
+    print('Config file is missing, Exiting...')
+    sys.exit(1)
+
+folder_path = "assets/package/sql"
 if not os.path.exists(folder_path):
     os.makedirs(folder_path)
     
@@ -37,7 +43,7 @@ def import_to_multiple_dbs(source_sql_file, target_db_list):
                         #print(f"Skipping query in {target_db}: {e}")
 
             target_conn.commit()
-            print(f"Data successfully imported to {target_db}.")
+            print(f"Patched to {target_db}.")
 
         except sqlite3.Error as e:
             print(f"SQLite error in {target_db}: {e}")
@@ -65,6 +71,7 @@ try:
     # Check if the chosen number is valid
     if 1 <= chosen_number <= len(zip_files):
         chosen_zip_file = os.path.join(folder_path, zip_files[chosen_number - 1])
+        clear_terminal()
         print(f"You chose: {chosen_zip_file}")
         # Now you can work with the chosen zip file as needed
     else:

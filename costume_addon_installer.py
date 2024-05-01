@@ -9,7 +9,13 @@ import shutil
 import json
 import hashlib
 
-modding_elichika_path = "assets/data/suit/"
+check_json_config = "config.json"
+
+if not os.path.exists(check_json_config):
+    print('Config file is missing, Exiting...')
+    sys.exit(1)
+
+modding_elichika_path = "assets/package/suit/"
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)
@@ -18,13 +24,7 @@ encrypted_folder = "static/assets/"
 
 if not os.path.exists(encrypted_folder):
     os.makedirs(encrypted_folder)
-    
-check_json_config = "config.json"
-
-if not os.path.exists(check_json_config):
-    print('Config file is missing, Exiting...')
-    sys.exit(1)
-    
+       
 def clear_terminal():
     system = platform.system()
     if system == 'Windows':
@@ -90,7 +90,7 @@ def rinaunmask_path_randomhash(cursor):
 
 # explorer code
 clear_terminal()
-temp_directory = "assets/data/.cache/"
+temp_directory = "assets/package/.cache/"
 shutil.rmtree(temp_directory, ignore_errors=True)
 
 # List all files in the directory with a ".zip" extension

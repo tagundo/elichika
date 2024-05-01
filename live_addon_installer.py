@@ -9,7 +9,13 @@ import sys
 import shutil
 import hashlib
 
-modding_elichika_path = "assets/data/live/"
+check_json_config = "config.json"
+
+if not os.path.exists(check_json_config):
+    print('Config file is missing, Exiting...')
+    sys.exit(1)
+
+modding_elichika_path = "assets/package/live/"
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)
@@ -175,7 +181,7 @@ def movie_path_randomhash(cursor):
             
 # explorer code
 clear_terminal()
-temp_directory = "assets/data/.cache/"
+temp_directory = "assets/package/.cache/"
 shutil.rmtree(temp_directory, ignore_errors=True)
 
 # List all files in the directory with a ".zip" extension
@@ -1280,5 +1286,14 @@ with sqlite3.connect('assets/db/gl/asset_i_en.db') as conn:
 # Check if the file exists
 print("deleting temp folder")
 shutil.rmtree(temp_directory, ignore_errors=True)
+
+with open(check_json_config, 'r') as f:
+    config_elichika = json.load(f)
+    if config_elichika.get('cdn_server') != "http://127.0.0.1:8080/static":
+        config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
+        with open(check_json_config, 'w') as f:
+            json.dump(config_elichika, f, indent=4)
+            print("CDN server updated to http://127.0.0.1:8080/static")
+
 print("FINISHED")
 sys.exit(1)
