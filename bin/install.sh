@@ -28,14 +28,16 @@ echo "Enter this ID"
 echo "ID: 26092019 (jp) | 25022020 (gl)"
 echo ""
 if [ $? -eq 0 ]; then
-    echo "cd $PWD && sh elichika_utility.sh" > ~/run_elichika && \
+    echo "cd $PWD && ./elichika" > ~/run_elichika && \
+    echo "cd $PWD && sh elichika_utility.sh" > ~/menu_elichika && \
     echo "cd $PWD && git pull && \
     git submodule deinit -f . && \
     git submodule update --init --recursive --checkout && \
     (go build || CGO_ENABLED=0 go build)" > ~/update_elichika && \
     chmod +x ~/run_elichika && \
     chmod +x ~/update_elichika && \
-    echo "Use \"~/run_elichika\" in termux to run the menu!" && \
+    echo "Use \"~/run_elichika\" in termux to run the server!" && \
+    echo "Use \"~/menu_elichika\" in termux to run the menu!" && \
     echo "Use \"~/update_elichika\" in termux to update the server!"
 else
     echo "Error installing"
