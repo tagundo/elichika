@@ -80,7 +80,7 @@ while true; do
 				echo "2. Add New Live"
 				echo "3. Add New DLP"
 				echo "4. Patch Masterdata"
-				echo "5. Fetch Mod"
+				echo "5. Fetch Package"
                 echo "0. Back to Main Menu"
 
                 read -p "Enter your choice: " dev_option
