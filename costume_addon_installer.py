@@ -90,11 +90,15 @@ def rinaunmask_path_randomhash(cursor):
 
 # explorer code
 clear_terminal()
-temp_directory = "assets/data/suit/temp/"
+temp_directory = "assets/data/.cache/"
 shutil.rmtree(temp_directory, ignore_errors=True)
 
 # List all files in the directory with a ".zip" extension
-zip_files = [file for file in os.listdir(modding_elichika_path) if file.endswith(".zip")]
+zip_files = []
+for root, dirs, files in os.walk(modding_elichika_path):
+    for file in files:
+        if file.endswith(".zip"):
+            zip_files.append(os.path.relpath(os.path.join(root, file), modding_elichika_path))
 
 # Display the available zip files with corresponding numbers
 print("Available .zip files:")
@@ -107,8 +111,7 @@ try:
     
     # Check if the chosen number is valid
     if 1 <= chosen_number <= len(zip_files):
-        chosen_zip_file = zip_files[chosen_number - 1]
-        zip_file_path = os.path.join(modding_elichika_path, chosen_zip_file)
+        zip_file_path = os.path.join(modding_elichika_path, zip_files[chosen_number - 1])
         print(f"You chose: {zip_file_path}")
         # Now you can work with the chosen zip file as needed
     else:

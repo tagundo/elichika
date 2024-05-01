@@ -1,7 +1,20 @@
 import sqlite3
 import os
 import shutil
+import sys
+import platform
 
+folder_path = "assets/data/sql"
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+    
+def clear_terminal():
+    system = platform.system()
+    if system == 'Windows':
+        os.system('cls')
+    elif system == 'Linux' or system == 'Darwin':
+        os.system('clear') 
+    
 def import_to_multiple_dbs(source_sql_file, target_db_list):
     # Split SQL statements into individual queries
     with open(source_sql_file, 'r') as sql_file:
@@ -33,14 +46,36 @@ def import_to_multiple_dbs(source_sql_file, target_db_list):
             # Close the target database connection
             target_conn.close()
 
-# Example usage:
-source_sql_file_input = "assets/data/" + input("Enter SQL filename: ") + ".sql"
-if source_sql_file_input == "assets/data/":
-    print("No file selected")
+# List all files in the directory and its subdirectories with a ".zip" extension
+zip_files = []
+for root, dirs, files in os.walk(folder_path):
+    for file in files:
+        if file.endswith(".sql"):
+            zip_files.append(os.path.relpath(os.path.join(root, file), folder_path))
+
+clear_terminal()
+print("Available .sql files:")
+for i, zip_file in enumerate(zip_files, start=1):
+    print(f"{i}. {zip_file}")
+
+# User input to choose a zip file by entering a number
+try:
+    chosen_number = int(input("Enter the number corresponding to the .sql file you want to choose: "))
+    
+    # Check if the chosen number is valid
+    if 1 <= chosen_number <= len(zip_files):
+        chosen_zip_file = os.path.join(folder_path, zip_files[chosen_number - 1])
+        print(f"You chose: {chosen_zip_file}")
+        # Now you can work with the chosen zip file as needed
+    else:
+        print("Invalid number. Please enter a valid number.")
+        sys.exit(1)
+except ValueError:
+    print("Invalid input. Please enter a number.")
     sys.exit(1)
 
 target_dbs = [
     'assets/db/gl/masterdata.db',
     'assets/db/jp/masterdata.db'
 ]
-import_to_multiple_dbs(source_sql_file_input, target_dbs)
+import_to_multiple_dbs(chosen_zip_file, target_dbs)

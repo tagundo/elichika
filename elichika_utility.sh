@@ -79,7 +79,7 @@ while true; do
 				echo "1. Add New Costume"
 				echo "2. Add New Live"
 				echo "3. Add New DLP"
-				echo "4. Import SQL"
+				echo "4. Patch Masterdata"
 				echo "5. Fetch Mod"
                 echo "0. Back to Main Menu"
 
