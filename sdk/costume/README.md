@@ -23,6 +23,9 @@ Create .txt file & copy this
 
 leave rina_unmask_costume_file empty if you not use chara_id 209
 
+you don't need thumbnail_file, it will use character thumbnail if is empty
+
+rina unmasked body also share same mesh as masked
 ```
 costume_name_en = "your_costume_nameEN"
 costume_name_ko = "your_costume_nameKO"
@@ -32,7 +35,7 @@ costume_description = "your_description_costume_here"
 
 costume_file = "unity_filename_here"
 rina_unmask_costume_file = ""
-thumbnail_file = "jpg_png_filename_here"
+thumbnail_file = ""
 chara_id = 
 ```
 
