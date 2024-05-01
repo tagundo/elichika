@@ -191,6 +191,8 @@ for root, dirs, files in os.walk(modding_elichika_path):
         if file.endswith(".zip"):
             zip_files.append(os.path.relpath(os.path.join(root, file), modding_elichika_path))
 
+zip_files.sort()
+
 # Display the available zip files with corresponding numbers
 print("Available .zip files:")
 for i, zip_file in enumerate(zip_files, start=1):

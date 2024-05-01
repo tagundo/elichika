@@ -59,6 +59,8 @@ for root, dirs, files in os.walk(folder_path):
         if file.endswith(".sql"):
             zip_files.append(os.path.relpath(os.path.join(root, file), folder_path))
 
+zip_files.sort()
+
 clear_terminal()
 print("Available .sql files:")
 for i, zip_file in enumerate(zip_files, start=1):
