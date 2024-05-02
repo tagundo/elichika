@@ -3256,22 +3256,6 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
    
     if chara_id == 209:
         cursor.execute("INSERT INTO main.m_suit_view (suit_master_id, view_status, model_asset_path) VALUES (?, '2', ?);", (costume_id_masterdata, rina_unmask_costume_path))
-
-with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_ja))
-
-with sqlite3.connect('assets/db/gl/dictionary_en_k.db') as conn:
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_en))
-    
-with sqlite3.connect('assets/db/gl/dictionary_ko_k.db') as conn:
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_ko))
-    
-with sqlite3.connect('assets/db/gl/dictionary_zh_k.db') as conn:
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_zh))
             
 with sqlite3.connect('serverdata.db') as conn:
     cursor = conn.cursor()     
@@ -3513,6 +3497,30 @@ with sqlite3.connect('assets/db/jp/asset_i_ja.db') as conn:
                     (package_key_thumbnail, thumbnail_costume_filename, thumbnail_costume_size, donot_insert, category_thumbnail))
         cursor.execute("REPLACE INTO main.m_asset_package (package_key, version, pack_num) VALUES ('main', ?, ?);",
                     (fresh_version_main_ji, update_main_asset_ji))
+
+with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
+    cursor = conn.cursor()
+    if costume_name_ja == "":
+        costume_name_ja = package_key_costume
+    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_ja))
+
+with sqlite3.connect('assets/db/gl/dictionary_en_k.db') as conn:
+    cursor = conn.cursor()
+    if costume_name_en == "":
+        costume_name_en = package_key_costume
+    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_en))
+    
+with sqlite3.connect('assets/db/gl/dictionary_ko_k.db') as conn:
+    cursor = conn.cursor()
+    if costume_name_ko == "":
+        costume_name_ko = package_key_costume
+    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_ko))
+    
+with sqlite3.connect('assets/db/gl/dictionary_zh_k.db') as conn:
+    cursor = conn.cursor()
+    if costume_name_zh == "":
+        costume_name_zh = package_key_costume
+    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_zh))
     
 print("deleting temp folder")
 shutil.rmtree(temp_directory, ignore_errors=True)
