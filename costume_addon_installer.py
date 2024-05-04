@@ -266,9 +266,9 @@ encrypted_costume = "static/assets/" + os.path.splitext(start_encrypt1.split("/"
 
 if chara_id == 209:
     start_encrypt3 = temp_directory + rina_unmask_costume_file
-    rina_unmask_costume_filename = os.path.splitext(rina_unmask_costume_file.split("/")[-1])[0]
-    rina_unmask_costume_filesize = os.path.getsize(rina_unmask_costume_file)
-    encrypted_rina_unmask = "static/assets/" + os.path.splitext(rina_unmask_costume_file.split("/")[-1])[0]
+    rina_unmask_costume_filename = os.path.splitext(start_encrypt3.split("/")[-1])[0]
+    rina_unmask_costume_filesize = os.path.getsize(start_encrypt3)
+    encrypted_rina_unmask = "static/assets/" + os.path.splitext(start_encrypt3.split("/")[-1])[0]
 
     if not rina_unmask_costume_filename.isalnum() or not rina_unmask_costume_filename.islower():
         print('Invalid Rina Unmasked Costume Filename, Exiting.')
