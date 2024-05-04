@@ -27,16 +27,15 @@ you don't need thumbnail_file, it will use character thumbnail if is empty
 
 rina unmasked body also share same mesh as masked
 ```
-costume_name_en = "your_costume_nameEN"
-costume_name_ko = "your_costume_nameKO"
-costume_name_zh = "your_costume_nameZH"
-costume_name_ja = "your_costume_nameJa"
-costume_description = "your_description_costume_here"
+costume_name_en = ""
+costume_name_ko = ""
+costume_name_zh = ""
+costume_name_ja = ""
+costume_description = ""
 
-costume_file = "unity_filename_here"
+costume_file = "filename_with_extension"
 rina_unmask_costume_file = ""
 thumbnail_file = ""
-chara_id = 
 ```
 
 # chara id list

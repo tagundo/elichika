@@ -9,6 +9,19 @@ import shutil
 import json
 import hashlib
 
+# init variable
+
+costume_name_en = ""
+costume_name_ko = ""
+costume_name_zh = ""
+costume_name_ja = ""
+costume_description = ""
+
+costume_file = ""
+rina_unmask_costume_file = ""
+thumbnail_file = ""
+chara_id = None
+
 check_json_config = "config.json"
 
 if not os.path.exists(check_json_config):
@@ -145,8 +158,13 @@ with zipfile.ZipFile(zip_buffer, 'r') as zip_ref:
                 for line in txt_file:
                     exec(line)
 
+start_encrypt1 = temp_directory + costume_file
+costume_filename = os.path.splitext(start_encrypt1.split("/")[-1])[0]
+costume_filesize = os.path.getsize(start_encrypt1)
+file_extension = start_encrypt1.split(".")[-1]
 
-
+if file_extension.isdigit():
+    chara_id = int(file_extension)
 
 # Get user inputs
 if chara_id == 212:
@@ -162,7 +180,8 @@ elif 201 <= chara_id <= 212:
     chara_id_group = 15
 
 clear_terminal()
-print('Name: ' + costume_name_en)
+if costume_name_en != "":
+    print('Name: ' + costume_name_en)
 if chara_id == 1:
     print('Chara: Honoka Kousaka')
 elif chara_id == 2:
@@ -223,6 +242,9 @@ elif chara_id == 212:
     print('Chara: Lanzhu Zhong')
 elif chara_id == 211:
     print('Chara: Mia Taylor')
+else:
+    print("Invalid chara id")
+    sys.exit(1)  
     
 if chara_id_group == 13:
     print('Group: Myuzu')
@@ -230,7 +252,8 @@ elif chara_id_group == 14:
     print('Group: Aqours')
 elif chara_id_group == 15:
     print('Group: Nijigasaki')
-print('Description: ' + costume_description)
+if costume_description != "":
+    print('Description: ' + costume_description)
 do_you_think_want_add_this = input("do you want add this? (y/n): ")
 
 if do_you_think_want_add_this == "y" :
@@ -240,7 +263,6 @@ else :
     shutil.rmtree(temp_directory, ignore_errors=True)
     sys.exit(1)    
 
-start_encrypt1 = temp_directory + costume_file
 if thumbnail_file != "":
     start_encrypt2 = temp_directory + thumbnail_file
     thumbnail_costume_filename = os.path.splitext(start_encrypt2.split("/")[-1])[0]
@@ -250,11 +272,6 @@ if thumbnail_file != "":
         print('Invalid Thumbnail Filename, Exiting.')
         shutil.rmtree(temp_directory, ignore_errors=True)
         sys.exit(1)  
-
-# Extract filename and filesize from costume_file
-costume_filename = os.path.splitext(start_encrypt1.split("/")[-1])[0]
-# Replace with actual method to get filesize
-costume_filesize = os.path.getsize(start_encrypt1)
 
 # perform check length to avoid auto delete
 if not costume_filename.isalnum() or not costume_filename.islower():
