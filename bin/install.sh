@@ -21,6 +21,7 @@ git submodule update --init --remote && \
 (go build || CGO_ENABLED=0 go build) && \
 # set the permission
 chmod +rx elichika && \
+chmod +rx elichika_utility.sh && \
 echo "Installed succesfully!"
 echo ""
 echo "You can start new or use exist by select transfer with password"
@@ -36,6 +37,7 @@ if [ $? -eq 0 ]; then
     (go build || CGO_ENABLED=0 go build)" > ~/update_elichika && \
     chmod +x ~/run_elichika && \
     chmod +x ~/update_elichika && \
+	chmod +x ~/menu_elichika && \
     echo "Use \"~/run_elichika\" in termux to run the server!" && \
     echo "Use \"~/menu_elichika\" in termux to run the menu!" && \
     echo "Use \"~/update_elichika\" in termux to update the server!"
