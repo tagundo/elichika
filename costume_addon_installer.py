@@ -8,6 +8,45 @@ import sys
 import shutil
 import json
 import hashlib
+from datetime import datetime
+
+def backup_operate(filelist):
+    # Create a folder with the current date and time as the name
+    backup_folder = datetime.now().strftime("backup_db/%Y-%m-%d_%H-%M-%S")
+    # Create the backup folder
+    os.makedirs(backup_folder)
+    
+    # Copy each file from the filelist to the backup folder
+    for file_path in filelist:
+        # Get the directory structure of the file
+        relative_path = os.path.relpath(file_path, start=".")
+        dest_path = os.path.join(backup_folder, relative_path)
+        # Create directories if they don't exist
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        # Copy file to destination path
+        shutil.copy(file_path, dest_path)
+    
+    print("Backup completed successfully.")
+
+# Example usage:
+filelist = [
+    "assets/db/gl/asset_a_en.db",
+    "assets/db/gl/asset_i_en.db",
+    "assets/db/gl/asset_a_ko.db",
+    "assets/db/gl/asset_i_ko.db",
+    "assets/db/gl/asset_a_zh.db",
+    "assets/db/gl/asset_i_zh.db",
+    "assets/db/gl/dictionary_en_k.db",
+    "assets/db/gl/dictionary_ko_k.db",
+    "assets/db/gl/dictionary_zh_k.db",
+    "assets/db/gl/masterdata.db",
+    "assets/db/jp/asset_a_ja.db",
+    "assets/db/jp/asset_i_ja.db",
+    "assets/db/jp/dictionary_ja_k.db",
+    "assets/db/jp/masterdata.db",
+    "serverdata.db",
+    "userdata.db"
+]
 
 # init variable
 
@@ -263,6 +302,12 @@ else :
     shutil.rmtree(temp_directory, ignore_errors=True)
     sys.exit(1)    
 
+do_backup_is_important = input("would you like backup database? (y/n): ")
+if do_backup_is_important == "y" :
+    backup_operate(filelist)
+else :
+    print('well then do your own risk')
+    
 if thumbnail_file != "":
     start_encrypt2 = temp_directory + thumbnail_file
     thumbnail_costume_filename = os.path.splitext(start_encrypt2.split("/")[-1])[0]
