@@ -29,6 +29,12 @@ After installing, you need to run the server to play using the following command
 
 ```
 ~/run_elichika
+```
+
+alternate menu
+
+```
+~/menu_elichika
 1
 ```
 
