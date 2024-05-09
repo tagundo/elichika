@@ -107,6 +107,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
         - Cannot get information about Skill description.
 		- Bond story & Voice will return as default because there is no way to create new one.
         - Training tree param is missing for each role.
+        - Only JP Client Android working right now.
 	- [ ] SBL
 		- still not implemented based on fork, do i need make script?
 	- [ ] Accessory
