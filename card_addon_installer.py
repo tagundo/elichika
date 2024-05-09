@@ -9,6 +9,277 @@ import shutil
 import json
 import hashlib
 
+skill_effect_dictionary_key_en = {
+    1: "",
+    2: "",
+    3: "",
+    4: "",
+    5: "",
+    6: "",
+    7: "",
+    8: "",
+    9: "",
+    10: "",
+    11: "",
+    12: "",
+    13: "",
+    14: "",
+    15: "",
+    16: "",
+    17: "",
+    18: "",
+    19: "",
+    20: "",
+    21: "",
+    22: "",
+    23: "",
+    24: "",
+    25: "",
+    26: "",
+    27: "",
+    28: "",
+    29: "",
+    30: "",
+    31: "",
+    32: "",
+    33: "",
+    34: "",
+    35: "",
+    36: "",
+    37: "",
+    38: "",
+    39: "",
+    40: "",
+    41: "",
+    42: "",
+    43: "",
+    44: "",
+    45: "",
+    46: "",
+    47: "",
+    48: "",
+    49: "",
+    50: "",
+    51: "",
+    52: "",
+    53: "",
+    54: "",
+    55: "",
+    56: "",
+    57: "",
+    58: "",
+    59: "",
+    60: "",
+    61: "",
+    62: "",
+    63: "",
+    64: "",
+    65: "",
+    66: "",
+    67: "",
+    68: "",
+    69: "",
+    70: "",
+    71: "",
+    72: "",
+    73: "",
+    74: "",
+    75: "",
+    76: "",
+    77: "",
+    78: "",
+    79: "",
+    80: "",
+    81: "",
+    82: "",
+    83: "",
+    84: "",
+    85: "",
+    86: "",
+    87: "",
+    88: "",
+    89: "",
+    90: "",
+    91: "",
+    92: "",
+    93: "",
+    94: "",
+    95: "",
+    96: "",
+    97: "",
+    98: "",
+    99: "",
+    100: "",
+    101: "",
+    102: "",
+    103: "",
+    104: "",
+    105: "",
+    106: "",
+    107: "",
+    108: "",
+    109: "",
+    110: "",
+    111: "",
+    112: "",
+    113: "",
+    114: "",
+    115: "",
+    116: "",
+    117: "",
+    118: "",
+    119: "",
+    120: "",
+    121: "",
+    122: "",
+    123: "",
+    124: "",
+    125: "",
+    126: "",
+    127: "",
+    128: "",
+    129: "",
+    130: "",
+    131: "",
+    132: "",
+    133: "",
+    134: "",
+    135: "",
+    136: "",
+    137: "",
+    138: "",
+    139: "",
+    140: "",
+    141: "",
+    142: "",
+    143: "",
+    144: "",
+    145: "",
+    146: "",
+    147: "",
+    148: "",
+    149: "",
+    150: "",
+    151: "",
+    152: "",
+    153: "",
+    154: "",
+    155: "",
+    156: "",
+    157: "",
+    158: "",
+    159: "",
+    160: "",
+    161: "",
+    162: "",
+    163: "",
+    164: "",
+    165: "",
+    166: "",
+    167: "",
+    168: "",
+    169: "",
+    170: "",
+    171: "",
+    172: "",
+    173: "",
+    174: "",
+    175: "",
+    176: "",
+    177: "",
+    178: "",
+    179: "",
+    180: "",
+    181: "",
+    182: "",
+    183: "",
+    184: "",
+    185: "",
+    186: "",
+    187: "",
+    188: "",
+    189: "",
+    190: "",
+    191: "",
+    192: "",
+    193: "",
+    194: "",
+    195: "",
+    196: "",
+    197: "",
+    198: "",
+    199: "",
+    200: "",
+    201: "",
+    202: "",
+    203: "",
+    204: "",
+    205: "",
+    206: "",
+    207: "",
+    208: "",
+    209: "",
+    210: "",
+    211: "",
+    212: "",
+    213: "",
+    214: "",
+    215: "",
+    216: "",
+    217: "",
+    218: "",
+    219: "",
+    220: "",
+    221: "",
+    222: "",
+    223: "",
+    224: "",
+    225: "",
+    226: "",
+    227: "",
+    228: "",
+    229: "",
+    230: "",
+    231: "",
+    232: "",
+    233: "",
+    234: "",
+    235: "",
+    236: "",
+    237: "",
+    238: "",
+    239: "",
+    240: "",
+    241: "",
+    242: "",
+    243: "",
+    244: "",
+    245: "",
+    246: "",
+    247: "",
+    248: "",
+    249: "",
+    250: "",
+    251: "",
+    252: "",
+    253: "",
+    254: "",
+    255: "",
+    256: "",
+    257: "",
+    258: "",
+    259: "",
+    260: "",
+    261: "",
+    262: "",
+    263: "",
+    264: "",
+    265: "",
+    266: "",
+    267: ""
+}
+
+
 modding_elichika_path = "assets/package/card/"
 
 if not os.path.exists(modding_elichika_path):
@@ -3644,6 +3915,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     passive_skill_dictionary_desc4 = "passive_skill_description_" + str(passive_skill_4_masterdata)
     passive_skill_dictionary_desc5 = "passive_skill_description_" + str(passive_skill_5_masterdata)
     ## dual skill not supported yet
+    # skill icon not implemented
     cpassive_skill_icon = "+H"
     cpassive_ability_skill_icon = "+H"
     cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_1_masterdata, passive_skill_dictionary_masterdata_1, passive_skill_dictionary_desc1_masterdata, passive_skill_1_masterdata, donot_insert, cpassive_skill_icon, passive_skill_trigger_type, passive_skill_chance_percent, passive_skill_condition_id1, donot_insert))
@@ -3716,6 +3988,16 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_card_active_skill (card_master_id, skill_level, name, active_skill_master_id) VALUES (?, '4', ?, ?);", (card_id_masterdata, active_skill_dictionary_masterdata, active_skill_4_masterdata))
     cursor.execute("INSERT INTO main.m_card_active_skill (card_master_id, skill_level, name, active_skill_master_id) VALUES (?, '5', ?, ?);", (card_id_masterdata, active_skill_dictionary_masterdata, active_skill_5_masterdata))
     
+    # m_card_appearance
+    card_dictionary_masterdata_1 = "k.card_name_" + str(card_id_masterdata)
+    card_dictionary_masterdata_2 = "k.card_name_awaken_" + str(card_id_masterdata)
+    card_hiragana_dictionary_masterdata_1 = "k.card_name_hiragana_" + str(card_id_masterdata)
+    card_hiragana_dictionary_masterdata_2 = "k.card_name_hiragana_awaken_" + str(card_id_masterdata)
+    clivedeck_id1 = "Card/CardTrimAuto/tex_card_" + str(card_id_masterdata) + "_0_t"
+    clivedeck_id2 = "Card/CardTrimAuto/tex_card_" + str(card_id_masterdata) + "_1_t"
+    cursor.execute("INSERT INTO main.m_card_appearance (card_m_id, appearance_type, card_name, pronunciation, image_asset_path, thumbnail_asset_path, still_thumbnail_asset_path, background_asset_path, live_deck_asset_path_id) VALUES (?, '1', ?, ?, ?, ?, ?, 'eS', ?,);", (card_id_masterdata, card_dictionary_masterdata_1, card_hiragana_dictionary_masterdata_1, card_path, card_thumbnail_path, card_still_path, clivedeck_id1))
+    cursor.execute("INSERT INTO main.m_card_appearance (card_m_id, appearance_type, card_name, pronunciation, image_asset_path, thumbnail_asset_path, still_thumbnail_asset_path, background_asset_path, live_deck_asset_path_id) VALUES (?, '1', ?, ?, ?, ?, ?, 'eS', ?,);", (card_id_masterdata, card_dictionary_masterdata_2, card_hiragana_dictionary_masterdata_2, card_awaken_path, card_awaken_thumbnail_path, card_awaken_still_path, clivedeck_id2))
+    
     # m_skill_effect_value_count
     ## do i know what is this used on?
     if passive_skill_effect_type in [9999, 99999]:
@@ -3734,6 +4016,13 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     # m_card_awaken_parameter
     cursor.execute("INSERT INTO main.m_card_awaken_parameter (card_master_id, parameter1, parameter2, parameter3) VALUES (?, ?, ?, ?);", (card_id_masterdata, card_awaken_appeal, card_awaken_stamina, card_awaken_technique))
     
+    # m_card_passive_skill_original
+    cursor.execute("INSERT INTO main.m_card_active_skill (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '1', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_1, passive_skill_1_masterdata))
+    cursor.execute("INSERT INTO main.m_card_active_skill (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '2', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_2, passive_skill_2_masterdata))
+    cursor.execute("INSERT INTO main.m_card_active_skill (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '3', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_3, passive_skill_3_masterdata))
+    cursor.execute("INSERT INTO main.m_card_active_skill (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '4', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_4, passive_skill_4_masterdata))
+    cursor.execute("INSERT INTO main.m_card_active_skill (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '5', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_5, passive_skill_5_masterdata))
+    cursor.execute("INSERT INTO main.m_card_active_skill (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '1', '2', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_ab1, passive_skill_ab1_masterdata))
     # m_card_grade_up_item
     if type_card == "SR":
         caddon_grade_up_val1 = 25
@@ -3760,6 +4049,11 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         technique_rate = calculate_parameter_value(card_min_technique, card_max_technique, min_level_card, max_level_card, level)
         cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, level, appeal, stamina, technique))
     cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, max_level_card, card_max_appeal, card_max_stamina, card_max_technique))
+    
+    # m_gacha_card_perfomance
+    if type_card == "UR":
+        if chara_id == 1:
+            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, min_level_card, card_min_appeal, card_min_stamina, card_min_technique))
     
     # m_training_tree
     if type_card == "SR":
@@ -4024,7 +4318,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '53', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '54', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '59', '4', ?);", (card_id_masterdata, card_training_tree_max_technique))
-    elif type_card == "UR":
+    elif type_card == "UR": # role 3 & 4 missing
         if role_card = 1:
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '2', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '6', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
@@ -4098,7 +4392,79 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '64', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '66', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '68', '4', ?);", (card_id_masterdata, card_training_tree_max_technique))
-        
+        elif role_card = 2:
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '3', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '4', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '7', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '10', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '15', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '27', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '34', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '37', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '40', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '42', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '44', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '47', '2', ?);", (card_id_masterdata, card_training_tree_min_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '22', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '24', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '26', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '49', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '50', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '51', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '55', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '56', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '63', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '64', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '66', '2', ?);", (card_id_masterdata, card_training_tree_med_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '68', '2', ?);", (card_id_masterdata, card_training_tree_max_appeal))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '2', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '6', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '8', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '12', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '28', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '30', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '32', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '35', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '39', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '41', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '43', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '46', '3', ?);", (card_id_masterdata, card_training_tree_min_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '21', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '23', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '25', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '48', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '52', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '53', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '54', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '57', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '59', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '60', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '67', '3', ?);", (card_id_masterdata, card_training_tree_med_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '70', '3', ?);", (card_id_masterdata, card_training_tree_max_stamina))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '1', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '5', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '9', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '11', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '13', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '14', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '29', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '31', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '33', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '36', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '38', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '45', '4', ?);", (card_id_masterdata, card_training_tree_min_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '16', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '17', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '18', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '19', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '20', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '58', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '61', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '62', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '65', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '69', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '71', '4', ?);", (card_id_masterdata, card_training_tree_med_technique))
+            cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '72', '4', ?);", (card_id_masterdata, card_training_tree_max_technique)) 
     # m_training_tree_card_story_side
     ## will return as R character because there is no way to create new one
     if type_card == "SR":
