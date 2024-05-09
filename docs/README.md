@@ -104,7 +104,9 @@ TODO(docs): Add specific docs for specific contents if necessary.
 		- Pressing help button will cause softlock.
 	- [ ] Card
 		- Work In Progress, this is very big project what so.
-		- Bond story & Voice will return as R card because there is no way to create new one.
+        - Cannot get information about Skill description.
+		- Bond story & Voice will return as default because there is no way to create new one.
+        - Training tree param is missing for each role.
 	- [ ] SBL
 		- still not implemented based on fork, do i need make script?
 	- [ ] Accessory
