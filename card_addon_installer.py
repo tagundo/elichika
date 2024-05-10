@@ -158,22 +158,18 @@ card_max_technique = 0
 # trimming
 ## cut in
 card_normal_trimming_live_cutin_offset_x = 0
-card_normal_trimming_live_cutin_offset_y = 0
+card_normal_trimming_live_cutin_offset_y = 125
 card_normal_trimming_live_cutin_offset_rotation = 0
-card_normal_trimming_live_cutin_offset_scale = 10000
+card_normal_trimming_live_cutin_offset_scale = 100
 card_awaken_trimming_live_cutin_offset_x = 0
-card_awaken_trimming_live_cutin_offset_y = 0
+card_awaken_trimming_live_cutin_offset_y = 125
 card_awaken_trimming_live_cutin_offset_rotation = 0
-card_awaken_trimming_live_cutin_offset_scale = 10000
+card_awaken_trimming_live_cutin_offset_scale = 100
 ## profile
 card_normal_trimming_profile_offset_x = 0
-card_normal_trimming_profile_offset_y = 0
-card_normal_trimming_profile_offset_rotation = 0
-card_normal_trimming_profile_offset_scale = 10000
+card_normal_trimming_profile_offset_scale = 100
 card_awaken_trimming_profile_offset_x = 0
-card_awaken_trimming_profile_offset_y = 0
-card_awaken_trimming_profile_offset_rotation = 0
-card_awaken_trimming_profile_offset_scale = 10000
+card_awaken_trimming_profile_offset_scale = 100
 
 # training tree
 card_training_tree_min_appeal = 0
@@ -725,7 +721,7 @@ def deck_card_awaken_path_randomhash(cursor):
             return new_hash7aw
 # explorer code
 clear_terminal()
-temp_directory = "assets/data/suit/temp/"
+temp_directory = "assets/package/.cache/"
 shutil.rmtree(temp_directory, ignore_errors=True)
 
 # List all files in the directory with a ".zip" extension
@@ -1766,12 +1762,24 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_card_trimming_live_deck (id, asset_path) VALUES (?, ?);", (clivedeck_id2, card_awaken_deck_path))
     
     # m_card_trimming_live_cutin
-    cursor.execute("INSERT INTO main.m_card_trimming_live_cutin (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '1', ?, ?, ?, ?);", (card_id_masterdata, card_normal_trimming_live_cutin_offset_x, card_normal_trimming_live_cutin_offset_y, card_normal_trimming_live_cutin_offset_rotation, card_normal_trimming_live_cutin_offset_scale))
-    cursor.execute("INSERT INTO main.m_card_trimming_live_cutin (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, ?, ?, ?);", (card_id_masterdata, card_awaken_trimming_live_cutin_offset_x, card_awaken_trimming_live_cutin_offset_y, card_awaken_trimming_live_cutin_offset_rotation, card_awaken_trimming_live_cutin_offset_scale))
+    offset_x_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_x * 10000)
+    offset_y_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_y * 10000)
+    rotation_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_rotation * 1000)
+    scale_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_scale * 10000)
+    offset_x_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_x * 10000)
+    offset_y_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_y * 10000)
+    rotation_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_rotation * 1000)
+    scale_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_scale * 10000)
+    cursor.execute("INSERT INTO main.m_card_trimming_live_cutin (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '1', ?, ?, ?, ?);", (card_id_masterdata, offset_x_normal_logic_cutin, offset_y_normal_logic_cutin, rotation_normal_logic_cutin, scale_normal_logic_cutin))
+    cursor.execute("INSERT INTO main.m_card_trimming_live_cutin (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, ?, ?, ?);", (card_id_masterdata, offset_x_awaken_logic_cutin, offset_y_awaken_logic_cutin, rotation_awaken_logic_cutin, scale_awaken_logic_cutin))
     
     # m_card_trimming_profile
-    cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '1', ?, ?, ?, ?);", (card_id_masterdata, card_normal_trimming_profile_offset_x, card_normal_trimming_profile_offset_y, card_normal_trimming_profile_offset_rotation, card_normal_trimming_profile_offset_scale))
-    cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, ?, ?, ?);", (card_id_masterdata, card_awaken_trimming_profile_offset_x, card_awaken_trimming_profile_offset_y, card_awaken_trimming_profile_offset_rotation, card_awaken_trimming_profile_offset_scale))
+    offset_x_normal_logic_trimming = int(card_normal_trimming_profile_offset_x * 10000)
+    scale_normal_logic_trimming = int(card_normal_trimming_profile_offset_scale * 1000)
+    offset_x_awaken_logic_trimming = int(card_awaken_trimming_profile_offset_x * 10000)
+    scale_awaken_logic_trimming = int(card_awaken_trimming_profile_offset_scale * 1000)
+    cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '1', ?, '0', '0', ?);", (card_id_masterdata, offset_x_normal_logic_trimming, scale_normal_logic_trimming))
+    cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, '0', '0', ?);", (card_id_masterdata, offset_x_awaken_logic_trimming, scale_awaken_logic_trimming))
     
     # m_skill_effect_value_count
     ## do i know what is this used on?
