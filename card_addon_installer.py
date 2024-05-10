@@ -918,8 +918,8 @@ encrypted_card_still = "static/assets/" + os.path.splitext(start_encrypt8.split(
 encrypted_card_deck = "static/assets/" + os.path.splitext(start_encrypt9.split("/")[-1])[0]
 encrypted_card_awaken = "static/assets/" + os.path.splitext(start_encrypt10.split("/")[-1])[0]
 encrypted_card_awaken_thumbnail = "static/assets/" + os.path.splitext(start_encrypt11.split("/")[-1])[0]
-encrypted_card_awaken_still = "static/assets/" + os.path.splitext(start_encrypt11.split("/")[-1])[0]
-encrypted_card_awaken_deck = "static/assets/" + os.path.splitext(start_encrypt11.split("/")[-1])[0]
+encrypted_card_awaken_still = "static/assets/" + os.path.splitext(start_encrypt12.split("/")[-1])[0]
+encrypted_card_awaken_deck = "static/assets/" + os.path.splitext(start_encrypt13.split("/")[-1])[0]
 if rarity_card == "UR":
     card_gacha_voice_filename_saved = "static/assets/" + os.path.splitext(start_encrypt5.split("/")[-1])[0]
 
@@ -1807,75 +1807,75 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, level, appeal_rate, stamina_rate, technique_rate))
     cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, max_level_card, card_max_appeal, card_max_stamina, card_max_technique))
     
-    # m_gacha_card_perfomance
+    # m_gacha_card_performance
     card_serif_dictionary_masterdata = "k.gacha" + str(sheet_name_file)
     card_serif_dictionary = "gacha" + str(sheet_name_file)
     if rarity_card == "UR":
         if chara_id == 1:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'uPV');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'uPV');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 2:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '\4,');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '\4,');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 3:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'q-!');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'q-!');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 4:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '*R+');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata)) 
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '*R+');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata)) 
         elif chara_id == 5:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'O]=');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'O]=');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 6:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'jGc');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'jGc');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 7:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'Kb@');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata)) 
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'Kb@');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata)) 
         elif chara_id == 8:
             fix_hanayo_serif = '"HW'
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata, fix_hanayo_serif))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata, fix_hanayo_serif))
         elif chara_id == 9:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'evO');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'evO');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 101:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '\P:');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '\P:');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 102:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'CXl');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'CXl');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 103:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '0[0');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '0[0');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 104:
             fix_dia_serif = "'E]"
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata, fix_dia_serif)) 
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata, fix_dia_serif)) 
         elif chara_id == 105:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '6]!');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '6]!');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 106:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'QkE');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'QkE');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 107:
             fix_maru_serif = '"de'
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata, fix_maru_serif)) 
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata, fix_maru_serif)) 
         elif chara_id == 108:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '}:+');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '}:+');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 109:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'HVF');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'HVF');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 201:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '#.u');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '#.u');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 202:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '!JJ');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '!JJ');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 203:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'ZpL');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'ZpL');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 204:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '-Nb');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '-Nb');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 205:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'jC.');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'jC.');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 206:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'a-[');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'a-[');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 207:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'L\;');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'L\;');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 208:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'EWP');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'EWP');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 209:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '/R9');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '/R9');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 210:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'GM:');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'GM:');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 211:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'XTG');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'XTG');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 212:
-            cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '?>g');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+            cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '?>g');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
     else:
-        cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, donot_insert, donot_insert, donot_insert))
+        cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, donot_insert, donot_insert, donot_insert))
     # m_training_tree
     if rarity_card == "SR":
         ctraining_tree_passive_increase = 1
