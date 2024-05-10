@@ -1,3 +1,30 @@
+# m_active_skill
+## skill_type
+
+    Voltage = 1,
+    Parameter = 2,
+    SpecialBuff = 3,
+    Debuff = 4,
+    Stamina = 5,
+    DamageReduce = 6,
+
+# m_passive_skill
+## trigger_type
+
+    BeforeLive = 1,
+    LiveStart = 2,
+    WaveStart = 3,
+    WaveSuccess = 4,
+    WaveFail = 5,
+    OnChangeLife = 6,
+    OnDamage = 7,
+    OnGotVoltage = 8,
+    OnChangeSquad = 9,
+    OnCollaboSkill = 10,
+    OnAppealCritical = 11,
+    OnNoteScore = 12,
+    Non = 255,
+
 # m_skill
 ## skill_target_master_id
 
