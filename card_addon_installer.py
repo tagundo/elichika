@@ -523,6 +523,14 @@ def generate_unique_storyside_id(cursor):
         count = cursor.fetchone()[0]
         if count == 0:
             return new_id_cardcc
+            
+def generate_unique_storyside2_id(cursor):
+    while True:
+        new_id_cardcc2 = random.randint(0, 999999999)
+        cursor.execute("SELECT COUNT(*) FROM main.m_story_side WHERE id = ?;", (new_id_cardcc2,))
+        count = cursor.fetchone()[0]
+        if count == 0:
+            return new_id_cardcc2
                         
 def generate_unique_activeskill_1_id(cursor):
     while True:
@@ -928,6 +936,7 @@ encrypted_card_awaken = "static/assets/" + os.path.splitext(start_encrypt10.spli
 encrypted_card_awaken_thumbnail = "static/assets/" + os.path.splitext(start_encrypt11.split("/")[-1])[0]
 encrypted_card_awaken_still = "static/assets/" + os.path.splitext(start_encrypt12.split("/")[-1])[0]
 encrypted_card_awaken_deck = "static/assets/" + os.path.splitext(start_encrypt13.split("/")[-1])[0]
+active_skill_voice_filename_saved = "static/assets/" + os.path.splitext(start_encrypt4.split("/")[-1])[0]
 if rarity_card == "UR":
     card_gacha_voice_filename_saved = "static/assets/" + os.path.splitext(start_encrypt5.split("/")[-1])[0]
 
@@ -1149,6 +1158,7 @@ def read_file_and_select_text1(start_encrypt5):
         return selected_text_deretote.decode('utf-8')
 
 print("assets encrypted")
+shutil.copy(start_encrypt4, active_skill_voice_filename_saved)
 with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
     cursor = conn.cursor()
         
@@ -1679,10 +1689,10 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cpassive_skill_evaluation4_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up + passive_skill_evaluation_step_even_up
     cpassive_skill_evaluation5_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up
     cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_1_masterdata, passive_skill_evaluation, passive_skill_target_id1, donot_insert, passive_skill_1_masterdata, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_2_masterdata, cpassive_skill_evaluation2_logic, passive_skill_target_id1, donot_insert, passive_skill_1_masterdata, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_3_masterdata, cpassive_skill_evaluation3_logic, passive_skill_target_id1, donot_insert, passive_skill_1_masterdata, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_4_masterdata, cpassive_skill_evaluation4_logic, passive_skill_target_id1, donot_insert, passive_skill_1_masterdata, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_5_masterdata, cpassive_skill_evaluation5_logic, passive_skill_target_id1, donot_insert, passive_skill_1_masterdata, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_2_masterdata, cpassive_skill_evaluation2_logic, passive_skill_target_id1, donot_insert, passive_skill_2_masterdata, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_3_masterdata, cpassive_skill_evaluation3_logic, passive_skill_target_id1, donot_insert, passive_skill_3_masterdata, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_4_masterdata, cpassive_skill_evaluation4_logic, passive_skill_target_id1, donot_insert, passive_skill_4_masterdata, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_5_masterdata, cpassive_skill_evaluation5_logic, passive_skill_target_id1, donot_insert, passive_skill_5_masterdata, donot_insert))
     cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_ab1_masterdata, passive_skill_ability_evaluation, passive_skill_ability_target_id1, donot_insert, passive_skill_ab1_masterdata, donot_insert))
     cpassive_skill_logic_effect2 = passive_skill_effect_value + passive_skill_effect_value_step_up * 1
     cpassive_skill_logic_effect3 = passive_skill_effect_value + passive_skill_effect_value_step_up * 2
@@ -2297,11 +2307,10 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     # m_training_tree_card_story_side
     ## will return as R character because there is no way to create new one
     story_side_id_masterdata = generate_unique_storyside_id(cursor)
-    if rarity_card == "SR":
-        cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '9', '1', ?);", (card_id_masterdata, story_side_id_masterdata))
-    else:
-        cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '9', '1', '121110011');", (card_id_masterdata,))
-        cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '11', '1', '121110011');", (card_id_masterdata,))
+    cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '11', '1', ?);", (card_id_masterdata, story_side_id_masterdata))
+    if rarity_card == "UR":
+        story_side2_id_masterdata = generate_unique_storyside2_id(cursor)
+        cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '9', '1', ?);", (card_id_masterdata, story_side2_id_masterdata))
         
     # m_training_tree_card_suit
     cursor.execute("INSERT INTO main.m_training_tree_card_suit (card_m_id, training_content_no, suit_m_id) VALUES (?, '1', ?);", (card_id_masterdata, card_id_masterdata))
@@ -2325,8 +2334,17 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     
     # TRYING FIX SOFTLOCK
     ## m_story_side
-    if rarity_card == "SR":
-        cursor.execute("INSERT INTO main.m_story_side (id, member_m_id, card_m_id, story_no, title, scenario_script_asset_path, card_image_asset_path, story_side_color, display_order, story_side_release_route) VALUES (?, ?, ?, '1', 'm.ss_title_102011001_1', 'SS/0201/ss_102011001_01', ?, 'ffcc00', '12345', '1');", (story_side_id_masterdata, chara_id, card_id_masterdata, card_still_path))
+    cursor.execute("SELECT MIN(display_order) FROM main.m_story_side WHERE member_m_id = ?;", (chara_id,))
+    result_story = cursor.fetchone()
+    min_display_order_ja_story = result_story[0] if result_story[0] is not None else 0
+
+    # Calculate the new display_order (decrease by 1)
+    display_order_new_ja_story = min_display_order_ja_story - 1
+    # return as honoka
+    cursor.execute("INSERT INTO main.m_story_side (id, member_m_id, card_m_id, story_no, title, scenario_script_asset_path, card_image_asset_path, story_side_color, display_order, story_side_release_route) VALUES (?, ?, ?, '1', 'm.ss_title_100013001_1', 'SS/0001/ss_100013001_01', ?, 'ffcc00', ?, '1');", (story_side_id_masterdata, chara_id, card_id_masterdata, card_still_path, display_order_new_ja_story))
+    if rarity_card == "UR":
+        display_order_new_ja_story2 = display_order_new_ja_story - 1
+        cursor.execute("INSERT INTO main.m_story_side (id, member_m_id, card_m_id, story_no, title, scenario_script_asset_path, card_image_asset_path, story_side_color, display_order, story_side_release_route) VALUES (?, ?, ?, '1', 'm.ss_title_100013001_2', 'SS/0001/ss_100013001_02', ?, 'ffcc00', ?, '1');", (story_side2_id_masterdata, chara_id, card_id_masterdata, card_still_path, display_order_new_ja_story2))
 
     
     # Find the minimum display_order for the given chara_id

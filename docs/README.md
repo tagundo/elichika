@@ -102,11 +102,12 @@ TODO(docs): Add specific docs for specific contents if necessary.
 		- This code need improvement.
 		- No reward received.
 		- Pressing help button will cause softlock.
-	- [ ] Card
-		- Work In Progress, this is very big project what so.
+	- [x] Card
         - Cannot get information about Skill description.
-		- Bond story & Voice will return as default because there is no way to create new one.
-        - Training tree param is missing for each role.
+		- Many skill icon is missing.
+		- Bond story will return as default because there is no way to create new one.
+		- Cannot obtain Voice timeline from training tree 
+        - Training tree parameter is missing for each role.
         - Only JP Client Android working right now.
 	- [ ] SBL
 		- still not implemented based on fork, do i need make script?
