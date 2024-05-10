@@ -1765,11 +1765,11 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     offset_x_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_x * 10000)
     offset_y_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_y * 10000)
     rotation_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_rotation * 1000)
-    scale_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_scale * 10000)
+    scale_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_scale * 100)
     offset_x_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_x * 10000)
     offset_y_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_y * 10000)
     rotation_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_rotation * 1000)
-    scale_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_scale * 10000)
+    scale_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_scale * 100)
     cursor.execute("INSERT INTO main.m_card_trimming_live_cutin (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '1', ?, ?, ?, ?);", (card_id_masterdata, offset_x_normal_logic_cutin, offset_y_normal_logic_cutin, rotation_normal_logic_cutin, scale_normal_logic_cutin))
     cursor.execute("INSERT INTO main.m_card_trimming_live_cutin (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, ?, ?, ?);", (card_id_masterdata, offset_x_awaken_logic_cutin, offset_y_awaken_logic_cutin, rotation_awaken_logic_cutin, scale_awaken_logic_cutin))
     
