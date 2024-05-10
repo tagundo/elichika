@@ -105,8 +105,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
 	- [x] Card
         - Cannot get information about Skill description.
 		- Many skill icon is missing.
-		- Bond story will return as default because there is no way to create new one.
-		- Cannot obtain Voice timeline from training tree 
+		- Bond story & Voice navigation will return as default because there is no way to create new one.
         - Training tree parameter is missing for each role.
         - Only JP Client Android working right now.
 	- [ ] SBL
