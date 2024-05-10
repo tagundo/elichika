@@ -1874,6 +1874,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
             cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'XTG');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
         elif chara_id == 212:
             cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, '?>g');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
+    else:
+        cursor.execute("INSERT INTO main.m_gacha_card_perfomance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, ?);", (card_id_masterdata, donot_insert, donot_insert, donot_insert))
     # m_training_tree
     if rarity_card == "SR":
         ctraining_tree_passive_increase = 1
@@ -2310,7 +2312,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cursor.execute("INSERT INTO main.m_training_tree_progress_reward (card_master_id, activate_num, display_order, content_type, content_id, content_amount) VALUES (?, '69', '0', '1', '0', '10');", (card_id_masterdata,))
         cursor.execute("INSERT INTO main.m_training_tree_progress_reward (card_master_id, activate_num, display_order, content_type, content_id, content_amount) VALUES (?, '87', '0', '1', '0', '20');", (card_id_masterdata,))
     # Insert record into the database
-    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, '1200', '0', ?, '1');", (trade_id_into_json, donot_insert))
+    # cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, '1200', '0', ?, '1');", (trade_id_into_json, donot_insert))
     
     # Find the minimum display_order for the given chara_id
     cursor.execute("SELECT MIN(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
