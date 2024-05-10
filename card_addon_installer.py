@@ -515,6 +515,14 @@ def generate_unique_card_id(cursor):
         count = cursor.fetchone()[0]
         if count == 0:
             return new_id_card
+            
+def generate_unique_storyside_id(cursor):
+    while True:
+        new_id_cardcc = random.randint(0, 999999999)
+        cursor.execute("SELECT COUNT(*) FROM main.m_story_side WHERE id = ?;", (new_id_cardcc,))
+        count = cursor.fetchone()[0]
+        if count == 0:
+            return new_id_cardcc
                         
 def generate_unique_activeskill_1_id(cursor):
     while True:
@@ -2288,8 +2296,9 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
             cursor.execute("INSERT INTO main.m_training_tree_card_param (id, training_content_no, training_content_type, value) VALUES (?, '72', '4', ?);", (card_id_masterdata, card_training_tree_max_technique)) 
     # m_training_tree_card_story_side
     ## will return as R character because there is no way to create new one
+    story_side_id_masterdata = generate_unique_storyside_id(cursor)
     if rarity_card == "SR":
-        cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '9', '1', '121110011');", (card_id_masterdata,))
+        cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '9', '1', ?);", (card_id_masterdata, story_side_id_masterdata))
     else:
         cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '9', '1', '121110011');", (card_id_masterdata,))
         cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '11', '1', '121110011');", (card_id_masterdata,))
@@ -2313,6 +2322,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cursor.execute("INSERT INTO main.m_training_tree_progress_reward (card_master_id, activate_num, display_order, content_type, content_id, content_amount) VALUES (?, '87', '0', '1', '0', '20');", (card_id_masterdata,))
     # Insert record into the database
     # cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, '1200', '0', ?, '1');", (trade_id_into_json, donot_insert))
+    
+    # TRYING FIX SOFTLOCK
+    ## m_story_side
+    if rarity_card == "SR":
+        cursor.execute("INSERT INTO main.m_story_side (id, member_m_id, card_m_id, story_no, title, scenario_script_asset_path, card_image_asset_path, story_side_color, display_order, story_side_release_route) VALUES (?, ?, ?, '1', 'm.ss_title_102011001_1', 'SS/0201/ss_102011001_01', ?, 'ffcc00', '12345', '1');", (story_side_id_masterdata, chara_id, card_id_masterdata, card_still_path))
+
     
     # Find the minimum display_order for the given chara_id
     cursor.execute("SELECT MIN(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
