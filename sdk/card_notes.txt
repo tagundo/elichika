@@ -24,7 +24,76 @@
     OnAppealCritical = 11,
     OnNoteScore = 12,
     Non = 255,
+	
+## skill_condition_master_id
 
+	HpLessThanPercent
+	0% (id:101) - 99% (id:2)
+	
+	LimitCount
+	1 (id:102) - 10 (id:111)
+	11 (id:260) - 20 (id:269)
+	
+	VoltageMoreThanValue
+	1% (id:112) - 100% (id:211)
+	
+	TriggerLessThanValue
+	id:257	percent:0.1
+	id:212	percent:1
+	id:213	percent:1.5
+	id:214	percent:2
+	id:215	percent:2.5
+	id:216	percent:3
+	id:217	percent:3.5
+	id:218	percent:4
+	id:219	percent:4.5
+	id:220	percent:5
+	id:221	percent:5.5
+	id:222	percent:6
+	id:223	percent:6.5
+	id:224	percent:7
+	id:225	percent:7.5
+	id:226	percent:8
+	id:227	percent:8.5
+	id:228	percent:9
+	id:229	percent:9.5
+	id:230	percent:10
+	id:231	percent:11
+	id:232	percent:12
+	id:233	percent:13
+	id:234	percent:14
+	id:235	percent:15
+	id:236	percent:16
+	id:237	percent:17
+	id:238	percent:18
+	id:239	percent:19
+	id:240	percent:20
+	id:241	percent:25
+	id:242	percent:30
+	id:243	percent:35
+	id:244	percent:40
+	id:245	percent:45
+	id:246	percent:50
+	id:247	percent:55
+	id:248	percent:60
+	id:249	percent:65
+	id:250	percent:70
+	id:251	percent:75
+	id:252	percent:80
+	id:253	percent:85
+	id:254	percent:90
+	id:255	percent:95
+	id:256	percent:100
+
+	OnlyOwner
+	258 - 259
+	
+	AttributeMatch
+	270
+	
+	None
+	1
+	
 # m_skill
 ## skill_target_master_id
 
