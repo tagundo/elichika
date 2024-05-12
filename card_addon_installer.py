@@ -57,8 +57,8 @@ card_name_awaken_hiragana_ko = ""
 card_name_awaken_hiragana_zh = ""
 card_name_awaken_hiragana_ja = ""
 
+# EXPERT ONLY, IF YOU DON'T KNOW HOW TO SETUP SKILL THEN ASK SOMEONE OR LEAVE AS NOTHING
 # active skill
-active_skill_voice_file = ""
 active_skill_type = 1
 active_skill_sp_gauge_point = 0
 active_skill_chance_percent = 0
@@ -79,8 +79,6 @@ active_skill_effect_type = 1
 active_skill_effect_calculation_type = 1
 active_skill_effect_finish_type = 255
 active_skill_effect_finish_value = 0
-active_skill_effect_scale_type = 1
-active_skill_effect_timing = 1
 active_skill_effect_value = 0
 active_skill_effect_value_step_up = 0
 
@@ -101,8 +99,6 @@ passive_skill_effect_type = 1
 passive_skill_effect_calculation_type = 1
 passive_skill_effect_finish_type = 255
 passive_skill_effect_finish_value = 0
-passive_skill_effect_scale_type = 1
-passive_skill_effect_timing = 1
 passive_skill_effect_value = 0
 passive_skill_effect_value_step_up = 0
 
@@ -121,15 +117,12 @@ passive_skill_ability_effect_type = 1
 passive_skill_ability_effect_calculation_type = 1
 passive_skill_ability_effect_finish_type = 255
 passive_skill_ability_effect_finish_value = 0
-passive_skill_ability_effect_scale_type = 1
-passive_skill_ability_effect_timing = 1
 passive_skill_ability_effect_value = 0
 
-# costume
+# base
+active_skill_voice_file = ""
 costume_file = ""
 costume_thumbnail_file = ""
-
-# base
 card_normal_file = ""
 card_normal_thumbnail_file = ""
 card_normal_still_file = ""
@@ -2051,11 +2044,11 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cactive_skill_logic_effect3 = active_skill_effect_value + active_skill_effect_value_step_up * 2
     cactive_skill_logic_effect4 = active_skill_effect_value + active_skill_effect_value_step_up * 3
     cactive_skill_logic_effect5 = active_skill_effect_value + active_skill_effect_value_step_up * 4
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (active_skill_1_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, active_skill_effect_value, active_skill_effect_scale_type, active_skill_effect_calculation_type, active_skill_effect_timing, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (active_skill_2_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect2, active_skill_effect_scale_type, active_skill_effect_calculation_type, active_skill_effect_timing, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (active_skill_3_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect3, active_skill_effect_scale_type, active_skill_effect_calculation_type, active_skill_effect_timing, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (active_skill_4_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect4, active_skill_effect_scale_type, active_skill_effect_calculation_type, active_skill_effect_timing, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (active_skill_5_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect5, active_skill_effect_scale_type, active_skill_effect_calculation_type, active_skill_effect_timing, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_1_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, active_skill_effect_value, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_2_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect2, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_3_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect3, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_4_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect4, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_5_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect5, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
     # m_passive_skill
     passive_skill_1_masterdata = generate_unique_activeskill_b1_id(cursor)
     passive_skill_2_masterdata = generate_unique_activeskill_b2_id(cursor)
@@ -2113,12 +2106,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cpassive_skill_logic_effect3 = passive_skill_effect_value + passive_skill_effect_value_step_up * 2
     cpassive_skill_logic_effect4 = passive_skill_effect_value + passive_skill_effect_value_step_up * 3
     cpassive_skill_logic_effect5 = passive_skill_effect_value + passive_skill_effect_value_step_up * 4
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (passive_skill_1_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, passive_skill_effect_value, passive_skill_effect_scale_type, passive_skill_effect_calculation_type, passive_skill_effect_timing, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (passive_skill_2_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, cpassive_skill_logic_effect2, passive_skill_effect_scale_type, passive_skill_effect_calculation_type, passive_skill_effect_timing, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (passive_skill_3_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, cpassive_skill_logic_effect3, passive_skill_effect_scale_type, passive_skill_effect_calculation_type, passive_skill_effect_timing, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (passive_skill_4_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, cpassive_skill_logic_effect4, passive_skill_effect_scale_type, passive_skill_effect_calculation_type, passive_skill_effect_timing, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (passive_skill_5_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, cpassive_skill_logic_effect5, passive_skill_effect_scale_type, passive_skill_effect_calculation_type, passive_skill_effect_timing, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (passive_skill_ab1_masterdata, passive_skill_ability_effect_target_parameter, passive_skill_ability_effect_type, passive_skill_ability_effect_value, passive_skill_ability_effect_scale_type, passive_skill_ability_effect_calculation_type, passive_skill_ability_effect_timing, donot_insert, passive_skill_ability_effect_finish_type, passive_skill_ability_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_1_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, passive_skill_effect_value, passive_skill_effect_calculation_type, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_2_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, cpassive_skill_logic_effect2, passive_skill_effect_calculation_type, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_3_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, cpassive_skill_logic_effect3, passive_skill_effect_calculation_type, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_4_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, cpassive_skill_logic_effect4, passive_skill_effect_calculation_type, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_5_masterdata, passive_skill_effect_target_parameter, passive_skill_effect_type, cpassive_skill_logic_effect5, passive_skill_effect_calculation_type, donot_insert, passive_skill_effect_finish_type, passive_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_ab1_masterdata, passive_skill_ability_effect_target_parameter, passive_skill_ability_effect_type, passive_skill_ability_effect_value, passive_skill_ability_effect_calculation_type, donot_insert, passive_skill_ability_effect_finish_type, passive_skill_ability_effect_finish_value))
     
     # m_card
     if rarity_card == "SR":
