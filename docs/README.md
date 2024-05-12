@@ -106,8 +106,9 @@ TODO(docs): Add specific docs for specific contents if necessary.
         - Cannot get information about Skill description.
 		- Many skill icon is missing.
 		- Bond story & Voice navigation will return as default because there is no way to create new one.
+		- Write a LOT dictionary mapping for each language.
         - Training tree parameter is missing for each role.
-		- Dual skill / condition not supported
+		- Dual skill / condition not supported.
         - Only JP Client Android working right now.
 	- [ ] SBL
 		- still not implemented based on fork, do i need make script?

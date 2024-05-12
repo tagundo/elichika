@@ -10,6 +10,26 @@ import json
 import hashlib
 from datetime import datetime
 
+check_json_config = "config.json"
+
+if not os.path.exists(check_json_config):
+    print('Config file is missing, Exiting...')
+    sys.exit(1)
+
+def clear_terminal():
+    system = platform.system()
+    if system == 'Windows':
+        os.system('cls')
+    elif system == 'Linux' or system == 'Darwin':
+        os.system('clear')
+
+clear_terminal()
+print("This script sucks.")
+print("If you could make it suck less, that would be awesome.")
+print("Specifically: check docs/README.md on card section, there a LOT thing need todo")
+print("")
+confirm_script_card = input("Press Enter to Continue")
+
 def backup_operate(filelist):
     # Create a folder with the current date and time as the name
     backup_folder = datetime.now().strftime("backup_db/%Y-%m-%d_%H-%M-%S")
@@ -887,13 +907,6 @@ encrypted_folder = "static/assets/"
 
 if not os.path.exists(encrypted_folder):
     os.makedirs(encrypted_folder)
-    
-def clear_terminal():
-    system = platform.system()
-    if system == 'Windows':
-        os.system('cls')
-    elif system == 'Linux' or system == 'Darwin':
-        os.system('clear')
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
     for i in range(len(data)):
@@ -2977,5 +2990,13 @@ with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
 
 print("deleting temp folder")
 shutil.rmtree(temp_directory, ignore_errors=True)
+
+with open(check_json_config, 'r') as f:
+    config_elichika = json.load(f)
+    if config_elichika.get('cdn_server') != "http://127.0.0.1:8080/static":
+        config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
+        with open(check_json_config, 'w') as f:
+            json.dump(config_elichika, f, indent=4)
+            print("CDN server updated to http://127.0.0.1:8080/static")
+            
 print("FINISHED")
-print("THANK YOU FOR USING THIS SCRIPT, PLEASE NOTE THERE MAYBE ISSUE WITH ADDING CARD")
