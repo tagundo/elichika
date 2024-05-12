@@ -208,7 +208,7 @@ card_gacha_serif_ja = ""
 # FES
 # PARTY
 
-skill_effect_dictionary_key_en = {
+effect_type_dictionary_key_en = {
     1: "",
     2: "",
     3: "",
@@ -474,7 +474,7 @@ skill_effect_dictionary_key_en = {
     263: "",
     264: "",
     265: "",
-    266: "",
+    266: "The SP Skill gauge can be charged up to {effect_value_per_insert}",
     267: ""
 }
 
@@ -1359,6 +1359,9 @@ encrypted_card_awaken_still = "static/assets/" + os.path.splitext(start_encrypt1
 encrypted_card_awaken_deck = "static/assets/" + os.path.splitext(start_encrypt13.split("/")[-1])[0]
 active_skill_voice_filename_saved = "static/assets/" + os.path.splitext(start_encrypt4.split("/")[-1])[0]
 if rarity_card == "UR" or rarity_card == "FES" or rarity_card == "PARTY":
+    start_encrypt5 = temp_directory + card_gacha_voice_file
+    card_gacha_voice_filesize = os.path.getsize(start_encrypt5)
+    card_gacha_voice_filename = os.path.splitext(start_encrypt5.split("/")[-1])[0]
     card_gacha_voice_filename_saved = "static/assets/" + os.path.splitext(start_encrypt5.split("/")[-1])[0]
 
 if chara_id == 209:
@@ -1625,10 +1628,7 @@ with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
                    (card_awaken_still_path, card_awaken_still_filename, card_awaken_still_filesize))
     
     if rarity_card == "UR" or rarity_card == "FES" or rarity_card == "PARTY":
-        start_encrypt5 = temp_directory + card_gacha_voice_file
         sheet_name_file1 = read_file_and_select_text1(start_encrypt5)
-        card_gacha_voice_filename = os.path.splitext(start_encrypt5.split("/")[-1])[0]
-        card_gacha_voice_filesize = os.path.getsize(start_encrypt5)
         cursor.execute("INSERT INTO main.m_asset_sound (sheet_name, acb_pack_name, awb_pack_name) VALUES (?, ?, ?);", (sheet_name_file1, card_gacha_voice_filename, donot_insert))
         cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (card_gacha_voice_filename,))
         shutil.copy(start_encrypt5, card_gacha_voice_filename_saved)
@@ -2777,7 +2777,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_story_side (id, member_m_id, card_m_id, story_no, title, scenario_script_asset_path, card_image_asset_path, story_side_color, display_order, story_side_release_route) VALUES (?, ?, ?, '1', 'm.ss_title_100013001_1', 'SS/0001/ss_100013001_01', ?, 'ffcc00', ?, '1');", (story_side_id_masterdata, chara_id, card_id_masterdata, card_still_path, display_order_new_ja_story))
     if rarity_card == "UR" or rarity_card == "FES" or rarity_card == "PARTY":
         display_order_new_ja_story2 = display_order_new_ja_story - 1
-        cursor.execute("INSERT INTO main.m_story_side (id, member_m_id, card_m_id, story_no, title, scenario_script_asset_path, card_image_asset_path, story_side_color, display_order, story_side_release_route) VALUES (?, ?, ?, '1', 'm.ss_title_100013001_2', 'SS/0001/ss_100013001_02', ?, 'ffcc00', ?, '1');", (story_side2_id_masterdata, chara_id, card_id_masterdata, card_still_path, display_order_new_ja_story2))
+        cursor.execute("INSERT INTO main.m_story_side (id, member_m_id, card_m_id, story_no, title, scenario_script_asset_path, card_image_asset_path, story_side_color, display_order, story_side_release_route) VALUES (?, ?, ?, '2', 'm.ss_title_100013001_2', 'SS/0001/ss_100013001_02', ?, 'ffcc00', ?, '2');", (story_side2_id_masterdata, chara_id, card_id_masterdata, card_still_path, display_order_new_ja_story2))
 
     
     # Find the minimum display_order for the given chara_id
@@ -2810,6 +2810,16 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
         cactive_skill_logic_effect4 = str(cactive_skill_logic_effect4 / 1000) + "%"
         cactive_skill_logic_effect5 = str(cactive_skill_logic_effect5 / 1000) + "%"
         
+    if passive_skill_effect_type not in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        passive_skill_effect_value = str(passive_skill_effect_value / 1000) + "%"
+        cpassive_skill_logic_effect2 = str(cpassive_skill_logic_effect2 / 1000) + "%"
+        cpassive_skill_logic_effect3 = str(cpassive_skill_logic_effect3 / 1000) + "%"
+        cpassive_skill_logic_effect4 = str(cpassive_skill_logic_effect4 / 1000) + "%"
+        cpassive_skill_logic_effect5 = str(cpassive_skill_logic_effect5 / 1000) + "%"
+        
+    if passive_skill_ability_effect_type not in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        passive_skill_ability_effect_value = str(passive_skill_ability_effect_value / 1000) + "%"
+        
     en_active_skill_target = skill_target_dictionary_key_en.get(active_skill_target_id1)
     en_passive_skill_target = skill_target_dictionary_key_en.get(passive_skill_target_id1)
     en_passive_skill_ability_target = skill_target_dictionary_key_en.get(passive_skill_ability_target_id1)
@@ -2820,6 +2830,7 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     en_passive_skill_ability_condition_id1 = skill_condition_dictionary_key_en.get(passive_skill_ability_condition_id1)
     en_passive_skill_trigger_type = passive_skill_trigger_type_dictionary_key_en.get(passive_skill_trigger_type)
     en_passive_skill_ability_trigger_type = passive_skill_trigger_type_dictionary_key_en.get(passive_skill_ability_trigger_type)
+    en_passive_skill_ability_effect_type = effect_type_dictionary_key_en.get(passive_skill_ability_effect_type)
     
     active_skill1_desc_text_ja = f"{en_active_skill_target}"
     active_skill2_desc_text_ja = f"{en_active_skill_target}"
@@ -2831,7 +2842,8 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     passive_skill3_desc_text_ja = f"Condition: {en_passive_skill_condition_id1}{en_passive_skill_trigger_type}\nChance: {passive_skill_chance_percent}%{en_passive_skill_target}"
     passive_skill4_desc_text_ja = f"Condition: {en_passive_skill_condition_id1}{en_passive_skill_trigger_type}\nChance: {passive_skill_chance_percent}%{en_passive_skill_target}"
     passive_skill5_desc_text_ja = f"Condition: {en_passive_skill_condition_id1}{en_passive_skill_trigger_type}\nChance: {passive_skill_chance_percent}%{en_passive_skill_target}"
-    passive_skillab1_desc_text_ja = f"Condition: {en_passive_skill_ability_condition_id1}{en_passive_skill_ability_trigger_type}\nChance: {passive_skill_ability_chance_percent}%{en_passive_skill_ability_target}"
+    effect_value_per_insert = passive_skill_ability_effect_value
+    passive_skillab1_desc_text_ja = f"{en_passive_skill_ability_effect_type}\nCondition: {en_passive_skill_ability_condition_id1}{en_passive_skill_ability_trigger_type}\nChance: {passive_skill_ability_chance_percent}%{en_passive_skill_ability_target}"
     passive_skill1_name_text_ja = ""
     passive_skill2_name_text_ja = ""
     passive_skill3_name_text_ja = ""
