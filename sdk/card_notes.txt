@@ -166,7 +166,7 @@ ID		Target
 # m_skill_effect
 ## target_parameter
 
-    Non = 1,
+    Non = 1, used on accessory
     Attack = 2,
     Defense = 3,
     Performance = 5,
@@ -284,24 +284,11 @@ ID	Effect
 266	Allow SP Gauge Overcharge
 267	SP Voltage Gain Up (based on Overcharge)
 
-## scale_type
-
-    Max = 1,
-    Current = 2,
-    Smaller = 3,
-    Bigger = 4,
-    Special = 5,
-
 ## calc_type
 
     Add = 1,
     ScaleA = 2,
     ScaleB = 3,
-	
-## timing
-
-    Normal = 1,
-    Attacking = 2,
 
 ## finish_type
 
