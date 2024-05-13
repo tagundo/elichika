@@ -93,9 +93,9 @@ active_skill_evaluation_step_odd_up = 0
 active_skill_target_id1 = 1
 
 ## skill effect
-active_skill_effect_target_parameter = 2
+active_skill_effect_target_parameter = 2 # common attack
 active_skill_effect_type = 1
-active_skill_effect_calculation_type = 1
+active_skill_effect_calculation_type = 1 # calculate by add (1) or percent (2)
 active_skill_effect_finish_type = 255
 active_skill_effect_finish_value = 0
 active_skill_effect_value = 0
@@ -109,9 +109,9 @@ passive_skill_evaluation_step_odd_up = 0
 passive_skill_target_id1 = 1
 
 ## skill effect
-passive_skill_effect_target_parameter = 2
+passive_skill_effect_target_parameter = 2 # common attack
 passive_skill_effect_type = 1
-passive_skill_effect_calculation_type = 1
+passive_skill_effect_calculation_type = 1 # calculate by add (1) or percent (2)
 passive_skill_effect_finish_type = 255
 passive_skill_effect_finish_value = 0
 passive_skill_effect_value = 0
@@ -128,9 +128,9 @@ passive_skill_ability_evaluation = 0
 passive_skill_ability_target_id1 = 1
 
 ## skill effect
-passive_skill_ability_effect_target_parameter = 2
+passive_skill_ability_effect_target_parameter = 2 # common attack
 passive_skill_ability_effect_type = 1
-passive_skill_ability_effect_calculation_type = 1
+passive_skill_ability_effect_calculation_type = 1 # calculate by add (1) or percent (2)
 passive_skill_ability_effect_finish_type = 255
 passive_skill_ability_effect_finish_value = 0
 passive_skill_ability_effect_value = 0
@@ -157,9 +157,6 @@ is_gacha1_or_event2_card = 1
 card_base_appeal = 0
 card_base_stamina = 0
 card_base_technique = 0
-card_max_appeal = 0
-card_max_stamina = 0
-card_max_technique = 0
 
 # trimming
 ## cut in
@@ -181,15 +178,9 @@ card_awaken_trimming_profile_offset_scale = 100
 card_training_tree_awaken_appeal = 0
 card_training_tree_awaken_stamina = 0
 card_training_tree_awaken_technique = 0
-card_training_tree_cell1_appeal = 0
-card_training_tree_cell1_stamina = 0
-card_training_tree_cell1_technique = 0
-card_training_tree_cell2_appeal = 0
-card_training_tree_cell2_stamina = 0
-card_training_tree_cell2_technique = 0
-card_training_tree_cell3_appeal = 0
-card_training_tree_cell3_stamina = 0
-card_training_tree_cell3_technique = 0
+card_training_tree_cell_extra_appeal = 0
+card_training_tree_cell_extra_stamina = 0
+card_training_tree_cell_extra_technique = 0
 
 # gacha (UR only)
 card_gacha_voice_file = ""
@@ -2017,18 +2008,43 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     # todo : match icon same as behavior
     # are these id correct?
     
-    # -- Skill Icon --
+    # -- Skill Icon Red Label --
     ## Appeal Buff
-    if active_skill_effect_type == 17:
-        cactive_skill_icon = "K9"
-    elif active_skill_effect_type == 119:
-        cactive_skill_icon = "K9"
-    elif active_skill_effect_type == 121:
-        cactive_skill_icon = "K9"
-    elif active_skill_effect_type == 123:
-        cactive_skill_icon = "K9"
-    elif active_skill_effect_type == 125:
-        cactive_skill_icon = "K9"
+    if active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = '"4' # Critical Activation
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "'I" # Restore Heart
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "9^L" # Critival VO & Activation
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = ":" # Shield
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "<jy" # Shield & Heart
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "Ee" # Damage Reducion
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "Gpc" # VO & SP Gauge
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "IT" # VO
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "K9" # Appeal
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        left_slash_fix = 92
+        cactive_skill_icon = "K" + chr(left_slash_fix) # Critical VO
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "QF" # VO Gauge
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "_]" # SP
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = 'd"'
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "py"
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "r1"
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "}8}"
+    elif active_skill_effect_type in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+        cactive_skill_icon = "~."
     else:
         # use lock icon if no available
         cactive_skill_icon = "+H"
@@ -2252,13 +2268,22 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_card_grade_up_item (card_id, grade, content_type, content_id, content_amount) VALUES (?, '5', '13', '1805', ?);", (card_id_masterdata, caddon_grade_up_val2))
     
     # m_card_parameter
+    if rarity_card == "SR":
+        zcard_max_appeal = int(card_base_appeal * 1.997)
+        zcard_max_stamina = int(card_base_stamina * 1.997)
+        zcard_max_technique = int(card_base_technique * 1.997)
+    elif rarity_card == "UR" or rarity_card == "FES" or rarity_card == "PARTY":
+        zcard_max_appeal = int(card_base_appeal * 2.334)
+        zcard_max_stamina = int(card_base_stamina * 2.334)
+        zcard_max_technique = int(card_base_technique * 2.334)
+        
     cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, min_level_card, card_base_appeal, card_base_stamina, card_base_technique))
     for level in range(min_level_card + 1, max_level_card):
-        appeal_rate = calculate_parameter_value(card_base_appeal, card_max_appeal, min_level_card, max_level_card, level)
-        stamina_rate = calculate_parameter_value(card_base_stamina, card_max_stamina, min_level_card, max_level_card, level)
-        technique_rate = calculate_parameter_value(card_base_technique, card_max_technique, min_level_card, max_level_card, level)
+        appeal_rate = calculate_parameter_value(card_base_appeal, zcard_max_appeal, min_level_card, max_level_card, level)
+        stamina_rate = calculate_parameter_value(card_base_stamina, zcard_max_stamina, min_level_card, max_level_card, level)
+        technique_rate = calculate_parameter_value(card_base_technique, zcard_max_technique, min_level_card, max_level_card, level)
         cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, level, appeal_rate, stamina_rate, technique_rate))
-    cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, max_level_card, card_max_appeal, card_max_stamina, card_max_technique))
+    cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, max_level_card, zcard_max_appeal, zcard_max_stamina, zcard_max_technique))
     
     # m_gacha_card_performance
     card_serif_dictionary_masterdata = "k.gacha" + str(sheet_name_file)
@@ -2346,6 +2371,38 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_training_tree (id, training_tree_mapping_m_id, training_tree_card_param_m_id, training_tree_card_passive_skill_increase_m_id) VALUES (?, ?, ?, ?);", (card_id_masterdata, ctraining_tree_logic, card_id_masterdata, ctraining_tree_passive_increase))
     
     # m_training_tree_card_param
+    
+    # using logic for UR / FES / PARTY, this is not accurate what so
+    if rarity_card == "SR":
+        card_training_tree_cell1_appeal = int(card_base_appeal / 7.15)
+        card_training_tree_cell2_appeal = int(card_base_appeal / 4.75)
+        card_training_tree_cell3_appeal = int(card_training_tree_cell2_appeal + card_training_tree_cell_extra_appeal)
+        card_training_tree_cell1_stamina = int(card_base_stamina / 7.15)
+        card_training_tree_cell2_stamina = int(card_base_stamina / 4.75)
+        card_training_tree_cell3_stamina = int(card_training_tree_cell2_stamina + card_training_tree_cell_extra_stamina)
+        card_training_tree_cell1_technique = int(card_base_technique / 7.15)
+        card_training_tree_cell2_technique = int(card_base_technique / 4.75)
+        card_training_tree_cell3_technique = int(card_training_tree_cell2_technique + card_training_tree_cell_extra_technique)
+    elif rarity_card == "UR" or rarity_card == "FES":
+        card_training_tree_cell1_appeal = int(card_base_appeal / 6)
+        card_training_tree_cell2_appeal = int(card_base_appeal / 4)
+        card_training_tree_cell3_appeal = int(card_training_tree_cell2_appeal + card_training_tree_cell_extra_appeal)
+        card_training_tree_cell1_stamina = int(card_base_stamina / 6)
+        card_training_tree_cell2_stamina = int(card_base_stamina / 4)
+        card_training_tree_cell3_stamina = int(card_training_tree_cell2_stamina + card_training_tree_cell_extra_stamina)
+        card_training_tree_cell1_technique = int(card_base_technique / 6)
+        card_training_tree_cell2_technique = int(card_base_technique / 4)
+        card_training_tree_cell3_technique = int(card_training_tree_cell2_technique + card_training_tree_cell_extra_technique)
+    elif rarity_card == "PARTY":
+        card_training_tree_cell1_appeal = int(card_base_appeal / 5.54)
+        card_training_tree_cell2_appeal = int(card_base_appeal / 3.43)
+        card_training_tree_cell3_appeal = int(card_training_tree_cell2_appeal + card_training_tree_cell_extra_appeal)
+        card_training_tree_cell1_stamina = int(card_base_stamina / 5.54)
+        card_training_tree_cell2_stamina = int(card_base_stamina / 3.43)
+        card_training_tree_cell3_stamina = int(card_training_tree_cell2_stamina + card_training_tree_cell_extra_stamina)
+        card_training_tree_cell1_technique = int(card_base_technique / 5.54)
+        card_training_tree_cell2_technique = int(card_base_technique / 3.43)
+        card_training_tree_cell3_technique = int(card_training_tree_cell2_technique + card_training_tree_cell_extra_technique)
     ## not done, need wrote this for each, very BIG, based on tree & role card, many value incorrect, also lim not added
     if rarity_card == "SR":
         if role_card == 1:
@@ -2805,21 +2862,21 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor = conn.cursor()
     # dynamic skill description is not implemented, please remember
     # convert value for information
-    if active_skill_effect_type not in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+    if active_skill_effect_calculation_type != 1:
         active_skill_effect_value = str(active_skill_effect_value / 1000) + "%"
         cactive_skill_logic_effect2 = str(cactive_skill_logic_effect2 / 1000) + "%"
         cactive_skill_logic_effect3 = str(cactive_skill_logic_effect3 / 1000) + "%"
         cactive_skill_logic_effect4 = str(cactive_skill_logic_effect4 / 1000) + "%"
         cactive_skill_logic_effect5 = str(cactive_skill_logic_effect5 / 1000) + "%"
         
-    if passive_skill_effect_type not in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+    if passive_skill_effect_calculation_type != 1:
         passive_skill_effect_value = str(passive_skill_effect_value / 1000) + "%"
         cpassive_skill_logic_effect2 = str(cpassive_skill_logic_effect2 / 1000) + "%"
         cpassive_skill_logic_effect3 = str(cpassive_skill_logic_effect3 / 1000) + "%"
         cpassive_skill_logic_effect4 = str(cpassive_skill_logic_effect4 / 1000) + "%"
         cpassive_skill_logic_effect5 = str(cpassive_skill_logic_effect5 / 1000) + "%"
         
-    if passive_skill_ability_effect_type not in [2, 3, 4, 5, 23, 68, 70, 128, 130, 132, 134]:
+    if passive_skill_ability_effect_calculation_type != 1:
         passive_skill_ability_effect_value = str(passive_skill_ability_effect_value / 1000) + "%"
         
     en_active_skill_target = skill_target_dictionary_key_en.get(active_skill_target_id1)
