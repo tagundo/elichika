@@ -80,8 +80,6 @@ card_name_awaken_hiragana_ja = ""
 # EXPERT ONLY, IF YOU DON'T KNOW HOW TO SETUP SKILL THEN ASK SOMEONE OR LEAVE AS NOTHING
 # active skill
 active_skill_type = 1
-active_skill_sp_gauge_point = 0
-active_skill_chance_percent = 0
 active_skill_name_en = ""
 active_skill_name_ko = ""
 active_skill_name_zh = ""
@@ -2036,13 +2034,19 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     else:
         # use lock icon if no available
         cactive_skill_icon = "+H"
-    
-    cactive_skill_probablity_logic = int(active_skill_chance_percent * 100)
-    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_1_masterdata, active_skill_type, active_skill_1_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, active_skill_sp_gauge_point, cactive_skill_probablity_logic, donot_insert, cactive_skill_icon))
-    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_2_masterdata, active_skill_type, active_skill_2_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, active_skill_sp_gauge_point, cactive_skill_probablity_logic, donot_insert, cactive_skill_icon))
-    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_3_masterdata, active_skill_type, active_skill_3_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, active_skill_sp_gauge_point, cactive_skill_probablity_logic, donot_insert, cactive_skill_icon))
-    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_4_masterdata, active_skill_type, active_skill_4_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, active_skill_sp_gauge_point, cactive_skill_probablity_logic, donot_insert, cactive_skill_icon))
-    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_5_masterdata, active_skill_type, active_skill_5_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, active_skill_sp_gauge_point, cactive_skill_probablity_logic, donot_insert, cactive_skill_icon))
+        
+    if rarity_card == "SR":
+        cactive_sp_point = 150
+        cactive_chance_percent = 3000
+    elif rarity_card == "UR" or rarity_card == "FES" or rarity_card == "PARTY":
+        cactive_sp_point = 200
+        cactive_chance_percent = 3300
+        
+    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_1_masterdata, active_skill_type, active_skill_1_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, cactive_sp_point, cactive_chance_percent, donot_insert, cactive_skill_icon))
+    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_2_masterdata, active_skill_type, active_skill_2_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, cactive_sp_point, cactive_chance_percent, donot_insert, cactive_skill_icon))
+    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_3_masterdata, active_skill_type, active_skill_3_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, cactive_sp_point, cactive_chance_percent, donot_insert, cactive_skill_icon))
+    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_4_masterdata, active_skill_type, active_skill_4_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, cactive_sp_point, cactive_chance_percent, donot_insert, cactive_skill_icon))
+    cursor.execute("INSERT INTO main.m_active_skill (id, skill_type, skill_rarity_type, skill_master_id, name, description, sp_gauge_point, trigger_probability, icon_asset_path, thumbnail_asset_path) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (active_skill_5_masterdata, active_skill_type, active_skill_5_masterdata, active_skill_dictionary_masterdata, active_skill_dictionary_desc1_masterdata, cactive_sp_point, cactive_chance_percent, donot_insert, cactive_skill_icon))
     ## dual skill not supported yet
     cactive_skill_evaluation2_logic = active_skill_evaluation + active_skill_evaluation_step_even_up
     cactive_skill_evaluation3_logic = active_skill_evaluation + active_skill_evaluation_step_even_up + active_skill_evaluation_step_odd_up
