@@ -78,6 +78,7 @@ card_name_awaken_hiragana_zh = ""
 card_name_awaken_hiragana_ja = ""
 
 # EXPERT ONLY, IF YOU DON'T KNOW HOW TO SETUP SKILL THEN ASK SOMEONE OR LEAVE AS NOTHING
+# RED Label Skill
 # active skill
 active_skill_type = 1
 active_skill_name_en = ""
@@ -100,11 +101,7 @@ active_skill_effect_finish_value = 0
 active_skill_effect_value = 0
 active_skill_effect_value_step_up = 0
 
-# passive skill
-passive_skill_condition_id1 = 1
-passive_skill_trigger_type = 255
-passive_skill_chance_percent = 0
-
+# BLUE Label Skill
 ## skill
 passive_skill_evaluation = 0
 passive_skill_evaluation_step_even_up = 0
@@ -120,6 +117,7 @@ passive_skill_effect_finish_value = 0
 passive_skill_effect_value = 0
 passive_skill_effect_value_step_up = 0
 
+# RED Label Skill
 # passive skill ability
 passive_skill_ability_condition_id1 = 1
 passive_skill_ability_trigger_type = 255
@@ -2102,12 +2100,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     # skill icon not implemented
     cpassive_skill_icon = "+H"
     cpassive_ability_skill_icon = "+H"
-    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_1_masterdata, passive_skill_dictionary_masterdata_1, passive_skill_dictionary_desc1_masterdata, passive_skill_1_masterdata, donot_insert, cpassive_skill_icon, passive_skill_trigger_type, passive_skill_chance_percent, passive_skill_condition_id1, donot_insert))
-    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_2_masterdata, passive_skill_dictionary_masterdata_2, passive_skill_dictionary_desc2_masterdata, passive_skill_2_masterdata, donot_insert, cpassive_skill_icon, passive_skill_trigger_type, passive_skill_chance_percent, passive_skill_condition_id1, donot_insert))
-    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_3_masterdata, passive_skill_dictionary_masterdata_3, passive_skill_dictionary_desc3_masterdata, passive_skill_3_masterdata, donot_insert, cpassive_skill_icon, passive_skill_trigger_type, passive_skill_chance_percent, passive_skill_condition_id1, donot_insert))
-    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_4_masterdata, passive_skill_dictionary_masterdata_4, passive_skill_dictionary_desc4_masterdata, passive_skill_4_masterdata, donot_insert, cpassive_skill_icon, passive_skill_trigger_type, passive_skill_chance_percent, passive_skill_condition_id1, donot_insert))
-    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_5_masterdata, passive_skill_dictionary_masterdata_5, passive_skill_dictionary_desc5_masterdata, passive_skill_5_masterdata, donot_insert, cpassive_skill_icon, passive_skill_trigger_type, passive_skill_chance_percent, passive_skill_condition_id1, donot_insert))
-    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_ab1_masterdata, passive_skill_dictionary_masterdata_ab1, passive_skill_dictionary_desc1ab_masterdata, passive_skill_ab1_masterdata, donot_insert, cpassive_ability_skill_icon, passive_skill_ability_trigger_type, passive_skill_ability_chance_percent, passive_skill_condition_id1, donot_insert))
+    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_1_masterdata, passive_skill_dictionary_masterdata_1, passive_skill_dictionary_desc1_masterdata, passive_skill_1_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
+    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_2_masterdata, passive_skill_dictionary_masterdata_2, passive_skill_dictionary_desc2_masterdata, passive_skill_2_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
+    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_3_masterdata, passive_skill_dictionary_masterdata_3, passive_skill_dictionary_desc3_masterdata, passive_skill_3_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
+    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_4_masterdata, passive_skill_dictionary_masterdata_4, passive_skill_dictionary_desc4_masterdata, passive_skill_4_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
+    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_5_masterdata, passive_skill_dictionary_masterdata_5, passive_skill_dictionary_desc5_masterdata, passive_skill_5_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
+    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_ab1_masterdata, passive_skill_dictionary_masterdata_ab1, passive_skill_dictionary_desc1ab_masterdata, passive_skill_ab1_masterdata, donot_insert, cpassive_ability_skill_icon, passive_skill_ability_trigger_type, passive_skill_ability_chance_percent, passive_skill_ability_condition_id1, donot_insert))
     
     cpassive_skill_evaluation2_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up
     cpassive_skill_evaluation3_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up
@@ -2841,11 +2839,11 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     active_skill3_desc_text_ja = f"{en_active_skill_target}"
     active_skill4_desc_text_ja = f"{en_active_skill_target}"
     active_skill5_desc_text_ja = f"{en_active_skill_target}"
-    passive_skill1_desc_text_ja = f"Condition: {en_passive_skill_condition_id1}{en_passive_skill_trigger_type}\nChance: {passive_skill_chance_percent}%{en_passive_skill_target}"
-    passive_skill2_desc_text_ja = f"Condition: {en_passive_skill_condition_id1}{en_passive_skill_trigger_type}\nChance: {passive_skill_chance_percent}%{en_passive_skill_target}"
-    passive_skill3_desc_text_ja = f"Condition: {en_passive_skill_condition_id1}{en_passive_skill_trigger_type}\nChance: {passive_skill_chance_percent}%{en_passive_skill_target}"
-    passive_skill4_desc_text_ja = f"Condition: {en_passive_skill_condition_id1}{en_passive_skill_trigger_type}\nChance: {passive_skill_chance_percent}%{en_passive_skill_target}"
-    passive_skill5_desc_text_ja = f"Condition: {en_passive_skill_condition_id1}{en_passive_skill_trigger_type}\nChance: {passive_skill_chance_percent}%{en_passive_skill_target}"
+    passive_skill1_desc_text_ja = f"{en_passive_skill_target}"
+    passive_skill2_desc_text_ja = f"{en_passive_skill_target}"
+    passive_skill3_desc_text_ja = f"{en_passive_skill_target}"
+    passive_skill4_desc_text_ja = f"{en_passive_skill_target}"
+    passive_skill5_desc_text_ja = f"{en_passive_skill_target}"
     effect_value_per_insert = passive_skill_ability_effect_value
     passive_skillab1_desc_text_ja = f"{en_passive_skill_ability_effect_type}\nCondition: {en_passive_skill_ability_condition_id1}{en_passive_skill_ability_trigger_type}\nChance: {passive_skill_ability_chance_percent}%{en_passive_skill_ability_target}"
     passive_skill1_name_text_ja = ""
