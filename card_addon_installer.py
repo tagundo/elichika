@@ -93,7 +93,7 @@ active_skill_evaluation_step_odd_up = 0
 active_skill_target_id1 = 1
 
 ## skill effect
-active_skill_effect_target_parameter = 1
+active_skill_effect_target_parameter = 2
 active_skill_effect_type = 1
 active_skill_effect_calculation_type = 1
 active_skill_effect_finish_type = 255
@@ -109,7 +109,7 @@ passive_skill_evaluation_step_odd_up = 0
 passive_skill_target_id1 = 1
 
 ## skill effect
-passive_skill_effect_target_parameter = 1
+passive_skill_effect_target_parameter = 2
 passive_skill_effect_type = 1
 passive_skill_effect_calculation_type = 1
 passive_skill_effect_finish_type = 255
@@ -128,7 +128,7 @@ passive_skill_ability_evaluation = 0
 passive_skill_ability_target_id1 = 1
 
 ## skill effect
-passive_skill_ability_effect_target_parameter = 1
+passive_skill_ability_effect_target_parameter = 2
 passive_skill_ability_effect_type = 1
 passive_skill_ability_effect_calculation_type = 1
 passive_skill_ability_effect_finish_type = 255
