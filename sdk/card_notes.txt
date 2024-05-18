@@ -11,7 +11,6 @@
 # m_passive_skill
 ## trigger_type
 
-    BeforeLive = 1,
     LiveStart = 2,
     WaveStart = 3,
     WaveSuccess = 4,
@@ -23,7 +22,6 @@
     OnCollaboSkill = 10,
     OnAppealCritical = 11,
     OnNoteScore = 12,
-    Non = 255,
 	
 ## skill_condition_master_id
 
@@ -90,10 +88,7 @@
 	
 	AttributeMatch
 	270
-	
-	None
-	1
-	
+
 # m_skill
 ## skill_target_master_id
 
@@ -167,7 +162,7 @@ ID		Target
 ## target_parameter
 
     Non = 1, used on accessory
-    Attack = 2,
+    Attack = 2, common	
     Defense = 3,
     Performance = 5,
     Dexterity = 6,
