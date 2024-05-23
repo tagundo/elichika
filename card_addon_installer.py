@@ -1581,6 +1581,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cpassive_skill_logic_effect7 = passive_skill_effect_value + passive_skill_effect_value_step_up * 6
         cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_6_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect6, passive_skill_effect_calculation_type, donot_insert))
         cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_7_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect7, passive_skill_effect_calculation_type, donot_insert))
+        cursor.execute("INSERT INTO main.m_card_passive_skill_original (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '6', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_6, passive_skill_6_masterdata))
+        cursor.execute("INSERT INTO main.m_card_passive_skill_original (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '7', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_7, passive_skill_7_masterdata))
         
     # m_card
     if rarity_card == "SR":
