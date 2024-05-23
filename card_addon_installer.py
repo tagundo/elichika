@@ -106,7 +106,7 @@ active_skill_target_id1 = 1
 ## skill effect
 active_skill_effect_target_parameter = 2 # common attack
 active_skill_effect_type = 1
-active_skill_effect_calculation_type = 1 # calculate by add (1) or percent (2)
+active_skill_effect_calculation_type = 1 # calculate by add (1) or scale based on stats (2)
 active_skill_effect_finish_type = 255
 active_skill_effect_finish_value = 0
 active_skill_effect_value = 0
@@ -118,13 +118,13 @@ passive_skill_target_id1 = 1
 
 ## skill effect
 passive_skill_effect_type = 9 # 9 - 16
-passive_skill_effect_calculation_type = 1 # calculate by add (1) or percent (2)
+passive_skill_effect_calculation_type = 1 # calculate by add (1) or scale based on stats (2)
 passive_skill_effect_value = 0
 passive_skill_effect_value_step_up = 0
 
 # Active Skill Ability
 active_skill_ability_condition_id1 = 1
-active_skill_ability_trigger_type = 255
+active_skill_ability_trigger_type = 1
 active_skill_ability_chance_percent = 0
 
 ## skill
@@ -133,7 +133,7 @@ active_skill_ability_target_id1 = 1
 ## skill effect
 active_skill_ability_effect_target_parameter = 2 # common attack
 active_skill_ability_effect_type = 1
-active_skill_ability_effect_calculation_type = 1 # calculate by add (1) or percent (2)
+active_skill_ability_effect_calculation_type = 1 # calculate by add (1) or scale based on stats (2)
 active_skill_ability_effect_finish_type = 255
 active_skill_ability_effect_finish_value = 0
 active_skill_ability_effect_value = 0
@@ -1326,17 +1326,11 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     max_level_card = 100
     
     
-    # convert calculation type
-    if active_skill_effect_calculation_type != 1:
-        active_skill_effect_value = int(active_skill_effect_value * 100)
-        active_skill_effect_value_step_up = int(active_skill_effect_value_step_up * 100)
-        
-    if active_skill_ability_effect_calculation_type != 1:
-        active_skill_ability_effect_value = int(active_skill_ability_effect_value * 100)
-
-    if passive_skill_effect_calculation_type != 1:
-        passive_skill_effect_value = int(passive_skill_effect_value * 100)
-        passive_skill_effect_value_step_up = int(passive_skill_effect_value_step_up * 100)
+    active_skill_effect_value = int(active_skill_effect_value * 100)
+    active_skill_effect_value_step_up = int(active_skill_effect_value_step_up * 100)
+    active_skill_ability_effect_value = int(active_skill_ability_effect_value * 100)
+    passive_skill_effect_value = int(passive_skill_effect_value * 100)
+    passive_skill_effect_value_step_up = int(passive_skill_effect_value_step_up * 100)
         
     # m_active_skill
     active_skill_1_masterdata = generate_unique_activeskill_1_id(cursor)
@@ -2473,22 +2467,19 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     exec(keyload_en)
     # dynamic skill description is not implemented, please remember
     # convert value for information
-    if active_skill_effect_calculation_type != 1:
-        active_skill_effect_value = str(active_skill_effect_value / 100) + "%"
-        cactive_skill_logic_effect2 = str(cactive_skill_logic_effect2 / 100) + "%"
-        cactive_skill_logic_effect3 = str(cactive_skill_logic_effect3 / 100) + "%"
-        cactive_skill_logic_effect4 = str(cactive_skill_logic_effect4 / 100) + "%"
-        cactive_skill_logic_effect5 = str(cactive_skill_logic_effect5 / 100) + "%"
+    active_skill_effect_value = str(active_skill_effect_value / 100) + "%"
+    cactive_skill_logic_effect2 = str(cactive_skill_logic_effect2 / 100) + "%"
+    cactive_skill_logic_effect3 = str(cactive_skill_logic_effect3 / 100) + "%"
+    cactive_skill_logic_effect4 = str(cactive_skill_logic_effect4 / 100) + "%"
+    cactive_skill_logic_effect5 = str(cactive_skill_logic_effect5 / 100) + "%"
         
-    if passive_skill_effect_calculation_type != 1:
-        passive_skill_effect_value = str(passive_skill_effect_value / 100) + "%"
-        cpassive_skill_logic_effect2 = str(cpassive_skill_logic_effect2 / 100) + "%"
-        cpassive_skill_logic_effect3 = str(cpassive_skill_logic_effect3 / 100) + "%"
-        cpassive_skill_logic_effect4 = str(cpassive_skill_logic_effect4 / 100) + "%"
-        cpassive_skill_logic_effect5 = str(cpassive_skill_logic_effect5 / 100) + "%"
+    passive_skill_effect_value = str(passive_skill_effect_value / 100) + "%"
+    cpassive_skill_logic_effect2 = str(cpassive_skill_logic_effect2 / 100) + "%"
+    cpassive_skill_logic_effect3 = str(cpassive_skill_logic_effect3 / 100) + "%"
+    cpassive_skill_logic_effect4 = str(cpassive_skill_logic_effect4 / 100) + "%"
+    cpassive_skill_logic_effect5 = str(cpassive_skill_logic_effect5 / 100) + "%"
         
-    if active_skill_ability_effect_calculation_type != 1:
-        active_skill_ability_effect_value = str(active_skill_ability_effect_value / 100) + "%"
+    active_skill_ability_effect_value = str(active_skill_ability_effect_value / 100) + "%"
         
     en_active_skill_ability_condition_id1 = skill_condition_dictionary.get(active_skill_ability_condition_id1)
     en_active_skill_ability_effect_type = effect_type_dictionary.get(active_skill_ability_effect_type)
@@ -2559,9 +2550,8 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (passive_skill_dictionary_desc5, passive_skill5_desc_text_ja))
     
     if rarity_card == "PARTY":
-        if passive_skill_effect_calculation_type != 1:
-            cpassive_skill_logic_effect6 = str(cpassive_skill_logic_effect6 / 100) + "%"
-            cpassive_skill_logic_effect7 = str(cpassive_skill_logic_effect7 / 100) + "%"
+        cpassive_skill_logic_effect6 = str(cpassive_skill_logic_effect6 / 100) + "%"
+        cpassive_skill_logic_effect7 = str(cpassive_skill_logic_effect7 / 100) + "%"
             
         passive_skill6_name_text = f"{en_passive_skill_name_effect_type}{en_passive_skill_name_target}"
         passive_skill7_name_text = f"{en_passive_skill_name_effect_type}{en_passive_skill_name_target}"
