@@ -57,13 +57,13 @@ filelist = [
 ]
 # load up dictionary
 with open("dictionary_skill_en.txt", 'r', encoding='utf-8') as key_en:
+    keyload_en = key_en.read()
 with open("dictionary_skill_en.txt", 'r', encoding='utf-8') as key_ko:
+    keyload_ko = key_ko.read()
 with open("dictionary_skill_en.txt", 'r', encoding='utf-8') as key_zh:
+    keyload_zh = key_zh.read()
 with open("dictionary_skill_en.txt", 'r', encoding='utf-8') as key_ja:
-keyload_en = key_en.read()
-keyload_ko = key_ko.read()
-keyload_zh = key_zh.read()
-keyload_ja = key_ja.read()
+    keyload_ja = key_ja.read()
 
 # category
 skill_effect_category_immediate = {2, 3, 4, 5, 8, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 90, 91, 92, 93, 94, 95, 96, 97, 98, 109, 110, 111, 112, 113, 114, 115, 116, 127, 128, 129, 130, 131, 132, 133, 134, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 235, 236, 241, 242, 247, 248, 253, 254, 262, 263, 266, 267}
@@ -1442,17 +1442,17 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cactive_sp_point = 200
         cactive_chance_percent = 3300
 
-    if active_skill_effect_type in skill_effect_category_immediate
+    if active_skill_effect_type in skill_effect_category_immediate:
         active_skill_effect_finish_type = 3
         active_skill_effect_finish_value = 0
-    elif active_skill_effect_type in skill_effect_category_activebasebuff
+    elif active_skill_effect_type in skill_effect_category_activebasebuff:
         active_skill_effect_finish_type = 1
         active_skill_effect_finish_value = 0
         
-    if active_skill_ability_effect_type in skill_effect_category_immediate
+    if active_skill_ability_effect_type in skill_effect_category_immediate:
         active_skill_ability_effect_finish_type = 3
         active_skill_ability_effect_finish_value = 0
-    elif active_skill_ability_effect_type in skill_effect_category_immediate
+    elif active_skill_ability_effect_type in skill_effect_category_immediate:
         active_skill_ability_effect_finish_type = 1
         active_skill_ability_effect_finish_value = 0
         
@@ -1571,9 +1571,9 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         passive_skill_dictionary_7 = "passive_skill_name_" + str(passive_skill_7_masterdata)
         passive_skill_dictionary_desc6 = "passive_skill_description_" + str(passive_skill_6_masterdata)
         passive_skill_dictionary_desc7 = "passive_skill_description_" + str(passive_skill_7_masterdata)
-        cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_4_masterdata, passive_skill_dictionary_masterdata_6, passive_skill_dictionary_desc4_masterdata, passive_skill_6_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
-        cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_5_masterdata, passive_skill_dictionary_masterdata_7, passive_skill_dictionary_desc5_masterdata, passive_skill_7_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
-        cpassive_skill_evaluation6_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up + passive_skill_evaluation_step_even_up
+        cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_6_masterdata, passive_skill_dictionary_masterdata_6, passive_skill_dictionary_desc4_masterdata, passive_skill_6_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
+        cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_7_masterdata, passive_skill_dictionary_masterdata_7, passive_skill_dictionary_desc5_masterdata, passive_skill_7_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
+        cpassive_skill_evaluation6_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up + passive_skill_evaluation_step_even_up
         cpassive_skill_evaluation7_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up
         cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_6_masterdata, cpassive_skill_evaluation6_logic, passive_skill_target_id1, donot_insert, passive_skill_6_masterdata, donot_insert))
         cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_7_masterdata, cpassive_skill_evaluation7_logic, passive_skill_target_id1, donot_insert, passive_skill_7_masterdata, donot_insert))
@@ -1807,7 +1807,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     elif rarity_card == "PARTY":
         ctraining_tree_design = 33
         ctraining_tree_passive_increase = 2
-    ctraining_tree_logic = str(ctraining_tree_design) + str(chara_id) + str(role_card)
+        
+    if 1 <= chara_id <= 9:
+        ctraining_tree_logic = str(ctraining_tree_design) + "00" + str(chara_id) + str(role_card)
+    else:
+        ctraining_tree_logic = str(ctraining_tree_design) + str(chara_id) + str(role_card)
+        
     cursor.execute("INSERT INTO main.m_training_tree (id, training_tree_mapping_m_id, training_tree_card_param_m_id, training_tree_card_passive_skill_increase_m_id) VALUES (?, ?, ?, ?);", (card_id_masterdata, ctraining_tree_logic, card_id_masterdata, ctraining_tree_passive_increase))
     
     # m_training_tree_card_param
@@ -2480,7 +2485,7 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     en_active_skill_ability_name_effect_type = effect_type_name_dictionary.get(active_skill_effect_type)
     en_active_skill_ability_name_target = skill_target_name_dictionary.get(active_skill_target_id1)
     en_active_skill_finish_type = finish_type_dictionary.get(active_skill_effect_finish_type)
-    en_active_skill_effect_type = finish_type_dictionary.get(active_skill_effect_type)
+    en_active_skill_effect_type = effect_type_dictionary.get(active_skill_effect_type)
     en_active_skill_target = skill_target_dictionary.get(active_skill_target_id1)
     en_passive_skill_effect_type = effect_type_dictionary.get(passive_skill_effect_type)
     en_passive_skill_name_effect_type = effect_type_name_dictionary.get(passive_skill_effect_type)
@@ -2541,6 +2546,12 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (passive_skill_dictionary_desc5, passive_skill5_desc_text_ja))
     
     if rarity_card == "PARTY":
+        if passive_skill_effect_calculation_type != 1:
+            cpassive_skill_logic_effect6 = str(cpassive_skill_logic_effect6 / 100) + "%"
+            cpassive_skill_logic_effect7 = str(cpassive_skill_logic_effect7 / 100) + "%"
+            
+        passive_skill6_name_text = f"{en_passive_skill_name_effect_type}{en_passive_skill_name_target}"
+        passive_skill7_name_text = f"{en_passive_skill_name_effect_type}{en_passive_skill_name_target}"
         effect_value_per_insert = cpassive_skill_logic_effect6
         passive_skill6_desc_text_ja = f"{en_passive_skill_effect_type.format(effect_value_per_insert=effect_value_per_insert)}{en_passive_skill_target}"
         cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (passive_skill_dictionary_desc6, passive_skill6_desc_text_ja))
