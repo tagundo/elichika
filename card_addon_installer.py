@@ -66,8 +66,9 @@ with open("dictionary_skill_en.txt", 'r', encoding='utf-8') as key_ja:
     keyload_ja = key_ja.read()
 
 # category
-skill_effect_category_immediate = {2, 3, 4, 5, 8, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 90, 91, 92, 93, 94, 95, 96, 97, 98, 109, 110, 111, 112, 113, 114, 115, 116, 127, 128, 129, 130, 131, 132, 133, 134, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 235, 236, 241, 242, 247, 248, 253, 254, 262, 263, 266, 267}
+skill_effect_category_immediate = {2, 3, 4, 5, 8, 68, 69, 70, 90, 91, 92, 93, 94, 95, 96, 97, 98, 109, 110, 111, 112, 113, 114, 115, 116, 127, 128, 129, 130, 131, 132, 133, 134, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 235, 236, 241, 242, 247, 248, 253, 254, 262, 263, 266, 267}
 skill_effect_category_activebasebuff = {26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 84, 85, 86, 87, 88, 89, 99, 102, 103, 104, 257}
+skill_effect_category_immediate_remove  = {52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67}
 
 # init code default value (do nothing)
 card_name_en = ""
@@ -1445,6 +1446,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     if active_skill_effect_type in skill_effect_category_immediate:
         active_skill_effect_finish_type = 3
         active_skill_effect_finish_value = 0
+        active_skill_target_id1 = 58
+        
+    elif active_skill_effect_type in skill_effect_category_immediate:
+        active_skill_effect_finish_type = 3
+        active_skill_effect_finish_value = 0
+        
     elif active_skill_effect_type in skill_effect_category_activebasebuff:
         active_skill_effect_finish_type = 1
         active_skill_effect_finish_value = 0
@@ -1452,7 +1459,13 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     if active_skill_ability_effect_type in skill_effect_category_immediate:
         active_skill_ability_effect_finish_type = 3
         active_skill_ability_effect_finish_value = 0
-    elif active_skill_ability_effect_type in skill_effect_category_immediate:
+        active_skill_ability_target_id1 = 58
+        
+    elif active_skill_ability_effect_type in skill_effect_category_immediate_remove:
+        active_skill_ability_effect_finish_type = 3
+        active_skill_ability_effect_finish_value = 0
+        
+    elif active_skill_ability_effect_type in skill_effect_category_activebasebuff:
         active_skill_ability_effect_finish_type = 1
         active_skill_ability_effect_finish_value = 0
         
@@ -2482,8 +2495,8 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     en_active_skill_ability_finish_type = finish_type_dictionary.get(active_skill_ability_effect_finish_type)
     en_active_skill_ability_target = skill_target_dictionary.get(active_skill_ability_target_id1)
     en_active_skill_ability_trigger_type = trigger_type_dictionary.get(active_skill_ability_trigger_type)
-    en_active_skill_ability_name_effect_type = effect_type_name_dictionary.get(active_skill_effect_type)
-    en_active_skill_ability_name_target = skill_target_name_dictionary.get(active_skill_target_id1)
+    en_active_skill_ability_name_effect_type = effect_type_name_dictionary.get(active_skill_ability_effect_type)
+    en_active_skill_ability_name_target = skill_target_name_dictionary.get(active_skill_ability_target_id1)
     en_active_skill_finish_type = finish_type_dictionary.get(active_skill_effect_finish_type)
     en_active_skill_effect_type = effect_type_dictionary.get(active_skill_effect_type)
     en_active_skill_target = skill_target_dictionary.get(active_skill_target_id1)
