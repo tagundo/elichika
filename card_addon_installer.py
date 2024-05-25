@@ -106,7 +106,7 @@ active_skill_target_id1 = 1
 ## skill effect
 active_skill_effect_target_parameter = 2 # common attack
 active_skill_effect_type = 1
-active_skill_effect_calculation_type = 1 # calculate by add (1) or scale based on stats (2)
+active_skill_effect_calculation_type = 1 # calculate by add (1) or scale 0.{value} (2)
 active_skill_effect_finish_type = 255
 active_skill_effect_finish_value = 0
 active_skill_effect_value = 0
@@ -118,7 +118,7 @@ passive_skill_target_id1 = 1
 
 ## skill effect
 passive_skill_effect_type = 9 # 9 - 16
-passive_skill_effect_calculation_type = 1 # calculate by add (1) or scale based on stats (2)
+passive_skill_effect_calculation_type = 1 # calculate by add+ (1) or scale 0.{value} (2)
 passive_skill_effect_value = 0
 passive_skill_effect_value_step_up = 0
 
@@ -133,7 +133,7 @@ active_skill_ability_target_id1 = 1
 ## skill effect
 active_skill_ability_effect_target_parameter = 2 # common attack
 active_skill_ability_effect_type = 1
-active_skill_ability_effect_calculation_type = 1 # calculate by add (1) or scale based on stats (2)
+active_skill_ability_effect_calculation_type = 1 # calculate by add (1) or scale 0.{value} (2)
 active_skill_ability_effect_finish_type = 255
 active_skill_ability_effect_finish_value = 0
 active_skill_ability_effect_value = 0
