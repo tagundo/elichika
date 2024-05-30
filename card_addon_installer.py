@@ -69,6 +69,7 @@ with open("dictionary_skill_en.txt", 'r', encoding='utf-8') as key_ja:
 skill_effect_category_immediate = {2, 3, 4, 5, 8, 68, 69, 70, 90, 91, 92, 93, 94, 95, 96, 97, 98, 109, 110, 111, 112, 113, 114, 115, 116, 127, 128, 129, 130, 131, 132, 133, 134, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 235, 236, 241, 242, 247, 248, 253, 254, 262, 263, 266, 267}
 skill_effect_category_activebasebuff = {26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 84, 85, 86, 87, 88, 89, 99, 102, 103, 104, 257}
 skill_effect_category_immediate_remove  = {52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67}
+skill_effect_category_player = {6, 7, 23, 25, 106, 107, 108, 209, 210, 211, 212, 99, 102, 103, 104, 266, 267}
 
 # init code default value (do nothing)
 card_name_en = ""
@@ -1325,13 +1326,13 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     min_level_card = 1
     max_level_card = 100
     
-    
     active_skill_effect_value = int(active_skill_effect_value * 100)
     active_skill_effect_value_step_up = int(active_skill_effect_value_step_up * 100)
     active_skill_ability_effect_value = int(active_skill_ability_effect_value * 100)
     passive_skill_effect_value = int(passive_skill_effect_value * 100)
     passive_skill_effect_value_step_up = int(passive_skill_effect_value_step_up * 100)
-        
+    active_skill_ability_chance_logic = int(active_skill_ability_chance_percent * 100)
+    
     # m_active_skill
     active_skill_1_masterdata = generate_unique_activeskill_1_id(cursor)
     active_skill_2_masterdata = generate_unique_activeskill_2_id(cursor)
@@ -1437,18 +1438,26 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cactive_sp_point = 200
         cactive_chance_percent = 3300
 
+    # auto settings based on skill effect type
+    if active_skill_effect_type in skill_effect_category_player:
+        active_skill_target_id1 = 58
+    
     if active_skill_effect_type in skill_effect_category_immediate:
         active_skill_effect_finish_type = 3
         active_skill_effect_finish_value = 0
         active_skill_target_id1 = 58
         
-    elif active_skill_effect_type in skill_effect_category_immediate:
+    elif active_skill_effect_type in skill_effect_category_immediate_remove:
         active_skill_effect_finish_type = 3
         active_skill_effect_finish_value = 0
         
     elif active_skill_effect_type in skill_effect_category_activebasebuff:
         active_skill_effect_finish_type = 1
         active_skill_effect_finish_value = 0
+
+    # active skill ability
+    if active_skill_ability_effect_type in skill_effect_category_player:
+        active_skill_ability_target_id1 = 58
         
     if active_skill_ability_effect_type in skill_effect_category_immediate:
         active_skill_ability_effect_finish_type = 3
@@ -1545,7 +1554,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_3_masterdata, passive_skill_dictionary_masterdata_3, passive_skill_dictionary_desc3_masterdata, passive_skill_3_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
     cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_4_masterdata, passive_skill_dictionary_masterdata_4, passive_skill_dictionary_desc4_masterdata, passive_skill_4_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
     cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, '255', '10000', '1', ?);", (passive_skill_5_masterdata, passive_skill_dictionary_masterdata_5, passive_skill_dictionary_desc5_masterdata, passive_skill_5_masterdata, donot_insert, cpassive_skill_icon, donot_insert))
-    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_ab1_masterdata, passive_skill_dictionary_masterdata_ab1, passive_skill_dictionary_desc1ab_masterdata, passive_skill_ab1_masterdata, donot_insert, cactive_ability_skill_icon, active_skill_ability_trigger_type, active_skill_ability_chance_percent, active_skill_ability_condition_id1, donot_insert))
+    cursor.execute("INSERT INTO main.m_passive_skill (id, name, description, rarity, skill_master_id, icon_asset_path, thumbnail_asset_path, trigger_type, trigger_probability, skill_condition_master_id1, skill_condition_master_id2) VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?, ?, ?);", (passive_skill_ab1_masterdata, passive_skill_dictionary_masterdata_ab1, passive_skill_dictionary_desc1ab_masterdata, passive_skill_ab1_masterdata, donot_insert, cactive_ability_skill_icon, active_skill_ability_trigger_type, active_skill_ability_chance_logic, active_skill_ability_condition_id1, donot_insert))
     
     cpassive_skill_evaluation2_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up
     cpassive_skill_evaluation3_logic = passive_skill_evaluation + passive_skill_evaluation_step_even_up + passive_skill_evaluation_step_odd_up
@@ -1665,9 +1674,9 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     
     # m_card_trimming_profile
     offset_x_normal_logic_trimming = int(card_normal_trimming_profile_offset_x * 10000)
-    scale_normal_logic_trimming = int(card_normal_trimming_profile_offset_scale * 1000)
+    scale_normal_logic_trimming = int(card_normal_trimming_profile_offset_scale * 100)
     offset_x_awaken_logic_trimming = int(card_awaken_trimming_profile_offset_x * 10000)
-    scale_awaken_logic_trimming = int(card_awaken_trimming_profile_offset_scale * 1000)
+    scale_awaken_logic_trimming = int(card_awaken_trimming_profile_offset_scale * 100)
     cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '1', ?, '0', '0', ?);", (card_id_masterdata, offset_x_normal_logic_trimming, scale_normal_logic_trimming))
     cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, '0', '0', ?);", (card_id_masterdata, offset_x_awaken_logic_trimming, scale_awaken_logic_trimming))
     

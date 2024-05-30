@@ -8,7 +8,7 @@ while true; do
     echo ""
     echo "1. Run Server"
     echo "2. Update Version"
-    echo "3. Reset Hard"
+    echo "3. Reset Server"
     echo "4. Switch CDN to LocalHost"
     echo "5. Switch CDN to Catfolk"
     echo "6. Developer Menu"
@@ -80,7 +80,6 @@ while true; do
 				echo "2. Add New Live"
 				echo "3. Add New DLP"
 				echo "4. Patch Masterdata"
-				echo "5. Fetch Package"
                 echo "0. Back to Main Menu"
 
                 read -p "Enter your choice: " dev_option
@@ -89,6 +88,9 @@ while true; do
                     1)
 						clear
 						pkill elichika
+						cd ~/elichika/assets
+                        git submodule update --init --remote
+                        cd ~/elichika
 						python costume_addon_installer.py
                         read -p "Press Enter to continue..." _dummy01
                         ;;
@@ -101,22 +103,20 @@ while true; do
                     3)
 						clear
 						pkill elichika
+						cd ~/elichika/assets
+                        git submodule update --init --remote
+                        cd ~/elichika
 						python tower_addon_installer.py
                         read -p "Press Enter to continue..." _dummy03777
                         ;;
                     4)
 						clear
 						pkill elichika
-						python elichika_db_importer.py
-                        read -p "Press Enter to continue..." _dummy0399
-                        ;;
-                    5)
-						clear
-						pkill elichika
 						cd ~/elichika/assets
                         git submodule update --init --remote
                         cd ~/elichika
-                        read -p "Press Enter to continue..." _dummy0319
+						python elichika_db_importer.py
+                        read -p "Press Enter to continue..." _dummy0399
                         ;;
                     0)
                         break
