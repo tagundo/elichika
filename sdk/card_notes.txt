@@ -1,0 +1,297 @@
+# m_active_skill
+## skill_type
+
+    Voltage = 1,
+    Parameter = 2,
+    SpecialBuff = 3,
+    Debuff = 4,
+    Stamina = 5,
+    DamageReduce = 6,
+
+# m_passive_skill
+## trigger_type
+
+    LiveStart = 2,
+    WaveStart = 3,
+    WaveSuccess = 4,
+    WaveFail = 5,
+    OnChangeLife = 6,
+    OnDamage = 7,
+    OnGotVoltage = 8,
+    OnChangeSquad = 9,
+    OnCollaboSkill = 10,
+    OnAppealCritical = 11,
+    OnNoteScore = 12,
+	
+## skill_condition_master_id
+
+	HpLessThanPercent
+	0% (id:101) - 99% (id:2)
+	
+	LimitCount
+	1 (id:102) - 10 (id:111)
+	11 (id:260) - 20 (id:269)
+	
+	VoltageMoreThanValue
+	1% (id:112) - 100% (id:211)
+	
+	TriggerLessThanValue
+	id:257	percent:0.1
+	id:212	percent:1
+	id:213	percent:1.5
+	id:214	percent:2
+	id:215	percent:2.5
+	id:216	percent:3
+	id:217	percent:3.5
+	id:218	percent:4
+	id:219	percent:4.5
+	id:220	percent:5
+	id:221	percent:5.5
+	id:222	percent:6
+	id:223	percent:6.5
+	id:224	percent:7
+	id:225	percent:7.5
+	id:226	percent:8
+	id:227	percent:8.5
+	id:228	percent:9
+	id:229	percent:9.5
+	id:230	percent:10
+	id:231	percent:11
+	id:232	percent:12
+	id:233	percent:13
+	id:234	percent:14
+	id:235	percent:15
+	id:236	percent:16
+	id:237	percent:17
+	id:238	percent:18
+	id:239	percent:19
+	id:240	percent:20
+	id:241	percent:25
+	id:242	percent:30
+	id:243	percent:35
+	id:244	percent:40
+	id:245	percent:45
+	id:246	percent:50
+	id:247	percent:55
+	id:248	percent:60
+	id:249	percent:65
+	id:250	percent:70
+	id:251	percent:75
+	id:252	percent:80
+	id:253	percent:85
+	id:254	percent:90
+	id:255	percent:95
+	id:256	percent:100
+
+	OnlyOwner
+	258 - 259
+	
+	AttributeMatch
+	270
+
+# m_skill
+## skill_target_master_id
+
+ID		Target
+1		All units
+2-28	Single Member (2 = Honoka, up to 28 = Rina – R3BIRTH are below at 112)
+29		µ's
+30		Aqours
+31		Nijigaku
+35		CYaRon
+36		AZALEA
+37		Guilty Kiss
+38		Vo Type
+39		Sp Type
+40		Gd Type
+41		Sk Type
+50		Others (“Group”)
+53		Same Strategy
+54		Same School
+56		Same Attribute
+57		Same Type
+58		No target (skill affects SP gauge or stamina)
+59		Self
+60		Same Year
+61		Smile
+62		Pure
+63		Cool
+64		Active
+65		Natural
+66		Elegant
+67		Non-Smile
+68		Non-Vo Type
+69		1st Years
+70		2nd Years
+71		3rd Years
+72		Non-Pure
+73		Non-Cool
+74		Non-Active
+75		Non-Natural
+76		Non-Elegant
+77		Non-Sp Types
+78		Non-Gd Types
+79		Non-Sk Types
+83		Current Strategy
+86		Non-µ's
+87		Non-Vo or Gd Types
+88		Non-Vo or Sp Types
+89		Non-Vo or Sk Types
+90		Non-Gd or Sp Types
+92		Non-Sp or Sk Types
+93		Sp and Sk Types
+96		Vo and Sk Types
+97		Vo and Sp Types
+98		Vo and Gd Types
+99		Non-Aqours
+100		Non-Niji
+101		Non-1st Years
+102		Non-2nd Years
+103		Non-3rd Years
+104		DiverDiva
+105		A•ZU•NA
+106		QU4RTZ
+107		Non-DiverDiva
+108		Non-A•ZU•NA
+109		Non-QU4RTZ
+112		Shioriko
+113		Lanzhu [sic]
+114		Mia [sic]
+
+# m_skill_effect
+## target_parameter
+
+    Non = 1, used on accessory
+    Attack = 2, common	
+    Defense = 3,
+    Performance = 5,
+    Dexterity = 6,
+    Score = 7,
+    Damage = 8,
+    Life = 9,
+    Shield = 10,
+    LastLeave = 11,
+    AttackBonus = 12,
+    Stamina = 13,
+    SbtTime = 14,
+    SbtValue = 15,
+	
+## effect_type
+
+ID	Effect
+2	Voltage + (fixed amount)
+3	SP Gauge Charge (fixed amount)
+4	Shield Gain (fixed amount)
+5	Stamina Restore (fixed amount)
+6	Damage Reduction
+9	Base Stamina Up
+10	Base Appeal Up
+11	Base Technique Up
+17	Appeal Up
+18	Voltage Gain Up
+19	SP Gauge Fill Rate Up
+20	Critical Chance Up
+21	Critical Power Up
+22	Skill Activation Chance Up
+23	SP Voltage Gain Up (fixed amount)
+25	SP Voltage Gain Up (based on Appeal)
+26	Base Appeal Up
+28	Base Appeal Up (based on current formation Stamina)
+29	Base SP Gauge Fill Rate Up
+33	Base Skill Activation Chance Up
+36	Base Critical Chance Up
+40	Base Critical Power Up
+45	Base SP Gauge Fill Rate Up
+46	Base Critical Chance Up (dupe?)
+47	Base Critical Power Up (dupe?)
+48	Base Skill Activation Chance Up (dupe?)
+49	Base Appeal Up (dupe?)
+50	Base SP Voltage Gain Up
+51	Base Voltage Gain Up
+52	Remove Buffs
+60	Remove Debuffs
+68	Stamina Damage (fixed amount)
+69	SP Gauge Discharge (percentage of max)
+70	Shield Removal (fixed amount)
+71	Appeal Down
+72	Voltage Gain Down
+73	SP Gauge Fill Rate Down
+75	Critical Power Down
+76	Skill Activation Chance Down
+78	Base Skill Activation Chance Down
+79	Base Voltage Gain Down
+81	Base Appeal Down
+82	Base Critical Chance Down
+83	Base SP Gauge Fill Rate Down
+84	Base Appeal Down (dupe?)
+85	Base SP Gauge Fill Rate Down (dupe?)
+86	Base Skill Activation Chance Down (dupe?)
+90	Voltage + (based on Appeal)
+91	SP Gauge Charge (percentage of max)
+92	SP Gauge Charge (based on Appeal)
+93	Shield Gain (percentage of max)
+94	Shield Gain (based on Stamina)
+96	Stamina Restore (percentage of max)
+97	Stamina Restore (based on Stamina)
+101	Damage Increase
+105	Damage Increase
+106	Add Revive buff
+108	SP Voltage Gain Up (based on Technique)
+109	Voltage + (based on Stamina)
+110	Voltage + (based on Technique)
+111	SP Gauge Charge (based on Stamina)
+112	SP Gauge Charge (based on Technique)
+113	Shield Gain (based on Appeal)
+114	Shield Gain (based on Technique)
+116	Stamina Restore (based on Technique)
+118	Gd Strategy Switch Bonus Up
+119	Appeal Up, based on the amount of Vo types
+120	Appeal Down, based on the amount of Vo types
+123	Appeal Up, based on the amount of Sk types
+128	Stamina Restore (fixed amount), based on the amount of Vo types
+130	Stamina Restore (fixed amount), based on the amount of Sp types
+132	Stamina Restore (fixed amount), based on the amount of Sk types
+134	Stamina Restore (fixed amount), based on the amount of Gd types
+137	Base Appeal Up, based on the amount of Vo types
+141	Base Appeal Up, based on the amount of Sk types
+143	Base Appeal Up, based on the amount of Gd types
+161	Skill Activation Chance Up, based on the amount of Vo types
+163	Skill Activation Chance Up, based on the amount of Sk types
+164	Skill Activation Chance Up, based on the amount of Gd types
+169	Base Skill Activation Chance Up, based on the amount of Vo types
+171	Base Skill Activation Chance Up, based on the amount of Sk types
+172	Base Skill Activation Chance Up, based on the amount of Gd types
+177	Critical Chance Up, based on the amount of Vp types
+179	Critical Chance Up, based on the amount of Sk types
+185	Base Critical Chance Up, based on the amount of Vo types
+187	Base Critical Chance Up, based on the amount of Sk types
+193	Critical Power Up, based on the amount of Vo types
+210	SP Voltage Gain Up, based on the amount of Sp types
+217	Base SP Voltage Gain Up, based on the amount of Vo types
+218	Base SP Voltage Gain Up, based on the amount of Sp types
+219	Base SP Voltage Gain Up, based on the amount of Sk types
+228	Vo Strategy Switch Bonus Up (absolute amount of Voltage)
+229	Sk Strategy Switch Bonus Up (absolute amount of turns)
+230	Sp Strategy Switch Bonus Up (absolute amount of SP points)
+261	Increase Critical Voltage Cap
+263	Stamina Damage, bypassing Shield (percentage of max)
+265	Block Healing
+266	Allow SP Gauge Overcharge
+267	SP Voltage Gain Up (based on Overcharge)
+
+## calc_type
+
+    Add = 1,
+    ScaleA = 2,
+    ScaleB = 3,
+
+## finish_type
+
+ID	Condition
+1	until song end
+2	for X notes (see column finish_value)
+3	instant effect, no finishing (stamina or SP gauge effects)
+4	until AC ends
+7	until X SPs have been used (see column finish_value)
+8	until X strategy switches (see column finish_value)
+	If finish_value is 0, it behaves the same as if it was 1

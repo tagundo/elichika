@@ -60,6 +60,8 @@ costume_file = ""
 rina_unmask_costume_file = ""
 thumbnail_file = ""
 chara_id = None
+id_costume = None
+id_trade_product = None
 
 check_json_config = "config.json"
 
@@ -388,6 +390,12 @@ print("assets encrypted")
 with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
     cursor = conn.cursor()
     
+    cursor.execute("SELECT COUNT(*) FROM m_asset_pack WHERE pack_name = ?", (costume_filename,))
+    result_chcc = cursor.fetchone()
+    if result_chcc[0] > 0:
+        print(f"This costume already exists in the database")
+        sys.exit(1) 
+        
     costume_path = costume_path_randomhash(cursor)
     if thumbnail_file != "":
         thumbnail_costume_path = thumbnail_path_randomhash(cursor)
@@ -3211,9 +3219,17 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor = conn.cursor()
 
     # Generate a unique costume_id_masterdata
-    trade_content_into_json = generate_unique_trade_content_id(cursor)
-    trade_id_into_json = generate_unique_trade_id(cursor)
-    costume_id_masterdata = generate_unique_costume_id(cursor)
+    if id_costume is None:
+        costume_id_masterdata = generate_unique_costume_id(cursor)
+    else:
+        costume_id_masterdata = id_costume
+        
+    if id_trade_product is None:
+        trade_id_into_json = generate_unique_trade_id(cursor)
+    else:
+        trade_id_into_json = id_trade_product
+    trade_content_into_json = str(trade_id_into_json) + "01"
+
     costume_dictionary = "suit_name_" + str(costume_id_masterdata)
     costume_dictionary_masterdata = "k." + costume_dictionary
     donot_insert = None 
@@ -3320,24 +3336,29 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
         cursor.execute("INSERT INTO main.m_suit_view (suit_master_id, view_status, model_asset_path) VALUES (?, '2', ?);", (costume_id_masterdata, rina_unmask_costume_path))
             
 with sqlite3.connect('serverdata.db') as conn:
-    cursor = conn.cursor()     
+    cursor = conn.cursor()  
     
-    json_data_costume = [{
-    "content_type": 7,
-    "content_id": costume_id_masterdata,
-    "content_amount": 1
-    }]
-    json_string_costume = json.dumps(json_data_costume)
+    cursor.execute("SELECT COUNT(*) FROM s_trade_product WHERE product_id = ?", (trade_id_into_json,))
+    result_chc2c = cursor.fetchone()
+    if result_chc2c[0] > 0:
+        print(f"This trade product already exists in the database")
+    else:
+        json_data_costume = [{
+        "content_type": 7,
+        "content_id": costume_id_masterdata,
+        "content_amount": 1
+        }]
+        json_string_costume = json.dumps(json_data_costume)
 
-    costume_free_price = input("do you want make as free? (y/n): ")
+        costume_free_price = input("do you want make as free? (y/n): ")
 
-    if costume_free_price == "y" :
-        costume_price_val = 0
-    else :
-        costume_price_val = 5000000
+        if costume_free_price == "y" :
+            costume_price_val = 0
+        else :
+            costume_price_val = 5000000
 
-    cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, '1200', ?, 'null', ?);", (trade_id_into_json, costume_price_val, json_string_costume))
-    print("added to gold exchange shop")
+        cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, '1200', ?, 'null', ?);", (trade_id_into_json, costume_price_val, json_string_costume))
+        print("added to gold exchange shop")
 
 with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:
     cursor = conn.cursor()

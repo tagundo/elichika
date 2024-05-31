@@ -89,6 +89,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] User can reset DLP progress using the WebUi.
 - [ ] Adding New Content
     - [x] Use generate random id & hash uint32.
+	- [ ] Maybe need custom unique id variable.
     - [x] Zip installation method.
     - [x] Working Encryption data by default key is 0.
     - [x] Adding table same as official.
@@ -96,15 +97,19 @@ TODO(docs): Add specific docs for specific contents if necessary.
 	- [x] Costume
 	- [x] Live
 		- Cannot get information about AC & Gimmick.
-		- JP Client not planned.
-		- Downloadable asset is not completed to all language, platform & client.
 	- [x] DLP
 		- This code need improvement.
 		- No reward received.
 		- Pressing help button will cause softlock.
-	- [ ] Card
-		- Work In Progress, this is very big project what so.
-		- Bond story & Voice will return as R card because there is no way to create new one.
+	- [x] Card
+        - Cannot get information about Skill description.
+		- Many skill icon is missing.
+		- Bond story & Voice navigation will return as default because there is no way to create new one.
+		- Write a LOT dictionary mapping for each language & separate to txt.
+		- Gacha voice doesn't not work with deretore tool.
+        - Training tree parameter is missing for each role.
+		- Dual skill not supported, A and B condition is doable later.
+        - Only JP Client Android working right now.
 	- [ ] SBL
 		- still not implemented based on fork, do i need make script?
 	- [ ] Accessory

@@ -78,6 +78,10 @@ type Gamedata struct {
 	AccessoryMeltGroup     map[int32]*AccessoryMeltGroup
 	AccessoryLevelUpItem   map[int32]*AccessoryLevelUpItem
 
+	NgWord *NgWordNode
+
+	ConstantInt []int32
+
 	Emblem map[int32]*Emblem
 
 	Member                          map[int32]*Member
