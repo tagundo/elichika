@@ -97,8 +97,6 @@ TODO(docs): Add specific docs for specific contents if necessary.
 	- [x] Costume
 	- [x] Live
 		- Cannot get information about AC & Gimmick.
-		- JP Client not planned.
-		- Downloadable asset is not completed to all language, platform & client.
 	- [x] DLP
 		- This code need improvement.
 		- No reward received.
