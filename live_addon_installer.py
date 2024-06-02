@@ -1228,7 +1228,7 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
         cursor.execute("INSERT INTO main.m_live_movie (live_id, codec, movie_asset_path, stage_background_asset_path) VALUES (?, 'prime', ?, 'Bl7');", (live_id_masterdata, movie_genpath))
         
         
-with sqlite3.connect('assets/db/ja/masterdata.db') as conn:
+with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor = conn.cursor()
 
     # Generate a unique live_id_masterdata
@@ -1359,7 +1359,7 @@ with sqlite3.connect('assets/db/gl/dictionary_zh_k.db') as conn:
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_id_copyright_dic, music_copyright_name_zh))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (emblem_dictionary_description, message_title_zh))
     
-with sqlite3.connect('assets/db/ja/dictionary_ja_k.db') as conn:
+with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor = conn.cursor()
     message_title_ja = "通過100次「" + str(music_name_ja) + "」"
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_name_dictionary_dic, music_name_ja))
@@ -1393,7 +1393,7 @@ with sqlite3.connect('assets/db/gl/dictionary_zh_m.db') as conn:
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (mission_desc_dictionary_dic2, message_mission2_zh))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (mission_desc_dictionary_dic3, message_mission3_zh))
     
-with sqlite3.connect('assets/db/ja/dictionary_ja_m.db') as conn:
+with sqlite3.connect('assets/db/jp/dictionary_ja_m.db') as conn:
     cursor = conn.cursor()
     message_mission1_ja = "「" + str(music_name_ja) + "」を10回クリアする"
     message_mission2_ja = "「" + str(music_name_ja) + "」を50回クリアする"
@@ -1579,7 +1579,7 @@ with sqlite3.connect('assets/db/gl/asset_i_zh.db') as conn:
         cursor.execute("INSERT INTO main.m_asset_package (package_key, version, pack_num) VALUES (?, ?, '1');",
                     (package_key_movie, fresh_version_movie_i_zh))
                     
-with sqlite3.connect('assets/db/ja/asset_a_ja.db') as conn:
+with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
     cursor = conn.cursor()
     
     fresh_version_a_ja = hashlib.sha1(str(random.random()).encode()).hexdigest()
@@ -1608,7 +1608,7 @@ with sqlite3.connect('assets/db/ja/asset_a_ja.db') as conn:
         cursor.execute("INSERT INTO main.m_asset_package (package_key, version, pack_num) VALUES (?, ?, '1');",
                     (package_key_movie, fresh_version_movie_a_ja))
                     
-with sqlite3.connect('assets/db/ja/asset_i_ja.db') as conn:
+with sqlite3.connect('assets/db/jp/asset_i_ja.db') as conn:
     cursor = conn.cursor()
     
     fresh_version_i_ja = hashlib.sha1(str(random.random()).encode()).hexdigest()

@@ -64,7 +64,25 @@ encrypted_costume = "static/encrypted/" + os.path.splitext(zip_file_path.split("
 
 with open(zip_file_path, "rb") as file:
     data = bytearray(file.read())
+    try:
+        resize_input = input("Enter the new size for the bytearray (leave blank to keep current size): ")
 
+        if resize_input:
+            resize_input = int(resize_input)
+
+            if resize_input < len(data):
+                print("New size is smaller than the current size. No resizing done.")
+            elif resize_input > len(data):
+                # Resize the bytearray if the new size is larger
+                data.extend([0] * (resize_input - len(data)))
+                print(f"Resized bytearray to {resize_input} bytes.")
+        else:
+            print("No input provided. Bytearray size remains unchanged.")
+            
+    except ValueError:
+        print("Invalid input. Please enter a valid integer.")
+        sys.exit(1)
+        
     key_0 = 12345
     key_1_input = input("Enter key1: ")
     if key_1_input.strip() == "":
