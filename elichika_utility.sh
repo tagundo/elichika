@@ -80,6 +80,8 @@ while true; do
 				echo "2. Add New Live"
 				echo "3. Add New DLP"
 				echo "4. Patch Masterdata"
+				echo "5. LLASDecryptor"
+				echo "6. Overwrite JP Client Dictionary"
                 echo "0. Back to Main Menu"
 
                 read -p "Enter your choice: " dev_option
@@ -117,6 +119,18 @@ while true; do
                         cd ~/elichika
 						python elichika_db_importer.py
                         read -p "Press Enter to continue..." _dummy0399
+                        ;;
+                    5)
+						clear
+						pkill elichika
+						python llasdecryptor.py
+                        read -p "Press Enter to continue..." _dummy02555555
+                        ;;
+                    6)
+						clear
+						pkill elichika
+						python replace_jp_client_dictionary.py
+                        read -p "Press Enter to continue..." _dummy02555235
                         ;;
                     0)
                         break
