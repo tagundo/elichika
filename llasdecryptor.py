@@ -93,7 +93,7 @@ with open(zip_file_path, "rb") as file:
     if key_2_input.strip() == "":
         key_2 = 0
     else:
-        key_2 = int(key_1_input)
+        key_2 = int(key_2_input)
     print("encrypting pkg")
     manipulate_file(data, key_0, key_1, key_2)
 
