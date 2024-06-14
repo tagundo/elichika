@@ -484,6 +484,7 @@ with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:
     result_chcc = cursor.fetchone()
     if result_chcc[0] > 0:
         print(f"This live already exists in the database")
+        shutil.rmtree(temp_directory, ignore_errors=True)
         sys.exit(1) 
     
     shutil.move(start_encrypt1, music_filename_saved)

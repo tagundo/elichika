@@ -99,5 +99,7 @@ with open(zip_file_path, "rb") as file:
 
     with open(encrypted_costume, "wb") as file:
         file.write(data)
-     
+        
+check_size = os.path.getsize(encrypted_costume)
+print(f"Filesize: {check_size}")
 print("FINISHED")

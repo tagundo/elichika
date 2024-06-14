@@ -430,6 +430,7 @@ with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
     result_chcc = cursor.fetchone()
     if result_chcc[0] > 0:
         print(f"This costume already exists in the database")
+        shutil.rmtree(temp_directory, ignore_errors=True)
         sys.exit(1) 
         
     if costume_facedynamic_file != "":
