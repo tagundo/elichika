@@ -34,8 +34,8 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] Fully working bond board system.
     - [x] Bond stories are unlocked by level once you unlock the bond story feature for one member (get to level 3 bond).
     - [x] Bond songs unlocked at spefiic levels.
-- [ ] Bond ranking
-    - [x] Working but return fixed data, eventually should return actual data.
+- [x] Bond ranking
+    - [x] Working bond ranking, but it might be slow if there are a lot of account.
 - [ ] Membership (subscription)
     - [x] Keep membership info for imported data.
     - [x] Add default membership for new account.
@@ -48,31 +48,29 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [ ] Note that some item might not be exchangable, but that's more down to the handling of those items and not the exchange itself.
 - [x] School idol / Practice
     - [x] Fully working card grade up, level up, and practice system.
-- [ ] Accessores
+- [x] Accessories
     - [x] Fully working accessory power up system.
     - [x] Accesory drops from live and can be exchanged in shop.
     - [x] The WebUi functionality to add accessory is still there for accessory that are limited or can't be dropped, if you wish to get them
-- [ ] Channel
-    - [x] Working channel system by returning fixed data.
-    - [x] User can join specific member channels.
-    - [x] Cheer system drop items correctly.
-    - [x] Megaphones are not dropped from trainings.
-    - [ ] No rakning or tracking of points for now.
+- [x] Channel
+    - [x] Working channel system with ranking reward and reward.
 - [x] Present box
     - [x] Working present box.
     - [x] All items that are sent to present box should be there, but there might be mistakes.
-- [ ] Goal list
-    - [x] Always empty, works by returning fixed data.
-    - [ ] Eventually should handle goals and daily / weekly goals.
+- [x] Goal list
+    - [x] Working daily / weekly goals that reset correctly.
+    - [x] Working goals tracking for free goals that are available at EOS
+    - [ ] Some other event exclusive goals are not implemented, they might be revived later on.
 - [x] Notices / news
     - [x] Always empty, works by returning fixed data.
     - [ ] There is no plan for now, but this section can be used to put tutorial and suchs.
-- [ ] Social (friends)
-    - [x] Works by returing fixed data.
-    - [ ] The server allow for separate account, but implementation of social systems are not planned.
-- [ ] Title List
+- [x] Social (friends)
+    - [x] Working social system.
+    - [x] Working bad word checker.
+- [x] Title List
     - [x] Stored and fetch from database.
-    - [ ] There's no proper handling of adding a title yet.
+    - [x] Title is added through user content system.
+    - [x] User can obtain title through goals and suchs
 - [x] Datalink
     - [x] The datalink system is used as account creation / account transfer, things should work properly.
     - [x] Password is stored using bcrypt, so no worry of leaking password. 
@@ -88,8 +86,9 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] Working DLP that also track voltage ranking
     - [x] User can reset DLP progress using the WebUi.
 - [ ] Adding New Content
-    - [x] Use generate random id & hash uint32.
-	- [ ] Maybe need custom unique id variable.
+    - [x] Use generate random ID if variable is None & hash uint32 asset path.
+	- [x] Custom unique ID variable.
+		- Expect DLP
     - [x] Zip installation method.
     - [x] Working Encryption data by default key is 0.
     - [x] Adding table same as official.
@@ -102,11 +101,10 @@ TODO(docs): Add specific docs for specific contents if necessary.
 		- No reward received.
 		- Pressing help button will cause softlock.
 	- [x] Card
-        - Cannot get information about Skill description.
-		- Many skill icon is missing.
+		- Many skill icon is not filled.
 		- Bond story & Voice navigation will return as default because there is no way to create new one.
-		- Write a LOT dictionary mapping for each language & separate to txt.
-		- Gacha voice doesn't not work with deretore tool.
+		- Write a LOT dictionary mapping for each language.
+		- Gacha voice doesn't not work with deretore tool?.
         - Training tree parameter is missing for each role.
 		- Dual skill not supported, A and B condition is doable later.
         - Only JP Client Android working right now.

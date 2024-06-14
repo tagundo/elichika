@@ -9,7 +9,52 @@ import sys
 import shutil
 import hashlib
 
+def backup_operate(filelist):
+    # Create a folder with the current date and time as the name
+    backup_folder = datetime.now().strftime("backup_db/%Y-%m-%d_%H-%M-%S")
+    # Create the backup folder
+    os.makedirs(backup_folder)
+    
+    # Copy each file from the filelist to the backup folder
+    for file_path in filelist:
+        # Get the directory structure of the file
+        relative_path = os.path.relpath(file_path, start=".")
+        dest_path = os.path.join(backup_folder, relative_path)
+        # Create directories if they don't exist
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        # Copy file to destination path
+        shutil.copy(file_path, dest_path)
+    
+    print("Backup completed successfully.")
+
+# Example usage:
+filelist = [
+    "assets/db/gl/asset_a_en.db",
+    "assets/db/gl/asset_i_en.db",
+    "assets/db/gl/asset_a_ko.db",
+    "assets/db/gl/asset_i_ko.db",
+    "assets/db/gl/asset_a_zh.db",
+    "assets/db/gl/asset_i_zh.db",
+    "assets/db/gl/dictionary_en_k.db",
+    "assets/db/gl/dictionary_ko_k.db",
+    "assets/db/gl/dictionary_zh_k.db",
+    "assets/db/gl/masterdata.db",
+    "assets/db/jp/asset_a_ja.db",
+    "assets/db/jp/asset_i_ja.db",
+    "assets/db/jp/dictionary_ja_k.db",
+    "assets/db/jp/masterdata.db",
+    "serverdata.db",
+    "userdata.db"
+]
+
 # init code
+id_live = None
+id_music = None
+id_emblem = None
+id_mission1 = None
+id_mission2 = None
+id_mission3 = None
+
 music_name_en = ""
 music_name_ko = ""
 music_name_zh = ""
@@ -47,16 +92,16 @@ attribute_live = 9
 	# 9 - Untyped / Unknown
 
 note_emit_msec_easy = 3620
-note_stamina_damage_easy = 25
-evaluation_score_easy = 2500000
+note_stamina_damage_easy = 100
+evaluation_score_easy = None
 
 note_emit_msec_normal = 3077
-note_stamina_damage_normal = 50
-evaluation_score_normal = 5000000
+note_stamina_damage_normal = 200
+evaluation_score_normal = None
 
 note_emit_msec_hard = 2534
-note_stamina_damage_hard = 100
-evaluation_score_hard = 10000000
+note_stamina_damage_hard = 300
+evaluation_score_hard = None
 
 check_json_config = "config.json"
 
@@ -313,6 +358,12 @@ else :
     shutil.rmtree(temp_directory, ignore_errors=True)
     sys.exit(1)
 
+do_backup_is_important = input("would you like backup database? (y/n): ")
+if do_backup_is_important == "y" :
+    backup_operate(filelist)
+else :
+    print('well then do your own risk')
+
 start_encrypt1 = temp_directory + music_file
 start_encrypt2 = temp_directory + music_sabi_file
 start_encrypt3 = temp_directory + thumbnail_file
@@ -435,12 +486,19 @@ print("assets encrypted")
 with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:
     cursor = conn.cursor()
     
-    shutil.copy(start_encrypt1, music_filename_saved)
-    shutil.copy(start_encrypt2, music_sabi_filename_saved)
-    thumbnail_music_path = thumbnail_path_randomhash(cursor)
-    emblem_path = emblem_path_randomhash(cursor)
+    cursor.execute("SELECT COUNT(*) FROM m_asset_pack WHERE pack_name = ?", (music_filename,))
+    result_chcc = cursor.fetchone()
+    if result_chcc[0] > 0:
+        print(f"This live already exists in the database")
+        shutil.rmtree(temp_directory, ignore_errors=True)
+        sys.exit(1) 
+
     sheet_name_file = read_file_and_select_text(start_encrypt1)
     sheet_name_file1 = read_file_and_select_text1(start_encrypt2)
+    shutil.move(start_encrypt1, music_filename_saved)
+    shutil.move(start_encrypt2, music_sabi_filename_saved)
+    thumbnail_music_path = thumbnail_path_randomhash(cursor)
+    emblem_path = emblem_path_randomhash(cursor)
     donot_insert = None
     if videoprime_file != "":
         movie_genpath = movie_path_randomhash(cursor)
@@ -448,7 +506,7 @@ with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:
         movie_filesize = os.path.getsize(start_encrypt5)
         cursor.execute("INSERT INTO main.m_movie (pavement, pack_name) VALUES (?, ?);", (movie_genpath, movie_filename))
         cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (movie_filename,))
-        shutil.copy(start_encrypt5, movie_filename_saved)
+        shutil.move(start_encrypt5, movie_filename_saved)
         
     # (light download auto delete fix)
     cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (music_filename,))
@@ -577,17 +635,32 @@ with sqlite3.connect('assets/db/jp/asset_i_ja.db') as conn:
 with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     cursor = conn.cursor()
 
+    if id_live is None:
+        live_id_masterdata = generate_unique_live_id(cursor)
+        music_diff1_masterdata = generate_unique_music_id1(cursor)
+        music_diff2_masterdata = generate_unique_music_id2(cursor)
+        music_diff3_masterdata = generate_unique_music_id3(cursor)
+    else:
+        live_id_masterdata = id_live
+        music_diff1_masterdata = str(id_live) + "101"
+        music_diff2_masterdata = str(id_live) + "201"
+        music_diff3_masterdata = str(id_live) + "301"
+        
+    if id_music is None:
+        music_id_masterdata = generate_unique_music_id(cursor)
+    else:
+        music_id_masterdata = id_music
+        
+    if id_emblem is None:
+        emblem_id_masterdata = generate_unique_emblem_id(cursor)
+    else:
+        emblem_id_masterdata = id_emblem
+        
     # Generate a unique live_id_masterdata
-    live_id_masterdata = generate_unique_live_id(cursor)
-    music_id_masterdata = generate_unique_music_id(cursor)
-    music_diff1_masterdata = generate_unique_music_id1(cursor)
-    music_diff2_masterdata = generate_unique_music_id2(cursor)
-    music_diff3_masterdata = generate_unique_music_id3(cursor)
     music_name_dictionary_masterdata = "k.song_name_so" + str(music_id_masterdata)
     music_id_copyright_masterdata = "k.song_copyright_so" + str(music_id_masterdata)
     music_name_dictionary_dic = "song_name_so" + str(music_id_masterdata)
     music_id_copyright_dic = "song_copyright_so" + str(music_id_masterdata)
-    emblem_id_masterdata = generate_unique_emblem_id(cursor)
     
     emblem_dictionary_description = "m_dic_emblem_description_" + str(emblem_id_masterdata)
     emblem_dictionary_description_masterdata = "k." + emblem_dictionary_description
@@ -1109,6 +1182,14 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
             json.dump(data_difff3, difficult_file3, indent=2)
     
     # score logic
+    # automatic setup score based on note count
+    if evaluation_score_easy is None:
+        evaluation_score_easy = int(id_count_easy * 6250)
+    if evaluation_score_normal is None:
+        evaluation_score_normal = int(id_count_normal * 12500)
+    if evaluation_score_hard is None:
+        evaluation_score_hard = int(id_count_hard * 25000)
+        
     evaluation_a_score_easy = int(evaluation_score_easy * 0.75)
     evaluation_b_score_easy = int(evaluation_score_easy * 0.5)
     evaluation_c_score_easy = int(evaluation_score_easy * 0.25)
@@ -1170,8 +1251,11 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                    (emblem_id_masterdata, music_name_dictionary_masterdata, emblem_dictionary_description_masterdata, donot_insert, emblem_path, donot_insert, display_order_new2)) 
     
     # mission
-    
-    mission_1_masterdata = generate_unique_mission1_id(cursor)
+    if id_mission1 is None:
+        mission_1_masterdata = generate_unique_mission1_id(cursor)
+    else:
+        mission_1_masterdata = id_mission1
+        
     mission_desc_dictionary_dic1 = "freemission_desc_" + str(mission_1_masterdata)
     mission_desc_dictionary_masterdata1 = "m.freemission_desc_" + str(mission_1_masterdata)
 
@@ -1182,7 +1266,11 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     display_order_new_m1 = min_display_order_m1 - 1
     cursor.execute("INSERT INTO main.m_mission (id, term, title, description, trigger_type, trigger_condition_1, trigger_condition_2, start_at, end_at, scene_transition_link, scene_transition_param, pickup_type, display_order, mission_clear_condition_type, mission_clear_condition_count, mission_clear_condition_param1, mission_clear_condition_param2, complete_mission_num, has_content) VALUES (?, '3', 'm.mission_name_18', ?, '1', '0', ?, '1529593200', ?, '20', ?, ?, ?, '14', '10', ?, ?, ?, '0');", (mission_1_masterdata, mission_desc_dictionary_masterdata1, donot_insert, donot_insert, donot_insert, donot_insert, display_order_new_m1, live_id_masterdata, donot_insert, donot_insert,))
    
-    mission_2_masterdata = generate_unique_mission2_id(cursor)
+    if id_mission2 is None:
+        mission_2_masterdata = generate_unique_mission2_id(cursor)
+    else:
+        mission_2_masterdata = id_mission2
+        
     mission_desc_dictionary_dic2 = "freemission_desc_" + str(mission_2_masterdata)
     mission_desc_dictionary_masterdata2 = "m.freemission_desc_" + str(mission_2_masterdata)
     cursor.execute("SELECT MIN(display_order) FROM main.m_mission WHERE end_at IS NULL AND mission_clear_condition_type = 14;")
@@ -1192,7 +1280,11 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     display_order_new_m2 = min_display_order_m2 - 1
     cursor.execute("INSERT INTO main.m_mission (id, term, title, description, trigger_type, trigger_condition_1, trigger_condition_2, start_at, end_at, scene_transition_link, scene_transition_param, pickup_type, display_order, mission_clear_condition_type, mission_clear_condition_count, mission_clear_condition_param1, mission_clear_condition_param2, complete_mission_num, has_content) VALUES (?, '3', 'm.mission_name_18', ?, '2', ?, ?, '1529593200', ?, '20', ?, ?, ?, '14', '50', ?, ?, ?, '0');", (mission_2_masterdata, mission_desc_dictionary_masterdata2, mission_1_masterdata, donot_insert, donot_insert, donot_insert, donot_insert, display_order_new_m2, live_id_masterdata, donot_insert, donot_insert,))
     
-    mission_3_masterdata = generate_unique_mission3_id(cursor)
+    if id_mission3 is None:
+        mission_3_masterdata = generate_unique_mission3_id(cursor)
+    else:
+        mission_3_masterdata = id_mission3
+        
     mission_desc_dictionary_dic3 = "freemission_desc_" + str(mission_3_masterdata)
     mission_desc_dictionary_masterdata3 = "m.freemission_desc_" + str(mission_3_masterdata)
     cursor.execute("SELECT MIN(display_order) FROM main.m_mission WHERE end_at IS NULL AND mission_clear_condition_type = 14;")
@@ -1228,7 +1320,7 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
         cursor.execute("INSERT INTO main.m_live_movie (live_id, codec, movie_asset_path, stage_background_asset_path) VALUES (?, 'prime', ?, 'Bl7');", (live_id_masterdata, movie_genpath))
         
         
-with sqlite3.connect('assets/db/ja/masterdata.db') as conn:
+with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor = conn.cursor()
 
     # Generate a unique live_id_masterdata
@@ -1250,17 +1342,17 @@ with sqlite3.connect('assets/db/ja/masterdata.db') as conn:
                    (live_id_masterdata, music_id_masterdata, sheet_name_file, sheet_name_file1, member_mapping_live, music_name_dictionary_masterdata, donot_insert, member_group_live, donot_insert, donot_insert, music_id_copyright_masterdata, donot_insert, thumbnail_music_path, display_order_new_ja))  
     
     cursor.execute("INSERT INTO main.m_live_difficulty (live_difficulty_id, live_id, live_3d_asset_master_id, live_difficulty_type, unlock_pattern, default_attribute, target_voltage, note_emit_msec, recommended_score, recommended_stamina, consumed_lp, reward_user_exp, judge_id, note_drop_group_id, drop_choose_count, rare_drop_rate, drop_content_group_id, rare_drop_content_group_id, additional_drop_max_count, additional_drop_content_group_id, additional_rare_drop_content_group_id,bottom_technique, additional_drop_decay_technique, reward_base_love_point, evaluation_s_score, evaluation_a_score, evaluation_b_score, evaluation_c_score, updated_at, lose_at_death, autoplay_requirement_id, skip_master_id, stamina_voltage_group_id, combo_voltage_group_id, difficulty_const_master_id, is_count_target, insufficient_rate) VALUES (?, ?, ?, 10, '1', ?, ?, ?, ?, ?, '10', '8', '1', ?, '2', '1500', ?, ?, '2', ?, ?, '50000', '9000', '12', ?, ?, ?, ?, '0', '1', ?, '16001', '1', '1', ?, '1', '6000');",
-                   (music_diff1_masterdata, live_id_masterdata, donot_insert, attribute_live, evaluation_score_easy, note_emit_msec_easy, recommend_power_easy, recommend_stamina_easy, drop_live_item1_easy, drop_live_item2_easy, drop_live_item3_easy, drop_live_item4_easy, drop_live_item5_easy, evaluation_score_easy, evaluation_a_score_easy, evaluation_b_score_easy, evaluation_c_score_easy, donot_insert, live_constaddon_easy,))
+                   (music_diff1_masterdata, live_id_masterdata, donot_insert, attribute_live, evaluation_score_easy, note_emit_msec_easy, recommend_power_easy, recommend_stamina_easy, drop_live_item1_easy, drop_live_item2_easy, drop_live_item3_easy, drop_live_item4_easy, drop_live_item5_easy, evaluation_score_easy, evaluation_a_score_easy, evaluation_b_score_easy, evaluation_c_score_easy, donot_insert, music_diff1_masterdata,))
 
     cursor.execute("INSERT INTO main.m_live_difficulty (live_difficulty_id, live_id, live_3d_asset_master_id, live_difficulty_type, unlock_pattern, default_attribute, target_voltage, note_emit_msec, recommended_score, recommended_stamina, consumed_lp, reward_user_exp, judge_id, note_drop_group_id, drop_choose_count, rare_drop_rate, drop_content_group_id, rare_drop_content_group_id, additional_drop_max_count, additional_drop_content_group_id, additional_rare_drop_content_group_id,bottom_technique, additional_drop_decay_technique, reward_base_love_point, evaluation_s_score, evaluation_a_score, evaluation_b_score, evaluation_c_score, updated_at, lose_at_death, autoplay_requirement_id, skip_master_id, stamina_voltage_group_id, combo_voltage_group_id, difficulty_const_master_id, is_count_target, insufficient_rate) VALUES (?, ?, ?, 20, '1', ?, ?, ?, ?, ?, '12', '13', '2', ?, '2', '1300', ?, ?, '2', ?, ?, '60000', '9000', '16', ?, ?, ?, ?, '0', '1', ?, '16001', '1', '1', ?, '1', '6000');",
-                   (music_diff2_masterdata, live_id_masterdata, donot_insert, attribute_live, evaluation_score_normal, note_emit_msec_normal, recommend_power_normal, recommend_stamina_normal, drop_live_item1_normal, drop_live_item2_normal, drop_live_item3_normal, drop_live_item4_normal, drop_live_item5_normal, evaluation_score_normal, evaluation_a_score_normal, evaluation_b_score_normal, evaluation_c_score_normal, donot_insert, live_constaddon_normal,))
+                   (music_diff2_masterdata, live_id_masterdata, donot_insert, attribute_live, evaluation_score_normal, note_emit_msec_normal, recommend_power_normal, recommend_stamina_normal, drop_live_item1_normal, drop_live_item2_normal, drop_live_item3_normal, drop_live_item4_normal, drop_live_item5_normal, evaluation_score_normal, evaluation_a_score_normal, evaluation_b_score_normal, evaluation_c_score_normal, donot_insert, music_diff2_masterdata,))
                    
     cursor.execute("INSERT INTO main.m_live_difficulty (live_difficulty_id, live_id, live_3d_asset_master_id, live_difficulty_type, unlock_pattern, default_attribute, target_voltage, note_emit_msec, recommended_score, recommended_stamina, consumed_lp, reward_user_exp, judge_id, note_drop_group_id, drop_choose_count, rare_drop_rate, drop_content_group_id, rare_drop_content_group_id, additional_drop_max_count, additional_drop_content_group_id, additional_rare_drop_content_group_id,bottom_technique, additional_drop_decay_technique, reward_base_love_point, evaluation_s_score, evaluation_a_score, evaluation_b_score, evaluation_c_score, updated_at, lose_at_death, autoplay_requirement_id, skip_master_id, stamina_voltage_group_id, combo_voltage_group_id, difficulty_const_master_id, is_count_target, insufficient_rate) VALUES (?, ?, ?, 30, '1', ?, ?, ?, ?, ?, '15', '21', '3', ?, '2', '1000', ?, ?, '3', ?, ?, '70000', '9000', '24', ?, ?, ?, ?, '0', '1', ?, '16001', '1', '1', ?, '1', '6000');",
-                   (music_diff3_masterdata, live_id_masterdata, donot_insert, attribute_live, evaluation_score_hard, note_emit_msec_hard, recommend_power_hard, recommend_stamina_hard, drop_live_item1_hard, drop_live_item2_hard, drop_live_item3_hard, drop_live_item4_hard, drop_live_item5_hard, evaluation_score_hard, evaluation_a_score_hard, evaluation_b_score_hard, evaluation_c_score_hard, donot_insert, live_constaddon_hard,))
+                   (music_diff3_masterdata, live_id_masterdata, donot_insert, attribute_live, evaluation_score_hard, note_emit_msec_hard, recommend_power_hard, recommend_stamina_hard, drop_live_item1_hard, drop_live_item2_hard, drop_live_item3_hard, drop_live_item4_hard, drop_live_item5_hard, evaluation_score_hard, evaluation_a_score_hard, evaluation_b_score_hard, evaluation_c_score_hard, donot_insert, music_diff3_masterdata,))
                    
-    cursor.execute("INSERT INTO main.m_live_difficulty_const (id, sp_gauge_length, sp_gauge_additional_rate, sp_gauge_reducing_point, sp_skill_voltage_magnification, note_stamina_reduce, note_voltage_upper_limit, collabo_voltage_upper_limit, skill_voltage_upper_limit, squad_change_voltage_upper_limit) VALUES (?, '3600', '10000', '50', '10000', ?, '100000', '250000', '50000', '30000');", (live_constaddon_easy, note_stamina_damage_easy,))
-    cursor.execute("INSERT INTO main.m_live_difficulty_const (id, sp_gauge_length, sp_gauge_additional_rate, sp_gauge_reducing_point, sp_skill_voltage_magnification, note_stamina_reduce, note_voltage_upper_limit, collabo_voltage_upper_limit, skill_voltage_upper_limit, squad_change_voltage_upper_limit) VALUES (?, '4800', '10000', '75', '10000', ?, '100000', '250000', '50000', '30000');", (live_constaddon_normal, note_stamina_damage_normal,))
-    cursor.execute("INSERT INTO main.m_live_difficulty_const (id, sp_gauge_length, sp_gauge_additional_rate, sp_gauge_reducing_point, sp_skill_voltage_magnification, note_stamina_reduce, note_voltage_upper_limit, collabo_voltage_upper_limit, skill_voltage_upper_limit, squad_change_voltage_upper_limit) VALUES (?, '6000', '10000', '100', '10000', ?, '100000', '250000', '50000', '30000');", (live_constaddon_hard, note_stamina_damage_hard,))
+    cursor.execute("INSERT INTO main.m_live_difficulty_const (id, sp_gauge_length, sp_gauge_additional_rate, sp_gauge_reducing_point, sp_skill_voltage_magnification, note_stamina_reduce, note_voltage_upper_limit, collabo_voltage_upper_limit, skill_voltage_upper_limit, squad_change_voltage_upper_limit) VALUES (?, '3600', '10000', '50', '10000', ?, '100000', '250000', '50000', '30000');", (music_diff1_masterdata, note_stamina_damage_easy,))
+    cursor.execute("INSERT INTO main.m_live_difficulty_const (id, sp_gauge_length, sp_gauge_additional_rate, sp_gauge_reducing_point, sp_skill_voltage_magnification, note_stamina_reduce, note_voltage_upper_limit, collabo_voltage_upper_limit, skill_voltage_upper_limit, squad_change_voltage_upper_limit) VALUES (?, '4800', '10000', '75', '10000', ?, '100000', '250000', '50000', '30000');", (music_diff2_masterdata, note_stamina_damage_normal,))
+    cursor.execute("INSERT INTO main.m_live_difficulty_const (id, sp_gauge_length, sp_gauge_additional_rate, sp_gauge_reducing_point, sp_skill_voltage_magnification, note_stamina_reduce, note_voltage_upper_limit, collabo_voltage_upper_limit, skill_voltage_upper_limit, squad_change_voltage_upper_limit) VALUES (?, '6000', '10000', '100', '10000', ?, '100000', '250000', '50000', '30000');", (music_diff3_masterdata, note_stamina_damage_hard,))
     # live end give you reward 10 stargem
     cursor.execute("INSERT INTO main.m_live_difficulty_mission (live_difficulty_master_id, position, target_type, target_value, content_type, content_id, content_amount) VALUES (?, '1', '1', '1', '1', '0', '2');", (music_diff1_masterdata,))
     cursor.execute("INSERT INTO main.m_live_difficulty_mission (live_difficulty_master_id, position, target_type, target_value, content_type, content_id, content_amount) VALUES (?, '2', '6', ?, '1', '0', '3');", (music_diff1_masterdata, evaluation_b_score_easy,))
@@ -1359,7 +1451,7 @@ with sqlite3.connect('assets/db/gl/dictionary_zh_k.db') as conn:
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_id_copyright_dic, music_copyright_name_zh))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (emblem_dictionary_description, message_title_zh))
     
-with sqlite3.connect('assets/db/ja/dictionary_ja_k.db') as conn:
+with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor = conn.cursor()
     message_title_ja = "通過100次「" + str(music_name_ja) + "」"
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_name_dictionary_dic, music_name_ja))
@@ -1393,7 +1485,7 @@ with sqlite3.connect('assets/db/gl/dictionary_zh_m.db') as conn:
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (mission_desc_dictionary_dic2, message_mission2_zh))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (mission_desc_dictionary_dic3, message_mission3_zh))
     
-with sqlite3.connect('assets/db/ja/dictionary_ja_m.db') as conn:
+with sqlite3.connect('assets/db/jp/dictionary_ja_m.db') as conn:
     cursor = conn.cursor()
     message_mission1_ja = "「" + str(music_name_ja) + "」を10回クリアする"
     message_mission2_ja = "「" + str(music_name_ja) + "」を50回クリアする"
@@ -1579,7 +1671,7 @@ with sqlite3.connect('assets/db/gl/asset_i_zh.db') as conn:
         cursor.execute("INSERT INTO main.m_asset_package (package_key, version, pack_num) VALUES (?, ?, '1');",
                     (package_key_movie, fresh_version_movie_i_zh))
                     
-with sqlite3.connect('assets/db/ja/asset_a_ja.db') as conn:
+with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
     cursor = conn.cursor()
     
     fresh_version_a_ja = hashlib.sha1(str(random.random()).encode()).hexdigest()
@@ -1608,7 +1700,7 @@ with sqlite3.connect('assets/db/ja/asset_a_ja.db') as conn:
         cursor.execute("INSERT INTO main.m_asset_package (package_key, version, pack_num) VALUES (?, ?, '1');",
                     (package_key_movie, fresh_version_movie_a_ja))
                     
-with sqlite3.connect('assets/db/ja/asset_i_ja.db') as conn:
+with sqlite3.connect('assets/db/jp/asset_i_ja.db') as conn:
     cursor = conn.cursor()
     
     fresh_version_i_ja = hashlib.sha1(str(random.random()).encode()).hexdigest()

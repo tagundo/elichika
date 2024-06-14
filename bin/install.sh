@@ -7,6 +7,7 @@ BRANCH=${BRANCH:-"main"}
 # install git and golang
 clear
 echo "Installing Elichika... PLEASE DO NOT DISCONNECT INTERNET"
+echo "Download speed too slow? CTRL+C, Use 1.1.1.1 & try again"
 cd
 rm -rf elichika
 pkg install golang git -y || echo "assuming go and git are already installed"

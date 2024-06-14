@@ -5,7 +5,7 @@ Ticked endpoint means that the server see the end point (not 404), it doesn't me
 
 Also note that some endpoints won't need to be handled at all either because they're no longer used, or because they are just irrelevant, or because they are not even endpoint and just look like one.
 
-## Finished
+## Done
 - [x] /accessory/allUnequip
 - [x] /accessory/melt
 - [x] /accessory/powerUp
@@ -36,15 +36,28 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /emblem/activateEmblem
 - [x] /emblem/fetchEmblem
 - [x] /emblem/fetchEmblemById
+- [x] /friend/apply
+- [x] /friend/applyOtherScene
+- [x] /friend/approve
+- [x] /friend/approveOtherScene
+- [x] /friend/cancel
+- [x] /friend/cancelOtherScene
 - [x] /friend/fetchFriendList
+- [x] /friend/refuse
+- [x] /friend/remove
+- [x] /friend/removeOtherScene
+- [x] /friend/searchUserId
 - [x] /gacha/draw
 - [x] /gacha/fetchGachaMenu
 - [x] /gameSettings/updatePushNotificationSettings
 - [x] /gdpr/updateConsentState
 - [x] /infoTrigger/read
+- [x] /infoTrigger/readByType
 - [x] /infoTrigger/readCardGradeUp
+- [x] /infoTrigger/readMemberGuildRankingResult
 - [x] /infoTrigger/readMemberGuildSupportItemExpired
 - [x] /infoTrigger/readMemberLoveLevelUp
+- [x] /itemDetail/fetchItemDetailRelateLiveList
 - [x] /lesson/changeDeckNameLessonDeck
 - [x] /lesson/executeLesson
 - [x] /lesson/resultLesson
@@ -132,86 +145,8 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /voltageRanking/getVoltageRanking
 - [x] /voltageRanking/getVoltageRankingDeck
 
-## Not Finished
-- [ ] (the button for this is not in the app?, we need to turn it back on first) /userAccountDeletion/deleteUserAccount
-### Beginner Challenge
-- [ ] /challenge/fetchBeginner
-- [ ] /challenge/receiveRewardBeginner
-### SBL
-- [ ] /coop/login
-- [ ] /coopLive/create
-- [ ] /coopLive/createRoom
-- [ ] /coopLive/fetchRoomFinish
-- [ ] /coopLive/fetchRoomHistory
-- [ ] /coopLive/fetchRoomHistoryDeck
-- [ ] /coopLive/fetchRoomResultUserDeck
-- [ ] /coopLive/finishRoom
-- [ ] /coopLive/finishSolo
-- [ ] /coopLive/start
-- [ ] /eventCoop/fetchLobby
-- [ ] /eventCoopRanking/fetchEventCoopRanking
-### Story Event
-- [ ] /eventMarathon/fetchEventMarathon
-- [ ] /eventMarathon/finishEventStory
-- [ ] /eventMarathonRanking/fetchEventMarathonRanking
-### Exchange Event
-- [ ] /eventMining/fetchEventMining
-- [ ] /eventMining/finishEventMiningStory
-- [ ] /eventMining/likeEventMiningPanel
-- [ ] /eventMiningRanking/fetchEventMiningRanking
-### External Movie (unused?)
-- [ ] /externalMovie/fetchBrowseExternalMovie
-- [ ] /externalMovie/saveBrowseExternalMovie
-### Friend
-- [ ] /friend/apply
-- [ ] /friend/applyOtherScene
-- [ ] /friend/approve
-- [ ] /friend/approveOtherScene
-- [ ] /friend/cancel
-- [ ] /friend/cancelOtherScene
-- [ ] /friend/refuse
-- [ ] /friend/remove
-- [ ] /friend/removeOtherScene
-- [ ] /friend/searchUserId
-### Gacha
-- [ ] /gacha/fixRetry
-- [ ] /gacha/retry
-### GPS (Not Necessary?)
-- [ ] /gpsPresent/saveCampaignLocation
-### Info Trigger
-- [ ] /infoTrigger/readByType
-- [ ] /infoTrigger/readEventCommonShowResult
-- [ ] /infoTrigger/readEventMarathonResult
-- [ ] /infoTrigger/readEventMiningResult
-- [ ] /infoTrigger/readExpiredGiftBox
-- [ ] /infoTrigger/readGachaPointExchange
-- [ ] /infoTrigger/readMemberGuildRankingResult
-- [ ] /infoTrigger/readSubscriptionEnd
-- [ ] /infoTrigger/readSubscriptionTrialEnd
-- [ ] /itemDetail/fetchItemDetailRelateLiveList
-### Live
-- [ ] /live/recoverDailyLiveMusicPlayable
-### ???
-- [ ] /noop/noop
-### Notice
-- [ ] /notice/fetchNoticeList
-- [ ] /notice/saveUserSuperNotice
-### Room
-- [ ] /room/
-- [ ] /rooms
-- [ ] /rooms/filter
-- [ ] /rooms/filter/assign
-- [ ] /rooms/number/
-### SIF ID Reward (Not Necessary?)
-- [ ] /schoolIdolFestivalIdReward/fetch
-### Steady Ranking
-- [ ] /steadyRanking/fetch
-- [ ] /steadyRanking/getSteadyRankingDeck
-- [ ] /steadyRanking/selectDifficulty
-### User
-- [ ] /user/recoverAp
-
-## Not Necessary
+## Not Planned
+### Not Necessary
 - [ ] (not necessary) /billing/applePurchase 
 - [ ] (not necessary) /billing/googlePurchase
 - [ ] (not necessary) /billing/prePurchase
@@ -255,3 +190,66 @@ Also note that some endpoints won't need to be handled at all either because the
 - [ ] (not necessary?) /shop/exchangeShopEventExchange
 - [ ] (not necessary?) /shop/fetchShopEventExchange
 - [ ] (not necessary?) /userProfile/fetchDeck
+- [ ] (the button for this is not in the app?, we need to turn it back on first) /userAccountDeletion/deleteUserAccount
+### Challenge
+- [ ] /challenge/fetchBeginner
+- [ ] /challenge/receiveRewardBeginner
+### SBL
+- [ ] /coop/login
+- [ ] /coopLive/create
+- [ ] /coopLive/createRoom
+- [ ] /coopLive/fetchRoomFinish
+- [ ] /coopLive/fetchRoomHistory
+- [ ] /coopLive/fetchRoomHistoryDeck
+- [ ] /coopLive/fetchRoomResultUserDeck
+- [ ] /coopLive/finishRoom
+- [ ] /coopLive/finishSolo
+- [ ] /coopLive/start
+- [ ] /eventCoop/fetchLobby
+- [ ] /eventCoopRanking/fetchEventCoopRanking
+### Story Event
+- [ ] /eventMarathon/fetchEventMarathon
+- [ ] /eventMarathon/finishEventStory
+- [ ] /eventMarathonRanking/fetchEventMarathonRanking
+### Exchange Event
+- [ ] /eventMining/fetchEventMining
+- [ ] /eventMining/finishEventMiningStory
+- [ ] /eventMining/likeEventMiningPanel
+- [ ] /eventMiningRanking/fetchEventMiningRanking
+### External Movie (story)
+- [ ] /externalMovie/fetchBrowseExternalMovie
+- [ ] /externalMovie/saveBrowseExternalMovie
+### Gacha
+- [ ] /gacha/fixRetry
+- [ ] /gacha/retry
+### GPS
+- [ ] /gpsPresent/saveCampaignLocation
+### Info Trigger
+- [ ] /infoTrigger/readEventCommonShowResult
+- [ ] /infoTrigger/readEventMarathonResult
+- [ ] /infoTrigger/readEventMiningResult
+- [ ] /infoTrigger/readExpiredGiftBox
+- [ ] /infoTrigger/readGachaPointExchange
+- [ ] /infoTrigger/readSubscriptionEnd
+- [ ] /infoTrigger/readSubscriptionTrialEnd
+### Live
+- [ ] /live/recoverDailyLiveMusicPlayable
+### None
+- [ ] /noop/noop
+### Notice
+- [ ] /notice/fetchNoticeList
+- [ ] /notice/saveUserSuperNotice
+### SBL?
+- [ ] /room/
+- [ ] /rooms
+- [ ] /rooms/filter
+- [ ] /rooms/filter/assign
+- [ ] /rooms/number/
+### SIF ID Reward
+- [ ] /schoolIdolFestivalIdReward/fetch
+### Steady Ranking
+- [ ] /steadyRanking/fetch
+- [ ] /steadyRanking/getSteadyRankingDeck
+- [ ] /steadyRanking/selectDifficulty
+### User
+- [ ] /user/recoverAp

@@ -9,9 +9,10 @@ while true; do
     echo "1. Run Server"
     echo "2. Update Version"
     echo "3. Reset Server"
-    echo "4. Switch CDN to LocalHost"
-    echo "5. Switch CDN to Catfolk"
-    echo "6. Developer Menu"
+    echo "4. Clear Cache Database"
+    echo "5. Switch CDN to LocalHost"
+    echo "6. Switch CDN to Catfolk"
+    echo "7. Developer Menu"
     echo "0. Exit"
 
     read -p "Enter your choice: " option
@@ -58,20 +59,25 @@ while true; do
 			exit 0
             ;;
         4)
+			clear
+			python elichika_reset.py -nostage
+            read -p "Press Enter to continue..." _dummy15sz35
+            ;;
+        5)
             clear
 			pkill elichika
             sed -i 's#https://llsifas.catfolk.party/static/#http://127.0.0.1:8080/static#g' "config.json"
             echo "Switched To LocalHost"
             read -p "Press Enter to continue..." _dummy15555
             ;;
-        5)
+        6)
             clear
             pkill elichika
             sed -i 's#http://127.0.0.1:8080/static#https://llsifas.catfolk.party/static/#g' "config.json"
             echo "Switched To Catfolk"
             read -p "Press Enter to continue..." _dummy15235
             ;;
-        6)
+        7)
             # Dev Menu
             while true; do
                 clear
@@ -80,6 +86,8 @@ while true; do
 				echo "2. Add New Live"
 				echo "3. Add New DLP"
 				echo "4. Patch Masterdata"
+				echo "5. LLASDecryptor"
+				echo "6. Overwrite JP Client Dictionary"
                 echo "0. Back to Main Menu"
 
                 read -p "Enter your choice: " dev_option
@@ -117,6 +125,18 @@ while true; do
                         cd ~/elichika
 						python elichika_db_importer.py
                         read -p "Press Enter to continue..." _dummy0399
+                        ;;
+                    5)
+						clear
+						pkill elichika
+						python llasdecryptor.py
+                        read -p "Press Enter to continue..." _dummy02555555
+                        ;;
+                    6)
+						clear
+						pkill elichika
+						python replace_jp_client_dictionary.py
+                        read -p "Press Enter to continue..." _dummy02555235
                         ;;
                     0)
                         break

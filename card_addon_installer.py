@@ -72,6 +72,10 @@ skill_effect_category_immediate_remove  = {52, 53, 54, 55, 56, 57, 58, 59, 60, 6
 skill_effect_category_player = {6, 7, 23, 25, 106, 107, 108, 209, 210, 211, 212, 99, 102, 103, 104, 266, 267}
 
 # init code default value (do nothing)
+id_card = None 
+id_active_skill = None
+id_active_skill_ability = None
+id_passive_skill = None
 card_name_en = ""
 card_name_ko = ""
 card_name_zh = ""
@@ -96,6 +100,7 @@ card_name_awaken_hiragana_ja = ""
 # RED Label Skill
 # Active Skill
 active_skill_type = 1 # common value?
+active_skill_chance_percent = None # if none will use based on rarity card
 active_skill_name_en = ""
 active_skill_name_ko = ""
 active_skill_name_zh = ""
@@ -165,11 +170,11 @@ card_base_technique = 0
 # trimming
 ## cut in
 card_normal_trimming_live_cutin_offset_x = 0
-card_normal_trimming_live_cutin_offset_y = 125
+card_normal_trimming_live_cutin_offset_y = 0
 card_normal_trimming_live_cutin_offset_rotation = 0
 card_normal_trimming_live_cutin_offset_scale = 100
 card_awaken_trimming_live_cutin_offset_x = 0
-card_awaken_trimming_live_cutin_offset_y = 125
+card_awaken_trimming_live_cutin_offset_y = 0
 card_awaken_trimming_live_cutin_offset_rotation = 0
 card_awaken_trimming_live_cutin_offset_scale = 100
 ## profile
@@ -241,27 +246,12 @@ def calculate_parameter_value(min_value, max_value, min_level, max_level, level)
             
 def generate_unique_card_id(cursor):
     while True:
-        new_id_card = random.randint(0, 999999999)
+        new_id_card = random.randint(100000000, 999999999)
         cursor.execute("SELECT COUNT(*) FROM main.m_card WHERE id = ?;", (new_id_card,))
         count = cursor.fetchone()[0]
         if count == 0:
             return new_id_card
             
-def generate_unique_storyside_id(cursor):
-    while True:
-        new_id_cardcc = random.randint(0, 999999999)
-        cursor.execute("SELECT COUNT(*) FROM main.m_story_side WHERE id = ?;", (new_id_cardcc,))
-        count = cursor.fetchone()[0]
-        if count == 0:
-            return new_id_cardcc
-            
-def generate_unique_storyside2_id(cursor):
-    while True:
-        new_id_cardcc2 = random.randint(0, 999999999)
-        cursor.execute("SELECT COUNT(*) FROM main.m_story_side WHERE id = ?;", (new_id_cardcc2,))
-        count = cursor.fetchone()[0]
-        if count == 0:
-            return new_id_cardcc2
                         
 def generate_unique_activeskill_1_id(cursor):
     while True:
@@ -1320,9 +1310,37 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor = conn.cursor()
 
     # Generate a unique costume_id_masterdata
+    if rarity_card == "SR":
+        caddon_rarity = 20
+        caddon_sp = 2
+        caddon_exchange_item_id = 2
+        caddon_passive_slot = 1
+        caddon_passive_slot_max = 3
+    elif rarity_card == "UR":
+        caddon_rarity = 30
+        caddon_sp = 3
+        caddon_exchange_item_id = 3
+        caddon_passive_slot = 1
+        caddon_passive_slot_max = 3
+    elif rarity_card == "FES" or rarity_card == "PARTY":
+        caddon_rarity = 30
+        caddon_sp = 4
+        caddon_exchange_item_id = 3
+        caddon_passive_slot = 2
+        caddon_passive_slot_max = 4
     trade_content_into_json = generate_unique_trade_content_id(cursor)
     trade_id_into_json = generate_unique_trade_id(cursor)
-    card_id_masterdata = generate_unique_card_id(cursor)
+    if id_card is None:
+        card_id_masterdata = generate_unique_card_id(cursor)
+    else:
+        id_card_str = str(id_card)
+        id_card_split1 = int(id_card_str[:2])
+        id_card_split2 = int(id_card_str[1:])
+        if 1 <= chara_id <= 9:
+            id_chara_card_id = "00" + str(chara_id)
+        else:
+            id_chara_card_id = chara_id
+        card_id_masterdata = str(id_card_split1) + str(id_chara_card_id) + str(caddon_rarity) + str(id_card_split2)
     min_level_card = 1
     max_level_card = 100
     
@@ -1334,11 +1352,18 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     active_skill_ability_chance_logic = int(active_skill_ability_chance_percent * 100)
     
     # m_active_skill
-    active_skill_1_masterdata = generate_unique_activeskill_1_id(cursor)
-    active_skill_2_masterdata = generate_unique_activeskill_2_id(cursor)
-    active_skill_3_masterdata = generate_unique_activeskill_3_id(cursor)
-    active_skill_4_masterdata = generate_unique_activeskill_4_id(cursor)
-    active_skill_5_masterdata = generate_unique_activeskill_5_id(cursor)
+    if id_active_skill is None:
+        active_skill_1_masterdata = generate_unique_activeskill_1_id(cursor)
+        active_skill_2_masterdata = generate_unique_activeskill_2_id(cursor)
+        active_skill_3_masterdata = generate_unique_activeskill_3_id(cursor)
+        active_skill_4_masterdata = generate_unique_activeskill_4_id(cursor)
+        active_skill_5_masterdata = generate_unique_activeskill_5_id(cursor)
+    else:
+        active_skill_1_masterdata = str(id_active_skill) + "01"
+        active_skill_2_masterdata = str(id_active_skill) + "02"
+        active_skill_3_masterdata = str(id_active_skill) + "03"
+        active_skill_4_masterdata = str(id_active_skill) + "04"
+        active_skill_5_masterdata = str(id_active_skill) + "05"
     active_skill_dictionary_masterdata = "k.active_skill_name_" + str(card_id_masterdata)
     active_skill_dictionary_desc1_masterdata = "k.active_skill_description_" + str(card_id_masterdata) + "_1"
     active_skill_dictionary_desc2_masterdata = "k.active_skill_description_" + str(card_id_masterdata) + "_2"
@@ -1356,41 +1381,44 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     
     # -- Skill Icon Red Label --
     ## Appeal Buff still no set up
-    if active_skill_effect_type in [None]:
-        cactive_skill_icon = '"4' # Critical Activation
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "'I" # Restore Heart
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "9^L" # Critival VO & Activation
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = ":" # Shield
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "<jy" # Shield & Heart
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "Ee" # Damage Reducion
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "Gpc" # VO & SP Gauge
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "IT" # VO
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "K9" # Appeal
-    elif active_skill_effect_type in [None]:
+    ## these condition seem duplicate
+    if active_skill_effect_type in [20]:
+        cactive_skill_icon = '"4'
+    elif active_skill_effect_type in [5, 97, 16]:
+        cactive_skill_icon = "'I"
+    elif active_skill_effect_type in [17]:
+        cactive_skill_icon = "*|"
+    elif active_skill_effect_type in [21]:
+        cactive_skill_icon = "9^L"   
+    elif active_skill_effect_type in [4, 14, 94]:
+        cactive_skill_icon = ":"   
+    elif active_skill_effect_type in [116]:
+        cactive_skill_icon = "<jy"   
+    elif active_skill_effect_type in [6]:
+        cactive_skill_icon = "Ee"   
+    elif active_skill_effect_type in [91]:
+        cactive_skill_icon = "Gpc"   
+    elif active_skill_effect_type in [2, 90]:
+        cactive_skill_icon = "IT" 
+    elif active_skill_effect_type in [17]:
+        cactive_skill_icon = "K9" 
+    elif active_skill_effect_type in [21]:
         left_slash_fix = 92
-        cactive_skill_icon = "K" + chr(left_slash_fix) # Critical VO
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "QF" # VO Gauge
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "_]" # SP
-    elif active_skill_effect_type in [None]:
+        cactive_skill_icon = 'K' + chr(left_slash_fix) 
+    elif active_skill_effect_type in [23, 25, 108]:
+        cactive_skill_icon = "QF" 
+    elif active_skill_effect_type in [19]:
+        cactive_skill_icon = "_]" 
+    elif active_skill_effect_type in [3, 91]:
         cactive_skill_icon = 'd"'
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "py"
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "r1"
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "}8}"
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "~."
+    elif active_skill_effect_type in [22]:
+        cactive_skill_icon = 'py'
+    elif active_skill_effect_type in [17]:
+        cactive_skill_icon = 'r1'
+    elif active_skill_effect_type in [20]:
+        cactive_skill_icon = '}8}'
+    elif active_skill_effect_type in [18]:
+        cactive_skill_icon = '~.'
     # unused icon expect dual
     elif active_skill_effect_type in [243]: 
         cactive_skill_icon = "X^"
@@ -1430,8 +1458,11 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cactive_ability_skill_icon = 'YG'
     else:
         cactive_ability_skill_icon = "+H"
-        
-    if rarity_card == "SR":
+
+    if active_skill_chance_percent is not None:
+        zactive_logic = int(active_skill_chance_percent * 100)
+        cactive_chance_percent = zactive_logic
+    elif rarity_card == "SR":
         cactive_sp_point = 150
         cactive_chance_percent = 3000
     elif rarity_card == "UR" or rarity_card == "FES" or rarity_card == "PARTY":
@@ -1497,12 +1528,22 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_4_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect4, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
     cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_5_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect5, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
     # m_passive_skill
-    passive_skill_1_masterdata = generate_unique_activeskill_b1_id(cursor)
-    passive_skill_2_masterdata = generate_unique_activeskill_b2_id(cursor)
-    passive_skill_3_masterdata = generate_unique_activeskill_b3_id(cursor)
-    passive_skill_4_masterdata = generate_unique_activeskill_b4_id(cursor)
-    passive_skill_5_masterdata = generate_unique_activeskill_b5_id(cursor)
-    passive_skill_ab1_masterdata = generate_unique_activeskill_ab1_id(cursor)
+    if id_passive_skill is None:
+        passive_skill_1_masterdata = generate_unique_activeskill_b1_id(cursor)
+        passive_skill_2_masterdata = generate_unique_activeskill_b2_id(cursor)
+        passive_skill_3_masterdata = generate_unique_activeskill_b3_id(cursor)
+        passive_skill_4_masterdata = generate_unique_activeskill_b4_id(cursor)
+        passive_skill_5_masterdata = generate_unique_activeskill_b5_id(cursor)
+    else:
+        passive_skill_1_masterdata = str(id_passive_skill) + "01"
+        passive_skill_2_masterdata = str(id_passive_skill) + "02"
+        passive_skill_3_masterdata = str(id_passive_skill) + "03"
+        passive_skill_4_masterdata = str(id_passive_skill) + "04"
+        passive_skill_5_masterdata = str(id_passive_skill) + "05"
+    if id_active_skill_ability is None:
+        passive_skill_ab1_masterdata = generate_unique_activeskill_ab1_id(cursor)
+    else:
+        passive_skill_ab1_masterdata = str(id_active_skill_ability) + "01"
     passive_skill_dictionary_masterdata_1 = "k.passive_skill_name_" + str(passive_skill_1_masterdata)
     passive_skill_dictionary_masterdata_2 = "k.passive_skill_name_" + str(passive_skill_2_masterdata)
     passive_skill_dictionary_masterdata_3 = "k.passive_skill_name_" + str(passive_skill_3_masterdata)
@@ -1577,8 +1618,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_5_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect5, passive_skill_effect_calculation_type, donot_insert))
     cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_ab1_masterdata, active_skill_ability_effect_target_parameter, active_skill_ability_effect_type, active_skill_ability_effect_value, active_skill_ability_effect_calculation_type, donot_insert, active_skill_ability_effect_finish_type, active_skill_ability_effect_finish_value))
     if rarity_card == "PARTY":
-        passive_skill_6_masterdata = generate_unique_activeskill_b5_id(cursor)
-        passive_skill_7_masterdata = generate_unique_activeskill_b5_id(cursor)
+        if id_passive_skill is None:
+            passive_skill_6_masterdata = generate_unique_activeskill_b5_id(cursor)
+            passive_skill_7_masterdata = generate_unique_activeskill_b5_id(cursor)
+        else:
+            passive_skill_6_masterdata = str(id_passive_skill) + "06"
+            passive_skill_7_masterdata = str(id_passive_skill) + "07"
         passive_skill_dictionary_masterdata_6 = "k.passive_skill_name_" + str(passive_skill_6_masterdata)
         passive_skill_dictionary_masterdata_7 = "k.passive_skill_name_" + str(passive_skill_7_masterdata)
         passive_skill_dictionary_desc6_masterdata = "k.passive_skill_description_" + str(passive_skill_6_masterdata)
@@ -1601,25 +1646,6 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cursor.execute("INSERT INTO main.m_card_passive_skill_original (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '7', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_7, passive_skill_7_masterdata))
         
     # m_card
-    if rarity_card == "SR":
-        caddon_rarity = 20
-        caddon_sp = 2
-        caddon_exchange_item_id = 2
-        caddon_passive_slot = 1
-        caddon_passive_slot_max = 3
-    elif rarity_card == "UR":
-        caddon_rarity = 30
-        caddon_sp = 3
-        caddon_exchange_item_id = 3
-        caddon_passive_slot = 1
-        caddon_passive_slot_max = 3
-    elif rarity_card == "FES" or rarity_card == "PARTY":
-        caddon_rarity = 30
-        caddon_sp = 4
-        caddon_exchange_item_id = 3
-        caddon_passive_slot = 2
-        caddon_passive_slot_max = 4
-        
     if is_gacha1_or_event2_card == 1:
         caddon_flag_gacha = 1
         caddon_flag_event = 0
@@ -1742,8 +1768,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, max_level_card, zcard_max_appeal, zcard_max_stamina, zcard_max_technique))
     
     # m_gacha_card_performance
-    card_serif_dictionary_masterdata = "k.gacha" + str(sheet_name_file)
-    card_serif_dictionary = "gacha" + str(sheet_name_file)
+    card_serif_dictionary_masterdata = "k.gacha_" + str(sheet_name_file)
+    card_serif_dictionary = "gacha_" + str(sheet_name_file)
     if rarity_card == "UR":
         if chara_id == 1:
             cursor.execute("INSERT INTO main.m_gacha_card_performance (card_master_id, voice, serif, sign_movie_asset_path) VALUES (?, ?, ?, 'uPV');", (card_id_masterdata, sheet_name_file, card_serif_dictionary_masterdata))
@@ -2411,10 +2437,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
             
     # m_training_tree_card_story_side
     ## will return as R character because there is no way to create new one
-    story_side_id_masterdata = generate_unique_storyside_id(cursor)
+    id_card_str_combined = str(card_id_masterdata)
+    id_split3_str = id_card_str_combined[0] + id_card_str_combined[2:]
+    story_side_id_masterdata = str(id_split3_str) + "1"
     cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '11', '1', ?);", (card_id_masterdata, story_side_id_masterdata))
     if rarity_card == "UR" or rarity_card == "FES" or rarity_card == "PARTY":
-        story_side2_id_masterdata = generate_unique_storyside2_id(cursor)
+        story_side2_id_masterdata = str(id_split3_str) + "2"
         cursor.execute("INSERT INTO main.m_training_tree_card_story_side (card_m_id, training_content_type, training_content_no, story_side_m_id) VALUES (?, '9', '1', ?);", (card_id_masterdata, story_side2_id_masterdata))
         
     # m_training_tree_card_suit
@@ -2474,7 +2502,6 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
 with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor = conn.cursor()
     exec(keyload_en)
-    # dynamic skill description is not implemented, please remember
     # convert value for information
     active_skill_effect_value = str(active_skill_effect_value / 100) + "%"
     cactive_skill_logic_effect2 = str(cactive_skill_logic_effect2 / 100) + "%"
@@ -2610,7 +2637,8 @@ with sqlite3.connect('serverdata.db') as conn:
     row = cursor.fetchone()
     if row:
         client_gacha_json = json.loads(row[0])  # Convert JSON string to Python dictionary
-        client_gacha_json['card_master_id'] = card_id_masterdata  # Update the card_master_id
+        for appeal in client_gacha_json['gacha_appeals']:
+            appeal['card_master_id'] = card_id_masterdata
         updated_client_gacha = json.dumps(client_gacha_json)  # Convert Python dictionary to JSON string
 
         # Update the row with the modified JSON data
@@ -2637,18 +2665,20 @@ with sqlite3.connect('serverdata.db') as conn:
     #json_string_costume = json.dumps(json_data_costume)
 
     #cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, '1200', ?, 'null', ?);", (trade_id_into_json, costume_price_val, json_string_costume))
-    print("added to gold exchange shop")
+    print("added to gacha banner")
 
 with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
     cursor = conn.cursor()
     
     donot_insert = None
     package_key_costume = "suit:" + str(card_id_masterdata)
+    package_key_card = "card:" + str(card_id_masterdata)
     package_key_thumbnail = "main"
     category_costume = '3'
     category_thumbnail = '8'
     fresh_version = hashlib.sha1(str(random.random()).encode()).hexdigest()
     fresh_version_main = hashlib.sha1(str(random.random()).encode()).hexdigest()
+    fresh_version_card = hashlib.sha1(str(random.random()).encode()).hexdigest()
     
     cursor.execute("SELECT COUNT(*) FROM main.m_asset_package_mapping WHERE package_key = 'main';")
     get_main_asset = cursor.fetchone()[0]
@@ -2688,9 +2718,11 @@ with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
         cursor.execute("INSERT INTO main.m_asset_package_mapping (package_key, pack_name, file_size, metapack_name, metapack_offset, category) VALUES (?, ?, ?, ?, '0', '6');",
                     (package_key_thumbnail, active_skill_voice_filename, active_skill_voice_filesize, donot_insert))
         cursor.execute("INSERT INTO main.m_asset_package_mapping (package_key, pack_name, file_size, metapack_name, metapack_offset, category) VALUES (?, ?, ?, ?, '0', '6');",
-                    (package_key_thumbnail, card_gacha_voice_filename, card_gacha_voice_filesize, donot_insert))
+                    (package_key_card, card_gacha_voice_filename, card_gacha_voice_filesize, donot_insert))
         cursor.execute("REPLACE INTO main.m_asset_package (package_key, version, pack_num) VALUES ('main', ?, ?);",
                     (fresh_version_main, update_main_asset_ur))
+        cursor.execute("INSERT INTO main.m_asset_package (package_key, version, pack_num) VALUES (?, ?, '1');",
+                    (fresh_version_card, fresh_version_card))
     else:
         cursor.execute("INSERT INTO main.m_asset_package_mapping (package_key, pack_name, file_size, metapack_name, metapack_offset, category) VALUES (?, ?, ?, ?, '0', ?);",
                     (package_key_thumbnail, thumbnail_costume_filename, thumbnail_costume_size, donot_insert, category_thumbnail))

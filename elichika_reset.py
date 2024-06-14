@@ -1,4 +1,5 @@
 ﻿import os
+import sys
 import shutil
 
 folder_path = "assets/stages/"
@@ -2832,6 +2833,7 @@ file_ignore_to_delete = '''
 
 file_ignore_to_delete2 = '''
 assets
+encrypted
 '''
 
 # Split the string into a list based on newline characters
@@ -2843,14 +2845,19 @@ all_files = os.listdir(folder_path)
 all_files2 = os.listdir(folder_path2)
 
 # Delete files not in the ignore list
-for file_name in all_files:
-    if file_name not in ignore_list:
-        file_path = os.path.join(folder_path, file_name)
-        os.remove(file_path)
-        
+if "-nostage" not in sys.argv:
+    print("Removing additional stage")
+    for file_name in all_files:
+        if file_name not in ignore_list:
+            file_path = os.path.join(folder_path, file_name)
+            os.remove(file_path)
+else:
+    print("Skipping stages folder")
+
+print("Removing cache database")        
 for file_name2 in all_files2:
     if file_name2 not in ignore_list2:
         file_path2 = os.path.join(folder_path2, file_name2)
         shutil.rmtree(file_path2)
 
-print("Additional Stages & DB deleted successfully.")
+print("DONE")
