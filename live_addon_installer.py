@@ -92,16 +92,16 @@ attribute_live = 9
 	# 9 - Untyped / Unknown
 
 note_emit_msec_easy = 3620
-note_stamina_damage_easy = 25
-evaluation_score_easy = 2500000
+note_stamina_damage_easy = 100
+evaluation_score_easy = None
 
 note_emit_msec_normal = 3077
-note_stamina_damage_normal = 50
-evaluation_score_normal = 5000000
+note_stamina_damage_normal = 200
+evaluation_score_normal = None
 
 note_emit_msec_hard = 2534
-note_stamina_damage_hard = 100
-evaluation_score_hard = 10000000
+note_stamina_damage_hard = 300
+evaluation_score_hard = None
 
 check_json_config = "config.json"
 
@@ -1176,6 +1176,14 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
             json.dump(data_difff3, difficult_file3, indent=2)
     
     # score logic
+    # automatic setup score based on note count
+    if evaluation_score_easy is None:
+        evaluation_score_easy = int(id_count_easy * 6250)
+    if evaluation_score_normal is None:
+        evaluation_score_normal = int(id_count_normal * 12500)
+    if evaluation_score_hard is None:
+        evaluation_score_hard = int(id_count_hard * 25000)
+        
     evaluation_a_score_easy = int(evaluation_score_easy * 0.75)
     evaluation_b_score_easy = int(evaluation_score_easy * 0.5)
     evaluation_c_score_easy = int(evaluation_score_easy * 0.25)

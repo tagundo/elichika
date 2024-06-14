@@ -1335,7 +1335,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     else:
         id_card_str = str(id_card)
         id_card_split1 = int(id_card_str[:2])
-        id_card_split2 = int(id_card_str[2:])
+        id_card_split2 = int(id_card_str[1:])
         if 1 <= chara_id <= 9:
             id_chara_card_id = "00" + str(chara_id)
         else:
@@ -1381,41 +1381,44 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     
     # -- Skill Icon Red Label --
     ## Appeal Buff still no set up
-    if active_skill_effect_type in [None]:
-        cactive_skill_icon = '"4' # Critical Activation
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "'I" # Restore Heart
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "9^L" # Critival VO & Activation
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = ":" # Shield
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "<jy" # Shield & Heart
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "Ee" # Damage Reducion
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "Gpc" # VO & SP Gauge
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "IT" # VO
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "K9" # Appeal
-    elif active_skill_effect_type in [None]:
+    ## these condition seem duplicate
+    if active_skill_effect_type in [20]:
+        cactive_skill_icon = '"4'
+    elif active_skill_effect_type in [5, 97, 16]:
+        cactive_skill_icon = "'I"
+    elif active_skill_effect_type in [17]:
+        cactive_skill_icon = "*|"
+    elif active_skill_effect_type in [21]:
+        cactive_skill_icon = "9^L"   
+    elif active_skill_effect_type in [4, 14, 94]:
+        cactive_skill_icon = ":"   
+    elif active_skill_effect_type in [116]:
+        cactive_skill_icon = "<jy"   
+    elif active_skill_effect_type in [6]:
+        cactive_skill_icon = "Ee"   
+    elif active_skill_effect_type in [91]:
+        cactive_skill_icon = "Gpc"   
+    elif active_skill_effect_type in [2, 90]:
+        cactive_skill_icon = "IT" 
+    elif active_skill_effect_type in [17]:
+        cactive_skill_icon = "K9" 
+    elif active_skill_effect_type in [21]:
         left_slash_fix = 92
-        cactive_skill_icon = "K" + chr(left_slash_fix) # Critical VO
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "QF" # VO Gauge
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "_]" # SP
-    elif active_skill_effect_type in [None]:
+        cactive_skill_icon = 'K' + chr(left_slash_fix) 
+    elif active_skill_effect_type in [23, 25, 108]:
+        cactive_skill_icon = "QF" 
+    elif active_skill_effect_type in [19]:
+        cactive_skill_icon = "_]" 
+    elif active_skill_effect_type in [3, 91]:
         cactive_skill_icon = 'd"'
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "py"
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "r1"
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "}8}"
-    elif active_skill_effect_type in [None]:
-        cactive_skill_icon = "~."
+    elif active_skill_effect_type in [22]:
+        cactive_skill_icon = 'py'
+    elif active_skill_effect_type in [17]:
+        cactive_skill_icon = 'r1'
+    elif active_skill_effect_type in [20]:
+        cactive_skill_icon = '}8}'
+    elif active_skill_effect_type in [18]:
+        cactive_skill_icon = '~.'
     # unused icon expect dual
     elif active_skill_effect_type in [243]: 
         cactive_skill_icon = "X^"
