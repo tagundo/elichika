@@ -9,9 +9,10 @@ while true; do
     echo "1. Run Server"
     echo "2. Update Version"
     echo "3. Reset Server"
-    echo "4. Switch CDN to LocalHost"
-    echo "5. Switch CDN to Catfolk"
-    echo "6. Developer Menu"
+    echo "4. Clear Cache Database"
+    echo "5. Switch CDN to LocalHost"
+    echo "6. Switch CDN to Catfolk"
+    echo "7. Developer Menu"
     echo "0. Exit"
 
     read -p "Enter your choice: " option
@@ -58,20 +59,25 @@ while true; do
 			exit 0
             ;;
         4)
+			clear
+			python elichika_reset.py -nostage
+            read -p "Press Enter to continue..." _dummy15sz35
+            ;;
+        5)
             clear
 			pkill elichika
             sed -i 's#https://llsifas.catfolk.party/static/#http://127.0.0.1:8080/static#g' "config.json"
             echo "Switched To LocalHost"
             read -p "Press Enter to continue..." _dummy15555
             ;;
-        5)
+        6)
             clear
             pkill elichika
             sed -i 's#http://127.0.0.1:8080/static#https://llsifas.catfolk.party/static/#g' "config.json"
             echo "Switched To Catfolk"
             read -p "Press Enter to continue..." _dummy15235
             ;;
-        6)
+        7)
             # Dev Menu
             while true; do
                 clear
