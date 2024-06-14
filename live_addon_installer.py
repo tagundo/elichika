@@ -358,6 +358,12 @@ else :
     shutil.rmtree(temp_directory, ignore_errors=True)
     sys.exit(1)
 
+do_backup_is_important = input("would you like backup database? (y/n): ")
+if do_backup_is_important == "y" :
+    backup_operate(filelist)
+else :
+    print('well then do your own risk')
+
 start_encrypt1 = temp_directory + music_file
 start_encrypt2 = temp_directory + music_sabi_file
 start_encrypt3 = temp_directory + thumbnail_file
