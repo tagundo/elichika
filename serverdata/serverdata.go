@@ -43,6 +43,8 @@ func InitTables(overwrite bool) {
 	InitTable("s_login_bonus_reward_day", LoginBonusRewardDay{}, overwrite)
 	InitTable("s_login_bonus_reward_content", LoginBonusRewardContent{}, overwrite)
 	InitTable("s_ng_word", NgWord{}, overwrite)
+	InitTable("s_daily_theater", DailyTheater{}, overwrite)
+	InitTable("s_daily_theater_member", DailyTheaterMember{}, overwrite)
 }
 
 func AutoInsert() {
@@ -70,6 +72,11 @@ func AutoInsert() {
 	utils.CheckErr(err)
 	if total == 0 {
 		InitialiseNgWord(session)
+	}
+	total, err = session.Table("s_daily_theater").Count()
+	utils.CheckErr(err)
+	if total == 0 {
+		InitialiseDailyTheater(session)
 	}
 	session.Commit()
 }
