@@ -49,7 +49,6 @@ filelist = [
 
 # init code
 id_live = None
-id_music = None
 id_emblem = None
 id_mission1 = None
 id_mission2 = None
@@ -641,16 +640,14 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
         music_diff2_masterdata = generate_unique_music_id2(cursor)
         music_diff3_masterdata = generate_unique_music_id3(cursor)
     else:
+        id_live_str = str(id_live)
+        id_live_split1 = int(id_live_str[1:])
         live_id_masterdata = id_live
+        music_id_masterdata = id_live_split1
         music_diff1_masterdata = str(id_live) + "101"
         music_diff2_masterdata = str(id_live) + "201"
         music_diff3_masterdata = str(id_live) + "301"
-        
-    if id_music is None:
-        music_id_masterdata = generate_unique_music_id(cursor)
-    else:
-        music_id_masterdata = id_music
-        
+                
     if id_emblem is None:
         emblem_id_masterdata = generate_unique_emblem_id(cursor)
     else:
@@ -1184,11 +1181,11 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     # score logic
     # automatic setup score based on note count
     if evaluation_score_easy is None:
-        evaluation_score_easy = int(id_count_easy * 6250)
+        evaluation_score_easy = int(id_count_easy * 12500)
     if evaluation_score_normal is None:
-        evaluation_score_normal = int(id_count_normal * 12500)
+        evaluation_score_normal = int(id_count_normal * 25000)
     if evaluation_score_hard is None:
-        evaluation_score_hard = int(id_count_hard * 25000)
+        evaluation_score_hard = int(id_count_hard * 50000)
         
     evaluation_a_score_easy = int(evaluation_score_easy * 0.75)
     evaluation_b_score_easy = int(evaluation_score_easy * 0.5)
