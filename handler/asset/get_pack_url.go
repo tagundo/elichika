@@ -40,7 +40,7 @@ func getPackUrl(ctx *gin.Context) {
 		assetPack := session.Gamedata.AssetPack[pack]
 		if assetPack != nil {
 			resp.UrlList.Append(host + "/" + assetPack.MasterVersion + "/" + pack)
-		} else if host != "https://llsifas.catfolk.party/static/" {
+		} else if *config.Conf.CdnServer != "https://llsifas.catfolk.party/static/" {
 			resp.UrlList.Append(host + "/" + "assets" + "/" + pack)
 		} else {
 			resp.UrlList.Append(host + "/" + cdnMasterVersion + "/" + pack)

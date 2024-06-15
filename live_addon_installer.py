@@ -636,6 +636,7 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
 
     if id_live is None:
         live_id_masterdata = generate_unique_live_id(cursor)
+        music_id_masterdata = generate_unique_music_id(cursor)
         music_diff1_masterdata = generate_unique_music_id1(cursor)
         music_diff2_masterdata = generate_unique_music_id2(cursor)
         music_diff3_masterdata = generate_unique_music_id3(cursor)
