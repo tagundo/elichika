@@ -112,7 +112,6 @@ active_skill_target_id1 = 1
 ## skill effect
 active_skill_effect_target_parameter = 2 # common attack
 active_skill_effect_type = 1
-active_skill_effect_calculation_type = 2 # calculate by add+ (1) or scale 0.{value} (2)
 active_skill_effect_finish_type = 255
 active_skill_effect_finish_value = 0
 active_skill_effect_value = 0
@@ -124,7 +123,6 @@ passive_skill_target_id1 = 1
 
 ## skill effect
 passive_skill_effect_type = 9 # 9 - 16
-passive_skill_effect_calculation_type = 2 # calculate by add+ (1) or scale 0.{value} (2)
 passive_skill_effect_value = 0
 passive_skill_effect_value_step_up = 0
 
@@ -139,7 +137,6 @@ active_skill_ability_target_id1 = 1
 ## skill effect
 active_skill_ability_effect_target_parameter = 2 # common attack
 active_skill_ability_effect_type = 1
-active_skill_ability_effect_calculation_type = 2 # calculate by add (1) or scale 0.{value} (2)
 active_skill_ability_effect_finish_type = 255
 active_skill_ability_effect_finish_value = 0
 active_skill_ability_effect_value = 0
@@ -1343,14 +1340,24 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         card_id_masterdata = str(id_card_split1) + str(id_chara_card_id) + str(caddon_rarity) + str(id_card_split2)
     min_level_card = 1
     max_level_card = 100
-    
-    active_skill_effect_value = int(active_skill_effect_value * 100)
-    active_skill_effect_value_step_up = int(active_skill_effect_value_step_up * 100)
-    active_skill_ability_effect_value = int(active_skill_ability_effect_value * 100)
+
+    if active_skill_effect_type == 8:
+        cactive_skill_calculation_type = 1
+    else:
+        active_skill_effect_value = int(active_skill_effect_value * 100)
+        active_skill_effect_value_step_up = int(active_skill_effect_value_step_up * 100)
+        active_skill_ability_effect_value = int(active_skill_ability_effect_value * 100)
+        cactive_skill_calculation_type = 2
+        
+    if active_skill_ability_effect_type == 8:
+        cactive_skill_ability_calculation_type = 1
+    else:
+        active_skill_ability_chance_logic = int(active_skill_ability_chance_percent * 100)
+        cactive_skill_ability_calculation_type = 2
+
     passive_skill_effect_value = int(passive_skill_effect_value * 100)
     passive_skill_effect_value_step_up = int(passive_skill_effect_value_step_up * 100)
-    active_skill_ability_chance_logic = int(active_skill_ability_chance_percent * 100)
-    
+
     # m_active_skill
     if id_active_skill is None:
         active_skill_1_masterdata = generate_unique_activeskill_1_id(cursor)
@@ -1556,11 +1563,11 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cactive_skill_logic_effect3 = active_skill_effect_value + active_skill_effect_value_step_up * 2
     cactive_skill_logic_effect4 = active_skill_effect_value + active_skill_effect_value_step_up * 3
     cactive_skill_logic_effect5 = active_skill_effect_value + active_skill_effect_value_step_up * 4
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_1_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, active_skill_effect_value, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_2_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect2, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_3_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect3, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_4_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect4, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_5_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect5, active_skill_effect_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_1_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, active_skill_effect_value, cactive_skill_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_2_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect2, cactive_skill_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_3_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect3, cactive_skill_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_4_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect4, cactive_skill_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '2', ?, ?, ?);", (active_skill_5_masterdata, active_skill_effect_target_parameter, active_skill_effect_type, cactive_skill_logic_effect5, cactive_skill_calculation_type, donot_insert, active_skill_effect_finish_type, active_skill_effect_finish_value))
     # m_passive_skill
     if id_passive_skill is None:
         passive_skill_1_masterdata = generate_unique_activeskill_b1_id(cursor)
@@ -1645,12 +1652,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cpassive_skill_logic_effect3 = passive_skill_effect_value + passive_skill_effect_value_step_up * 2
     cpassive_skill_logic_effect4 = passive_skill_effect_value + passive_skill_effect_value_step_up * 3
     cpassive_skill_logic_effect5 = passive_skill_effect_value + passive_skill_effect_value_step_up * 4
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_1_masterdata, passive_skill_effect_type, passive_skill_effect_value, passive_skill_effect_calculation_type, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_2_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect2, passive_skill_effect_calculation_type, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_3_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect3, passive_skill_effect_calculation_type, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_4_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect4, passive_skill_effect_calculation_type, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_5_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect5, passive_skill_effect_calculation_type, donot_insert))
-    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_ab1_masterdata, active_skill_ability_effect_target_parameter, active_skill_ability_effect_type, active_skill_ability_effect_value, active_skill_ability_effect_calculation_type, donot_insert, active_skill_ability_effect_finish_type, active_skill_ability_effect_finish_value))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', '2', '1', ?, '255', '0');", (passive_skill_1_masterdata, passive_skill_effect_type, passive_skill_effect_value, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', '2', '1', ?, '255', '0');", (passive_skill_2_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect2, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', '2', '1', ?, '255', '0');", (passive_skill_3_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect3, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', '2', '1', ?, '255', '0');", (passive_skill_4_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect4, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', '2', '1', ?, '255', '0');", (passive_skill_5_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect5, donot_insert))
+    cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, ?, ?, ?, '2', ?, '1', ?, ?, ?);", (passive_skill_ab1_masterdata, active_skill_ability_effect_target_parameter, active_skill_ability_effect_type, active_skill_ability_effect_value, cactive_skill_ability_calculation_type, donot_insert, active_skill_ability_effect_finish_type, active_skill_ability_effect_finish_value))
     if rarity_card == "PARTY":
         if id_passive_skill is None:
             passive_skill_6_masterdata = generate_unique_activeskill_b5_id(cursor)
@@ -1674,8 +1681,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         cursor.execute("INSERT INTO main.m_skill (id, evaluation_param, skill_target_master_id1, skill_target_master_id2, skill_effect_master_id1, skill_effect_master_id2) VALUES (?, ?, ?, ?, ?, ?);", (passive_skill_7_masterdata, cpassive_skill_evaluation7_logic, passive_skill_target_id1, donot_insert, passive_skill_7_masterdata, donot_insert))
         cpassive_skill_logic_effect6 = passive_skill_effect_value + passive_skill_effect_value_step_up * 5
         cpassive_skill_logic_effect7 = passive_skill_effect_value + passive_skill_effect_value_step_up * 6
-        cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_6_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect6, passive_skill_effect_calculation_type, donot_insert))
-        cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', ?, '1', ?, '255', '0');", (passive_skill_7_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect7, passive_skill_effect_calculation_type, donot_insert))
+        cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', '2', '1', ?, '255', '0');", (passive_skill_6_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect6, donot_insert))
+        cursor.execute("INSERT INTO main.m_skill_effect (id, target_parameter, effect_type, effect_value, scale_type, calc_type, timing, icon_asset_path, finish_type, finish_value) VALUES (?, '2', ?, ?, '2', '2', '1', ?, '255', '0');", (passive_skill_7_masterdata, passive_skill_effect_type, cpassive_skill_logic_effect7, donot_insert))
         cursor.execute("INSERT INTO main.m_card_passive_skill_original (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '6', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_6, passive_skill_6_masterdata))
         cursor.execute("INSERT INTO main.m_card_passive_skill_original (card_master_id, skill_level, position, name, passive_skill_master_id) VALUES (?, '7', '1', ?, ?);", (card_id_masterdata, passive_skill_dictionary_masterdata_7, passive_skill_7_masterdata))
         
@@ -2537,19 +2544,21 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor = conn.cursor()
     exec(keyload_en)
     # convert value for information
-    active_skill_effect_value = str(active_skill_effect_value / 100) + "%"
-    cactive_skill_logic_effect2 = str(cactive_skill_logic_effect2 / 100) + "%"
-    cactive_skill_logic_effect3 = str(cactive_skill_logic_effect3 / 100) + "%"
-    cactive_skill_logic_effect4 = str(cactive_skill_logic_effect4 / 100) + "%"
-    cactive_skill_logic_effect5 = str(cactive_skill_logic_effect5 / 100) + "%"
+    if active_skill_effect_type != 8:
+        active_skill_effect_value = str(active_skill_effect_value / 100) + "%"
+        cactive_skill_logic_effect2 = str(cactive_skill_logic_effect2 / 100) + "%"
+        cactive_skill_logic_effect3 = str(cactive_skill_logic_effect3 / 100) + "%"
+        cactive_skill_logic_effect4 = str(cactive_skill_logic_effect4 / 100) + "%"
+        cactive_skill_logic_effect5 = str(cactive_skill_logic_effect5 / 100) + "%"
         
     passive_skill_effect_value = str(passive_skill_effect_value / 100) + "%"
     cpassive_skill_logic_effect2 = str(cpassive_skill_logic_effect2 / 100) + "%"
     cpassive_skill_logic_effect3 = str(cpassive_skill_logic_effect3 / 100) + "%"
     cpassive_skill_logic_effect4 = str(cpassive_skill_logic_effect4 / 100) + "%"
     cpassive_skill_logic_effect5 = str(cpassive_skill_logic_effect5 / 100) + "%"
-        
-    active_skill_ability_effect_value = str(active_skill_ability_effect_value / 100) + "%"
+
+    if active_skill_ability_effect_type != 8:
+        active_skill_ability_effect_value = str(active_skill_ability_effect_value / 100) + "%"
         
     en_active_skill_ability_condition_id1 = skill_condition_dictionary.get(active_skill_ability_condition_id1)
     en_active_skill_ability_effect_type = effect_type_dictionary.get(active_skill_ability_effect_type)
