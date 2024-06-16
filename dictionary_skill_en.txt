@@ -344,9 +344,11 @@ effect_type_dictionary = {
     65: "Negate critical power lowering effects. (Does not include Base effects.)",
     66: "Negate skill activation % lowering effects. (Does not include Base effects.)",
     67: "Negate SP skill voltage lowering effects. (Does not include Base effects.)",
+	# it looks like a debuff, why this in immediate category
     68: "",
     69: "",
     70: "",
+	#
 	# ignore debuff
     71: "",
     72: "",
@@ -364,12 +366,14 @@ effect_type_dictionary = {
     82: "",
     83: "",
 	#
+	# again base bonus debuff, why this in activebasebuff category
     84: "",
     85: "",
     86: "",
     87: "",
     88: "",
     89: "",
+	#
     90: "",
     91: "",
     92: "",
