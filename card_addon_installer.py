@@ -1381,44 +1381,42 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     
     # -- Skill Icon Red Label --
     ## Appeal Buff still no set up
-    ## these condition seem duplicate
+    ## no dual skill icon
     if active_skill_effect_type in [20]:
         cactive_skill_icon = '"4'
-    elif active_skill_effect_type in [5, 97, 16]:
+    elif active_skill_effect_type in [5, 97, 116, 134]:
         cactive_skill_icon = "'I"
     elif active_skill_effect_type in [17]:
         cactive_skill_icon = "*|"
-    elif active_skill_effect_type in [21]:
-        cactive_skill_icon = "9^L"   
-    elif active_skill_effect_type in [4, 14, 94]:
-        cactive_skill_icon = ":"   
-    elif active_skill_effect_type in [116]:
-        cactive_skill_icon = "<jy"   
+    elif active_skill_effect_type in [4, 14, 94, 113, 114]:
+        cactive_skill_icon = ":"     
     elif active_skill_effect_type in [6]:
-        cactive_skill_icon = "Ee"   
-    elif active_skill_effect_type in [91]:
-        cactive_skill_icon = "Gpc"   
-    elif active_skill_effect_type in [2, 90]:
+        cactive_skill_icon = "Ee"    
+    elif active_skill_effect_type in [2, 90, 109, 110]:
         cactive_skill_icon = "IT" 
-    elif active_skill_effect_type in [17]:
+    elif active_skill_effect_type in [17, 26, 28, 119]:
         cactive_skill_icon = "K9" 
-    elif active_skill_effect_type in [21]:
+    elif active_skill_effect_type in [40, 21]:
         left_slash_fix = 92
         cactive_skill_icon = 'K' + chr(left_slash_fix) 
     elif active_skill_effect_type in [23, 25, 108]:
         cactive_skill_icon = "QF" 
-    elif active_skill_effect_type in [19]:
+    elif active_skill_effect_type in [19, 29]:
         cactive_skill_icon = "_]" 
-    elif active_skill_effect_type in [3, 91]:
+    elif active_skill_effect_type in [3, 91, 92, 111, 112]:
         cactive_skill_icon = 'd"'
-    elif active_skill_effect_type in [22]:
+    elif active_skill_effect_type in [22, 33]:
         cactive_skill_icon = 'py'
-    elif active_skill_effect_type in [17]:
-        cactive_skill_icon = 'r1'
-    elif active_skill_effect_type in [20]:
-        cactive_skill_icon = '}8}'
     elif active_skill_effect_type in [18]:
         cactive_skill_icon = '~.'
+    elif active_skill_effect_type in [106]:
+        cactive_skill_icon = "+_" 
+    elif active_skill_effect_type in [60]:
+        cactive_skill_icon = "LO" 
+    elif active_skill_effect_type in [118]:
+        cactive_skill_icon = 'N"' 
+    elif active_skill_effect_type in [261]:
+        cactive_skill_icon = 'Rj4'
     # unused icon expect dual
     elif active_skill_effect_type in [243]: 
         cactive_skill_icon = "X^"
@@ -1440,7 +1438,42 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         # use lock icon if no available
         cactive_skill_icon = "+H"
         
-    if active_skill_ability_effect_type in [243]: 
+    if active_skill_ability_effect_type in [20]:
+        cactive_ability_skill_icon = '"4'
+    elif active_skill_ability_effect_type in [5, 97, 116, 134]:
+        cactive_ability_skill_icon = "'I"
+    elif active_skill_ability_effect_type in [17]:
+        cactive_ability_skill_icon = "*|"
+    elif active_skill_ability_effect_type in [4, 14, 94, 113, 114]:
+        cactive_ability_skill_icon = ":"     
+    elif active_skill_ability_effect_type in [6]:
+        cactive_ability_skill_icon = "Ee"    
+    elif active_skill_ability_effect_type in [2, 90, 109, 110]:
+        cactive_ability_skill_icon = "IT" 
+    elif active_skill_ability_effect_type in [17, 26, 28, 119]:
+        cactive_ability_skill_icon = "K9" 
+    elif active_skill_ability_effect_type in [40, 21]:
+        cactive_ability_skill_icon = 'K' + chr(left_slash_fix) 
+    elif active_skill_ability_effect_type in [23, 25, 108]:
+        cactive_ability_skill_icon = "QF" 
+    elif active_skill_ability_effect_type in [19, 29]:
+        cactive_ability_skill_icon = "_]" 
+    elif active_skill_ability_effect_type in [3, 91, 92, 111, 112]:
+        cactive_ability_skill_icon = 'd"'
+    elif active_skill_ability_effect_type in [22, 33]:
+        cactive_ability_skill_icon = 'py'
+    elif active_skill_ability_effect_type in [18]:
+        cactive_ability_skill_icon = '~.'
+    elif active_skill_ability_effect_type in [106]:
+        cactive_ability_skill_icon = "+_" 
+    elif active_skill_ability_effect_type in [60]:
+        cactive_ability_skill_icon = "LO" 
+    elif active_skill_ability_effect_type in [118]:
+        cactive_ability_skill_icon = 'N"' 
+    elif active_skill_ability_effect_type in [261]:
+        cactive_ability_skill_icon = 'Rj4'
+    # unused icon expect dual
+    elif active_skill_ability_effect_type in [243]: 
         cactive_ability_skill_icon = "X^"
     elif active_skill_ability_effect_type in [249]:
         cactive_ability_skill_icon = "*u"
@@ -1457,6 +1490,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     elif active_skill_ability_effect_type in [8]:
         cactive_ability_skill_icon = 'YG'
     else:
+        # use lock icon if no available
         cactive_ability_skill_icon = "+H"
 
     if active_skill_chance_percent is not None:
