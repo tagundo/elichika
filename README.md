@@ -15,14 +15,24 @@ curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | ba
 ```
 
 To run a command, copy (or type) it and hit the enter button.
-### Window / Linux
-You can setup the server in a desktop machine to play on android or ios. To do this, use the same install script with termux (on Windows, run inside git bash or some other linux shell emulator):
+### PC (Windows, Linux, MacOS)
+You can setup the server in a desktop machine to play on android or ios.
+
+#### Setup manually
+Install git and go, and then use the same install script with termux (on Windows, run inside git bash or some other linux shell emulator):
 
 ```
 curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash
 ```
 
 This will leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
+
+#### Using Docker
+A [docker compose](./docker/docker-compose.yml) is provided with this repository for creating a container. More information on deploying with docker can be found [here](./docs/docker.md).
+
+Assuming you're familiar with docker, this can be a faster way of getting things working. Keep in mind that using docker, some of the step below will not apply, you should reference the docker docs instead.
+
+Thanks to [yunimoo](https://github.com/yunimoo) for preparing docker files.
 
 ## Running the server
 After installing, you need to run the server to play using the following command:

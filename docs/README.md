@@ -102,7 +102,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
 		- No reward received.
 		- Pressing help button will cause softlock.
 	- [x] Card
-		- Many skill icon is not filled.
+		- Skill icon is filled but some unused need do.
 		- Bond story & Voice navigation will return as default because there is no way to create new one.
 		- Write a LOT dictionary mapping for each language.
 		- Gacha voice doesn't not work with deretore tool?.

@@ -271,14 +271,18 @@ effect_type_name_dictionary = {
 }
 
 effect_type_dictionary = {
+	# used on R card, no need write because is USELESS
     1: "",
     2: "",
     3: "",
     4: "",
     5: "",
-    6: "",
+	#
+    6: "Reduce Stamina damage by {effect_value_per_insert}",
     7: "",
+	# fixed value combo
     8: "",
+	#
     9: "Increase base Stamina by {effect_value_per_insert}.",
     10: "Increase base Appeal by {effect_value_per_insert}.",
     11: "Increase base Technique by {effect_value_per_insert}.",
@@ -288,13 +292,13 @@ effect_type_dictionary = {
     15: "Increase base Critical Power by {effect_value_per_insert}.",
     16: "Increase base Type Effect by {effect_value_per_insert}.",
     17: "Increase Appeal by {effect_value_per_insert}",
-    18: "Increase Voltage gain by {effect_value_per_insert}",
+    18: "Increase Voltage Gain by {effect_value_per_insert}",
     19: "Increase SP Gauge Gain by {effect_value_per_insert}",
     20: "Increase Critical % by {effect_value_per_insert}",
     21: "Increase Critical Power by {effect_value_per_insert}",
     22: "Increase Skill Activation % by {effect_value_per_insert}",
     23: "Increase Voltage gained by next SP Skill by {effect_value_per_insert}",
-    24: "",
+    24: "Increase Skill Voltage Gain by {effect_value_per_insert}",
     25: "Gain {effect_value_per_insert} of max SP as SP Gauge",
     26: "Increase base Appeal by {effect_value_per_insert}",
     27: "Increase base Appeal by {effect_value_per_insert}",
@@ -314,7 +318,8 @@ effect_type_dictionary = {
     41: "Increase base critical power by {effect_value_per_insert}",
     42: "Increase base critical power by {effect_value_per_insert}",
     43: "Increase base critical power by {effect_value_per_insert}",
-    44: "",
+    44: "Increase base skill voltage gain by {effect_value_per_insert}",
+	# ignore live
     45: "",
     46: "",
     47: "",
@@ -322,6 +327,7 @@ effect_type_dictionary = {
     49: "",
     50: "",
     51: "",
+	#
     52: "Negate all increasing effects. (Does not include Base effects.)",
     53: "Negate appeal increasing effects. (Does not include Base effects.)",
     54: "Negate voltage increasing effects. (Does not include Base effects.)",
@@ -341,6 +347,7 @@ effect_type_dictionary = {
     68: "",
     69: "",
     70: "",
+	# ignore debuff
     71: "",
     72: "",
     73: "",
@@ -348,12 +355,15 @@ effect_type_dictionary = {
     75: "",
     76: "",
     77: "",
+	#
+	# ignore live
     78: "",
     79: "",
     80: "",
     81: "",
     82: "",
     83: "",
+	#
     84: "",
     85: "",
     86: "",
@@ -370,13 +380,19 @@ effect_type_dictionary = {
     97: "",
     98: "",
     99: "Lower base Stamina Damage by {effect_value_per_insert}",
+	# ignore live
     100: "",
+	#
+	# ignore debuff
     101: "",
+	#
     102: "",
     103: "",
     104: "",
+	# ignore live
     105: "",
-    106: "",
+	#
+    106: "Adds the effect to revive and restore {effect_value_per_insert} stamina when it hits 0.",
     107: "",
     108: "",
     109: "",
@@ -387,16 +403,26 @@ effect_type_dictionary = {
     114: "",
     115: "",
     116: "",
+	# ignore debuff
     117: "",
+	#
     118: "",
     119: "",
+	# ignore debuff
     120: "",
+	#
     121: "",
+	# ignore debuff
     122: "",
+	#
     123: "",
+	# ignore debuff
     124: "",
+	#
     125: "",
+	# ignore debuff
     126: "",
+	#
     127: "",
     128: "",
     129: "",
@@ -405,6 +431,7 @@ effect_type_dictionary = {
     132: "",
     133: "",
     134: "",
+	# ignore live
     135: "",
     136: "",
     137: "",
@@ -415,6 +442,7 @@ effect_type_dictionary = {
     142: "",
     143: "",
     144: "",
+	#
     145: "",
     146: "",
     147: "",
@@ -435,10 +463,13 @@ effect_type_dictionary = {
     162: "",
     163: "",
     164: "",
+	# ignore debuff
     165: "",
     166: "",
     167: "",
     168: "",
+	#
+	# ignore live
     169: "",
     170: "",
     171: "",
@@ -447,14 +478,18 @@ effect_type_dictionary = {
     174: "",
     175: "",
     176: "",
+	#
     177: "",
     178: "",
     179: "",
     180: "",
+	# ignore debuff
     181: "",
     182: "",
     183: "",
     184: "",
+	#
+	# ignore live
     185: "",
     186: "",
     187: "",
@@ -463,14 +498,18 @@ effect_type_dictionary = {
     190: "",
     191: "",
     192: "",
+	#
     193: "",
     194: "",
     195: "",
     196: "",
+	# ignore debuff
     197: "",
     198: "",
     199: "",
     200: "",
+	#
+	# ignore live
     201: "",
     202: "",
     203: "",
@@ -479,14 +518,18 @@ effect_type_dictionary = {
     206: "",
     207: "",
     208: "",
+	#
     209: "",
     210: "",
     211: "",
     212: "",
+	# ignore debuff
     213: "",
     214: "",
     215: "",
     216: "",
+	#
+	# ignore live
     217: "",
     218: "",
     219: "",
@@ -495,47 +538,78 @@ effect_type_dictionary = {
     222: "",
     223: "",
     224: "",
-    225: "",
-    226: "",
-    227: "",
+	#
+    225: "Increase Voltage gain from Strategy Switch Bonus by {effect_value_per_insert}",
+    226: "Increase Strategy Switch Bonus by {effect_value_per_insert}",
+    227: "Increase SP from Strategy Switch Bonus by {effect_value_per_insert}",
+	# ignore live
     228: "",
     229: "",
     230: "",
+	#
     231: "",
+	# ignore debuff
     232: "",
+	#
     233: "",
+	# ignore live
     234: "",
+	#
     235: "",
     236: "",
     237: "Increase Ability Activation % by {effect_value_per_insert}",
+	# ignore debuff
     238: "",
+	#
+	# ignore live
     239: "",
+	#
+	# ignore live
     240: "",
+	#
     241: "",
     242: "",
     243: "Increase Insight Skill Activation % by {effect_value_per_insert}",
+	# ignore debuff
     244: "",
+	#
+	# ignore live
     245: "",
     246: "",
+	#
     247: "",
     248: "",
     249: "Increase Accessory Skill Activation % by {effect_value_per_insert}",
+	# ignore debuff
     250: "",
+	#
+	# ignore live
     251: "",
     252: "",
+	#
     253: "",
     254: "",
     255: "Increase the limit of Voltage gained by Appeal by {effect_value_per_insert}",
+	# ignore debuff
     256: "",
+	#
     257: "Increase the limit of Base Voltage gained by Appeal by {effect_value_per_insert}",
+	# ignore debuff
     258: "",
+	#
+	# ignore live
     259: "",
     260: "",
+	#
     261: "",
     262: "",
     263: "",
+	# ignore debuff
     264: "",
+	#
+	# ignore live
     265: "",
+	#
     266: "The SP Skill gauge can be charged up to {effect_value_per_insert}",
     267: "the Voltage gained by using your SP Skill increases up to {effect_value_per_insert} based on how much of the gauge is used"
 }
