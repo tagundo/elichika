@@ -104,7 +104,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
 	- [x] Card
 		- Skill icon is filled but some unused need do.
 		- Bond story & Voice navigation will return as default because there is no way to create new one.
-		- Write a LOT dictionary mapping for each language.
+		- KO, ZH & JA dictionary skill is not writen, only english right now.
 		- Gacha voice doesn't not work with deretore tool?.
         - Training tree parameter is missing for each role.
 		- Dual skill not supported, A and B condition is doable later.
