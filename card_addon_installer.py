@@ -70,6 +70,7 @@ skill_effect_category_immediate = {2, 3, 4, 5, 8, 68, 69, 70, 90, 91, 92, 93, 94
 skill_effect_category_activebasebuff = {26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 84, 85, 86, 87, 88, 89, 99, 102, 103, 104, 257}
 skill_effect_category_immediate_remove  = {52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67}
 skill_effect_category_player = {6, 7, 23, 25, 106, 107, 108, 209, 210, 211, 212, 99, 102, 103, 104, 266, 267}
+skill_effect_category_calculation_add = [2, 3, 4, 5, 9]
 
 # init code default value (do nothing)
 id_card = None 
@@ -1341,7 +1342,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     min_level_card = 1
     max_level_card = 100
 
-    if active_skill_effect_type == 8:
+    if active_skill_effect_type in skill_effect_category_calculation_add:
         cactive_skill_calculation_type = 1
     else:
         active_skill_effect_value = int(active_skill_effect_value * 100)
@@ -1349,7 +1350,7 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         active_skill_ability_effect_value = int(active_skill_ability_effect_value * 100)
         cactive_skill_calculation_type = 2
         
-    if active_skill_ability_effect_type == 8:
+    if active_skill_ability_effect_type in skill_effect_category_calculation_add:
         cactive_skill_ability_calculation_type = 1
     else:
         active_skill_ability_chance_logic = int(active_skill_ability_chance_percent * 100)
@@ -1748,19 +1749,135 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, '0', '0', ?);", (card_id_masterdata, offset_x_awaken_logic_trimming, scale_awaken_logic_trimming))
     
     # m_skill_effect_value_count
-    ## do i know what is this used on?
-    if passive_skill_effect_type in [9999, 99999]:
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (active_skill_1_masterdata))
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (active_skill_2_masterdata))
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (active_skill_3_masterdata))
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (active_skill_4_masterdata))
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (active_skill_5_masterdata))
-    if active_skill_effect_type in [9999, 99999]:
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (passive_skill_1_masterdata))
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (passive_skill_2_masterdata))
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (passive_skill_3_masterdata))
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (passive_skill_4_masterdata))
-        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, 0, 0);", (passive_skill_5_masterdata))
+    if active_skill_ability_effect_type in [119, 121, 123, 125, 128, 130, 132, 134, 161, 162, 163, 164, 177, 178, 179, 180, 193, 194, 195, 196, 209, 210, 211, 212]:
+        zeffect_val_count0 = int(active_skill_ability_effect_value * 0)
+        zeffect_val_count1 = int(active_skill_ability_effect_value * 1)
+        zeffect_val_count2 = int(active_skill_ability_effect_value * 2)
+        zeffect_val_count3 = int(active_skill_ability_effect_value * 3)
+        zeffect_val_count4 = int(active_skill_ability_effect_value * 4)
+        zeffect_val_count5 = int(active_skill_ability_effect_value * 5)
+        zeffect_val_count6 = int(active_skill_ability_effect_value * 6)
+        zeffect_val_count7 = int(active_skill_ability_effect_value * 7)
+        zeffect_val_count8 = int(active_skill_ability_effect_value * 8)
+        zeffect_val_count9 = int(active_skill_ability_effect_value * 9)
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '0', ?);", (passive_skill_ab1_masterdata, zeffect_val_count0))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '1', ?);", (passive_skill_ab1_masterdata, zeffect_val_count1))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '2', ?);", (passive_skill_ab1_masterdata, zeffect_val_count2))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '3', ?);", (passive_skill_ab1_masterdata, zeffect_val_count3))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '4', ?);", (passive_skill_ab1_masterdata, zeffect_val_count4))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '5', ?);", (passive_skill_ab1_masterdata, zeffect_val_count5))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '6', ?);", (passive_skill_ab1_masterdata, zeffect_val_count6))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '7', ?);", (passive_skill_ab1_masterdata, zeffect_val_count7))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '8', ?);", (passive_skill_ab1_masterdata, zeffect_val_count8))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '9', ?);", (passive_skill_ab1_masterdata, zeffect_val_count9))
+    if active_skill_effect_type in [119, 121, 123, 125, 128, 130, 132, 134, 161, 162, 163, 164, 177, 178, 179, 180, 193, 194, 195, 196, 209, 210, 211, 212]:
+        lvl_zeffect_val_count0 = int(active_skill_effect_value * 0)
+        lvl_zeffect_val_count1 = int(active_skill_effect_value * 1)
+        lvl_zeffect_val_count2 = int(active_skill_effect_value * 2)
+        lvl_zeffect_val_count3 = int(active_skill_effect_value * 3)
+        lvl_zeffect_val_count4 = int(active_skill_effect_value * 4)
+        lvl_zeffect_val_count5 = int(active_skill_effect_value * 5)
+        lvl_zeffect_val_count6 = int(active_skill_effect_value * 6)
+        lvl_zeffect_val_count7 = int(active_skill_effect_value * 7)
+        lvl_zeffect_val_count8 = int(active_skill_effect_value * 8)
+        lvl_zeffect_val_count9 = int(active_skill_effect_value * 9)
+        
+        lv2_zeffect_val_count0 = int(cactive_skill_logic_effect2 * 0)
+        lv2_zeffect_val_count1 = int(cactive_skill_logic_effect2 * 1)
+        lv2_zeffect_val_count2 = int(cactive_skill_logic_effect2 * 2)
+        lv2_zeffect_val_count3 = int(cactive_skill_logic_effect2 * 3)
+        lv2_zeffect_val_count4 = int(cactive_skill_logic_effect2 * 4)
+        lv2_zeffect_val_count5 = int(cactive_skill_logic_effect2 * 5)
+        lv2_zeffect_val_count6 = int(cactive_skill_logic_effect2 * 6)
+        lv2_zeffect_val_count7 = int(cactive_skill_logic_effect2 * 7)
+        lv2_zeffect_val_count8 = int(cactive_skill_logic_effect2 * 8)
+        lv2_zeffect_val_count9 = int(cactive_skill_logic_effect2 * 9)
+        
+        lv3_zeffect_val_count0 = int(cactive_skill_logic_effect3 * 0)
+        lv3_zeffect_val_count1 = int(cactive_skill_logic_effect3 * 1)
+        lv3_zeffect_val_count2 = int(cactive_skill_logic_effect3 * 2)
+        lv3_zeffect_val_count3 = int(cactive_skill_logic_effect3 * 3)
+        lv3_zeffect_val_count4 = int(cactive_skill_logic_effect3 * 4)
+        lv3_zeffect_val_count5 = int(cactive_skill_logic_effect3 * 5)
+        lv3_zeffect_val_count6 = int(cactive_skill_logic_effect3 * 6)
+        lv3_zeffect_val_count7 = int(cactive_skill_logic_effect3 * 7)
+        lv3_zeffect_val_count8 = int(cactive_skill_logic_effect3 * 8)
+        lv3_zeffect_val_count9 = int(cactive_skill_logic_effect3 * 9)
+        
+        lv4_zeffect_val_count0 = int(cactive_skill_logic_effect4 * 0)
+        lv4_zeffect_val_count1 = int(cactive_skill_logic_effect4 * 1)
+        lv4_zeffect_val_count2 = int(cactive_skill_logic_effect4 * 2)
+        lv4_zeffect_val_count3 = int(cactive_skill_logic_effect4 * 3)
+        lv4_zeffect_val_count4 = int(cactive_skill_logic_effect4 * 4)
+        lv4_zeffect_val_count5 = int(cactive_skill_logic_effect4 * 5)
+        lv4_zeffect_val_count6 = int(cactive_skill_logic_effect4 * 6)
+        lv4_zeffect_val_count7 = int(cactive_skill_logic_effect4 * 7)
+        lv4_zeffect_val_count8 = int(cactive_skill_logic_effect4 * 8)
+        lv4_zeffect_val_count9 = int(cactive_skill_logic_effect4 * 9)
+        
+        lv5_zeffect_val_count0 = int(cactive_skill_logic_effect5 * 0)
+        lv5_zeffect_val_count1 = int(cactive_skill_logic_effect5 * 1)
+        lv5_zeffect_val_count2 = int(cactive_skill_logic_effect5 * 2)
+        lv5_zeffect_val_count3 = int(cactive_skill_logic_effect5 * 3)
+        lv5_zeffect_val_count4 = int(cactive_skill_logic_effect5 * 4)
+        lv5_zeffect_val_count5 = int(cactive_skill_logic_effect5 * 5)
+        lv5_zeffect_val_count6 = int(cactive_skill_logic_effect5 * 6)
+        lv5_zeffect_val_count7 = int(cactive_skill_logic_effect5 * 7)
+        lv5_zeffect_val_count8 = int(cactive_skill_logic_effect5 * 8)
+        lv5_zeffect_val_count9 = int(cactive_skill_logic_effect5 * 9)
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '0', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count0))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '1', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count1))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '2', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count2))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '3', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count3))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '4', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count4))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '5', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count5))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '6', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count6))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '7', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count7))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '8', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count8))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '9', ?);", (active_skill_1_masterdata, lvl_zeffect_val_count9))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '0', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count0))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '1', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count1))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '2', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count2))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '3', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count3))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '4', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count4))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '5', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count5))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '6', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count6))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '7', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count7))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '8', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count8))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '9', ?);", (active_skill_2_masterdata, lv2_zeffect_val_count9))
+    
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '0', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count0))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '1', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count1))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '2', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count2))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '3', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count3))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '4', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count4))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '5', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count5))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '6', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count6))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '7', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count7))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '8', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count8))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '9', ?);", (active_skill_3_masterdata, lv3_zeffect_val_count9))
+        
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '0', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count0))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '1', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count1))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '2', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count2))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '3', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count3))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '4', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count4))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '5', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count5))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '6', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count6))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '7', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count7))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '8', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count8))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '9', ?);", (active_skill_4_masterdata, lv4_zeffect_val_count9))
+        
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '0', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count0))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '1', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count1))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '2', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count2))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '3', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count3))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '4', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count4))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '5', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count5))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '6', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count6))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '7', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count7))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '8', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count8))
+        cursor.execute("INSERT INTO main.m_skill_effect_value_count (id, target_count, effect_value) VALUES (?, '9', ?);", (active_skill_5_masterdata, lv5_zeffect_val_count9))
     
     # m_card_awaken_parameter
     cursor.execute("INSERT INTO main.m_card_awaken_parameter (card_master_id, parameter1, parameter2, parameter3) VALUES (?, ?, ?, ?);", (card_id_masterdata, card_training_tree_awaken_stamina, card_training_tree_awaken_appeal, card_training_tree_awaken_technique))
@@ -2544,7 +2661,7 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor = conn.cursor()
     exec(keyload_en)
     # convert value for information
-    if active_skill_effect_type != 8:
+    if active_skill_effect_type not in skill_effect_category_calculation_add:
         active_skill_effect_value = str(active_skill_effect_value / 100) + "%"
         cactive_skill_logic_effect2 = str(cactive_skill_logic_effect2 / 100) + "%"
         cactive_skill_logic_effect3 = str(cactive_skill_logic_effect3 / 100) + "%"
@@ -2557,7 +2674,7 @@ with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cpassive_skill_logic_effect4 = str(cpassive_skill_logic_effect4 / 100) + "%"
     cpassive_skill_logic_effect5 = str(cpassive_skill_logic_effect5 / 100) + "%"
 
-    if active_skill_ability_effect_type != 8:
+    if active_skill_ability_effect_type not in skill_effect_category_calculation_add:
         active_skill_ability_effect_value = str(active_skill_ability_effect_value / 100) + "%"
         
     en_active_skill_ability_condition_id1 = skill_condition_dictionary.get(active_skill_ability_condition_id1)
