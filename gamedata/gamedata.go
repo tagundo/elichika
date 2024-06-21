@@ -80,7 +80,13 @@ type Gamedata struct {
 	AccessoryMeltGroup     map[int32]*AccessoryMeltGroup
 	AccessoryLevelUpItem   map[int32]*AccessoryLevelUpItem
 
+	ActivityPointRecoveryPrice []ActivityPointRecoveryPrice
+
 	AssetPack map[string]*AssetPack
+
+	BeginnerChallenge                         map[int32]*BeginnerChallenge
+	BeginnerChallengeCell                     map[int32]*BeginnerChallengeCell
+	BeginnerChallengeCellByClearConditionType map[int32][]*BeginnerChallengeCell
 
 	NgWord *NgWordNode
 

@@ -12,11 +12,13 @@ import (
 	"elichika/utils"
 
 	"encoding/json"
+	// "fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
+// this is ios exclusive, this doesn't seems to be necessary at all
 func fetchGameServiceDataBeforeLogin(ctx *gin.Context) {
 	req := request.FetchGameServiceDataBeforeLoginRequest{}
 	err := json.Unmarshal(*ctx.MustGet("reqBody").(*json.RawMessage), &req)

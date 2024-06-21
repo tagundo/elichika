@@ -131,12 +131,21 @@ Detailed explanations of some config options:
     - Default to  https://llsifas.catfolk.party/static/ (special thanks to sarah for hosting it).
     - `elichika` also has the ability to host the CDN itself:
 
-        - To do this, put the relevant files in `elichika/static`.
+        - To do this, put the relevant files in `elichika/static/assets`.
         - Then set the CDN server address to the STRING (no protocol) `elichika` (or `elichika_tls` if you're using HTTPS).
         - This will automatically use whatever the address the client reach `elichika` with as the CDN server.
         - Aside from that, you can also just use the address like normal.
         - You should look into this if you want to further develop the game/server, as doing so might require redownloading things a lot.
-    
+		
+- Resource config:
+
+    - The config of how the resources work on the server.
+    - `original` means the resources behave like it would in the original server. Every action that cost resources will consume those resources.
+    - `comfortable` is the default settings. Things like star gems, LP, AP are unlimited. The daily song play limit or the daily tap bond limit is also removed. This is the recommended settings if you just want to play and experience the game without all the money-making limitation.
+    - `free` is the free settings. Generally, resources can only go up and not down.
+    - Keep in mind that some resources/systems are not controlled by these settings, but they are pretty minor.
+    - And this doesn't apply to the accessories (but apply to the accessory items).
+
 - Default item count:
 
     - The amount of items to give a player to start with.
