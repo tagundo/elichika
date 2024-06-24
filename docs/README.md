@@ -77,7 +77,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] Working daily theater server code. 
     - [x] Working Global client with the feature enabled.
     - [x] Japanese text use network log or transcript, English text use translation (thanks to [SIFAStheatre](https://twitter.com/SIFAStheatre) and [Idol Story](https://twitter.com/idoldotst))
-    - [ ] Korean and Chinese (zh) translation is not avaialble.
+    - [ ] Korean and Chinese (zh) translations are not available. Placeholder text is in Japanese.
 - [x] User model
     - [x] Working user model.
     - [x] Working LP and AP recovery system (in original resource setting)
@@ -103,14 +103,13 @@ TODO(docs): Add specific docs for specific contents if necessary.
 		- Skill icon is filled but some unused need do.
 		- Bond story & Voice navigation will return as default because there is no way to create new one.
 		- KO, ZH & JA dictionary skill is not writen, only english right now.
-		- Gacha voice doesn't not work with deretore tool?.
+		- Playing on custom live will ended if the active skill is activated (deretore issue).
         - Training tree parameter is missing for each role.
 		- Dual skill not supported, A and B condition is doable later.
         - Only JP Client Android working right now.
 	- [ ] SBL
 		- still not implemented based on fork, do i need make script?
-	- [ ] Accessory
-		- Should make it?
+	- [ ] Accessory (not necessary)
 
 ## Importing/Exporting account
 You can use the user WebUI to export and import your account.
