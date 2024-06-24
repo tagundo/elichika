@@ -103,6 +103,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
 		- Skill icon is filled but some unused need do.
 		- Bond story & Voice navigation will return as default because there is no way to create new one.
 		- KO, ZH & JA dictionary skill is not writen, only english right now.
+		- Gacha voice is working but background music will stop immediately.
 		- Playing on custom live will ended if the active skill is activated (deretore issue).
         - Training tree parameter is missing for each role.
 		- Dual skill not supported, A and B condition is doable later.

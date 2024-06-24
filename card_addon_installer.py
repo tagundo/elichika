@@ -1739,21 +1739,28 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_card_trimming_live_deck (id, asset_path) VALUES (?, ?);", (clivedeck_id2, card_awaken_deck_path))
     
     # m_card_trimming_live_cutin
-    offset_x_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_x * 10000)
-    offset_y_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_y * 10000)
+    # invert sign of a number for photoshop
+    invert_offset_x_normal = card_normal_trimming_live_cutin_offset_x * -1
+    invert_offset_y_normal = card_awaken_trimming_live_cutin_offset_y * -1
+    invert_offset_x_awaken = card_normal_trimming_live_cutin_offset_x * -1
+    invert_offset_y_awaken = card_awaken_trimming_live_cutin_offset_y * -1
+    offset_x_normal_logic_cutin = int(invert_offset_x_normal * 10000)
+    offset_y_normal_logic_cutin = int(invert_offset_y_normal * 10000)
     rotation_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_rotation * 1000)
     scale_normal_logic_cutin = int(card_normal_trimming_live_cutin_offset_scale * 100)
-    offset_x_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_x * 10000)
-    offset_y_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_y * 10000)
-    rotation_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_rotation * 1000)
-    scale_awaken_logic_cutin = int(card_normal_trimming_live_cutin_offset_scale * 100)
+    offset_x_awaken_logic_cutin = int(invert_offset_x_awaken * 10000)
+    offset_y_awaken_logic_cutin = int(invert_offset_y_awaken * 10000)
+    rotation_awaken_logic_cutin = int(card_awaken_trimming_live_cutin_offset_rotation * 1000)
+    scale_awaken_logic_cutin = int(card_awaken_trimming_live_cutin_offset_scale * 100)
     cursor.execute("INSERT INTO main.m_card_trimming_live_cutin (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '1', ?, ?, ?, ?);", (card_id_masterdata, offset_x_normal_logic_cutin, offset_y_normal_logic_cutin, rotation_normal_logic_cutin, scale_normal_logic_cutin))
     cursor.execute("INSERT INTO main.m_card_trimming_live_cutin (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, ?, ?, ?);", (card_id_masterdata, offset_x_awaken_logic_cutin, offset_y_awaken_logic_cutin, rotation_awaken_logic_cutin, scale_awaken_logic_cutin))
     
     # m_card_trimming_profile
-    offset_x_normal_logic_trimming = int(card_normal_trimming_profile_offset_x * 10000)
+    invert_offset_x_normal_profile = card_normal_trimming_profile_offset_x * -1
+    invert_offset_x_awaken_profile = card_awaken_trimming_profile_offset_x * -1
+    offset_x_normal_logic_trimming = int(invert_offset_x_normal_profile * 10000)
     scale_normal_logic_trimming = int(card_normal_trimming_profile_offset_scale * 100)
-    offset_x_awaken_logic_trimming = int(card_awaken_trimming_profile_offset_x * 10000)
+    offset_x_awaken_logic_trimming = int(invert_offset_x_awaken_profile * 10000)
     scale_awaken_logic_trimming = int(card_awaken_trimming_profile_offset_scale * 100)
     cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '1', ?, '0', '0', ?);", (card_id_masterdata, offset_x_normal_logic_trimming, scale_normal_logic_trimming))
     cursor.execute("INSERT INTO main.m_card_trimming_profile (card_m_id, appearance_type, offset_x, offset_y, rotation, scale) VALUES (?, '2', ?, '0', '0', ?);", (card_id_masterdata, offset_x_awaken_logic_trimming, scale_awaken_logic_trimming))
