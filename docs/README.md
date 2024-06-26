@@ -94,7 +94,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [X] Working downloadable asset.
 	- [x] Costume
 	- [x] Live
-		- Cannot get information about AC & Gimmick.
+		- Appeal Chance is working expect gimmick & cannot get information about it.
 	- [x] DLP
 		- This code need improvement.
 		- No reward received.

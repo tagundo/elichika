@@ -517,8 +517,11 @@ with zipfile.ZipFile(zip_buffer, 'r') as zip_ref:
             txt_file_path = os.path.join(temp_directory, file_info.filename)
             with open(txt_file_path, 'r', encoding='utf-8') as txt_file:
                     # Read and process each line in the extracted file
-                for line in txt_file:
-                    exec(line)
+                try:
+                    file_content = txt_file.read()
+                    exec(file_content)
+                except Exception as e:
+                    print(f"Error executing file: {file_info.filename}\nError: {e}")
 
 
 

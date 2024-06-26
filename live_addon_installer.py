@@ -103,6 +103,10 @@ note_emit_msec_hard = 2534
 note_stamina_damage_hard = 300
 evaluation_score_hard = None
 
+appeal_chance_easy = None
+appeal_chance_normal = None
+appeal_chance_hard = None
+
 check_json_config = "config.json"
 
 if not os.path.exists(check_json_config):
@@ -1143,6 +1147,34 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
             if 'id' in note_easy:
                 id_count_easy += 1
 
+        # experimental AC (appeal chance)
+        if appeal_chance_easy is not None:
+            for idx_easy, entry_easy in enumerate(appeal_chance_easy):
+                id1_easy = entry_easy[0]
+                id2_easy = entry_easy[1]
+                wave_id_value_easy = idx_easy + 1  # Since wave_id starts from 1
+
+                # Update live_notes wave_id and note_type
+                for note_easy in data_difff1['live_notes']:
+                    if note_easy['id'] >= id1_easy and note_easy['id'] <= id2_easy:
+                        note_easy['wave_id'] = wave_id_value_easy
+
+                # Update note_type
+                for note_easy in data_difff1['live_notes']:
+                    if note_easy['id'] == id1_easy:
+                        note_easy['note_type'] = 4
+                    elif note_easy['id'] == id2_easy:
+                        note_easy['note_type'] = 5
+
+                # Add entry to live_wave_settings
+                data_difff1['live_wave_settings'].append({
+                    "id": wave_id_value_easy,
+                    "wave_damage": entry_easy[5],
+                    "mission_type": entry_easy[2],
+                    "arg_1": entry_easy[3],
+                    "arg_2": 0,  # Assuming this is a default value
+                    "reward_voltage": entry_easy[4]
+                })
         # live_wave_settings_easy = data_diff.get("live_wave_settings", [])
 
         # # testing get info AC
@@ -1164,7 +1196,35 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
         for note_normal in data_difff2.get('live_notes', []):
             if 'id' in note_normal:
                 id_count_normal += 1
-            
+           
+        if appeal_chance_normal is not None:
+            for idx_normal, entry_normal in enumerate(appeal_chance_normal):
+                id1_normal = entry_normal[0]
+                id2_normal = entry_normal[1]
+                wave_id_value_normal = idx_normal + 1  # Since wave_id starts from 1
+
+                # Update live_notes wave_id and note_type
+                for note_normal in data_difff2['live_notes']:
+                    if note_normal['id'] >= id1_normal and note_normal['id'] <= id2_normal:
+                        note_normal['wave_id'] = wave_id_value_normal
+
+                # Update note_type
+                for note_normal in data_difff2['live_notes']:
+                    if note_normal['id'] == id1_normal:
+                        note_normal['note_type'] = 4
+                    elif note_normal['id'] == id2_normal:
+                        note_normal['note_type'] = 5
+
+                # Add entry to live_wave_settings
+                data_difff2['live_wave_settings'].append({
+                    "id": wave_id_value_normal,
+                    "wave_damage": entry_normal[5],
+                    "mission_type": entry_normal[2],
+                    "arg_1": entry_normal[3],
+                    "arg_2": 0,  # Assuming this is a default value
+                    "reward_voltage": entry_normal[4]
+                })
+           
         with open(output_filename2, 'w') as difficult_file2:
             json.dump(data_difff2, difficult_file2, indent=2)
     
@@ -1176,6 +1236,35 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
         for note_hard in data_difff3.get('live_notes', []):
             if 'id' in note_hard:
                 id_count_hard += 1
+            
+        if appeal_chance_hard is not None:
+            for idx_hard, entry_hard in enumerate(appeal_chance_hard):
+                id1_hard = entry_hard[0]
+                id2_hard = entry_hard[1]
+                wave_id_value_hard = idx_hard + 1  # Since wave_id starts from 1
+
+                # Update live_notes wave_id and note_type
+                for note_hard in data_difff3['live_notes']:
+                    if note_hard['id'] >= id1_hard and note_hard['id'] <= id2_hard:
+                        note_hard['wave_id'] = wave_id_value_hard
+
+                # Update note_type
+                for note_hard in data_difff3['live_notes']:
+                    if note_hard['id'] == id1_hard:
+                        note_hard['note_type'] = 4
+                    elif note_hard['id'] == id2_hard:
+                        note_hard['note_type'] = 5
+
+                # Add entry to live_wave_settings
+                data_difff3['live_wave_settings'].append({
+                    "id": wave_id_value_hard,
+                    "wave_damage": entry_hard[5],
+                    "mission_type": entry_hard[2],
+                    "arg_1": entry_hard[3],
+                    "arg_2": 0,  # Assuming this is a default value
+                    "reward_voltage": entry_hard[4]
+                })
+           
             
         with open(output_filename3, 'w') as difficult_file3:
             json.dump(data_difff3, difficult_file3, indent=2)
