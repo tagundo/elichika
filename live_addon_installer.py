@@ -103,9 +103,48 @@ note_emit_msec_hard = 2534
 note_stamina_damage_hard = 300
 evaluation_score_hard = None
 
+# template Appeal Chance
+# make sure start & end note_type is 1
+
+# mission_type list
+# 1 - GotVoltage | Gain Voltage! (x)
+# 2 - JudgeSuccessGood | Get Nice or above (x) times!
+# 3 - JudgeSuccessGreat | Get Great or above (x) times!
+# 4 - JudgeSuccessPerfect | Get (x) Wonderfuls! 
+# 5 - MaxVoltage | Get Voltage in one go!
+# 6 - TriggerSp | Get (x) with an SP Skill!
+# 7 - UseCardUniq | Switch strategies and Appeal with (x) members!
+# 8 - CriticalCount | Get a critical: x(x)
+# 9 - ActiveSkillCount | Activate a skill: x(x)
+# 10 - GotHeal | Gain Stamina! (x) *unused
+# 11 - GotShield | Gain Shield! (x) *unused
+# 12 - GotVoltageByVo | Gain Voltage by Vo Card! (x) *unused
+# 13 - GotVoltageBySp | Gain Voltage by Sp Card! (x) *unused
+# 14 - GotVoltageByGd | Gain Voltage by Gd Card! (x) *unused
+# 15 - GotVoltageBySk | Gain Voltage by Sk Card! (x) *unused
+# 16 - KeepStaminaUpper | Maintain at least %(x) of your total Stamina, math arg_1 : (x) * 100
+
 appeal_chance_easy = None
 appeal_chance_normal = None
 appeal_chance_hard = None
+
+# entry format in int [note_start, note_end, mission_type, arg_1, reward_voltage, wave_damage]
+# uncomment this if you want use it
+
+# appeal_chance_easy = [
+    # [11, 20, 16, 123, 267000, 9000],
+    # [22, 30, 16, 456, 269000, 6000]
+# ]
+
+# appeal_chance_normal = [
+    # [11, 20, 16, 123, 267000, 9000],
+    # [22, 30, 16, 456, 269000, 6000]
+# ]
+
+# appeal_chance_hard = [
+    # [11, 20, 16, 123, 267000, 9000],
+    # [22, 30, 16, 456, 269000, 6000]
+# ]
 
 check_json_config = "config.json"
 
