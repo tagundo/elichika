@@ -1,5 +1,5 @@
 # elichika
-A fork of https://github.com/arina999999997/elichika & https://github.com/YumeMichi/elichika, check out the original.
+A fork of https://github.com/arina999999997/elichika based on https://github.com/YumeMichi/elichika, check out the original.
 
 ## Installing
 Note that this part concern only this server implementation, and it only provide the easiest way to do things.
@@ -180,6 +180,7 @@ Special thanks to the LL Hax community in general for:
 Even more special thanks for the specific individuals or groups (in no particular order):
 
 - YumeMichi for original elichika.
+- arina999999997 for fork elichika.
 - triangle for informations and scripts to encode/decode database, for patching the ios clients, and for daily theater logs.
 - [SIFAStheatre](https://twitter.com/SIFAStheatre) and [Idol Story](https://twitter.com/idoldotst) for Daily theater English tranlation and for the original Japanese transcript.
 - ethan for hosting various resource and hosting a public testing server.
@@ -188,4 +189,5 @@ Even more special thanks for the specific individuals or groups (in no particula
 - Suyooo for the very helpful [SIFAS wiki](https://suyo.be/sifas/wiki/), for providing more accurate stage data, and for the bad word lists.
 - sarah for hosting public Internet CDN.
 - Caret for the LL Hax discord.
+- eirumo for drawing body texture.
 - And other people who more than deserve to be here but I can't quite recall right now.
