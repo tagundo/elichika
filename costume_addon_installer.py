@@ -107,7 +107,7 @@ def generate_unique_costume_id(cursor):
 def generate_unique_trade_id(cursor):
     while True:
         new_id333 = random.randint(0, 999)
-        formatted_id = f"{new_id333:03}"
+        formatted_id = f"{channel_exchange_trade}{new_id333:03}"
         cursor.execute("SELECT COUNT(*) FROM main.m_trade_product WHERE id = ?;", (formatted_id,))
         count = cursor.fetchone()[0]
         if count == 0:
