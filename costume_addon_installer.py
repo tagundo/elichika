@@ -3995,7 +3995,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         zgenerate_id = generate_unique_trade_id(cursor)
         trade_id_into_json = str(channel_exchange_trade) + str(zgenerate_id)
     else:
-        trade_id_into_json = str(channel_exchange_trade) + str(id_trade_product)
+        formatted_id_trade_product = f"{id_trade_product:03}"
+        trade_id_into_json = str(channel_exchange_trade) + str(formatted_id_trade_product)
         
     if chara_id_append is None:
         chara_id_suit = chara_id
@@ -4132,7 +4133,7 @@ with sqlite3.connect('serverdata.db') as conn:
             costume_price_val = 200
 
         cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, ?, ?, '1', ?);", (trade_id_into_json, channel_exchange_trade, costume_price_val, json_string_costume))
-        print("added to gold exchange shop")
+        print("added to channel exchange shop")
 
 with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:
     cursor = conn.cursor()
