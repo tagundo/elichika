@@ -106,19 +106,12 @@ def generate_unique_costume_id(cursor):
             
 def generate_unique_trade_id(cursor):
     while True:
-        new_id333 = random.randint(0, 999999999)
-        cursor.execute("SELECT COUNT(*) FROM main.m_trade_product WHERE id = ?;", (new_id333,))
+        new_id333 = random.randint(0, 999)
+        formatted_id = f"{new_id333:03}"
+        cursor.execute("SELECT COUNT(*) FROM main.m_trade_product WHERE id = ?;", (formatted_id,))
         count = cursor.fetchone()[0]
         if count == 0:
-            return new_id333
-            
-def generate_unique_trade_content_id(cursor):
-    while True:
-        new_id3334 = random.randint(0, 20000000000)
-        cursor.execute("SELECT COUNT(*) FROM main.m_trade_product_content WHERE id = ?;", (new_id3334,))
-        count = cursor.fetchone()[0]
-        if count == 0:
-            return new_id3334
+            return formatted_id        
             
 def costume_path_randomhash(cursor):
     while True:
@@ -3992,15 +3985,17 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor = conn.cursor()
 
     # Generate a unique costume_id_masterdata
+    channel_exchange_trade = 50000 + int(chara_id)
     if id_costume is None:
         costume_id_masterdata = generate_unique_costume_id(cursor)
     else:
         costume_id_masterdata = id_costume
         
     if id_trade_product is None:
-        trade_id_into_json = generate_unique_trade_id(cursor)
+        zgenerate_id = generate_unique_trade_id(cursor)
+        trade_id_into_json = str(channel_exchange_trade) + str(zgenerate_id)
     else:
-        trade_id_into_json = id_trade_product
+        trade_id_into_json = str(channel_exchange_trade) + str(id_trade_product)
         
     if chara_id_append is None:
         chara_id_suit = chara_id
@@ -4086,8 +4081,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     # Insert the new record with the updated display_order
     cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                    (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_ja))
-    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, '1200', '0', ?, '1');", (trade_id_into_json, donot_insert))
-    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '1');", (trade_content_into_json, trade_id_into_json))
+    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
+    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
     cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
    
     if chara_id == 209:
@@ -4107,8 +4102,8 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     # Insert the new record with the updated display_order
     cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                    (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_gl))
-    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, '1200', '0', ?, '1');", (trade_id_into_json, donot_insert))
-    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '1');", (trade_content_into_json, trade_id_into_json))
+    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
+    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
     cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
    
     if chara_id == 209:
@@ -4134,9 +4129,9 @@ with sqlite3.connect('serverdata.db') as conn:
         if costume_free_price == "y" :
             costume_price_val = 0
         else :
-            costume_price_val = 5000000
+            costume_price_val = 200
 
-        cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, '1200', ?, 'null', ?);", (trade_id_into_json, costume_price_val, json_string_costume))
+        cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, ?, ?, '1', ?);", (trade_id_into_json, channel_exchange_trade, costume_price_val, json_string_costume))
         print("added to gold exchange shop")
 
 with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:

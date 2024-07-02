@@ -2028,10 +2028,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
         ctraining_tree_design = 33
         ctraining_tree_passive_increase = 2
         
-    if 1 <= chara_id <= 9:
-        ctraining_tree_logic = str(ctraining_tree_design) + "00" + str(chara_id) + str(role_card)
-    else:
-        ctraining_tree_logic = str(ctraining_tree_design) + str(chara_id) + str(role_card)
+    formated_chara_id = f"{chara_id:03}"
+    ctraining_tree_logic = str(ctraining_tree_design) + str(formated_chara_id) + str(role_card)
         
     cursor.execute("INSERT INTO main.m_training_tree (id, training_tree_mapping_m_id, training_tree_card_param_m_id, training_tree_card_passive_skill_increase_m_id) VALUES (?, ?, ?, ?);", (card_id_masterdata, ctraining_tree_logic, card_id_masterdata, ctraining_tree_passive_increase))
     
