@@ -1070,68 +1070,100 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
         member_mapping_live = 10001
         if attribute_live == 1:
             drop_live_item1_easy = 104100410
-            drop_live_item1_normal = 104100410
-            drop_live_item1_hard = 104100410
+            drop_live_item1_normal = 104100420
+            drop_live_item1_hard = 104100430
             drop_live_item2_easy = 100100410
-            drop_live_item2_normal = 100100410
-            drop_live_item2_hard = 100100410
+            drop_live_item2_normal = 100100420
+            drop_live_item2_hard = 100100430
             drop_live_item3_easy = 101100410
-            drop_live_item3_normal = 101100410
-            drop_live_item3_hard = 101100410
+            drop_live_item3_normal = 101100420
+            drop_live_item3_hard = 101100430
             drop_live_item4_easy = 102100410
-            drop_live_item4_normal = 102100410
-            drop_live_item4_hard = 102100410
+            drop_live_item4_normal = 102100420
+            drop_live_item4_hard = 102100430
             drop_live_item5_easy = 103100410
-            drop_live_item5_normal = 103100410
-            drop_live_item5_hard = 103100410
+            drop_live_item5_normal = 103100420
+            drop_live_item5_hard = 103100430
         elif attribute_live == 2:
             drop_live_item1_easy = 104200410
-            drop_live_item1_normal = 104200410
-            drop_live_item1_hard = 104200410
+            drop_live_item1_normal = 104200420
+            drop_live_item1_hard = 104200430
             drop_live_item2_easy = 100200410
-            drop_live_item2_normal = 100200410
-            drop_live_item2_hard = 100200410
+            drop_live_item2_normal = 100200420
+            drop_live_item2_hard = 100200430
             drop_live_item3_easy = 101200410
-            drop_live_item3_normal = 101200410
-            drop_live_item3_hard = 101200410
+            drop_live_item3_normal = 101200420
+            drop_live_item3_hard = 101200430
             drop_live_item4_easy = 102200410
-            drop_live_item4_normal = 102200410
-            drop_live_item4_hard = 102200410
+            drop_live_item4_normal = 102200420
+            drop_live_item4_hard = 102200430
             drop_live_item5_easy = 103200410
-            drop_live_item5_normal = 103200410
-            drop_live_item5_hard = 103200410
+            drop_live_item5_normal = 103200420
+            drop_live_item5_hard = 103200430
+        elif attribute_live == 3:
+            drop_live_item1_easy = 104300410
+            drop_live_item1_normal = 104300420
+            drop_live_item1_hard = 104300430
+            drop_live_item2_easy = 100300410
+            drop_live_item2_normal = 100300420
+            drop_live_item2_hard = 100300430
+            drop_live_item3_easy = 101300410
+            drop_live_item3_normal = 101300420
+            drop_live_item3_hard = 101300430
+            drop_live_item4_easy = 102300410
+            drop_live_item4_normal = 102300420
+            drop_live_item4_hard = 102300430
+            drop_live_item5_easy = 103300410
+            drop_live_item5_normal = 103300420
+            drop_live_item5_hard = 103300430
         elif attribute_live == 4:
             drop_live_item1_easy = 104400410
-            drop_live_item1_normal = 104400410
-            drop_live_item1_hard = 104400410
+            drop_live_item1_normal = 104400420
+            drop_live_item1_hard = 104400430
             drop_live_item2_easy = 100400410
-            drop_live_item2_normal = 100400410
-            drop_live_item2_hard = 100400410
+            drop_live_item2_normal = 100400420
+            drop_live_item2_hard = 100400430
             drop_live_item3_easy = 101400410
-            drop_live_item3_normal = 101400410
-            drop_live_item3_hard = 101400410
+            drop_live_item3_normal = 101400420
+            drop_live_item3_hard = 101400430
             drop_live_item4_easy = 102400410
-            drop_live_item4_normal = 102400410
-            drop_live_item4_hard = 102400410
+            drop_live_item4_normal = 102400420
+            drop_live_item4_hard = 102400430
             drop_live_item5_easy = 103400410
-            drop_live_item5_normal = 103400410
-            drop_live_item5_hard = 103400410
+            drop_live_item5_normal = 103400420
+            drop_live_item5_hard = 103400430
+        elif attribute_live == 5:
+            drop_live_item1_easy = 104500410
+            drop_live_item1_normal = 104500420
+            drop_live_item1_hard = 104500430
+            drop_live_item2_easy = 100500410
+            drop_live_item2_normal = 100500420
+            drop_live_item2_hard = 100500430
+            drop_live_item3_easy = 101500410
+            drop_live_item3_normal = 101500420
+            drop_live_item3_hard = 101500430
+            drop_live_item4_easy = 102500410
+            drop_live_item4_normal = 102500420
+            drop_live_item4_hard = 102500430
+            drop_live_item5_easy = 103500410
+            drop_live_item5_normal = 103500420
+            drop_live_item5_hard = 103500430
         elif attribute_live == 6:
             drop_live_item1_easy = 104600410
-            drop_live_item1_normal = 104600410
-            drop_live_item1_hard = 104600410
+            drop_live_item1_normal = 104600420
+            drop_live_item1_hard = 104600430
             drop_live_item2_easy = 100600410
-            drop_live_item2_normal = 100600410
-            drop_live_item2_hard = 100600410
+            drop_live_item2_normal = 100600420
+            drop_live_item2_hard = 100600430
             drop_live_item3_easy = 101600410
-            drop_live_item3_normal = 101600410
-            drop_live_item3_hard = 101600410
+            drop_live_item3_normal = 101600420
+            drop_live_item3_hard = 101600430
             drop_live_item4_easy = 102600410
-            drop_live_item4_normal = 102600410
-            drop_live_item4_hard = 102600410
+            drop_live_item4_normal = 102600420
+            drop_live_item4_hard = 102600430
             drop_live_item5_easy = 103600410
-            drop_live_item5_normal = 103600410
-            drop_live_item5_hard = 103600410
+            drop_live_item5_normal = 103600420
+            drop_live_item5_hard = 103600430
         else:
             drop_live_item1_easy = 0
             drop_live_item1_normal = 0
@@ -1168,7 +1200,6 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_live (live_id, is_2d_live, music_id, bgm_path, chorus_bgm_path, live_member_mapping_id, name, pronunciation, member_group, member_unit, original_deck_name, copyright, source, jacket_asset_path, background_asset_path, display_order) VALUES (?, '1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SI', ?);",
                    (live_id_masterdata, music_id_masterdata, sheet_name_file, sheet_name_file1, member_mapping_live, music_name_dictionary_masterdata, donot_insert, member_group_live, donot_insert, donot_insert, music_id_copyright_masterdata, donot_insert, thumbnail_music_path, display_order_new))
    
-    # liella attribute 3 & 5, union & untyped doesn't not have drop https://github.com/arina999999997/elichika/tree/master/docs#server-implement-progress
     # cannot get information AC, Note Gimmick & Live Gimmick
     # if you are dev, feel free to edit
     
@@ -1566,6 +1597,12 @@ with sqlite3.connect('assets/db/gl/dictionary_en_k.db') as conn:
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_name_dictionary_dic, music_name_en))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_id_copyright_dic, music_copyright_name_en))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (emblem_dictionary_description, message_title_en))
+    for idx_easy, entry_easy in enumerate(appeal_chance_easy):
+        wave_id_dictionary_easy = idx_easy + 1
+        wave_id_naming_easy = "live_detail_wave_mission_10001101_" + str(wave_id_value_easy_num)
+        en_appeal_chance = mission_type_name_dictionary.get(entry_easy[2])
+        cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_easy, NONE))
+        
     
 with sqlite3.connect('assets/db/gl/dictionary_ko_k.db') as conn:
     cursor = conn.cursor()
