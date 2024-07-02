@@ -4130,7 +4130,7 @@ with sqlite3.connect('serverdata.db') as conn:
         if costume_free_price == "y" :
             costume_price_val = 0
         else :
-            costume_price_val = 200
+            costume_price_val = 110
 
         cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, ?, ?, '1', ?);", (trade_id_into_json, channel_exchange_trade, costume_price_val, json_string_costume))
         print("added to channel exchange shop")
