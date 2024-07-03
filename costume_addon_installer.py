@@ -111,7 +111,7 @@ def generate_unique_trade_id(cursor):
         cursor.execute("SELECT COUNT(*) FROM main.m_trade_product WHERE id = ?;", (formatted_id,))
         count = cursor.fetchone()[0]
         if count == 0:
-            return formatted_id        
+            return new_id333        
             
 def costume_path_randomhash(cursor):
     while True:
