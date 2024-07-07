@@ -48,6 +48,15 @@ filelist = [
     "userdata.db"
 ]
 
+with open("dictionary_live_en.txt", 'r', encoding='utf-8') as key_en:
+    keyload_en = key_en.read()
+with open("dictionary_live_en.txt", 'r', encoding='utf-8') as key_ko:
+    keyload_ko = key_ko.read()
+with open("dictionary_live_en.txt", 'r', encoding='utf-8') as key_zh:
+    keyload_zh = key_zh.read()
+with open("dictionary_live_en.txt", 'r', encoding='utf-8') as key_ja:
+    keyload_ja = key_ja.read()
+
 # init code
 id_live = None
 id_emblem = None
@@ -127,23 +136,40 @@ evaluation_score_hard = None
 appeal_chance_easy = None
 appeal_chance_normal = None
 appeal_chance_hard = None
+stage_gimmick_easy = None
+stage_gimmick_normal = None
+stage_gimmick_hard = None
 
-# entry format in int [note_start, note_end, mission_type, arg_1, reward_voltage, wave_damage]
+# entry format in int [gimmick_master_id (Required, if not will softlock), skill_id_gimmick]
+# uncomment this if you want use it
+# voltage debuff as example
+
+# stage_gimmick_easy = [
+    # [None, 50094201]
+# ]
+# stage_gimmick_normal = [
+    # [None, 50094101]
+# ]
+# stage_gimmick_hard = [
+    # [None, 50071001]
+# ]
+
+# entry format in int [note_start, note_end, mission_type, arg_1, reward_voltage, wave_damage, skill_id_gimmick (50000001 is nothing)]
 # uncomment this if you want use it
 
 # appeal_chance_easy = [
-    # [11, 20, 16, 123, 267000, 9000],
-    # [22, 30, 16, 456, 269000, 6000]
+    # [11, 20, 16, 123, 267000, 9000, 50000001],
+    # [22, 30, 16, 456, 269000, 6000, 50000001]
 # ]
 
 # appeal_chance_normal = [
-    # [11, 20, 16, 123, 267000, 9000],
-    # [22, 30, 16, 456, 269000, 6000]
+    # [11, 20, 16, 123, 267000, 9000, 50000001],
+    # [22, 30, 16, 456, 269000, 6000, 50000001]
 # ]
 
 # appeal_chance_hard = [
-    # [11, 20, 16, 123, 267000, 9000],
-    # [22, 30, 16, 456, 269000, 6000]
+    # [11, 20, 16, 123, 267000, 9000, 50000001],
+    # [22, 30, 16, 456, 269000, 6000, 50000001]
 # ]
 
 check_json_config = "config.json"
@@ -218,7 +244,7 @@ def generate_unique_emblem_id(cursor):
         cursor.execute("SELECT COUNT(*) FROM main.m_emblem WHERE id = ?;", (new_id42a3113,))
         count = cursor.fetchone()[0]
         if count == 0:
-            return new_id42a3113
+            return new_id42a3113            
 
 def generate_unique_mission1_id(cursor):
     while True:
@@ -1200,7 +1226,7 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_live (live_id, is_2d_live, music_id, bgm_path, chorus_bgm_path, live_member_mapping_id, name, pronunciation, member_group, member_unit, original_deck_name, copyright, source, jacket_asset_path, background_asset_path, display_order) VALUES (?, '1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SI', ?);",
                    (live_id_masterdata, music_id_masterdata, sheet_name_file, sheet_name_file1, member_mapping_live, music_name_dictionary_masterdata, donot_insert, member_group_live, donot_insert, donot_insert, music_id_copyright_masterdata, donot_insert, thumbnail_music_path, display_order_new))
    
-    # cannot get information AC, Note Gimmick & Live Gimmick
+    # cannot get information Note Gimmick
     # if you are dev, feel free to edit
     
     saved_diffx = "assets/stages/"
@@ -1226,6 +1252,17 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 id1_easy = entry_easy[0]
                 id2_easy = entry_easy[1]
                 wave_id_value_easy = idx_easy + 1  # Since wave_id starts from 1
+                
+                # add information (cannot make new skill rn)
+                skill_ac_gimmick_easy = entry_easy[6]
+                appeal_chance_detail_easy_masterdata = f"k.live_detail_wave_mission_{music_diff1_masterdata}_{wave_id_value_easy}"
+                cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_easy,))
+                description_easy = cursor.fetchone()[0]  # Fetch the first result
+                
+                # Fetch state
+                cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_easy,))
+                state_easy = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff1_masterdata, wave_id_value_easy, state_easy, skill_ac_gimmick_easy, appeal_chance_detail_easy_masterdata, description_easy))
 
                 # Update live_notes wave_id and note_type
                 for note_easy in data_difff1['live_notes']:
@@ -1248,16 +1285,35 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     "arg_2": 0,  # Assuming this is a default value
                     "reward_voltage": entry_easy[4]
                 })
-        # live_wave_settings_easy = data_diff.get("live_wave_settings", [])
-
-        # # testing get info AC
-        # for wave_id, arg_1, mission_type, reward_voltage, wave_damage in live_wave_settings_easy:
-            # live_detail_base_add_easy = "k.live_detail_wave_gimmick_" + music_diff1_masterdata + "_" + str(wave_id)
-            # with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
-                # cursor = conn.cursor()
-                # cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, '255', '50000001', ?, ?);",
-                    # (music_diff1_masterdata, wave_id, live_detail_base_add_easy))
-            
+                
+        # add gimmick, no need dictionary insert
+        if stage_gimmick_easy is not None:
+            if 'stage_gimmick_dict' not in data_difff1:
+                data_difff1['stage_gimmick_dict'] = [2, []]
+            elif len(data_difff1['stage_gimmick_dict']) != 2:
+                data_difff1['stage_gimmick_dict'] = [2, []]
+                
+            for idx_easy_gimmick, entry_easy_gimmick in enumerate(stage_gimmick_easy):
+                id_gimmick_easy = entry_easy_gimmick[1]
+                id2_gimmick_easy = entry_easy_gimmick[0]                
+                    
+                uniq_id_easy = idx_easy_gimmick + 1001
+                
+                # add information (cannot make new skill rn)
+                cursor.execute("SELECT description FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_easy,))
+                description_gimmick_easy = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("SELECT name FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_easy,))
+                name_gimmick_easy = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("INSERT INTO main.m_live_difficulty_gimmick (id, live_difficulty_master_id, trigger_type, condition_master_id1, condition_master_id2, skill_master_id, name, description) VALUES (?, ?, '2', '1', '1', ?, ?, ?);", (id2_gimmick_easy, music_diff1_masterdata, id_gimmick_easy, name_gimmick_easy, description_gimmick_easy))
+                
+                data_difff1['stage_gimmick_dict'][1].append({
+                    "gimmick_master_id": id2_gimmick_easy,
+                    "condition_master_id_1": 1,
+                    "condition_master_id_2": 1,
+                    "skill_master_id": entry_easy_gimmick[1],
+                    "uniq_id": uniq_id_easy, 
+                })
+                
         with open(output_filename1, 'w') as difficult_file1:
             json.dump(data_difff1, difficult_file1, indent=2)
     
@@ -1275,6 +1331,15 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 id1_normal = entry_normal[0]
                 id2_normal = entry_normal[1]
                 wave_id_value_normal = idx_normal + 1  # Since wave_id starts from 1
+
+                skill_ac_gimmick_normal = entry_normal[6]
+                appeal_chance_detail_normal_masterdata = f"k.live_detail_wave_mission_{music_diff2_masterdata}_{wave_id_value_normal}"
+                cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_normal,))
+                description_normal = cursor.fetchone()[0]  # Fetch the first result
+                
+                cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_normal,))
+                state_normal = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff2_masterdata, wave_id_value_normal, state_normal, skill_ac_gimmick_normal, appeal_chance_detail_normal_masterdata, description_normal))
 
                 # Update live_notes wave_id and note_type
                 for note_normal in data_difff2['live_notes']:
@@ -1298,6 +1363,33 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     "reward_voltage": entry_normal[4]
                 })
            
+        if stage_gimmick_normal is not None:
+            if 'stage_gimmick_dict' not in data_difff2:
+                data_difff2['stage_gimmick_dict'] = [2, []]
+            elif len(data_difff2['stage_gimmick_dict']) != 2:
+                data_difff2['stage_gimmick_dict'] = [2, []]
+                
+            for idx_normal_gimmick, entry_normal_gimmick in enumerate(stage_gimmick_normal):
+                id_gimmick_normal = entry_normal_gimmick[1]
+                id2_gimmick_normal = entry_normal_gimmick[0]
+                    
+                uniq_id_normal = idx_normal_gimmick + 1001
+                
+                # add information (cannot make new skill rn)
+                cursor.execute("SELECT description FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_normal,))
+                description_gimmick_normal = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("SELECT name FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_normal,))
+                name_gimmick_normal = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("INSERT INTO main.m_live_difficulty_gimmick (id, live_difficulty_master_id, trigger_type, condition_master_id1, condition_master_id2, skill_master_id, name, description) VALUES (?, ?, '2', '1', '1', ?, ?, ?);", (id2_gimmick_normal, music_diff2_masterdata, id_gimmick_normal, name_gimmick_normal, description_gimmick_normal))
+                
+                data_difff2['stage_gimmick_dict'][1].append({
+                    "gimmick_master_id": id2_gimmick_normal,
+                    "condition_master_id_1": 1,
+                    "condition_master_id_2": 1,
+                    "skill_master_id": entry_normal_gimmick[1],
+                    "uniq_id": uniq_id_normal, 
+                })
+           
         with open(output_filename2, 'w') as difficult_file2:
             json.dump(data_difff2, difficult_file2, indent=2)
     
@@ -1315,6 +1407,15 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 id1_hard = entry_hard[0]
                 id2_hard = entry_hard[1]
                 wave_id_value_hard = idx_hard + 1  # Since wave_id starts from 1
+
+                skill_ac_gimmick_hard = entry_hard[6]
+                appeal_chance_detail_hard_masterdata = f"k.live_detail_wave_mission_{music_diff3_masterdata}_{wave_id_value_hard}"
+                cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_hard,))
+                description_hard = cursor.fetchone()[0]  # Fetch the first result
+                
+                cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_hard,))
+                state_hard = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff3_masterdata, wave_id_value_hard, state_hard, skill_ac_gimmick_hard, appeal_chance_detail_hard_masterdata, description_hard))
 
                 # Update live_notes wave_id and note_type
                 for note_hard in data_difff3['live_notes']:
@@ -1338,6 +1439,32 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     "reward_voltage": entry_hard[4]
                 })
            
+        if stage_gimmick_hard is not None:
+            if 'stage_gimmick_dict' not in data_difff3:
+                data_difff3['stage_gimmick_dict'] = [2, []]
+            elif len(data_difff3['stage_gimmick_dict']) != 2:
+                data_difff3['stage_gimmick_dict'] = [2, []]
+                
+            for idx_hard_gimmick, entry_hard_gimmick in enumerate(stage_gimmick_hard):
+                id_gimmick_hard = entry_hard_gimmick[1]
+                id2_gimmick_hard = entry_hard_gimmick[0]
+                    
+                uniq_id_hard = idx_hard_gimmick + 1001
+                
+                # add information (cannot make new skill rn)
+                cursor.execute("SELECT description FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_hard,))
+                description_gimmick_hard = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("SELECT name FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_hard,))
+                name_gimmick_hard = cursor.fetchone()[0]  # Fetch the first result
+                cursor.execute("INSERT INTO main.m_live_difficulty_gimmick (id, live_difficulty_master_id, trigger_type, condition_master_id1, condition_master_id2, skill_master_id, name, description) VALUES (?, ?, '2', '1', '1', ?, ?, ?);", (id2_gimmick_hard, music_diff3_masterdata, id_gimmick_hard, name_gimmick_hard, description_gimmick_hard))
+                
+                data_difff3['stage_gimmick_dict'][1].append({
+                    "gimmick_master_id": id2_gimmick_hard,
+                    "condition_master_id_1": 1,
+                    "condition_master_id_2": 1,
+                    "skill_master_id": entry_hard_gimmick[1],
+                    "uniq_id": uniq_id_hard, 
+                })
             
         with open(output_filename3, 'w') as difficult_file3:
             json.dump(data_difff3, difficult_file3, indent=2)
@@ -1499,6 +1626,101 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     display_order_new_ja = min_display_order_ja + 1
     display_order_new2_ja = min_display_order2_ja + 1
 
+    if appeal_chance_easy is not None:
+        for idx_easy, entry_easy in enumerate(appeal_chance_easy):
+            id1_easy = entry_easy[0]
+            id2_easy = entry_easy[1]
+            wave_id_value_easy = idx_easy + 1  # Since wave_id starts from 1
+                
+                # add information (cannot make new skill rn)
+            skill_ac_gimmick_easy = entry_easy[6]
+            appeal_chance_detail_easy_masterdata = f"k.live_detail_wave_mission_{music_diff1_masterdata}_{wave_id_value_easy}"
+            cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_easy,))
+            description_easy = cursor.fetchone()[0]  # Fetch the first result
+                
+                # Fetch state
+            cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_easy,))
+            state_easy = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff1_masterdata, wave_id_value_easy, state_easy, skill_ac_gimmick_easy, appeal_chance_detail_easy_masterdata, description_easy))
+                
+        # add gimmick, no need dictionary insert
+    if stage_gimmick_easy is not None:                
+        for idx_easy_gimmick, entry_easy_gimmick in enumerate(stage_gimmick_easy):
+            id_gimmick_easy = entry_easy_gimmick[1]
+            id2_gimmick_easy = entry_easy_gimmick[0]
+                    
+            uniq_id_easy = idx_easy_gimmick + 1001
+                
+            cursor.execute("SELECT description FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_easy,))
+            description_gimmick_easy = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("SELECT name FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_easy,))
+            name_gimmick_easy = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("INSERT INTO main.m_live_difficulty_gimmick (id, live_difficulty_master_id, trigger_type, condition_master_id1, condition_master_id2, skill_master_id, name, description) VALUES (?, ?, '2', '1', '1', ?, ?, ?);", (id2_gimmick_easy, music_diff1_masterdata, id_gimmick_easy, name_gimmick_easy, description_gimmick_easy))
+                
+    if appeal_chance_normal is not None:
+        for idx_normal, entry_normal in enumerate(appeal_chance_normal):
+            id1_normal = entry_normal[0]
+            id2_normal = entry_normal[1]
+            wave_id_value_normal = idx_normal + 1  # Since wave_id starts from 1
+                
+                # add information (cannot make new skill rn)
+            skill_ac_gimmick_normal = entry_normal[6]
+            appeal_chance_detail_normal_masterdata = f"k.live_detail_wave_mission_{music_diff2_masterdata}_{wave_id_value_normal}"
+            cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_normal,))
+            description_normal = cursor.fetchone()[0]  # Fetch the first result
+                
+                # Fetch state
+            cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_normal,))
+            state_normal = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff2_masterdata, wave_id_value_normal, state_normal, skill_ac_gimmick_normal, appeal_chance_detail_normal_masterdata, description_normal))
+                
+        # add gimmick, no need dictionary insert
+    if stage_gimmick_normal is not None:                
+        for idx_normal_gimmick, entry_normal_gimmick in enumerate(stage_gimmick_normal):
+            id_gimmick_normal = entry_normal_gimmick[1]
+            id2_gimmick_normal = entry_normal_gimmick[0]
+                    
+            uniq_id_normal = idx_normal_gimmick + 1001
+    
+                # add information (cannot make new skill rn)
+            cursor.execute("SELECT description FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_normal,))
+            description_gimmick_normal = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("SELECT name FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_normal,))
+            name_gimmick_normal = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("INSERT INTO main.m_live_difficulty_gimmick (id, live_difficulty_master_id, trigger_type, condition_master_id1, condition_master_id2, skill_master_id, name, description) VALUES (?, ?, '2', '1', '1', ?, ?, ?);", (id2_gimmick_normal, music_diff2_masterdata, id_gimmick_normal, name_gimmick_normal, description_gimmick_normal))
+
+    if appeal_chance_hard is not None:
+        for idx_hard, entry_hard in enumerate(appeal_chance_hard):
+            id1_hard = entry_hard[0]
+            id2_hard = entry_hard[1]
+            wave_id_value_hard = idx_hard + 1  # Since wave_id starts from 1
+                
+                # add information (cannot make new skill rn)
+            skill_ac_gimmick_hard = entry_hard[6]
+            appeal_chance_detail_hard_masterdata = f"k.live_detail_wave_mission_{music_diff3_masterdata}_{wave_id_value_hard}"
+            cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_hard,))
+            description_hard = cursor.fetchone()[0]  # Fetch the first result
+                
+                # Fetch state
+            cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_hard,))
+            state_hard = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff3_masterdata, wave_id_value_hard, state_hard, skill_ac_gimmick_hard, appeal_chance_detail_hard_masterdata, description_hard))
+                
+        # add gimmick, no need dictionary insert
+    if stage_gimmick_hard is not None:                
+        for idx_hard_gimmick, entry_hard_gimmick in enumerate(stage_gimmick_hard):
+            id_gimmick_hard = entry_hard_gimmick[1]
+            id2_gimmick_hard = entry_hard_gimmick[0]
+                    
+            uniq_id_hard = idx_hard_gimmick + 1001
+                
+                # add information (cannot make new skill rn)
+            cursor.execute("SELECT description FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_hard,))
+            description_gimmick_hard = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("SELECT name FROM m_live_difficulty_gimmick WHERE skill_master_id = ?", (id_gimmick_hard,))
+            name_gimmick_hard = cursor.fetchone()[0]  # Fetch the first result
+            cursor.execute("INSERT INTO main.m_live_difficulty_gimmick (id, live_difficulty_master_id, trigger_type, condition_master_id1, condition_master_id2, skill_master_id, name, description) VALUES (?, ?, '2', '1', '1', ?, ?, ?);", (id2_gimmick_hard, music_diff3_masterdata, id_gimmick_hard, name_gimmick_hard, description_gimmick_hard))
+
     cursor.execute("INSERT INTO main.m_live (live_id, is_2d_live, music_id, bgm_path, chorus_bgm_path, live_member_mapping_id, name, pronunciation, member_group, member_unit, original_deck_name, copyright, source, jacket_asset_path, background_asset_path, display_order) VALUES (?, '1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SI', ?);",
                    (live_id_masterdata, music_id_masterdata, sheet_name_file, sheet_name_file1, member_mapping_live, music_name_dictionary_masterdata, donot_insert, member_group_live, donot_insert, donot_insert, music_id_copyright_masterdata, donot_insert, thumbnail_music_path, display_order_new_ja))  
     
@@ -1593,38 +1815,180 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
      
 with sqlite3.connect('assets/db/gl/dictionary_en_k.db') as conn:
     cursor = conn.cursor()
+    exec(keyload_en)
     message_title_en = "Clear &quot;" + str(music_name_en) + "&quot; 100 times."
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_name_dictionary_dic, music_name_en))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_id_copyright_dic, music_copyright_name_en))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (emblem_dictionary_description, message_title_en))
-    for idx_easy, entry_easy in enumerate(appeal_chance_easy):
-        wave_id_dictionary_easy = idx_easy + 1
-        wave_id_naming_easy = "live_detail_wave_mission_10001101_" + str(wave_id_value_easy_num)
-        en_appeal_chance = mission_type_name_dictionary.get(entry_easy[2])
-        cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_easy, NONE))
-        
+    if appeal_chance_easy is not None:
+        for idx_easy_dict, entry_easy_dict in enumerate(appeal_chance_easy):
+            wave_id_dictionary_easy = idx_easy_dict + 1
+            wave_id_naming_easy = f"live_detail_wave_mission_{music_diff1_masterdata}_{wave_id_dictionary_easy}"
+            en_appeal_chance_easy = mission_type_name_dictionary.get(entry_easy_dict[2])
+            if entry_easy_dict[2] == 16:
+                arg1_value_easy = int(entry_easy_dict[3] / 100)
+            else:
+                arg1_value_easy = int(entry_easy_dict[3])
+            arg1_per_insert = arg1_value_easy
+            en_appeal_chance_text = f"{en_appeal_chance_easy.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_easy, en_appeal_chance_text))
+    if appeal_chance_normal is not None:
+        for idx_normal_dict, entry_normal_dict in enumerate(appeal_chance_normal):
+            wave_id_dictionary_normal = idx_normal_dict + 1
+            wave_id_naming_normal = f"live_detail_wave_mission_{music_diff2_masterdata}_{wave_id_dictionary_normal}"
+            en_appeal_chance_normal = mission_type_name_dictionary.get(entry_normal_dict[2])
+            if entry_normal_dict[2] == 16:
+                arg1_value_normal = int(entry_normal_dict[3] / 100)
+            else:
+                arg1_value_normal = int(entry_normal_dict[3])
+            arg1_per_insert = arg1_value_normal
+            en_appeal_chance_text = f"{en_appeal_chance_normal.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_normal, en_appeal_chance_text))
+    if appeal_chance_hard is not None:
+        for idx_hard_dict, entry_hard_dict in enumerate(appeal_chance_hard):
+            wave_id_dictionary_hard = idx_hard_dict + 1
+            wave_id_naming_hard = f"live_detail_wave_mission_{music_diff3_masterdata}_{wave_id_dictionary_hard}"
+            en_appeal_chance_hard = mission_type_name_dictionary.get(entry_hard_dict[2])
+            if entry_hard_dict[2] == 16:
+                arg1_value_hard = int(entry_hard_dict[3] / 100)
+            else:
+                arg1_value_hard = int(entry_hard_dict[3])
+            arg1_per_insert = arg1_value_hard
+            en_appeal_chance_text = f"{en_appeal_chance_hard.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_hard, en_appeal_chance_text))
     
 with sqlite3.connect('assets/db/gl/dictionary_ko_k.db') as conn:
     cursor = conn.cursor()
+    exec(keyload_ko)
     message_title_ko = str(music_name_ko) + " 100회 클리어"
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_name_dictionary_dic, music_name_ko))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_id_copyright_dic, music_copyright_name_ko))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (emblem_dictionary_description, message_title_ko))
-        
+    if appeal_chance_easy is not None:
+        for idx_easy_dict, entry_easy_dict in enumerate(appeal_chance_easy):
+            wave_id_dictionary_easy = idx_easy_dict + 1
+            wave_id_naming_easy = f"live_detail_wave_mission_{music_diff1_masterdata}_{wave_id_dictionary_easy}"
+            en_appeal_chance_easy = mission_type_name_dictionary.get(entry_easy_dict[2])
+            if entry_easy_dict[2] == 16:
+                arg1_value_easy = int(entry_easy_dict[3] / 100)
+            else:
+                arg1_value_easy = int(entry_easy_dict[3])
+            arg1_per_insert = arg1_value_easy
+            en_appeal_chance_text = f"{en_appeal_chance_easy.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_easy, en_appeal_chance_text))
+    if appeal_chance_normal is not None:
+        for idx_normal_dict, entry_normal_dict in enumerate(appeal_chance_normal):
+            wave_id_dictionary_normal = idx_normal_dict + 1
+            wave_id_naming_normal = f"live_detail_wave_mission_{music_diff2_masterdata}_{wave_id_dictionary_normal}"
+            en_appeal_chance_normal = mission_type_name_dictionary.get(entry_normal_dict[2])
+            if entry_normal_dict[2] == 16:
+                arg1_value_normal = int(entry_normal_dict[3] / 100)
+            else:
+                arg1_value_normal = int(entry_normal_dict[3])
+            arg1_per_insert = arg1_value_normal
+            en_appeal_chance_text = f"{en_appeal_chance_normal.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_normal, en_appeal_chance_text))
+    if appeal_chance_hard is not None:
+        for idx_hard_dict, entry_hard_dict in enumerate(appeal_chance_hard):
+            wave_id_dictionary_hard = idx_hard_dict + 1
+            wave_id_naming_hard = f"live_detail_wave_mission_{music_diff3_masterdata}_{wave_id_dictionary_hard}"
+            en_appeal_chance_hard = mission_type_name_dictionary.get(entry_hard_dict[2])
+            if entry_hard_dict[2] == 16:
+                arg1_value_hard = int(entry_hard_dict[3] / 100)
+            else:
+                arg1_value_hard = int(entry_hard_dict[3])
+            arg1_per_insert = arg1_value_hard
+            en_appeal_chance_text = f"{en_appeal_chance_hard.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_hard, en_appeal_chance_text))
+            
 with sqlite3.connect('assets/db/gl/dictionary_zh_k.db') as conn:
     cursor = conn.cursor()
+    exec(keyload_zh)
     message_title_zh = "通過100次「" + str(music_name_zh) + "」"
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_name_dictionary_dic, music_name_zh))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_id_copyright_dic, music_copyright_name_zh))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (emblem_dictionary_description, message_title_zh))
-    
+    if appeal_chance_easy is not None:
+        for idx_easy_dict, entry_easy_dict in enumerate(appeal_chance_easy):
+            wave_id_dictionary_easy = idx_easy_dict + 1
+            wave_id_naming_easy = f"live_detail_wave_mission_{music_diff1_masterdata}_{wave_id_dictionary_easy}"
+            en_appeal_chance_easy = mission_type_name_dictionary.get(entry_easy_dict[2])
+            if entry_easy_dict[2] == 16:
+                arg1_value_easy = int(entry_easy_dict[3] / 100)
+            else:
+                arg1_value_easy = int(entry_easy_dict[3])
+            arg1_per_insert = arg1_value_easy
+            en_appeal_chance_text = f"{en_appeal_chance_easy.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_easy, en_appeal_chance_text))
+    if appeal_chance_normal is not None:
+        for idx_normal_dict, entry_normal_dict in enumerate(appeal_chance_normal):
+            wave_id_dictionary_normal = idx_normal_dict + 1
+            wave_id_naming_normal = f"live_detail_wave_mission_{music_diff2_masterdata}_{wave_id_dictionary_normal}"
+            en_appeal_chance_normal = mission_type_name_dictionary.get(entry_normal_dict[2])
+            if entry_normal_dict[2] == 16:
+                arg1_value_normal = int(entry_normal_dict[3] / 100)
+            else:
+                arg1_value_normal = int(entry_normal_dict[3])
+            arg1_per_insert = arg1_value_normal
+            en_appeal_chance_text = f"{en_appeal_chance_normal.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_normal, en_appeal_chance_text))
+    if appeal_chance_hard is not None:
+        for idx_hard_dict, entry_hard_dict in enumerate(appeal_chance_hard):
+            wave_id_dictionary_hard = idx_hard_dict + 1
+            wave_id_naming_hard = f"live_detail_wave_mission_{music_diff3_masterdata}_{wave_id_dictionary_hard}"
+            en_appeal_chance_hard = mission_type_name_dictionary.get(entry_hard_dict[2])
+            if entry_hard_dict[2] == 16:
+                arg1_value_hard = int(entry_hard_dict[3] / 100)
+            else:
+                arg1_value_hard = int(entry_hard_dict[3])
+            arg1_per_insert = arg1_value_hard
+            en_appeal_chance_text = f"{en_appeal_chance_hard.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_hard, en_appeal_chance_text))
+            
 with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
     cursor = conn.cursor()
+    exec(keyload_ja)
     message_title_ja = "通過100次「" + str(music_name_ja) + "」"
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_name_dictionary_dic, music_name_ja))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (music_id_copyright_dic, music_copyright_name_ja))
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (emblem_dictionary_description, message_title_ja))
-    
+    if appeal_chance_easy is not None:
+        for idx_easy_dict, entry_easy_dict in enumerate(appeal_chance_easy):
+            wave_id_dictionary_easy = idx_easy_dict + 1
+            wave_id_naming_easy = f"live_detail_wave_mission_{music_diff1_masterdata}_{wave_id_dictionary_easy}"
+            en_appeal_chance_easy = mission_type_name_dictionary.get(entry_easy_dict[2])
+            if entry_easy_dict[2] == 16:
+                arg1_value_easy = int(entry_easy_dict[3] / 100)
+            else:
+                arg1_value_easy = int(entry_easy_dict[3])
+            arg1_per_insert = arg1_value_easy
+            en_appeal_chance_text = f"{en_appeal_chance_easy.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_easy, en_appeal_chance_text))
+    if appeal_chance_normal is not None:
+        for idx_normal_dict, entry_normal_dict in enumerate(appeal_chance_normal):
+            wave_id_dictionary_normal = idx_normal_dict + 1
+            wave_id_naming_normal = f"live_detail_wave_mission_{music_diff2_masterdata}_{wave_id_dictionary_normal}"
+            en_appeal_chance_normal = mission_type_name_dictionary.get(entry_normal_dict[2])
+            if entry_normal_dict[2] == 16:
+                arg1_value_normal = int(entry_normal_dict[3] / 100)
+            else:
+                arg1_value_normal = int(entry_normal_dict[3])
+            arg1_per_insert = arg1_value_normal
+            en_appeal_chance_text = f"{en_appeal_chance_normal.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_normal, en_appeal_chance_text))
+    if appeal_chance_hard is not None:
+        for idx_hard_dict, entry_hard_dict in enumerate(appeal_chance_hard):
+            wave_id_dictionary_hard = idx_hard_dict + 1
+            wave_id_naming_hard = f"live_detail_wave_mission_{music_diff3_masterdata}_{wave_id_dictionary_hard}"
+            en_appeal_chance_hard = mission_type_name_dictionary.get(entry_hard_dict[2])
+            if entry_hard_dict[2] == 16:
+                arg1_value_hard = int(entry_hard_dict[3] / 100)
+            else:
+                arg1_value_hard = int(entry_hard_dict[3])
+            arg1_per_insert = arg1_value_hard
+            en_appeal_chance_text = f"{en_appeal_chance_hard.format(arg1_per_insert=arg1_per_insert)}"
+            cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (wave_id_naming_hard, en_appeal_chance_text))
+            
 with sqlite3.connect('assets/db/gl/dictionary_en_m.db') as conn:
     cursor = conn.cursor()
     message_mission1_en = "Clear &quot;" + str(music_name_en) + "&quot;: x10"
