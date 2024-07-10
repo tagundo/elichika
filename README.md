@@ -28,9 +28,13 @@ curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | ba
 This will leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
 
 #### Using Docker
-A [docker compose](./docker/docker-compose.yml) is provided with this repository for creating a container. More information on deploying with docker can be found [here](./docs/docker.md).
+There is a public docker image available on docker hub: https://hub.docker.com/r/arina999999997/elichika
 
 Assuming you're familiar with docker, this can be a faster way of getting things working. Keep in mind that using docker, some of the step below will not apply, you should reference the docker docs instead.
+
+All config options should be set in the data/config.json file, which will be created after first startup.
+
+[docker compose](./docker/docker-compose.yml) example
 
 Thanks to [yunimoo](https://github.com/yunimoo) for preparing docker files.
 
@@ -53,11 +57,19 @@ If you have GUI for Windows/Linux, you can also just run the executable directly
 Note that whenever you want to play, the server need to be on, so if you already closed termux or the server, you will have to run it again.
 
 ## Updating the server
-You can update the server by running:
+You can update the server by running the following command in the installed location:
+
+```
+curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/update.sh | bash
+```
+
+If your version is new enough, then running:
 
 ```
 ~/update_elichika
 ```
+
+would be enough.
 
 As of current version, you should be able to keep your progress while doing this, so it's recommended to do it often so you get access to newly implemented features.
 
@@ -136,7 +148,8 @@ Detailed explanations of some config options:
         - This will automatically use whatever the address the client reach `elichika` with as the CDN server.
         - Aside from that, you can also just use the address like normal.
         - You should look into this if you want to further develop the game/server, as doing so might require redownloading things a lot.
-		
+    - You can also use other CDNs, but keep in mind that there are some requirements that need to be met, otherwise some download will result in errors.
+
 - Resource config:
 
     - The config of how the resources work on the server.

@@ -154,22 +154,22 @@ stage_gimmick_hard = None
     # [None, 50071001]
 # ]
 
-# entry format in int [note_start, note_end, mission_type, arg_1, reward_voltage, wave_damage, skill_id_gimmick (50000001 is nothing)]
+# entry format in int [note_start, note_end, mission_type, arg_1, reward_voltage, wave_damage, state, skill_id_gimmick (50000001 is nothing)]
 # uncomment this if you want use it
 
 # appeal_chance_easy = [
-    # [11, 20, 16, 123, 267000, 9000, 50000001],
-    # [22, 30, 16, 456, 269000, 6000, 50000001]
+    # [11, 20, 16, 123, 267000, 9000, 255, 50000001],
+    # [22, 30, 16, 456, 269000, 6000, 255, 50000001]
 # ]
 
 # appeal_chance_normal = [
-    # [11, 20, 16, 123, 267000, 9000, 50000001],
-    # [22, 30, 16, 456, 269000, 6000, 50000001]
+    # [11, 20, 16, 123, 267000, 9000, 255, 50000001],
+    # [22, 30, 16, 456, 269000, 6000, 255, 50000001]
 # ]
 
 # appeal_chance_hard = [
-    # [11, 20, 16, 123, 267000, 9000, 50000001],
-    # [22, 30, 16, 456, 269000, 6000, 50000001]
+    # [11, 20, 16, 123, 267000, 9000, 255, 50000001],
+    # [22, 30, 16, 456, 269000, 6000, 255, 50000001]
 # ]
 
 check_json_config = "config.json"
@@ -1254,14 +1254,12 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 wave_id_value_easy = idx_easy + 1  # Since wave_id starts from 1
                 
                 # add information (cannot make new skill rn)
-                skill_ac_gimmick_easy = entry_easy[6]
+                skill_ac_gimmick_easy = entry_easy[7]
                 appeal_chance_detail_easy_masterdata = f"k.live_detail_wave_mission_{music_diff1_masterdata}_{wave_id_value_easy}"
-                cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_easy,))
+                cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ? AND state = ?", (skill_ac_gimmick_easy,))
                 description_easy = cursor.fetchone()[0]  # Fetch the first result
                 
-                # Fetch state
-                cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_easy,))
-                state_easy = cursor.fetchone()[0]  # Fetch the first result
+                state_easy = entry_easy[6]
                 cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff1_masterdata, wave_id_value_easy, state_easy, skill_ac_gimmick_easy, appeal_chance_detail_easy_masterdata, description_easy))
 
                 # Update live_notes wave_id and note_type
@@ -1272,9 +1270,32 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 # Update note_type
                 for note_easy in data_difff1['live_notes']:
                     if note_easy['id'] == id1_easy:
-                        note_easy['note_type'] = 4
+                        call_time_start_easy = note_easy.get('call_time')
+                        note_position_start_easy = note_easy.get('note_position')
+                        data_difff1['live_notes'].append({
+                            "id": 0,
+                            "call_time": int(call_time_start_easy - 1),
+                            "note_type": 1,
+                            "note_position": note_position_start_easy,
+                            "gimmick_id": 0,
+                            "note_action": 4,
+                            "wave_id": wave_id_value_easy,
+                            "note_random_drop_color": 99,
+                            "auto_judge_type": 20
+                        })
                     elif note_easy['id'] == id2_easy:
-                        note_easy['note_type'] = 5
+                        call_time_end_easy = note_easy.get('call_time')
+                        note_position_end_easy = note_easy.get('note_position')
+                        data_difff1['live_notes'].append({
+                            "id": 0,
+                            "call_time": int(call_time_end_easy + 1),
+                            "note_type": 1,
+                            "note_position": note_position_end_easy,
+                            "gimmick_id": 0,
+                            "note_action": 5,
+                            "wave_id": wave_id_value_easy,
+                            "note_random_drop_color": 99,
+                            "auto_judge_type": 20
 
                 # Add entry to live_wave_settings
                 data_difff1['live_wave_settings'].append({
@@ -1313,7 +1334,12 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     "skill_master_id": entry_easy_gimmick[1],
                     "uniq_id": uniq_id_easy, 
                 })
-                
+
+        # finalize
+        data_difff1.sort(key=lambda x: int(x['call_time']))
+        for idx_finalize_easy, item_finalize_easy in enumerate(data_difff1):
+            item_finalize_easy['id'] = idx_finalize_easy + 1
+            
         with open(output_filename1, 'w') as difficult_file1:
             json.dump(data_difff1, difficult_file1, indent=2)
     
@@ -1332,13 +1358,12 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 id2_normal = entry_normal[1]
                 wave_id_value_normal = idx_normal + 1  # Since wave_id starts from 1
 
-                skill_ac_gimmick_normal = entry_normal[6]
+                skill_ac_gimmick_normal = entry_normal[7]
                 appeal_chance_detail_normal_masterdata = f"k.live_detail_wave_mission_{music_diff2_masterdata}_{wave_id_value_normal}"
                 cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_normal,))
                 description_normal = cursor.fetchone()[0]  # Fetch the first result
                 
-                cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_normal,))
-                state_normal = cursor.fetchone()[0]  # Fetch the first result
+                state_normal = entry_normal[6]  # Fetch the first result
                 cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff2_masterdata, wave_id_value_normal, state_normal, skill_ac_gimmick_normal, appeal_chance_detail_normal_masterdata, description_normal))
 
                 # Update live_notes wave_id and note_type
@@ -1349,9 +1374,32 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 # Update note_type
                 for note_normal in data_difff2['live_notes']:
                     if note_normal['id'] == id1_normal:
-                        note_normal['note_type'] = 4
+                        call_time_start_normal = note_normal.get('call_time')
+                        note_position_start_normal = note_normal.get('note_position')
+                        data_difff2['live_notes'].append({
+                            "id": 0,
+                            "call_time": int(call_time_start_normal - 1),
+                            "note_type": 1,
+                            "note_position": note_position_start_normal,
+                            "gimmick_id": 0,
+                            "note_action": 4,
+                            "wave_id": wave_id_value_normal,
+                            "note_random_drop_color": 99,
+                            "auto_judge_type": 20
+                        })
                     elif note_normal['id'] == id2_normal:
-                        note_normal['note_type'] = 5
+                        call_time_end_normal = note_normal.get('call_time')
+                        note_position_end_normal = note_normal.get('note_position')
+                        data_difff2['live_notes'].append({
+                            "id": 0,
+                            "call_time": int(call_time_end_normal + 1),
+                            "note_type": 1,
+                            "note_position": note_position_end_normal,
+                            "gimmick_id": 0,
+                            "note_action": 5,
+                            "wave_id": wave_id_value_normal,
+                            "note_random_drop_color": 99,
+                            "auto_judge_type": 20
 
                 # Add entry to live_wave_settings
                 data_difff2['live_wave_settings'].append({
@@ -1389,7 +1437,11 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     "skill_master_id": entry_normal_gimmick[1],
                     "uniq_id": uniq_id_normal, 
                 })
-           
+                
+        data_difff2.sort(key=lambda x: int(x['call_time']))
+        for idx_finalize_normal, item_finalize_normal in enumerate(data_difff2):
+            item_finalize_normal['id'] = idx_finalize_normal + 1
+            
         with open(output_filename2, 'w') as difficult_file2:
             json.dump(data_difff2, difficult_file2, indent=2)
     
@@ -1408,13 +1460,12 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 id2_hard = entry_hard[1]
                 wave_id_value_hard = idx_hard + 1  # Since wave_id starts from 1
 
-                skill_ac_gimmick_hard = entry_hard[6]
+                skill_ac_gimmick_hard = entry_hard[7]
                 appeal_chance_detail_hard_masterdata = f"k.live_detail_wave_mission_{music_diff3_masterdata}_{wave_id_value_hard}"
                 cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_hard,))
                 description_hard = cursor.fetchone()[0]  # Fetch the first result
                 
-                cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_hard,))
-                state_hard = cursor.fetchone()[0]  # Fetch the first result
+                state_hard = entry_hard[6]
                 cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff3_masterdata, wave_id_value_hard, state_hard, skill_ac_gimmick_hard, appeal_chance_detail_hard_masterdata, description_hard))
 
                 # Update live_notes wave_id and note_type
@@ -1425,9 +1476,32 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 # Update note_type
                 for note_hard in data_difff3['live_notes']:
                     if note_hard['id'] == id1_hard:
-                        note_hard['note_type'] = 4
+                        call_time_start_hard = note_hard.get('call_time')
+                        note_position_start_hard = note_hard.get('note_position')
+                        data_difff3['live_notes'].append({
+                            "id": 0,
+                            "call_time": int(call_time_start_hard - 1),
+                            "note_type": 1,
+                            "note_position": note_position_start_hard,
+                            "gimmick_id": 0,
+                            "note_action": 4,
+                            "wave_id": wave_id_value_hard,
+                            "note_random_drop_color": 99,
+                            "auto_judge_type": 20
+                        })
                     elif note_hard['id'] == id2_hard:
-                        note_hard['note_type'] = 5
+                        call_time_end_hard = note_hard.get('call_time')
+                        note_position_end_hard = note_hard.get('note_position')
+                        data_difff3['live_notes'].append({
+                            "id": 0,
+                            "call_time": int(call_time_end_hard + 1),
+                            "note_type": 1,
+                            "note_position": note_position_end_hard,
+                            "gimmick_id": 0,
+                            "note_action": 5,
+                            "wave_id": wave_id_value_hard,
+                            "note_random_drop_color": 99,
+                            "auto_judge_type": 20
 
                 # Add entry to live_wave_settings
                 data_difff3['live_wave_settings'].append({
@@ -1465,6 +1539,10 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     "skill_master_id": entry_hard_gimmick[1],
                     "uniq_id": uniq_id_hard, 
                 })
+            
+        data_difff3.sort(key=lambda x: int(x['call_time']))
+        for idx_finalize_hard, item_finalize_hard in enumerate(data_difff3):
+            item_finalize_hard['id'] = idx_finalize_hard + 1
             
         with open(output_filename3, 'w') as difficult_file3:
             json.dump(data_difff3, difficult_file3, indent=2)
@@ -1633,14 +1711,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
             wave_id_value_easy = idx_easy + 1  # Since wave_id starts from 1
                 
                 # add information (cannot make new skill rn)
-            skill_ac_gimmick_easy = entry_easy[6]
+            skill_ac_gimmick_easy = entry_easy[7]
             appeal_chance_detail_easy_masterdata = f"k.live_detail_wave_mission_{music_diff1_masterdata}_{wave_id_value_easy}"
             cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_easy,))
             description_easy = cursor.fetchone()[0]  # Fetch the first result
                 
-                # Fetch state
-            cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_easy,))
-            state_easy = cursor.fetchone()[0]  # Fetch the first result
+            state_easy = entry_easy[6]
             cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff1_masterdata, wave_id_value_easy, state_easy, skill_ac_gimmick_easy, appeal_chance_detail_easy_masterdata, description_easy))
                 
         # add gimmick, no need dictionary insert
@@ -1664,14 +1740,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
             wave_id_value_normal = idx_normal + 1  # Since wave_id starts from 1
                 
                 # add information (cannot make new skill rn)
-            skill_ac_gimmick_normal = entry_normal[6]
+            skill_ac_gimmick_normal = entry_normal[7]
             appeal_chance_detail_normal_masterdata = f"k.live_detail_wave_mission_{music_diff2_masterdata}_{wave_id_value_normal}"
             cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_normal,))
             description_normal = cursor.fetchone()[0]  # Fetch the first result
                 
-                # Fetch state
-            cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_normal,))
-            state_normal = cursor.fetchone()[0]  # Fetch the first result
+            state_normal = entry_normal[6]
             cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff2_masterdata, wave_id_value_normal, state_normal, skill_ac_gimmick_normal, appeal_chance_detail_normal_masterdata, description_normal))
                 
         # add gimmick, no need dictionary insert
@@ -1696,14 +1770,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
             wave_id_value_hard = idx_hard + 1  # Since wave_id starts from 1
                 
                 # add information (cannot make new skill rn)
-            skill_ac_gimmick_hard = entry_hard[6]
+            skill_ac_gimmick_hard = entry_hard[7]
             appeal_chance_detail_hard_masterdata = f"k.live_detail_wave_mission_{music_diff3_masterdata}_{wave_id_value_hard}"
             cursor.execute("SELECT description FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_hard,))
             description_hard = cursor.fetchone()[0]  # Fetch the first result
                 
-                # Fetch state
-            cursor.execute("SELECT state FROM m_live_note_wave_gimmick_group WHERE skill_id = ?", (skill_ac_gimmick_hard,))
-            state_hard = cursor.fetchone()[0]  # Fetch the first result
+            state_hard = entry_hard[6]
             cursor.execute("INSERT INTO main.m_live_note_wave_gimmick_group (live_difficulty_id, wave_id, state, skill_id, name, description) VALUES (?, ?, ?, ?, ?, ?);", (music_diff3_masterdata, wave_id_value_hard, state_hard, skill_ac_gimmick_hard, appeal_chance_detail_hard_masterdata, description_hard))
                 
         # add gimmick, no need dictionary insert

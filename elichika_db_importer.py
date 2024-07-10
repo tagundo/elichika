@@ -99,7 +99,7 @@ else:
         'assets/db/gl/asset_i_en.db',
         'assets/db/gl/asset_i_ko.db',
         'assets/db/gl/asset_i_zh.db',
-        'assets/db/gl/asset_a_ja.db',
-        'assets/db/gl/asset_i_ja.db'
+        'assets/db/jp/asset_a_ja.db',
+        'assets/db/jp/asset_i_ja.db'
     ]
 import_to_multiple_dbs(chosen_zip_file, target_dbs)

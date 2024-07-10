@@ -20,7 +20,6 @@ func recoverDailyLiveMusicPlayable(ctx *gin.Context) {
 	err := json.Unmarshal(*ctx.MustGet("reqBody").(*json.RawMessage), &req)
 	utils.CheckErr(err)
 
-
 	session := ctx.MustGet("session").(*userdata.Session)
 
 	successResponse, failureResponse := user_live.RecoverDailyLiveMusicPlayable(session, req.LiveId)
