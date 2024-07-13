@@ -4010,12 +4010,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     donot_insert = None 
     
     # Find the minimum display_order for the given chara_id
-    cursor.execute("SELECT MIN(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
+    cursor.execute("SELECT MAX(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
     result = cursor.fetchone()
     min_display_order_ja = result[0] if result[0] is not None else 0
 
     # Calculate the new display_order (decrease by 1)
-    display_order_new_ja = min_display_order_ja - 1
+    display_order_new_ja = min_display_order_ja + 1
     
     # use chara thumbnail if thumbnail file is empty
     if thumbnail_file == "" and chara_id == 1:
@@ -4093,12 +4093,12 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     cursor = conn.cursor()
     
     # Find the minimum display_order for the given chara_id
-    cursor.execute("SELECT MIN(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
+    cursor.execute("SELECT MAX(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
     result = cursor.fetchone()
     min_display_order_gl = result[0] if result[0] is not None else 0
 
     # Calculate the new display_order (decrease by 1)
-    display_order_new_gl = min_display_order_gl - 1
+    display_order_new_gl = min_display_order_gl + 1
 
     # Insert the new record with the updated display_order
     cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
@@ -4130,7 +4130,7 @@ with sqlite3.connect('serverdata.db') as conn:
         if costume_free_price == "y" :
             costume_price_val = 0
         else :
-            costume_price_val = 110
+            costume_price_val = 55
 
         cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, ?, ?, '1', ?);", (trade_id_into_json, channel_exchange_trade, costume_price_val, json_string_costume))
         print("added to channel exchange shop")
