@@ -22,6 +22,7 @@ type RuntimeConfig struct {
 	DefaultContentAmount     *int32  `json:"default_content_amount" of_label:"Default item count" of_attrs:"min=\"0\" max=\"1000000000\""` // the amount of items to give an user if they don't have that item
 	MissionMultiplier        *int32  `json:"mission_multiplier" of_label:"Mission progress multiplier" of_attrs:"min=\"0\" max=\"10000\""` // multiply the progress of missions. Only work for do "x" of things, not for "get x different thing or reach x level"
 	ResourceConfigType       *string `json:"resource_config_type" of_type:"select" of_options:"Original\noriginal\nComfortable\ncomfortable\nFree\nfree" of_label:"Resource config"`
+	LessonDropType           *string `json:"lesson_drop_type" of_type:"select" of_options:"Random\nrandom\nFixed\nfixed" of_label:"Lesson Drop type"`
 }
 
 func defaultConfigs() *RuntimeConfig {
@@ -38,6 +39,7 @@ func defaultConfigs() *RuntimeConfig {
 		DefaultContentAmount:     new(int32),
 		MissionMultiplier:        new(int32),
 		ResourceConfigType:       new(string),
+		LessonDropType:           new(string),
 	}
 	*configs.ServerAddress = "0.0.0.0:8080"
 	*configs.CdnServer = "https://llsifas.catfolk.party/static/"
@@ -51,6 +53,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.DefaultContentAmount = 0
 	*configs.MissionMultiplier = 1
 	*configs.ResourceConfigType = "original"
+	*configs.LessonDropType = "fixed"
 	return &configs
 }
 
