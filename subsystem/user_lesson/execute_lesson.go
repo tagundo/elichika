@@ -239,7 +239,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 	rarity1 := []int32{30000001, 30000002, 30000004, 30000006, 30000007, 30000009, 30000149, 30000150, 30000152, 30000154, 30000300, 30000301, 30000303, 30000305, 30000395, 30000396, 30000398, 30000400, 30000526} // Common
 	rand.Seed(time.Now().UnixNano())
 	rarityProbabilities := []float64{0.005, 0.015, 0.03, 0.20, 0.75} // Example probabilities: 1%, 4%, 15%, 30%, 50%
-	skillCountProbabilities := []float64{0.70, 0.20, 0.07, 0.02, 0.01}} // Example probabilities: 50%, 30%, 15%, 4%, 1%
+	skillCountProbabilities := []float64{0.70, 0.20, 0.07, 0.02, 0.01} // Example probabilities: 50%, 30%, 15%, 4%, 1%
 	getRandomSkill := func() int32 {
 		ambasing := rand.Float64()
 		switch {
