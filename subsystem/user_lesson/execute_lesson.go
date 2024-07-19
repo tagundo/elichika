@@ -20,7 +20,15 @@ import (
 	"time"
 	"reflect"
 	"sort"
+    "encoding/json"
+    "io/ioutil"
+    "log"
+    "strconv"
 )
+
+type SkillData struct {
+    Positions map[string][]int32 `json:"positions"`
+}
 
 // handle the lesson and write the result to the database
 // drop is calculated using the following process:
@@ -232,7 +240,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 	// insight skills
 
 	// randomize funcion & gacha like as temporary
-	if *config.Conf.LessonDropType != "fixed" {
+	if *config.Conf.LessonDropSkillType != "fixed" {
 		rarity5 := []int32{30000045, 30000071, 30000072, 30000074, 30000079, 30000522, 30000527} // Ultra Rare
 		rarity4 := []int32{30000005, 30000060, 30000061, 30000062, 30000064, 30000069, 30000075, 30000076, 30000078, 30000081, 30000082, 30000084, 30000089, 30000101, 30000102, 30000104, 30000109, 30000101, 30000102, 30000104, 30000109, 30000111, 30000112, 30000114, 30000119, 30000121, 30000122, 30000124, 30000129, 30000131, 30000132, 30000134, 30000139, 30000166, 30000167, 30000169, 30000174, 30000243, 30000250, 30000251, 30000253, 30000254, 30000317, 30000318, 30000320, 30000325, 30000412, 30000413, 30000415, 30000420, 30000523, 30000528, 30000529} // SSR
 		rarity3 := []int32{30000046, 30000047, 30000048, 30000049, 30000050, 30000051, 30000053, 30000058, 30000065, 30000066, 30000068, 30000085, 30000086, 30000088, 30000105, 30000106, 30000108, 30000105, 30000106, 30000108, 30000115, 30000116, 30000118, 30000125, 30000126, 30000128, 30000135, 30000136, 30000138, 30000155, 30000156, 30000157, 30000159, 30000164, 30000170, 30000171, 30000173, 30000176, 30000177, 30000179, 30000184, 30000196, 30000197, 30000199, 30000204, 30000196, 30000197, 30000199, 30000204, 30000206, 30000207, 30000209, 30000214, 30000216, 30000217, 30000219, 30000224, 30000226, 30000227, 30000229, 30000234, 30000244, 30000245, 30000247, 30000248, 30000256, 30000257, 30000259, 30000260, 30000268, 30000269, 30000271, 30000272, 30000268, 30000269, 30000271, 30000272, 30000274, 30000275, 30000277, 30000278, 30000280, 30000281, 30000283, 30000284, 30000286, 30000287, 30000289, 30000290, 30000306, 30000307, 30000308, 30000310, 30000315, 30000321, 30000322, 30000324, 30000327, 30000328, 30000330, 30000335, 30000347, 30000348, 30000350, 30000355, 30000347, 30000348, 30000350, 30000355, 30000357, 30000358, 30000360, 30000365, 30000367, 30000368, 30000370, 30000375, 30000377, 30000378, 30000380, 30000385, 30000401, 30000402, 30000403, 30000405, 30000410, 30000416, 30000417, 30000419, 30000422, 30000423, 30000425, 30000430, 30000442, 30000443, 30000445, 30000450, 30000442, 30000443, 30000445, 30000450, 30000452, 30000453, 30000455, 30000460, 30000462, 30000463, 30000465, 30000470, 30000472, 30000473, 30000475, 30000480, 30000524, 30000530, 30000531} // Super Rare
@@ -282,27 +290,29 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			}
 		}
 	} else {
-		skills := []int32{
-			// 30000041, // Appeal+ (L)
-			30000482, // Appeal+ (M):Group
-			30000517, // Appeal+ (M):Same Attribute
-			30000502, // Appeal+ (M):Same School
-			30000507, // Appeal+ (M):Same Strategy
-			30000492, // Appeal+ (M):Same Year
-			30000512, // Appeal+ (M):Type
-			// 30000044, // Skill Activation %+ (L)
-			30000485, // Skill Activation %+ (M):Group
-			30000520, // Skill Activation %+ (M):Same Attribute
-			30000505, // Skill Activation %+ (M):Same School
-			30000510, // Skill Activation %+ (M):Same Strategy
-			30000495, // Skill Activation %+ (M):Same Year
-			30000515, // Skill Activation %+ (M):Type
-			// 30000045, // Type Effect+ (M)
+		data, err := ioutil.ReadFile("insightskills.json")
+		if err != nil {
+			log.Fatalf("Error reading file: %v", err)
 		}
-		for position := int32(1); position <= 9; position++ {
+
+		// Unmarshal the JSON data into the SkillData struct
+		var skillData SkillData
+		err = json.Unmarshal(data, &skillData)
+		if err != nil {
+			log.Fatalf("Error unmarshalling JSON: %v", err)
+		}
+
+		// Use the position and skills from the JSON file
+		for positionStr, skills := range skillData.Positions {
+			position, err := strconv.ParseInt(positionStr, 10, 32)
+			if err != nil {
+				log.Fatalf("Error converting position string to int32: %v", err)
+			}
+
+			positionInt32 := int32(position) // Convert to int32
 			for _, skillId := range skills {
 				result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
-					Position:       position,
+					Position:       positionInt32,
 					PassiveSkillId: skillId,
 				})
 			}
