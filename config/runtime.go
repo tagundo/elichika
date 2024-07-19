@@ -13,7 +13,7 @@ type RuntimeConfig struct {
 	ServerAddress            *string `json:"server_address" of_label:"Server's address"`
 	CdnServer                *string `json:"cdn_server" of_label:"CDN server's address"`
 	CdnPathType              *string `json:"cdn_path_type" of_type:"select" of_options:"All\nall\Separated\nseparated" of_label:"CDN path type"`
-	CdnPathAll               *string `json:"cdn_path_en" of_label:"CDN path All"`
+	CdnPathAll               *string `json:"cdn_path_all" of_label:"CDN path All"`
 	CdnPathEN                *string `json:"cdn_path_en" of_label:"CDN path EN"`
 	CdnPathKO                *string `json:"cdn_path_ko" of_label:"CDN path KO"`
 	CdnPathZH                *string `json:"cdn_path_zh" of_label:"CDN path ZH"`
