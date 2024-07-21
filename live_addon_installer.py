@@ -1241,7 +1241,7 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     start_editbeatmap2 = temp_directory + normal_difficulty_file
     start_editbeatmap3 = temp_directory + hard_difficulty_file
 
-    with open(start_editbeatmap1, 'r') as difficult_file1:
+    with open(start_editbeatmap1, 'r', encoding='utf-8') as difficult_file1:
         data_difff1 = json.load(difficult_file1)
                 
         data_difff1["live_difficulty_id"] = music_diff1_masterdata
@@ -1300,7 +1300,7 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                             "wave_id": wave_id_value_easy,
                             "note_random_drop_color": 99,
                             "auto_judge_type": 20
-
+                        })
                 # Add entry to live_wave_settings
                 data_difff1['live_wave_settings'].append({
                     "id": wave_id_value_easy,
@@ -1340,14 +1340,15 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                 })
 
         # finalize
-        data_difff1.sort(key=lambda x: int(x['call_time']))
-        for idx_finalize_easy, item_finalize_easy in enumerate(data_difff1):
+        live_notes_fixup_easy = data_difff1['live_notes']
+        live_notes_fixup_easy.sort(key=lambda x: int(x['call_time']))
+        for idx_finalize_easy, item_finalize_easy in enumerate(live_notes_fixup_easy):
             item_finalize_easy['id'] = idx_finalize_easy + 1
             
-        with open(output_filename1, 'w') as difficult_file1:
+        with open(output_filename1, 'w', encoding='utf-8') as difficult_file1:
             json.dump(data_difff1, difficult_file1, indent=2)
     
-    with open(start_editbeatmap2, 'r') as difficult_file2:
+    with open(start_editbeatmap2, 'r', encoding='utf-8') as difficult_file2:
         data_difff2 = json.load(difficult_file2)
                 
         data_difff2["live_difficulty_id"] = music_diff2_masterdata
@@ -1404,7 +1405,7 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                             "wave_id": wave_id_value_normal,
                             "note_random_drop_color": 99,
                             "auto_judge_type": 20
-
+                        })
                 # Add entry to live_wave_settings
                 data_difff2['live_wave_settings'].append({
                     "id": wave_id_value_normal,
@@ -1441,15 +1442,15 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     "skill_master_id": entry_normal_gimmick['skill_id'],
                     "uniq_id": uniq_id_normal, 
                 })
-                
-        data_difff2.sort(key=lambda x: int(x['call_time']))
-        for idx_finalize_normal, item_finalize_normal in enumerate(data_difff2):
+        live_notes_fixup_normal = data_difff2['live_notes']
+        live_notes_fixup_normal.sort(key=lambda x: int(x['call_time']))
+        for idx_finalize_normal, item_finalize_normal in enumerate(live_notes_fixup_normal):
             item_finalize_normal['id'] = idx_finalize_normal + 1
             
-        with open(output_filename2, 'w') as difficult_file2:
+        with open(output_filename2, 'w', encoding='utf-8') as difficult_file2:
             json.dump(data_difff2, difficult_file2, indent=2)
     
-    with open(start_editbeatmap3, 'r') as difficult_file3:
+    with open(start_editbeatmap3, 'r', encoding='utf-8') as difficult_file3:
         data_difff3 = json.load(difficult_file3)
                 
         data_difff3["live_difficulty_id"] = music_diff3_masterdata
@@ -1506,7 +1507,7 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                             "wave_id": wave_id_value_hard,
                             "note_random_drop_color": 99,
                             "auto_judge_type": 20
-
+                        })
                 # Add entry to live_wave_settings
                 data_difff3['live_wave_settings'].append({
                     "id": wave_id_value_hard,
@@ -1543,12 +1544,12 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     "skill_master_id": entry_hard_gimmick['skill_id'],
                     "uniq_id": uniq_id_hard, 
                 })
-            
-        data_difff3.sort(key=lambda x: int(x['call_time']))
-        for idx_finalize_hard, item_finalize_hard in enumerate(data_difff3):
+        live_notes_fixup_hard = data_difff3['live_notes']
+        live_notes_fixup_hard.sort(key=lambda x: int(x['call_time']))
+        for idx_finalize_hard, item_finalize_hard in enumerate(live_notes_fixup_hard):
             item_finalize_hard['id'] = idx_finalize_hard + 1
             
-        with open(output_filename3, 'w') as difficult_file3:
+        with open(output_filename3, 'w', encoding='utf-8') as difficult_file3:
             json.dump(data_difff3, difficult_file3, indent=2)
     
     # score logic
