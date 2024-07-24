@@ -49,11 +49,11 @@ while true; do
 			git fetch origin main
 			git reset --hard origin/main
 			git clean -fd
-			cd ~/elichika/assets
+			cd ~/elichika2/assets
 			git fetch origin main
 			git reset --hard origin/main
 			git clean -fd
-			cd ~/elichika
+			cd ~/elichika2
 			go build
 			echo "Finished, please run again"
 			exit 0
@@ -67,6 +67,7 @@ while true; do
             clear
 			pkill elichika
             sed -i 's#https://llsifas.catfolk.party/static/#http://127.0.0.1:8080/static#g' "config.json"
+            sed -i 's#all#separated#g' "config.json"
             echo "Switched To LocalHost"
             read -p "Press Enter to continue..." _dummy15555
             ;;
@@ -74,6 +75,7 @@ while true; do
             clear
             pkill elichika
             sed -i 's#http://127.0.0.1:8080/static#https://llsifas.catfolk.party/static/#g' "config.json"
+            sed -i 's#separated#all#g' "config.json"
             echo "Switched To Catfolk"
             read -p "Press Enter to continue..." _dummy15235
             ;;
@@ -88,6 +90,7 @@ while true; do
 				echo "4. Patch Masterdata"
 				echo "5. LLASDecryptor"
 				echo "6. Overwrite JP Client Dictionary"
+				echo "7. Fetch Package"
                 echo "0. Back to Main Menu"
 
                 read -p "Enter your choice: " dev_option
@@ -96,9 +99,9 @@ while true; do
                     1)
 						clear
 						pkill elichika
-						cd ~/elichika/assets
+						cd ~/elichika2/assets
                         git submodule update --init --remote
-                        cd ~/elichika
+                        cd ~/elichika2
 						python costume_addon_installer.py
                         read -p "Press Enter to continue..." _dummy01
                         ;;
@@ -111,18 +114,18 @@ while true; do
                     3)
 						clear
 						pkill elichika
-						cd ~/elichika/assets
+						cd ~/elichika2/assets
                         git submodule update --init --remote
-                        cd ~/elichika
+                        cd ~/elichika2
 						python tower_addon_installer.py
                         read -p "Press Enter to continue..." _dummy03777
                         ;;
                     4)
 						clear
 						pkill elichika
-						cd ~/elichika/assets
+						cd ~/elichika2/assets
                         git submodule update --init --remote
-                        cd ~/elichika
+                        cd ~/elichika2
 						python elichika_db_importer.py
                         read -p "Press Enter to continue..." _dummy0399
                         ;;
@@ -137,6 +140,14 @@ while true; do
 						pkill elichika
 						python replace_jp_client_dictionary.py
                         read -p "Press Enter to continue..." _dummy02555235
+                        ;;
+                    7)
+						clear
+						pkill elichika
+						cd ~/elichika2/assets
+                        git submodule update --init --remote
+                        cd ~/elichika2
+                        read -p "Press Enter to continue..." _dummy03998
                         ;;
                     0)
                         break

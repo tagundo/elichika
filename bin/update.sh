@@ -15,15 +15,15 @@ echo "Updated succesfully!"
 
 
 if [ $? -eq 0 ]; then
-    echo "cd $PWD && ./elichika" > ~/run_elichika_gitlab && \
-    echo "cd $PWD && sh elichika_utility.sh" > ~/menu_elichika_gitlab && \
-    echo "cd $PWD && curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash"  > ~/update_elichika_gitlab && \
-    chmod +x ~/run_elichika_gitlab && \
-    chmod +x ~/update_elichika_gitlab && \
-	chmod +x ~/menu_elichika_gitlab && \
-    echo "Use \"~/run_elichika_gitlab\" in termux to run the server!" && \
-    echo "Use \"~/menu_elichika_gitlab\" in termux to run the menu!" && \
-    echo "Use \"~/update_elichika_gitlab\" in termux to update the server!"
+    echo "cd $PWD && ./elichika" > ~/run_elichika2 && \
+    echo "cd $PWD && sh elichika_utility.sh" > ~/menu_elichika2 && \
+    echo "cd $PWD && curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash"  > ~/update_elichika2 && \
+    chmod +x ~/run_elichika2 && \
+    chmod +x ~/update_elichika2 && \
+	chmod +x ~/menu_elichika2 && \
+    echo "Use \"~/run_elichika2\" in termux to run the server!" && \
+    echo "Use \"~/menu_elichika2\" in termux to run the menu!" && \
+    echo "Use \"~/update_elichika2\" in termux to update the server!"
 else
     echo "Error updating!"
 fi
