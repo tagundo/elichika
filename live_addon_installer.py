@@ -1367,6 +1367,11 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     if note_easy['id'] == id1_easy:
                         call_time_start_easy = note_easy.get('call_time')
                         note_position_start_easy = note_easy.get('note_position')
+                        # fix stuck appeal chance hold
+                        if note_position_start_easy == 1:
+                            note_position_start_easy = 2
+                        elif note_position_start_easy == 2:
+                            note_position_start_easy = 1
                         data_difff1['live_notes'].append({
                             "id": 0,
                             "call_time": int(call_time_start_easy - 1),
@@ -1506,6 +1511,11 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
                     if note_normal['id'] == id1_normal:
                         call_time_start_normal = note_normal.get('call_time')
                         note_position_start_normal = note_normal.get('note_position')
+                        # fix stuck appeal chance hold
+                        if note_position_start_normal == 1:
+                            note_position_start_normal = 2
+                        elif note_position_start_normal == 2:
+                            note_position_start_normal = 1
                         data_difff2['live_notes'].append({
                             "id": 0,
                             "call_time": int(call_time_start_normal - 1),
@@ -1639,9 +1649,14 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
 
                 # Update note_type
                 for note_hard in data_difff3['live_notes']:
-                    if note_hard['id'] == id1_hard:
+                    if note_hard['id'] == id1_hard and note_hard['note_type'] != 3:
                         call_time_start_hard = note_hard.get('call_time')
                         note_position_start_hard = note_hard.get('note_position')
+                        # fix stuck appeal chance hold
+                        if note_position_start_hard == 1:
+                            note_position_start_hard = 2
+                        elif note_position_start_hard == 2:
+                            note_position_start_hard = 1
                         data_difff3['live_notes'].append({
                             "id": 0,
                             "call_time": int(call_time_start_hard - 1),
