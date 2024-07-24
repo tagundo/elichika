@@ -94,8 +94,6 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [X] Working downloadable asset.
 	- [x] Costume
 	- [x] Live
-		- Note gimmick not finished.
-		- Not possible create new gimmick effect.
 	- [x] DLP
 		- This code need improvement.
 		- No reward received.
@@ -105,7 +103,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
 		- Bond story & Voice navigation will return as default because there is no way to create new one.
 		- KO, ZH & JA dictionary skill is not writen, only english right now.
 		- Gacha voice is working but background music will stop immediately.
-		- Playing on custom live will ended if the active skill is activated (deretore issue).
+		- Playing on custom live will ended if the active skill is activated (acbmaker code missing).
         - Training tree parameter is missing for each role.
 		- Dual skill not supported, A and B condition is doable later.
         - Only JP Client Android working right now.

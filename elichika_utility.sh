@@ -91,6 +91,7 @@ while true; do
 				echo "5. LLASDecryptor"
 				echo "6. Overwrite JP Client Dictionary"
 				echo "7. Fetch Package"
+				echo "8. GameBanana Modpage"
                 echo "0. Back to Main Menu"
 
                 read -p "Enter your choice: " dev_option
@@ -99,9 +100,6 @@ while true; do
                     1)
 						clear
 						pkill elichika
-						cd ~/elichika2/assets
-                        git submodule update --init --remote
-                        cd ~/elichika2
 						python costume_addon_installer.py
                         read -p "Press Enter to continue..." _dummy01
                         ;;
@@ -114,18 +112,12 @@ while true; do
                     3)
 						clear
 						pkill elichika
-						cd ~/elichika2/assets
-                        git submodule update --init --remote
-                        cd ~/elichika2
 						python tower_addon_installer.py
                         read -p "Press Enter to continue..." _dummy03777
                         ;;
                     4)
 						clear
 						pkill elichika
-						cd ~/elichika2/assets
-                        git submodule update --init --remote
-                        cd ~/elichika2
 						python elichika_db_importer.py
                         read -p "Press Enter to continue..." _dummy0399
                         ;;
@@ -148,6 +140,10 @@ while true; do
                         git submodule update --init --remote
                         cd ~/elichika2
                         read -p "Press Enter to continue..." _dummy03998
+                    8)
+						clear
+						pkill elichika
+						xdg-open https://gamebanana.com/games/20519
                         ;;
                     0)
                         break

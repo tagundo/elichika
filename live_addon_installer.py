@@ -140,7 +140,8 @@ evaluation_score_hard = None
 # 15 - GotVoltageBySk | Gain Voltage by Sk Card! (x) *unused
 # 16 - KeepStaminaUpper | Maintain at least %(x) of your total Stamina, math arg_1 : (x) * 100
 
-# not possible create new gimmick
+# can only reuse skill_master_id (skill_id) from m_live_difficulty_gimmick
+# id cannot be None, must be own unique
 
 # stage_gimmick_easy = [
     # {
@@ -162,6 +163,9 @@ evaluation_score_hard = None
         # 'skill_id': 3
     # }
 # ]
+
+# can only reuse description (skill_description_id) from m_live_difficulty_note_gimmick
+# don't include "k.live_detail_notes_desc_" on skill_description_id
 
 # note_gimmick_easy = [
     # {

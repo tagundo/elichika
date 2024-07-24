@@ -143,7 +143,7 @@ Detailed explanations of some config options:
     - Default to  https://llsifas.catfolk.party/static/ (special thanks to sarah for hosting it).
     - `elichika` also has the ability to host the CDN itself:
 
-        - To do this, put the relevant files in `elichika/static/assets`.
+        - To do this, put the relevant files in `elichika/static/`.
         - Then set the CDN server address to the STRING (no protocol) `elichika` (or `elichika_tls` if you're using HTTPS).
         - This will automatically use whatever the address the client reach `elichika` with as the CDN server.
         - Aside from that, you can also just use the address like normal.
@@ -158,6 +158,12 @@ Detailed explanations of some config options:
     - `free` is the free settings. Generally, resources can only go up and not down.
     - Keep in mind that some resources/systems are not controlled by these settings, but they are pretty minor.
     - And this doesn't apply to the accessories (but apply to the accessory items).
+	
+- Lesson drop type:
+
+    - `fixed` is use skill id on insightskill.json
+    - `gacha` is like common gacha works.
+    - `random` (PLACEHOLDER) is give 12 randomize insight skill.
 
 - Default item count:
 
@@ -202,5 +208,5 @@ Even more special thanks for the specific individuals or groups (in no particula
 - Suyooo for the very helpful [SIFAS wiki](https://suyo.be/sifas/wiki/), for providing more accurate stage data, and for the bad word lists.
 - sarah for hosting public Internet CDN.
 - Caret for the LL Hax discord.
-- eirumo for drawing body texture.
+- Yousifrill for drawing body texture.
 - And other people who more than deserve to be here but I can't quite recall right now.
