@@ -21,6 +21,8 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /card/changeIsAwakeningImage
 - [x] /card/getOtherUserCard
 - [x] /card/updateCardNewFlag
+- [x] /challenge/fetchBeginner
+- [x] /challenge/receiveRewardBeginner
 - [x] /communicationMember/fetchCommunicationMemberDetail
 - [x] /communicationMember/finishUserStoryMember
 - [x] /communicationMember/finishUserStorySide
@@ -66,6 +68,7 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /live/fetchLiveMusicSelect
 - [x] /live/finish
 - [x] /live/finishTutorial
+- [x] /live/recoverDailyLiveMusicPlayable
 - [x] /live/resume
 - [x] /live/skip
 - [x] /live/start
@@ -133,6 +136,7 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /tutorial/tutorialSkip
 - [x] /unlockScene/saveUnlockedScene
 - [x] /user/addAccessoryBoxLimit
+- [x] /user/recoverAp
 - [x] /user/recoverLp
 - [x] /user/recoverLpSubscription
 - [x] /userAccountDeletion/checkUserAccountDeleted
@@ -191,9 +195,6 @@ Also note that some endpoints won't need to be handled at all either because the
 - [ ] (not necessary?) /shop/fetchShopEventExchange
 - [ ] (not necessary?) /userProfile/fetchDeck
 - [ ] (the button for this is not in the app?, we need to turn it back on first) /userAccountDeletion/deleteUserAccount
-### Challenge
-- [ ] /challenge/fetchBeginner
-- [ ] /challenge/receiveRewardBeginner
 ### SBL
 - [ ] /coop/login
 - [ ] /coopLive/create
@@ -232,8 +233,6 @@ Also note that some endpoints won't need to be handled at all either because the
 - [ ] /infoTrigger/readGachaPointExchange
 - [ ] /infoTrigger/readSubscriptionEnd
 - [ ] /infoTrigger/readSubscriptionTrialEnd
-### Live
-- [ ] /live/recoverDailyLiveMusicPlayable
 ### None
 - [ ] /noop/noop
 ### Notice
@@ -247,9 +246,7 @@ Also note that some endpoints won't need to be handled at all either because the
 - [ ] /rooms/number/
 ### SIF ID Reward
 - [ ] /schoolIdolFestivalIdReward/fetch
-### Steady Ranking
+### VoltageRanking
 - [ ] /steadyRanking/fetch
 - [ ] /steadyRanking/getSteadyRankingDeck
 - [ ] /steadyRanking/selectDifficulty
-### User
-- [ ] /user/recoverAp

@@ -5,6 +5,7 @@ import (
 	"elichika/config"
 	"elichika/utils"
 
+	"os"
 
 	"xorm.io/xorm"
 )
@@ -87,7 +88,7 @@ func init() {
 	utils.CheckErr(err)
 	Engine.SetMaxOpenConns(50)
 	Engine.SetMaxIdleConns(10)
-	InitTables(false) // insert new tables if necessary
+	overwrite := (len(os.Args) == 2) && (os.Args[1] == "reinit")
+	InitTables(overwrite)
 	AutoInsert()
-
 }

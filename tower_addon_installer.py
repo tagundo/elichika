@@ -8,6 +8,20 @@ import sys
 import shutil
 import hashlib
 
+def clear_terminal():
+    system = platform.system()
+    if system == 'Windows':
+        os.system('cls')
+    elif system == 'Linux' or system == 'Darwin':
+        os.system('clear')
+
+clear_terminal()
+print("This script sucks.")
+print("If you could make it suck less, that would be awesome.")
+print("Specifically: outdated code, method creating dlp is copy paste not custom beatmap")
+print("")
+confirm_script_card = input("Press Enter to Continue")
+
 modding_elichika_path = "assets/data/"
 
 if not os.path.exists(modding_elichika_path):
@@ -72,13 +86,6 @@ def create_backup_elichika_old(source_file_elichika_old, backup_file_elichika_ol
 # Example usage:
 source_file_elichika_old = "assets/db/serverdata.db"
 backup_file_elichika_old = "assets/db/backup_old/serverdata.db"
-
-def clear_terminal():
-    system = platform.system()
-    if system == 'Windows':
-        os.system('cls')
-    elif system == 'Linux' or system == 'Darwin':
-        os.system('clear')
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
     for i in range(len(data)):

@@ -1,0 +1,22 @@
+# writen by tatara_hisoka
+
+mission_type_name_dictionary = {
+    1: "Gain a total of {arg1_per_insert} Voltage.",
+    2: "Get {arg1_per_insert} or more Nices.",
+    3: "Get {arg1_per_insert} or more Greats.",
+    4: "Get {arg1_per_insert} Wonderfuls!",
+    5: "Gain {arg1_per_insert} Voltage at once.",
+    6: "Gain a total of {arg1_per_insert} Voltage with SP Skills.",
+    7: "Appeal with {arg1_per_insert} school idols.",
+    8: "Perform {arg1_per_insert} Criticals.",
+    9: "Activate skills {arg1_per_insert} times.",
+	# unused
+    10: "Gain a total of {arg1_per_insert} Stamina.",
+    11: "Gain a total of {arg1_per_insert} Shield.",
+    12: "Gain a total of {arg1_per_insert} Voltage with VO Type.",
+    13: "Gain a total of {arg1_per_insert} Voltage with SP Type.",
+    14: "Gain a total of {arg1_per_insert} Voltage with GD Type.",
+    15: "Gain a total of {arg1_per_insert} Voltage with SK Type.",
+	#
+    16: "Maintain {arg1_per_insert}% or more of your Stamina."
+}

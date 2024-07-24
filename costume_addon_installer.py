@@ -106,19 +106,12 @@ def generate_unique_costume_id(cursor):
             
 def generate_unique_trade_id(cursor):
     while True:
-        new_id333 = random.randint(0, 999999999)
-        cursor.execute("SELECT COUNT(*) FROM main.m_trade_product WHERE id = ?;", (new_id333,))
+        new_id333 = random.randint(0, 999)
+        formatted_id = f"{channel_exchange_trade}{new_id333:03}"
+        cursor.execute("SELECT COUNT(*) FROM main.m_trade_product WHERE id = ?;", (formatted_id,))
         count = cursor.fetchone()[0]
         if count == 0:
-            return new_id333
-            
-def generate_unique_trade_content_id(cursor):
-    while True:
-        new_id3334 = random.randint(0, 20000000000)
-        cursor.execute("SELECT COUNT(*) FROM main.m_trade_product_content WHERE id = ?;", (new_id3334,))
-        count = cursor.fetchone()[0]
-        if count == 0:
-            return new_id3334
+            return new_id333        
             
 def costume_path_randomhash(cursor):
     while True:
@@ -206,8 +199,11 @@ with zipfile.ZipFile(zip_buffer, 'r') as zip_ref:
             txt_file_path = os.path.join(temp_directory, file_info.filename)
             with open(txt_file_path, 'r', encoding='utf-8') as txt_file:
                     # Read and process each line in the extracted file
-                for line in txt_file:
-                    exec(line)
+                try:
+                    file_content = txt_file.read()
+                    exec(file_content)
+                except Exception as e:
+                    print(f"Error executing file: {file_info.filename}\nError: {e}")
 
 start_encrypt1 = temp_directory + costume_file
 costume_filename = os.path.splitext(start_encrypt1.split("/")[-1])[0]
@@ -3989,15 +3985,18 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor = conn.cursor()
 
     # Generate a unique costume_id_masterdata
+    channel_exchange_trade = 50000 + int(chara_id)
     if id_costume is None:
         costume_id_masterdata = generate_unique_costume_id(cursor)
     else:
         costume_id_masterdata = id_costume
         
     if id_trade_product is None:
-        trade_id_into_json = generate_unique_trade_id(cursor)
+        zgenerate_id = generate_unique_trade_id(cursor)
+        trade_id_into_json = str(channel_exchange_trade) + str(zgenerate_id)
     else:
-        trade_id_into_json = id_trade_product
+        formatted_id_trade_product = f"{id_trade_product:03}"
+        trade_id_into_json = str(channel_exchange_trade) + str(formatted_id_trade_product)
         
     if chara_id_append is None:
         chara_id_suit = chara_id
@@ -4011,12 +4010,12 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     donot_insert = None 
     
     # Find the minimum display_order for the given chara_id
-    cursor.execute("SELECT MIN(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
+    cursor.execute("SELECT MAX(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
     result = cursor.fetchone()
     min_display_order_ja = result[0] if result[0] is not None else 0
 
     # Calculate the new display_order (decrease by 1)
-    display_order_new_ja = min_display_order_ja - 1
+    display_order_new_ja = min_display_order_ja + 1
     
     # use chara thumbnail if thumbnail file is empty
     if thumbnail_file == "" and chara_id == 1:
@@ -4083,8 +4082,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     # Insert the new record with the updated display_order
     cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                    (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_ja))
-    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, '1200', '0', ?, '1');", (trade_id_into_json, donot_insert))
-    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '1');", (trade_content_into_json, trade_id_into_json))
+    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
+    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
     cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
    
     if chara_id == 209:
@@ -4094,18 +4093,18 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     cursor = conn.cursor()
     
     # Find the minimum display_order for the given chara_id
-    cursor.execute("SELECT MIN(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
+    cursor.execute("SELECT MAX(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
     result = cursor.fetchone()
     min_display_order_gl = result[0] if result[0] is not None else 0
 
     # Calculate the new display_order (decrease by 1)
-    display_order_new_gl = min_display_order_gl - 1
+    display_order_new_gl = min_display_order_gl + 1
 
     # Insert the new record with the updated display_order
     cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                    (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_gl))
-    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, '1200', '0', ?, '1');", (trade_id_into_json, donot_insert))
-    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '1');", (trade_content_into_json, trade_id_into_json))
+    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
+    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
     cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
    
     if chara_id == 209:
@@ -4131,10 +4130,10 @@ with sqlite3.connect('serverdata.db') as conn:
         if costume_free_price == "y" :
             costume_price_val = 0
         else :
-            costume_price_val = 5000000
+            costume_price_val = 55
 
-        cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, '1200', ?, 'null', ?);", (trade_id_into_json, costume_price_val, json_string_costume))
-        print("added to gold exchange shop")
+        cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, ?, ?, '1', ?);", (trade_id_into_json, channel_exchange_trade, costume_price_val, json_string_costume))
+        print("added to channel exchange shop")
 
 with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:
     cursor = conn.cursor()
@@ -4530,8 +4529,11 @@ shutil.rmtree(temp_directory, ignore_errors=True)
 
 with open(check_json_config, 'r') as f:
     config_elichika = json.load(f)
-    if config_elichika.get('cdn_server') != "http://127.0.0.1:8080/static":
+    xcheck_cdn = config_elichika.get('cdn_server')
+    xcheck_cdnpath = config_elichika.get('cdn_path_type')
+    if xcheck_cdn != "http://127.0.0.1:8080/static" and xcheck_cdnpath != "all":
         config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
+        config_elichika['cdn_path_type'] = "all"
         with open(check_json_config, 'w') as f:
             json.dump(config_elichika, f, indent=4)
             print("CDN server updated to http://127.0.0.1:8080/static")

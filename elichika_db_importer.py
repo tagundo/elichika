@@ -64,7 +64,8 @@ zip_files.sort()
 clear_terminal()
 print("Available .sql files:")
 for i, zip_file in enumerate(zip_files, start=1):
-    print(f"{i}. {zip_file}")
+    print_rem = zip_file.split('.', 1)[1]
+    print(f"{i}. {print_rem}")
 
 # User input to choose a zip file by entering a number
 try:
@@ -83,8 +84,22 @@ except ValueError:
     print("Invalid input. Please enter a number.")
     sys.exit(1)
 
-target_dbs = [
-    'assets/db/gl/masterdata.db',
-    'assets/db/jp/masterdata.db'
-]
+filename_z = os.path.basename(chosen_zip_file)
+split_db_z = filename_z.split('.')[0]
+if split_db_z == "masterdata":
+    target_dbs = [
+        'assets/db/gl/masterdata.db',
+        'assets/db/jp/masterdata.db'
+    ]
+else:
+    target_dbs = [
+        'assets/db/gl/asset_a_en.db',
+        'assets/db/gl/asset_a_ko.db',
+        'assets/db/gl/asset_a_zh.db',
+        'assets/db/gl/asset_i_en.db',
+        'assets/db/gl/asset_i_ko.db',
+        'assets/db/gl/asset_i_zh.db',
+        'assets/db/jp/asset_a_ja.db',
+        'assets/db/jp/asset_i_ja.db'
+    ]
 import_to_multiple_dbs(chosen_zip_file, target_dbs)

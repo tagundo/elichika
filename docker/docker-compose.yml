@@ -1,0 +1,12 @@
+version: '3'
+services:
+  elichika:
+    image: arina999999997/elichika:latest
+    container_name: elichika
+    build:
+      dockerfile: "./Dockerfile"
+    ports:
+      - 8080:8080
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

@@ -1,5 +1,5 @@
 # elichika
-A fork of https://github.com/arina999999997/elichika & https://github.com/YumeMichi/elichika, check out the original.
+A fork of https://github.com/arina999999997/elichika based on https://github.com/YumeMichi/elichika, check out the original.
 
 ## Installing
 Note that this part concern only this server implementation, and it only provide the easiest way to do things.
@@ -15,14 +15,28 @@ curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | ba
 ```
 
 To run a command, copy (or type) it and hit the enter button.
-### Window / Linux
-You can setup the server in a desktop machine to play on android or ios. To do this, use the same install script with termux (on Windows, run inside git bash or some other linux shell emulator):
+### PC (Windows, Linux, MacOS)
+You can setup the server in a desktop machine to play on android or ios.
+
+#### Setup manually
+Install git and go, and then use the same install script with termux (on Windows, run inside git bash or some other linux shell emulator):
 
 ```
 curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash
 ```
 
 This will leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
+
+#### Using Docker
+There is a public docker image available on docker hub: https://hub.docker.com/r/arina999999997/elichika
+
+Assuming you're familiar with docker, this can be a faster way of getting things working. Keep in mind that using docker, some of the step below will not apply, you should reference the docker docs instead.
+
+All config options should be set in the data/config.json file, which will be created after first startup.
+
+[docker compose](./docker/docker-compose.yml) example
+
+Thanks to [yunimoo](https://github.com/yunimoo) for preparing docker files.
 
 ## Running the server
 After installing, you need to run the server to play using the following command:
@@ -43,11 +57,19 @@ If you have GUI for Windows/Linux, you can also just run the executable directly
 Note that whenever you want to play, the server need to be on, so if you already closed termux or the server, you will have to run it again.
 
 ## Updating the server
-You can update the server by running:
+You can update the server by running the following command in the installed location:
+
+```
+curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/update.sh | bash
+```
+
+If your version is new enough, then running:
 
 ```
 ~/update_elichika
 ```
+
+would be enough.
 
 As of current version, you should be able to keep your progress while doing this, so it's recommended to do it often so you get access to newly implemented features.
 
@@ -121,12 +143,28 @@ Detailed explanations of some config options:
     - Default to  https://llsifas.catfolk.party/static/ (special thanks to sarah for hosting it).
     - `elichika` also has the ability to host the CDN itself:
 
-        - To do this, put the relevant files in `elichika/static`.
+        - To do this, put the relevant files in `elichika/static/`.
         - Then set the CDN server address to the STRING (no protocol) `elichika` (or `elichika_tls` if you're using HTTPS).
         - This will automatically use whatever the address the client reach `elichika` with as the CDN server.
         - Aside from that, you can also just use the address like normal.
         - You should look into this if you want to further develop the game/server, as doing so might require redownloading things a lot.
-    
+    - You can also use other CDNs, but keep in mind that there are some requirements that need to be met, otherwise some download will result in errors.
+
+- Resource config:
+
+    - The config of how the resources work on the server.
+    - `original` means the resources behave like it would in the original server. Every action that cost resources will consume those resources.
+    - `comfortable` is the default settings. Things like star gems, LP, AP are unlimited. The daily song play limit or the daily tap bond limit is also removed. This is the recommended settings if you just want to play and experience the game without all the money-making limitation.
+    - `free` is the free settings. Generally, resources can only go up and not down.
+    - Keep in mind that some resources/systems are not controlled by these settings, but they are pretty minor.
+    - And this doesn't apply to the accessories (but apply to the accessory items).
+	
+- Lesson drop type:
+
+    - `fixed` is use skill id on insightskill.json
+    - `gacha` is like common gacha works.
+    - `random` (PLACEHOLDER) is give 12 randomize insight skill.
+
 - Default item count:
 
     - The amount of items to give a player to start with.
@@ -161,6 +199,7 @@ Special thanks to the LL Hax community in general for:
 Even more special thanks for the specific individuals or groups (in no particular order):
 
 - YumeMichi for original elichika.
+- arina999999997 for fork elichika.
 - triangle for informations and scripts to encode/decode database, for patching the ios clients, and for daily theater logs.
 - [SIFAStheatre](https://twitter.com/SIFAStheatre) and [Idol Story](https://twitter.com/idoldotst) for Daily theater English tranlation and for the original Japanese transcript.
 - ethan for hosting various resource and hosting a public testing server.
@@ -169,4 +208,5 @@ Even more special thanks for the specific individuals or groups (in no particula
 - Suyooo for the very helpful [SIFAS wiki](https://suyo.be/sifas/wiki/), for providing more accurate stage data, and for the bad word lists.
 - sarah for hosting public Internet CDN.
 - Caret for the LL Hax discord.
+- Yousifrill for drawing body texture.
 - And other people who more than deserve to be here but I can't quite recall right now.

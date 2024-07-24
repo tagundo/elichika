@@ -1,5 +1,7 @@
 # About skin texture
-currently the baked shadow is removed via SnapEdit because I'm not good at drawing textures, if you want to help, let me know
+credit to eirumo for drawing body texture
+
+these recreation texture may not similar as official, if you want add your modified texture, let me know / make pull request
 
 # Thigh Scale
 
