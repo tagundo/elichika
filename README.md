@@ -42,13 +42,13 @@ Thanks to [yunimoo](https://github.com/yunimoo) for preparing docker files.
 After installing, you need to run the server to play using the following command:
 
 ```
-~/run_elichika
+~/run_elichika2
 ```
 
 alternate menu
 
 ```
-~/menu_elichika
+~/menu_elichika2
 1
 ```
 
@@ -66,7 +66,7 @@ curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/update.sh | bas
 If your version is new enough, then running:
 
 ```
-~/update_elichika
+~/update_elichika2
 ```
 
 would be enough.
