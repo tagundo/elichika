@@ -140,6 +140,7 @@ while true; do
                         git submodule update --init --remote
                         cd ~/elichika2
                         read -p "Press Enter to continue..." _dummy03998
+                        ;;
                     8)
 						clear
 						pkill elichika
