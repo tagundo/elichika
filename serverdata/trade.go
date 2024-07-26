@@ -5,6 +5,7 @@ import (
 	"elichika/utils"
 
 	"encoding/json"
+	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -35,12 +36,14 @@ func InsertTrade(session *xorm.Session, args []string) {
 
 func TradeCli(session *xorm.Session, args []string) {
 	if len(args) == 0 {
+		fmt.Println("Invalid params:", args)
 		return
 	}
 	switch args[0] {
 	case "insert":
 		InsertTrade(session, args[1:])
 	default:
+		fmt.Println("Invalid params:", args)
 		return
 	}
 }

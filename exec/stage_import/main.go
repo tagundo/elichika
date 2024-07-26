@@ -115,6 +115,7 @@ func parseFile(file string) {
 		parseStage(live.Live.LiveStage, fullLive.Live.LiveStage, file)
 		return
 	}
+	fmt.Println("Warning: skipping file with unexpected format: ", file)
 
 }
 
@@ -133,6 +134,7 @@ func handleDirectory(dir string) {
 		return
 	}
 	for _, file := range files {
+		// fmt.Println(file.Name())
 		handleDirectory(dir + "/" + file.Name())
 	}
 
@@ -140,6 +142,7 @@ func handleDirectory(dir string) {
 
 func main() {
 	if len(os.Args) < 2 {
+		fmt.Println("Usage: stage_import <one or more path/to/directory or path/to/file.json>.\nNote that this will recursively traverse everything.")
 		return
 	}
 	files = make(map[string]bool)
@@ -149,12 +152,14 @@ func main() {
 		}
 		handleDirectory(path)
 	}
+	fmt.Println("Discovered", len(files), "relevant files")
 	stages = make(map[int32]*SimpleLiveStage)
 	fullStages = make(map[int32]*FullLiveStage)
 	stageOrigins = make(map[int32]string)
 	for file := range files {
 		parseFile(file)
 	}
+	fmt.Println("Found", len(stages), "different stages.\nRemoving similar maps")
 	ids := []int32{}
 	for id := range stages {
 		ids = append(ids, id)
@@ -169,12 +174,14 @@ func main() {
 				break
 			}
 			if isSame(stages[id], stages[other]) {
+				fmt.Println("Found unoriginal map: ", id, " -> ", other)
 				stages[id].Original = new(int32)
 				*stages[id].Original = other
 				break
 			}
 		}
 		if stages[id].Original == nil {
+			fmt.Println("Original map: ", id)
 		}
 	}
 
