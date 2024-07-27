@@ -48,6 +48,7 @@ type DailyTheaterMember struct {
 func InitialiseDailyTheater(session *xorm.Session) {
 	asiaTokyo, _ := time.LoadLocation("Asia/Tokyo")
 	memberRegex := regexp.MustCompile(`<:th_ch0[0-2][0-1][0-9]/>`)
+	fmt.Println("Importing daily theater to db")
 	filepath.Walk(config.AssetPath+"daily_theater", func(path string, info os.FileInfo, err error) error {
 		utils.CheckErr(err)
 		if info.IsDir() {
@@ -56,7 +57,6 @@ func InitialiseDailyTheater(session *xorm.Session) {
 		if !strings.HasSuffix(info.Name(), ".json") {
 			return nil
 		}
-		fmt.Printf("Parsing daily theater file: %s\n", path)
 		text := utils.ReadAllText(path)
 		dailyTheater := DailyTheater{}
 		err = json.Unmarshal([]byte(text), &dailyTheater)
