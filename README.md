@@ -1,6 +1,50 @@
 # elichika
 A fork of https://github.com/arina999999997/elichika based on https://github.com/YumeMichi/elichika, check out the original.
 
+## What is the difference between github (arina999999997) and gitlab (tatara_hisoka)?
+- Made for termux only
+- Add-on content support
+- Added SDK of developement content
+- Added menu_elichika2
+- Added serverdata.db & userdata.db
+- Restore unused content
+	- lvl 500 bond limit
+	- lvl 100 card once kizuna board is maxed out
+	- Appeal Chance
+		- GotHeal
+		- GotShield
+		- GotVoltageByVo
+		- GotVoltageBySp
+		- GotVoltageByGd
+		- GotVoltageBySk
+	- Liella song
+	- Expert difficulty song
+	- Item
+		- Leader Insight Guaranteed
+		- Increase Rare Item Drop Rate
+		- School Idol Radiance
+	- Special SP Cutscene In Lanzhu & Mia
+- Various changes
+	- Replace pre-render MV with realtime (save hundred megabyte drive)
+	- Disable useless setting
+	- Fixed some songs not unlocked
+	- Increase max LP limit same as official
+	- Increase limit skip ticket to 100
+	- Make all member use swimsuit in tutorial
+	- Disable 60fps live quality, you can enable on graphics setting
+	- Unlocked bond story
+	- Sorted costume by old to new
+- Fixed consistent dictionary
+- Added config
+	- cdn_path_type | use all or separate folder to store relevant file
+	- cdn_path_all | Folder name of all locale in static/
+	- cdn_path_en | Folder name of english locale in static/
+	- cdn_path_ko | Folder name of korean locale in static/
+	- cdn_path_zh | Folder name of chinese locale in static/
+	- cdn_path_ja | Folder name of japanese locale in static/
+	- lesson_drop_skill_type | Logic of obtain insight skill
+- Clone as elichika2 folder so you can install safely
+
 ## Installing
 Note that this part concern only this server implementation, and it only provide the easiest way to do things.
 
@@ -15,30 +59,8 @@ curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | ba
 ```
 
 To run a command, copy (or type) it and hit the enter button.
-### PC (Windows, Linux, MacOS)
-You can setup the server in a desktop machine to play on android or ios.
 
-#### Setup manually
-Install git and go, and then use the same install script with termux (on Windows, run inside git bash or some other linux shell emulator):
-
-```
-curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash
-```
-
-This will leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
-
-#### Using Docker
-There is a public docker image available on docker hub: https://hub.docker.com/r/arina999999997/elichika
-
-Assuming you're familiar with docker, this can be a faster way of getting things working. Keep in mind that using docker, some of the step below will not apply, you should reference the docker docs instead.
-
-All config options should be set in the data/config.json file, which will be created after first startup.
-
-[docker compose](./docker/docker-compose.yml) example
-
-Thanks to [yunimoo](https://github.com/yunimoo) for preparing docker files.
-
-## Running the server
+#### Running the server
 After installing, you need to run the server to play using the following command:
 
 ```
@@ -52,11 +74,9 @@ alternate menu
 1
 ```
 
-If you have GUI for Windows/Linux, you can also just run the executable directly.
-
 Note that whenever you want to play, the server need to be on, so if you already closed termux or the server, you will have to run it again.
 
-## Updating the server
+#### Updating the server
 You can update the server by running the following command in the installed location:
 
 ```
@@ -68,6 +88,9 @@ If your version is new enough, then running:
 ```
 ~/update_elichika2
 ```
+
+### PC
+(TBA)
 
 would be enough.
 
