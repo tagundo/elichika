@@ -5,6 +5,7 @@ import (
 	"elichika/config"
 	"elichika/utils"
 
+	"fmt"
 	"os"
 
 	"xorm.io/xorm"
@@ -19,12 +20,14 @@ func InitTable(tableName string, structure interface{}, overwrite bool) {
 	utils.CheckErr(err)
 
 	if !exist {
+		fmt.Println("Creating new table:", tableName)
 		err = Engine.Table(tableName).CreateTable(structure)
 		utils.CheckErr(err)
 	} else {
 		if !overwrite {
 			return
 		}
+		fmt.Println("Overwrite existing table:", tableName)
 		err := Engine.DropTables(tableName)
 		utils.CheckErr(err)
 		err = Engine.Table(tableName).CreateTable(structure)

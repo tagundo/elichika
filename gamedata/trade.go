@@ -18,6 +18,7 @@ import (
 	"elichika/item"
 	"elichika/utils"
 
+	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -64,6 +65,7 @@ func loadTrade(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session, d
 			&trade.TradeType, &trade.SourceContentType, &trade.SourceContentId)
 		utils.CheckErr(err)
 		if !exist {
+			fmt.Println("Warning: Skipped trade ", id, " (did not exist in masterdata.db)")
 			delete(gamedata.Trade, id)
 			continue
 		}

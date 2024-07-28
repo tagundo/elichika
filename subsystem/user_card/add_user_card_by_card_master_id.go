@@ -27,12 +27,14 @@ func AddUserCardByCardMasterId(session *userdata.Session, cardMasterId int32) cl
 	if card.Grade > enum.CardMaxGrade {
 		// max limit already, award the item
 		// TODO(hardcode)
-		reward := item.SchoolIdolRadiance
+		reward := item.SchoolIdolRadianceR
+		rewardsr := item.SchoolIdolRadianceSR
+		rewardur := item.SchoolIdolRadianceUR
 		switch masterCard.CardRarityType {
 		case enum.CardRarityTypeSRare:
-			reward = reward.Amount(5)
+			reward = rewardsr.Amount(5)
 		case enum.CardRarityTypeURare:
-			reward = reward.Amount(25)
+			reward = rewardur.Amount(25)
 		}
 		user_content.AddContent(session, reward)
 		// not sure if this is the correct official server behavior or not, but it seems to work correctly

@@ -3,6 +3,7 @@ package database
 import (
 	"elichika/utils"
 
+	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -28,6 +29,7 @@ func InitTable(session *xorm.Session, tableName string, structure interface{}) {
 	utils.CheckErr(err)
 
 	if !exist {
+		fmt.Println("Creating new table:", tableName)
 		err = session.Table(tableName).CreateTable(structure)
 		utils.CheckErr(err)
 	}

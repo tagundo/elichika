@@ -5,6 +5,7 @@ import (
 	"elichika/subsystem/user_training_tree"
 	"elichika/userdata"
 
+	"fmt"
 )
 
 func (solver *TrainingTreeSolver) SolveCard(session *userdata.Session, card client.UserCard) {
@@ -18,6 +19,7 @@ func (solver *TrainingTreeSolver) SolveCard(session *userdata.Session, card clie
 	solver.TimeStamp = int64(card.AcquiredAt)
 	solver.NodeCount = solver.TrainingTreeDesign.CellCount - 1 // not counting the starting node id 0
 	reset := func() {
+		fmt.Println("Solving failed for card", card.CardMasterId, ", reseting to default")
 		solver.Cells = nil
 		card = client.UserCard{
 			CardMasterId:        card.CardMasterId,
@@ -43,6 +45,7 @@ func (solver *TrainingTreeSolver) SolveCard(session *userdata.Session, card clie
 	} else if !solver.SolveForTileSet() { // otherwise we solve for a possible set of tiles
 		reset()
 	} // else {
+	// fmt.Println("Found solution for card", card.CardMasterId)
 	// }
 	if int32(len(solver.Cells)) != card.TrainingActivatedCellCount {
 		reset()

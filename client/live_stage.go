@@ -4,6 +4,7 @@ import (
 	"elichika/enum"
 	"elichika/generic"
 
+	"fmt"
 	"math/rand"
 )
 
@@ -24,6 +25,8 @@ func (ls *LiveStage) IsSame(other *LiveStage) bool {
 	}
 	for i := range ls.LiveNotes.Slice {
 		if !ls.LiveNotes.Slice[i].IsSame(&other.LiveNotes.Slice[i]) {
+			fmt.Println(ls.LiveNotes.Slice[i])
+			fmt.Println(other.LiveNotes.Slice[i])
 			return false
 		}
 	}
@@ -33,6 +36,8 @@ func (ls *LiveStage) IsSame(other *LiveStage) bool {
 	}
 	for i := range ls.LiveWaveSettings.Slice {
 		if ls.LiveWaveSettings.Slice[i] != other.LiveWaveSettings.Slice[i] {
+			fmt.Println(ls.LiveWaveSettings.Slice[i])
+			fmt.Println(other.LiveWaveSettings.Slice[i])
 			return false
 		}
 	}
@@ -65,6 +70,7 @@ func (ls *LiveStage) IsSame(other *LiveStage) bool {
 			}
 		}
 	}
+	// fmt.Println("Stage Gimmick OK")
 	return true
 }
 

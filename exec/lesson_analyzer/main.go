@@ -7,6 +7,7 @@ import (
 	"elichika/utils"
 
 	"encoding/json"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -57,12 +58,14 @@ func handleDirectory(dir string) {
 		return
 	}
 	for _, file := range files {
+		// fmt.Println(file.Name())
 		handleDirectory(dir + "/" + file.Name())
 	}
 }
 
 func main() {
 	if len(os.Args) != 2 {
+		fmt.Println("Usage: lesson_analyser path/to/lesson/dump/directory\nNote that this will recursively traverse everything.")
 		return
 	}
 
@@ -99,6 +102,10 @@ func main() {
 		currentMegaphoneRun := 0
 		megaphoneDropCount := []int{}
 
+		// fmt.Println(files[i].Path)
+		// fmt.Println(files[i+1].Path)
+		// fmt.Println(files[i+2].Path)
+		// fmt.Println(executeReq)
 		for _, item := range resultResp.DropItemList.Slice {
 			if item.IsSubscription {
 				if currentRun != 0 {
@@ -125,8 +132,10 @@ func main() {
 			}
 		}
 		// for i := range dropCount {
+		// 	fmt.Println(dropCount[i],"\t", megaphoneDropCount[i])
 		// }
 		for _, c := range megaphoneDropCount {
+			fmt.Println(c)
 		}
 	}
 }

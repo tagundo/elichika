@@ -5,6 +5,7 @@ import (
 	"elichika/utils"
 
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -47,6 +48,7 @@ type DailyTheaterMember struct {
 func InitialiseDailyTheater(session *xorm.Session) {
 	asiaTokyo, _ := time.LoadLocation("Asia/Tokyo")
 	memberRegex := regexp.MustCompile(`<:th_ch0[0-2][0-1][0-9]/>`)
+	fmt.Println("Importing daily_theater to serverdata.db")
 	filepath.Walk(config.AssetPath+"daily_theater", func(path string, info os.FileInfo, err error) error {
 		utils.CheckErr(err)
 		if info.IsDir() {
@@ -84,4 +86,5 @@ func InitialiseDailyTheater(session *xorm.Session) {
 		}
 		return nil
 	})
+	fmt.Println("Finished importing daily_theater")
 }
