@@ -40,7 +40,7 @@ type EventActive struct {
 func initEventMemberNameAsset(session *xorm.Session) {
 	path := config.AssetPath + "event/event_member_name.json"
 
-	fmt.Printf("Parsing event member name asset file: %s\n", path)
+	fmt.Println("Importing event member name")
 	text := utils.ReadAllText(path)
 
 	assets := []EventMemberNameAsset{}
@@ -48,6 +48,7 @@ func initEventMemberNameAsset(session *xorm.Session) {
 	utils.CheckErr(err)
 	_, err = session.Table("s_event_member_name_asset").Insert(assets)
 	utils.CheckErr(err)
+	fmt.Println("Finished importing event member name")
 }
 
 func init() {
