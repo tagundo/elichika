@@ -30,9 +30,7 @@ import (
 	"elichika/dictionary"
 	"elichika/generic/drop"
 
-	"fmt"
 	"reflect"
-	"time"
 
 	"xorm.io/xorm"
 )
@@ -189,7 +187,6 @@ func (gamedata *Gamedata) Init(language string, masterdata *xorm.Engine, serverd
 	if Instance == nil {
 		Instance = gamedata
 	}
-	start := time.Now()
 	gamedata.Language = language
 	gamedata.MasterdataDb = masterdata.NewSession()
 	gamedata.ServerdataDb = serverdata.NewSession()
@@ -205,6 +202,4 @@ func (gamedata *Gamedata) Init(language string, masterdata *xorm.Engine, serverd
 	for _, loadFunc := range loadOrder {
 		loadFunc(gamedata, gamedata.MasterdataDb, gamedata.ServerdataDb, dictionary)
 	}
-	finish := time.Now()
-	fmt.Println("Finished loading database in: ", finish.Sub(start))
 }

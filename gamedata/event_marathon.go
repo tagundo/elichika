@@ -8,7 +8,6 @@ import (
 	"elichika/serverdata"
 	"elichika/utils"
 
-	"fmt"
 	"sort"
 
 	"xorm.io/xorm"
@@ -83,7 +82,6 @@ func (em *EventMarathon) GetRankingReward(rank int32) int32 {
 }
 
 func loadEventMarathon(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session, dictionary *dictionary.Dictionary) {
-	fmt.Println("Loading EventMarathon")
 	gamedata.EventMarathon = make(map[int32]*EventMarathon)
 	events := []serverdata.EventMarathon{}
 	err := serverdata_db.Table("s_event_marathon").Find(&events)

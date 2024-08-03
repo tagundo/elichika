@@ -7,7 +7,6 @@ import (
 	"elichika/serverdata"
 	"elichika/utils"
 
-	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -144,7 +143,6 @@ func (member *Member) populate(gamedata *Gamedata, masterdata_db, serverdata_db 
 }
 
 func loadMember(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session, dictionary *dictionary.Dictionary) {
-	fmt.Println("Loading Member")
 	gamedata.Member = make(map[int32]*Member)
 	err := masterdata_db.Table("m_member").Find(&gamedata.Member)
 	utils.CheckErr(err)
