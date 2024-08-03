@@ -51,9 +51,9 @@ filelist = [
 # init variable
 
 costume_name_en = ""
-costume_name_ko = ""
-costume_name_zh = ""
-costume_name_ja = ""
+costume_name_ko = costume_name_en
+costume_name_zh = costume_name_en
+costume_name_ja = costume_name_en
 costume_description = ""
 
 costume_file = ""
@@ -4500,12 +4500,6 @@ with sqlite3.connect('assets/db/jp/asset_i_ja.db') as conn:
         cursor.execute("REPLACE INTO main.m_asset_package (package_key, version, pack_num) VALUES ('main', ?, ?);",
                     (fresh_version_main_ji, update_main_asset_ji))
 
-with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
-    cursor = conn.cursor()
-    if costume_name_ja == "":
-        costume_name_ja = package_key_costume
-    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_ja))
-
 with sqlite3.connect('assets/db/gl/dictionary_en_k.db') as conn:
     cursor = conn.cursor()
     if costume_name_en == "":
@@ -4514,15 +4508,15 @@ with sqlite3.connect('assets/db/gl/dictionary_en_k.db') as conn:
     
 with sqlite3.connect('assets/db/gl/dictionary_ko_k.db') as conn:
     cursor = conn.cursor()
-    if costume_name_ko == "":
-        costume_name_ko = package_key_costume
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_ko))
     
 with sqlite3.connect('assets/db/gl/dictionary_zh_k.db') as conn:
     cursor = conn.cursor()
-    if costume_name_zh == "":
-        costume_name_zh = package_key_costume
     cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_zh))
+    
+with sqlite3.connect('assets/db/jp/dictionary_ja_k.db') as conn:
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO main.m_dictionary (id, message) VALUES (?, ?);", (costume_dictionary, costume_name_ja))
     
 print("deleting temp folder")
 shutil.rmtree(temp_directory, ignore_errors=True)

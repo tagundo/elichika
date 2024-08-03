@@ -45,7 +45,7 @@ type DailyTheaterMember struct {
 // - Every <:th_ch0xxx/> tags will be extracted, and the member is saved
 // - The matching is done with regex, limited a bit.
 
-func InitialiseDailyTheater(session *xorm.Session) {
+func InitializeDailyTheater(session *xorm.Session) {
 	asiaTokyo, _ := time.LoadLocation("Asia/Tokyo")
 	memberRegex := regexp.MustCompile(`<:th_ch0[0-2][0-1][0-9]/>`)
 	fmt.Println("Importing daily_theater to serverdata.db")
@@ -87,4 +87,9 @@ func InitialiseDailyTheater(session *xorm.Session) {
 		return nil
 	})
 	fmt.Println("Finished importing daily_theater")
+}
+
+func init() {
+	addTable("s_daily_theater", DailyTheater{}, InitializeDailyTheater)
+	addTable("s_daily_theater_member", DailyTheaterMember{}, nil)
 }

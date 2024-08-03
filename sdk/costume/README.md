@@ -1,5 +1,5 @@
 # About skin texture
-credit to eirumo for drawing body texture
+credit to Yousifrill for drawing body texture
 
 these recreation texture may not similar as official, if you want add your modified texture, let me know / make pull request
 
@@ -21,13 +21,15 @@ these recreation texture may not similar as official, if you want add your modif
 - slight : nozomi, lanzhu
 - medium tone : rin
 
-Create .txt file & copy this
-
 leave rina_unmask_costume_file empty if you not use chara_id 209
+
+rina unmasked body also share same mesh as masked
 
 you don't need thumbnail_file, it will use character thumbnail if is empty
 
-rina unmasked body also share same mesh as masked
+on new version, chara_id variable is no longer neccessary but still used for old version mod
+
+Create .txt file & copy this
 ```
 costume_name_en = ""
 costume_name_ko = ""
@@ -35,7 +37,7 @@ costume_name_zh = ""
 costume_name_ja = ""
 costume_description = ""
 
-costume_file = "filename_with_extension"
+costume_file = "filename_with_extension" # example : tshirtcustom.101
 rina_unmask_costume_file = ""
 thumbnail_file = ""
 ```

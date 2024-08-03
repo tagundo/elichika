@@ -1,0 +1,11 @@
+costume_name_en = ""
+costume_description = "" # optional
+
+costume_file = "filename.chara_id" # example: tshirtcustom.101
+rina_unmask_costume_file = "" # required for chara_id 109
+thumbnail_file = "" # ignore this will use character thumbnail
+
+# optional multi language, you can replace as string format or leave as return en
+costume_name_ko = costume_name_en
+costume_name_zh = costume_name_en
+costume_name_ja = costume_name_en

@@ -29,6 +29,7 @@ type RuntimeConfig struct {
 	MissionMultiplier        *int32  `json:"mission_multiplier" of_label:"Mission progress multiplier" of_attrs:"min=\"0\" max=\"10000\""` // multiply the progress of missions. Only work for do "x" of things, not for "get x different thing or reach x level"
 	ResourceConfigType       *string `json:"resource_config_type" of_type:"select" of_options:"Original\noriginal\nComfortable\ncomfortable\nFree\nfree" of_label:"Resource config"`
 	LessonDropSkillType      *string `json:"lesson_drop_skill_type" of_type:"select" of_options:"Random\nrandom\Gacha\ngacha\nFixed\nfixed" of_label:"Lesson Drop type"`
+	EventAutoSchedulerPeriod *string `json:"event_auto_scheduler_period" of_type:"select" of_options:"once per day\n1_day\nonce per week\n7_days" of_label:"Event frequency"`
 }
 
 func defaultConfigs() *RuntimeConfig {
@@ -52,6 +53,7 @@ func defaultConfigs() *RuntimeConfig {
 		MissionMultiplier:        new(int32),
 		ResourceConfigType:       new(string),
 		LessonDropSkillType:      new(string),
+		EventAutoSchedulerPeriod: new(string),
 	}
 	*configs.ServerAddress = "0.0.0.0:8080"
 	*configs.CdnServer = "https://llsifas.catfolk.party/static/"
@@ -72,6 +74,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.MissionMultiplier = 1
 	*configs.ResourceConfigType = "original"
 	*configs.LessonDropSkillType = "fixed"
+	*configs.EventAutoSchedulerPeriod = "7_days"
 	return &configs
 }
 
