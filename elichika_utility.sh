@@ -7,7 +7,7 @@ while true; do
     echo "ID : 26092019 (jp) | 25022020 (gl)"
     echo ""
     echo "1. Run Server"
-    echo "2. Update Version"
+    echo "2. Update Server"
     echo "3. Reset Server"
     echo "4. Clear Cache Database"
     echo "5. Switch CDN to LocalHost"
@@ -26,20 +26,32 @@ while true; do
             ;;
         2)
 			clear
-			echo "Note that this might introduce problems because the new server might not be compatible with old database format, so you might lose progress. Future versions will try to keep things compatible or have a safe way to transfer. Though, if you know what you're doing, you can still transfer things over anyway."
+			echo "update the server using the following process:"
+			echo "- update the code (elichika)"
+			echo "- update the submodules (assets)"
+			echo "- rebuild the binary"
+			echo "- rebuild the assets"
+			echo "note that this will destroy the current state of serverdata.db"
+			echo "backup you files, or better yet, make sure that serverdata.db only store derived data"
 			echo ""
 			read -p "are you sure want update? enter to procced or exit termux (ctrl + c) if you don't want" _dummy33534
 			pkill elichika
 			clear
-			git pull
-			git submodule update --init --remote
+			git pull && \
+			git submodule deinit -f . && \
+			git submodule update --init --recursive --checkout && \
+			(go build || CGO_ENABLED=0 go build) && \
+			./elichika reinit && \
 			go build
 			echo "Finished, please run again"
 			exit 0
             ;;
         3)
 			clear
-			read -p "do you want reset everything? enter to procced or exit termux (ctrl + c) if you don't want" _dummy53534
+			echo "note that this will reset everything the current state of server"
+			echo "backup you files, or better yet"
+			echo ""
+			read -p "are you sure want reset server? enter to procced or exit termux (ctrl + c) if you don't want" _dummy53534
 			pkill elichika
 			rm serverdata.db
 			rm userdata.db
