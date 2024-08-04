@@ -4,6 +4,7 @@ import (
 	"elichika/dictionary"
 	"elichika/utils"
 
+	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -24,6 +25,7 @@ func (suit *Suit) populate(gamedata *Gamedata, masterdata_db, serverdata_db *xor
 	suit.Member = gamedata.Member[*suit.MemberMId]
 	suit.MemberMId = &suit.Member.Id
 	// suit.Name = dictionary.Resolve(suit.Name)
+	// fmt.Println(suit.Id, "\t", *suit.MemberMId, "\t", suit.Name, "\t", suit.ThumbnailImageAssetPath, "\t", suit.ModelAssetPath)
 }
 
 func loadSuit(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session, dictionary *dictionary.Dictionary) {

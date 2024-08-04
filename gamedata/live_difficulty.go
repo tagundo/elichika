@@ -134,6 +134,7 @@ func (ld *LiveDifficulty) loadSimpleLiveStage(gamedata *Gamedata) {
 	if ld.SimpleLiveStage != nil {
 		return // already loaded
 	}
+	// fmt.Println("Loading for", ld.LiveDifficultyId)
 	liveNotes := utils.ReadAllText(fmt.Sprintf("assets/simple_stages/%d.json", ld.LiveDifficultyId))
 	if (liveNotes == "") || (ld.UnlockPattern == enum.LiveUnlockPatternTowerOnly) {
 
@@ -275,6 +276,7 @@ func (ld *LiveDifficulty) ConstructLiveStage(gamedata *Gamedata) {
 	}
 	text := utils.ReadAllText(fmt.Sprintf("assets/full_stages/%d.json", ld.LiveDifficultyId))
 	if text == "" {
+		// fmt.Println("Newly generated map: ", ld.LiveDifficultyId)
 		return
 	}
 	pregeneratedStage := client.LiveStage{}

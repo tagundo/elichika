@@ -10,6 +10,7 @@ import (
 	"elichika/client"
 	"elichika/userdata"
 
+	"fmt"
 )
 
 func AddContent(session *userdata.Session, content client.Content) any {
@@ -18,6 +19,7 @@ func AddContent(session *userdata.Session, content client.Content) any {
 	}
 	handler, exist := contentHandlerByContentType[content.ContentType]
 	if !exist {
+		fmt.Println("TODO: Add handler for content type ", content.ContentType)
 		return nil
 	}
 	result := handler(session, &content)

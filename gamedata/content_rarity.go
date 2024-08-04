@@ -124,6 +124,7 @@ func loadContentRarity(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Se
 	}
 	// for contentType, m := range gamedata.ContentRarity.RarityTable {
 	// 	for contentId, contentAmount := range m {
+	// 		fmt.Println(contentType, contentId, contentAmount)
 	// 	}
 	// }
 }
