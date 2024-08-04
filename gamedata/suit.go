@@ -4,7 +4,6 @@ import (
 	"elichika/dictionary"
 	"elichika/utils"
 
-	"fmt"
 
 	"xorm.io/xorm"
 )
