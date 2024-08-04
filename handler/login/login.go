@@ -36,6 +36,7 @@ func login(ctx *gin.Context) {
 		session.AuthenticationData.AuthorizationCount++
 	}
 
+	// fmt.Println("User logins: ", userId)
 
 	resp := session.Login()
 	resp.SessionKey = session.EncodedSessionKey(req.Mask)

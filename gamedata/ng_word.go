@@ -4,6 +4,7 @@ import (
 	"elichika/dictionary"
 	"elichika/utils"
 
+	"fmt"
 	"strings"
 
 	"xorm.io/xorm"
@@ -82,6 +83,7 @@ func (root *NgWordNode) Build() {
 		if exist && (suffix != node) {
 			node.Suffix = suffix
 		}
+		// fmt.Println(node.GetString(), "->", node.Suffix.GetString())
 		node.HasWord = node.HasWord || node.Suffix.HasWord
 	}
 }
