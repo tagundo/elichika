@@ -1,0 +1,31 @@
+{
+  "m_GameObject": {
+    "m_FileID": 0,
+    "m_PathID": 3
+  },
+  "m_Enabled": 1,
+  "m_Script": {
+    "m_FileID": 1,
+    "m_PathID": 12
+  },
+  "m_Name": "",
+  "audiencesPoint": {
+    "m_FileID": 0,
+    "m_PathID": 2
+  },
+  "ambient": {
+    "m_FileID": 0,
+    "m_PathID": 13
+  },
+  "ambients": {
+    "Array": []
+  },
+  "emissives": {
+    "Array": [
+      {
+        "m_FileID": 0,
+        "m_PathID": 12
+      }
+    ]
+  }
+}
