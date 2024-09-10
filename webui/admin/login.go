@@ -6,6 +6,7 @@ import (
 	"elichika/utils"
 	"elichika/webui/webui_utils"
 
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"mime/multipart"
@@ -19,15 +20,14 @@ func login(ctx *gin.Context) {
 	resp := webui_utils.Response{}
 	form := ctx.MustGet("form").(*multipart.Form)
 
-	// TODO(extra): this is vulnerable to timing attack but it's whatever
 	adminPassword := form.Value["admin_password"][0]
-	if *config.Conf.AdminPassword != adminPassword {
-		resp.Error = &respString
-		*resp.Error = "Wrong password!"
-	} else {
+	if subtle.ConstantTimeCompare([]byte(*config.Conf.AdminPassword), []byte(adminPassword)) == 1 {
 		newSessionKey()
 		resp.Response = &respString
 		*resp.Response = base64.StdEncoding.EncodeToString(adminSessionKey)
+	} else {
+		resp.Error = &respString
+		*resp.Error = "Wrong password!"
 	}
 
 	jsonBytes, err := json.Marshal(resp)
