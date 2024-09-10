@@ -101,12 +101,18 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] Adding table same as official.
     - [X] Working downloadable asset.
 	- [x] Costume
+		- There is no way build assetbundle costume.
+		- Alternate color not supported.
+		- Custom physics would require unity editor thing.
+		- Can only modify exist costume asset with UABE/UABEA.
 	- [x] Live
+		- Can only reuse id on each gimmick.
 	- [x] DLP
 		- This code need improvement.
 		- No reward received.
 		- Pressing help button will cause softlock.
 	- [x] Card
+		- Same as costume issue
 		- Skill icon is filled but some unused need do.
 		- Bond story & Voice navigation will return as default because there is no way to create new one.
 		- KO, ZH & JA dictionary skill is not writen, only english right now.

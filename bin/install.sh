@@ -31,15 +31,8 @@ echo "Enter this ID"
 echo "ID: 26092019 (jp) | 25022020 (gl)"
 echo ""
 if [ $? -eq 0 ]; then
-    echo "cd $PWD && ./elichika" > ~/run_elichika2 && \
-    echo "cd $PWD && sh elichika_utility.sh" > ~/menu_elichika2 && \
-    echo "cd $PWD && curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash"  > ~/update_elichika2 && \
-    chmod +x ~/run_elichika2 && \
-    chmod +x ~/update_elichika2 && \
-	chmod +x ~/menu_elichika2 && \
-    echo "Use \"~/run_elichika2\" in termux to run the server!" && \
-    echo "Use \"~/menu_elichika2\" in termux to run the menu!" && \
-    echo "Use \"~/update_elichika2\" in termux to update the server!"
+    chmod +rwx ./bin/shortcut.sh && \
+    ./bin/shortcut.sh
 else
     echo "Error installing"
 fi
