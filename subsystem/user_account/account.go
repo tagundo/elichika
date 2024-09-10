@@ -46,23 +46,23 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 		}
 		status := client.UserStatus{
 			LastLoginAt:                             time.Now().Unix(),
-			Rank:                                    1,
+			Rank:                                    320,
 			RecommendCardMasterId:                   100011001, // Honoka
 			MaxFriendNum:                            10,
 			LivePointFullAt:                         time.Now().Unix(),
-			LivePointBroken:                         100,
+			LivePointBroken:                         420,
 			LivePointSubscriptionRecoveryDailyCount: 1,
 			LivePointSubscriptionRecoveryDailyResetAt: 1688137200,
 			ActivityPointCount:                        3,
 			ActivityPointResetAt:                      1688137200,
 			ActivityPointPaymentRecoveryDailyCount:    10,
 			ActivityPointPaymentRecoveryDailyResetAt:  1688137200,
-			GameMoney:                                 10,
-			CardExp:                                   10,
-			FreeSnsCoin:                               100,
-			AppleSnsCoin:                              0,
-			GoogleSnsCoin:                             0,
-			SubscriptionCoin:                          0,
+			GameMoney:                                 1073741823,
+			CardExp:                                   1073741823,
+			FreeSnsCoin:                               357913941,
+			AppleSnsCoin:                              357913941,
+			GoogleSnsCoin:                             357913941,
+			SubscriptionCoin:                          1073741823,
 			LatestLiveDeckId:                          1,
 			MainLessonDeckId:                          1,
 			FavoriteMemberId:                          1,
@@ -118,8 +118,10 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 				ViewStatus:               1,
 				IsNew:                    false,
 			})
+		}
+		for _, card := range gamedata.Card {
 			cards = append(cards, client.UserCard{
-				CardMasterId:               member.MemberInit.SuitMasterId,
+				CardMasterId:               card.Id,
 				Level:                      1,
 				Exp:                        0,
 				LovePoint:                  0,
@@ -128,8 +130,8 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 				IsAwakeningImage:           false,
 				IsAllTrainingActivated:     false,
 				TrainingActivatedCellCount: 0,
-				MaxFreePassiveSkill:        1, // all R
-				Grade:                      0,
+				MaxFreePassiveSkill:        card.PassiveSkillSlot, // all R
+				Grade:                      5,
 				TrainingLife:               0,
 				TrainingAttack:             0,
 				TrainingDexterity:          0,
@@ -149,23 +151,16 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 		user_card.InsertCards(session, cards)
 	}
 	{ // all the costumes that can't be obtained from maxing cards
-		userSuitDefaltList := []int{100011001, 100021001, 100031001, 100041001, 100051001, 100061001, 100071001, 100081001, 100091001, 101011001, 101021001, 101031001, 101041001, 101051001, 101061001, 101071001, 101081001, 101091001, 102011001, 102021001, 102031001, 102041001, 102051001, 102061001, 102071001, 102081001, 102091001, 102101001, 102111001, 102121001}
 		suits := []client.UserSuit{}
 
 		for _, suit := range gamedata.Suit {
- 		   if suit.SuitReleaseRoute == 2 {
-    		    for _, defaltSuitID := range userSuitDefaltList {
-     		       if int(suit.Id) == defaltSuitID {
-       		         suits = append(suits, client.UserSuit{
-         		           SuitMasterId: suit.Id,
-         		           IsNew:        false,
-          		      })
-         		       break
-        		    }
-     		   }
-  		  }
+			suits = append(suits, client.UserSuit{
+				SuitMasterId: suit.Id,
+				IsNew:        false,
+			})
 		}
 		user_suit.InsertUserSuits(session, suits)
+
 	}
 	{ // show formation
 		liveDecks := []client.UserLiveDeck{}
