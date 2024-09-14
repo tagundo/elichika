@@ -18,17 +18,16 @@ import (
 var cdnMasterVersionMapping = map[string]string{}
 
 func init() {
-	if *config.Conf.CdnPathType != "separated" {
-		cdnMasterVersionMapping["en"] = *config.Conf.CdnPathAll
-		cdnMasterVersionMapping["ko"] = *config.Conf.CdnPathAll
-		cdnMasterVersionMapping["zh"] = *config.Conf.CdnPathAll
-		cdnMasterVersionMapping["ja"] = *config.Conf.CdnPathAll
+	if *config.Conf.CdnServer != "https://llsifas.catfolk.party/static/" {
+		cdnMasterVersionMapping["en"] = "assets"
+		cdnMasterVersionMapping["ko"] = "assets"
+		cdnMasterVersionMapping["zh"] = "assets"
+		cdnMasterVersionMapping["ja"] = "assets"
 	} else {
-		// Add your else condition here
-		cdnMasterVersionMapping["en"] = *config.Conf.CdnPathEN
-		cdnMasterVersionMapping["ko"] = *config.Conf.CdnPathKO
-		cdnMasterVersionMapping["zh"] = *config.Conf.CdnPathZH
-		cdnMasterVersionMapping["ja"] = *config.Conf.CdnPathJA
+		cdnMasterVersionMapping["en"] = "2d61e7b4e89961c7"
+		cdnMasterVersionMapping["ko"] = "2d61e7b4e89961c7"
+		cdnMasterVersionMapping["zh"] = "2d61e7b4e89961c7"
+		cdnMasterVersionMapping["ja"] = "b66ec2295e9a00aa"
 	}
 }
 

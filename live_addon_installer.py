@@ -243,7 +243,15 @@ if not os.path.exists(check_json_config):
     print('Config file is missing, Exiting...')
     sys.exit(1)
 
-modding_elichika_path = "assets/package/live/"
+def is_termux():
+    return 'com.termux' in os.getenv('PREFIX', '')
+
+# Set folder path based on environment
+if is_termux():
+    folder_path = os.path.expanduser('~/storage/downloads/sukusta/live/')
+else:
+    # Set a default or other path if not in Termux
+    modding_elichika_path = "assets/package/live/"
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)
@@ -2579,10 +2587,8 @@ shutil.rmtree(temp_directory, ignore_errors=True)
 with open(check_json_config, 'r') as f:
     config_elichika = json.load(f)
     xcheck_cdn = config_elichika.get('cdn_server')
-    xcheck_cdnpath = config_elichika.get('cdn_path_type')
-    if xcheck_cdn != "http://127.0.0.1:8080/static" and xcheck_cdnpath != "all":
+    if xcheck_cdn != "http://127.0.0.1:8080/static":
         config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
-        config_elichika['cdn_path_type'] = "all"
         with open(check_json_config, 'w') as f:
             json.dump(config_elichika, f, indent=4)
             print("CDN server updated to http://127.0.0.1:8080/static")

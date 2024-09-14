@@ -28,6 +28,7 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 	- Replace pre-render MV with realtime (save hundred megabyte drive)
 	- Disable useless setting
 	- Fixed some songs not unlocked
+	- Fixed aishiteru banzai formation
 	- Increase max LP limit same as official
 	- Increase limit skip ticket to 100
 	- Make all member use swimsuit in tutorial
@@ -35,14 +36,6 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 	- Unlocked bond story
 	- Sorted costume by old to new
 - Fixed consistent dictionary
-- Added config
-	- cdn_path_type | use all or separate folder to store relevant file
-	- cdn_path_all | Folder name of all locale in static/
-	- cdn_path_en | Folder name of english locale in static/
-	- cdn_path_ko | Folder name of korean locale in static/
-	- cdn_path_zh | Folder name of chinese locale in static/
-	- cdn_path_ja | Folder name of japanese locale in static/
-	- lesson_drop_skill_type | Logic of obtain insight skill
 - Clone as elichika2 folder so you can install safely
 
 ## Installing
@@ -76,8 +69,33 @@ alternate menu
 
 Note that whenever you want to play, the server need to be on, so if you already closed termux or the server, you will have to run it again.
 
-#### Updating the server
-You can update the server by running the following command in the installed location:
+## Updating the server
+There are 2 ways to update the server:
+
+- The basic update is more stable but will take longer because it will be downloading more stuff and rebuilding more stuff.
+- The normal update is faster, but if your server version is too old, something might break.
+
+Regardless of what update methods you want, it is also a good idea to backup ``userdata.db`` or to export your data (with the WebUI) before doing this, as updating from a too old version might result in breaking changes anyway.
+
+
+### Basic update
+You can update the server using a basic update logic:
+
+```
+curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/basic_update.sh | bash
+```
+
+If you have a new enough version, you can also run:
+
+```
+~/basic_update_elichika
+```
+to do the same thing.
+
+The basic update basically backup your data, reinstall, and then restore your data. This will work for pretty much every version, but it can be slower than the normal update.
+
+### Normal update
+If you update the server regularly, then you can use the normal update and it should work:
 
 ```
 curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/update.sh | bash
@@ -89,14 +107,7 @@ If your version is new enough, then running:
 ~/update_elichika2
 ```
 
-### PC
-(TBA)
-
 would be enough.
-
-As of current version, you should be able to keep your progress while doing this, so it's recommended to do it often so you get access to newly implemented features.
-
-It is also a good idea to backup ``userdata.db`` or to export your data (with the WebUI) before doing this, as updating from a too old version might result in breaking changes.
 
 ## Playing the game
 With the server running, and the client network setup correctly, simply open the game and play.

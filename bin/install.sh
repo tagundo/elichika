@@ -6,6 +6,18 @@
 BRANCH=${BRANCH:-"main"}
 # install git and golang
 clear
+
+echo -e "${C}${BOLD}please allow storage permission"${W}
+while true; do
+	termux-setup-storage
+	sleep 4
+    if [[ -d ~/storage ]]; then
+        break
+    else
+        echo -e "${R}${BOLD}Storage permission denied\n"${W}
+    fi
+    sleep 2
+done
 echo "Installing Elichika... PLEASE DO NOT DISCONNECT INTERNET"
 echo "Download speed too slow? close installer by CTRL+C then use 1.1.1.1 and try again"
 cd
@@ -31,15 +43,8 @@ echo "Enter this ID"
 echo "ID: 26092019 (jp) | 25022020 (gl)"
 echo ""
 if [ $? -eq 0 ]; then
-    echo "cd $PWD && ./elichika" > ~/run_elichika2 && \
-    echo "cd $PWD && sh elichika_utility.sh" > ~/menu_elichika2 && \
-    echo "cd $PWD && curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash"  > ~/update_elichika2 && \
-    chmod +x ~/run_elichika2 && \
-    chmod +x ~/update_elichika2 && \
-	chmod +x ~/menu_elichika2 && \
-    echo "Use \"~/run_elichika2\" in termux to run the server!" && \
-    echo "Use \"~/menu_elichika2\" in termux to run the menu!" && \
-    echo "Use \"~/update_elichika2\" in termux to update the server!"
+    chmod +rwx ./bin/shortcut.sh && \
+    ./bin/shortcut.sh
 else
     echo "Error installing"
 fi

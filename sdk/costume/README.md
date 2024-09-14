@@ -1,6 +1,8 @@
 # About skin texture
 credit to Yousifrill for drawing body texture
 
+it always flat otherwise looks weird on flat
+
 these recreation texture may not similar as official, if you want add your modified texture, let me know / make pull request
 
 # Thigh Scale

@@ -73,47 +73,18 @@ public class SkinnedMeshComponentWizard : ScriptableWizard
  
             Mesh mesh = new Mesh
             {
-				name = component.sharedMesh.name,
-				vertices = vertices,
-				uv = component.sharedMesh.uv,
-				bindposes = baseMesh.sharedMesh.bindposes,
-				boneWeights = weights,
-				colors = component.sharedMesh.colors,
+                name = component.sharedMesh.name,
+                vertices = vertices,
+                uv = component.sharedMesh.uv,
+                triangles = component.sharedMesh.triangles,
+                bindposes = baseMesh.sharedMesh.bindposes,
+                boneWeights = weights,
+                normals = component.sharedMesh.normals,
+                colors = component.sharedMesh.colors,
+                tangents = component.sharedMesh.tangents
             };
             
-			mesh.normals = component.sharedMesh.normals;
-			mesh.tangents = component.sharedMesh.tangents;
-			
-			int submeshCount = component.sharedMesh.subMeshCount;
-			mesh.subMeshCount = submeshCount;
-			for (int submeshIndex = 0; submeshIndex < submeshCount; submeshIndex++)
-			{
-				int[] submeshTriangles = component.sharedMesh.GetTriangles(submeshIndex);
-				mesh.SetTriangles(submeshTriangles, submeshIndex);
-			}
-			
-            int blendShapeCount = component.sharedMesh.blendShapeCount;
-            mesh.ClearBlendShapes();
-            for (int i = 0; i < blendShapeCount; i++)
-            {
-                string blendShapeName = component.sharedMesh.GetBlendShapeName(i);
-                int frameCount = component.sharedMesh.GetBlendShapeFrameCount(i);
-
-                for (int frameIndex = 0; frameIndex < frameCount; frameIndex++)
-                {
-                    Vector3[] deltaVertices = new Vector3[vertices.Length];
-                    Vector3[] deltaNormals = new Vector3[vertices.Length];
-                    Vector3[] deltaTangents = new Vector3[vertices.Length];
-
-                    component.sharedMesh.GetBlendShapeFrameVertices(i, frameIndex, deltaVertices, deltaNormals, deltaTangents);
-
-                    float frameWeight = component.sharedMesh.GetBlendShapeFrameWeight(i, frameIndex);
-
-                    mesh.AddBlendShapeFrame(blendShapeName, frameWeight, deltaVertices, deltaNormals, deltaTangents);
-                }
-            }
-            
-            AssetDatabase.CreateAsset(mesh, Path.Combine("Assets", "Export", $"{mesh.name}_fix.asset"));
+            AssetDatabase.CreateAsset(mesh, Path.Combine("Assets", "Export", $"{mesh.name}_fixed.asset"));
         }
     }
  
