@@ -6,6 +6,18 @@
 BRANCH=${BRANCH:-"main"}
 # install git and golang
 clear
+
+echo -e "${C}${BOLD}please allow storage permission"${W}
+while true; do
+	termux-setup-storage
+	sleep 4
+    if [[ -d ~/storage ]]; then
+        break
+    else
+        echo -e "${R}${BOLD}Storage permission denied\n"${W}
+    fi
+    sleep 2
+done
 echo "Installing Elichika... PLEASE DO NOT DISCONNECT INTERNET"
 echo "Download speed too slow? close installer by CTRL+C then use 1.1.1.1 and try again"
 cd
