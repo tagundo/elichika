@@ -71,7 +71,15 @@ if not os.path.exists(check_json_config):
     print('Config file is missing, Exiting...')
     sys.exit(1)
 
-modding_elichika_path = "assets/package/suit/"
+def is_termux():
+    return 'com.termux' in os.getenv('PREFIX', '')
+
+# Set folder path based on environment
+if is_termux():
+    folder_path = os.path.expanduser('~/storage/downloads/sukusta/suit/')
+else:
+    # Set a default or other path if not in Termux
+    modding_elichika_path = "assets/package/suit/"
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)
@@ -4082,9 +4090,9 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     # Insert the new record with the updated display_order
     cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                    (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_ja))
-    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
-    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
-    cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
+    # cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
+    # cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
+    # cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
    
     if chara_id == 209:
         cursor.execute("INSERT INTO main.m_suit_view (suit_master_id, view_status, model_asset_path) VALUES (?, '2', ?);", (costume_id_masterdata, rina_unmask_costume_path))
@@ -4103,38 +4111,48 @@ with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
     # Insert the new record with the updated display_order
     cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                    (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_gl))
-    cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
-    cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
-    cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
+    # cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
+    # cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
+    # cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
    
     if chara_id == 209:
         cursor.execute("INSERT INTO main.m_suit_view (suit_master_id, view_status, model_asset_path) VALUES (?, '2', ?);", (costume_id_masterdata, rina_unmask_costume_path))
             
-with sqlite3.connect('serverdata.db') as conn:
-    cursor = conn.cursor()  
+# with sqlite3.connect('serverdata.db') as conn:
+    # cursor = conn.cursor()  
     
-    cursor.execute("SELECT COUNT(*) FROM s_trade_product WHERE product_id = ?", (trade_id_into_json,))
-    result_chc2c = cursor.fetchone()
-    if result_chc2c[0] > 0:
-        print(f"This trade product already exists in the database")
-    else:
-        json_data_costume = [{
-        "content_type": 7,
-        "content_id": costume_id_masterdata,
-        "content_amount": 1
-        }]
-        json_string_costume = json.dumps(json_data_costume)
+    # cursor.execute("SELECT COUNT(*) FROM s_trade_product WHERE product_id = ?", (trade_id_into_json,))
+    # result_chc2c = cursor.fetchone()
+    # if result_chc2c[0] > 0:
+        # print(f"This trade product already exists in the database")
+    # else:
+        # json_data_costume = [{
+        # "content_type": 7,
+        # "content_id": costume_id_masterdata,
+        # "content_amount": 1
+        # }]
+        # json_string_costume = json.dumps(json_data_costume)
 
-        costume_free_price = input("do you want make as free? (y/n): ")
+        # costume_free_price = input("do you want make as free? (y/n): ")
 
-        if costume_free_price == "y" :
-            costume_price_val = 0
-        else :
-            costume_price_val = 55
+        # if costume_free_price == "y" :
+            # costume_price_val = 0
+        # else :
+            # costume_price_val = 55
 
-        cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, ?, ?, '1', ?);", (trade_id_into_json, channel_exchange_trade, costume_price_val, json_string_costume))
-        print("added to channel exchange shop")
+        # cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, ?, ?, '1', ?);", (trade_id_into_json, channel_exchange_trade, costume_price_val, json_string_costume))
+        # print("added to channel exchange shop")
 
+with sqlite3.connect('userdata.db') as conn:
+    cursor = conn.cursor()  
+    cursor.execute("SELECT user_id FROM u_status")
+    user_ids = cursor.fetchall()
+    for user_id_ins in user_ids:
+        user_id_ins = user_id_ins[0]
+        cursor.execute("INSERT INTO main.u_suit (user_id, suit_master_id, is_new) VALUES (?, ?, '0');", (user_id_ins, costume_id_masterdata))
+        cursor.execute("UPDATE u_member SET suit_master_id = ? WHERE user_id = ? AND member_master_id = ?;", (costume_id_masterdata, user_id_ins, chara_id))
+        print(f"added to user id {user_id_ins} & changed navi costume")
+    
 with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:
     cursor = conn.cursor()
     
@@ -4524,10 +4542,8 @@ shutil.rmtree(temp_directory, ignore_errors=True)
 with open(check_json_config, 'r') as f:
     config_elichika = json.load(f)
     xcheck_cdn = config_elichika.get('cdn_server')
-    xcheck_cdnpath = config_elichika.get('cdn_path_type')
-    if xcheck_cdn != "http://127.0.0.1:8080/static" and xcheck_cdnpath != "all":
+    if xcheck_cdn != "http://127.0.0.1:8080/static":
         config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
-        config_elichika['cdn_path_type'] = "all"
         with open(check_json_config, 'w') as f:
             json.dump(config_elichika, f, indent=4)
             print("CDN server updated to http://127.0.0.1:8080/static")
