@@ -7,12 +7,11 @@ while true; do
     echo "ID : 26092019 (jp) | 25022020 (gl)"
     echo ""
     echo "1. Run Server"
-    echo "2. Update Server"
-    echo "3. Reset Server"
-    echo "4. Clear Cache Database"
-    echo "5. Switch CDN to LocalHost"
-    echo "6. Switch CDN to Catfolk"
-    echo "7. Developer Menu"
+    echo "2. Reset Server"
+    echo "3. Clear Cache Database"
+    echo "4. Switch CDN to LocalHost"
+    echo "5. Switch CDN to Catfolk"
+    echo "6. Developer Menu"
     echo "0. Exit"
 
     read -p "Enter your choice: " option
@@ -25,28 +24,6 @@ while true; do
             read -p "Press Enter to continue..." _dummy1
             ;;
         2)
-			clear
-			echo "update the server using the following process:"
-			echo "- update the code (elichika)"
-			echo "- update the submodules (assets)"
-			echo "- rebuild the binary"
-			echo "- rebuild the assets"
-			echo "note that this will destroy the current state of serverdata.db"
-			echo "backup you files, or better yet, make sure that serverdata.db only store derived data"
-			echo ""
-			read -p "are you sure want update? enter to procced or exit termux (ctrl + c) if you don't want" _dummy33534
-			pkill elichika
-			clear
-			git pull && \
-			git submodule deinit -f . && \
-			git submodule update --init --recursive --checkout && \
-			(go build || CGO_ENABLED=0 go build) && \
-			./elichika reinit && \
-			go build
-			echo "Finished, please run again"
-			exit 0
-            ;;
-        3)
 			clear
 			echo "note that this will reset everything the current state of server"
 			echo "backup you files, or better yet"
@@ -70,12 +47,12 @@ while true; do
 			echo "Finished, please run again"
 			exit 0
             ;;
-        4)
+        3)
 			clear
 			python elichika_reset.py -nostage
             read -p "Press Enter to continue..." _dummy15sz35
             ;;
-        5)
+        4)
             clear
 			pkill elichika
             sed -i 's#https://llsifas.catfolk.party/static/#http://127.0.0.1:8080/static#g' "config.json"
@@ -83,7 +60,7 @@ while true; do
             echo "Switched To LocalHost"
             read -p "Press Enter to continue..." _dummy15555
             ;;
-        6)
+        5)
             clear
             pkill elichika
             sed -i 's#http://127.0.0.1:8080/static#https://llsifas.catfolk.party/static/#g' "config.json"
@@ -91,18 +68,18 @@ while true; do
             echo "Switched To Catfolk"
             read -p "Press Enter to continue..." _dummy15235
             ;;
-        7)
+        6)
             # Dev Menu
             while true; do
                 clear
                 echo "==== Developer Menu ===="
 				echo "1. Add New Costume"
 				echo "2. Add New Live"
-				echo "3. Add New DLP"
-				echo "4. Patch Masterdata"
-				echo "5. LLASDecryptor"
-				echo "6. Overwrite JP Client Dictionary"
-				echo "7. Fetch Package"
+				echo "3. Add New DLP (Unstable)"
+				echo "4. Add New Card (Unstable)"
+				echo "5. Patch Masterdata"
+				echo "6. LLASDecryptor"
+				echo "7. Overwrite JP Client Dictionary"
 				echo "8. GameBanana Modpage"
                 echo "0. Back to Main Menu"
 
@@ -130,28 +107,26 @@ while true; do
                     4)
 						clear
 						pkill elichika
+						python card_addon_installer.py
+                        read -p "Press Enter to continue..." _dummy03777
+                        ;;
+                    5)
+						clear
+						pkill elichika
 						python elichika_db_importer.py
                         read -p "Press Enter to continue..." _dummy0399
                         ;;
-                    5)
+                    6)
 						clear
 						pkill elichika
 						python llasdecryptor.py
                         read -p "Press Enter to continue..." _dummy02555555
                         ;;
-                    6)
+                    7)
 						clear
 						pkill elichika
 						python replace_jp_client_dictionary.py
                         read -p "Press Enter to continue..." _dummy02555235
-                        ;;
-                    7)
-						clear
-						pkill elichika
-						cd ~/elichika2/assets
-                        git submodule update --init --remote
-                        cd ~/elichika2
-                        read -p "Press Enter to continue..." _dummy03998
                         ;;
                     8)
 						clear
