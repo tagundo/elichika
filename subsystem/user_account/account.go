@@ -14,6 +14,8 @@ import (
 	"elichika/subsystem/user_live_party"
 	"elichika/subsystem/user_member"
 	"elichika/subsystem/user_suit"
+	"elichika/subsystem/user_unlock_scene"
+	"elichika/subsystem/user_custom_background"
 	"elichika/userdata"
 	"elichika/utils"
 
@@ -51,6 +53,7 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 			MaxFriendNum:                            10,
 			LivePointFullAt:                         time.Now().Unix(),
 			LivePointBroken:                         420,
+			Exp:                   3330914,
 			LivePointSubscriptionRecoveryDailyCount: 1,
 			LivePointSubscriptionRecoveryDailyResetAt: 1688137200,
 			ActivityPointCount:                        3,
@@ -119,6 +122,7 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 				IsNew:                    false,
 			})
 		}
+
 		for _, card := range gamedata.Card {
 			cards = append(cards, client.UserCard{
 				CardMasterId:               card.Id,
@@ -149,6 +153,13 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 		}
 		user_member.InsertMembers(session, members)
 		user_card.InsertCards(session, cards)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeAccessory, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeFreeLive, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeLesson, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeReferenceBookSelect, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeStoryMember, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeEvent, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeMemberGuild, enum.UnlockSceneStatusOpened)
 	}
 	{ // all the costumes that can't be obtained from maxing cards
 		suits := []client.UserSuit{}
