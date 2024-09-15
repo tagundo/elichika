@@ -6,7 +6,6 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 - Add-on content support
 - Added SDK of developement content
 - Added menu_elichika2
-- Added serverdata.db & userdata.db
 - Restore unused content
 	- lvl 500 bond limit
 	- lvl 100 card once kizuna board is maxed out
@@ -32,7 +31,7 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 	- Increase max LP limit same as official
 	- Increase limit skip ticket to 100
 	- Make all member use swimsuit in tutorial
-	- Disable 60fps live quality, you can enable on graphics setting
+	- Disable 60fps live quality, you can enable in Live Show Settings
 	- Unlocked bond story
 	- Sorted costume by old to new
 - Fixed consistent dictionary
@@ -126,8 +125,6 @@ Enter your user / player id and a password:
     - You can also leave the password empty.
     - If you are not running the server yourself, it's highly recommended that you setup a password, because other user can take over your account if they know your user id.
     - Passwords are securely stored with bcrypt.
-	- if you don't want to start from the beginning, use this player ID
-		- ID : 26092019 (jp) | 25022020 (gl)
 ![Set the ID and password](docs/images/transfer_2.png)
 
 After that, confirm the transfer and you can login with the new user id.

@@ -76,7 +76,7 @@ def is_termux():
 
 # Set folder path based on environment
 if is_termux():
-    folder_path = os.path.expanduser('~/storage/downloads/sukusta/suit/')
+    modding_elichika_path = os.path.expanduser('~/storage/downloads/sukusta/suit/')
 else:
     # Set a default or other path if not in Termux
     modding_elichika_path = "assets/package/suit/"
