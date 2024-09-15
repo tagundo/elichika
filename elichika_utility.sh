@@ -41,6 +41,7 @@ while true; do
 			git reset --hard origin/main
 			git clean -fd
 			cd ~/elichika2
+			echo "Building server..."
 			go build
 			echo "Finished, please run again"
 			exit 0

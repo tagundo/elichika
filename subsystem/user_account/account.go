@@ -15,7 +15,6 @@ import (
 	"elichika/subsystem/user_member"
 	"elichika/subsystem/user_suit"
 	"elichika/subsystem/user_unlock_scene"
-	"elichika/subsystem/user_custom_background"
 	"elichika/userdata"
 	"elichika/utils"
 
