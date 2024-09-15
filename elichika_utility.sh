@@ -4,8 +4,6 @@ while true; do
     clear
     echo "==== Elichika Menu ===="
     echo ""
-    echo "ID : 26092019 (jp) | 25022020 (gl)"
-    echo ""
     echo "1. Run Server"
     echo "2. Reset Server"
     echo "3. Clear Cache Database"
