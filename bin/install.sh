@@ -37,11 +37,6 @@ echo "Building executable, it takes 5 - 15 minutes+ depend your phone"
 chmod +rx elichika && \
 chmod +rx elichika_utility.sh && \
 echo "Installed succesfully!"
-echo ""
-echo "You can start new or use exist by select transfer with password"
-echo "Enter this ID"
-echo "ID: 26092019 (jp) | 25022020 (gl)"
-echo ""
 if [ $? -eq 0 ]; then
     chmod +rwx ./bin/shortcut.sh && \
     ./bin/shortcut.sh
