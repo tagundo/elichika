@@ -27,7 +27,6 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 	- Replace pre-render MV with realtime (save hundred megabyte drive)
 	- Disable useless setting
 	- Fixed some songs not unlocked
-	- Fixed aishiteru banzai formation
 	- Increase max LP limit same as official
 	- Increase limit skip ticket to 100
 	- Make all member use swimsuit in tutorial
@@ -87,7 +86,7 @@ curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/basic_update.sh
 If you have a new enough version, you can also run:
 
 ```
-~/basic_update_elichika
+~/basic_update_elichika2
 ```
 to do the same thing.
 
