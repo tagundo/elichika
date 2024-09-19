@@ -8,6 +8,7 @@ import sys
 import shutil
 import json
 import hashlib
+import zlib
 from datetime import datetime
 
 def backup_operate(filelist):
@@ -77,6 +78,9 @@ def is_termux():
 # Set folder path based on environment
 if is_termux():
     modding_elichika_path = os.path.expanduser('~/storage/downloads/sukusta/suit/')
+    if not os.path.exists(modding_elichika_path):
+        print('Path is missing, please execute termux-setup-storage command and allow it')
+        sys.exit(1)
 else:
     # Set a default or other path if not in Termux
     modding_elichika_path = "assets/package/suit/"
@@ -95,6 +99,11 @@ def clear_terminal():
         os.system('cls')
     elif system == 'Linux' or system == 'Darwin':
         os.system('clear')
+
+def generate_crc32(sukusta_path):
+    with open(sukusta_path, 'rb') as f_suku:
+        file_data_suku = f_suku.read()
+    return f"{zlib.crc32(file_data_suku) & 0xFFFFFFFF:08x}"  # Unsigned CRC32 in hex format
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
     for i in range(len(data)):
@@ -214,12 +223,66 @@ with zipfile.ZipFile(zip_buffer, 'r') as zip_ref:
                     print(f"Error executing file: {file_info.filename}\nError: {e}")
 
 start_encrypt1 = temp_directory + costume_file
+# function crc32, this is neccesary for update costume
+crc32_checksum_costume = generate_crc32(start_encrypt1)
+crc32_rename_costume = temp_directory + crc32_checksum_costume + costume_file
+os.rename(start_encrypt1, crc32_rename_costume)
+start_encrypt1 = crc32_rename_costume
 costume_filename = os.path.splitext(start_encrypt1.split("/")[-1])[0]
 costume_filesize = os.path.getsize(start_encrypt1)
+encrypted_costume = "static/assets/" + os.path.splitext(start_encrypt1.split("/")[-1])[0]
 file_extension = start_encrypt1.split(".")[-1]
 
 if file_extension.isdigit():
     chara_id = int(file_extension)
+
+if not costume_filename.isalnum() or not costume_filename.islower():
+    print('Invalid Costume Filename, Exiting.')
+    shutil.rmtree(temp_directory, ignore_errors=True)
+    sys.exit(1)  
+
+if thumbnail_file != "":
+    start_encrypt2 = temp_directory + thumbnail_file
+    crc32_checksum_thumbnail = generate_crc32(start_encrypt2)
+    crc32_rename_thumbnail = temp_directory + crc32_checksum_thumbnail + thumbnail_file
+    os.rename(start_encrypt2, crc32_rename_thumbnail)
+    start_encrypt2 = crc32_rename_thumbnail
+    thumbnail_costume_filename = os.path.splitext(start_encrypt2.split("/")[-1])[0]
+    thumbnail_costume_size = os.path.getsize(start_encrypt2)
+    encrypted_thumbnail = "static/assets/" + os.path.splitext(start_encrypt2.split("/")[-1])[0]
+    if not thumbnail_costume_filename.isalnum() or not thumbnail_costume_filename.islower():
+        print('Invalid Thumbnail Filename, Exiting.')
+        shutil.rmtree(temp_directory, ignore_errors=True)
+        sys.exit(1)  
+
+if costume_facedynamic_file != "":
+    start_encrypt4 = temp_directory + costume_facedynamic_file
+    crc32_checksum_facedynamic = generate_crc32(start_encrypt4)
+    crc32_rename_facedynamic = temp_directory + crc32_checksum_facedynamic + costume_facedynamic_file
+    os.rename(start_encrypt4, crc32_rename_facedynamic)
+    start_encrypt4 = crc32_rename_facedynamic
+    facedynamic_costume_filename = os.path.splitext(start_encrypt4.split("/")[-1])[0]
+    facedynamic_costume_size = os.path.getsize(start_encrypt4)
+    encrypted_facedynamic = "static/assets/" + os.path.splitext(start_encrypt4.split("/")[-1])[0]
+    if not facedynamic_costume_filename.isalnum() or not facedynamic_costume_filename.islower():
+        print('Invalid Facedynamic Filename, Exiting.')
+        shutil.rmtree(temp_directory, ignore_errors=True)
+        sys.exit(1)  
+
+if chara_id == 209:
+    start_encrypt3 = temp_directory + rina_unmask_costume_file
+    crc32_checksum_rina_unmask = generate_crc32(start_encrypt3)
+    crc32_rename_rina_unmask = temp_directory + crc32_checksum_rina_unmask + rina_unmask_costume_file
+    os.rename(start_encrypt3, crc32_rename_rina_unmask)
+    start_encrypt3 = crc32_rename_rina_unmask
+    rina_unmask_costume_filename = os.path.splitext(start_encrypt3.split("/")[-1])[0]
+    rina_unmask_costume_filesize = os.path.getsize(start_encrypt3)
+    encrypted_rina_unmask = "static/assets/" + os.path.splitext(start_encrypt3.split("/")[-1])[0]
+
+    if not rina_unmask_costume_filename.isalnum() or not rina_unmask_costume_filename.islower():
+        print('Invalid Rina Unmasked Costume Filename, Exiting.')
+        shutil.rmtree(temp_directory, ignore_errors=True)
+        sys.exit(1)  
 
 # Get user inputs
 if chara_id == 212:
@@ -311,7 +374,7 @@ if costume_description != "":
     print('Description: ' + costume_description)
 do_you_think_want_add_this = input("do you want add this? (y/n): ")
 
-if do_you_think_want_add_this == "y" :
+if do_you_think_want_add_this != "n" :
     clear_terminal()
 else :
     clear_terminal()
@@ -323,45 +386,6 @@ if do_backup_is_important == "y" :
     backup_operate(filelist)
 else :
     print('well then do your own risk')
-    
-if thumbnail_file != "":
-    start_encrypt2 = temp_directory + thumbnail_file
-    thumbnail_costume_filename = os.path.splitext(start_encrypt2.split("/")[-1])[0]
-    thumbnail_costume_size = os.path.getsize(start_encrypt2)
-    encrypted_thumbnail = "static/assets/" + os.path.splitext(start_encrypt2.split("/")[-1])[0]
-    if not thumbnail_costume_filename.isalnum() or not thumbnail_costume_filename.islower():
-        print('Invalid Thumbnail Filename, Exiting.')
-        shutil.rmtree(temp_directory, ignore_errors=True)
-        sys.exit(1)  
-
-if costume_facedynamic_file != "":
-    start_encrypt4 = temp_directory + costume_facedynamic_file
-    facedynamic_costume_filename = os.path.splitext(start_encrypt4.split("/")[-1])[0]
-    facedynamic_costume_size = os.path.getsize(start_encrypt4)
-    encrypted_facedynamic = "static/assets/" + os.path.splitext(start_encrypt4.split("/")[-1])[0]
-    if not facedynamic_costume_filename.isalnum() or not facedynamic_costume_filename.islower():
-        print('Invalid Facedynamic Filename, Exiting.')
-        shutil.rmtree(temp_directory, ignore_errors=True)
-        sys.exit(1)  
-
-# perform check length to avoid auto delete
-if not costume_filename.isalnum() or not costume_filename.islower():
-    print('Invalid Costume Filename, Exiting.')
-    shutil.rmtree(temp_directory, ignore_errors=True)
-    sys.exit(1)  
-
-encrypted_costume = "static/assets/" + os.path.splitext(start_encrypt1.split("/")[-1])[0]
-
-if chara_id == 209:
-    start_encrypt3 = temp_directory + rina_unmask_costume_file
-    rina_unmask_costume_filename = os.path.splitext(start_encrypt3.split("/")[-1])[0]
-    rina_unmask_costume_filesize = os.path.getsize(start_encrypt3)
-    encrypted_rina_unmask = "static/assets/" + os.path.splitext(start_encrypt3.split("/")[-1])[0]
-
-    if not rina_unmask_costume_filename.isalnum() or not rina_unmask_costume_filename.islower():
-        print('Invalid Rina Unmasked Costume Filename, Exiting.')
-        shutil.rmtree(temp_directory, ignore_errors=True)
-        sys.exit(1)  
 
 if not os.path.exists(encrypted_costume):
     with open(start_encrypt1, "rb") as file:
@@ -4045,7 +4069,8 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     elif thumbnail_file == "" and chara_id == 9:
         thumbnail_costume_path = ";s"
     elif thumbnail_file == "" and chara_id == 101:
-        thumbnail_costume_path = "h\""
+        left_slash_fix = 92
+        thumbnail_costume_path = "h" + chr(left_slash_fix) 
     elif thumbnail_file == "" and chara_id == 102:
         thumbnail_costume_path = "(+"
     elif thumbnail_file == "" and chara_id == 103:

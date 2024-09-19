@@ -249,6 +249,9 @@ def is_termux():
 # Set folder path based on environment
 if is_termux():
     modding_elichika_path = os.path.expanduser('~/storage/downloads/sukusta/live/')
+    if not os.path.exists(modding_elichika_path):
+        print('Path is missing, please execute termux-setup-storage command and allow it')
+        sys.exit(1)
 else:
     # Set a default or other path if not in Termux
     modding_elichika_path = "assets/package/live/"
@@ -496,7 +499,7 @@ else:
 print('Description: ' + music_description)
 do_you_think_want_add_this = input("do you want add this? (y/n): ")
 
-if do_you_think_want_add_this == "y" :
+if do_you_think_want_add_this != "n" :
     clear_terminal()
 else :
     clear_terminal()
