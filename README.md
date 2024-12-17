@@ -170,7 +170,7 @@ Detailed explanations of some config options:
 - CDN server's address:
 
     - The server for clients to download assets.
-    - Default to  https://llsifas.catfolk.party/static/ (special thanks to sarah for hosting it).
+    - Default to  https://llsifas.imsofucking.gay/static/ (special thanks to sarah for hosting it).
     - `elichika` also has the ability to host the CDN itself:
 
         - To do this, put the relevant files in `elichika/static/`.

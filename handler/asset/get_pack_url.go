@@ -18,7 +18,7 @@ import (
 var cdnMasterVersionMapping = map[string]string{}
 
 func init() {
-	if *config.Conf.CdnServer != "https://llsifas.catfolk.party/static/" {
+	if *config.Conf.CdnServer != "https://llsifas.imsofucking.gay/static/" {
 		cdnMasterVersionMapping["en"] = "assets"
 		cdnMasterVersionMapping["ko"] = "assets"
 		cdnMasterVersionMapping["zh"] = "assets"
