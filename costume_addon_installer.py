@@ -46,7 +46,7 @@ if is_termux():
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)
 
-encrypted_folder = "static/assets/"
+encrypted_folder = "static/"
 
 if not os.path.exists(encrypted_folder):
     os.makedirs(encrypted_folder)
@@ -228,7 +228,7 @@ for mass_addon in zip_file_path:
     start_encrypt1 = crc32_rename_costume
     costume_filename = os.path.splitext(start_encrypt1.split("/")[-1])[0]
     costume_filesize = os.path.getsize(start_encrypt1)
-    encrypted_costume = "static/assets/" + os.path.splitext(start_encrypt1.split("/")[-1])[0]
+    encrypted_costume = "static/" + os.path.splitext(start_encrypt1.split("/")[-1])[0]
     file_extension = start_encrypt1.split(".")[-1]
 
     if file_extension.isdigit():
@@ -247,7 +247,7 @@ for mass_addon in zip_file_path:
         start_encrypt2 = crc32_rename_thumbnail
         thumbnail_costume_filename = os.path.splitext(start_encrypt2.split("/")[-1])[0]
         thumbnail_costume_size = os.path.getsize(start_encrypt2)
-        encrypted_thumbnail = "static/assets/" + os.path.splitext(start_encrypt2.split("/")[-1])[0]
+        encrypted_thumbnail = "static/" + os.path.splitext(start_encrypt2.split("/")[-1])[0]
         if not thumbnail_costume_filename.isalnum() or not thumbnail_costume_filename.islower():
             print('Invalid Thumbnail Filename, Exiting.')
             shutil.rmtree(temp_directory, ignore_errors=True)
@@ -261,7 +261,7 @@ for mass_addon in zip_file_path:
         start_encrypt4 = crc32_rename_facedynamic
         facedynamic_costume_filename = os.path.splitext(start_encrypt4.split("/")[-1])[0]
         facedynamic_costume_size = os.path.getsize(start_encrypt4)
-        encrypted_facedynamic = "static/assets/" + os.path.splitext(start_encrypt4.split("/")[-1])[0]
+        encrypted_facedynamic = "static/" + os.path.splitext(start_encrypt4.split("/")[-1])[0]
         if not facedynamic_costume_filename.isalnum() or not facedynamic_costume_filename.islower():
             print('Invalid Facedynamic Filename, Exiting.')
             shutil.rmtree(temp_directory, ignore_errors=True)
@@ -275,7 +275,7 @@ for mass_addon in zip_file_path:
         start_encrypt3 = crc32_rename_rina_unmask
         rina_unmask_costume_filename = os.path.splitext(start_encrypt3.split("/")[-1])[0]
         rina_unmask_costume_filesize = os.path.getsize(start_encrypt3)
-        encrypted_rina_unmask = "static/assets/" + os.path.splitext(start_encrypt3.split("/")[-1])[0]
+        encrypted_rina_unmask = "static/" + os.path.splitext(start_encrypt3.split("/")[-1])[0]
 
         if not rina_unmask_costume_filename.isalnum() or not rina_unmask_costume_filename.islower():
             print('Invalid Rina Unmasked Costume Filename, Exiting.')
