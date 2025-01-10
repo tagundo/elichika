@@ -2,10 +2,11 @@ package gamedata
 
 import (
 	"elichika/client"
-	"elichika/dictionary"
+
 	"elichika/enum"
 	"elichika/utils"
 
+	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -15,7 +16,8 @@ type Content struct {
 	Name    string
 }
 
-func loadContent(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session, dictionary *dictionary.Dictionary) {
+func loadContent(gamedata *Gamedata) {
+	fmt.Println("Loading Content")
 	gamedata.Content = make(map[int32]map[int32]*Content)
 	for contentType := range gamedata.ContentType {
 		gamedata.Content[contentType] = make(map[int32]*Content)
@@ -26,7 +28,10 @@ func loadContent(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session,
 			Name string `xorm:"'name'"`
 		}
 		contents := []genericContent{}
-		err := masterdata_db.Table(table).Find(&contents)
+		var err error
+		gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+			err = session.Table(table).Find(&contents)
+		})
 		utils.CheckErr(err)
 		for _, content := range contents {
 			gamedata.Content[contentType][content.Id] = &Content{
@@ -34,7 +39,7 @@ func loadContent(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session,
 					ContentType: contentType,
 					ContentId:   content.Id,
 				},
-				Name: dictionary.Resolve(content.Name),
+				Name: gamedata.Dictionary.Resolve(content.Name),
 			}
 		}
 	}

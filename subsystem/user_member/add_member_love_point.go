@@ -59,7 +59,7 @@ func AddMemberLovePoint(session *userdata.Session, memberId, point int32) int32 
 	}
 
 	// special behavior to make sure no one get locked out
-	if member.LoveLevel >= 640 {
+	if member.LoveLevel >= 10 {
 		if user_unlock_scene.HasUnlockScene(session, enum.UnlockSceneTypeMemberGuild) {
 			user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeMemberGuild, enum.UnlockSceneStatusOpened)
 		} else {

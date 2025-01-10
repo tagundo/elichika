@@ -5,72 +5,69 @@ A value is ticked if it is handled, so the tracking exist, and you can get rewar
 
 Also note that these are only the condition that were actually used, and we have the dictionary to help with the meaning. Unused condition are not supported, but they can potentially be used/reused. 
 
-## Done
-- [x] (NOT SUPPORTED, only in old beginner mission) MissionClearConditionTypeCountEditProfile
-- [x] MissionClearConditionTypeAppealRecoveryValue
-- [x] MissionClearConditionTypeAppealShieldValue
-- [x] MissionClearConditionTypeAppealVoltage
-- [x] MissionClearConditionTypeClearedEpisode
-- [x] MissionClearConditionTypeClearedSRank
-- [x] MissionClearConditionTypeClearedStoryMainChapter
-- [x] MissionClearConditionTypeClearedUnderUniqueMember
-- [x] MissionClearConditionTypeCompleteDaily
-- [x] MissionClearConditionTypeCompleteWeekly
-- [x] MissionClearConditionTypeCountAccessory
-- [x] MissionClearConditionTypeCountAccessoryGradeUp
-- [x] MissionClearConditionTypeCountAccessoryLevelUp
-- [x] MissionClearConditionTypeCountAccessoryMelt
-- [x] MissionClearConditionTypeCountAccessoryRarityUp
-- [x] MissionClearConditionTypeCountAccessoryType
-- [x] MissionClearConditionTypeCountActiveEmblem
-- [x] MissionClearConditionTypeCountCard
-- [x] MissionClearConditionTypeCountClearedLive
-- [x] MissionClearConditionTypeCountClearedLiveDailyMusic
-- [x] MissionClearConditionTypeCountClearedSpecificGroup
-- [x] MissionClearConditionTypeCountClearedSpecificMember
-- [x] MissionClearConditionTypeCountClearedSpecificMemberAndPosition
-- [x] MissionClearConditionTypeCountClearedSpecificUnit
-- [x] MissionClearConditionTypeCountEditLiveDeck
-- [x] MissionClearConditionTypeCountGradeEmblem
-- [x] MissionClearConditionTypeCountLesson
-- [x] MissionClearConditionTypeCountLiveMission
-- [x] MissionClearConditionTypeCountLogin
+- [ ] MissionClearConditionTypeCountEventMarathonPoint
 - [x] MissionClearConditionTypeCountLoveLevel
-- [x] MissionClearConditionTypeCountPassiveSkill
-- [x] MissionClearConditionTypeCountPerfectFullCombo
-- [x] MissionClearConditionTypeCountPlayLive
-- [x] MissionClearConditionTypeCountPlayLiveDailyMusic
-- [x] MissionClearConditionTypeCountSchoolIdolAwakening
-- [x] MissionClearConditionTypeCountSchoolIdolGrade
+- [x] MissionClearConditionTypeCountCard
 - [x] MissionClearConditionTypeCountSpecificMember
-- [x] MissionClearConditionTypeCountSpecificRarityMakeLevelMax
-- [x] MissionClearConditionTypeCountSuit
-- [x] MissionClearConditionTypeCountTrainingTreeCellType
-- [x] MissionClearConditionTypeCountUseBuffSkill
-- [x] MissionClearConditionTypeCountUseRecoverySkill
+- [x] MissionClearConditionTypeClearedEpisode
+- [x] MissionClearConditionTypeUserRank
+- [x] (NOT SUPPORTED, only in old beginner mission) MissionClearConditionTypeCountEditProfile
+- [x] MissionClearConditionTypeCountPlayLive
+- [x] MissionClearConditionTypeCountClearedLive
+- [ ] MissionClearConditionTypeCountClearedLiveDifficultyType
+- [x] MissionClearConditionTypeCountPerfectFullCombo
+- [x] MissionClearConditionTypeAppealVoltage
+- [x] MissionClearConditionTypeCountClearedSpecificGroup
+- [x] MissionClearConditionTypeCountClearedSpecificUnit
+- [x] MissionClearConditionTypeCountClearedSpecificMember
+- [ ] MissionClearConditionTypeCountClearedSpecificOnlySchoolYear
 - [x] MissionClearConditionTypeCountUseSkill
 - [x] MissionClearConditionTypeCountUseSpecialSkill
+- [x] MissionClearConditionTypeCountUseVoltageSkill
+- [x] MissionClearConditionTypeCountUseRecoverySkill
+- [x] MissionClearConditionTypeCountUseBuffSkill
+- [x] MissionClearConditionTypeClearedUnderUniqueMember
+- [x] MissionClearConditionTypeAppealRecoveryValue
+- [x] MissionClearConditionTypeAppealShieldValue
 - [x] MissionClearConditionTypeCountUseSpecificMemberSkill
 - [x] MissionClearConditionTypeCountUseSpecificMemberSpecialSkill
-- [x] MissionClearConditionTypeCountUseVoltageSkill
+- [x] MissionClearConditionTypeCountClearedSpecificMemberAndPosition
+- [x] MissionClearConditionTypeCountLogin
+- [x] MissionClearConditionTypeCompleteDaily
+- [x] MissionClearConditionTypeCompleteWeekly
+- [x] MissionClearConditionTypeCountPassiveSkill
+- [x] MissionClearConditionTypeCountLesson
+- [x] MissionClearConditionTypeCountGradeEmblem
+- [x] MissionClearConditionTypeCountActiveEmblem
+- [x] MissionClearConditionTypeCountSpecificRarityMakeLevelMax
+- [x] MissionClearConditionTypeCountSchoolIdolAwakening
 - [x] MissionClearConditionTypeCountVoice
-- [x] MissionClearConditionTypeEditLivePartyAccessory
-- [x] MissionClearConditionTypeMemberLovePanel
-- [x] MissionClearConditionTypeTowerClearLiveStage
-- [x] MissionClearConditionTypeUserRank
-
-## Not Planned
-- [ ] (NOT SUPPORTED old beginner only) MissionClearConditionTypeCompleteBeginner
-- [ ] (NOT SUPPORTED old beginner only) MissionClearConditionTypeCountFriend
-- [ ] (NOT SUPPORTED old beginner only) MissionClearConditionTypeEditLivePartyMember
-- [ ] (NOT SUPPORTED old beginner only) MissionClearConditionTypeReadReferenceBook
-- [ ] (old) MissionClearConditionTypeMemberLovePanelCell
-- [ ] MissionClearConditionTypeCountClearedLiveDifficultyType
-- [ ] MissionClearConditionTypeCountClearedSpecificOnlySchoolYear
+- [x] MissionClearConditionTypeCountSuit
+- [x] MissionClearConditionTypeCountEditLiveDeck
 - [ ] MissionClearConditionTypeCountEditLessonDeck
+- [ ] (NOT SUPPORTED old beginner only) MissionClearConditionTypeCountFriend
+- [x] MissionClearConditionTypeCountSchoolIdolGrade
+- [x] MissionClearConditionTypeCountTrainingTreeCellType
+- [x] MissionClearConditionTypeCountLiveMission
+- [ ] (NOT SUPPORTED old beginner only) MissionClearConditionTypeEditLivePartyMember
+- [x] MissionClearConditionTypeEditLivePartyAccessory
+- [x] MissionClearConditionTypeCountAccessoryType
+- [x] MissionClearConditionTypeCountAccessory
+- [x] MissionClearConditionTypeCountAccessoryLevelUp
+- [x] MissionClearConditionTypeCountAccessoryGradeUp
+- [x] MissionClearConditionTypeCountAccessoryRarityUp
+- [x] MissionClearConditionTypeCountAccessoryMelt
+- [ ] (NOT SUPPORTED old beginner only) MissionClearConditionTypeCompleteBeginner
+- [ ] (NOT SUPPORTED old beginner only) MissionClearConditionTypeReadReferenceBook
+- [x] MissionClearConditionTypeCountPlayLiveDailyMusic
+- [x] MissionClearConditionTypeCountClearedLiveDailyMusic
 - [ ] MissionClearConditionTypeCountEventCoopAward
-- [ ] MissionClearConditionTypeCountEventMarathonPoint
-- [ ] MissionClearConditionTypeCountReadDailyTheater
+- [ ] (old) MissionClearConditionTypeMemberLovePanelCell
+- [x] MissionClearConditionTypeMemberLovePanel
 - [ ] MissionClearConditionTypeTowerPlayLive
-- [ ] MissionClearConditionTypeTowerRecoverPpForFree
+- [x] MissionClearConditionTypeTowerClearLiveStage
 - [ ] MissionClearConditionTypeTowerRecoverPpForPersonal
+- [ ] MissionClearConditionTypeTowerRecoverPpForFree
+- [x] MissionClearConditionTypeClearedStoryMainChapter
+- [ ] MissionClearConditionTypeCountReadDailyTheater
+- [x] MissionClearConditionTypeClearedSRank

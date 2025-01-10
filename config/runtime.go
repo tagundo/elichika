@@ -23,6 +23,7 @@ type RuntimeConfig struct {
 	MissionMultiplier        *int32  `json:"mission_multiplier" of_label:"Mission progress multiplier" of_attrs:"min=\"0\" max=\"10000\""` // multiply the progress of missions. Only work for do "x" of things, not for "get x different thing or reach x level"
 	ResourceConfigType       *string `json:"resource_config_type" of_type:"select" of_options:"Original\noriginal\nComfortable\ncomfortable\nFree\nfree" of_label:"Resource config"`
 	EventAutoSchedulerPeriod *string `json:"event_auto_scheduler_period" of_type:"select" of_options:"once per day\n1_day\nonce per week\n7_days" of_label:"Event frequency"`
+	MaintenanceUrl           *string `json:"maintenance_url" of_label:"Maintenance Url"`
 }
 
 func defaultConfigs() *RuntimeConfig {
@@ -40,10 +41,11 @@ func defaultConfigs() *RuntimeConfig {
 		MissionMultiplier:        new(int32),
 		ResourceConfigType:       new(string),
 		EventAutoSchedulerPeriod: new(string),
+		MaintenanceUrl:           new(string),
 	}
 	*configs.ServerAddress = "0.0.0.0:8080"
-	*configs.CdnServer = "https://llsifas.catfolk.party/static/"
-	*configs.CdnPartialFileCapability = "nothing" // TODO(cdn): Change this to other method when the public cdn is updated
+	*configs.CdnServer = "https://llsifas.imsofucking.gay/static/"
+	*configs.CdnPartialFileCapability = "nothing"
 	*configs.AdminPassword = ""
 	*configs.TapBondGain = 20
 	*configs.AutoJudgeType = enum.JudgeTypePerfect
@@ -54,6 +56,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.MissionMultiplier = 1
 	*configs.ResourceConfigType = "free"
 	*configs.EventAutoSchedulerPeriod = "7_days"
+	*configs.MaintenanceUrl = "http://127.0.0.1:8080/webui/admin/"
 	return &configs
 }
 
@@ -77,6 +80,9 @@ func Load(p string) *RuntimeConfig {
 			f.Set(reflect.ValueOf(d).Elem().Field(i))
 		}
 		fmt.Println(reflect.TypeOf(c).Field(i).Name, ": ", f.Elem())
+	}
+	if *c.CdnServer == "https://llsifas.catfolk.party/static/" {
+		*c.CdnServer = "https://llsifas.imsofucking.gay/static/"
 	}
 	return &c
 }

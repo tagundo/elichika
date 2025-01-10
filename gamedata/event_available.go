@@ -1,9 +1,10 @@
 package gamedata
 
 import (
-	"elichika/dictionary"
 	"elichika/serverdata"
 	"elichika/utils"
+
+	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -12,6 +13,8 @@ type EventAvailable struct {
 	Count          int32
 	EventIds       []int32
 	EventIdToOrder map[int32]int32
+
+	Gamedata *Gamedata
 }
 
 func (ea *EventAvailable) Build() {
@@ -34,13 +37,27 @@ func (ea *EventAvailable) GetNextEvent(currentEvent *serverdata.EventActive) int
 	} else {
 		return ea.EventIds[(order+1)%ea.Count]
 	}
-
 }
 
-func loadEventAvailable(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session, dictionary *dictionary.Dictionary) {
-	err := serverdata_db.Table("s_event_available").OrderBy(`"order"`).Cols("event_id").Find(&gamedata.EventAvailable.EventIds)
+// mainly used for the event selector
+func (ea *EventAvailable) GetEventToIdList() []string {
+	// TODO(event): Handle other event type
+	result := []string{}
+	for _, eventId := range ea.EventIds {
+		result = append(result, ea.Gamedata.EventMarathon[eventId].Name)
+		result = append(result, fmt.Sprint(eventId))
+	}
+	return result
+}
+
+func loadEventAvailable(gamedata *Gamedata) {
+	var err error
+	gamedata.ServerdataDb.Do(func(session *xorm.Session) {
+		err = session.Table("s_event_available").OrderBy(`"order"`).Cols("event_id").Find(&gamedata.EventAvailable.EventIds)
+	})
 	utils.CheckErr(err)
 	gamedata.EventAvailable.Build()
+	gamedata.EventAvailable.Gamedata = gamedata
 }
 
 func init() {

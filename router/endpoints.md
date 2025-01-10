@@ -5,7 +5,7 @@ Ticked endpoint means that the server see the end point (not 404), it doesn't me
 
 Also note that some endpoints won't need to be handled at all either because they're no longer used, or because they are just irrelevant, or because they are not even endpoint and just look like one.
 
-## Done
+
 - [x] /accessory/allUnequip
 - [x] /accessory/melt
 - [x] /accessory/powerUp
@@ -13,7 +13,15 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /accessory/updateIsLock
 - [x] /accessory/updateIsNew
 - [x] /asset/getPackUrl
+- [ ] (not necessary) /billing/applePurchase 
 - [x] /billing/fetchBillingHistory
+- [ ] (not necessary) /billing/googlePurchase
+- [ ] (not necessary) /billing/prePurchase
+- [ ] (not necessary) /billing/purchaseSubscriptionTrial
+- [ ] (not necessary) /billing/restoreAppleSubscription
+- [ ] (not necessary) /billing/restoreGoogleSubscription
+- [ ] (not necessary) /billing/saveOperationLog
+- [ ] (not necessary) /billing/saveUserBirth
 - [x] /billing/updateSubscription
 - [x] /bootstrap/fetchBootstrap
 - [x] /bootstrap/getClearedPlatformAchievement
@@ -21,6 +29,7 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /card/changeIsAwakeningImage
 - [x] /card/getOtherUserCard
 - [x] /card/updateCardNewFlag
+- [ ] (not necessary) /caution/read
 - [x] /challenge/fetchBeginner
 - [x] /challenge/receiveRewardBeginner
 - [x] /communicationMember/fetchCommunicationMemberDetail
@@ -28,16 +37,56 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /communicationMember/finishUserStorySide
 - [x] /communicationMember/setFavoriteMember
 - [x] /communicationMember/setTheme
+- [ ] (not necessary) /communicationMember/updateUserCardNewFlag
 - [x] /communicationMember/updateUserCommunicationMemberDetailBadge       
+- [ ] (not necessary) /communicationMember/updateUserCustomBackgroundNewFlag
 - [x] /communicationMember/updateUserLiveDifficultyNewFlag
+- [ ] (not necessary) /communicationMember/updateUserStoryMemberNewFlag
+- [ ] (not necessary) /communicationMember/updateUserStorySideNewFlag
+- [ ] (not necessary) /communicationMember/updateUserSuitNewFlag
+- [ ] (not necessary) /communicationMember/updateUserThemeNewFlag
+- [ ] (not necessary) /communicationMember/updateUserVoiceNewFlag
+- [ ] /coop/login
+- [ ] /coopLive/create
+- [ ] /coopLive/createRoom
+- [ ] /coopLive/fetchRoomFinish
+- [ ] /coopLive/fetchRoomHistory
+- [ ] /coopLive/fetchRoomHistoryDeck
+- [ ] /coopLive/fetchRoomResultUserDeck
+- [ ] /coopLive/finishRoom
+- [ ] /coopLive/finishSolo
+- [ ] /coopLive/start
 - [x] /dailyTheater/fetchDailyTheater
 - [x] /dailyTheater/setLike
 - [x] /dailyTheaterArchive/fetchDailyTheaterArchive
 - [x] /dataLink/fetchDataLinks
+- [ ] (not necessary) /dataLink/fetchGameServiceData
 - [x] /dataLink/fetchGameServiceDataBeforeLogin
+- [ ] (not necessary) /dataLink/fetchSchoolIdolFestivalIdDataAfterLogin
+- [ ] (not necessary) /dataLink/fetchSchoolIdolFestivalIdDataBeforeLogin
+- [ ] (not necessary) /dataLink/linkGameService
+- [ ] (not necessary) /dataLink/linkOnStartUpGameService
+- [ ] (not necessary) /dataLink/linkSchoolIdolFestivalId
+- [ ] (not necessary) /dataLink/migrateGameService
+- [ ] (not necessary) /dataLink/migrateGameServiceBeforeLogin
+- [ ] (not necessary) /dataLink/migrateSchoolIdolFestivalId
+- [ ] (not necessary) /dataLink/migrateSchoolIdolFestivalIdBeforeLogin
+- [ ] (not necessary) /dataLink/unlinkGameService
+- [ ] (not necessary) /dataLink/unlinkSchoolIdolFestivalId
 - [x] /emblem/activateEmblem
 - [x] /emblem/fetchEmblem
 - [x] /emblem/fetchEmblemById
+- [ ] /eventCoop/fetchLobby
+- [ ] /eventCoopRanking/fetchEventCoopRanking
+- [ ] /eventMarathon/fetchEventMarathon
+- [ ] /eventMarathon/finishEventStory
+- [ ] /eventMarathonRanking/fetchEventMarathonRanking
+- [ ] /eventMining/fetchEventMining
+- [ ] /eventMining/finishEventMiningStory
+- [ ] /eventMining/likeEventMiningPanel
+- [ ] /eventMiningRanking/fetchEventMiningRanking
+- [ ] /externalMovie/fetchBrowseExternalMovie
+- [ ] /externalMovie/saveBrowseExternalMovie
 - [x] /friend/apply
 - [x] /friend/applyOtherScene
 - [x] /friend/approve
@@ -51,17 +100,28 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /friend/searchUserId
 - [x] /gacha/draw
 - [x] /gacha/fetchGachaMenu
+- [ ] /gacha/fixRetry
+- [ ] /gacha/retry
 - [x] /gameSettings/updatePushNotificationSettings
 - [x] /gdpr/updateConsentState
+- [ ] /gpsPresent/saveCampaignLocation
 - [x] /infoTrigger/read
 - [x] /infoTrigger/readByType
 - [x] /infoTrigger/readCardGradeUp
+- [ ] /infoTrigger/readEventCommonShowResult
+- [ ] /infoTrigger/readEventMarathonResult
+- [ ] /infoTrigger/readEventMiningResult
+- [ ] /infoTrigger/readExpiredGiftBox
+- [ ] /infoTrigger/readGachaPointExchange
 - [x] /infoTrigger/readMemberGuildRankingResult
 - [x] /infoTrigger/readMemberGuildSupportItemExpired
 - [x] /infoTrigger/readMemberLoveLevelUp
+- [ ] /infoTrigger/readSubscriptionEnd
+- [ ] /infoTrigger/readSubscriptionTrialEnd
 - [x] /itemDetail/fetchItemDetailRelateLiveList
 - [x] /lesson/changeDeckNameLessonDeck
 - [x] /lesson/executeLesson
+- [ ] (not necessary) /lesson/resetDeck
 - [x] /lesson/resultLesson
 - [x] /lesson/saveDeck
 - [x] /lesson/skillEditResult
@@ -75,9 +135,13 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /live/surrender
 - [x] /live/updatePlayList
 - [x] /liveDeck/changeDeckNameLiveDeck
+- [ ] (not necessary) /liveDeck/changeNameLiveParty
 - [x] /liveDeck/fetchLiveDeckSelect
+- [ ] (not necessary) /liveDeck/resetDeck
 - [x] /liveDeck/saveDeck
 - [x] /liveDeck/saveDeckAll
+- [ ] (not necessary) /liveDeck/saveOverwriteDeck
+- [ ] (not necessary) /liveDeck/saveSquad
 - [x] /liveDeck/saveSuit
 - [x] /liveMv/saveDeck
 - [x] /liveMv/start
@@ -87,6 +151,7 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /login/startup
 - [x] /loginBonus/readLoginBonus
 - [x] /loveRanking/fetch
+- [ ] (not necessary) /member/fetchMemberLovePanel
 - [x] /member/openMemberLovePanel
 - [x] /memberGuild/cheerMemberGuild
 - [x] /memberGuild/fetchMemberGuildRanking
@@ -99,20 +164,39 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /mission/receiveReward
 - [x] /navi/saveUserNaviVoice
 - [x] /navi/tapLovePoint
+- [ ] /noop/noop
 - [x] /notice/fetchNotice
 - [x] /notice/fetchNoticeDetail
+- [ ] /notice/fetchNoticeList
+- [ ] /notice/saveUserSuperNotice
 - [x] /present/fetch
 - [x] /present/receive
 - [x] /referenceBook/saveReferenceBook
+- [ ] (not necessary) /refundInformation/fetchRefundInformation
+- [ ] (not necessary) /reviewRequest/finishReviewRequestProcessFlow
+- [ ] /room/
+- [ ] /rooms
+- [ ] /rooms/filter
+- [ ] /rooms/filter/assign
+- [ ] /rooms/number/
 - [x] /ruleDescription/saveRuleDescription
 - [x] /sceneTips/saveSceneTipsType
+- [ ] /schoolIdolFestivalIdReward/fetch
+- [ ] (not necessary?) /shop/exchangeShopEventExchange
+- [ ] (not necessary) /shop/exchangeShopItemExchange
+- [ ] (not necessary?) /shop/fetchShopEventExchange
+- [ ] (not necessary) /shop/fetchShopItemExchange
 - [x] /shop/fetchShopPack
 - [x] /shop/fetchShopSnsCoin
 - [x] /shop/fetchShopSubscription
 - [x] /shop/fetchShopTop
 - [x] /sif2DataLink/dataLink
+- [ ] /steadyRanking/fetch
+- [ ] /steadyRanking/getSteadyRankingDeck
+- [ ] /steadyRanking/selectDifficulty
 - [x] /still/fetch
 - [x] /subscription/fetchSubscriptionPass
+- [ ] (not necessary) /subscription/readContinueReward
 - [x] /takeOver/checkTakeOver
 - [x] /takeOver/setTakeOver
 - [x] /takeOver/updatePassWord
@@ -132,6 +216,7 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /trainingTree/levelUpCard
 - [x] /tutorial/corePlayableEnd
 - [x] /tutorial/phaseEnd
+- [ ] (not necessary) /tutorial/playableTutorialSkip
 - [x] /tutorial/timingAdjusterEnd
 - [x] /tutorial/tutorialSkip
 - [x] /unlockScene/saveUnlockedScene
@@ -140,6 +225,8 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /user/recoverLp
 - [x] /user/recoverLpSubscription
 - [x] /userAccountDeletion/checkUserAccountDeleted
+- [ ] (the button for this is not in the app?, we need to turn it back on first) /userAccountDeletion/deleteUserAccount
+- [ ] (not necessary?) /userProfile/fetchDeck
 - [x] /userProfile/fetchProfile
 - [x] /userProfile/setCommboLive
 - [x] /userProfile/setProfile
@@ -148,105 +235,3 @@ Also note that some endpoints won't need to be handled at all either because the
 - [x] /userProfile/setScoreLive
 - [x] /voltageRanking/getVoltageRanking
 - [x] /voltageRanking/getVoltageRankingDeck
-
-## Not Planned
-### Not Necessary
-- [ ] (not necessary) /billing/applePurchase 
-- [ ] (not necessary) /billing/googlePurchase
-- [ ] (not necessary) /billing/prePurchase
-- [ ] (not necessary) /billing/purchaseSubscriptionTrial
-- [ ] (not necessary) /billing/restoreAppleSubscription
-- [ ] (not necessary) /billing/restoreGoogleSubscription
-- [ ] (not necessary) /billing/saveOperationLog
-- [ ] (not necessary) /billing/saveUserBirth
-- [ ] (not necessary) /caution/read
-- [ ] (not necessary) /communicationMember/updateUserCardNewFlag
-- [ ] (not necessary) /communicationMember/updateUserCustomBackgroundNewFlag
-- [ ] (not necessary) /communicationMember/updateUserStoryMemberNewFlag
-- [ ] (not necessary) /communicationMember/updateUserStorySideNewFlag
-- [ ] (not necessary) /communicationMember/updateUserSuitNewFlag
-- [ ] (not necessary) /communicationMember/updateUserThemeNewFlag
-- [ ] (not necessary) /communicationMember/updateUserVoiceNewFlag
-- [ ] (not necessary) /dataLink/fetchGameServiceData
-- [ ] (not necessary) /dataLink/fetchSchoolIdolFestivalIdDataAfterLogin
-- [ ] (not necessary) /dataLink/fetchSchoolIdolFestivalIdDataBeforeLogin
-- [ ] (not necessary) /dataLink/linkGameService
-- [ ] (not necessary) /dataLink/linkOnStartUpGameService
-- [ ] (not necessary) /dataLink/linkSchoolIdolFestivalId
-- [ ] (not necessary) /dataLink/migrateGameService
-- [ ] (not necessary) /dataLink/migrateGameServiceBeforeLogin
-- [ ] (not necessary) /dataLink/migrateSchoolIdolFestivalId
-- [ ] (not necessary) /dataLink/migrateSchoolIdolFestivalIdBeforeLogin
-- [ ] (not necessary) /dataLink/unlinkGameService
-- [ ] (not necessary) /dataLink/unlinkSchoolIdolFestivalId
-- [ ] (not necessary) /lesson/resetDeck
-- [ ] (not necessary) /liveDeck/changeNameLiveParty
-- [ ] (not necessary) /liveDeck/resetDeck
-- [ ] (not necessary) /liveDeck/saveOverwriteDeck
-- [ ] (not necessary) /liveDeck/saveSquad
-- [ ] (not necessary) /member/fetchMemberLovePanel
-- [ ] (not necessary) /refundInformation/fetchRefundInformation
-- [ ] (not necessary) /reviewRequest/finishReviewRequestProcessFlow
-- [ ] (not necessary) /shop/exchangeShopItemExchange
-- [ ] (not necessary) /shop/fetchShopItemExchange
-- [ ] (not necessary) /subscription/readContinueReward
-- [ ] (not necessary) /tutorial/playableTutorialSkip
-- [ ] (not necessary?) /shop/exchangeShopEventExchange
-- [ ] (not necessary?) /shop/fetchShopEventExchange
-- [ ] (not necessary?) /userProfile/fetchDeck
-- [ ] (the button for this is not in the app?, we need to turn it back on first) /userAccountDeletion/deleteUserAccount
-### SBL
-- [ ] /coop/login
-- [ ] /coopLive/create
-- [ ] /coopLive/createRoom
-- [ ] /coopLive/fetchRoomFinish
-- [ ] /coopLive/fetchRoomHistory
-- [ ] /coopLive/fetchRoomHistoryDeck
-- [ ] /coopLive/fetchRoomResultUserDeck
-- [ ] /coopLive/finishRoom
-- [ ] /coopLive/finishSolo
-- [ ] /coopLive/start
-- [ ] /eventCoop/fetchLobby
-- [ ] /eventCoopRanking/fetchEventCoopRanking
-### Story Event
-- [ ] /eventMarathon/fetchEventMarathon
-- [ ] /eventMarathon/finishEventStory
-- [ ] /eventMarathonRanking/fetchEventMarathonRanking
-### Exchange Event
-- [ ] /eventMining/fetchEventMining
-- [ ] /eventMining/finishEventMiningStory
-- [ ] /eventMining/likeEventMiningPanel
-- [ ] /eventMiningRanking/fetchEventMiningRanking
-### External Movie (story)
-- [ ] /externalMovie/fetchBrowseExternalMovie
-- [ ] /externalMovie/saveBrowseExternalMovie
-### Gacha
-- [ ] /gacha/fixRetry
-- [ ] /gacha/retry
-### GPS
-- [ ] /gpsPresent/saveCampaignLocation
-### Info Trigger
-- [ ] /infoTrigger/readEventCommonShowResult
-- [ ] /infoTrigger/readEventMarathonResult
-- [ ] /infoTrigger/readEventMiningResult
-- [ ] /infoTrigger/readExpiredGiftBox
-- [ ] /infoTrigger/readGachaPointExchange
-- [ ] /infoTrigger/readSubscriptionEnd
-- [ ] /infoTrigger/readSubscriptionTrialEnd
-### None
-- [ ] /noop/noop
-### Notice
-- [ ] /notice/fetchNoticeList
-- [ ] /notice/saveUserSuperNotice
-### SBL?
-- [ ] /room/
-- [ ] /rooms
-- [ ] /rooms/filter
-- [ ] /rooms/filter/assign
-- [ ] /rooms/number/
-### SIF ID Reward
-- [ ] /schoolIdolFestivalIdReward/fetch
-### VoltageRanking
-- [ ] /steadyRanking/fetch
-- [ ] /steadyRanking/getSteadyRankingDeck
-- [ ] /steadyRanking/selectDifficulty

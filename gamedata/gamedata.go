@@ -27,15 +27,14 @@ package gamedata
 
 import (
 	"elichika/client"
+	"elichika/db"
 	"elichika/dictionary"
 	"elichika/generic/drop"
 
 	"reflect"
-
-	"xorm.io/xorm"
 )
 
-type loadFunc = func(*Gamedata, *xorm.Session, *xorm.Session, *dictionary.Dictionary)
+type loadFunc = func(*Gamedata)
 
 var (
 	funcs       map[uintptr]loadFunc
@@ -73,8 +72,9 @@ func generateLoadOrder(fid uintptr) {
 
 type Gamedata struct {
 	Language     string
-	ServerdataDb *xorm.Session
-	MasterdataDb *xorm.Session
+	ServerdataDb *db.DatabaseSync
+	MasterdataDb *db.DatabaseSync
+	Dictionary   *dictionary.Dictionary
 
 	Accessory              map[int32]*Accessory
 	AccessoryRarity        map[int32]*AccessoryRarity
@@ -179,18 +179,14 @@ type Gamedata struct {
 	LastestDailyTheaterId int32
 }
 
+// for convinience of access, these are provided
+// they are only valid after the locale system write into them itself
 // allow for session-less access to gamedata, at the cost of being
 // locale non-specific
 var Instance *Gamedata = nil
+var GamedataByLocale = map[string]*Gamedata{}
 
-func (gamedata *Gamedata) Init(language string, masterdata *xorm.Engine, serverdata *xorm.Engine, dictionary *dictionary.Dictionary) {
-	if Instance == nil {
-		Instance = gamedata
-	}
-	gamedata.Language = language
-	gamedata.MasterdataDb = masterdata.NewSession()
-	gamedata.ServerdataDb = serverdata.NewSession()
-
+func GenerateLoadOrder() {
 	for len(funcs) > 0 {
 		var fid uintptr
 		for key := range funcs {
@@ -199,7 +195,17 @@ func (gamedata *Gamedata) Init(language string, masterdata *xorm.Engine, serverd
 		}
 		generateLoadOrder(fid)
 	}
+}
+
+func (gamedata *Gamedata) Init(language string, masterdata *db.DatabaseSync, serverdata *db.DatabaseSync, dictionary *dictionary.Dictionary, syncChannel chan struct{}) {
+	gamedata.Language = language
+	// gamedata.MasterdataDb = masterdata.NewSession()
+	gamedata.MasterdataDb = masterdata
+	gamedata.ServerdataDb = serverdata
+	gamedata.Dictionary = dictionary
+
 	for _, loadFunc := range loadOrder {
-		loadFunc(gamedata, gamedata.MasterdataDb, gamedata.ServerdataDb, dictionary)
+		loadFunc(gamedata)
 	}
+	syncChannel <- struct{}{}
 }
