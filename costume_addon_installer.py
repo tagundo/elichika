@@ -9,6 +9,45 @@ import shutil
 import json
 import hashlib
 import zlib
+from datetime import datetime
+
+def backup_operate(filelist):
+    # Create a folder with the current date and time as the name
+    backup_folder = datetime.now().strftime("backup_db/%Y-%m-%d_%H-%M-%S")
+    # Create the backup folder
+    os.makedirs(backup_folder)
+    
+    # Copy each file from the filelist to the backup folder
+    for file_pathxx in filelist:
+        # Get the directory structure of the file
+        relative_path = os.path.relpath(file_pathxx, start=".")
+        dest_path = os.path.join(backup_folder, relative_path)
+        # Create directories if they don't exist
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        # Copy file to destination path
+        shutil.copy(file_pathxx, dest_path)
+    
+    print("Backup completed successfully.")
+
+# Example usage:
+filelist = [
+    "assets/db/gl/asset_a_en.db",
+    "assets/db/gl/asset_i_en.db",
+    "assets/db/gl/asset_a_ko.db",
+    "assets/db/gl/asset_i_ko.db",
+    "assets/db/gl/asset_a_zh.db",
+    "assets/db/gl/asset_i_zh.db",
+    "assets/db/gl/dictionary_en_k.db",
+    "assets/db/gl/dictionary_ko_k.db",
+    "assets/db/gl/dictionary_zh_k.db",
+    "assets/db/gl/masterdata.db",
+    "assets/db/jp/asset_a_ja.db",
+    "assets/db/jp/asset_i_ja.db",
+    "assets/db/jp/dictionary_ja_k.db",
+    "assets/db/jp/masterdata.db",
+    "serverdata.db",
+    "userdata.db"
+]
 
 # init variable
 
@@ -42,14 +81,48 @@ if is_termux():
     if not os.path.exists(termux_storage_chc):
         print('Path is missing, please execute termux-setup-storage command and allow it')
         sys.exit(1)
-
-if not os.path.exists(modding_elichika_path):
-    os.makedirs(modding_elichika_path)
+    if not os.path.exists(modding_elichika_path):
+        os.makedirs(modding_elichika_path)
 
 encrypted_folder = "static/"
 
 if not os.path.exists(encrypted_folder):
     os.makedirs(encrypted_folder)
+
+def process_zip(file_path, routput_dir, vcounter=[1]):
+    """
+    Process a single .zip file:
+    - Extracts recursively.
+    - If no nested .zip files are found in the extraction process, renames and moves the .zip file.
+    """
+    print(f"Processing: {file_path}")
+    temp_extract_dir = file_path + "_temp"
+    os.makedirs(temp_extract_dir, exist_ok=True)
+
+    has_nested_zip = False
+
+    try:
+        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_extract_dir)
+
+            # Check if any nested .zip files are present
+            for rootx, _, filesx in os.walk(temp_extract_dir):
+                for filex in filesx:
+                    if filex.endswith('.zip'):
+                        has_nested_zip = True
+                        nested_zip_path = os.path.join(rootx, filex)
+                        process_zip(nested_zip_path, routput_dir, vcounter)
+
+        if not has_nested_zip:
+            # No nested .zip, rename and move the current .zip
+            new_name = f"{vcounter[0]}-{os.path.basename(file_path)}"
+            new_path = os.path.join(routput_dir, new_name)
+            shutil.move(file_path, new_path)
+            print(f"Renamed and moved: {file_path} -> {new_path}")
+            vcounter[0] += 1
+    finally:
+        # Clean up temporary extraction folder
+        shutil.rmtree(temp_extract_dir, ignore_errors=True)
        
 def clear_terminal():
     system = platform.system()
@@ -126,45 +199,33 @@ shutil.rmtree(temp_directory, ignore_errors=True)
 # List all files in the directory with a ".zip" extension
 if is_termux():
     zip_files = []
-
-    # Traverse the directory structure to find .zip files and folders containing .zip files
     for root, dirs, files in os.walk(modding_elichika_path):
-        # If there are any .zip files in the current folder
-        folder_has_zip = any(file.endswith(".zip") for file in files)
-        
-        # Add zip files individually
         for file in files:
             if file.endswith(".zip"):
                 zip_files.append(os.path.relpath(os.path.join(root, file), modding_elichika_path))
-        
-        # If the current folder or any subfolder contains .zip files, add the folder itself
-        if folder_has_zip:
-            zip_files.append(os.path.relpath(root, modding_elichika_path))
 
     zip_files.sort()
 
-    # Display the available zip files and folders containing .zip files
-    print("Available .zip files or folders containing .zip files:")
+    # Display the available zip files with corresponding numbers
+    print("Available .zip files:")
     for i, zip_file in enumerate(zip_files, start=1):
         print(f"{i}. {zip_file}")
 
-    # User input to choose a zip file or folder
+    # User input to choose a zip file by entering a number
     try:
-        chosen_number = int(input("Enter the number corresponding to the .zip file or folder containing .zip files you want to choose: "))
+        chosen_number = int(input("Enter the number corresponding to the .zip file you want to choose: "))
         
         # Check if the chosen number is valid
         if 1 <= chosen_number <= len(zip_files):
             zip_file_path = os.path.join(modding_elichika_path, zip_files[chosen_number - 1])
             print(f"You chose: {zip_file_path}")
+            # Now you can work with the chosen zip file as needed
         else:
             print("Invalid number. Please enter a valid number.")
             sys.exit(1)
     except ValueError:
         print("Invalid input. Please enter a number.")
         sys.exit(1)
-    clear_terminal()
-    for print_addon in zip_file_path:
-        print(f"Selected: {print_addon}")
     do_you_think_want_add_this = input("Do you want to proceed? (y/n): ")
     if do_you_think_want_add_this != "n" :
         pass
@@ -172,6 +233,11 @@ if is_termux():
         clear_terminal()
         shutil.rmtree(temp_directory, ignore_errors=True)
         sys.exit(1)
+    do_backup_is_important = input("would you like backup database? (y/n): ")
+    if do_backup_is_important == "y" :
+        backup_operate(filelist)
+    else :
+        print('well then do your own risk')
 else:
     import tkinter as tk
     from tkinter import filedialog
@@ -193,9 +259,18 @@ else:
     else:
         print("You selected No.")
         sys.exit(1)
-    
+
+routput_dir = os.path.join(os.path.dirname(zip_file_path[0]), "assets/package/nested_temp")
+os.makedirs(routput_dir, exist_ok=True)
+
+# Process each selected file
+for file_path in zip_file_path:
+    process_zip(file_path, routput_dir)
+# return to nested path
+nested_path_batch = "assets/package/nested_temp"
+batch_procces_sifas = os.listdir(nested_path_batch)
 os.makedirs(temp_directory, exist_ok=True)
-for mass_addon in zip_file_path:
+for mass_addon in batch_procces_sifas:
     with open(mass_addon, 'rb') as zip_file:
         zip_data = zip_file.read()
         
