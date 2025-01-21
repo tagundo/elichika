@@ -89,40 +89,37 @@ encrypted_folder = "static/"
 if not os.path.exists(encrypted_folder):
     os.makedirs(encrypted_folder)
 
-def process_zip(file_path, routput_dir, vcounter=[1]):
-    """
-    Process a single .zip file:
-    - Extracts recursively.
-    - If no nested .zip files are found in the extraction process, renames and moves the .zip file.
-    """
-    print(f"Processing: {file_path}")
-    temp_extract_dir = file_path + "_temp"
-    os.makedirs(temp_extract_dir, exist_ok=True)
+batch_proccess_list = []
+is_nested = False
 
-    has_nested_zip = False
-
+def open_and_check_zip(file_path):
+    global is_nested  # To modify the global variable
     try:
-        with zipfile.ZipFile(file_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_extract_dir)
+        is_nested = False
+        # Open the zip file in read mode
+        with zipfile.ZipFile(file_path, 'r') as zip_ref2:
+            print(f"Contents of '{file_path}':")
+            # List all files in the zip
+            for file_name in zip_ref2.namelist():
+                print(f" - {file_name}")
+                # Check if the file is another zip file
+                if file_name.endswith('.zip'):
+                    print(f"  -> Found nested zip file: {file_name}")
+                    is_nested = True
+                else:
+                    batch_proccess_list.append(file_name)
 
-            # Check if any nested .zip files are present
-            for rootx, _, filesx in os.walk(temp_extract_dir):
-                for filex in filesx:
-                    if filex.endswith('.zip'):
-                        has_nested_zip = True
-                        nested_zip_path = os.path.join(rootx, filex)
-                        process_zip(nested_zip_path, routput_dir, vcounter)
+            if is_nested:
+                # Create a path for nested extraction
+                extracted_path = os.path.splitext(os.path.basename(file_path))[0]
+                nested_path = os.path.join("assets", "package", ".nested", extracted_path)
+                os.makedirs(nested_path, exist_ok=True)
+                zip_ref2.extractall(nested_path)
 
-        if not has_nested_zip:
-            # No nested .zip, rename and move the current .zip
-            new_name = f"{vcounter[0]}-{os.path.basename(file_path)}"
-            new_path = os.path.join(routput_dir, new_name)
-            shutil.move(file_path, new_path)
-            print(f"Renamed and moved: {file_path} -> {new_path}")
-            vcounter[0] += 1
-    finally:
-        # Clean up temporary extraction folder
-        shutil.rmtree(temp_extract_dir, ignore_errors=True)
+    except zipfile.BadZipFile:
+        print(f"Error: '{file_path}' is not a valid zip file.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
        
 def clear_terminal():
     system = platform.system()
@@ -251,26 +248,27 @@ else:
     else:
         print("No file selected")
         sys.exit(1)
-    response = messagebox.askyesno("Confirmation", "Do you want to proceed?")
-    
-    # Check the response
-    if response:
-        print("You selected Yes.")
-    else:
-        print("You selected No.")
+    response = messagebox.askyesnocancel("Confirmation", "Do you want to proceed?")
+    if response is True:  # User clicked "Yes"
+        print("User chose Yes.")
+        backup_operate(filelist)
+    elif response is False:  # User clicked "No"
+        print("User chose No.")
+    elif response is None:  # User clicked "Cancel"
         sys.exit(1)
 
-routput_dir = os.path.join(os.path.dirname(zip_file_path[0]), "assets/package/nested_temp")
-os.makedirs(routput_dir, exist_ok=True)
-
-# Process each selected file
-for file_path in zip_file_path:
-    process_zip(file_path, routput_dir)
-# return to nested path
-nested_path_batch = "assets/package/nested_temp"
-batch_procces_sifas = os.listdir(nested_path_batch)
+for zip_file_path_batch in zip_file_path
+    open_and_check_zip(zip_file_path_batch)
+nested_path_batch = "assets/package/.nested/"
+for root3, dirs, files3 in os.walk(nested_path_batch):
+    for file4 in files3:
+        if file4.endswith(".zip"):
+            # Append the full path of the .zip file to the list
+            batch_proccess_list.append(os.path.join(root3, file4))
+            
 os.makedirs(temp_directory, exist_ok=True)
-for mass_addon in batch_procces_sifas:
+
+for mass_addon in batch_proccess_list:
     with open(mass_addon, 'rb') as zip_file:
         zip_data = zip_file.read()
         
