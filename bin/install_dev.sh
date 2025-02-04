@@ -3,7 +3,6 @@
 # this can be set with export or just set when invoking bash
 # Honestly this is only for testing but you can think of it as a hidden feature
 # if BRANCH is not provided, then default to main
-BRANCH=${BRANCH:-"main"}
 # install git and golang
 clear
 
@@ -18,6 +17,8 @@ while true; do
     fi
     sleep 2
 done
+echo "YOU ARE TRYING TO INSTALL DEVELOPEMENT VERSION, PLEASE TO REMIND YOU THAT THIS IS ONLY FOR REPORTING ISSUE"
+echo ""
 echo "Installing Elichika... PLEASE DO NOT DISCONNECT INTERNET"
 echo "Download speed too slow? close installer by CTRL+C then use 1.1.1.1 and try again"
 cd
@@ -26,7 +27,7 @@ pkg install golang git -y || echo "assuming go and git are already installed"
 pkg install git -y || echo "assuming go and git are already installed"
 pkg install python -y || echo "assuming go and git are already installed"
 # clone the source code
-git clone --depth 1 --branch $BRANCH --single-branch https://gitlab.com/tatara_hisoka/elichika.git elichika2 && \
+git clone --depth 1 --branch developement --single-branch https://gitlab.com/tatara_hisoka/elichika.git elichika2 && \
 cd elichika2 && \
 # get the submodules (i.e. assets and other)
 git submodule update --init && \
