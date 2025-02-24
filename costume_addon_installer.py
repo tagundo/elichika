@@ -91,6 +91,7 @@ if not os.path.exists(encrypted_folder):
 
 batch_proccess_list = []
 is_nested = False
+mod_installed = False
 
 def open_and_check_zip(file_path):
     global is_nested  # To modify the global variable
@@ -106,16 +107,15 @@ def open_and_check_zip(file_path):
                 if file_name.endswith('.zip'):
                     print(f"  -> Found nested zip file: {file_name}")
                     is_nested = True
-                else:
-                    batch_proccess_list.append(file_name)
-
             if is_nested:
                 # Create a path for nested extraction
                 extracted_path = os.path.splitext(os.path.basename(file_path))[0]
                 nested_path = os.path.join("assets", "package", ".nested", extracted_path)
                 os.makedirs(nested_path, exist_ok=True)
                 zip_ref2.extractall(nested_path)
-
+            else:
+                batch_proccess_list.append(file_path)
+                
     except zipfile.BadZipFile:
         print(f"Error: '{file_path}' is not a valid zip file.")
     except Exception as e:
@@ -193,6 +193,8 @@ def rinaunmask_path_randomhash(cursor):
 # explorer code
 temp_directory = "assets/package/.cache/"
 shutil.rmtree(temp_directory, ignore_errors=True)
+nested_path_batch = "assets/package/.nested/"
+shutil.rmtree(nested_path_batch, ignore_errors=True)
 # List all files in the directory with a ".zip" extension
 if is_termux():
     zip_files = []
@@ -257,18 +259,16 @@ else:
     elif response is None:  # User clicked "Cancel"
         sys.exit(1)
 
-for zip_file_path_batch in zip_file_path
+for zip_file_path_batch in zip_file_path:
     open_and_check_zip(zip_file_path_batch)
-nested_path_batch = "assets/package/.nested/"
 for root3, dirs, files3 in os.walk(nested_path_batch):
     for file4 in files3:
         if file4.endswith(".zip"):
             # Append the full path of the .zip file to the list
             batch_proccess_list.append(os.path.join(root3, file4))
             
-os.makedirs(temp_directory, exist_ok=True)
-
 for mass_addon in batch_proccess_list:
+    os.makedirs(temp_directory, exist_ok=True)
     with open(mass_addon, 'rb') as zip_file:
         zip_data = zip_file.read()
         
@@ -1421,6 +1421,12 @@ for mass_addon in batch_proccess_list:
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (thumbnail_costume_filename,))
             cursor.execute("INSERT INTO main.texture (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
                            (thumbnail_costume_path, thumbnail_costume_filename, thumbnail_costume_size))
+           
+        if costume_facedynamic_file != "":
+            costume_facedynamic_path = costume_facedynamic_path_randomhash(cursor)
+            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
+            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
+                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))           
                            
         cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (costume_filename,))
         if chara_id == 209:
@@ -4617,14 +4623,21 @@ for mass_addon in batch_proccess_list:
         
     print("deleting temp folder")
     shutil.rmtree(temp_directory, ignore_errors=True)
+    mod_installed = True
 
-with open(check_json_config, 'r') as f:
-    config_elichika = json.load(f)
-    xcheck_cdn = config_elichika.get('cdn_server')
-    if xcheck_cdn != "http://127.0.0.1:8080/static":
-        config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
-        with open(check_json_config, 'w') as f:
-            json.dump(config_elichika, f, indent=4)
-            print("CDN server updated to http://127.0.0.1:8080/static")
+if mod_installed:
+    with open(check_json_config, 'r') as f:
+        config_elichika = json.load(f)
+        xcheck_cdn = config_elichika.get('cdn_server')
+        if xcheck_cdn != "http://127.0.0.1:8080/static":
+            config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
+            with open(check_json_config, 'w') as f:
+                json.dump(config_elichika, f, indent=4)
+                print("CDN server updated to http://127.0.0.1:8080/static")
+                
+    print("deleting nested folder")
+    shutil.rmtree(nested_path_batch, ignore_errors=True)
+    print("FINISHED")
+else:
+    print("Nothing installed")
        
-print("FINISHED")
