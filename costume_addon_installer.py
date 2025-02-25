@@ -259,8 +259,14 @@ else:
     elif response is None:  # User clicked "Cancel"
         sys.exit(1)
 
-for zip_file_path_batch in zip_file_path:
-    open_and_check_zip(zip_file_path_batch)
+if is_termux():
+    zip_file_paths = [zip_file_path] # fix termux
+    for zip_file_path_batch in zip_file_paths:
+        open_and_check_zip(zip_file_path_batch)
+else:
+    for zip_file_path_batch in zip_file_path:
+        open_and_check_zip(zip_file_path_batch)
+        
 for root3, dirs, files3 in os.walk(nested_path_batch):
     for file4 in files3:
         if file4.endswith(".zip"):
