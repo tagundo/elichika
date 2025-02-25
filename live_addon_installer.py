@@ -249,7 +249,8 @@ def is_termux():
 # Set folder path based on environment
 if is_termux():
     modding_elichika_path = os.path.expanduser('~/storage/downloads/sukusta/live/')
-    if not os.path.exists(modding_elichika_path):
+    termux_storage_chc = os.path.expanduser('~/storage/')
+    if not os.path.exists(termux_storage_chc):
         print('Path is missing, please execute termux-setup-storage command and allow it')
         sys.exit(1)
 else:

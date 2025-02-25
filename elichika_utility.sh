@@ -8,7 +8,7 @@ while true; do
     echo "2. Reset Server"
     echo "3. Clear Cache Database"
     echo "4. Switch CDN to LocalHost"
-    echo "5. Switch CDN to Catfolk"
+    echo "5. Switch CDN to ImSoFuckingGay"
     echo "6. Developer Menu"
     echo "0. Exit"
 
@@ -54,7 +54,7 @@ while true; do
         4)
             clear
 			pkill elichika
-            sed -i 's#https://llsifas.catfolk.party/static/#http://127.0.0.1:8080/static#g' "config.json"
+            sed -i 's#https://llsifas.imsofucking.gay/static/#http://127.0.0.1:8080/static#g' "config.json"
             sed -i 's#all#separated#g' "config.json"
             echo "Switched To LocalHost"
             read -p "Press Enter to continue..." _dummy15555
@@ -62,7 +62,7 @@ while true; do
         5)
             clear
             pkill elichika
-            sed -i 's#http://127.0.0.1:8080/static#https://llsifas.catfolk.party/static/#g' "config.json"
+            sed -i 's#http://127.0.0.1:8080/static#https://llsifas.imsofucking.gay/static/#g' "config.json"
             sed -i 's#separated#all#g' "config.json"
             echo "Switched To Catfolk"
             read -p "Press Enter to continue..." _dummy15235
