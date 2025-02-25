@@ -250,7 +250,7 @@ else:
     else:
         print("No file selected")
         sys.exit(1)
-    response = messagebox.askyesnocancel("Confirmation", "Do you want to proceed?")
+    response = messagebox.askyesnocancel("Confirmation", "Do you want to backup database?")
     if response is True:  # User clicked "Yes"
         print("User chose Yes.")
         backup_operate(filelist)
