@@ -15,12 +15,15 @@ type MetapackType struct {
 }
 
 func loadMetapack(locale string, session *xorm.Session) {
+	fmt.Println("Loading Metapack")
 	metapacks := map[string]*MetapackType{}
 	err := session.Table("metapack").Find(&metapacks)
 	utils.CheckErr(err)
+	cnt := 0
 	for name, metapack := range metapacks {
 		previous, exist := Metapack[name]
 		if !exist {
+			cnt++
 			Metapack[name] = metapack
 			NameToLocale[name] = locale
 			continue
@@ -29,4 +32,5 @@ func loadMetapack(locale string, session *xorm.Session) {
 			panic(fmt.Sprint("Metapack name reused: ", *previous, *metapack, "\nLocale: ", locale, ", previous locale: ", NameToLocale[name]))
 		}
 	}
+	fmt.Printf("Loaded %d new metapack\n", cnt)
 }

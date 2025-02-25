@@ -2,15 +2,17 @@ package gamedata
 
 import (
 	"elichika/client"
-	"elichika/dictionary"
+
 	"elichika/generic/drop"
 	"elichika/utils"
 
+	"fmt"
 
 	"xorm.io/xorm"
 )
 
-func loadLiveDropContentGroup(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session, dictionary *dictionary.Dictionary) {
+func loadLiveDropContentGroup(gamedata *Gamedata) {
+	fmt.Println("Loading LiveDropContentGroup")
 	gamedata.LiveDropContentGroup = make(map[int32]*drop.WeightedDropList[client.Content])
 
 	type LiveDropContentGroup struct {
@@ -22,7 +24,10 @@ func loadLiveDropContentGroup(gamedata *Gamedata, masterdata_db, serverdata_db *
 	}
 
 	groups := []LiveDropContentGroup{}
-	err := masterdata_db.Table("m_live_drop_content").Find(&groups)
+	var err error
+	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+		err = session.Table("m_live_drop_content").Find(&groups)
+	})
 	utils.CheckErr(err)
 	for _, item := range groups {
 		_, exist := gamedata.LiveDropContentGroup[item.DropContentGroupId]

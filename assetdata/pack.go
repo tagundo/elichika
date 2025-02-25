@@ -19,9 +19,11 @@ type PackType struct {
 }
 
 func loadPack(locale string, session *xorm.Session) {
+	fmt.Println("Loading Pack")
 	packs := []*PackType{}
 	err := session.Table("m_asset_package_mapping").Find(&packs)
 	utils.CheckErr(err)
+	cnt := 0
 	for _, pack := range packs {
 		_, exist := Metapack[pack.PackName]
 		if exist {
@@ -35,6 +37,7 @@ func loadPack(locale string, session *xorm.Session) {
 		if !exist {
 			Pack[pack.PackName] = pack
 			NameToLocale[pack.PackName] = locale
+			cnt++
 			continue
 		}
 		if (previous.FileSize != pack.FileSize) || (previous.Category != pack.Category) {
@@ -42,4 +45,5 @@ func loadPack(locale string, session *xorm.Session) {
 			panic(fmt.Sprint("pack name reused: ", *previous, *pack))
 		}
 	}
+	fmt.Printf("Loaded %d new pack\n", cnt)
 }

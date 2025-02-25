@@ -74,12 +74,10 @@ while true; do
                 echo "==== Developer Menu ===="
 				echo "1. Add New Costume"
 				echo "2. Add New Live"
-				echo "3. Add New DLP (Unstable)"
-				echo "4. Add New Card (Unstable)"
-				echo "5. Patch Masterdata"
-				echo "6. LLASDecryptor"
-				echo "7. Overwrite JP Client Dictionary"
-				echo "8. GameBanana Modpage"
+				echo "3. Patch Masterdata"
+				echo "4. LLASDecryptor"
+				echo "5. Overwrite JP Client Dictionary"
+				echo "6. GameBanana Modpage"
                 echo "0. Back to Main Menu"
 
                 read -p "Enter your choice: " dev_option
@@ -100,34 +98,22 @@ while true; do
                     3)
 						clear
 						pkill elichika
-						python tower_addon_installer.py
-                        read -p "Press Enter to continue..." _dummy03777
-                        ;;
-                    4)
-						clear
-						pkill elichika
-						python card_addon_installer.py
-                        read -p "Press Enter to continue..." _dummy03777
-                        ;;
-                    5)
-						clear
-						pkill elichika
 						python elichika_db_importer.py
                         read -p "Press Enter to continue..." _dummy0399
                         ;;
-                    6)
+                    4)
 						clear
 						pkill elichika
 						python llasdecryptor.py
                         read -p "Press Enter to continue..." _dummy02555555
                         ;;
-                    7)
+                    5)
 						clear
 						pkill elichika
 						python replace_jp_client_dictionary.py
                         read -p "Press Enter to continue..." _dummy02555235
                         ;;
-                    8)
+                    6)
 						clear
 						pkill elichika
 						xdg-open https://gamebanana.com/games/20519

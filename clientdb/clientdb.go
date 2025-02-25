@@ -51,8 +51,8 @@ func updateClientDb(baseDir string, masterdataRefs []string) {
 	oldVersion := ""
 	newFileVersion := map[string]string{}
 	mMap := map[string]*manifest{}
-	fmt.Println("Checking database version")
 	for _, refPath := range masterdataRefs {
+		fmt.Println(baseDir + refPath)
 		f, err := os.Open(baseDir + refPath)
 		utils.CheckErr(err)
 		defer f.Close()
@@ -75,6 +75,7 @@ func updateClientDb(baseDir string, masterdataRefs []string) {
 	os.MkdirAll(config.StaticDataPath+newVersion+"/", 0755)
 	if newVersion == oldVersion {
 		// check for integrity  of the data
+		fmt.Println("Performing integrity check for version: ", oldVersion)
 		updated := false
 		for _, m := range mMap {
 			for i := range m.Files {
@@ -157,7 +158,6 @@ func init() {
 
 	fmt.Println("gl master version:", config.MasterVersionGl)
 	fmt.Println("jp master version:", config.MasterVersionJp)
-	fmt.Println("Starting server...")
 }
 
 func readMasterdataManinest(path string) string {

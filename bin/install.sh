@@ -29,7 +29,7 @@ pkg install python -y || echo "assuming go and git are already installed"
 git clone --depth 1 --branch $BRANCH --single-branch https://gitlab.com/tatara_hisoka/elichika.git elichika2 && \
 cd elichika2 && \
 # get the submodules (i.e. assets and other)
-git submodule update --init --remote && \
+git submodule update --init && \
 # build server, fallback to not using CGO to work on some devices
 echo "Building executable, it takes 5 - 15 minutes+ depend your phone"
 (go build || CGO_ENABLED=0 go build) && \

@@ -77,7 +77,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] Working daily theater server code. 
     - [x] Working Global client with the feature enabled.
     - [x] Japanese text use network log or transcript, English text use translation (thanks to [SIFAStheatre](https://twitter.com/SIFAStheatre) and [Idol Story](https://twitter.com/idoldotst))
-    - [ ] Korean and Chinese (zh) translations are not available. Placeholder text is in Japanese.
+    - [ ] Korean and Chinese (zh) translation is not avaialble.
 - [x] User model
     - [x] Working user model.
     - [x] Working LP and AP recovery system (in original resource setting)

@@ -24,9 +24,8 @@ def clear_terminal():
         os.system('clear')
 
 clear_terminal()
-print("This script sucks.")
-print("If you could make it suck less, that would be awesome.")
-print("Specifically: check docs/README.md on card section, there a LOT thing need todo")
+print("CARD ADDON WILL NOT RECEIVE UPDATE ANYMORE")
+print("BY READING THIS, YOU WILL ACCEPT THE RISK")
 print("")
 confirm_script_card = input("Press Enter to Continue")
 
@@ -1927,15 +1926,19 @@ with sqlite3.connect('assets/db/jp/masterdata.db') as conn:
     cursor.execute("INSERT INTO main.m_card_grade_up_item (card_id, grade, content_type, content_id, content_amount) VALUES (?, '4', '13', '1805', ?);", (card_id_masterdata, caddon_grade_up_val2))
     cursor.execute("INSERT INTO main.m_card_grade_up_item (card_id, grade, content_type, content_id, content_amount) VALUES (?, '5', '13', '1805', ?);", (card_id_masterdata, caddon_grade_up_val2))
     
-    # m_card_parameter
+    # m_card_parameter (calculated average from official card, dtype : float64)
+    if rarity_card == "R":
+        zcard_max_appeal = int(card_base_appeal * 1.995153)
+        zcard_max_stamina = int(card_base_stamina * 1.995914)
+        zcard_max_technique = int(card_base_technique * 1.995760)
     if rarity_card == "SR":
-        zcard_max_appeal = int(card_base_appeal * 1.997)
-        zcard_max_stamina = int(card_base_stamina * 1.997)
-        zcard_max_technique = int(card_base_technique * 1.997)
+        zcard_max_appeal = int(card_base_appeal * 1.995525)
+        zcard_max_stamina = int(card_base_stamina * 1.995633)
+        zcard_max_technique = int(card_base_technique * 1.995492)
     elif rarity_card == "UR" or rarity_card == "FES" or rarity_card == "PARTY":
-        zcard_max_appeal = int(card_base_appeal * 2.334)
-        zcard_max_stamina = int(card_base_stamina * 2.334)
-        zcard_max_technique = int(card_base_technique * 2.334)
+        zcard_max_appeal = int(card_base_appeal * 2.333638)
+        zcard_max_stamina = int(card_base_stamina * 2.333778)
+        zcard_max_technique = int(card_base_technique * 2.333629)
         
     cursor.execute("INSERT INTO main.m_card_parameter (card_m_id, level, appeal, stamina, technique) VALUES (?, ?, ?, ?, ?);", (card_id_masterdata, min_level_card, card_base_appeal, card_base_stamina, card_base_technique))
     for level in range(min_level_card + 1, max_level_card):

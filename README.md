@@ -1,12 +1,11 @@
-# elichika
+# elichika2
 A fork of https://github.com/arina999999997/elichika based on https://github.com/YumeMichi/elichika, check out the original.
 
-## What is the difference between github (arina999999997) and gitlab (tatara_hisoka)?
-- Made for termux only
+## Changes log
 - Add-on content support
 - Added SDK of developement content
 - Added menu_elichika2
-- Restore unused content
+- Restored content
 	- lvl 500 bond limit
 	- lvl 100 card once kizuna board is maxed out
 	- Appeal Chance
@@ -33,7 +32,7 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 	- Disable 60fps live quality, you can enable in Live Show Settings
 	- Unlocked bond story
 	- Sorted costume by old to new
-- Fixed consistent dictionary
+	- Fixed consistent dictionary
 - Clone as elichika2 folder so you can install safely
 
 ## Installing
@@ -50,20 +49,35 @@ curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | ba
 ```
 
 To run a command, copy (or type) it and hit the enter button.
+### PC (Windows, Linux, MacOS)
+You can setup the server in a desktop machine to play on android or ios.
 
-#### Running the server
+#### Setup manually
+Install git and go, and then use the same install script with termux (on Windows, run inside git bash or some other linux shell emulator):
+
+```
+curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash
+```
+
+This will leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
+
+#### Using Docker
+There is a public docker image available on docker hub: https://hub.docker.com/r/arina999999997/elichika
+
+Assuming you're familiar with docker, this can be a faster way of getting things working. Keep in mind that using docker, some of the step below will not apply, you should reference the docker docs instead.
+
+All config options should be set in the data/config.json file, which will be created after first startup.
+
+[docker compose](./docker/docker-compose.yml) example
+
+## Running the server
 After installing, you need to run the server to play using the following command:
 
 ```
 ~/run_elichika2
 ```
 
-alternate menu
-
-```
-~/menu_elichika2
-1
-```
+If you have GUI for Windows/Linux, you can also just run the executable directly.
 
 Note that whenever you want to play, the server need to be on, so if you already closed termux or the server, you will have to run it again.
 
@@ -124,7 +138,8 @@ Enter your user / player id and a password:
     - You can also leave the password empty.
     - If you are not running the server yourself, it's highly recommended that you setup a password, because other user can take over your account if they know your user id.
     - Passwords are securely stored with bcrypt.
-![Set the ID and password](docs/images/transfer_2.png)
+
+![Set the id and password](docs/images/transfer_2.png)
 
 After that, confirm the transfer and you can login with the new user id.
 
@@ -158,7 +173,7 @@ It can be found at: `<server_address>/webui/admin`, which default to http://127.
 
 To use the admin webui, you will need the admin password, but it is empty by default.
 
-Currently, it only has the config editor, but in the future it can include things like starting/ending event and such.
+Checkout the various features for a detailed explaination of each of them.
 
 Detailed explanations of some config options:
 
@@ -173,7 +188,8 @@ Detailed explanations of some config options:
     - Default to  https://llsifas.imsofucking.gay/static/ (special thanks to sarah for hosting it).
     - `elichika` also has the ability to host the CDN itself:
 
-        - To do this, put the relevant files in `elichika/static/`.
+        - To do this, put the relevant files in `elichika/static`:
+          - For each package, the server expect it in `elichika/static/<package_name>`
         - Then set the CDN server address to the STRING (no protocol) `elichika` (or `elichika_tls` if you're using HTTPS).
         - This will automatically use whatever the address the client reach `elichika` with as the CDN server.
         - Aside from that, you can also just use the address like normal.
@@ -188,12 +204,6 @@ Detailed explanations of some config options:
     - `free` is the free settings. Generally, resources can only go up and not down.
     - Keep in mind that some resources/systems are not controlled by these settings, but they are pretty minor.
     - And this doesn't apply to the accessories (but apply to the accessory items).
-	
-- Lesson drop type:
-
-    - `fixed` is use skill id on insightskill.json
-    - `gacha` is like common gacha works.
-    - `random` (PLACEHOLDER) is give 12 randomize insight skill.
 
 - Default item count:
 
@@ -230,9 +240,11 @@ Even more special thanks for the specific individuals or groups (in no particula
 
 - YumeMichi for original elichika.
 - arina999999997 for fork elichika.
-- triangle for informations and scripts to encode/decode database, for patching the ios clients, and for daily theater logs.
+- triangle for informations and scripts to encode/decode database, for patching the ios clients, for daily theater logs, for databases across all versions, and for various missing asset files.
+- gam for various missing asset files.
 - [SIFAStheatre](https://twitter.com/SIFAStheatre) and [Idol Story](https://twitter.com/idoldotst) for Daily theater English tranlation and for the original Japanese transcript.
-- ethan for hosting various resource and hosting a public testing server.
+- ethan for hosting various resource, for hosting a public testing server, and for help with docker.
+- [yunimoo](https://github.com/yunimoo) for help with docker, and for resolving TODOs.
 - rayfirefirst, cppo for various cryptographic keys.
 - tungnotpunk for ios client and help with network structure.
 - Suyooo for the very helpful [SIFAS wiki](https://suyo.be/sifas/wiki/), for providing more accurate stage data, and for the bad word lists.
@@ -240,3 +252,6 @@ Even more special thanks for the specific individuals or groups (in no particula
 - Caret for the LL Hax discord.
 - Yousifrill for drawing body texture.
 - And other people who more than deserve to be here but I can't quite recall right now.
+
+## Disclaimer
+This repository is designed for single player of SIFAS only.

@@ -1,9 +1,9 @@
 package gamedata
 
 import (
-	"elichika/dictionary"
 	"elichika/utils"
 
+	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -14,9 +14,12 @@ type ActivityPointRecoveryPrice struct {
 }
 
 // load into a prefix sum instead
-func loadActivityPointRecoveryPrice(gamedata *Gamedata, masterdata_db, serverdata_db *xorm.Session, dictionary *dictionary.Dictionary) {
-	err := masterdata_db.Table("m_activity_point_recovery_price").OrderBy("recovery_count").
-		Find(&gamedata.ActivityPointRecoveryPrice)
+func loadActivityPointRecoveryPrice(gamedata *Gamedata) {
+	fmt.Println("Loading ActivityPointRecoveryPrice")
+	var err error
+	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+		err = session.Table("m_activity_point_recovery_price").OrderBy("recovery_count").Find(&gamedata.ActivityPointRecoveryPrice)
+	})
 	utils.CheckErr(err)
 	gamedata.ActivityPointRecoveryPrice = append([]ActivityPointRecoveryPrice{ActivityPointRecoveryPrice{}},
 		gamedata.ActivityPointRecoveryPrice...)

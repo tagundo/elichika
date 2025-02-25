@@ -153,12 +153,14 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 		user_member.InsertMembers(session, members)
 		user_card.InsertCards(session, cards)
 		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeAccessory, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeEvent, enum.UnlockSceneStatusOpened)
 		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeFreeLive, enum.UnlockSceneStatusOpened)
 		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeLesson, enum.UnlockSceneStatusOpened)
-		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeReferenceBookSelect, enum.UnlockSceneStatusOpened)
-		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeStoryMember, enum.UnlockSceneStatusOpened)
-		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeEvent, enum.UnlockSceneStatusOpened)
 		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeMemberGuild, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeReferenceBookSelect, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeShopEventExchange, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeShopItemExchange, enum.UnlockSceneStatusOpened)
+		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeStoryMember, enum.UnlockSceneStatusOpened)
 	}
 	{ // all the costumes that can't be obtained from maxing cards
 		suits := []client.UserSuit{}
