@@ -975,6 +975,11 @@ for mass_addon in batch_proccess_list:
     with sqlite3.connect('assets/db/jp/asset_i_ja.db') as conn:
         cursor = conn.cursor()
         
+        if costume_facedynamic_file != "":
+            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
+            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
+                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))
+        
         if thumbnail_file != "":
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (thumbnail_costume_filename,))
             cursor.execute("INSERT INTO main.texture (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
@@ -1417,16 +1422,15 @@ for mass_addon in batch_proccess_list:
     with sqlite3.connect('assets/db/gl/asset_a_en.db') as conn:
         cursor = conn.cursor()
         
+        if costume_facedynamic_file != "":
+            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
+            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
+                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))
+        
         if thumbnail_file != "":
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (thumbnail_costume_filename,))
             cursor.execute("INSERT INTO main.texture (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
-                           (thumbnail_costume_path, thumbnail_costume_filename, thumbnail_costume_size))
-           
-        if costume_facedynamic_file != "":
-            costume_facedynamic_path = costume_facedynamic_path_randomhash(cursor)
-            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
-            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
-                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))           
+                           (thumbnail_costume_path, thumbnail_costume_filename, thumbnail_costume_size))                    
                            
         cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (costume_filename,))
         if chara_id == 209:
@@ -1864,6 +1868,11 @@ for mass_addon in batch_proccess_list:
 
     with sqlite3.connect('assets/db/gl/asset_i_en.db') as conn:
         cursor = conn.cursor()
+        
+        if costume_facedynamic_file != "":
+            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
+            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
+                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))
         
         if thumbnail_file != "":
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (thumbnail_costume_filename,))
@@ -2307,6 +2316,11 @@ for mass_addon in batch_proccess_list:
     with sqlite3.connect('assets/db/gl/asset_a_ko.db') as conn:
         cursor = conn.cursor()
         
+        if costume_facedynamic_file != "":
+            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
+            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
+                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))
+        
         if thumbnail_file != "":
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (thumbnail_costume_filename,))
             cursor.execute("INSERT INTO main.texture (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
@@ -2749,6 +2763,11 @@ for mass_addon in batch_proccess_list:
     with sqlite3.connect('assets/db/gl/asset_i_ko.db') as conn:
         cursor = conn.cursor()
         
+        if costume_facedynamic_file != "":
+            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
+            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
+                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))
+        
         if thumbnail_file != "":
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (thumbnail_costume_filename,))
             cursor.execute("INSERT INTO main.texture (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
@@ -3190,7 +3209,12 @@ for mass_addon in batch_proccess_list:
 
     with sqlite3.connect('assets/db/gl/asset_a_zh.db') as conn:
         cursor = conn.cursor()
-        
+       
+        if costume_facedynamic_file != "":
+            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
+            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
+                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))
+       
         if thumbnail_file != "":
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (thumbnail_costume_filename,))
             cursor.execute("INSERT INTO main.texture (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
@@ -3632,6 +3656,11 @@ for mass_addon in batch_proccess_list:
 
     with sqlite3.connect('assets/db/gl/asset_i_zh.db') as conn:
         cursor = conn.cursor()
+        
+        if costume_facedynamic_file != "":
+            cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (facedynamic_costume_filename,))
+            cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
+                           (costume_facedynamic_path, facedynamic_costume_filename, facedynamic_costume_size))
         
         if thumbnail_file != "":
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');", (thumbnail_costume_filename,))
