@@ -1,13 +1,14 @@
 package clientdb
 
 import (
+	"elichika/log"
 	"elichika/utils"
 
 	"bytes"
 	"compress/zlib"
 	"crypto/sha1"
 	"encoding/hex"
-	"fmt"
+
 	"os"
 
 	hwdecrypt "github.com/arina999999997/gohwdecrypt"
@@ -24,7 +25,7 @@ func rekey(inPath, outPath string, fromFile *FileReference, keySpec hwdecrypt.Hw
 	if fileExist(outPath) {
 		// skip if this file already exists. Most of the time it will be masterdata.db.
 		// note that if we have to correct a file, we would delete that file before calling this
-		fmt.Println("Skipping already generated file: ", outPath)
+		log.Println("Skipping already generated file: ", outPath)
 		// still need to update the file reference
 		var bytes []byte
 		bytes, fromFile.Size = fileSha1AndSize(outPath)
@@ -34,7 +35,7 @@ func rekey(inPath, outPath string, fromFile *FileReference, keySpec hwdecrypt.Hw
 	clear_buf, err := os.ReadFile(inPath)
 	utils.CheckErr(err)
 	if string(clear_buf[:16]) != "SQLite format 3\x00" {
-		panic("Missing SQLite file signature. Is it already encrypted?")
+		log.Panic("Missing SQLite file signature. Is it already encrypted?")
 	}
 	var crypt_buf bytes.Buffer
 	zlibWriter := zlib.NewWriter(&crypt_buf)

@@ -2,9 +2,9 @@ package gamedata
 
 import (
 	"elichika/client"
-
 	"elichika/enum"
 	"elichika/generic"
+	"elichika/log"
 	"elichika/serverdata"
 	"elichika/utils"
 
@@ -79,12 +79,12 @@ func (em *EventMarathon) GetRankingReward(rank int32) int32 {
 			return reward.RewardGroupId
 		}
 	}
-	panic("wrong ranking reward")
+	log.Panic("wrong ranking reward")
 	return 0
 }
 
 func loadEventMarathon(gamedata *Gamedata) {
-	fmt.Println("Loading EventMarathon")
+	log.Println("Loading EventMarathon")
 	gamedata.EventMarathon = make(map[int32]*EventMarathon)
 	events := []serverdata.EventMarathon{}
 	var err error

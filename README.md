@@ -6,8 +6,8 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 - Added SDK of developement content
 - Added menu_elichika2
 - Restored content
-	- lvl 500 bond limit
-	- lvl 100 card once kizuna board is maxed out
+	- lvl 760 bond limit (WIP)
+	- lvl 100 card once kizuna board is maxed out (WIP)
 	- Appeal Chance
 		- GotHeal
 		- GotShield
@@ -28,7 +28,7 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 	- Fixed some songs not unlocked
 	- Increase max LP limit same as official
 	- Increase limit skip ticket to 100
-	- Make all member use swimsuit in tutorial
+	- Make all idol use swimsuit in tutorial
 	- Disable 60fps live quality, you can enable in Live Show Settings
 	- Unlocked bond story
 	- Sorted costume by old to new
@@ -60,15 +60,6 @@ curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | ba
 ```
 
 This will leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
-
-#### Using Docker
-There is a public docker image available on docker hub: https://hub.docker.com/r/arina999999997/elichika
-
-Assuming you're familiar with docker, this can be a faster way of getting things working. Keep in mind that using docker, some of the step below will not apply, you should reference the docker docs instead.
-
-All config options should be set in the data/config.json file, which will be created after first startup.
-
-[docker compose](./docker/docker-compose.yml) example
 
 ## Running the server
 After installing, you need to run the server to play using the following command:
@@ -240,17 +231,22 @@ Even more special thanks for the specific individuals or groups (in no particula
 
 - YumeMichi for original elichika.
 - arina999999997 for fork elichika.
-- triangle for informations and scripts to encode/decode database, for patching the ios clients, for daily theater logs, for databases across all versions, and for various missing asset files.
+- triangle for informations and scripts to encode/decode database, for patching the iOS clients, for daily theater logs, for databases across all versions, and for various missing asset files.
 - gam for various missing asset files.
 - [SIFAStheatre](https://twitter.com/SIFAStheatre) and [Idol Story](https://twitter.com/idoldotst) for Daily theater English tranlation and for the original Japanese transcript.
 - ethan for hosting various resource, for hosting a public testing server, and for help with docker.
 - [yunimoo](https://github.com/yunimoo) for help with docker, and for resolving TODOs.
 - rayfirefirst, cppo for various cryptographic keys.
-- tungnotpunk for ios client and help with network structure.
+- tungnotpunk for iOS client and help with network structure.
 - Suyooo for the very helpful [SIFAS wiki](https://suyo.be/sifas/wiki/), for providing more accurate stage data, and for the bad word lists.
 - sarah for hosting public Internet CDN.
+- AuahDark for helping with the embedded client development.
 - Caret for the LL Hax discord.
 - Yousifrill for drawing body texture.
+- [NishikinoClinic](https://x.com/NishikinoClinic) for SIFAS Tool.
+- [rin kaga](https://www.youtube.com/@rinkaga8803) for sastified customer even SIFAS mod.
+- [AyakaMods](https://ayakamods.cc/games/love-live-school-idol-festival-all-stars.217/) for SIFAS modpage.
+- [Gamecom Team](https://www.youtube.com/@GamecomTeam) for Troublemaker OST.
 - And other people who more than deserve to be here but I can't quite recall right now.
 
 ## Disclaimer

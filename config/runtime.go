@@ -2,10 +2,10 @@ package config
 
 import (
 	"elichika/enum"
+	"elichika/log"
 	"elichika/utils"
 
 	"encoding/json"
-	"fmt"
 	"reflect"
 )
 
@@ -70,16 +70,16 @@ func Load(p string) *RuntimeConfig {
 	c := RuntimeConfig{}
 	err := json.Unmarshal([]byte(utils.ReadAllText(p)), &c)
 	if err != nil {
-		panic("config file is wrong, change/delete it and try again")
+		log.Panic("config file is wrong, change/delete it and try again")
 	}
 	d := defaultConfigs()
 	for i := 0; i < reflect.TypeOf(c).NumField(); i++ {
 		f := reflect.ValueOf(&c).Elem().Field(i)
 		if f.IsNil() {
-			fmt.Println("Use default setting: ", reflect.TypeOf(c).Field(i).Name)
+			log.Println("Use default setting: ", reflect.TypeOf(c).Field(i).Name)
 			f.Set(reflect.ValueOf(d).Elem().Field(i))
 		}
-		fmt.Println(reflect.TypeOf(c).Field(i).Name, ": ", f.Elem())
+		log.Println(reflect.TypeOf(c).Field(i).Name, ": ", f.Elem())
 	}
 	if *c.CdnServer == "https://llsifas.catfolk.party/static/" {
 		*c.CdnServer = "https://llsifas.imsofucking.gay/static/"

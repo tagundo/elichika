@@ -2,10 +2,11 @@ package parser
 
 import (
 	"elichika/client"
+	"elichika/log"
 	"elichika/utils"
 
 	"encoding/csv"
-	"fmt"
+
 	"io"
 	"os"
 	"reflect"
@@ -69,8 +70,8 @@ func ParseCsv[T any](path string, result *[]T, ctx *CsvContext) {
 					DotUnderText: str,
 				}))
 			default:
-				fmt.Println(field.Type)
-				panic("field type not supported")
+				log.Println(field.Type)
+				log.Panic("field type not supported")
 			}
 		}
 		*result = append(*result, dummy)

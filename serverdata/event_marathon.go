@@ -4,6 +4,7 @@ import (
 	"elichika/client"
 	"elichika/config"
 	// "elichika/enum"
+	"elichika/log"
 	"elichika/parser"
 	"elichika/utils"
 
@@ -111,12 +112,12 @@ func initEventMarathon(session *xorm.Session) {
 			continue
 		}
 		path := config.AssetPath + "event/marathon/" + entry.Name() + "/"
-		fmt.Println("Parsing event marathon: ", path)
+		log.Println("Parsing event marathon: ", path)
 		eventMarathon := EventMarathon{}
 		parser.ParseJson(path+"main.json", &eventMarathon)
 		_, err = session.Table("s_event_marathon").Insert(eventMarathon)
 		utils.CheckErr(err)
-		fmt.Println(eventMarathon)
+		log.Println(eventMarathon)
 		for language, name := range eventMarathon.EventName {
 			_, err = session.Table("s_dictionary_" + language).Insert(DictionaryItem{
 				Id:      fmt.Sprintf("event_name_%d", eventMarathon.EventId),
@@ -196,7 +197,7 @@ func initEventMarathon(session *xorm.Session) {
 			HasHeader: true,
 		})
 		if len(pointRewards) > 999 {
-			panic("Can't have more than 999 rewards due to id convention")
+			log.Panic("Can't have more than 999 rewards due to id convention")
 		}
 		for i, pointReward := range pointRewards {
 			rewardGroupId := eventMarathon.EventId*10000 + 1 + int32(i)
@@ -229,7 +230,7 @@ func initEventMarathon(session *xorm.Session) {
 		})
 		n := len(rankingRewards)
 		if n > 999 {
-			panic("Can't have more than 999 rewards due to id convention")
+			log.Panic("Can't have more than 999 rewards due to id convention")
 		}
 		i := 0
 		rankingOrder := int32(0)
@@ -240,7 +241,7 @@ func initEventMarathon(session *xorm.Session) {
 			}
 
 			if (i > 0) && (rankingRewards[i].UpperRank <= rankingRewards[i-1].UpperRank) {
-				panic("ranking reward need to be sorted")
+				log.Panic("ranking reward need to be sorted")
 			}
 
 			rankingOrder++
@@ -259,7 +260,7 @@ func initEventMarathon(session *xorm.Session) {
 			eventMarathonRankingRewards = append(eventMarathonRankingRewards, eventMarathonRankingReward)
 			for k := i; k <= j; k++ {
 				if rankingRewards[k].RankingResultPrizeType != rankingRewards[i].RankingResultPrizeType {
-					panic("RankingResultPrizeType changed")
+					log.Panic("RankingResultPrizeType changed")
 				}
 				eventMarathonRewards = append(eventMarathonRewards, EventMarathonReward{
 					EventId:       eventMarathon.EventId,

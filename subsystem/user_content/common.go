@@ -3,6 +3,7 @@ package user_content
 import (
 	"elichika/client"
 	"elichika/enum"
+	"elichika/log"
 	"elichika/userdata"
 	"elichika/utils"
 
@@ -20,7 +21,7 @@ var (
 func AddContentHandler(contentType int32, handler func(*userdata.Session, *client.Content) any) {
 	_, exist := contentHandlerByContentType[contentType]
 	if exist {
-		panic("handler for content type already existed")
+		log.Panic("handler for content type already existed")
 	}
 	contentHandlerByContentType[contentType] = handler
 }
@@ -78,19 +79,19 @@ func genericContentByContentIdFinalizer(session *userdata.Session) {
 	for contentType, contentDiffByContentId := range session.UserContentDiffs {
 		rDictionary := rModel.Elem().FieldByName(userModelField[contentType])
 		if !rDictionary.IsValid() {
-			fmt.Println("Invalid field: ", contentType, "->", userModelField[contentType])
+			log.Println("Invalid field: ", contentType, "->", userModelField[contentType])
 			continue
 		}
 		rDictionaryPtrType := reflect.PointerTo(rDictionary.Type())
 		rDictionarySet, ok := rDictionaryPtrType.MethodByName("Set")
 		if !ok {
-			panic(fmt.Sprintln("Type ", rDictionaryPtrType, " must have method Set"))
+			log.Panic(fmt.Sprintln("Type ", rDictionaryPtrType, " must have method Set"))
 		}
 		rElementPtrType := rDictionary.FieldByName("Map").Type().Elem()
 		rElementType := rElementPtrType.Elem()
 		rElementFromContent, ok := rElementPtrType.MethodByName("FromContent")
 		if !ok {
-			panic(fmt.Sprintln("Type ", rElementPtrType, " must have method FromContent"))
+			log.Panic(fmt.Sprintln("Type ", rElementPtrType, " must have method FromContent"))
 		}
 
 		for _, content := range contentDiffByContentId {
@@ -126,19 +127,19 @@ func genericContentByContentIdPopulator(session *userdata.Session) {
 		}
 		rDictionary := rModel.Elem().FieldByName(fieldName)
 		if !rDictionary.IsValid() {
-			fmt.Println("Invalid field: ", contentType, "->", fieldName)
+			log.Println("Invalid field: ", contentType, "->", fieldName)
 			continue
 		}
 		rDictionaryPtrType := reflect.PointerTo(rDictionary.Type())
 		rDictionarySet, ok := rDictionaryPtrType.MethodByName("Set")
 		if !ok {
-			panic(fmt.Sprintln("Type ", rDictionaryPtrType, " must have method Set"))
+			log.Panic(fmt.Sprintln("Type ", rDictionaryPtrType, " must have method Set"))
 		}
 		rElementPtrType := rDictionary.FieldByName("Map").Type().Elem()
 		rElementType := rElementPtrType.Elem()
 		rElementFromContent, ok := rElementPtrType.MethodByName("FromContent")
 		if !ok {
-			panic(fmt.Sprintln("Type ", rElementPtrType, " must have method FromContent"))
+			log.Panic(fmt.Sprintln("Type ", rElementPtrType, " must have method FromContent"))
 		}
 		for _, content := range contents {
 			obj := reflect.New(rElementType)

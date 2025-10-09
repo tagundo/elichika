@@ -5,10 +5,10 @@ import (
 	"elichika/client"
 	_ "elichika/clientdb"
 	"elichika/generic"
+	"elichika/log"
 	"elichika/serverdata"
 	"elichika/utils"
 
-	"fmt"
 	"strings"
 
 	"xorm.io/xorm"
@@ -74,7 +74,7 @@ func (dictionary *Dictionary) Resolve(id string) string {
 	exist, err := dictionary.Dictionaries[keys[0]].Table("m_dictionary").Where("id = ?", keys[1]).Cols("message").Get(&result)
 	utils.CheckErr(err)
 	if !exist {
-		fmt.Printf("Warning: client dictionary key doesn't exist: %s\n", id)
+		log.Printf("Warning: client dictionary key doesn't exist: %s\n", id)
 	}
 	dictionary.ClientDictionary[id] = result
 	return result
@@ -83,7 +83,7 @@ func (dictionary *Dictionary) Resolve(id string) string {
 func (dictionary *Dictionary) ServerResolve(id string) string {
 	message, exist := dictionary.ServerDictionary[id]
 	if !exist {
-		panic("server dictionary key doesn't exist: " + id)
+		log.Panic("server dictionary key doesn't exist: " + id)
 	}
 	return message
 }

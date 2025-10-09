@@ -4,8 +4,9 @@ import (
 	"elichika/config"
 	"elichika/enum"
 	"elichika/gamedata"
+	"elichika/log"
 	"elichika/scheduled_task"
-	"elichika/serverdata"
+	"elichika/serverstate"
 	"elichika/utils"
 	"xorm.io/xorm"
 
@@ -51,7 +52,7 @@ var autoSchedulerConfigs = map[string]AutoSchedulerConfig{}
 
 func init() {
 	if ActualDayDuration%DayDuration != 0 {
-		panic("DayDuration must be a divisor of ActualDayDuration")
+		log.Panic("DayDuration must be a divisor of ActualDayDuration")
 	}
 	// event cycle every day
 	// used if user want to quickly cycle through the events to get all the rewards
@@ -98,7 +99,7 @@ func eventAutoScheduler(userdata_db *xorm.Session, task scheduled_task.Scheduled
 		lastEndedAt := int64(0)
 		if lastEvent != nil {
 			if lastEvent.EndAt >= task.Time {
-				fmt.Println("Warning: active event hasn't ended, event auto scheduler ignored")
+				log.Println("Warning: active event hasn't ended, event auto scheduler ignored")
 				return
 			}
 			lastEndedAt = lastEvent.EndAt
@@ -115,10 +116,10 @@ func eventAutoScheduler(userdata_db *xorm.Session, task scheduled_task.Scheduled
 	} else {
 		eventId = gamedata.Instance.EventAvailable.GetNextEvent(lastEvent)
 		// see if there's a specially scheduled event in s_event_scheduled
-		var scheduledEvent serverdata.EventScheduled
+		var scheduledEvent serverstate.EventScheduled
 		var exist bool
 		var err error
-		serverdata.Database.Do(func(session *xorm.Session) {
+		serverstate.Database.Do(func(session *xorm.Session) {
 			exist, err = session.Table("s_event_scheduled").Get(&scheduledEvent)
 		})
 		utils.CheckErr(err)
@@ -128,20 +129,20 @@ func eventAutoScheduler(userdata_db *xorm.Session, task scheduled_task.Scheduled
 	}
 	var err error
 	// no matter what, we clean up the scheduled event
-	serverdata.Database.Do(func(session *xorm.Session) {
-		_, err = session.Table("s_event_scheduled").Where("true").Delete(&serverdata.EventScheduled{})
+	serverstate.Database.Do(func(session *xorm.Session) {
+		_, err = session.Table("s_event_scheduled").Where("true").Delete(&serverstate.EventScheduled{})
 	})
 	utils.CheckErr(err)
 
 	eventType := gamedata.Instance.GetEventType(eventId)
 
 	// need to fill the delete condition with some stuff because of xorm
-	serverdata.Database.Do(func(session *xorm.Session) {
-		_, err = session.Table("s_event_active").Where("event_id >= 0").Delete(&serverdata.EventActive{})
+	serverstate.Database.Do(func(session *xorm.Session) {
+		_, err = session.Table("s_event_active").Where("event_id >= 0").Delete(&serverstate.EventActive{})
 		if err != nil {
 			return
 		}
-		_, err = session.Table("s_event_active").Insert(serverdata.EventActive{
+		_, err = session.Table("s_event_active").Insert(serverstate.EventActive{
 			EventId:   eventId,
 			EventType: eventType,
 			StartAt:   startTime,
@@ -155,14 +156,14 @@ func eventAutoScheduler(userdata_db *xorm.Session, task scheduled_task.Scheduled
 
 	// schedule the event start at start time to truly begin the event
 	if eventType == enum.EventType1Marathon {
-		scheduled_task.AddScheduledTask(serverdata.ScheduledTask{
+		scheduled_task.AddScheduledTask(serverstate.ScheduledTask{
 			Time:     startTime,
 			TaskName: "event_marathon_start",
 			Priority: 0,
 			Params:   fmt.Sprint(eventId),
 		})
 	} else {
-		panic("unsupported event type")
+		log.Panic("unsupported event type")
 	}
 }
 

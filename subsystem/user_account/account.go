@@ -50,10 +50,9 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 			LastLoginAt:                             time.Now().Unix(),
 			Rank:                                    320,
 			RecommendCardMasterId:                   100011001, // Honoka
-			MaxFriendNum:                            10,
+			MaxFriendNum:                            99,
 			LivePointFullAt:                         time.Now().Unix(),
 			LivePointBroken:                         420,
-			Exp:                   3330914,
 			LivePointSubscriptionRecoveryDailyCount: 1,
 			LivePointSubscriptionRecoveryDailyResetAt: 1688137200,
 			ActivityPointCount:                        3,
@@ -74,7 +73,7 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 			EmblemId:                                  10500521, // new player
 			TutorialPhase:                             tutorialPhase,
 			TutorialEndAt:                             tutorialEndAt,
-			LoginDays:                                 1221,
+			LoginDays:                                 0,
 			NaviTapRecoverAt:                          1688137200,
 			LessonResumeStatus:                        1,
 			// AccessoryBoxAdditional:                    400,

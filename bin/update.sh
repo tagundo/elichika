@@ -7,10 +7,10 @@
 # backup you files, or better yet, make sure that serverdata.db only store derived data or special supported data (event)
 
 git pull && \
-git submodule deinit -f . && \
-git submodule update --init --recursive --checkout && \
+git submodule deinit -f assets && \
+git submodule update --init --recursive --checkout assets && \
 (go build || CGO_ENABLED=0 go build) && \
-./elichika reinit && \
+./elichika rebuild_assets && \
 echo "Updated succesfully!"
 
 

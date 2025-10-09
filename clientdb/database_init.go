@@ -2,32 +2,15 @@ package clientdb
 
 import (
 	"elichika/config"
+	"elichika/log"
 	"elichika/utils"
 
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 
 	"xorm.io/xorm"
 )
-
-func isNotChanged(file string) bool {
-	cmd := exec.Command("git", "diff", "--exit-code", "--quiet", file)
-	cmd.Dir = config.AssetPath
-	err := cmd.Run()
-	if err == nil {
-		return true // exit code is 0
-	}
-	exitError, ok := err.(*exec.ExitError)
-	if !ok {
-		panic(err)
-	}
-	if exitError.ExitCode() != 1 {
-		panic(err)
-	}
-	return false
-}
 
 // note that this is subject to change, do not depend on it too much
 func initLocale(locale string) {
@@ -66,7 +49,7 @@ func initLocale(locale string) {
 			session = sessions[dbName]
 			session.Begin()
 		}
-		fmt.Println("Running SQL file: ", file.Name())
+		log.Println("Running SQL file: ", file.Name())
 
 		f, err := os.Open(sqlDir + file.Name())
 		utils.CheckErr(err)

@@ -1,7 +1,8 @@
 package scheduled_task
 
 import (
-	"elichika/serverdata"
+	"elichika/log"
+	"elichika/serverstate"
 	"elichika/userdata/database"
 	"elichika/utils"
 
@@ -32,7 +33,7 @@ import (
 //   - or lead to multistage tasks.
 //
 // - scheduled tasks also take a string params, allowing for stuffs
-type ScheduledTask = serverdata.ScheduledTask
+type ScheduledTask = serverstate.ScheduledTask
 
 // the general task take a session to the user database
 type TaskHandler = func(*xorm.Session, ScheduledTask)
@@ -42,14 +43,14 @@ var taskHandlers = map[string]TaskHandler{}
 func AddScheduledTaskHandler(taskName string, handler TaskHandler) {
 	_, exist := taskHandlers[taskName]
 	if exist {
-		panic(fmt.Sprint("task already has handler: ", taskName))
+		log.Panic(fmt.Sprint("task already has handler: ", taskName))
 	}
 	taskHandlers[taskName] = handler
 }
 
 func AddScheduledTask(scheduledTask ScheduledTask) {
 	var err error
-	serverdata.Database.Do(func(session *xorm.Session) {
+	serverstate.Database.Do(func(session *xorm.Session) {
 		_, err = session.Table("s_scheduled_task").Insert(scheduledTask)
 		if err != nil {
 			return
@@ -67,7 +68,7 @@ func HandleScheduledTasks(userdata_db *xorm.Session, currentTime time.Time) {
 	for {
 		task := []ScheduledTask{}
 		var err error
-		serverdata.Database.Do(func(session *xorm.Session) {
+		serverstate.Database.Do(func(session *xorm.Session) {
 			err = session.Table("s_scheduled_task").OrderBy("time, priority").Limit(1).Find(&task)
 		})
 		utils.CheckErr(err)
@@ -76,16 +77,16 @@ func HandleScheduledTasks(userdata_db *xorm.Session, currentTime time.Time) {
 		}
 		handler, exist := taskHandlers[task[0].TaskName]
 		if !exist {
-			fmt.Println("Warning: Ignored task with no handler: ", task[0].TaskName)
+			log.Println("Warning: Ignored task with no handler: ", task[0].TaskName)
 		} else {
 			handler(userdata_db, task[0])
 		}
-		serverdata.Database.Do(func(session *xorm.Session) {
+		serverstate.Database.Do(func(session *xorm.Session) {
 			_, err = session.Table("s_scheduled_task").Where("time = ? AND task_name = ? AND priority = ?",
 				task[0].Time, task[0].TaskName, task[0].Priority).Delete(&task[0])
 		})
 		utils.CheckErr(err)
-		serverdata.Database.Do(func(session *xorm.Session) {
+		serverstate.Database.Do(func(session *xorm.Session) {
 			session.Commit()
 			session.Begin()
 		})
@@ -101,11 +102,11 @@ func HandleScheduledTasks(userdata_db *xorm.Session, currentTime time.Time) {
 // - note that if a task is run, then it is run first, then termination happen, if signified
 
 func ForceRun(userdata_db *xorm.Session, check func(ScheduledTask) (bool, bool)) {
-	ownedServerdataDb := (*xorm.Session)(nil)
+	ownedserverstateDb := (*xorm.Session)(nil)
 	ownedUserdataDb := (*xorm.Session)(nil)
 	defer func() {
-		if ownedServerdataDb != nil {
-			ownedServerdataDb.Close()
+		if ownedserverstateDb != nil {
+			ownedserverstateDb.Close()
 		}
 		if ownedUserdataDb != nil {
 			ownedUserdataDb.Close()
@@ -118,7 +119,7 @@ func ForceRun(userdata_db *xorm.Session, check func(ScheduledTask) (bool, bool))
 	for {
 		tasks := []ScheduledTask{}
 		var err error
-		serverdata.Database.Do(func(session *xorm.Session) {
+		serverstate.Database.Do(func(session *xorm.Session) {
 			err = session.Table("s_scheduled_task").OrderBy("time, priority").Find(&tasks)
 		})
 		utils.CheckErr(err)
@@ -130,16 +131,16 @@ func ForceRun(userdata_db *xorm.Session, check func(ScheduledTask) (bool, bool))
 			if run {
 				handler, exist := taskHandlers[task.TaskName]
 				if !exist {
-					fmt.Println("Warning: Ignored task with no handler: ", task.TaskName)
+					log.Println("Warning: Ignored task with no handler: ", task.TaskName)
 				} else {
 					handler(userdata_db, task)
 				}
-				serverdata.Database.Do(func(session *xorm.Session) {
+				serverstate.Database.Do(func(session *xorm.Session) {
 					_, err = session.Table("s_scheduled_task").Where("time = ? AND task_name = ? AND priority = ?",
 						task.Time, task.TaskName, task.Priority).Delete(&task)
 				})
 				utils.CheckErr(err)
-				serverdata.Database.Do(func(session *xorm.Session) {
+				serverstate.Database.Do(func(session *xorm.Session) {
 					session.Commit()
 					session.Begin()
 				})
