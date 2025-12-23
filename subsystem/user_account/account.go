@@ -15,7 +15,7 @@ import (
 	"elichika/subsystem/user_member"
 	"elichika/subsystem/user_suit"
 	"elichika/subsystem/user_unlock_scene"
-	"elichika/subsystem/user_custom_background"
+	"elichika/subsystem/user_content"
 	"elichika/userdata"
 	"elichika/utils"
 
@@ -172,7 +172,7 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 			})
 		}
 		user_suit.InsertUserSuits(session, suits)
-		for _, bg := range Gamedata.CustomBackground {
+		for _, bg := range gamedata.CustomBackground {
 			user_content.AddContent(session, client.Content{
 				ContentType:   enum.ContentTypeCustomBackground,
 				ContentId:     bg.Id,
