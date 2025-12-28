@@ -11,7 +11,7 @@ import (
 	"elichika/locale"
 	"elichika/router"
 	"elichika/utils"
-	"elichika/webui/image_form"
+	"elichika/webui/form/image_form"
 
 	"fmt"
 	"net/http"
@@ -86,7 +86,7 @@ func EventMarathonDev10POST(ctx *gin.Context) {
 	isGacha := (positionTypeInt % 10) == 1
 
 	if len(TopStatus.EventMarathonBonusPopupOrderCardMaterRows.Slice) > cardIdInt {
-		TopStatus.EventMarathonRuleDescriptionPageMasterRows.Slice = TopStatus.EventMarathonRuleDescriptionPageMasterRows.Slice[:cardIdInt]
+		TopStatus.EventMarathonBonusPopupOrderCardMaterRows.Slice = TopStatus.EventMarathonBonusPopupOrderCardMaterRows.Slice[:cardIdInt]
 		TopStatus.EventMarathonBonusPopupOrderMemberMaterRows.Slice = TopStatus.EventMarathonBonusPopupOrderMemberMaterRows.Slice[:cardIdInt]
 	}
 

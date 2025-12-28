@@ -36,6 +36,9 @@ A fork of https://github.com/arina999999997/elichika based on https://github.com
 - Clone as elichika2 folder so you can install safely
 
 ## Installing
+### Disclaimer about the client
+The clients provided might not work on your specific devices. If it doesn't work, try using another device or an emulator. DO NOT ASK ME, ASK WHO MADE FORK OKAY?
+
 Note that this part concern only this server implementation, and it only provide the easiest way to do things.
 
 You should check out checkout the [LL hax wiki](https://carette.codeberg.page/ll-hax-docs/sifas/) for clarification and general knowledge, as it explain things better (or it can lead you to places where you can ask questions).
@@ -244,10 +247,8 @@ Even more special thanks for the specific individuals or groups (in no particula
 - Caret for the LL Hax discord.
 - Yousifrill for drawing body texture.
 - [NishikinoClinic](https://x.com/NishikinoClinic) for SIFAS Tool.
-- [rin kaga](https://www.youtube.com/@rinkaga8803) for sastified customer even SIFAS mod.
 - [AyakaMods](https://ayakamods.cc/games/love-live-school-idol-festival-all-stars.217/) for SIFAS modpage.
-- [Gamecom Team](https://www.youtube.com/@GamecomTeam) for Troublemaker OST.
-- And other people who more than deserve to be here but I can't quite recall right now.
+- And other people who more than deserve to be here.
 
 ## Disclaimer
 This repository is designed for single player of SIFAS only.
