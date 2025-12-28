@@ -58,12 +58,11 @@ costume_name_ja = costume_name_en
 costume_description = ""
 
 costume_file = ""
-costume_ios_file = ""
 costume_facedynamic_file = ""
 rina_unmask_costume_file = ""
 thumbnail_file = ""
 chara_id = None
-chara_id_replace = None
+chara_id_append = None
 id_costume = None
 id_trade_product = None
 
@@ -213,28 +212,60 @@ if is_termux():
 
     # User input to choose a zip file by entering a number
     try:
-        chosen_number = int(input("Enter the number corresponding to the .zip file you want to choose: "))
-        
-        # Check if the chosen number is valid
-        if 1 <= chosen_number <= len(zip_files):
-            zip_file_path = os.path.join(modding_elichika_path, zip_files[chosen_number - 1])
-            print(f"You chose: {zip_file_path}")
-            # Now you can work with the chosen zip file as needed
+        user_input = input("Enter the number(s) corresponding to the .zip file(s) you want to choose (comma-separated for multiple, or 'all' for all files): ")
+
+        if user_input.lower() == 'all':
+            # [translate:전체 선택]
+            zip_file_path = [os.path.join(modding_elichika_path, zf) for zf in zip_files]
+            print(f"You chose all {len(zip_file_path)} files")
+        elif ',' in user_input:
+            # [translate:다중 선택]
+            chosen_numbers = [int(x.strip()) for x in user_input.split(',')]
+            zip_file_path = []
+            for num in chosen_numbers:
+                if 1 <= num <= len(zip_files):
+                    zip_file_path.append(os.path.join(modding_elichika_path, zip_files[num-1]))
+                    print(f"Added: {zip_files[num-1]}")
+                else:
+                    print(f"Invalid number: {num}")
+                    sys.exit(1)
+            print(f"You chose {len(zip_file_path)} files")
         else:
-            print("Invalid number. Please enter a valid number.")
-            sys.exit(1)
+            # [translate:단일 선택]
+            chosen_number = int(user_input)
+            if 1 <= chosen_number <= len(zip_files):
+                zip_file_path = os.path.join(modding_elichika_path, zip_files[chosen_number-1])
+                print(f"You chose: {zip_file_path}")
+            else:
+                print("Invalid number. Please enter a valid number.")
+                sys.exit(1)
     except ValueError:
-        print("Invalid input. Please enter a number.")
+        print("Invalid input. Please enter a number or comma-separated numbers.")
         sys.exit(1)
-    do_backup_is_important = input("would you like backup database? (y/n): ")
-    if do_backup_is_important == "y" :
-        backup_operate(filelist)
-    elif do_backup_is_important == "n" :
-        print('well then do your own risk')
-    else :
-        print('cancelled')
+
+    if isinstance(zip_file_path, list):
+        zip_file_paths = zip_file_path
+    else:
+        zip_file_paths = [zip_file_path]
+
+    # Process each selected zip file
+    for zf_p in zip_file_paths:
+        open_and_check_zip(zf_p)
+
+    do_you_think_want_add_this = input("Do you want to proceed? (y/n): ")
+    if do_you_think_want_add_this != "n":
+        pass
+    else:
         clear_terminal()
+        shutil.rmtree(temp_directory, ignore_errors=True)
         sys.exit(1)
+
+    do_backup_is_important = input("would you like backup database? (y/n): ")
+    if do_backup_is_important == "y":
+        backup_operate(filelist)
+    else:
+        print('well then do your own risk')
+
 else:
     import tkinter as tk
     from tkinter import filedialog
@@ -309,29 +340,16 @@ for mass_addon in batch_proccess_list:
     costume_filename = os.path.splitext(start_encrypt1.split("/")[-1])[0]
     costume_filesize = os.path.getsize(start_encrypt1)
     encrypted_costume = "static/" + os.path.splitext(start_encrypt1.split("/")[-1])[0]
-    # ios thingo
-    if costume_file_ios != "":
-        crc32_checksum_costume1 = generate_crc32(start_encrypt1)
-        crc32_rename_costume1 = temp_directory + crc32_checksum_costume + costume_file
-        os.rename(start_encrypt1, crc32_rename_costume)
-        start_encrypt11 = crc32_rename_costume
-        costume_filename1 = os.path.splitext(start_encrypt1.split("/")[-1])[0]
-        costume_filesize1 = os.path.getsize(start_encrypt1)
-        encrypted_costume1 = "static/" + os.path.splitext(start_encrypt1.split("/")[-1])[0]
-        if not costume_filename1.isalnum() or not costume_filename1.islower():
-            print('Invalid Costume IOS Filename, Exiting.')
-            continue
-    else:
-        print("WARNING! IOS FILE IS MISSING, WILL BE USED ANDROID AS TEMPORARY.")
-        costume_filesize1 = costume_filename
-        
     file_extension = start_encrypt1.split(".")[-1]
+
     if file_extension.isdigit():
         chara_id = int(file_extension)
 
     if not costume_filename.isalnum() or not costume_filename.islower():
         print('Invalid Costume Filename, Exiting.')
+        shutil.rmtree(temp_directory, ignore_errors=True)
         continue
+
 
     if thumbnail_file != "":
         start_encrypt2 = temp_directory + thumbnail_file
@@ -344,7 +362,9 @@ for mass_addon in batch_proccess_list:
         encrypted_thumbnail = "static/" + os.path.splitext(start_encrypt2.split("/")[-1])[0]
         if not thumbnail_costume_filename.isalnum() or not thumbnail_costume_filename.islower():
             print('Invalid Thumbnail Filename, Exiting.')
+            shutil.rmtree(temp_directory, ignore_errors=True)
             continue
+
 
     if costume_facedynamic_file != "":
         start_encrypt4 = temp_directory + costume_facedynamic_file
@@ -357,7 +377,9 @@ for mass_addon in batch_proccess_list:
         encrypted_facedynamic = "static/" + os.path.splitext(start_encrypt4.split("/")[-1])[0]
         if not facedynamic_costume_filename.isalnum() or not facedynamic_costume_filename.islower():
             print('Invalid Facedynamic Filename, Exiting.')
+            shutil.rmtree(temp_directory, ignore_errors=True)
             continue
+
 
     if chara_id == 209:
         start_encrypt3 = temp_directory + rina_unmask_costume_file
@@ -371,7 +393,9 @@ for mass_addon in batch_proccess_list:
 
         if not rina_unmask_costume_filename.isalnum() or not rina_unmask_costume_filename.islower():
             print('Invalid Rina Unmasked Costume Filename, Exiting.')
+            shutil.rmtree(temp_directory, ignore_errors=True)
             continue
+
 
     # Get user inputs
     if chara_id == 212:
@@ -449,6 +473,7 @@ for mass_addon in batch_proccess_list:
     else:
         print("Invalid chara id")
         continue
+
         
     # if chara_id_group == 13:
         # print('Group: Myuzu')
@@ -529,7 +554,8 @@ for mass_addon in batch_proccess_list:
         cursor.execute("SELECT COUNT(*) FROM m_asset_pack WHERE pack_name = ?", (costume_filename,))
         result_chcc = cursor.fetchone()
         if result_chcc[0] > 0:
-            print(f"This costume already exists in the database")
+            print(f"This costume already exists in the database (skip)")
+            shutil.rmtree(temp_directory, ignore_errors=True)
             continue
             
         if costume_facedynamic_file != "":
@@ -4123,15 +4149,25 @@ for mass_addon in batch_proccess_list:
         cursor = conn.cursor()
 
         # Generate a unique costume_id_masterdata
+        channel_exchange_trade = 50000 + int(chara_id)
         if id_costume is None:
             costume_id_masterdata = generate_unique_costume_id(cursor)
         else:
-            costume_id_masterdata = id_costume            
+            costume_id_masterdata = id_costume
             
-        if chara_id_replace is None:
+        if id_trade_product is None:
+            zgenerate_id = generate_unique_trade_id(cursor)
+            trade_id_into_json = str(channel_exchange_trade) + str(zgenerate_id)
+        else:
+            formatted_id_trade_product = f"{id_trade_product:03}"
+            trade_id_into_json = str(channel_exchange_trade) + str(formatted_id_trade_product)
+            
+        if chara_id_append is None:
             chara_id_suit = chara_id
         else:
-            chara_id_suit = chara_id_replace            
+            chara_id_suit = chara_id_append
+            
+        trade_content_into_json = str(trade_id_into_json) + "01"
 
         costume_dictionary = "suit_name_" + str(costume_id_masterdata)
         costume_dictionary_masterdata = "k." + costume_dictionary
@@ -4211,6 +4247,9 @@ for mass_addon in batch_proccess_list:
         # Insert the new record with the updated display_order
         cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                        (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_ja))
+        # cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
+        # cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
+        # cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
        
         if chara_id == 209:
             cursor.execute("INSERT INTO main.m_suit_view (suit_master_id, view_status, model_asset_path) VALUES (?, '2', ?);", (costume_id_masterdata, rina_unmask_costume_path))
@@ -4229,9 +4268,37 @@ for mass_addon in batch_proccess_list:
         # Insert the new record with the updated display_order
         cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                        (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_gl))
+        # cursor.execute("INSERT INTO main.m_trade_product (id, trade_master_id, source_amount_color_on, label, display_order) VALUES (?, ?, '0', ?, '1');", (trade_id_into_json, channel_exchange_trade, donot_insert))
+        # cursor.execute("INSERT INTO main.m_trade_product_content (id, trade_product_master_id, content_display_order) VALUES (?, ?, '0');", (trade_content_into_json, trade_id_into_json))
+        # cursor.execute("INSERT INTO main.m_trade_product_content_category (trade_category_master_pattern_id, trade_category_master_id, content_type, content_id) VALUES (0, ?, '7', ?);", (chara_id_group, costume_id_masterdata))
        
         if chara_id == 209:
-            cursor.execute("INSERT INTO main.m_suit_view (suit_master_id, view_status, model_asset_path) VALUES (?, '2', ?);", (costume_id_masterdata, rina_unmask_costume_path))                
+            cursor.execute("INSERT INTO main.m_suit_view (suit_master_id, view_status, model_asset_path) VALUES (?, '2', ?);", (costume_id_masterdata, rina_unmask_costume_path))
+                
+    # with sqlite3.connect('serverdata.db') as conn:
+        # cursor = conn.cursor()  
+        
+        # cursor.execute("SELECT COUNT(*) FROM s_trade_product WHERE product_id = ?", (trade_id_into_json,))
+        # result_chc2c = cursor.fetchone()
+        # if result_chc2c[0] > 0:
+            # print(f"This trade product already exists in the database")
+        # else:
+            # json_data_costume = [{
+            # "content_type": 7,
+            # "content_id": costume_id_masterdata,
+            # "content_amount": 1
+            # }]
+            # json_string_costume = json.dumps(json_data_costume)
+
+            # costume_free_price = input("do you want make as free? (y/n): ")
+
+            # if costume_free_price == "y" :
+                # costume_price_val = 0
+            # else :
+                # costume_price_val = 55
+
+            # cursor.execute("INSERT INTO main.s_trade_product (product_id, trade_id, source_amount, stock_amount, contents) VALUES (?, ?, ?, '1', ?);", (trade_id_into_json, channel_exchange_trade, costume_price_val, json_string_costume))
+            # print("added to channel exchange shop")
 
     with sqlite3.connect('userdata.db') as conn:
         cursor = conn.cursor()  
