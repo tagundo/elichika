@@ -6,6 +6,7 @@ import (
 	"elichika/client/response"
 	"elichika/config"
 	"elichika/handler/common"
+	"elichika/log"
 	"elichika/router"
 	"elichika/utils"
 
@@ -20,13 +21,26 @@ func getPackUrl(ctx *gin.Context) {
 	err := json.Unmarshal(*ctx.MustGet("reqBody").(*json.RawMessage), &req)
 	utils.CheckErr(err)
 
-	// it's possible to detect TLS using ctx.Request.TLS != nil
-	// but that wouldn't work if we're using some external wrapper for TLS instead of elichika itself
 	host := *config.Conf.CdnServer
-	if host == "elichika" {
-		host = "http://" + ctx.Request.Host + "/static"
-	} else if host == "elichika_tls" {
-		host = "https://" + ctx.Request.Host + "/static"
+
+	if (host == "elichika") || (host == "elichika_tls") {
+		actualHost := ctx.Request.Host
+		// ctx.Request.Proto is not what we want, it is HTTP/1.0 and similar and doesn't indicate whether the connection is TLS or not
+		actualProto := "http"
+		if ctx.Request.TLS != nil {
+			actualProto = "https"
+		}
+
+		// if the connection is forwarded, we need to return the forwarded host instead
+		forwardedHost, hostExists := ctx.Request.Header["X-Forwarded-Host"]
+		forwardedProto, protoExists := ctx.Request.Header["X-Forwarded-Proto"]
+		if hostExists && len(forwardedHost) > 0 {
+			actualHost = forwardedHost[0]
+		}
+		if protoExists && len(forwardedProto) > 0 {
+			actualProto = forwardedProto[0]
+		}
+		host = actualProto + "://" + actualHost + "/static"
 	}
 	resp := response.GetPackUrlResponse{}
 	for _, pack := range req.PackNames.Slice {
@@ -60,7 +74,7 @@ func getPackUrl(ctx *gin.Context) {
 			virtualHost := "http://" + ctx.Request.Host + "/static"
 			resp.UrlList.Append(fmt.Sprintf("%s_virtual/%s", virtualHost, pack))
 		} else {
-			panic("wrong cdn_partial_file_capability")
+			log.Panic("wrong cdn_partial_file_capability")
 		}
 	}
 

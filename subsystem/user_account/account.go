@@ -8,6 +8,7 @@ import (
 	"elichika/gamedata"
 	"elichika/generic"
 	"elichika/subsystem/user_authentication"
+	"elichika/subsystem/user_reference_book"
 	"elichika/subsystem/user_card"
 	"elichika/subsystem/user_lesson_deck"
 	"elichika/subsystem/user_live_deck"
@@ -15,6 +16,7 @@ import (
 	"elichika/subsystem/user_member"
 	"elichika/subsystem/user_suit"
 	"elichika/subsystem/user_unlock_scene"
+	"elichika/subsystem/user_content"
 	"elichika/userdata"
 	"elichika/utils"
 
@@ -49,10 +51,9 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 			LastLoginAt:                             time.Now().Unix(),
 			Rank:                                    320,
 			RecommendCardMasterId:                   100011001, // Honoka
-			MaxFriendNum:                            10,
+			MaxFriendNum:                            99,
 			LivePointFullAt:                         time.Now().Unix(),
 			LivePointBroken:                         420,
-			Exp:                   3330914,
 			LivePointSubscriptionRecoveryDailyCount: 1,
 			LivePointSubscriptionRecoveryDailyResetAt: 1688137200,
 			ActivityPointCount:                        3,
@@ -73,7 +74,7 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 			EmblemId:                                  10500521, // new player
 			TutorialPhase:                             tutorialPhase,
 			TutorialEndAt:                             tutorialEndAt,
-			LoginDays:                                 1221,
+			LoginDays:                                 0,
 			NaviTapRecoverAt:                          1688137200,
 			LessonResumeStatus:                        1,
 			// AccessoryBoxAdditional:                    400,
@@ -161,6 +162,9 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeShopEventExchange, enum.UnlockSceneStatusOpened)
 		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeShopItemExchange, enum.UnlockSceneStatusOpened)
 		user_unlock_scene.UnlockScene(session, enum.UnlockSceneTypeStoryMember, enum.UnlockSceneStatusOpened)
+		for i := 1001; i <= 1024; i++ {
+			user_reference_book.InsertUserReferenceBook(session, int32(i))
+		}
 	}
 	{ // all the costumes that can't be obtained from maxing cards
 		suits := []client.UserSuit{}
@@ -172,7 +176,20 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 			})
 		}
 		user_suit.InsertUserSuits(session, suits)
-
+		for _, bg := range gamedata.CustomBackground {
+			user_content.AddContent(session, client.Content{
+				ContentType:   enum.ContentTypeCustomBackground,
+				ContentId:     bg.Id,
+				ContentAmount: 1,
+			})
+		}
+		for _, emblm := range gamedata.Emblem {
+			user_content.AddContent(session, client.Content{
+				ContentType:   enum.ContentTypeEmblem,
+				ContentId:     emblm.Id,
+				ContentAmount: 1,
+			})
+		}
 	}
 	{ // show formation
 		liveDecks := []client.UserLiveDeck{}

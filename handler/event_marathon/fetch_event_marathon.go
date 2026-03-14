@@ -1,3 +1,5 @@
+//go:build !dev
+
 package event_marathon
 
 import (

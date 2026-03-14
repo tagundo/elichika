@@ -2,10 +2,10 @@ package config
 
 import (
 	"elichika/enum"
+	"elichika/log"
 	"elichika/utils"
 
 	"encoding/json"
-	"fmt"
 	"reflect"
 )
 
@@ -22,7 +22,7 @@ type RuntimeConfig struct {
 	DefaultContentAmount     *int32  `json:"default_content_amount" of_label:"Default item count" of_attrs:"min=\"0\" max=\"1000000000\""` // the amount of items to give an user if they don't have that item
 	MissionMultiplier        *int32  `json:"mission_multiplier" of_label:"Mission progress multiplier" of_attrs:"min=\"0\" max=\"10000\""` // multiply the progress of missions. Only work for do "x" of things, not for "get x different thing or reach x level"
 	ResourceConfigType       *string `json:"resource_config_type" of_type:"select" of_options:"Original\noriginal\nComfortable\ncomfortable\nFree\nfree" of_label:"Resource config"`
-	EventAutoSchedulerPeriod *string `json:"event_auto_scheduler_period" of_type:"select" of_options:"once per day\n1_day\nonce per week\n7_days" of_label:"Event frequency"`
+	EventAutoSchedulerPeriod *string `json:"event_auto_scheduler_period" of_type:"select" of_options:"Disabled\ndisabled\nonce per day\n1_day\nonce per week\n7_days" of_label:"Event frequency"`
 	MaintenanceUrl           *string `json:"maintenance_url" of_label:"Maintenance Url"`
 }
 
@@ -55,7 +55,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.DefaultContentAmount = 1073741823
 	*configs.MissionMultiplier = 1
 	*configs.ResourceConfigType = "free"
-	*configs.EventAutoSchedulerPeriod = "7_days"
+	*configs.EventAutoSchedulerPeriod = "disabled"
 	*configs.MaintenanceUrl = "http://127.0.0.1:8080/webui/admin/"
 	return &configs
 }
@@ -70,16 +70,16 @@ func Load(p string) *RuntimeConfig {
 	c := RuntimeConfig{}
 	err := json.Unmarshal([]byte(utils.ReadAllText(p)), &c)
 	if err != nil {
-		panic("config file is wrong, change/delete it and try again")
+		log.Panic("config file is wrong, change/delete it and try again")
 	}
 	d := defaultConfigs()
 	for i := 0; i < reflect.TypeOf(c).NumField(); i++ {
 		f := reflect.ValueOf(&c).Elem().Field(i)
 		if f.IsNil() {
-			fmt.Println("Use default setting: ", reflect.TypeOf(c).Field(i).Name)
+			log.Println("Use default setting: ", reflect.TypeOf(c).Field(i).Name)
 			f.Set(reflect.ValueOf(d).Elem().Field(i))
 		}
-		fmt.Println(reflect.TypeOf(c).Field(i).Name, ": ", f.Elem())
+		log.Println(reflect.TypeOf(c).Field(i).Name, ": ", f.Elem())
 	}
 	if *c.CdnServer == "https://llsifas.catfolk.party/static/" {
 		*c.CdnServer = "https://llsifas.imsofucking.gay/static/"

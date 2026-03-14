@@ -10,7 +10,7 @@ import (
 	"elichika/utils"
 
 	"encoding/json"
-	"fmt"
+
 	"io"
 	"log"
 	"strconv"
@@ -68,29 +68,29 @@ func initial(ctx *gin.Context) {
 	if userIdErr == nil {
 		session = userdata.GetSession(ctx, int32(userId))
 		if session == nil {
-			panic("session is nil, use a transfer to get a proper user id")
+			log.Panic("session is nil, use a transfer to get a proper user id")
 		}
 		ctx.Set("sign_key", session.SessionKey())
 		// signAuth := encrypt.HMAC_SHA1_Encrypt([]byte(ctx.Request.URL.String()+" "+string(messages[n-2])), session.AuthorizationKey())
 		// signSession := encrypt.HMAC_SHA1_Encrypt([]byte(ctx.Request.URL.String()+" "+string(messages[n-2])), session.SessionKey())
-		// fmt.Println("auth: ", signAuth, "\nactual: ", string(messages[n-1]))
-		// fmt.Println("session: ", signSession, "\nactual: ", string(messages[n-1]))
+		// log.Println("auth: ", signAuth, "\nactual: ", string(messages[n-1]))
+		// log.Println("session: ", signSession, "\nactual: ", string(messages[n-1]))
 		commandId, _ := strconv.Atoi(ctx.Query("id"))
 		if strings.HasPrefix(ctx.Request.URL.String(), "/login/login?") {
 			signAuth := encrypt.HMAC_SHA1_Encrypt([]byte(ctx.Request.URL.String()+" "+string(messages[n-2])),
 				session.AuthorizationKey())
 			if sign != signAuth { // incorrect auth key, reject
-				panic("wrong authentication key, sign-in again using password")
+				log.Panic("wrong authentication key, sign-in again using password")
 			}
 			session.AuthenticationData.CommandId = int32(commandId)
 		} else {
 			signSession := encrypt.HMAC_SHA1_Encrypt([]byte(ctx.Request.URL.String()+" "+string(messages[n-2])),
 				session.SessionKey())
 			if sign != signSession { // incorrect auth key, reject
-				panic("wrong session key")
+				log.Panic("wrong session key")
 			}
 			if session.AuthenticationData.CommandId+1 != int32(commandId) {
-				panic("wrong command id")
+				log.Panic("wrong command id")
 			} else {
 				session.AuthenticationData.CommandId++
 			}
@@ -99,8 +99,8 @@ func initial(ctx *gin.Context) {
 		signStartUp := encrypt.HMAC_SHA1_Encrypt([]byte(ctx.Request.URL.String()+" "+string(messages[n-2])),
 			locale.Locales[lang].StartupKey)
 		if sign != signStartUp { // incorrect start up key, reject
-			fmt.Println("startup: ", signStartUp, "\nactual: ", sign)
-			panic("wrong startup key, get the correct app version")
+			log.Println("startup: ", signStartUp, "\nactual: ", sign)
+			log.Panic("wrong startup key, get the correct app version")
 		}
 	}
 	ctx.Set("session", session)

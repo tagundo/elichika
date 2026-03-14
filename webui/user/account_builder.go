@@ -330,7 +330,7 @@ func init() {
 		AddBuilderFeature("Increase bond point of", "increase_love",
 			fmt.Sprintf(`<select name="filter">
 				%s
-			</select> by <input type="number" min="1" max="100000000" name="amount">`, memberOptions), "Increase Bond",
+			</select> by <input type="number" min="1" max="185162780" name="amount">`, memberOptions), "Increase Bond",
 			func(ctx *gin.Context) {
 				session := ctx.MustGet("session").(*userdata.Session)
 				filter := webui_utils.GetFormInt32(ctx, "filter")

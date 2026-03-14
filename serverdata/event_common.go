@@ -2,10 +2,10 @@ package serverdata
 
 import (
 	"elichika/config"
+	"elichika/log"
 	"elichika/utils"
 
 	"encoding/json"
-	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -28,19 +28,10 @@ type EventMemberNameAsset struct {
 	SubNameBottomAssetPath  string `json:"sub_name_bottom_asset_path" xorm:"'sub_name_bottom_asset_path'"`
 }
 
-type EventActive struct {
-	EventId   int32 `xorm:"pk 'event_id'"`
-	EventType int32 `xorm:"'event_type'" enum:"EventType1"`
-	StartAt   int64 `xorm:"'start_at'"`
-	ExpiredAt int64 `xorm:"'expired_at'"`
-	ResultAt  int64 `xorm:"'result_at'"`
-	EndAt     int64 `xorm:"'end_at'"`
-}
-
 func initEventMemberNameAsset(session *xorm.Session) {
 	path := config.AssetPath + "event/event_member_name.json"
 
-	fmt.Printf("Parsing event member name asset file: %s\n", path)
+	log.Printf("Parsing event member name asset file: %s\n", path)
 	text := utils.ReadAllText(path)
 
 	assets := []EventMemberNameAsset{}
@@ -51,6 +42,5 @@ func initEventMemberNameAsset(session *xorm.Session) {
 }
 
 func init() {
-	addTable("s_event_active", EventActive{}, nil)
 	addTable("s_event_member_name_asset", EventMemberNameAsset{}, initEventMemberNameAsset)
 }

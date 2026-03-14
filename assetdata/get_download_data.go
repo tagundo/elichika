@@ -1,6 +1,10 @@
+//go:build !dev
+
 package assetdata
 
 import (
+	"elichika/log"
+
 	"fmt"
 )
 
@@ -23,7 +27,7 @@ func GetDownloadData(packname string) DownloadData {
 	}
 	pack, exist := Pack[packname]
 	if !exist {
-		panic(fmt.Sprint("package doesn't exist: ", packname))
+		log.Panic(fmt.Sprint("package doesn't exist: ", packname))
 	}
 	if pack.Metapack == nil {
 		return DownloadData{

@@ -9,6 +9,7 @@ import (
 	"elichika/generic"
 	"elichika/item"
 	"elichika/klab"
+	"elichika/log"
 	"elichika/subsystem/event"
 	"elichika/subsystem/user_card"
 	"elichika/subsystem/user_content"
@@ -153,8 +154,20 @@ func SkipLive(session *userdata.Session, req request.SkipLiveRequest) response.S
 				resp.SkipLiveResult.ActiveEventResult = event.GetLiveResultActiveEventMarathon(session,
 					liveDifficulty, liveDifficulty.EvaluationSScore, totalDeckBonus, req.TicketUseCount, req.LiveEventMarathonStatus.Value.IsUseEventMarathonBooster)
 			}
+		} else if activeEvent.EventType == enum.EventType1Mining {
+			totalDeckBonus := int32(0)
+			miningEvent := session.Gamedata.EventMining[activeEvent.EventId]
+			for _, cardMasterId := range cardMasterIds {
+				userCard := user_card.GetUserCard(session, cardMasterId)
+				bonusArray, exist := miningEvent.CardBonus[cardMasterId]
+				if exist {
+					totalDeckBonus += bonusArray[userCard.Grade]
+				}
+			}
+			resp.SkipLiveResult.ActiveEventResult = event.HandleLiveResultActiveEventMining(session,
+				liveDifficulty, liveDifficulty.EvaluationSScore, totalDeckBonus, req.TicketUseCount)
 		} else {
-			panic("event type not supported")
+			log.Panic("event type not supported")
 		}
 	}
 

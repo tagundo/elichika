@@ -7,7 +7,7 @@ import (
 	"elichika/config"
 	"elichika/generic"
 	"elichika/utils"
-
+	"io"
 	"os"
 	"reflect"
 
@@ -16,6 +16,23 @@ import (
 
 // initialise the engine and add the tables that is constructed from client types
 func init() {
+	if !utils.PathExists(config.UserdataPath) {
+
+		if utils.PathExists(config.YumemichiPath) {
+
+			src, err := os.Open(config.YumemichiPath)
+			utils.CheckErr(err)
+			defer src.Close()
+
+			dst, err := os.Create(config.UserdataPath)
+			utils.CheckErr(err)
+			defer dst.Close()
+
+			_, err = io.Copy(dst, src)
+			utils.CheckErr(err)
+
+		}
+	}
 	_ = os.Remove(config.UserdataPath + "-journal") // remove the dirty transactions, if any
 
 	var err error

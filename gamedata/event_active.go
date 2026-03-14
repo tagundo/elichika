@@ -1,10 +1,10 @@
 package gamedata
 
 import (
-	"elichika/serverdata"
+	"elichika/log"
+	"elichika/serverstate"
 	"elichika/utils"
 
-	"fmt"
 	"time"
 
 	"xorm.io/xorm"
@@ -34,26 +34,26 @@ import (
 
 // handling object, this can refetch from database if necessary
 type EventActive struct {
-	Event    *serverdata.EventActive
+	Event    *serverstate.EventActive
 	Gamedata *Gamedata `xorm:"-"`
 }
 
 // reload the event if necessary
 // return nil if the event doesn't exist
-func (ae *EventActive) GetEventValue() *serverdata.EventActive {
+func (ae *EventActive) GetEventValue() *serverstate.EventActive {
 	if ae.Event == nil {
-		event := serverdata.EventActive{}
+		event := serverstate.EventActive{}
 		var exist bool
 		var err error
-		ae.Gamedata.ServerdataDb.Do(func(session *xorm.Session) {
+		serverstate.Database.Do(func(session *xorm.Session) {
 			exist, err = session.Table("s_event_active").Get(&event)
 		})
-		fmt.Println("trying to load event active: ", event)
+		log.Println("trying to load event active: ", event)
 		utils.CheckErr(err)
 		if exist {
 			// do some check
 			if (event.StartAt >= event.ExpiredAt) || (event.ExpiredAt > event.ResultAt) || (event.ResultAt >= event.EndAt) {
-				panic("active event have bad time constraint")
+				log.Panic("active event have bad time constraint")
 			}
 			ae.Event = &event
 		}
@@ -69,13 +69,21 @@ func (ae *EventActive) GetEventMarathon() *EventMarathon {
 	return ae.Gamedata.EventMarathon[event.EventId]
 }
 
+func (ae *EventActive) GetEventMining() *EventMining {
+	event := ae.GetEventValue()
+	if event == nil {
+		return nil
+	}
+	return ae.Gamedata.EventMining[event.EventId]
+}
+
 // get active event given a time point
 // if the active event doesn't contain the timePoint, then null is returned
-func (ae *EventActive) GetActiveEvent(timePoint time.Time) *serverdata.EventActive {
+func (ae *EventActive) GetActiveEvent(timePoint time.Time) *serverstate.EventActive {
 	return ae.GetActiveEventUnix(timePoint.Unix())
 }
 
-func (ae *EventActive) GetActiveEventUnix(timeStamp int64) *serverdata.EventActive {
+func (ae *EventActive) GetActiveEventUnix(timeStamp int64) *serverstate.EventActive {
 	event := ae.GetEventValue()
 	if (event == nil) || (event.StartAt > timeStamp) || (event.EndAt < timeStamp) {
 		return nil

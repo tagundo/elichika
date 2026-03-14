@@ -1,9 +1,8 @@
 package database
 
 import (
+	"elichika/log"
 	"elichika/utils"
-
-	"fmt"
 
 	"xorm.io/xorm"
 )
@@ -19,7 +18,7 @@ var (
 func AddTable(tableName string, structure interface{}) {
 	_, exist := UserDataTableNameToInterface[tableName]
 	if exist {
-		panic("table name already used: " + tableName)
+		log.Panic("table name already used: " + tableName)
 	}
 	UserDataTableNameToInterface[tableName] = structure
 }
@@ -29,7 +28,7 @@ func InitTable(session *xorm.Session, tableName string, structure interface{}) {
 	utils.CheckErr(err)
 
 	if !exist {
-		fmt.Println("Creating new table:", tableName)
+		log.Println("Creating new table:", tableName)
 		err = session.Table(tableName).CreateTable(structure)
 		utils.CheckErr(err)
 	}

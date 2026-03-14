@@ -32,7 +32,7 @@ while true; do
 			rm userdata.db
 			rm config.json
 			clear
-			python elichika_reset.py
+			python3 elichika_reset.py
 			git fetch origin main
 			git reset --hard origin/main
 			git clean -fd
@@ -48,7 +48,7 @@ while true; do
             ;;
         3)
 			clear
-			python elichika_reset.py -nostage
+			python3 elichika_reset.py -nostage
             read -p "Press Enter to continue..." _dummy15sz35
             ;;
         4)
@@ -72,13 +72,20 @@ while true; do
             while true; do
                 clear
                 echo "==== Developer Menu ===="
-				echo "1. Add New Costume"
-				echo "2. Add New Live"
-				echo "3. Patch Masterdata"
-				echo "4. LLASDecryptor"
-				echo "5. Overwrite JP Client Dictionary"
-				echo "6. GameBanana Modpage"
-                echo "0. Back to Main Menu"
+			echo "1. Add New Costume"
+			echo "2. Add New Live"
+			echo "3. Add New DLP (Unstable)"
+			echo "4. Add New Card (Unstable)"
+			echo "5. Patch Masterdata"
+			echo "6. LLASDecryptor"
+			echo "7. Overwrite JP Client Dictionary"
+			echo "8. GameBanana Modpage"
+			echo "9. AyakaMods Modpage"
+			echo "10. camera live timeline replacer"
+			echo "11. Costume clone"
+			echo "12. Backup db"
+			echo "13. Restore db"
+                	echo "0. Back to Main Menu"
 
                 read -p "Enter your choice: " dev_option
 
@@ -86,37 +93,78 @@ while true; do
                     1)
 						clear
 						pkill elichika
-						python costume_addon_installer.py
+						python3 costume_addon_installer.py
                         read -p "Press Enter to continue..." _dummy01
                         ;;
                     2)
 						clear
 						pkill elichika
-						python live_addon_installer.py
+						python3 live_addon_installer.py
                         read -p "Press Enter to continue..." _dummy02
                         ;;
                     3)
 						clear
 						pkill elichika
-						python elichika_db_importer.py
-                        read -p "Press Enter to continue..." _dummy0399
+						python3 tower_addon_installer.py
+                        read -p "Press Enter to continue..." _dummy03777
                         ;;
                     4)
 						clear
 						pkill elichika
-						python llasdecryptor.py
-                        read -p "Press Enter to continue..." _dummy02555555
+						python3 card_addon_installer.py
+                        read -p "Press Enter to continue..." _dummy03777
                         ;;
                     5)
 						clear
 						pkill elichika
-						python replace_jp_client_dictionary.py
-                        read -p "Press Enter to continue..." _dummy02555235
+						python3 elichika_db_importer.py
+                        read -p "Press Enter to continue..." _dummy0399
                         ;;
                     6)
 						clear
 						pkill elichika
+						python3 llasdecryptor.py
+                        read -p "Press Enter to continue..." _dummy02555555
+                        ;;
+                    7)
+						clear
+						pkill elichika
+						python3 replace_jp_client_dictionary.py
+                        read -p "Press Enter to continue..." _dummy02555235
+                        ;;
+                    8)
+						clear
+						pkill elichika
 						xdg-open https://gamebanana.com/games/20519
+                        ;;
+                    9)
+						clear
+						pkill elichika
+						xdg-open https://ayakamods.cc/games/love-live-school-idol-festival-all-stars.217/
+                        ;;
+                    10)
+						clear
+						pkill elichika
+						python3 camera_live_timeline_replacer.py
+                        read -p "Press Enter to continue..." _dummy9999999999
+                        ;;
+                    11)
+						clear
+						pkill elichika
+						python3 costume_clone.py
+                        read -p "Press Enter to continue..." _dummy99999999999
+                        ;;
+                    12)
+						clear
+						pkill elichika
+						python3 database_backup.py
+                        read -p "Press Enter to continue..." _dummy999999999999
+                        ;;
+                    13)
+						clear
+						pkill elichika
+						python3 database_restore.py
+                        read -p "Press Enter to continue..." _dummy9999999999999
                         ;;
                     0)
                         break

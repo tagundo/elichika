@@ -1,8 +1,10 @@
 package user_training_tree
 
 import (
+	"elichika/client"
 	"elichika/config"
 	"elichika/enum"
+	"elichika/log"
 	"elichika/subsystem/user_card"
 	"elichika/subsystem/user_content"
 	"elichika/subsystem/user_mission"
@@ -49,7 +51,7 @@ func ActivateTrainingTreeCells(session *userdata.Session, cardMasterId int32, ce
 			case enum.TrainingContentTypeTechnique: // technique
 				card.TrainingDexterity += int32(paramCell.Value)
 			default:
-				panic("Unexpected training content type")
+				log.Panic("Unexpected training content type")
 			}
 		case enum.TrainingTreeCellTypeVoice:
 			naviActionId := trainingTree.NaviActionIds[cell.TrainingContentNo]
@@ -58,7 +60,7 @@ func ActivateTrainingTreeCells(session *userdata.Session, cardMasterId int32, ce
 			// training_content_type 11 in m_training_tree_card_story_side
 			storySideId, exist := trainingTree.TrainingTreeCardStorySides[enum.TrainingContentTypeStory]
 			if !exist {
-				panic("story doesn't exist")
+				log.Panic("story doesn't exist")
 			}
 			user_story_side.InsertStorySide(session, storySideId)
 		case enum.TrainingTreeCellTypeAwakening:
@@ -102,7 +104,15 @@ func ActivateTrainingTreeCells(session *userdata.Session, cardMasterId int32, ce
 
 	user_card.UpdateUserCard(session, card)
 
+	trainingTreeCells := []client.UserCardTrainingTreeCell{}
 	for _, cellId := range cellIds {
+		trainingTreeCells = append(trainingTreeCells, client.UserCardTrainingTreeCell{
+			CellId:      cellId,
+			ActivatedAt: session.Time.Unix(),
+		})
+	}
+	storedCells := session.Gamedata.TrainingTree[cardMasterId].Design().Compress(trainingTreeCells)
+	for _, cell := range storedCells {
 		type Wrapper struct {
 			CardMasterId int32
 			CellId       int32
@@ -110,8 +120,8 @@ func ActivateTrainingTreeCells(session *userdata.Session, cardMasterId int32, ce
 		}
 		userdata.GenericDatabaseInsert(session, "u_card_training_tree_cell", Wrapper{
 			CardMasterId: cardMasterId,
-			CellId:       cellId,
-			ActivatedAt:  session.Time.Unix(),
+			CellId:       cell.CellId,
+			ActivatedAt:  cell.ActivatedAt,
 		})
 	}
 }

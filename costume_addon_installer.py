@@ -212,31 +212,60 @@ if is_termux():
 
     # User input to choose a zip file by entering a number
     try:
-        chosen_number = int(input("Enter the number corresponding to the .zip file you want to choose: "))
-        
-        # Check if the chosen number is valid
-        if 1 <= chosen_number <= len(zip_files):
-            zip_file_path = os.path.join(modding_elichika_path, zip_files[chosen_number - 1])
-            print(f"You chose: {zip_file_path}")
-            # Now you can work with the chosen zip file as needed
+        user_input = input("Enter the number(s) corresponding to the .zip file(s) you want to choose (comma-separated for multiple, or 'all' for all files): ")
+
+        if user_input.lower() == 'all':
+            # [translate:전체 선택]
+            zip_file_path = [os.path.join(modding_elichika_path, zf) for zf in zip_files]
+            print(f"You chose all {len(zip_file_path)} files")
+        elif ',' in user_input:
+            # [translate:다중 선택]
+            chosen_numbers = [int(x.strip()) for x in user_input.split(',')]
+            zip_file_path = []
+            for num in chosen_numbers:
+                if 1 <= num <= len(zip_files):
+                    zip_file_path.append(os.path.join(modding_elichika_path, zip_files[num-1]))
+                    print(f"Added: {zip_files[num-1]}")
+                else:
+                    print(f"Invalid number: {num}")
+                    sys.exit(1)
+            print(f"You chose {len(zip_file_path)} files")
         else:
-            print("Invalid number. Please enter a valid number.")
-            sys.exit(1)
+            # [translate:단일 선택]
+            chosen_number = int(user_input)
+            if 1 <= chosen_number <= len(zip_files):
+                zip_file_path = os.path.join(modding_elichika_path, zip_files[chosen_number-1])
+                print(f"You chose: {zip_file_path}")
+            else:
+                print("Invalid number. Please enter a valid number.")
+                sys.exit(1)
     except ValueError:
-        print("Invalid input. Please enter a number.")
+        print("Invalid input. Please enter a number or comma-separated numbers.")
         sys.exit(1)
+
+    if isinstance(zip_file_path, list):
+        zip_file_paths = zip_file_path
+    else:
+        zip_file_paths = [zip_file_path]
+
+    # Process each selected zip file
+    for zf_p in zip_file_paths:
+        open_and_check_zip(zf_p)
+
     do_you_think_want_add_this = input("Do you want to proceed? (y/n): ")
-    if do_you_think_want_add_this != "n" :
+    if do_you_think_want_add_this != "n":
         pass
-    else :
+    else:
         clear_terminal()
         shutil.rmtree(temp_directory, ignore_errors=True)
         sys.exit(1)
+
     do_backup_is_important = input("would you like backup database? (y/n): ")
-    if do_backup_is_important == "y" :
+    if do_backup_is_important == "y":
         backup_operate(filelist)
-    else :
+    else:
         print('well then do your own risk')
+
 else:
     import tkinter as tk
     from tkinter import filedialog
@@ -274,7 +303,10 @@ for root3, dirs, files3 in os.walk(nested_path_batch):
             batch_proccess_list.append(os.path.join(root3, file4))
             
 for mass_addon in batch_proccess_list:
-    os.makedirs(temp_directory, exist_ok=True)
+    if os.path.exists(temp_directory):
+        print(f"cleaning up temp folder")
+        shutil.rmtree(temp_directory, ignore_errors=True)
+        os.makedirs(temp_directory, exist_ok=True)
     with open(mass_addon, 'rb') as zip_file:
         zip_data = zip_file.read()
         
@@ -316,7 +348,8 @@ for mass_addon in batch_proccess_list:
     if not costume_filename.isalnum() or not costume_filename.islower():
         print('Invalid Costume Filename, Exiting.')
         shutil.rmtree(temp_directory, ignore_errors=True)
-        break
+        continue
+
 
     if thumbnail_file != "":
         start_encrypt2 = temp_directory + thumbnail_file
@@ -330,7 +363,8 @@ for mass_addon in batch_proccess_list:
         if not thumbnail_costume_filename.isalnum() or not thumbnail_costume_filename.islower():
             print('Invalid Thumbnail Filename, Exiting.')
             shutil.rmtree(temp_directory, ignore_errors=True)
-            break
+            continue
+
 
     if costume_facedynamic_file != "":
         start_encrypt4 = temp_directory + costume_facedynamic_file
@@ -344,7 +378,8 @@ for mass_addon in batch_proccess_list:
         if not facedynamic_costume_filename.isalnum() or not facedynamic_costume_filename.islower():
             print('Invalid Facedynamic Filename, Exiting.')
             shutil.rmtree(temp_directory, ignore_errors=True)
-            break
+            continue
+
 
     if chara_id == 209:
         start_encrypt3 = temp_directory + rina_unmask_costume_file
@@ -359,7 +394,8 @@ for mass_addon in batch_proccess_list:
         if not rina_unmask_costume_filename.isalnum() or not rina_unmask_costume_filename.islower():
             print('Invalid Rina Unmasked Costume Filename, Exiting.')
             shutil.rmtree(temp_directory, ignore_errors=True)
-            break
+            continue
+
 
     # Get user inputs
     if chara_id == 212:
@@ -436,7 +472,8 @@ for mass_addon in batch_proccess_list:
         print(f'Adding {costume_name_en} to Mia Taylor')
     else:
         print("Invalid chara id")
-        break
+        continue
+
         
     # if chara_id_group == 13:
         # print('Group: Myuzu')
@@ -517,9 +554,9 @@ for mass_addon in batch_proccess_list:
         cursor.execute("SELECT COUNT(*) FROM m_asset_pack WHERE pack_name = ?", (costume_filename,))
         result_chcc = cursor.fetchone()
         if result_chcc[0] > 0:
-            print(f"This costume already exists in the database")
+            print(f"This costume already exists in the database (skip)")
             shutil.rmtree(temp_directory, ignore_errors=True)
-            break
+            continue
             
         if costume_facedynamic_file != "":
             costume_facedynamic_path = costume_facedynamic_path_randomhash(cursor)
