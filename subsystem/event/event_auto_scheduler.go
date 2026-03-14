@@ -79,6 +79,10 @@ func eventAutoScheduler(userdata_db *xorm.Session, task scheduled_task.Scheduled
 	// but it will use scheduled time for checking
 	// the auto scheduler should be invoked by the event end task or directly
 	// trying to schedule an event while an other event hasn't ended will not work
+	if *config.Conf.EventAutoSchedulerPeriod == "disabled" {
+		log.Println("Event auto scheduler disabled")
+		return
+	}
 	configObj := autoSchedulerConfigs[*config.Conf.EventAutoSchedulerPeriod]
 	now := time.Now()
 

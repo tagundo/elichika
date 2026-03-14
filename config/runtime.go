@@ -22,7 +22,7 @@ type RuntimeConfig struct {
 	DefaultContentAmount     *int32  `json:"default_content_amount" of_label:"Default item count" of_attrs:"min=\"0\" max=\"1000000000\""` // the amount of items to give an user if they don't have that item
 	MissionMultiplier        *int32  `json:"mission_multiplier" of_label:"Mission progress multiplier" of_attrs:"min=\"0\" max=\"10000\""` // multiply the progress of missions. Only work for do "x" of things, not for "get x different thing or reach x level"
 	ResourceConfigType       *string `json:"resource_config_type" of_type:"select" of_options:"Original\noriginal\nComfortable\ncomfortable\nFree\nfree" of_label:"Resource config"`
-	EventAutoSchedulerPeriod *string `json:"event_auto_scheduler_period" of_type:"select" of_options:"once per day\n1_day\nonce per week\n7_days" of_label:"Event frequency"`
+	EventAutoSchedulerPeriod *string `json:"event_auto_scheduler_period" of_type:"select" of_options:"Disabled\ndisabled\nonce per day\n1_day\nonce per week\n7_days" of_label:"Event frequency"`
 	MaintenanceUrl           *string `json:"maintenance_url" of_label:"Maintenance Url"`
 }
 
@@ -55,7 +55,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.DefaultContentAmount = 1073741823
 	*configs.MissionMultiplier = 1
 	*configs.ResourceConfigType = "free"
-	*configs.EventAutoSchedulerPeriod = "7_days"
+	*configs.EventAutoSchedulerPeriod = "disabled"
 	*configs.MaintenanceUrl = "http://127.0.0.1:8080/webui/admin/"
 	return &configs
 }

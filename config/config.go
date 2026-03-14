@@ -24,6 +24,7 @@ var (
 
 	ServerdataPath  = RootPath + "serverdata.db"
 	UserdataPath    = RootPath + "userdata.db"
+	YumemichiPath    = RootPath + "yumemichi_userdata.db"
 	ServerstatePath = RootPath + "serverstate.db"
 
 	UserDataBackupPath = "backup/"
