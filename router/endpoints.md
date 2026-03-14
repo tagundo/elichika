@@ -140,7 +140,7 @@ Also note that some endpoints won't need to be handled at all either because the
 - [ ] (not necessary) /liveDeck/resetDeck
 - [x] /liveDeck/saveDeck
 - [x] /liveDeck/saveDeckAll
-- [ ] (not necessary) /liveDeck/saveOverwriteDeck
+- [x] /liveDeck/saveOverwriteDeck
 - [ ] (not necessary) /liveDeck/saveSquad
 - [x] /liveDeck/saveSuit
 - [x] /liveMv/saveDeck

@@ -126,14 +126,15 @@ func HandleLiveResultActiveEventMining(session *userdata.Session, liveDifficulty
 		ContentId:     eventMining.TopStatus.EventPointMasterId,
 		ContentAmount: itemDropTotalBase,
 	})
+	user_content.AddContent(session, result.LiveEventDropItemInfo.Value.LiveEventDropContents.Slice[0].StandardDrops.Slice[0])
 	if itemDropTotal-itemDropTotalBase > 0 {
 		result.LiveEventDropItemInfo.Value.LiveEventDropContents.Slice[0].BonusDrops.Append(client.Content{
 			ContentType:   enum.ContentTypeExchangeEventPoint,
 			ContentId:     eventMining.TopStatus.EventPointMasterId,
 			ContentAmount: itemDropTotal - itemDropTotalBase,
 		})
+		user_content.AddContent(session, result.LiveEventDropItemInfo.Value.LiveEventDropContents.Slice[0].BonusDrops.Slice[0])
 	}
-	user_content.AddContent(session, result.LiveEventDropItemInfo.Value.LiveEventDropContents.Slice[0].StandardDrops.Slice[0])
 
 	mining.AddEventPoint(session, epPointTotal, &result)
 	if isManualClear {
