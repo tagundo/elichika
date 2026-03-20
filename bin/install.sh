@@ -3,7 +3,7 @@
 # this can be set with export or just set when invoking bash
 # Honestly this is only for testing but you can think of it as a hidden feature
 # if BRANCH is not provided, then default to master
-BRANCH=${BRANCH:-"master"}
+BRANCH=${BRANCH:-"main"}
 clear
 
 echo "Requesting storage permission..."
