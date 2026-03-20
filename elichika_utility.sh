@@ -5,7 +5,7 @@ while true; do
     echo "==== Elichika Menu ===="
     echo ""
     echo "1. Run Server"
-    echo "2. Reset Server"
+    echo "2. Update/Reset Server"
     echo "3. Clear Cache Database"
     echo "4. Switch CDN to LocalHost"
     echo "5. Switch CDN to ImSoFuckingGay"
@@ -23,7 +23,7 @@ while true; do
             ;;
         2)
 			clear
-			echo "note that this will reset everything the current state of server"
+			echo "note that this will update/reset everything the current state of server"
 			echo "backup you files, or better yet"
 			echo ""
 			read -p "are you sure want reset server? enter to procced or exit termux (ctrl + c) if you don't want" _dummy53534
@@ -42,7 +42,7 @@ while true; do
 			git clean -fd
 			cd ~/elichika2
 			echo "Building server..."
-			go build
+			CGO_ENABLED=0 go build -o elichika || go build
 			echo "Finished, please run again"
 			exit 0
             ;;
@@ -74,8 +74,8 @@ while true; do
                 echo "==== Developer Menu ===="
 			echo "1. Add New Costume"
 			echo "2. Add New Live"
-			echo "3. Add New DLP (Unstable)"
-			echo "4. Add New Card (Unstable)"
+			echo "3. Add New DLP (Deprecated)"
+			echo "4. Add New Card (Deprecated)"
 			echo "5. Patch Masterdata"
 			echo "6. LLASDecryptor"
 			echo "7. Overwrite JP Client Dictionary"
