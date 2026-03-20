@@ -5,7 +5,7 @@ while true; do
     echo "==== Elichika Menu ===="
     echo ""
     echo "1. Run Server"
-    echo "2. Update/Reset Server"
+    echo "2. Reset Server"
     echo "3. Clear Cache Database"
     echo "4. Switch CDN to LocalHost"
     echo "5. Switch CDN to ImSoFuckingGay"
@@ -23,10 +23,11 @@ while true; do
             ;;
         2)
 			clear
-			echo "note that this will update/reset everything the current state of server"
-			echo "backup you files, or better yet"
+			echo "NOTE: This will reset the server to its current state"
+			echo "WARNING: ALL saved Player IDs will be LOST!"
+			echo "Backup your files, or better yet..."
 			echo ""
-			read -p "are you sure want reset server? enter to procced or exit termux (ctrl + c) if you don't want" _dummy53534
+			read -p "Are you sure you want to reset the server? Press Enter to proceed, or press Ctrl+C to exit Termux if you don't want to continue: " _dummy53534
 			pkill elichika
 			rm serverdata.db
 			rm userdata.db
