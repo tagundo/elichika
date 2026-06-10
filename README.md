@@ -1,39 +1,6 @@
-# elichika2
-A fork of https://github.com/arina999999997/elichika based on https://github.com/YumeMichi/elichika, check out the original.
+# elichika3
+A fork of https://gitlab.com/tatara_hisoka/elichika which is based on https://github.com/arina999999997/elichika and originally derived from https://github.com/YumeMichi/elichika, Be sure to check out the original repository.
 
-## Changes log
-- Add-on content support
-- Added SDK of developement content
-- Added menu_elichika2
-- Restored content
-	- lvl 760 bond limit (WIP)
-	- lvl 100 card once kizuna board is maxed out (WIP)
-	- Appeal Chance
-		- GotHeal
-		- GotShield
-		- GotVoltageByVo
-		- GotVoltageBySp
-		- GotVoltageByGd
-		- GotVoltageBySk
-	- Liella song
-	- Expert difficulty song
-	- Item
-		- Leader Insight Guaranteed
-		- Increase Rare Item Drop Rate
-		- School Idol Radiance
-	- Special SP Cutscene In Lanzhu & Mia
-- Various changes
-	- Replace pre-render MV with realtime (save hundred megabyte drive)
-	- Disable useless setting
-	- Fixed some songs not unlocked
-	- Increase max LP limit same as official
-	- Increase limit skip ticket to 100
-	- Make all idol use swimsuit in tutorial
-	- Disable 60fps live quality, you can enable in Live Show Settings
-	- Unlocked bond story
-	- Sorted costume by old to new
-	- Fixed consistent dictionary
-- Clone as elichika2 folder so you can install safely
 
 ## Installing
 ### Disclaimer about the client
