@@ -27,7 +27,7 @@ pkg install golang git -y || echo "assuming go and git are already installed"
 pkg install git -y || echo "assuming go and git are already installed"
 pkg install python -y || echo "assuming go and git are already installed"
 # clone the source code
-git clone --depth 1 --branch developement --single-branch https://gitlab.com/tatara_hisoka/elichika.git elichika2 && \
+git clone --depth 1 --branch developement --single-branch https://github.com/tagundo/elichika.git elichika2 && \
 cd elichika2 && \
 # get the submodules (i.e. assets and other)
 git submodule update --init && \
