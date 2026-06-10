@@ -11,7 +11,7 @@ mv -f serverdata.db ../serverdata.db.temp && \
 mv -f config.json ../config.json.temp && \
 echo "Backed up databases, reinstalling" && \
 cd .. && rm -rf elichika2 && \
-curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash && \
+curl -L https://github.com/tagundo/elichika/-/raw/main/bin/install.sh | bash && \
 echo "Restoring old databases" && \
 mv userdata.db.temp elichika2/userdata.db && \
 mv serverdata.db.temp elichika2/serverdata.db && \
