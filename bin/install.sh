@@ -27,7 +27,7 @@ echo "Installing elichika2..."
 pkg install golang git python -y || echo "assuming go, git and python are already installed"
 # clone the source code
 rm -rf elichika2
-git clone --depth 1 --branch $BRANCH --single-branch https://gitlab.com/tatara_hisoka/elichika.git elichika2 && \
+git clone --depth 1 --branch $BRANCH --single-branch https://github.com/tagundo/elichika.git elichika2 && \
 cd elichika2 && \
 # get the submodules (i.e. assets and other)
 git submodule update --init assets && \
