@@ -55,7 +55,7 @@ Regardless of what update methods you want, it is also a good idea to backup ``u
 You can update the server using a basic update logic:
 
 ```
-curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/basic_update.sh | bash
+curl -L https://github.com/tagundo/elichika/-/raw/main/bin/basic_update.sh | bash
 ```
 
 If you have a new enough version, you can also run:
@@ -71,7 +71,7 @@ The basic update basically backup your data, reinstall, and then restore your da
 If you update the server regularly, then you can use the normal update and it should work:
 
 ```
-curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/update.sh | bash
+curl -L https://github.com/tagundo/elichika/-/raw/main/bin/update.sh | bash
 ```
 
 If your version is new enough, then running:
