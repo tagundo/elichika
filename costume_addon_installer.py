@@ -525,6 +525,57 @@ def unique_asset_path(cursor, table):
             return new_hash
 
 
+def parse_selection(user_input, max_n):
+    """번호 선택 문자열을 인덱스 리스트(1-base)로 파싱한다.
+
+    지원 형식:
+      - "all" / "a"      : 전체 선택
+      - "3"              : 단일 번호
+      - "1,4,7"          : 쉼표 구분 다중 선택
+      - "4-8"            : 범위 (4,5,6,7,8)
+      - "1, 4-8, 14-23"  : 혼합 (공백 허용)
+      - "8-4"            : 역순 범위도 4-8로 해석
+
+    잘못된 토큰이나 범위를 벗어난 번호가 있으면 ValueError를 던진다.
+    중복 선택은 처음 등장한 순서를 유지하며 제거된다.
+    """
+    text = user_input.strip().lower()
+    if text in ('all', 'a', '*'):
+        return list(range(1, max_n + 1))
+
+    chosen = []
+    seen = set()
+    for token in text.split(','):
+        token = token.strip()
+        if not token:
+            continue
+        if '-' in token:
+            parts = token.split('-')
+            if len(parts) != 2 or not parts[0].strip().isdigit() or not parts[1].strip().isdigit():
+                raise ValueError(f"Invalid range: '{token}'")
+            start, end = int(parts[0]), int(parts[1])
+            if start > end:
+                start, end = end, start
+            if start < 1 or end > max_n:
+                raise ValueError(f"Range out of bounds (1-{max_n}): '{token}'")
+            nums = range(start, end + 1)
+        else:
+            if not token.isdigit():
+                raise ValueError(f"Invalid number: '{token}'")
+            num = int(token)
+            if not (1 <= num <= max_n):
+                raise ValueError(f"Number out of bounds (1-{max_n}): '{token}'")
+            nums = (num,)
+        for n in nums:
+            if n not in seen:
+                seen.add(n)
+                chosen.append(n)
+
+    if not chosen:
+        raise ValueError("Nothing selected")
+    return chosen
+
+
 def open_and_check_zip(file_path):
     """zip 내용을 나열하고, 중첩 zip이면 .nested 폴더에 풀고,
     아니면 batch_proccess_list에 추가한다."""
@@ -758,38 +809,24 @@ if is_termux():
     for i, zip_file in enumerate(zip_files, start=1):
         print(f"{i}. {zip_file}")
 
-    try:
-        user_input = input("Enter the number(s) corresponding to the .zip file(s) you want to choose (comma-separated for multiple, or 'all' for all files): ")
-        if user_input.lower() == 'all':
-            zip_file_path = [os.path.join(modding_elichika_path, zf) for zf in zip_files]
-            print(f"You chose all {len(zip_file_path)} files")
-        elif ',' in user_input:
-            chosen_numbers = [int(x.strip()) for x in user_input.split(',')]
-            zip_file_path = []
-            for num in chosen_numbers:
-                if 1 <= num <= len(zip_files):
-                    zip_file_path.append(os.path.join(modding_elichika_path, zip_files[num-1]))
-                    print(f"Added: {zip_files[num-1]}")
-                else:
-                    print(f"Invalid number: {num}")
-                    sys.exit(1)
-            print(f"You chose {len(zip_file_path)} files")
-        else:
-            chosen_number = int(user_input)
-            if 1 <= chosen_number <= len(zip_files):
-                zip_file_path = os.path.join(modding_elichika_path, zip_files[chosen_number-1])
-                print(f"You chose: {zip_file_path}")
-            else:
-                print("Invalid number. Please enter a valid number.")
-                sys.exit(1)
-    except ValueError:
-        print("Invalid input. Please enter a number or comma-separated numbers.")
+    if not zip_files:
+        print("No .zip files found in " + modding_elichika_path)
         sys.exit(1)
 
-    if isinstance(zip_file_path, list):
-        zip_file_paths = zip_file_path
-    else:
-        zip_file_paths = [zip_file_path]
+    # 선택 형식: 3 / 1,4,7 / 4-8 / 1, 4-8, 14-23 / all
+    while True:
+        user_input = input("Select zip(s) - e.g. '3', '1,4,7', '4-8', '1, 4-8, 14-23', or 'all': ")
+        try:
+            chosen_numbers = parse_selection(user_input, len(zip_files))
+            break
+        except ValueError as e:
+            print(f"Invalid input: {e}. Try again.")
+
+    zip_file_paths = []
+    for num in chosen_numbers:
+        zip_file_paths.append(os.path.join(modding_elichika_path, zip_files[num-1]))
+        print(f"Added: {zip_files[num-1]}")
+    print(f"You chose {len(zip_file_paths)} file(s)")
 
     for zf_p in zip_file_paths:
         open_and_check_zip(zf_p)
@@ -829,13 +866,9 @@ else:
     elif response is None:
         sys.exit(1)
 
-# 원본과 동일: termux는 선택 zip을 한 번 더 처리(중복은 DB 검사로 걸러짐),
-# 다중 선택 시에는 리스트가 통째로 전달되어 에러 메시지만 출력됨
-if is_termux():
-    zip_file_paths = [zip_file_path]  # fix termux
-    for zip_file_path_batch in zip_file_paths:
-        open_and_check_zip(zip_file_path_batch)
-else:
+# termux는 위에서 이미 open_and_check_zip 처리를 끝냈으므로
+# 여기서는 PC(tkinter) 선택 결과만 처리한다 (기존의 이중 처리 버그 수정)
+if not is_termux():
     for zip_file_path_batch in zip_file_path:
         open_and_check_zip(zip_file_path_batch)
 
