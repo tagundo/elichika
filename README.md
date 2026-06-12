@@ -1,4 +1,4 @@
-# elichika3
+# elichika2
 A fork of https://gitlab.com/tatara_hisoka/elichika which is based on https://github.com/arina999999997/elichika and originally derived from https://github.com/YumeMichi/elichika, Be sure to check out the original repository.
 
 
