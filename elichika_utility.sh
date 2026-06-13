@@ -10,6 +10,7 @@ while true; do
     echo "4. Switch CDN to LocalHost"
     echo "5. Switch CDN to ImSoFuckingGay"
     echo "6. Developer Menu"
+    echo "7. Modding Menu"	
     echo "0. Exit"
 
     read -p "Enter your choice: " option
@@ -164,6 +165,32 @@ while true; do
 						pkill elichika
 						python3 database_restore.py
                         read -p "Press Enter to continue..." _dummy9999999999999
+                        ;;
+                    0)
+                        break
+                        ;;
+                    *)
+                        echo "Invalid option. Please try again."
+                        read -p "Press Enter to continue..." _dummy0407
+                        ;;
+                esac
+            done
+            ;;
+        7)
+            # Mod Menu
+            while true; do
+                clear
+                echo "==== Mod Menu ===="
+			echo "1. extract assetbundle"
+            echo "0. Back to Main Menu"
+                read -p "Enter your choice: " mod_option
+
+                case $mod_option in
+                    1)
+						clear
+						pkill elichika
+						python3 llas_asset_extractor.py
+                        read -p "Press Enter to continue..." _dummy012
                         ;;
                     0)
                         break
