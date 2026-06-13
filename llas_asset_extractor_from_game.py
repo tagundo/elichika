@@ -118,7 +118,7 @@ def detect_extension(data):
 GAME_PACKAGE_NAMES = [
     "com.klab.lovelive.allstars",          # JP
     "com.klab.lovelive.allstars.global",   # GL
-    "com.klab.lovelive.allstars.global.v2",   # ?
+    "com.lovelive.allstars.global.v2",   # ?
 
 ]
 
