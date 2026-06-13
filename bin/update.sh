@@ -58,6 +58,12 @@ fi
 # 3. 코드 / 서브모듈 업데이트 및 빌드
 # ---------------------------------------------------------------------------
 echo "==> Updating code and assets..."
+
+# install.sh 가 elichika / elichika_utility.sh / shortcut.sh 에 chmod 를 하면
+# git 이 실행권한 비트(100644->100755)를 "로컬 변경"으로 보고 pull 을 막는다.
+# 모드 변경을 추적하지 않도록 해서 이 충돌을 방지한다.
+git config core.fileMode false
+
 update_ok=1
 {
     git pull \
