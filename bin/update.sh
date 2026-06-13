@@ -63,7 +63,7 @@ update_ok=1
     git pull \
     && git submodule deinit -f assets \
     && git submodule update --init --recursive --checkout assets \
-    && { go build || CGO_ENABLED=0 go build; } \
+    && { CGO_ENABLED=0 go build -o elichika || go build -o elichika; } \
     && ./elichika rebuild_assets
 } || update_ok=0
 
