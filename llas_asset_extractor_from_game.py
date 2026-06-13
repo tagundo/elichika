@@ -23,16 +23,20 @@ Improvements over the original llasdecryptor.py
   6. Output folder     : you choose where assets go; they are sorted into
                          per-category subfolders (3d_model / texture / stage ...).
   7. Termux friendly   : default storage path + setup-storage check.
-  8. Pack source auto  : pass --packs, or it auto-detects the Android game
-                         folder (.../files/files with pkg<X>/) plus elichika
-                         static/, and reads packs from whichever exists.
+  8. Pack source auto  : auto-searches ~/storage/downloads/sukusta/packs
+                         (where you copy the game's assets with a file manager),
+                         plus elichika static/. Handles pak*/pkg* buckets whether
+                         they sit at the top or inside a files/ or static/ wrapper.
+                         Use --packs to add/override a folder.
 
 Usage
   python3 llas_asset_extractor.py                 # use current folder as elichika root
   python3 llas_asset_extractor.py --base ~/elichika
   python3 llas_asset_extractor.py --base . --out ~/storage/downloads/sukusta/extracted
-  # extract directly from the game's downloaded assets (.../files/files):
-  python3 llas_asset_extractor.py --base ~/elichika --packs /sdcard/Android/data/com.klab.lovelive.allstars.global/files/files
+  # Default source: copy the game's assets here with a file manager, then just run:
+  #   ~/storage/downloads/sukusta/packs/pak9/...   or   .../sukusta/packs/files/pak9/...
+  # Or point at any other folder explicitly:
+  python3 llas_asset_extractor.py --base ~/elichika --packs ~/storage/downloads/sukusta/packs
 """
 
 import argparse
@@ -120,6 +124,14 @@ GAME_PACKAGE_NAMES = [
     "com.klab.lovelive.allstars.global",   # GL
 ]
 
+# Where you copied the game's assets with a file manager (readable from Termux).
+# On Android 11+ Termux can't read another app's Android/data directly, so the
+# practical workflow is: copy .../files (or its pak*/ folders) here, then run.
+# This folder is auto-searched; both layouts are handled:
+#   ~/storage/downloads/sukusta/packs/pak9/...        (buckets at the top)
+#   ~/storage/downloads/sukusta/packs/files/pak9/...  (inside a 'files' wrapper)
+COPIED_PACKS_DIR = os.path.expanduser("~/storage/downloads/sukusta/packs")
+
 
 def detect_game_pack_roots():
     """Find the game client's asset folder (.../files/files) on the device.
@@ -141,12 +153,15 @@ def detect_game_pack_roots():
 def build_pack_roots(base_dir, extra_dirs):
     """Build the ordered list of source roots to search for packs:
       1) folders given with --packs
-      2) auto-detected game client folders (.../files/files)
-      3) elichika's static/ and the root (local setup)
+      2) the copied-packs folder (~/storage/downloads/sukusta/packs)
+      3) auto-detected game client folders (.../files/files) — usually
+         inaccessible to Termux on Android 11+, kept as a best-effort
+      4) elichika's static/ and the root (local setup)
     """
     roots = []
     for d in extra_dirs or []:
         roots.append(os.path.abspath(os.path.expanduser(d)))
+    roots.append(COPIED_PACKS_DIR)
     roots.extend(detect_game_pack_roots())
     roots.append(os.path.join(base_dir, "static"))
     roots.append(base_dir)
@@ -180,23 +195,44 @@ def _index_dir(d, index):
         pass
 
 
+# Wrapper folders that may sit between a root and its pak*/pkg* buckets.
+_WRAPPER_DIRS = {"files", "static"}
+
+
+def _index_buckets_under(d, index, depth=0):
+    """Index files directly in d, plus files inside d's pak*/pkg* buckets.
+    Descends one more level into 'files'/'static' wrapper folders, so all of
+    these are handled:
+        <d>/pak9/...            (buckets at this level)
+        <d>/files/pak9/...      ('files' wrapper)
+        <d>/static/pak9/...     ('static' wrapper)
+        <d>/files/files/pak9/.. (nested, up to a small depth)
+    Only descends into wrapper- or bucket-named dirs, so it never walks
+    unrelated trees (e.g. assets/db). Lists names only — no file reads."""
+    _index_dir(d, index)                          # flat files at this level
+    try:
+        entries = list(os.scandir(d))
+    except (FileNotFoundError, NotADirectoryError, PermissionError):
+        return
+    for entry in entries:
+        if not entry.is_dir():
+            continue
+        name = entry.name.lower()
+        if _is_bucket_dir(name):
+            _index_dir(entry.path, index)         # files inside a bucket
+        elif name in _WRAPPER_DIRS and depth < 3:
+            _index_buckets_under(entry.path, index, depth + 1)
+
+
 def build_pack_index(root):
-    """Index pack files under root (cached).
-    Scans: files directly in root + root/pak*·pkg* buckets + root/static (+ its buckets).
-    Lets us find packs by name even when bucket names (pak1, pak2 ...) don't
-    encode the pack name. Only lists directory entries, so it's fast (no file reads)."""
+    """Index pack files under root (cached), so packs can be found by name even
+    when bucket names (pak1, pak9 ...) don't encode the pack name.
+    Handles buckets directly under root and under a 'files'/'static' wrapper."""
     root = os.path.abspath(root)
     if root in _pack_index_cache:
         return _pack_index_cache[root]
     index = {}
-    for base in (root, os.path.join(root, "static")):
-        _index_dir(base, index)                 # flat files
-        try:
-            for entry in os.scandir(base):       # pak*/pkg* buckets
-                if entry.is_dir() and _is_bucket_dir(entry.name):
-                    _index_dir(entry.path, index)
-        except (FileNotFoundError, NotADirectoryError, PermissionError):
-            pass
+    _index_buckets_under(root, index)
     _pack_index_cache[root] = index
     return index
 
