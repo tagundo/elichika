@@ -20,14 +20,15 @@ Improvements over the original llasdecryptor.py
         - Mode 1: character -> costume (costume_clone.py style, 3D models)
         - Mode 2: pick an asset table directly (models/textures/stages/skills...)
   5. Auto extension    : UnityFS -> .unity, PNG -> .png, JPG -> .jpg, else .bin
-  6. Output folder     : you choose where assets are extracted.
+  6. Output folder     : you choose where assets go; they are sorted into
+                         per-category subfolders (3d_model / texture / stage ...).
   7. Termux friendly   : default storage path + setup-storage check.
   8. Layout autodetect : static/<pack> (elichika) and pkg<X>/<pack> (game dump).
 
 Usage
   python3 llas_asset_extractor.py                 # use current folder as elichika root
   python3 llas_asset_extractor.py --base ~/elichika
-  python3 llas_asset_extractor.py --base . --out ~/storage/downloads/llas_extract
+  python3 llas_asset_extractor.py --base . --out ~/storage/downloads/sukusta/extracted
 """
 
 import argparse
@@ -197,9 +198,26 @@ def ask_selection(prompt, max_n):
 # Extraction core
 # ============================================================
 
+# table -> per-category subfolder name. Falls back to the table name.
+CATEGORY_DIRS = {
+    "member_model": "3d_model",            # 3D models / costumes
+    "member_sd_model": "sd_model_2d",
+    "live2d_sd_model": "live2d_sd_model",
+    "texture": "texture",
+    "background": "background",
+    "stage": "stage",
+    "stage_effect": "stage_effect",
+}
+
+
+def category_dir(table):
+    """Return the per-category subfolder name for a table."""
+    return CATEGORY_DIRS.get(table, table)
+
+
 def extract_one(base_dir, out_dir, table, asset_path, pack_name, head, size,
                 key1, key2, used_names, manifest):
-    """Decrypt one asset and write it into out_dir. Reports success/failure."""
+    """Decrypt one asset and write it into out_dir/<category>/. Reports success/failure."""
     pack_path = find_pack_file(base_dir, pack_name)
     if pack_path is None:
         print(f"  [skip] {asset_path}: pack '{pack_name}' not found (not downloaded yet?)")
@@ -214,21 +232,29 @@ def extract_one(base_dir, out_dir, table, asset_path, pack_name, head, size,
         decrypt_section(section, FIXED_KEY0, key1, key2)
         ext = detect_extension(section)
 
+        # create the per-category subfolder
+        cat = category_dir(table)
+        cat_path = os.path.join(out_dir, cat)
+        os.makedirs(cat_path, exist_ok=True)
+
         base_name = sanitize(asset_path)
         out_name = base_name + ext
-        if out_name in used_names:                 # disambiguate with head on collision
+        rel = os.path.join(cat, out_name)
+        if rel in used_names:                      # disambiguate with head (per folder)
             out_name = f"{base_name}_{head}{ext}"
+            rel = os.path.join(cat, out_name)
         n = 1
-        while out_name in used_names:
+        while rel in used_names:
             out_name = f"{base_name}_{head}_{n}{ext}"
+            rel = os.path.join(cat, out_name)
             n += 1
-        used_names.add(out_name)
+        used_names.add(rel)
 
-        out_path = os.path.join(out_dir, out_name)
+        out_path = os.path.join(cat_path, out_name)
         with open(out_path, "wb") as f:
             f.write(section)
-        print(f"  [ok]   {asset_path}  ->  {out_name}  ({size}B, key {key1}/{key2})")
-        manifest.append((table, asset_path, pack_name, head, size, key1, key2, out_name, "OK"))
+        print(f"  [ok]   {asset_path}  ->  {rel}  ({size}B, key {key1}/{key2})")
+        manifest.append((table, asset_path, pack_name, head, size, key1, key2, rel, "OK"))
         return True
     except Exception as e:
         print(f"  [fail] {asset_path}: {e}")
@@ -460,7 +486,7 @@ def is_termux():
 
 def default_out_dir(base_dir):
     if is_termux():
-        return os.path.expanduser("~/storage/downloads/llas_extract")
+        return os.path.expanduser("~/storage/downloads/sukusta/extracted")
     return os.path.join(base_dir, "extracted")
 
 
@@ -470,7 +496,8 @@ def main():
     ap.add_argument("--base", default=".",
                     help="elichika root (folder containing assets/db and static). Default: current folder")
     ap.add_argument("--out", default=None,
-                    help="output folder. Default (termux): ~/storage/downloads/llas_extract")
+                    help="output folder (per-category subfolders are created under it). "
+                         "Default (termux): ~/storage/downloads/sukusta/extracted")
     args = ap.parse_args()
 
     base_dir = os.path.abspath(os.path.expanduser(args.base))
