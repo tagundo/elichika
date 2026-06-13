@@ -15,7 +15,7 @@ To install the server, first install termux, you can get it from [f-droid](https
 
 Then run the install script inside termux, this will take care of everything:
 ```
-curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash
+curl -L https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/install.sh | bash
 ```
 
 To run a command, copy (or type) it and hit the enter button.
@@ -26,7 +26,7 @@ You can setup the server in a desktop machine to play on android or ios.
 Install git and go, and then use the same install script with termux (on Windows, run inside git bash or some other linux shell emulator):
 
 ```
-curl -L https://gitlab.com/tatara_hisoka/elichika/-/raw/main/bin/install.sh | bash
+curl -L https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/install.sh | bash
 ```
 
 This will leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
@@ -55,7 +55,7 @@ Regardless of what update methods you want, it is also a good idea to backup ``u
 You can update the server using a basic update logic:
 
 ```
-curl -L https://github.com/tagundo/elichika/-/raw/main/bin/basic_update.sh | bash
+curl -L https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/basic_update.sh | bash
 ```
 
 If you have a new enough version, you can also run:
@@ -71,7 +71,7 @@ The basic update basically backup your data, reinstall, and then restore your da
 If you update the server regularly, then you can use the normal update and it should work:
 
 ```
-curl -L https://github.com/tagundo/elichika/-/raw/main/bin/update.sh | bash
+curl -L https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/update.sh | bash
 ```
 
 If your version is new enough, then running:
