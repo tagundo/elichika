@@ -32,7 +32,7 @@ Usage
   python3 llas_asset_extractor.py --base ~/elichika
   python3 llas_asset_extractor.py --base . --out ~/storage/downloads/sukusta/extracted
   # extract directly from the game's downloaded assets (.../files/files):
-  python3 llas_asset_extractor.py --base ~/elichika --packs /sdcard/Android/data/com.klab.lovelive.allstars.global/files/files
+  python3 llas_asset_extractor.py --base ~/elichika --packs /sdcard/Android/data/com.klab.lovelive.allstars./files/files
 """
 
 import argparse
@@ -118,6 +118,8 @@ def detect_extension(data):
 GAME_PACKAGE_NAMES = [
     "com.klab.lovelive.allstars",          # JP
     "com.klab.lovelive.allstars.global",   # GL
+    "com.klab.lovelive.allstars.global.v2",   # ?
+
 ]
 
 
