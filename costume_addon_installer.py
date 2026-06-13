@@ -454,6 +454,195 @@ DEPENDENCIES = {1: [('face_or', 'C', '{#'),
 
 
 # ============================================================
+# 1.5 유니티 에셋번들 플랫폼 감지 (Android / iOS)
+# ============================================================
+# 유니티 SerializedFile 메타데이터의 m_TargetPlatform 값으로 판별한다.
+#   13 = Android, 9 = iOS(iPhone)
+# UnityFS 번들은 블록이 LZ4/LZMA로 압축돼 있어, 외부 패키지 없이 동작하도록
+# 순수 파이썬 LZ4 블록 디코더를 포함한다. 감지에 실패하면 None을 반환하고
+# 설치 흐름은 사용자에게 플랫폼을 물어본다 (절대 크래시하지 않음).
+
+import struct
+import lzma
+
+UNITY_PLATFORM_NAMES = {13: 'android', 9: 'ios'}
+
+def _lz4_block_decompress(data, uncompressed_size):
+    """LZ4 블록 포맷 디코더 (프레임 헤더 없음)."""
+    out = bytearray()
+    i = 0
+    n = len(data)
+    while i < n and len(out) < uncompressed_size:
+        token = data[i]; i += 1
+        # 리터럴
+        lit_len = token >> 4
+        if lit_len == 15:
+            while True:
+                b = data[i]; i += 1
+                lit_len += b
+                if b != 255:
+                    break
+        out += data[i:i + lit_len]
+        i += lit_len
+        if i >= n or len(out) >= uncompressed_size:
+            break
+        # 매치 (오프셋은 리틀엔디언 u16)
+        offset = data[i] | (data[i + 1] << 8); i += 2
+        match_len = token & 0xF
+        if match_len == 15:
+            while True:
+                b = data[i]; i += 1
+                match_len += b
+                if b != 255:
+                    break
+        match_len += 4
+        start = len(out) - offset
+        for k in range(match_len):
+            out.append(out[start + k])
+    return bytes(out)
+
+def _lzma_raw_decompress(data, uncompressed_size):
+    """유니티 번들의 LZMA 블록(5바이트 props + raw 스트림) 디코더."""
+    props = data[0]
+    lc = props % 9
+    rem = props // 9
+    lp = rem % 5
+    pb = rem // 5
+    dict_size = struct.unpack('<I', data[1:5])[0]
+    dec = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=[
+        {"id": lzma.FILTER_LZMA1, "lc": lc, "lp": lp, "pb": pb, "dict_size": dict_size}])
+    return dec.decompress(data[5:], max_length=uncompressed_size)
+
+def _decompress_bundle_block(data, uncompressed_size, compression):
+    if compression == 0:
+        return data[:uncompressed_size]
+    if compression == 1:
+        return _lzma_raw_decompress(data, uncompressed_size)
+    if compression in (2, 3):  # LZ4 / LZ4HC
+        return _lz4_block_decompress(data, uncompressed_size)
+    raise ValueError(f"unsupported block compression {compression}")
+
+def _read_cstring(buf, pos):
+    end = buf.index(b'\x00', pos)
+    return buf[pos:end], end + 1
+
+def _platform_from_serialized(buf):
+    """SerializedFile 헤더/메타데이터에서 m_TargetPlatform을 읽는다."""
+    if len(buf) < 24:
+        return None
+    metadata_size, file_size, version, data_offset = struct.unpack_from('>IIII', buf, 0)
+    if not (9 <= version <= 99):
+        return None  # 구버전/비정상 헤더는 판별 포기
+    pos = 16
+    endianess = buf[pos]
+    pos += 4  # endianess(1) + reserved(3)
+    if version >= 22:
+        pos += 4 + 8 + 8 + 8  # metadataSize(u32) + fileSize(i64) + dataOffset(i64) + unknown(i64)
+    _, pos = _read_cstring(buf, pos)            # 유니티 버전 문자열
+    fmt = '>i' if endianess else '<i'
+    target_platform = struct.unpack_from(fmt, buf, pos)[0]
+    return UNITY_PLATFORM_NAMES.get(target_platform)
+
+def _platform_from_unityfs(f):
+    """UnityFS 번들에서 첫 노드(SerializedFile)의 플랫폼을 읽는다."""
+    header = f.read(8)
+    if header[:7] != b'UnityFS':
+        return None
+    f.seek(7 + 1)  # 시그니처 + 널
+    bundle_version = struct.unpack('>I', f.read(4))[0]
+    _, _ = _read_cstring_file(f), _read_cstring_file(f)  # player/engine 버전
+    total_size, comp_info_size, uncomp_info_size, flags = struct.unpack('>qIII', f.read(20))
+    if bundle_version >= 7:
+        pos = f.tell()
+        f.seek((pos + 15) // 16 * 16)
+    if flags & 0x80:  # blocksInfo가 파일 끝에 있음
+        data_start = f.tell()
+        f.seek(-comp_info_size, 2)
+        blocks_info_raw = f.read(comp_info_size)
+        f.seek(data_start)
+    else:
+        blocks_info_raw = f.read(comp_info_size)
+    blocks_info = _decompress_bundle_block(blocks_info_raw, uncomp_info_size, flags & 0x3F)
+
+    pos = 16  # uncompressedDataHash
+    block_count = struct.unpack_from('>i', blocks_info, pos)[0]; pos += 4
+    blocks = []
+    for _ in range(block_count):
+        u_size, c_size, b_flags = struct.unpack_from('>IIH', blocks_info, pos); pos += 10
+        blocks.append((u_size, c_size, b_flags & 0x3F))
+    node_count = struct.unpack_from('>i', blocks_info, pos)[0]; pos += 4
+    nodes = []
+    for _ in range(node_count):
+        offset, size, n_flags = struct.unpack_from('>qqI', blocks_info, pos); pos += 20
+        _, pos = _read_cstring(blocks_info, pos)
+        nodes.append((offset, size))
+    if not nodes:
+        return None
+    first_offset = min(n[0] for n in nodes)
+
+    # 첫 노드 헤더를 읽을 만큼만 블록을 순차 해제
+    needed = first_offset + 4096
+    stream = bytearray()
+    for u_size, c_size, b_comp in blocks:
+        stream += _decompress_bundle_block(f.read(c_size), u_size, b_comp)
+        if len(stream) >= needed:
+            break
+    return _platform_from_serialized(bytes(stream[first_offset:first_offset + 4096]))
+
+def _read_cstring_file(f):
+    out = bytearray()
+    while True:
+        b = f.read(1)
+        if not b or b == b'\x00':
+            return bytes(out)
+        out += b
+
+def detect_unity_platform(path):
+    """유니티 파일의 타깃 플랫폼('android'/'ios')을 반환. 실패 시 None."""
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(8)
+            f.seek(0)
+            if head[:7] == b'UnityFS':
+                return _platform_from_unityfs(f)
+            # UnityFS 래퍼 없는 단독 SerializedFile일 수도 있음
+            return _platform_from_serialized(f.read(4096))
+    except Exception:
+        return None
+
+def filter_dbs_by_platform(paths, target):
+    """플랫폼에 맞는 에셋 DB 경로만 남긴다. target이 None이면 전체(기존 동작)."""
+    if target == 'android':
+        return [p for p in paths if '/asset_a_' in p]
+    if target == 'ios':
+        return [p for p in paths if '/asset_i_' in p]
+    return list(paths)
+
+def db_platform(db_path):
+    """에셋 DB 경로에서 플랫폼을 알아낸다 ('android' / 'ios')."""
+    return 'ios' if '/asset_i_' in db_path else 'android'
+
+def detect_addon_platform(file_labels):
+    """애드온의 유니티 파일들을 검사해 플랫폼을 결정한다.
+
+    file_labels: [(경로, 라벨), ...]  (첫 항목 = 코스튬 본체, 결정 기준)
+    반환: 'android' / 'ios' / None(판별 실패)
+    """
+    detected = []
+    for fpath, label in file_labels:
+        plat = detect_unity_platform(fpath)
+        detected.append((label, plat))
+        shown = plat if plat else "unknown"
+        print(f"  [{label}] platform: {shown}")
+    main_platform = detected[0][1]
+    known = [p for _, p in detected if p]
+    if known and any(p != known[0] for p in known):
+        print("WARNING: mixed platforms inside this addon! "
+              f"Using costume file's platform ({main_platform}).")
+    return main_platform
+
+
+# ============================================================
 # 2. 헬퍼 함수
 # ============================================================
 
@@ -656,7 +845,16 @@ def insert_asset_records(db_path, ctx, first_db=False):
     first_db=True(asset_a_ja)일 때만:
       - 중복 코스튬 검사 (있으면 False 반환 -> 해당 애드온 건너뜀)
       - 무작위 asset_path 생성 (원본과 동일한 생성 순서 유지)
+
+    듀얼 플랫폼 모드(ctx['dual']=True)에서는 asset_path는 공유하되,
+    iOS DB(asset_i_*)에는 iOS 팩 파일명/크기를 등록한다.
     """
+    use_ios = ctx.get('dual') and db_platform(db_path) == 'ios'
+    costume_filename = ctx['costume_filename_ios'] if use_ios else ctx['costume_filename']
+    costume_size = ctx['costume_size_ios'] if use_ios else ctx['costume_size']
+    rina_filename = ctx.get('rina_filename_ios') if use_ios else ctx.get('rina_filename')
+    rina_size = ctx.get('rina_size_ios') if use_ios else ctx.get('rina_size')
+
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
 
@@ -688,20 +886,20 @@ def insert_asset_records(db_path, ctx, first_db=False):
 
         # (light download auto delete fix)
         cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');",
-                       (ctx['costume_filename'],))
+                       (costume_filename,))
 
         if ctx['chara_id'] == 209:
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');",
-                           (ctx['rina_filename'],))
+                           (rina_filename,))
 
         cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
-                       (ctx['costume_path'], ctx['costume_filename'], ctx['costume_size']))
+                       (ctx['costume_path'], costume_filename, costume_size))
 
         if ctx['chara_id'] == 209:
             if first_db:
                 ctx['rina_path'] = unique_asset_path(cursor, 'texture')
             cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
-                           (ctx['rina_path'], ctx['rina_filename'], ctx['rina_size']))
+                           (ctx['rina_path'], rina_filename, rina_size))
 
         insert_dependencies(cursor, ctx['chara_id'], ctx['costume_path'],
                             ctx['facedynamic_path'], ctx['rina_path'], ctx['has_facedynamic'])
@@ -709,7 +907,15 @@ def insert_asset_records(db_path, ctx, first_db=False):
 
 
 def insert_package_records(db_path, ctx):
-    """에셋 DB 한 곳에 m_asset_package(_mapping) 레코드를 삽입한다."""
+    """에셋 DB 한 곳에 m_asset_package(_mapping) 레코드를 삽입한다.
+
+    듀얼 플랫폼 모드에서는 iOS DB(asset_i_*)에 iOS 팩 파일을 매핑한다."""
+    use_ios = ctx.get('dual') and db_platform(db_path) == 'ios'
+    costume_filename = ctx['costume_filename_ios'] if use_ios else ctx['costume_filename']
+    costume_size = ctx['costume_size_ios'] if use_ios else ctx['costume_size']
+    rina_filename = ctx.get('rina_filename_ios') if use_ios else ctx.get('rina_filename')
+    rina_size = ctx.get('rina_size_ios') if use_ios else ctx.get('rina_size')
+
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
 
@@ -729,10 +935,10 @@ def insert_package_records(db_path, ctx):
                            (package_key_costume, pack_name, file_size, donot_insert, category_costume))
 
         # 코스튬 패키지: 항상 본체, 209는 가면 해제 모델, facedynamic이 있으면 추가
-        map_costume(ctx['costume_filename'], ctx['costume_size'])
+        map_costume(costume_filename, costume_size)
         pack_num = 1
         if ctx['chara_id'] == 209:
-            map_costume(ctx['rina_filename'], ctx['rina_size'])
+            map_costume(rina_filename, rina_size)
             pack_num += 1
         if ctx['has_facedynamic']:
             map_costume(ctx['facedynamic_filename'], ctx['facedynamic_size'])
@@ -762,6 +968,9 @@ costume_file = ""
 costume_facedynamic_file = ""
 rina_unmask_costume_file = ""
 thumbnail_file = ""
+# 듀얼 플랫폼(합본) 애드온용 - 구버전 인스톨러는 이 변수를 몰라 무시한다
+costume_file_ios = ""
+rina_unmask_costume_file_ios = ""
 chara_id = None
 chara_id_append = None
 id_costume = None
@@ -885,6 +1094,11 @@ for mass_addon in batch_proccess_list:
         shutil.rmtree(temp_directory, ignore_errors=True)
         os.makedirs(temp_directory, exist_ok=True)
 
+    # 듀얼 플랫폼 변수는 애드온 간 이월되면 위험하므로 매번 초기화한다
+    # (구형 애드온 zip의 modinstall.txt에는 이 변수가 없어 리셋되지 않기 때문)
+    costume_file_ios = ""
+    rina_unmask_costume_file_ios = ""
+
     with open(mass_addon, 'rb') as zip_file:
         zip_data = zip_file.read()
     zip_buffer = io.BytesIO(zip_data)
@@ -943,6 +1157,30 @@ for mass_addon in batch_proccess_list:
             shutil.rmtree(temp_directory, ignore_errors=True)
             continue
 
+    # ---- 듀얼 플랫폼(합본) 애드온: iOS 번들 처리 ----
+    is_dual_platform = costume_file_ios != ""
+    if is_dual_platform:
+        start_encrypt1_ios, costume_filename_ios, costume_filesize_ios, encrypted_costume_ios = crc32_prefix_rename(costume_file_ios)
+        if not valid_pack_filename(costume_filename_ios):
+            print('Invalid iOS Costume Filename, Exiting.')
+            shutil.rmtree(temp_directory, ignore_errors=True)
+            continue
+
+        rina_has_own_ios_file = False
+        if chara_id == 209:
+            if rina_unmask_costume_file_ios != "":
+                start_encrypt3_ios, rina_unmask_costume_filename_ios, rina_unmask_costume_filesize_ios, encrypted_rina_unmask_ios = crc32_prefix_rename(rina_unmask_costume_file_ios)
+                if not valid_pack_filename(rina_unmask_costume_filename_ios):
+                    print('Invalid iOS Rina Unmasked Costume Filename, Exiting.')
+                    shutil.rmtree(temp_directory, ignore_errors=True)
+                    continue
+                rina_has_own_ios_file = True
+            else:
+                # iOS용 가면 해제 모델이 없으면 안드로이드 파일로 대체 (경고)
+                print('WARNING: no iOS rina unmask file - reusing the android one for iOS databases')
+                rina_unmask_costume_filename_ios = rina_unmask_costume_filename
+                rina_unmask_costume_filesize_ios = rina_unmask_costume_filesize
+
     # ---- 캐릭터 ID 정규화 (란쥬/미아 ID 교환) 및 그룹 결정 ----
     if chara_id == 212:
         chara_id = 211
@@ -965,6 +1203,51 @@ for mass_addon in batch_proccess_list:
     if costume_description != "":
         print('Description: ' + costume_description)
 
+    # ---- 유니티 파일 플랫폼 감지 (Android / iOS) ----
+    if is_dual_platform:
+        # 합본 애드온: costume_file=안드로이드, costume_file_ios=iOS 로 명시되어 있음
+        print("Dual platform addon detected (android + ios in one package)")
+        plat_and = detect_unity_platform(start_encrypt1)
+        plat_ios = detect_unity_platform(start_encrypt1_ios)
+        print(f"  [costume android] platform: {plat_and if plat_and else 'unknown'}")
+        print(f"  [costume ios] platform: {plat_ios if plat_ios else 'unknown'}")
+        if plat_and == 'ios' or plat_ios == 'android':
+            print("WARNING: bundle platforms look swapped or mismatched against the config!")
+        print("-> Registering android bundle into asset_a_* and ios bundle into asset_i_*")
+        addon_platform = None
+        addon_asset_db_paths = list(ASSET_DB_PATHS)
+        addon_package_db_paths = list(PACKAGE_DB_PATHS)
+    else:
+        platform_check_files = [(start_encrypt1, "costume")]
+        if costume_facedynamic_file != "":
+            platform_check_files.append((start_encrypt4, "facedynamic"))
+        if chara_id == 209:
+            platform_check_files.append((start_encrypt3, "rina unmask"))
+        if thumbnail_file != "":
+            platform_check_files.append((start_encrypt2, "thumbnail"))
+
+        print("Checking unity bundle platform...")
+        addon_platform = detect_addon_platform(platform_check_files)
+        if addon_platform is None:
+            while True:
+                plat_input = input("Could not detect platform. Install for [a]ndroid / [i]os / [b]oth?: ").strip().lower()
+                if plat_input in ('a', 'android'):
+                    addon_platform = 'android'
+                    break
+                if plat_input in ('i', 'ios'):
+                    addon_platform = 'ios'
+                    break
+                if plat_input in ('b', 'both'):
+                    addon_platform = None  # 기존 동작: 양쪽 모두 등록
+                    break
+                print("Please answer 'a', 'i' or 'b'.")
+        if addon_platform:
+            print(f"-> Registering into {addon_platform.upper()} asset databases only")
+        else:
+            print("-> Registering into BOTH android & ios asset databases")
+        addon_asset_db_paths = filter_dbs_by_platform(ASSET_DB_PATHS, addon_platform)
+        addon_package_db_paths = filter_dbs_by_platform(PACKAGE_DB_PATHS, addon_platform)
+
     # ---- static/ 암호화 ----
     encrypt_to_static(start_encrypt1, encrypted_costume, "costume")
     if thumbnail_file != "":
@@ -973,9 +1256,13 @@ for mass_addon in batch_proccess_list:
         encrypt_to_static(start_encrypt4, encrypted_facedynamic, "facedynamic")
     if chara_id == 209:
         encrypt_to_static(start_encrypt3, encrypted_rina_unmask, "rina unmask costume")
+    if is_dual_platform:
+        encrypt_to_static(start_encrypt1_ios, encrypted_costume_ios, "costume (ios)")
+        if chara_id == 209 and rina_has_own_ios_file:
+            encrypt_to_static(start_encrypt3_ios, encrypted_rina_unmask_ios, "rina unmask costume (ios)")
     print("assets encrypted")
 
-    # ---- 8개 에셋 DB에 팩/모델/의존성 등록 ----
+    # ---- 플랫폼에 맞는 에셋 DB에 팩/모델/의존성 등록 ----
     asset_ctx = {
         'chara_id': chara_id,
         'costume_filename': costume_filename,
@@ -992,12 +1279,18 @@ for mass_addon in batch_proccess_list:
         'facedynamic_path': None,
         'thumbnail_path': None,
         'rina_path': None,
+        # 듀얼 플랫폼: iOS DB(asset_i_*)에는 이 팩 파일을 등록한다
+        'dual': is_dual_platform,
+        'costume_filename_ios': costume_filename_ios if is_dual_platform else None,
+        'costume_size_ios': costume_filesize_ios if is_dual_platform else None,
+        'rina_filename_ios': rina_unmask_costume_filename_ios if (is_dual_platform and chara_id == 209) else None,
+        'rina_size_ios': rina_unmask_costume_filesize_ios if (is_dual_platform and chara_id == 209) else None,
     }
 
-    if not insert_asset_records(ASSET_DB_PATHS[0], asset_ctx, first_db=True):
+    if not insert_asset_records(addon_asset_db_paths[0], asset_ctx, first_db=True):
         shutil.rmtree(temp_directory, ignore_errors=True)
         continue
-    for db_path in ASSET_DB_PATHS[1:]:
+    for db_path in addon_asset_db_paths[1:]:
         insert_asset_records(db_path, asset_ctx)
 
     costume_path = asset_ctx['costume_path']
@@ -1071,10 +1364,10 @@ for mass_addon in batch_proccess_list:
             cursor.execute("UPDATE u_member SET suit_master_id = ? WHERE user_id = ? AND member_master_id = ?;", (costume_id_masterdata, user_id_ins, chara_id))
             print(f"added to user id {user_id_ins} & changed navi costume")
 
-    # ---- 8개 에셋 DB에 다운로드 패키지 등록 ----
+    # ---- 플랫폼에 맞는 에셋 DB에 다운로드 패키지 등록 ----
     package_ctx = dict(asset_ctx)
     package_ctx['costume_id'] = costume_id_masterdata
-    for db_path in PACKAGE_DB_PATHS:
+    for db_path in addon_package_db_paths:
         insert_package_records(db_path, package_ctx)
 
     # ---- 사전(코스튬 이름) 등록 ----
