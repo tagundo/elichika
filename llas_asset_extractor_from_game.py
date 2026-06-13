@@ -32,7 +32,7 @@ Usage
   python3 llas_asset_extractor.py --base ~/elichika
   python3 llas_asset_extractor.py --base . --out ~/storage/downloads/sukusta/extracted
   # extract directly from the game's downloaded assets (.../files/files):
-  python3 llas_asset_extractor.py --base ~/elichika --packs /sdcard/Android/data/com.klab.lovelive.allstars./files/files
+  python3 llas_asset_extractor.py --base ~/elichika --packs /sdcard/Android/data/com.klab.lovelive.allstars.global/files/files
 """
 
 import argparse
@@ -118,8 +118,6 @@ def detect_extension(data):
 GAME_PACKAGE_NAMES = [
     "com.klab.lovelive.allstars",          # JP
     "com.klab.lovelive.allstars.global",   # GL
-    "com.lovelive.allstars.global.v2",   # ?
-
 ]
 
 
@@ -162,28 +160,73 @@ def build_pack_roots(base_dir, extra_dirs):
     return unique
 
 
+# Per-root pack index cache: {root(abspath): {basename: fullpath}}
+_pack_index_cache = {}
+
+
+def _is_bucket_dir(name):
+    """A bucket folder like pak1, pak2 / pkg0 ..."""
+    n = name.lower()
+    return n.startswith("pak") or n.startswith("pkg")
+
+
+def _index_dir(d, index):
+    """Index files directly inside d as basename->path (one level, no reads)."""
+    try:
+        for entry in os.scandir(d):
+            if entry.is_file():
+                index.setdefault(entry.name, entry.path)
+    except (FileNotFoundError, NotADirectoryError, PermissionError):
+        pass
+
+
+def build_pack_index(root):
+    """Index pack files under root (cached).
+    Scans: files directly in root + root/pak*·pkg* buckets + root/static (+ its buckets).
+    Lets us find packs by name even when bucket names (pak1, pak2 ...) don't
+    encode the pack name. Only lists directory entries, so it's fast (no file reads)."""
+    root = os.path.abspath(root)
+    if root in _pack_index_cache:
+        return _pack_index_cache[root]
+    index = {}
+    for base in (root, os.path.join(root, "static")):
+        _index_dir(base, index)                 # flat files
+        try:
+            for entry in os.scandir(base):       # pak*/pkg* buckets
+                if entry.is_dir() and _is_bucket_dir(entry.name):
+                    _index_dir(entry.path, index)
+        except (FileNotFoundError, NotADirectoryError, PermissionError):
+            pass
+    _pack_index_cache[root] = index
+    return index
+
+
 def find_pack_file(pack_roots, pack_name):
     """Find the actual pack file path across several source roots, autodetecting layout.
 
-    For each root, try in order:
-    - game cache : <root>/pkg<X>/<pack_name>   (what the real game uses)
-    - flat       : <root>/<pack_name>          (e.g. elichika static)
-    - static     : <root>/static/<pack_name>
-    - static     : <root>/static/pkg<X>/<pack_name>
+    For each root:
+    1) fast direct guesses (known layouts)
+         <root>/pkg<X>/<pack>, <root>/<pack>,
+         <root>/static/<pack>, <root>/static/pkg<X>/<pack>
+    2) otherwise, look it up by basename in an index built from pak1/pak2/...
+       buckets (matches the real game's .../files/files/pak<N>/ layout)
     """
     if not pack_name:
         return None
     first = pack_name[0]
     for root in pack_roots:
-        candidates = [
+        for p in (
             os.path.join(root, "pkg" + first, pack_name),
             os.path.join(root, pack_name),
             os.path.join(root, "static", pack_name),
             os.path.join(root, "static", "pkg" + first, pack_name),
-        ]
-        for p in candidates:
+        ):
             if os.path.isfile(p):
                 return p
+        idx = build_pack_index(root)
+        hit = idx.get(pack_name)
+        if hit:
+            return hit
     return None
 
 
