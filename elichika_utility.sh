@@ -181,7 +181,7 @@ while true; do
             while true; do
                 clear
                 echo "==== Mod Menu ===="
-			echo "1. extract assetbundle"
+			echo "1. extract assetbundle from static(LocalHost)"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
@@ -189,7 +189,7 @@ while true; do
                     1)
 						clear
 						pkill elichika
-						python3 llas_asset_extractor.py
+						python3 llas_asset_extractor_from_static.py
                         read -p "Press Enter to continue..." _dummy012
                         ;;
                     0)
