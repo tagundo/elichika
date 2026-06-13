@@ -182,7 +182,7 @@ while true; do
                 clear
                 echo "==== Mod Menu ===="
 			echo "1. extract assetbundle from static(LocalHost)"
-			echo "1. extract assetbundle from game"
+			echo "1. extract assetbundle from game(currently not working)"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
