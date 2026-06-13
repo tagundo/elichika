@@ -1,9 +1,9 @@
 # update the server using the following process:
 # - Backup userdata.db (for user data)
 # - Backup serverdata.db (for events state)
-# - Backup asset.db (for events state)
+# - Backup asset.db
 # - Comletely remove elichika and reinstall
-# - Restore userdata.db and serverdata.db
+# - Restore userdata.db and serverdata.db and asset.db
 # - Rebuild serverdata.db to new state
 # running this command also potentially remove outdated backup
 
