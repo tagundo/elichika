@@ -182,7 +182,7 @@ while true; do
                 clear
                 echo "==== Mod Menu ===="
 			echo "1. extract assetbundle from static(LocalHost)"
-			echo "2. extract assetbundle from game(currently not working)"
+			echo "2. extract assetbundle from packs"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
@@ -196,7 +196,7 @@ while true; do
                     2)
 						clear
 						pkill elichika
-						python3 llas_asset_extractor_from_game.py
+						python3 llas_asset_extractor_from_packs.py
                         read -p "Press Enter to continue..." _dummy0123
                         ;;
                     0)
