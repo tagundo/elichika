@@ -1,6 +1,7 @@
 # update the server using the following process:
 # - Backup userdata.db (for user data)
 # - Backup serverdata.db (for events state)
+# - Backup asset.db (for events state)
 # - Comletely remove elichika and reinstall
 # - Restore userdata.db and serverdata.db
 # - Rebuild serverdata.db to new state
@@ -9,6 +10,10 @@
 mv -f userdata.db ../userdata.db.temp && \
 mv -f serverdata.db ../serverdata.db.temp && \
 mv -f config.json ../config.json.temp && \
+
+cp -r assets/db/gl ../gl.temp && \
+cp -r assets/db/jp ../jp.temp && \
+
 echo "Backed up databases, reinstalling" && \
 cd .. && rm -rf elichika2 && \
 curl -L https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/install.sh | bash && \
@@ -16,6 +21,10 @@ echo "Restoring old databases" && \
 mv userdata.db.temp elichika2/userdata.db && \
 mv serverdata.db.temp elichika2/serverdata.db && \
 mv config.json.temp elichika2/config.json && \
+
+mv ../gl.temp elichika2/assets/db/gl && \
+mv ../jp.temp elichika2/assets/db/jp && \
+
 cd elichika2 && \
 ./elichika rebuild_assets && \
 echo "Updated succesfully!"
