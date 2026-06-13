@@ -182,7 +182,7 @@ while true; do
                 clear
                 echo "==== Mod Menu ===="
 			echo "1. extract assetbundle from static(LocalHost)"
-			echo "2. extract assetbundle from packs"
+			echo "2. extract assetbundle from packs (put game files in downloaads/sukusta/packs)"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
