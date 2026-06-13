@@ -1,5 +1,8 @@
 # elichika2
-A fork of https://gitlab.com/tatara_hisoka/elichika which is based on https://github.com/arina999999997/elichika and originally derived from https://github.com/YumeMichi/elichika, Be sure to check out the original repository.
+This is a fork of [tatara_hisoka/elichika], which is based on [arina999999997/elichika] and originally derived from [YumeMichi/elichika].
+Note: This repository is intended for my personal use.
+For modding support, I recommend using [tatara_hisoka/elichika].
+For playing the game without mods, use [arina999999997/elichika].
 
 
 ## Installing
