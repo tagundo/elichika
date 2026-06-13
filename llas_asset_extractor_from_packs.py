@@ -667,6 +667,11 @@ def main():
         print(f"  {mark}{r}")
     print("=" * 60)
 
+    # Only nudge when there's nothing to extract from (also pre-warms the index).
+    if sum(len(build_pack_index(r)) for r in pack_roots) == 0:
+        print(f"\n[!] No assetbundles found. Copy the game's 'files' folder into")
+        print(f"    {COPIED_PACKS_DIR}  with a file manager, then run again.")
+
     asset_db = choose_asset_db(base_dir)
     print(f"Selected DB: {os.path.relpath(asset_db, base_dir)}")
 
