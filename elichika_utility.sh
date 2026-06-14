@@ -9,9 +9,10 @@ while true; do
     echo "3. Clear Cache Database"
     echo "4. Switch CDN to LocalHost"
     echo "5. Switch CDN to ImSoFuckingGay"
-    echo "6. Toggle CDN Cache (download packs into cdn_cache_dir(sukusta/packs) & serve them)"
+    echo "6. Toggle CDN Cache (download packs into cdn_cache_dir & serve them)"
     echo "7. Developer Menu"
     echo "8. Modding Menu"
+    echo "9. Stop Server"
     echo "0. Exit"
 
     read -p "Enter your choice: " option
@@ -201,7 +202,6 @@ while true; do
                 clear
                 echo "==== Mod Menu ===="
 			echo "1. extract assetbundle from sukusta/packs or static or CDN"
-			echo "2. sifas_breast_tuner"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
@@ -212,12 +212,6 @@ while true; do
 						python3 llas_asset_extractor.py
                         read -p "Press Enter to continue..." _dummy012
                         ;;
-                    2)
-						clear
-						pkill elichika
-						python3 sifas_breast_tuner.py
-                        read -p "Press Enter to continue..." _dummy0123
-                        ;;
                     0)
                         break
                         ;;
@@ -227,6 +221,22 @@ while true; do
                         ;;
                 esac
             done
+            ;;
+        9)
+            # Stop Server
+            clear
+            echo "Stopping any running elichika..."
+            # plain SIGTERM / pkill -x don't reliably kill "./elichika" on Termux, so match the
+            # command line and use SIGKILL. the pattern targets the server binary only, not this
+            # script or the elichika2 directory name.
+            pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
+            sleep 1
+            if pgrep -f '(^|/)elichika( |$)' >/dev/null 2>&1; then
+                echo "Warning: elichika is still running."
+            else
+                echo "Server stopped."
+            fi
+            read -p "Press Enter to continue..." _dummy_stop
             ;;
         0)
 			clear
