@@ -138,36 +138,54 @@ GAME_PACKAGE_NAMES = [
 COPIED_PACKS_DIR = os.path.expanduser("~/storage/downloads/sukusta/packs")
 
 
-def detect_game_pack_roots():
-    """Find the game client's asset folder (.../files/files) on the device.
-    Checks Android shared storage (/sdcard) and the Termux symlink location."""
+def _probe_dir(path):
+    """Classify a directory cheaply: 'found' | 'no_access' | 'absent'.
+    One directory open + one read (reveals Android 11+ EACCES on Android/data)."""
+    try:
+        with os.scandir(path) as it:
+            next(it, None)          # force a read so a blocked dir raises here
+        return "found"
+    except PermissionError:
+        return "no_access"
+    except (FileNotFoundError, NotADirectoryError):
+        return "absent"
+    except OSError:
+        return "no_access"          # any other access error -> treat as inaccessible
+
+
+def detect_game_candidates():
+    """Return [(path, status)] for the game client's asset folder candidates
+    (.../files/files). status is 'found' / 'no_access' / 'absent'.
+    Probes each distinct physical location only once."""
     bases = [
         "/sdcard/Android/data",
         "/storage/emulated/0/Android/data",
-        os.path.expanduser("~/storage/shared/Android/data"),  # Termux: ~/storage/shared -> /sdcard
+        os.path.expanduser("~/storage/shared/Android/data"),  # Termux: -> /sdcard
     ]
-    roots = []
+    out, seen = [], set()
     for base in bases:
         for pkg in GAME_PACKAGE_NAMES:
             cand = os.path.join(base, pkg, "files", "files")
-            if os.path.isdir(cand) and cand not in roots:
-                roots.append(cand)
-    return roots
+            key = os.path.realpath(cand)        # /sdcard == /storage/emulated/0 == ~/storage/shared
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((cand, _probe_dir(cand)))
+    return out
 
 
-def build_pack_roots(base_dir, extra_dirs):
+def build_pack_roots(base_dir, extra_dirs, game_roots):
     """Build the ordered list of source roots to search for packs:
       1) folders given with --packs
       2) the copied-packs folder (~/storage/downloads/sukusta/packs)
-      3) auto-detected game client folders (.../files/files) — usually
-         inaccessible to Termux on Android 11+, kept as a best-effort
+      3) readable game client folders (.../files/files), if any
       4) elichika's static/ and the root (local setup)
-    """
+    Only readable game_roots are passed in (blocked ones are shown in the banner)."""
     roots = []
     for d in extra_dirs or []:
         roots.append(os.path.abspath(os.path.expanduser(d)))
     roots.append(COPIED_PACKS_DIR)
-    roots.extend(detect_game_pack_roots())
+    roots.extend(game_roots)
     roots.append(os.path.join(base_dir, "static"))
     roots.append(base_dir)
     # dedup (keep order)
@@ -178,6 +196,28 @@ def build_pack_roots(base_dir, extra_dirs):
             seen.add(ap)
             unique.append(ap)
     return unique
+
+
+def root_has_content_shallow(root):
+    """Cheap, non-recursive check: does root hold any file, or a
+    pak*/pkg*/files/static subfolder? Used for the startup 'no packs' nudge
+    without building the full index."""
+    try:
+        with os.scandir(root) as it:
+            for e in it:
+                try:
+                    if e.is_file():
+                        return True
+                    if e.is_dir():
+                        n = e.name.lower()
+                        if (n.startswith("pak") or n.startswith("pkg")
+                                or n in ("files", "static")):
+                            return True
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return False
 
 
 # Per-root pack index cache: {root(abspath): {basename: fullpath}}
@@ -920,7 +960,13 @@ def main():
     out_dir = os.path.abspath(os.path.expanduser(args.out or default_out_dir(base_dir)))
     os.makedirs(out_dir, exist_ok=True)
 
-    pack_roots = build_pack_roots(base_dir, args.packs)
+    # Detect the game folder once; only readable ones are searched, blocked
+    # ones are surfaced in the banner with the reason.
+    game_candidates = detect_game_candidates()
+    game_found = [p for p, s in game_candidates if s == "found"]
+    game_blocked = [(p, s) for p, s in game_candidates if s != "found"]
+
+    pack_roots = build_pack_roots(base_dir, args.packs, game_found)
     cdn_base = None if args.no_cdn else (args.cdn or None)
 
     print("=" * 60)
@@ -939,17 +985,24 @@ def main():
                       "https downloads will fail; run 'pkg install curl')")
     print("  pack search locations (in priority order):")
     for r in pack_roots:
-        mark = "  [found]  " if os.path.isdir(r) else "  [absent] "
-        print(f"  {mark}{r}")
+        mark = "[found] " if os.path.isdir(r) else "[absent]"
+        print(f"    {mark} {r}")
+    # Show only game folders that exist but are blocked (the useful 'why' case);
+    # absent candidates are not worth cluttering the banner with.
+    for p, s in game_blocked:
+        if s == "no_access":
+            print(f"    [no access] {p}")
+            print(f"                (Android 11+ blocks this without root/Shizuku -- "
+                  f"copy it into packs/, or let the CDN handle it)")
     print("=" * 60)
 
-    # Nudge only when there's nothing local AND no CDN to fall back on
-    # (also pre-warms the pack index).
-    local_total = sum(len(build_pack_index(r)) for r in pack_roots)
-    if local_total == 0 and not cdn_base:
-        print(f"\n[!] No assetbundles found and CDN is disabled. Copy the game's")
-        print(f"    'files' folder into {COPIED_PACKS_DIR}, then run again.")
-    elif local_total == 0:
+    # Cheap 'nothing to extract from' nudge (no full index build at startup;
+    # indexes are built lazily during extraction).
+    has_local = any(root_has_content_shallow(r) for r in pack_roots)
+    if not has_local and not cdn_base:
+        print(f"\n[!] No local packs and CDN is disabled. Copy the game's 'files'")
+        print(f"    folder into {COPIED_PACKS_DIR}, then run again.")
+    elif not has_local:
         print(f"\n[i] No local packs; missing ones will be downloaded from the CDN")
         print(f"    into {COPIED_PACKS_DIR} as needed.")
 
