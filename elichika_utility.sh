@@ -222,10 +222,11 @@ while true; do
                         # resolve cdn_cache_dir from config.json (default ~/storage/downloads/sukusta/packs)
                         cache_dir=$(grep -oE '"cdn_cache_dir":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
                         [ -z "$cache_dir" ] && cache_dir="$HOME/storage/downloads/sukusta/packs"
-                        # expand a leading ~ (POSIX-safe; ${var/#~} is bash-only and breaks under sh)
+                        # expand a leading ~ (POSIX-safe; escape the ~ so it isn't tilde-expanded to
+                        # $HOME inside the pattern, which would leave a stray /~/ in the path)
                         case "$cache_dir" in
                             "~")   cache_dir="$HOME" ;;
-                            "~/"*) cache_dir="$HOME/${cache_dir#~/}" ;;
+                            "~/"*) cache_dir="$HOME/${cache_dir#\~/}" ;;
                         esac
                         mkdir -p "$cache_dir"
                         echo "Cache dir: $cache_dir"
@@ -241,16 +242,26 @@ while true; do
                         dl_url="https://archive.org/download/ll-sifas-cdn-data/sifas-${dl_region}-cdn-assets-${dl_ver}.tar"
                         dl_tar="$cache_dir/.cdn-data-download.tar"
                         echo "Downloading: $dl_url"
-                        if ! command -v aria2c >/dev/null 2>&1; then
-                            echo "aria2c not found - installing it for accelerated downloads..."
+                        # aria2c must actually RUN, not just exist: a fresh Termux install can be
+                        # linked against newer libs (e.g. libxml2.so.16) than what's installed, so the
+                        # binary exists but fails with "library not found". Test with --version.
+                        aria_ok() { command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1; }
+                        if ! aria_ok; then
+                            echo "Setting up aria2 for accelerated downloads..."
                             if command -v pkg >/dev/null 2>&1; then
                                 pkg install -y aria2
+                                if ! aria_ok; then
+                                    # broken shared libs: upgrade everything, then reinstall aria2
+                                    echo "Upgrading Termux packages to fix libraries (one-time, may take a few minutes)..."
+                                    pkg upgrade -y
+                                    pkg install -y aria2
+                                fi
                             elif command -v apt-get >/dev/null 2>&1; then
                                 apt-get install -y aria2
                             fi
                         fi
                         dl_rc=1
-                        if command -v aria2c >/dev/null 2>&1; then
+                        if aria_ok; then
                             # archive.org can throttle/limit parallel connections, so step the
                             # connection count down on failure (resuming with -c) before giving up.
                             for dl_conns in 16 8 4 2 1; do
@@ -263,7 +274,9 @@ while true; do
                             done
                         fi
                         if [ "$dl_rc" -ne 0 ]; then
-                            echo "Falling back to curl (single connection, resumable)..."
+                            echo "aria2 unavailable - falling back to curl (single connection, resumable)."
+                            echo "NOTE: archive.org throttles single connections, so a large tar can be"
+                            echo "      very slow this way. Getting aria2 working is strongly recommended."
                             curl -L -C - -o "$dl_tar" "$dl_url"
                             dl_rc=$?
                         fi
