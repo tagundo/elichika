@@ -28,6 +28,10 @@ type RuntimeConfig struct {
 	MaintenanceUrl           *string `json:"maintenance_url" of_label:"Maintenance Url"`
 }
 
+// DefaultCdnCacheDir is where cdn_cache stores packs when cdn_cache_dir is unset/empty. It's the
+// shared sukusta folder so the cache lines up with the game and llas_asset_extractor.py.
+const DefaultCdnCacheDir = "~/storage/downloads/sukusta/packs"
+
 func defaultConfigs() *RuntimeConfig {
 	configs := RuntimeConfig{
 		ServerAddress:            new(string),
@@ -51,7 +55,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.CdnServer = "https://llsifas.imsofucking.gay/static/"
 	*configs.CdnPartialFileCapability = "nothing"
 	*configs.CdnCache = false
-	*configs.CdnCacheDir = "~/storage/downloads/sukusta/packs"
+	*configs.CdnCacheDir = DefaultCdnCacheDir
 	*configs.AdminPassword = ""
 	*configs.TapBondGain = 20
 	*configs.AutoJudgeType = enum.JudgeTypePerfect
@@ -91,6 +95,13 @@ func Load(p string) *RuntimeConfig {
 	}
 	if *c.CdnServer == "https://llsifas.catfolk.party/static/" {
 		*c.CdnServer = "https://llsifas.imsofucking.gay/static/"
+		changed = true
+	}
+	if *c.CdnCacheDir == "" {
+		// an empty value (e.g. left over from an older default) would route the cache into static/;
+		// upgrade it to the shared sukusta default instead. To deliberately cache into static, set
+		// cdn_cache_dir to "static/".
+		*c.CdnCacheDir = DefaultCdnCacheDir
 		changed = true
 	}
 	if changed {
