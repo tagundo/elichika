@@ -25,9 +25,20 @@ fi
 # 0-1. 실행 중인 서버 종료
 #   빌드/rebuild_assets 가 serverdata.db 등을 열기 때문에, 기존 인스턴스가
 #   살아 있으면 "database is locked (SQLITE_BUSY)" 로 실패한다. 먼저 종료한다.
+#
+#   주의:
+#   - Termux 에서는 `pkill -x elichika` 가 `./elichika` 실행 형태와 안 맞아 못 죽인다.
+#   - 그래서 커맨드라인(-f)으로 매칭하고, SIGTERM 을 씹을 수 있으니 SIGKILL(-9) 로 죽인다.
+#   - 패턴 '(^|/)elichika( |$)' 는 서버 바이너리(./elichika, /path/elichika)만 잡고,
+#     이 업데이트 스크립트(update_elichika2)나 디렉터리명(elichika2)은 건드리지 않는다.
 # ---------------------------------------------------------------------------
 echo "==> Stopping any running elichika..."
-pkill -x elichika 2>/dev/null || true
+pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
+for _ in $(seq 1 10); do
+    pgrep -f '(^|/)elichika( |$)' >/dev/null 2>&1 || break
+    sleep 1
+    pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
+done
 sleep 1   # 파일 락이 풀릴 시간을 준다
 
 # ---------------------------------------------------------------------------
