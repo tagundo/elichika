@@ -202,6 +202,7 @@ while true; do
                 clear
                 echo "==== Mod Menu ===="
 			echo "1. extract assetbundle from sukusta/packs or static or CDN"
+			echo "2. Download all packs (archive.org, accelerated)"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
@@ -211,6 +212,68 @@ while true; do
 						pkill elichika
 						python3 llas_asset_extractor.py
                         read -p "Press Enter to continue..." _dummy012
+                        ;;
+                    2)
+                        # Bulk-download all packs from archive.org into the cdn cache dir.
+                        # archive.org supports HTTP range, so aria2c does a segmented/parallel
+                        # (accelerated) download like macOS "Download Shuttle"; curl -C - is the
+                        # single-connection resumable fallback.
+                        clear
+                        # resolve cdn_cache_dir from config.json (default ~/storage/downloads/sukusta/packs)
+                        cache_dir=$(grep -oE '"cdn_cache_dir":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
+                        [ -z "$cache_dir" ] && cache_dir="$HOME/storage/downloads/sukusta/packs"
+                        cache_dir="${cache_dir/#\~/$HOME}"
+                        mkdir -p "$cache_dir"
+                        echo "Cache dir: $cache_dir"
+                        echo ""
+                        echo "Item: https://archive.org/download/ll-sifas-cdn-data"
+                        read -p "Region (gl/jp) [gl]: " dl_region; dl_region=${dl_region:-gl}
+                        if [ "$dl_region" = "jp" ]; then
+                            def_ver="b66ec2295e9a00aa"
+                        else
+                            def_ver="2d61e7b4e89961c7"
+                        fi
+                        read -p "Master version hash [$def_ver]: " dl_ver; dl_ver=${dl_ver:-$def_ver}
+                        dl_url="https://archive.org/download/ll-sifas-cdn-data/sifas-${dl_region}-cdn-assets-${dl_ver}.tar"
+                        dl_tar="$cache_dir/.cdn-data-download.tar"
+                        echo "Downloading: $dl_url"
+                        if ! command -v aria2c >/dev/null 2>&1; then
+                            echo "aria2c not found - installing it for accelerated downloads..."
+                            if command -v pkg >/dev/null 2>&1; then
+                                pkg install -y aria2
+                            elif command -v apt-get >/dev/null 2>&1; then
+                                apt-get install -y aria2
+                            fi
+                        fi
+                        dl_rc=1
+                        if command -v aria2c >/dev/null 2>&1; then
+                            # archive.org can throttle/limit parallel connections, so step the
+                            # connection count down on failure (resuming with -c) before giving up.
+                            for dl_conns in 16 8 4 2 1; do
+                                echo "Downloading with aria2c ($dl_conns connection(s))..."
+                                aria2c -c -x"$dl_conns" -s"$dl_conns" -k1M --file-allocation=none \
+                                       -d "$cache_dir" -o ".cdn-data-download.tar" "$dl_url"
+                                dl_rc=$?
+                                [ "$dl_rc" -eq 0 ] && break
+                                echo "Failed (rc=$dl_rc), retrying with fewer connections..."
+                            done
+                        fi
+                        if [ "$dl_rc" -ne 0 ]; then
+                            echo "Falling back to curl (single connection, resumable)..."
+                            curl -L -C - -o "$dl_tar" "$dl_url"
+                            dl_rc=$?
+                        fi
+                        if [ "$dl_rc" -ne 0 ] || [ ! -s "$dl_tar" ]; then
+                            echo "Download failed (rc=$dl_rc). Check the region/version and your connection."
+                        else
+                            echo "Extracting into $cache_dir ..."
+                            # most packs sit at the tar root; if your tar wraps them in a folder,
+                            # move them up afterwards so files are at <cache_dir>/<packname>.
+                            tar -xf "$dl_tar" -C "$cache_dir" && rm -f "$dl_tar"
+                            echo "Done. Packs should now be under: $cache_dir"
+                            echo "Verify with: ls \"$cache_dir\" | head"
+                        fi
+                        read -p "Press Enter to continue..." _dummy_dlall
                         ;;
                     0)
                         break
