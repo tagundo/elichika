@@ -14,7 +14,7 @@ type RuntimeConfig struct {
 	CdnServer                *string `json:"cdn_server" of_label:"CDN server's address"`
 	CdnPartialFileCapability *string `json:"cdn_partial_file_capability" of_type:"select" of_options:"Has static partial file\nstatic_file\nHas partial file mapping\nmapped_file\nHas range API\nhas_range_api\nNothing\nnothing" of_label:"CDN server's partial file capability" `
 	CdnCache                 *bool   `json:"cdn_cache" of_label:"Cache CDN packs locally and serve them"`                                               // when true, elichika serves packs itself, downloading missing ones from cdn_server (the upstream) into the cache directory
-	CdnCacheDir              *string `json:"cdn_cache_dir" of_label:"CDN cache directory (empty = static/, termux: ~/storage/downloads/sukusta/packs)"` // where cached packs are stored/shared; empty defaults to static/
+	CdnCacheDir              *string `json:"cdn_cache_dir" of_label:"CDN cache directory (default ~/storage/downloads/sukusta/packs; empty = static/)"` // where cached packs are stored/shared; empty falls back to static/
 	AdminPassword            *string `json:"admin_password" of_label:"Admin password" of_type:"password""`
 	TapBondGain              *int32  `json:"tap_bond_gain" of_label:"Partner tap bond reward" of_attrs:"min=\"0\" max=\"20000000\"`
 	AutoJudgeType            *int32  `json:"auto_judge_type" of_type:"select" of_options:"None\n1\nMiss\n10\nBad\n12\nGood\n14\nGreat\n20\nPerfect\n30" of_label:"Autoplay judge type"`
@@ -51,7 +51,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.CdnServer = "https://llsifas.imsofucking.gay/static/"
 	*configs.CdnPartialFileCapability = "nothing"
 	*configs.CdnCache = false
-	*configs.CdnCacheDir = ""
+	*configs.CdnCacheDir = "~/storage/downloads/sukusta/packs"
 	*configs.AdminPassword = ""
 	*configs.TapBondGain = 20
 	*configs.AutoJudgeType = enum.JudgeTypePerfect
