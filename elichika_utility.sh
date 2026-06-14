@@ -9,8 +9,9 @@ while true; do
     echo "3. Clear Cache Database"
     echo "4. Switch CDN to LocalHost"
     echo "5. Switch CDN to ImSoFuckingGay"
-    echo "6. Developer Menu"
-    echo "7. Modding Menu"	
+    echo "6. Toggle CDN Cache (download packs into cdn_cache_dir(sukusta/packs) & serve them)"
+    echo "7. Developer Menu"
+    echo "8. Modding Menu"
     echo "0. Exit"
 
     read -p "Enter your choice: " option
@@ -68,6 +69,24 @@ while true; do
             read -p "Press Enter to continue..." _dummy15235
             ;;
         6)
+            # Toggle CDN Cache: when ON, elichika downloads any missing pack from the
+            # CDN (cdn_server) into cdn_cache_dir and serves it itself, acting as the CDN.
+            # cdn_cache_dir is set in the admin config page (empty = static/,
+            # termux: ~/storage/downloads/sukusta/packs to share with the game/tools).
+            clear
+            pkill elichika
+            if grep -q '"cdn_cache":true' "config.json"; then
+                sed -i 's#"cdn_cache":true#"cdn_cache":false#g' "config.json"
+                echo "CDN Cache: OFF (game downloads from the CDN directly)"
+            elif grep -q '"cdn_cache":false' "config.json"; then
+                sed -i 's#"cdn_cache":false#"cdn_cache":true#g' "config.json"
+                echo "CDN Cache: ON (missing packs are downloaded into cdn_cache_dir and served locally)"
+            else
+                echo "Could not find cdn_cache in config.json - run the server once first."
+            fi
+            read -p "Press Enter to continue..." _dummy15236
+            ;;
+        7)
             # Dev Menu
             while true; do
                 clear
@@ -176,7 +195,7 @@ while true; do
                 esac
             done
             ;;
-        7)
+        8)
             # Mod Menu
             while true; do
                 clear
