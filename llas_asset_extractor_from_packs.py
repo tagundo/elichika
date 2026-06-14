@@ -23,11 +23,12 @@ Improvements over the original llasdecryptor.py
   6. Output folder     : you choose where assets go; they are sorted into
                          per-category subfolders (3d_model / texture / stage ...).
   7. Termux friendly   : default storage path + setup-storage check.
-  8. Pack source auto  : auto-searches ~/storage/downloads/sukusta/packs
-                         (where you copy the game's assets with a file manager),
-                         plus elichika static/. Handles pak*/pkg* buckets whether
-                         they sit at the top or inside a files/ or static/ wrapper.
-                         Use --packs to add/override a folder.
+  8. Pack resolution   : for each pack, look in packs/ first; if missing, copy
+                         it from static//game files into packs/; if still missing,
+                         download it from the CDN into packs/ (<cdn><pack_name>,
+                         metapacks handled). Then read from packs/. So packs/
+                         becomes a growing local mirror. --cdn / --no-cdn control
+                         the network; --packs adds extra source folders.
 
 Usage
   python3 llas_asset_extractor.py                 # use current folder as elichika root
@@ -42,8 +43,11 @@ Usage
 import argparse
 import os
 import re
+import shutil
 import sqlite3
 import sys
+import urllib.error
+import urllib.request
 
 # key0 is always 12345 in LLAS asset encryption.
 FIXED_KEY0 = 12345
@@ -266,6 +270,178 @@ def find_pack_file(pack_roots, pack_name):
     return None
 
 
+# Public CDN that serves the encrypted packs (from elichika's cdn_server default).
+# The game/elichika fetch a pack as: <CDN_BASE><pack_name>  (no pkg prefix, no query).
+DEFAULT_CDN_BASE = "https://llsifas.imsofucking.gay/static/"
+
+
+class PackResolver:
+    """Locate a pack and make sure it ends up in packs_dir, in this order:
+       1) already in packs_dir
+       2) found in another source root (static/, game files/) -> copy into packs_dir
+       3) download from the CDN into packs_dir            (<cdn_base><pack_name>)
+       4) (rare) download its metapack and carve out the pack into packs_dir
+    Returns a path inside packs_dir, or None. Then extract_one reads that file.
+    Uses only the standard library (urllib) so nothing extra is needed in Termux."""
+
+    def __init__(self, pack_roots, packs_dir, cdn_base, asset_conn):
+        self.roots = [os.path.abspath(r) for r in pack_roots]
+        self.packs_dir = os.path.abspath(packs_dir)
+        self.cdn_base = (cdn_base.rstrip("/") + "/") if cdn_base else None
+        self.asset_conn = asset_conn          # for the rare metapack lookup
+        self._meta_tmp = {}                   # metapack_name -> temp path (reused per run)
+        self.stats = {"packs": 0, "copied": 0, "cdn": 0, "metapack": 0, "missing": 0}
+
+    # ---- lookups ----
+    def _in_packs(self, pack_name):
+        return build_pack_index(self.packs_dir).get(pack_name)
+
+    def _in_other_roots(self, pack_name):
+        for root in self.roots:
+            if root == self.packs_dir:
+                continue
+            hit = build_pack_index(root).get(pack_name)
+            if hit:
+                return hit
+        return None
+
+    # ---- writes into packs_dir ----
+    def _dest(self, pack_name):
+        return os.path.join(self.packs_dir, pack_name)
+
+    def _finalize(self, tmp, pack_name):
+        os.makedirs(self.packs_dir, exist_ok=True)
+        dest = self._dest(pack_name)
+        os.replace(tmp, dest)
+        _pack_index_cache.pop(self.packs_dir, None)   # cached index is now stale
+        return dest
+
+    def _copy_in(self, src, pack_name):
+        os.makedirs(self.packs_dir, exist_ok=True)
+        dest = self._dest(pack_name)
+        if os.path.abspath(src) != os.path.abspath(dest):
+            shutil.copy2(src, dest)
+            _pack_index_cache.pop(self.packs_dir, None)
+        return dest
+
+    # ---- CDN ----
+    @staticmethod
+    def _http_get(url, tmp):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "llas-extractor"})
+            with urllib.request.urlopen(req, timeout=30) as resp, open(tmp, "wb") as f:
+                shutil.copyfileobj(resp, f)
+            return True, None
+        except urllib.error.HTTPError as e:
+            return False, f"HTTP {e.code}"
+        except Exception as e:
+            return False, str(e)
+
+    @staticmethod
+    def _looks_like_pack(path):
+        """Reject HTML/empty error pages saved as if they were a pack."""
+        try:
+            if os.path.getsize(path) == 0:
+                return False
+            with open(path, "rb") as f:
+                head = f.read(16).lstrip()
+            low = head.lower()
+            return not (low.startswith(b"<!doctype") or low.startswith(b"<html"))
+        except OSError:
+            return False
+
+    def _download_direct(self, pack_name):
+        tmp = self._dest(pack_name) + ".part"
+        os.makedirs(self.packs_dir, exist_ok=True)
+        ok, err = self._http_get(self.cdn_base + pack_name, tmp)
+        if not ok:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            if err != "HTTP 404":            # 404 just means "try metapack / not there"
+                print(f"  [cdn] {pack_name}: download failed ({err})")
+            return None
+        if not self._looks_like_pack(tmp):
+            os.remove(tmp)
+            return None
+        return self._finalize(tmp, pack_name)
+
+    def _metapack_info(self, pack_name):
+        try:
+            row = self.asset_conn.execute(
+                "SELECT metapack_name, metapack_offset, file_size "
+                "FROM m_asset_package_mapping "
+                "WHERE pack_name = ? AND metapack_name IS NOT NULL LIMIT 1",
+                (pack_name,)).fetchone()
+        except sqlite3.Error:
+            return None
+        if not row or not row[0]:
+            return None
+        return row[0], int(row[1] or 0), int(row[2] or 0)
+
+    def _download_via_metapack(self, pack_name):
+        info = self._metapack_info(pack_name)
+        if not info:
+            return None
+        metapack_name, offset, file_size = info
+        mp = self._meta_tmp.get(metapack_name)
+        if mp is None or not os.path.exists(mp):
+            mp = os.path.join(self.packs_dir, "." + metapack_name + ".metapack.part")
+            os.makedirs(self.packs_dir, exist_ok=True)
+            ok, err = self._http_get(self.cdn_base + metapack_name, mp)
+            if not ok:
+                if os.path.exists(mp):
+                    os.remove(mp)
+                print(f"  [cdn] {pack_name}: metapack {metapack_name} failed ({err})")
+                return None
+            if not self._looks_like_pack(mp):
+                os.remove(mp)
+                return None
+            self._meta_tmp[metapack_name] = mp
+        # carve the individual pack [offset : offset+file_size] out of the metapack
+        try:
+            with open(mp, "rb") as f:
+                f.seek(offset)
+                data = f.read(file_size) if file_size > 0 else f.read()
+        except OSError as e:
+            print(f"  [cdn] {pack_name}: carve failed ({e})")
+            return None
+        tmp = self._dest(pack_name) + ".part"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        return self._finalize(tmp, pack_name)
+
+    def cleanup(self):
+        """Remove temporary metapack downloads kept for the run."""
+        for mp in self._meta_tmp.values():
+            try:
+                os.remove(mp)
+            except OSError:
+                pass
+        self._meta_tmp.clear()
+
+    # ---- main entry ----
+    def resolve(self, pack_name):
+        hit = self._in_packs(pack_name)
+        if hit:
+            self.stats["packs"] += 1
+            return hit
+        hit = self._in_other_roots(pack_name)
+        if hit:
+            self.stats["copied"] += 1
+            return self._copy_in(hit, pack_name)
+        if self.cdn_base:
+            hit = self._download_direct(pack_name)
+            if hit:
+                self.stats["cdn"] += 1
+                return hit
+            hit = self._download_via_metapack(pack_name)
+            if hit:
+                self.stats["metapack"] += 1
+                return hit
+        self.stats["missing"] += 1
+        return None
+
+
 # Chars forbidden on FAT/exFAT (Android shared storage) + path separators
 _ILLEGAL_CHARS = '\\/:*?"<>|'
 
@@ -350,12 +526,13 @@ def category_dir(table):
     return CATEGORY_DIRS.get(table, table)
 
 
-def extract_one(pack_roots, out_dir, table, asset_path, pack_name, head, size,
+def extract_one(resolver, out_dir, table, asset_path, pack_name, head, size,
                 key1, key2, used_names, manifest):
-    """Decrypt one asset and write it into out_dir/<category>/. Reports success/failure."""
-    pack_path = find_pack_file(pack_roots, pack_name)
+    """Decrypt one asset and write it into out_dir/<category>/. Reports success/failure.
+    The resolver finds the pack in packs/, or copies/downloads it into packs/ first."""
+    pack_path = resolver.resolve(pack_name)
     if pack_path is None:
-        print(f"  [skip] {asset_path}: pack '{pack_name}' not found (not downloaded yet?)")
+        print(f"  [skip] {asset_path}: pack '{pack_name}' not found (local + CDN)")
         manifest.append((table, asset_path, pack_name, head, size, key1, key2, "", "MISSING_PACK"))
         return False
     try:
@@ -366,6 +543,9 @@ def extract_one(pack_roots, out_dir, table, asset_path, pack_name, head, size,
             print(f"  [warn] {asset_path}: pack is truncated ({len(section)}/{size}B)")
         decrypt_section(section, FIXED_KEY0, key1, key2)
         ext = detect_extension(section)
+        if ext == ".bin":   # decrypted data isn't a known format -> something is off
+            print(f"  [warn] {asset_path}: decrypted data isn't a known type "
+                  f"(wrong DB platform/keys, or metapack offset?)")
 
         # create the per-category subfolder
         cat = category_dir(table)
@@ -407,6 +587,24 @@ def write_manifest(out_dir, manifest):
                     "key1", "key2", "output_file", "status"])
         w.writerows(manifest)
     print(f"\nLog written: {path}")
+
+
+def print_resolver_stats(resolver):
+    """Show where the packs came from this run."""
+    s = resolver.stats
+    bits = []
+    if s["packs"]:
+        bits.append(f"{s['packs']} from packs/")
+    if s["copied"]:
+        bits.append(f"{s['copied']} copied into packs/")
+    if s["cdn"]:
+        bits.append(f"{s['cdn']} downloaded from CDN")
+    if s["metapack"]:
+        bits.append(f"{s['metapack']} via metapack")
+    if s["missing"]:
+        bits.append(f"{s['missing']} not found")
+    if bits:
+        print("Packs: " + ", ".join(bits))
 
 
 # ============================================================
@@ -482,7 +680,7 @@ def real_costume_name(dict_conn, name_key):
         return name_key
 
 
-def mode_costume(base_dir, out_dir, asset_db, pack_roots):
+def mode_costume(base_dir, out_dir, asset_db, pack_roots, cdn_base):
     md_path = find_masterdata(base_dir)
     if md_path is None:
         print("Could not find masterdata.db, so costume mode is unavailable.")
@@ -498,6 +696,7 @@ def mode_costume(base_dir, out_dir, asset_db, pack_roots):
     if dp:
         dict_conn = sqlite3.connect(dp)
     asset = sqlite3.connect(asset_db)
+    resolver = PackResolver(pack_roots, COPIED_PACKS_DIR, cdn_base, asset)
 
     # Character selection
     print("\nCharacters:")
@@ -547,12 +746,14 @@ def mode_costume(base_dir, out_dir, asset_db, pack_roots):
         pack_name, head, size, key1, key2 = mm
         # mix the costume name into the output filename for readability
         label = sanitize(f"{CHARACTERS[chara]}_{rname}_{model_path}")
-        if extract_one(pack_roots, out_dir, "member_model", label, pack_name,
+        if extract_one(resolver, out_dir, "member_model", label, pack_name,
                        head, size, key1, key2, used, manifest):
             ok += 1
     if manifest:
         write_manifest(out_dir, manifest)
     print(f"\nDone. {ok} ok / {len(chosen)} selected")
+    print_resolver_stats(resolver)
+    resolver.cleanup()
     md.close(); asset.close()
     if dict_conn:
         dict_conn.close()
@@ -562,8 +763,9 @@ def mode_costume(base_dir, out_dir, asset_db, pack_roots):
 # Mode 2: pick an asset table directly
 # ============================================================
 
-def mode_table(base_dir, out_dir, asset_db, pack_roots):
+def mode_table(base_dir, out_dir, asset_db, pack_roots, cdn_base):
     conn = sqlite3.connect(asset_db)
+    resolver = PackResolver(pack_roots, COPIED_PACKS_DIR, cdn_base, conn)
     cols = ["asset_path", "pack_name", "head", "size", "key1", "key2"]
     avail = [(t, d) for t, d in ENCRYPTED_TABLES if table_has_columns(conn, t, cols)]
     if not avail:
@@ -603,11 +805,13 @@ def mode_table(base_dir, out_dir, asset_db, pack_roots):
     print(f"\n-> extracting to {out_dir}")
     for n in chosen:
         ap, pn, hd, sz, k1, k2 = rows[n - 1]
-        if extract_one(pack_roots, out_dir, table, ap, pn, hd, sz, k1, k2, used, manifest):
+        if extract_one(resolver, out_dir, table, ap, pn, hd, sz, k1, k2, used, manifest):
             ok += 1
     if manifest:
         write_manifest(out_dir, manifest)
     print(f"\nDone. {ok} ok / {len(chosen)} selected")
+    print_resolver_stats(resolver)
+    resolver.cleanup()
     conn.close()
 
 
@@ -637,6 +841,11 @@ def main():
                     help="explicit assetbundle (pack) folder. Can be given multiple times. "
                          "e.g. the game's .../files/files folder. "
                          "If omitted, auto-detects the game folder + uses elichika static/")
+    ap.add_argument("--cdn", default=DEFAULT_CDN_BASE,
+                    help=f"CDN base URL to download missing packs from "
+                         f"(<cdn><pack_name>). Default: {DEFAULT_CDN_BASE}")
+    ap.add_argument("--no-cdn", action="store_true",
+                    help="never touch the network; only use local packs/static/files")
     args = ap.parse_args()
 
     base_dir = os.path.abspath(os.path.expanduser(args.base))
@@ -656,21 +865,28 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     pack_roots = build_pack_roots(base_dir, args.packs)
+    cdn_base = None if args.no_cdn else (args.cdn or None)
 
     print("=" * 60)
     print("LLAS asset extractor")
     print(f"  root   : {base_dir}")
     print(f"  output : {out_dir}")
+    print(f"  CDN    : {cdn_base if cdn_base else '(disabled)'}")
     print("  pack search locations (in priority order):")
     for r in pack_roots:
         mark = "  [found]  " if os.path.isdir(r) else "  [absent] "
         print(f"  {mark}{r}")
     print("=" * 60)
 
-    # Only nudge when there's nothing to extract from (also pre-warms the index).
-    if sum(len(build_pack_index(r)) for r in pack_roots) == 0:
-        print(f"\n[!] No assetbundles found. Copy the game's 'files' folder into")
-        print(f"    {COPIED_PACKS_DIR}  with a file manager, then run again.")
+    # Nudge only when there's nothing local AND no CDN to fall back on
+    # (also pre-warms the pack index).
+    local_total = sum(len(build_pack_index(r)) for r in pack_roots)
+    if local_total == 0 and not cdn_base:
+        print(f"\n[!] No assetbundles found and CDN is disabled. Copy the game's")
+        print(f"    'files' folder into {COPIED_PACKS_DIR}, then run again.")
+    elif local_total == 0:
+        print(f"\n[i] No local packs; missing ones will be downloaded from the CDN")
+        print(f"    into {COPIED_PACKS_DIR} as needed.")
 
     asset_db = choose_asset_db(base_dir)
     print(f"Selected DB: {os.path.relpath(asset_db, base_dir)}")
@@ -680,9 +896,9 @@ def main():
     print("  2. Pick an asset table directly (models/textures/stages/skills/...)")
     mode = ask_selection("Number: ", 2)[0]
     if mode == 1:
-        mode_costume(base_dir, out_dir, asset_db, pack_roots)
+        mode_costume(base_dir, out_dir, asset_db, pack_roots, cdn_base)
     else:
-        mode_table(base_dir, out_dir, asset_db, pack_roots)
+        mode_table(base_dir, out_dir, asset_db, pack_roots, cdn_base)
 
 
 if __name__ == "__main__":
