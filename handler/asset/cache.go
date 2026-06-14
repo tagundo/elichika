@@ -43,7 +43,8 @@ func cacheDir() string {
 		dir = *config.Conf.CdnCacheDir
 	}
 	if dir == "" {
-		return config.StaticDataPath
+		// empty falls back to the shared sukusta default, not static/
+		dir = config.DefaultCdnCacheDir
 	}
 	if strings.HasPrefix(dir, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
