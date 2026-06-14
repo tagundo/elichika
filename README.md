@@ -162,6 +162,16 @@ Detailed explanations of some config options:
         - You should look into this if you want to further develop the game/server, as doing so might require redownloading things a lot.
     - You can also use other CDNs, but keep in mind that there are some requirements that need to be met, otherwise some download will result in errors.
 
+- Cache CDN packs locally and serve them (`cdn_cache`):
+
+    - When enabled, `elichika` stops handing the upstream CDN address to the client and serves every pack itself, acting as the CDN.
+    - The first time a pack is needed, `elichika` downloads it from the CDN server's address (the upstream) into the cache directory and then serves it from there. Later requests are served straight from the cache without touching the network.
+    - The cache directory is set by `cdn_cache_dir`:
+        - Leave it empty (default) and packs are cached in the existing `static/` folder. This is the simplest option for PC/Docker, where no extra folder is needed.
+        - On termux/Android, set it to the shared sukusta folder (e.g. `~/storage/downloads/sukusta/packs`) so the cache is shared with the game and the `llas_asset_extractor.py` tooling. A leading `~/` is expanded to your home directory.
+    - Lookup order when serving a pack is `<cdn_cache_dir>/` -> `static/` -> download from the upstream into `<cdn_cache_dir>/`.
+    - This is useful if you want a local mirror that fills itself up on demand: keep the CDN server's address pointed at a real CDN (the upstream to pull from) and turn this on.
+
 - Resource config:
 
     - The config of how the resources work on the server.
