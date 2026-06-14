@@ -45,6 +45,7 @@ import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -274,6 +275,69 @@ def find_pack_file(pack_roots, pack_name):
 # The game/elichika fetch a pack as: <CDN_BASE><pack_name>  (no pkg prefix, no query).
 DEFAULT_CDN_BASE = "https://llsifas.imsofucking.gay/static/"
 
+_UA = "llas-extractor"
+_DOWNLOADER = None   # cached: 'curl' | 'wget' | 'urllib'
+
+
+def downloader_name():
+    """Pick a download backend once. Prefer curl/wget because Termux's bundled
+    python is often built without the ssl module (so urllib can't open https)."""
+    global _DOWNLOADER
+    if _DOWNLOADER is None:
+        if shutil.which("curl"):
+            _DOWNLOADER = "curl"
+        elif shutil.which("wget"):
+            _DOWNLOADER = "wget"
+        else:
+            _DOWNLOADER = "urllib"
+    return _DOWNLOADER
+
+
+def download_url(url, tmp):
+    """Download url -> tmp. Returns (ok, err_string_or_None).
+    Uses curl/wget when present (works without python ssl), else urllib."""
+    tool = downloader_name()
+
+    if tool == "curl":
+        try:
+            r = subprocess.run(
+                ["curl", "-sSL", "--connect-timeout", "15", "--max-time", "600",
+                 "-A", _UA, "-o", tmp, "-w", "%{http_code}", url],
+                capture_output=True, text=True)
+        except Exception as e:
+            return False, f"curl: {e}"
+        code = (r.stdout or "").strip()
+        if code.startswith("2"):
+            return True, None
+        if code.isdigit() and code != "000":      # real HTTP status (e.g. 404)
+            return False, f"HTTP {code}"
+        err = (r.stderr or "").strip().splitlines()  # transport error (DNS/conn/TLS)
+        return False, (err[-1] if err else f"curl exit {r.returncode}")
+
+    if tool == "wget":
+        try:
+            r = subprocess.run(["wget", "-q", "-U", _UA, "-O", tmp, url],
+                               capture_output=True, text=True)
+        except Exception as e:
+            return False, f"wget: {e}"
+        if r.returncode == 0:
+            return True, None
+        if r.returncode == 8:                      # server error response (often 404)
+            return False, "HTTP 404"
+        err = (r.stderr or "").strip().splitlines()
+        return False, (err[-1] if err else f"wget exit {r.returncode}")
+
+    # urllib fallback (needs python built with ssl for https)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=30) as resp, open(tmp, "wb") as f:
+            shutil.copyfileobj(resp, f)
+        return True, None
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}"
+    except Exception as e:
+        return False, str(e)
+
 
 class PackResolver:
     """Locate a pack and make sure it ends up in packs_dir, in this order:
@@ -327,15 +391,7 @@ class PackResolver:
     # ---- CDN ----
     @staticmethod
     def _http_get(url, tmp):
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "llas-extractor"})
-            with urllib.request.urlopen(req, timeout=30) as resp, open(tmp, "wb") as f:
-                shutil.copyfileobj(resp, f)
-            return True, None
-        except urllib.error.HTTPError as e:
-            return False, f"HTTP {e.code}"
-        except Exception as e:
-            return False, str(e)
+        return download_url(url, tmp)
 
     @staticmethod
     def _looks_like_pack(path):
@@ -872,6 +928,15 @@ def main():
     print(f"  root   : {base_dir}")
     print(f"  output : {out_dir}")
     print(f"  CDN    : {cdn_base if cdn_base else '(disabled)'}")
+    if cdn_base:
+        dl = downloader_name()
+        print(f"  fetch  : {dl}")
+        if dl == "urllib":
+            try:
+                import ssl  # noqa: F401
+            except Exception:
+                print("           (warning: no curl/wget and python has no ssl -> "
+                      "https downloads will fail; run 'pkg install curl')")
     print("  pack search locations (in priority order):")
     for r in pack_roots:
         mark = "  [found]  " if os.path.isdir(r) else "  [absent] "
