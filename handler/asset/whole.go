@@ -15,7 +15,6 @@ import (
 	"elichika/config"
 	"elichika/log"
 	"elichika/router"
-	"elichika/utils"
 
 	"fmt"
 	"io"
@@ -31,19 +30,13 @@ func staticWhole(ctx *gin.Context) {
 	// a catch-all param keeps the leading slash, e.g. "/8d4c19e12fb304cf/masterdata_a_ko"
 	file := strings.TrimPrefix(ctx.Param("fileName"), "/")
 
-	cachePath := cacheDir() + file
-	if utils.PathExists(cachePath) {
-		ctx.File(cachePath)
-		return
-	}
-	staticPath := config.StaticDataPath + file
-	if cacheDir() != config.StaticDataPath && utils.PathExists(staticPath) {
-		ctx.File(staticPath)
+	if p, ok := localPath(file); ok { // already cached, or migrated from static
+		ctx.File(p)
 		return
 	}
 	if !cacheEnabled() {
 		// not a caching cdn: serve from static (404 if missing), same as before
-		ctx.File(staticPath)
+		ctx.File(config.StaticDataPath + file)
 		return
 	}
 
@@ -57,11 +50,11 @@ func staticWhole(ctx *gin.Context) {
 	lock := cacheLockFor(file)
 	lock.Lock()
 	defer lock.Unlock()
-	if utils.PathExists(cachePath) { // another request cached it while we waited
-		ctx.File(cachePath)
+	if p, ok := localPath(file); ok { // another request cached it while we waited
+		ctx.File(p)
 		return
 	}
-	streamWholeFromCdn(ctx, file, cachePath)
+	streamWholeFromCdn(ctx, file, cacheDir()+file)
 }
 
 // streamWholeFromCdn proxies a whole file from the upstream CDN to the client while writing it to the
