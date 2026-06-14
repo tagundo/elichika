@@ -80,7 +80,9 @@ func AddTemplates(path string) {
 }
 
 func Router(r *gin.Engine) {
-	r.Static("/static", config.StaticDataPath)
+	// whole pack/metapack files are served by the cache-aware /static/:fileName handler
+	// (handler/asset/whole.go), which can download missing packs from the upstream CDN when
+	// cdn_cache is enabled.
 
 	r.StaticFile("/favicon.ico", config.RootPath+"webui/favicon.ico")
 
