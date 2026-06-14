@@ -4,10 +4,9 @@ package asset
 // redirecting the game to the upstream CDN. Any pack that isn't already on disk is downloaded from
 // the upstream (cdn_server) into the cache directory on first request, and reused from there afterwards.
 //
-// The cache directory is cdn_cache_dir. When it's empty it defaults to the static/ folder, so on
-// PC/Docker no extra folder is needed. On termux/Android, set cdn_cache_dir to the shared sukusta
-// folder (e.g. ~/storage/downloads/sukusta/packs) so the cache is shared with the game and the
-// llas_asset_extractor.py tooling.
+// The cache directory is cdn_cache_dir (default ~/storage/downloads/sukusta/packs), so the cache is
+// shared with the game and the llas_asset_extractor.py tooling. The static/ folder is only consulted
+// as a legacy source: if an older setup left pack files there, they are migrated into the cache dir.
 
 import (
 	"elichika/config"
@@ -37,7 +36,7 @@ func cacheEnabled() bool {
 }
 
 // cacheDir returns the directory (with a trailing slash) where cached packs are stored and looked up.
-// It's cdn_cache_dir, with ~ expanded; when unset it falls back to the static/ folder.
+// It's cdn_cache_dir, with ~ expanded; when explicitly empty it falls back to the static/ folder.
 func cacheDir() string {
 	dir := ""
 	if config.Conf.CdnCacheDir != nil {
@@ -57,39 +56,92 @@ func cacheDir() string {
 	return dir
 }
 
-// ensureLocalFile returns a local filesystem path to the given whole pack/metapack file.
-// Lookup order:
-//  1. <cdn_cache_dir>/<fileName>
-//  2. static/<fileName>
-//  3. if cdn_cache is enabled, download from the upstream CDN (cdn_server) into <cdn_cache_dir>.
+// localPath resolves a whole pack/metapack file to an existing local path, without downloading.
+// It returns (path, true) when the file is already available locally.
 //
-// If the file can't be found nor cached, the static/ path is returned so the caller fails the same
-// way it would for any missing file.
-func ensureLocalFile(fileName string) string {
-	cachePath := cacheDir() + fileName
+// Lookup order:
+//  1. <cdn_cache_dir>/<file>
+//  2. static/<file> — a legacy location. Flat pack/metapack files found here are migrated into the
+//     cache dir so everything ends up in one place; nested paths (e.g. the generated
+//     masterdata <version>/... files) are served from static/ as-is and never moved.
+//
+// When the file isn't found, it returns the cache-dir path (where it would be downloaded) and false.
+func localPath(file string) (string, bool) {
+	cachePath := cacheDir() + file
 	if utils.PathExists(cachePath) {
-		return cachePath
+		return cachePath, true
 	}
-	staticPath := config.StaticDataPath + fileName
+	staticPath := config.StaticDataPath + file
 	if (cacheDir() != config.StaticDataPath) && utils.PathExists(staticPath) {
-		return staticPath
+		if !strings.Contains(file, "/") {
+			// legacy pack file placed in static/ by an older setup: move it into the cache dir.
+			if err := moveToCache(staticPath, cachePath); err == nil {
+				log.Printf("migrated pack from static into cache: %s\n", file)
+				return cachePath, true
+			} else {
+				log.Printf("failed to migrate %s from static (serving from static): %v\n", file, err)
+			}
+		}
+		return staticPath, true
+	}
+	return cachePath, false
+}
+
+// ensureLocalFile returns a local filesystem path to the given whole pack/metapack file, downloading
+// it from the upstream CDN into the cache dir when cdn_cache is enabled and it isn't already local.
+// If it can't be found nor cached, the static/ path is returned so the caller fails the same way it
+// would for any missing file.
+func ensureLocalFile(file string) string {
+	if p, ok := localPath(file); ok {
+		return p
 	}
 	if !cacheEnabled() {
-		// not a caching CDN: behave as before and let the caller fail on the (missing) static file
-		return staticPath
+		return config.StaticDataPath + file
 	}
 
-	lock := cacheLockFor(fileName)
+	lock := cacheLockFor(file)
 	lock.Lock()
 	defer lock.Unlock()
-	// another request may have downloaded it while we waited for the lock
-	if utils.PathExists(cachePath) {
-		return cachePath
+	if p, ok := localPath(file); ok { // another request cached it while we waited
+		return p
 	}
-	if err := downloadPack(fileName, cachePath); err != nil {
-		log.Printf("failed to cache pack %s from cdn: %v\n", fileName, err)
+	dest := cacheDir() + file
+	if err := downloadPack(file, dest); err != nil {
+		log.Printf("failed to cache pack %s from cdn: %v\n", file, err)
 	}
-	return cachePath
+	return dest
+}
+
+// moveToCache copies src to dst then removes src. It copies (instead of os.Rename) because the cache
+// dir and static/ are often on different filesystems on Android (shared storage vs app data), where
+// rename across filesystems fails.
+func moveToCache(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(dst), ".tmp-*")
+	if err != nil {
+		in.Close()
+		return err
+	}
+	tmpName := tmp.Name()
+	_, err = io.Copy(tmp, in)
+	in.Close()
+	tmp.Close()
+	if err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, dst); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	os.Remove(src) // best-effort: the copy is the source of truth now
+	return nil
 }
 
 // cdnURL builds the upstream CDN url for a pack/metapack file.
