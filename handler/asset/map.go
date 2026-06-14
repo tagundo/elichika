@@ -5,8 +5,6 @@ import (
 	"elichika/log"
 	"elichika/router"
 
-	"fmt"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,7 +16,9 @@ func staticMap(ctx *gin.Context) {
 		log.Panic("entire file downloaded through map endpoint")
 	}
 
-	sendRange(ctx, fmt.Sprintf("static/%s", downloadData.File), downloadData.Start, downloadData.Size)
+	// ensureLocalFile downloads the whole metapack into sukusta/packs (when cdn_cache is enabled)
+	// before we read the requested range out of it.
+	sendRange(ctx, ensureLocalFile(downloadData.File), downloadData.Start, downloadData.Size)
 }
 
 func init() {
