@@ -222,7 +222,11 @@ while true; do
                         # resolve cdn_cache_dir from config.json (default ~/storage/downloads/sukusta/packs)
                         cache_dir=$(grep -oE '"cdn_cache_dir":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
                         [ -z "$cache_dir" ] && cache_dir="$HOME/storage/downloads/sukusta/packs"
-                        cache_dir="${cache_dir/#\~/$HOME}"
+                        # expand a leading ~ (POSIX-safe; ${var/#~} is bash-only and breaks under sh)
+                        case "$cache_dir" in
+                            "~")   cache_dir="$HOME" ;;
+                            "~/"*) cache_dir="$HOME/${cache_dir#~/}" ;;
+                        esac
                         mkdir -p "$cache_dir"
                         echo "Cache dir: $cache_dir"
                         echo ""
