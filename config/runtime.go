@@ -79,16 +79,25 @@ func Load(p string) *RuntimeConfig {
 		log.Panic("config file is wrong, change/delete it and try again")
 	}
 	d := defaultConfigs()
+	changed := false
 	for i := 0; i < reflect.TypeOf(c).NumField(); i++ {
 		f := reflect.ValueOf(&c).Elem().Field(i)
 		if f.IsNil() {
 			log.Println("Use default setting: ", reflect.TypeOf(c).Field(i).Name)
 			f.Set(reflect.ValueOf(d).Elem().Field(i))
+			changed = true
 		}
 		log.Println(reflect.TypeOf(c).Field(i).Name, ": ", f.Elem())
 	}
 	if *c.CdnServer == "https://llsifas.catfolk.party/static/" {
 		*c.CdnServer = "https://llsifas.imsofucking.gay/static/"
+		changed = true
+	}
+	if changed {
+		// persist any newly-added fields (e.g. cdn_cache) back to config.json so the file always
+		// reflects the current schema. without this, options added in an update never appear in an
+		// existing config.json, so tools that edit the file (the menu toggle) can't find them.
+		c.Save(p)
 	}
 	return &c
 }
