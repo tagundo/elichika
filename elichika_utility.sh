@@ -107,13 +107,13 @@ download_missing_cdn() {
     cdn_val=$(grep -oE '"cdn_server":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
     cdn_host=$(printf '%s' "$cdn_val" | sed -E 's#^[a-z]+://##; s#/.*##')
     [ -z "$cdn_host" ] && cdn_host="the configured CDN"
-    echo "Get only the game files you're missing (skips anything you already have)."
+    echo "Download the files you're still missing, from the CDN ($cdn_host)."
+    echo "These are files newer than the archive (so they're not in option 6),"
+    echo "and they only come from the game CDN. Skips anything you already have."
     echo ""
-    echo "Each file is pulled from archive.org first (no load on the game server);"
-    echo "only files the archive doesn't have are fetched from the CDN ($cdn_host)."
-    echo ""
-    echo "TIP: this is best for a SMALL number of missing files. If you're missing a lot,"
-    echo "     use option 6 (download all) first - it's much faster for bulk."
+    echo "IMPORTANT: run option 6 (download all) FIRST so this only has to fetch the"
+    echo "           few newest files from the CDN, instead of a lot."
+    echo "(These files also download automatically as you play, so this is optional.)"
     echo ""
     pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
     sleep 1
@@ -133,7 +133,7 @@ while true; do
     echo "4. Reset CDN to default (public server)"
     echo "5. CDN Cache: $cache_state (store game files locally & serve them)"
     echo "6. Download all game files (fast, from archive.org)"
-    echo "7. Get missing game files (archive.org first, CDN only if needed)"
+    echo "7. Get remaining files not in the archive (from the CDN)"
     echo "8. Developer Menu"
     echo "9. Modding Menu"
     echo "10. Stop Server"
