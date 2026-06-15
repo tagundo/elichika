@@ -1,18 +1,122 @@
 #!/bin/bash
 
+# Download ALL game files as one big archive from archive.org. This does NOT touch the game's CDN,
+# so it won't burden that server - prefer this for large downloads.
+download_all_archive() {
+    clear
+    echo "Download ALL game files (one big archive from archive.org)."
+    echo "This does NOT use the CDN, so it won't burden it."
+    echo ""
+    # resolve cdn_cache_dir from config.json (default ~/storage/downloads/sukusta/packs)
+    cache_dir=$(grep -oE '"cdn_cache_dir":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
+    [ -z "$cache_dir" ] && cache_dir="$HOME/storage/downloads/sukusta/packs"
+    # expand a leading ~ (POSIX-safe; escape the ~ so it isn't tilde-expanded inside the pattern)
+    case "$cache_dir" in
+        "~")   cache_dir="$HOME" ;;
+        "~/"*) cache_dir="$HOME/${cache_dir#\~/}" ;;
+    esac
+    mkdir -p "$cache_dir"
+    echo "Save location: $cache_dir"
+    echo ""
+    read -p "Region (gl/jp) [gl]: " dl_region; dl_region=${dl_region:-gl}
+    if [ "$dl_region" = "jp" ]; then
+        def_ver="b66ec2295e9a00aa"
+    else
+        def_ver="2d61e7b4e89961c7"
+    fi
+    read -p "Master version hash [$def_ver]: " dl_ver; dl_ver=${dl_ver:-$def_ver}
+    dl_url="https://archive.org/download/ll-sifas-cdn-data/sifas-${dl_region}-cdn-assets-${dl_ver}.tar"
+    # download the (temporary) tar to the parent of the cache dir, then extract into the cache dir.
+    dl_parent=$(dirname "$cache_dir")
+    dl_tar="$dl_parent/.cdn-data-download.tar"
+    echo "Downloading: $dl_url"
+    # aria2c must actually RUN, not just exist: a fresh install can be linked against newer libs than
+    # installed (e.g. libxml2.so.16) so it fails with "library not found". Test with --version.
+    aria_ok() { command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1; }
+    if ! aria_ok; then
+        echo "Setting up aria2 for faster downloads..."
+        if command -v pkg >/dev/null 2>&1; then
+            pkg install -y aria2
+            if ! aria_ok; then
+                echo "Upgrading packages to fix libraries (one-time, may take a few minutes)..."
+                pkg upgrade -y
+                pkg install -y aria2
+            fi
+        elif command -v apt-get >/dev/null 2>&1; then
+            apt-get install -y aria2
+        fi
+    fi
+    dl_rc=1
+    if aria_ok; then
+        # archive.org can throttle parallel connections, so step the count down on failure (resuming
+        # with -c) before giving up.
+        for dl_conns in 16 8 4 2 1; do
+            echo "Downloading with aria2c ($dl_conns connection(s))..."
+            aria2c -c -x"$dl_conns" -s"$dl_conns" -k1M --file-allocation=none \
+                   -d "$dl_parent" -o ".cdn-data-download.tar" "$dl_url"
+            dl_rc=$?
+            [ "$dl_rc" -eq 0 ] && break
+            echo "Failed (rc=$dl_rc), retrying with fewer connections..."
+        done
+    fi
+    if [ "$dl_rc" -ne 0 ]; then
+        echo "aria2 unavailable - falling back to curl (single connection, resumable, slow)."
+        curl -L -C - -o "$dl_tar" "$dl_url"
+        dl_rc=$?
+    fi
+    if [ "$dl_rc" -ne 0 ] || [ ! -s "$dl_tar" ]; then
+        echo "Download failed (rc=$dl_rc). Check the region/version and your connection."
+    else
+        echo "Extracting into $cache_dir ..."
+        mkdir -p "$cache_dir"
+        # --strip-components=1 drops the "sifas-..-<hash>/" wrapper; --skip-old-files keeps files you
+        # already have (fast incremental, no manual move needed).
+        if tar -xf "$dl_tar" -C "$cache_dir" --strip-components=1 --skip-old-files; then
+            rm -f "$dl_tar"
+            echo "Done. Now restart the server (option 1) so it sees the new files."
+        else
+            echo "Extract failed. If your tar lacks --skip-old-files (busybox), run: pkg install tar"
+        fi
+    fi
+    read -p "Press Enter to continue..." _dummy_dlall
+}
+
+# Download only the game files you don't already have, from the official game CDN. Gentle on the
+# server (few parallel downloads); for large amounts prefer download_all_archive.
+download_missing_cdn() {
+    clear
+    # show the actual CDN host from config (cdn_server), not "official" - it's a community CDN.
+    cdn_val=$(grep -oE '"cdn_server":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
+    cdn_host=$(printf '%s' "$cdn_val" | sed -E 's#^[a-z]+://##; s#/.*##')
+    [ -z "$cdn_host" ] && cdn_host="the configured CDN"
+    echo "Download only the game files you're missing, from the CDN ($cdn_host)."
+    echo "It skips anything you already have."
+    echo ""
+    echo "NOTE: this CDN is kindly hosted by the community. To grab a LOT at once,"
+    echo "      please use option 6 (archive.org) instead, to be considerate to it."
+    echo ""
+    pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
+    sleep 1
+    read -p "Simultaneous downloads [3]: " dl_workers; dl_workers=${dl_workers:-3}
+    ./elichika download_packs "$dl_workers"
+    read -p "Press Enter to continue..." _dummy_dlmiss
+}
+
 while true; do
     clear
     echo "==== Elichika Menu ===="
     echo ""
+    if grep -q '"cdn_cache":true' config.json 2>/dev/null; then cache_state="ON"; else cache_state="OFF"; fi
     echo "1. Run Server"
     echo "2. Reset Server"
     echo "3. Clear Cache Database"
-    echo "4. Switch CDN to LocalHost"
-    echo "5. Switch CDN to ImSoFuckingGay"
-    echo "6. Toggle CDN Cache (download packs into cdn_cache_dir & serve them)"
-    echo "7. Developer Menu"
-    echo "8. Modding Menu"
-    echo "9. Stop Server"
+    echo "4. Reset CDN to default (public server)"
+    echo "5. CDN Cache: $cache_state (store game files locally & serve them)"
+    echo "6. Download all game files (fast, from archive.org)"
+    echo "7. Get missing game files (from the CDN)"
+    echo "8. Developer Menu"
+    echo "9. Modding Menu"
+    echo "10. Stop Server"
     echo "0. Exit"
 
     read -p "Enter your choice: " option
@@ -56,38 +160,40 @@ while true; do
             read -p "Press Enter to continue..." _dummy15sz35
             ;;
         4)
+            # Reset the CDN source (cdn_server) to the default public server. Use this if the game
+            # can't download assets after settings were changed.
             clear
-			pkill elichika
-            sed -i 's#https://llsifas.imsofucking.gay/static/#http://127.0.0.1:8080/static#g' "config.json"
-            echo "Switched To LocalHost"
-            read -p "Press Enter to continue..." _dummy15555
+            pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
+            sed -i 's#"cdn_server":"[^"]*"#"cdn_server":"https://llsifas.imsofucking.gay/static/"#' "config.json"
+            echo "CDN source reset to the default public server."
+            echo "Restart the server (option 1) to apply."
+            read -p "Press Enter to continue..." _dummy_cdnreset
             ;;
         5)
+            # Toggle CDN Cache: when ON, elichika downloads any pack the game needs from the CDN,
+            # stores it locally (cdn_cache_dir), and serves it - so it loads fast next time.
+            # cdn_cache_dir is set on the admin config page (default ~/storage/downloads/sukusta/packs).
             clear
-            pkill elichika
-            sed -i 's#http://127.0.0.1:8080/static#https://llsifas.imsofucking.gay/static/#g' "config.json"
-            echo "Switched To Catfolk"
-            read -p "Press Enter to continue..." _dummy15235
-            ;;
-        6)
-            # Toggle CDN Cache: when ON, elichika downloads any missing pack from the
-            # CDN (cdn_server) into cdn_cache_dir and serves it itself, acting as the CDN.
-            # cdn_cache_dir is set in the admin config page (empty = static/,
-            # termux: ~/storage/downloads/sukusta/packs to share with the game/tools).
-            clear
-            pkill elichika
+            pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
             if grep -q '"cdn_cache":true' "config.json"; then
                 sed -i 's#"cdn_cache":true#"cdn_cache":false#g' "config.json"
-                echo "CDN Cache: OFF (game downloads from the CDN directly)"
+                echo "CDN Cache is now OFF (the game downloads from the CDN directly)."
             elif grep -q '"cdn_cache":false' "config.json"; then
                 sed -i 's#"cdn_cache":false#"cdn_cache":true#g' "config.json"
-                echo "CDN Cache: ON (missing packs are downloaded into cdn_cache_dir and served locally)"
+                echo "CDN Cache is now ON (game files are stored locally and served fast)."
             else
                 echo "Could not find cdn_cache in config.json - run the server once first."
             fi
+            echo "Restart the server (option 1) to apply."
             read -p "Press Enter to continue..." _dummy15236
             ;;
+        6)
+            download_all_archive
+            ;;
         7)
+            download_missing_cdn
+            ;;
+        8)
             # Dev Menu
             while true; do
                 clear
@@ -196,13 +302,12 @@ while true; do
                 esac
             done
             ;;
-        8)
+        9)
             # Mod Menu
             while true; do
                 clear
                 echo "==== Mod Menu ===="
 			echo "1. extract assetbundle from sukusta/packs or static or CDN"
-			echo "2. Download all packs (archive.org, accelerated)"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
@@ -212,85 +317,6 @@ while true; do
 						pkill elichika
 						python3 llas_asset_extractor.py
                         read -p "Press Enter to continue..." _dummy012
-                        ;;
-                    2)
-                        # Bulk-download all packs from archive.org into the cdn cache dir.
-                        # archive.org supports HTTP range, so aria2c does a segmented/parallel
-                        # (accelerated) download like macOS "Download Shuttle"; curl -C - is the
-                        # single-connection resumable fallback.
-                        clear
-                        # resolve cdn_cache_dir from config.json (default ~/storage/downloads/sukusta/packs)
-                        cache_dir=$(grep -oE '"cdn_cache_dir":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
-                        [ -z "$cache_dir" ] && cache_dir="$HOME/storage/downloads/sukusta/packs"
-                        # expand a leading ~ (POSIX-safe; escape the ~ so it isn't tilde-expanded to
-                        # $HOME inside the pattern, which would leave a stray /~/ in the path)
-                        case "$cache_dir" in
-                            "~")   cache_dir="$HOME" ;;
-                            "~/"*) cache_dir="$HOME/${cache_dir#\~/}" ;;
-                        esac
-                        mkdir -p "$cache_dir"
-                        echo "Cache dir: $cache_dir"
-                        echo ""
-                        echo "Item: https://archive.org/download/ll-sifas-cdn-data"
-                        read -p "Region (gl/jp) [gl]: " dl_region; dl_region=${dl_region:-gl}
-                        if [ "$dl_region" = "jp" ]; then
-                            def_ver="b66ec2295e9a00aa"
-                        else
-                            def_ver="2d61e7b4e89961c7"
-                        fi
-                        read -p "Master version hash [$def_ver]: " dl_ver; dl_ver=${dl_ver:-$def_ver}
-                        dl_url="https://archive.org/download/ll-sifas-cdn-data/sifas-${dl_region}-cdn-assets-${dl_ver}.tar"
-                        dl_tar="$cache_dir/.cdn-data-download.tar"
-                        echo "Downloading: $dl_url"
-                        # aria2c must actually RUN, not just exist: a fresh Termux install can be
-                        # linked against newer libs (e.g. libxml2.so.16) than what's installed, so the
-                        # binary exists but fails with "library not found". Test with --version.
-                        aria_ok() { command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1; }
-                        if ! aria_ok; then
-                            echo "Setting up aria2 for accelerated downloads..."
-                            if command -v pkg >/dev/null 2>&1; then
-                                pkg install -y aria2
-                                if ! aria_ok; then
-                                    # broken shared libs: upgrade everything, then reinstall aria2
-                                    echo "Upgrading Termux packages to fix libraries (one-time, may take a few minutes)..."
-                                    pkg upgrade -y
-                                    pkg install -y aria2
-                                fi
-                            elif command -v apt-get >/dev/null 2>&1; then
-                                apt-get install -y aria2
-                            fi
-                        fi
-                        dl_rc=1
-                        if aria_ok; then
-                            # archive.org can throttle/limit parallel connections, so step the
-                            # connection count down on failure (resuming with -c) before giving up.
-                            for dl_conns in 16 8 4 2 1; do
-                                echo "Downloading with aria2c ($dl_conns connection(s))..."
-                                aria2c -c -x"$dl_conns" -s"$dl_conns" -k1M --file-allocation=none \
-                                       -d "$cache_dir" -o ".cdn-data-download.tar" "$dl_url"
-                                dl_rc=$?
-                                [ "$dl_rc" -eq 0 ] && break
-                                echo "Failed (rc=$dl_rc), retrying with fewer connections..."
-                            done
-                        fi
-                        if [ "$dl_rc" -ne 0 ]; then
-                            echo "aria2 unavailable - falling back to curl (single connection, resumable)."
-                            echo "NOTE: archive.org throttles single connections, so a large tar can be"
-                            echo "      very slow this way. Getting aria2 working is strongly recommended."
-                            curl -L -C - -o "$dl_tar" "$dl_url"
-                            dl_rc=$?
-                        fi
-                        if [ "$dl_rc" -ne 0 ] || [ ! -s "$dl_tar" ]; then
-                            echo "Download failed (rc=$dl_rc). Check the region/version and your connection."
-                        else
-                            echo "Extracting into $cache_dir ..."
-                            # most packs sit at the tar root; if your tar wraps them in a folder,
-                            # move them up afterwards so files are at <cache_dir>/<packname>.
-                            tar -xf "$dl_tar" -C "$cache_dir" && rm -f "$dl_tar"
-                            echo "Done. Packs should now be under: $cache_dir"
-                            echo "Verify with: ls \"$cache_dir\" | head"
-                        fi
-                        read -p "Press Enter to continue..." _dummy_dlall
                         ;;
                     0)
                         break
@@ -302,7 +328,7 @@ while true; do
                 esac
             done
             ;;
-        9)
+        10)
             # Stop Server
             clear
             echo "Stopping any running elichika..."
