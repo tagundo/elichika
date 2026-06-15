@@ -105,8 +105,8 @@ func cacheDir() string {
 }
 
 // packPath returns the canonical cache path for a pack/metapack file: directly under the cache dir.
-// On-demand downloads go here. Bulk dumps may instead place packs in bucket subdirs (e.g.
-// pac0/<name>); those are still found by the recursive index (see localPath).
+// Bulk dumps may instead place packs in bucket subdirs (e.g. pac0/<name>); those are still found by
+// the recursive index (see localPath).
 func packPath(file string) string {
 	return cacheDir() + file
 }
@@ -216,6 +216,12 @@ func cdnURL(fileName string) string {
 func downloadPack(fileName, dest string) error {
 	url := cdnURL(fileName)
 	log.Printf("caching pack from cdn: %s\n", url)
+	return downloadFromURL(url, dest)
+}
+
+// downloadFromURL downloads url into dest atomically (temp file + rename). It returns an error for
+// any non-200 response (e.g. 404) without writing anything, so callers can try another source.
+func downloadFromURL(url, dest string) error {
 	res, err := http.Get(url)
 	if err != nil {
 		return err
