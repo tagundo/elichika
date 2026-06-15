@@ -25,6 +25,23 @@ import platform as _platform
 if _platform.system() == "Android":
     _platform.system = lambda: "Linux"
 
+# UnityPy's export package eagerly imports AudioClipConverter, which runs
+# `import fmod_toolkit` at module load. fmod_toolkit then tries to dlopen a
+# native libfmod.so that isn't bundled for Termux/arm64, so even *texture*
+# decoding fails with "libfmod.so not found". This packer never touches audio,
+# so we stub fmod_toolkit with a harmless dummy that satisfies the import
+# without loading any native library. (The stub is only ever 'used' for audio
+# export, which we don't do.)
+if "fmod_toolkit" not in sys.modules:
+    import types as _types
+    _fmod_stub = _types.ModuleType("fmod_toolkit")
+
+    def _fmod_unavailable(*args, **kwargs):
+        raise RuntimeError("fmod_toolkit is stubbed (audio export is not supported here)")
+
+    _fmod_stub.raw_to_wav = _fmod_unavailable
+    sys.modules["fmod_toolkit"] = _fmod_stub
+
 try:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
