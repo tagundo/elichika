@@ -12,6 +12,7 @@ import (
 
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // DownloadAllMissing downloads, with `workers` parallel downloads, every whole pack/metapack file the
@@ -44,35 +45,52 @@ func DownloadAllMissing(workers int) {
 		}
 	}
 	total := len(todo)
-	log.Printf("download_packs: %d files, %d missing; downloading from the cdn with %d workers\n",
-		len(names), total, workers)
+	log.Printf("download_packs: %d missing of %d; downloading %d at a time\n", total, len(names), workers)
 	if total == 0 {
 		log.Println("download_packs: nothing to do - everything is already cached")
 		return
 	}
 
-	// log progress about 50 times regardless of how many files there are (so small batches still
-	// show movement instead of looking frozen until they finish).
-	step := int64(total / 50)
-	if step < 1 {
-		step = 1
-	}
+	var done, failed, bytesTotal int64
+
+	// live progress: print files done / MB downloaded / speed every few seconds so it's clearly
+	// working. bytesTotal updates as data arrives (countWriter), so speed is shown even mid-file.
+	stop := make(chan struct{})
+	var repWg sync.WaitGroup
+	repWg.Add(1)
+	go func() {
+		defer repWg.Done()
+		t := time.NewTicker(3 * time.Second)
+		defer t.Stop()
+		lastBytes := int64(0)
+		lastTime := time.Now()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				b := atomic.LoadInt64(&bytesTotal)
+				now := time.Now()
+				mbps := float64(b-lastBytes) / now.Sub(lastTime).Seconds() / 1e6
+				lastBytes, lastTime = b, now
+				log.Printf("download_packs: %d/%d files, %.1f MB so far, %.1f MB/s\n",
+					atomic.LoadInt64(&done), total, float64(b)/1e6, mbps)
+			}
+		}
+	}()
 
 	ch := make(chan string)
 	var wg sync.WaitGroup
-	var done, failed int64
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for name := range ch {
-				if err := downloadFromURL(cdnURL(name), packPath(name)); err != nil {
+				if err := downloadFromURLProgress(cdnURL(name), packPath(name), &bytesTotal); err != nil {
 					atomic.AddInt64(&failed, 1)
 					log.Printf("download_packs: failed %s: %v\n", name, err)
 				}
-				if n := atomic.AddInt64(&done, 1); n%step == 0 || n == int64(total) {
-					log.Printf("download_packs: %d/%d\n", n, total)
-				}
+				atomic.AddInt64(&done, 1)
 			}
 		}()
 	}
@@ -81,5 +99,8 @@ func DownloadAllMissing(workers int) {
 	}
 	close(ch)
 	wg.Wait()
-	log.Printf("download_packs: finished - %d downloaded, %d failed\n", total-int(failed), failed)
+	close(stop)
+	repWg.Wait()
+	log.Printf("download_packs: finished - %d downloaded, %d failed, %.1f MB total\n",
+		total-int(failed), failed, float64(atomic.LoadInt64(&bytesTotal))/1e6)
 }
