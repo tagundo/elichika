@@ -5,6 +5,7 @@ package main
 import (
 	"elichika/config"
 	_ "elichika/handler"
+	"elichika/handler/asset"
 	"elichika/log"
 	"elichika/router"
 	"elichika/shutdown"
@@ -15,6 +16,7 @@ import (
 
 	"os"
 	"runtime"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,6 +31,16 @@ func checkCli() bool {
 	}
 	if os.Args[1] == "fix_training_trees" {
 		user_training_tree.FixUsersTrainingTrees()
+	}
+	if os.Args[1] == "download_packs" {
+		// download every pack the CDN serves that isn't cached yet (skips what you already have).
+		workers := 8
+		if len(os.Args) > 2 {
+			if n, err := strconv.Atoi(os.Args[2]); err == nil && n > 0 {
+				workers = n
+			}
+		}
+		asset.DownloadAllMissing(workers)
 	}
 	log.Println("CLI is reserved for special behaviour, the server will now exit, start it again without any argument!")
 	return false
