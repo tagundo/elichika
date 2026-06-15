@@ -357,31 +357,77 @@ PIL = ensure_pillow()
 UnityPy = ensure_unitypy()
 
 # -------- Texture extraction (body only, safe) --------
-def extract_body_texture_with_unitypy(bundle_path: str):
+def extract_body_texture_with_unitypy(bundle_path: str, log=None):
+    """Find a body Texture2D and return (name, png_bytes), else (None, None).
+
+    Tries hard so a real preview is produced when any texture exists:
+      1) exact 'chXXXX_coXXXX_body' texture,
+      2) any texture whose name contains 'body',
+      3) the largest decodable texture.
+    Crunched/compressed formats are decoded (not skipped). A `log` callback, when
+    given, explains exactly why a placeholder ends up being used."""
+    def _log(msg):
+        if log:
+            log(msg)
+
     if UnityPy is None:
-        return None, None
+        _log("  ⚠️ thumbnail: UnityPy not available"); return None, None
     try:
         env = UnityPy.load(bundle_path)
-        body_pat = re.compile(r"^ch\d{4}_co\d{4}_body$")
-        def is_crunched(fmt):
-            return "Crunched" in str(fmt)
-        for obj in env.objects:
-            if getattr(obj.type, "name", "") != "Texture2D":
-                continue
+    except Exception as e:
+        _log(f"  ⚠️ thumbnail: could not open bundle ({e})"); return None, None
+
+    body_pat = re.compile(r"ch\d{4}_co\d{4}_body", re.IGNORECASE)
+    textures = []
+    for obj in env.objects:
+        if getattr(obj.type, "name", "") != "Texture2D":
+            continue
+        try:
             data = obj.read()
-            name = getattr(data, "name", getattr(data, "m_Name", ""))
-            if not body_pat.match(name):
-                continue
-            fmt = getattr(data, "m_TextureFormat", None)
-            if is_crunched(fmt):
-                continue
+        except Exception:
+            continue
+        name = getattr(data, "m_Name", None) or getattr(data, "name", "") or ""
+        textures.append((name, data))
+
+    if not textures:
+        _log("  ⚠️ thumbnail: no Texture2D in this bundle (the texture is probably "
+             "in a separate bundle) - using a placeholder")
+        return None, None
+
+    def decode(name, data):
+        try:
             img = getattr(data, "image", None)
-            if img:
-                bio = io.BytesIO()
-                img.save(bio, format="PNG")
-                return name, bio.getvalue()
-    except Exception:
-        pass
+        except Exception as e:
+            _log(f"  ⚠️ thumbnail: texture '{name}' failed to decode ({e})")
+            return None
+        if not img:
+            return None
+        try:
+            bio = io.BytesIO(); img.save(bio, format="PNG"); return bio.getvalue()
+        except Exception as e:
+            _log(f"  ⚠️ thumbnail: texture '{name}' could not be saved ({e})")
+            return None
+
+    def area(data):
+        try:
+            return int(getattr(data, "m_Width", 0) or 0) * int(getattr(data, "m_Height", 0) or 0)
+        except Exception:
+            return 0
+
+    # tier 1: exact body texture; tier 2: name contains 'body'; tier 3: largest
+    tier1 = [(n, d) for (n, d) in textures if body_pat.search(n or "")]
+    tier2 = [(n, d) for (n, d) in textures if "body" in (n or "").lower() and (n, d) not in tier1]
+    tier3 = sorted(textures, key=lambda t: area(t[1]), reverse=True)
+    for tier, note in ((tier1, None), (tier2, "name contains 'body'"), (tier3, "largest texture")):
+        for n, d in tier:
+            png = decode(n, d)
+            if png:
+                if note:
+                    _log(f"  ℹ️ thumbnail: no exact body texture; used {note} '{n}'")
+                return n, png
+
+    _log("  ⚠️ thumbnail: textures present but none could be decoded "
+         "(unsupported compression) - using a placeholder")
     return None, None
 
 def extract_chara_id_from_texture_name(tex_name: str):
@@ -551,7 +597,7 @@ def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara
     if platform is None and append_suffix:
         log(f"  ❓ Platform unknown for '{bn_with_ext}' - zip name will have no platform suffix")
 
-    tex_name, tex_png_bytes = extract_body_texture_with_unitypy(bundle_path)
+    tex_name, tex_png_bytes = extract_body_texture_with_unitypy(bundle_path, log=log)
 
     if auto_chara_id:
         cid = (extract_chara_id_from_texture_name(tex_name)
@@ -610,9 +656,9 @@ def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_i
     ios_name = os.path.basename(ios_path)
     and_no_ext = os.path.splitext(and_name)[0]
 
-    tex_name, tex_png_bytes = extract_body_texture_with_unitypy(android_path)
+    tex_name, tex_png_bytes = extract_body_texture_with_unitypy(android_path, log=log)
     if not tex_png_bytes:
-        tex_name, tex_png_bytes = extract_body_texture_with_unitypy(ios_path)
+        tex_name, tex_png_bytes = extract_body_texture_with_unitypy(ios_path, log=log)
 
     if auto_chara_id:
         cid = (extract_chara_id_from_texture_name(tex_name)
@@ -1268,7 +1314,7 @@ class UnityAssetBundleModPackerAutoCharaID:
             self.log(f"❓ Platform unknown for '{bn_with_ext}' - zip name will have no platform suffix")
 
         self.update_current_progress(20); self.update_current_status("Extracting texture...")
-        tex_name, tex_png_bytes = extract_body_texture_with_unitypy(bundle_path)
+        tex_name, tex_png_bytes = extract_body_texture_with_unitypy(bundle_path, log=self.log)
 
         self.update_current_progress(40); self.update_current_status("Detecting chara ID...")
         cid = 0
@@ -1358,9 +1404,9 @@ class UnityAssetBundleModPackerAutoCharaID:
 
         # ---- 썸네일/캐릭터 ID: 안드로이드 번들 우선, 실패 시 iOS ----
         self.update_current_progress(20); self.update_current_status("Extracting texture...")
-        tex_name, tex_png_bytes = extract_body_texture_with_unitypy(android_path)
+        tex_name, tex_png_bytes = extract_body_texture_with_unitypy(android_path, log=self.log)
         if not tex_png_bytes:
-            tex_name, tex_png_bytes = extract_body_texture_with_unitypy(ios_path)
+            tex_name, tex_png_bytes = extract_body_texture_with_unitypy(ios_path, log=self.log)
 
         self.update_current_progress(40); self.update_current_status("Detecting chara ID...")
         if self.auto_chara_id.get():
