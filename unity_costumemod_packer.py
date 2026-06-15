@@ -15,23 +15,20 @@ import lzma
 import argparse
 import platform as _platform
 
-# Termux's Python 3.13 reports platform.system() == "Android". The texture
-# decoder (astc_encoder -> archspec CPU detection) doesn't recognise "Android"
-# and raises "Unsupported system: Android", so body textures can't be decoded
-# and thumbnails fall back to a gray placeholder. Termux is Linux underneath
-# (and the wheels are built for android arm64), so presenting as "Linux" lets
-# decoding run and produces real thumbnails. We detect Termux via $PREFIX, not
-# platform.system(), so this shim doesn't affect anything else.
-if _platform.system() == "Android":
-    _platform.system = lambda: "Linux"
+# NOTE: on Termux the native texture decoders (astc_encoder / texture2ddecoder)
+# are unreliable - depending on the device/build they raise, fail to load
+# libfmod, or hard-crash the process with SIGILL ("Illegal instruction"). So
+# texture decoding is DISABLED on Termux by default (see _texture_decode_enabled
+# below): we still read the texture *name* for the character ID and just use a
+# placeholder thumbnail. Real thumbnails: run this packer on a PC/Mac. Adventurous
+# users can set PACKER_DECODE_THUMBNAILS=1 to attempt decoding on Termux anyway.
 
 # UnityPy's export package eagerly imports AudioClipConverter, which runs
 # `import fmod_toolkit` at module load. fmod_toolkit then tries to dlopen a
 # native libfmod.so that isn't bundled for Termux/arm64, so even *texture*
 # decoding fails with "libfmod.so not found". This packer never touches audio,
 # so we stub fmod_toolkit with a harmless dummy that satisfies the import
-# without loading any native library. (The stub is only ever 'used' for audio
-# export, which we don't do.)
+# without loading any native library.
 if "fmod_toolkit" not in sys.modules:
     import types as _types
     _fmod_stub = _types.ModuleType("fmod_toolkit")
@@ -54,6 +51,25 @@ def is_termux():
     if "com.termux" in (os.environ.get("PREFIX", "") + os.environ.get("HOME", "")):
         return True
     return os.path.isdir("/data/data/com.termux")
+
+
+def _texture_decode_enabled():
+    """Whether to attempt native texture decoding (for real thumbnails).
+
+    Off on Termux by default because the native decoders can hard-crash the
+    process there; set PACKER_DECODE_THUMBNAILS=1 to try anyway. Always on
+    elsewhere (desktop decoding is reliable)."""
+    if is_termux():
+        return os.environ.get("PACKER_DECODE_THUMBNAILS", "") not in ("", "0", "false", "False", "no")
+    return True
+
+
+# archspec (used by astc_encoder) doesn't recognise Termux's platform.system()
+# == "Android" and raises. Only when we're actually going to decode on Termux do
+# we present as "Linux" so the decoder can run. (Detection uses $PREFIX, so this
+# doesn't affect is_termux().)
+if _texture_decode_enabled() and _platform.system() == "Android":
+    _platform.system = lambda: "Linux"
 
 
 def gui_available():
@@ -422,6 +438,16 @@ def extract_body_texture_with_unitypy(bundle_path: str, log=None):
              "in a separate bundle) - using a placeholder")
         return None, None
 
+    # On Termux the native decoders can hard-crash the process, so don't touch
+    # the image data there - just hand back a texture name for the character ID
+    # and let the caller use a placeholder thumbnail.
+    if not _texture_decode_enabled():
+        name_for_id = next((n for (n, _) in textures if re.search(r"ch\d{4}", n or "")), None)
+        _log("  ℹ️ thumbnail: skipping texture decode on Termux (it can crash the "
+             "decoder) - using a placeholder. Run on a PC/Mac for a real preview, "
+             "or set PACKER_DECODE_THUMBNAILS=1 to try anyway.")
+        return name_for_id, None
+
     def decode(name, data):
         try:
             img = getattr(data, "image", None)
@@ -497,6 +523,100 @@ def make_placeholder_thumbnail_png(text="No Preview", size=256):
     out = io.BytesIO()
     img.save(out, format="PNG", optimize=True, compress_level=6)
     return out.getvalue()
+
+
+def _clean_costume_name(name):
+    s = str(name or "").replace("_", " ").replace("[", " ").replace("]", " ")
+    return " ".join(s.split()) or "Costume"
+
+
+def make_name_thumbnail_png(name, size: int = 256, chara_id=None):
+    """Generate a thumbnail that simply shows the costume name (used when the
+    body texture can't be decoded, e.g. on Termux). PIL text rendering works
+    fine on Termux - only the native texture *decoders* are the problem."""
+    if PIL is None:
+        return None
+    from PIL import Image, ImageDraw, ImageFont
+
+    text = _clean_costume_name(name)
+    img = Image.new("RGB", (size, size), (60, 63, 75))
+    draw = ImageDraw.Draw(img)
+
+    def get_font(px):
+        px = max(10, int(px))
+        try:
+            return ImageFont.load_default(size=px)   # Pillow >= 10.1: scalable
+        except TypeError:
+            return ImageFont.load_default()          # older Pillow: tiny bitmap
+
+    def text_w(s, font):
+        try:
+            return draw.textlength(s, font=font)
+        except Exception:
+            try:
+                return font.getlength(s)
+            except Exception:
+                return len(s) * 6
+
+    def line_h(font, px):
+        try:
+            asc, desc = font.getmetrics()
+            return asc + desc + 2
+        except Exception:
+            return px + 4
+
+    def wrap(words, font, maxw):
+        lines, cur = [], ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if not cur or text_w(trial, font) <= maxw:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines
+
+    margin = max(8, size // 12)
+    maxw = size - 2 * margin
+    words = text.split()
+
+    chosen = None
+    for px in (size // 7, size // 8, size // 10, size // 12, size // 14, size // 16, 10):
+        font = get_font(px)
+        lines = wrap(words, font, maxw)
+        lh = line_h(font, px)
+        if lh * len(lines) <= size - 2 * margin and all(text_w(ln, font) <= maxw for ln in lines):
+            chosen = (font, lines, lh)
+            break
+    if chosen is None:
+        font = get_font(10)
+        chosen = (font, wrap(words, font, maxw), line_h(font, 10))
+    font, lines, lh = chosen
+
+    y = (size - lh * len(lines)) // 2
+    for ln in lines:
+        x = (size - text_w(ln, font)) // 2
+        try:
+            draw.text((x + 1, y + 1), ln, fill=(0, 0, 0), font=font)   # shadow
+        except Exception:
+            pass
+        draw.text((x, y), ln, fill=(245, 245, 245), font=font)
+        y += lh
+
+    if chara_id:
+        bf = get_font(max(10, size // 16))
+        try:
+            draw.text((margin, size - margin - line_h(bf, size // 16)),
+                      f"ID {chara_id}", fill=(230, 230, 230), font=bf)
+        except Exception:
+            pass
+
+    out = io.BytesIO()
+    img.save(out, format="PNG", optimize=True, compress_level=6)
+    return out.getvalue()
+
 
 def make_thumbnail_png(image_bytes: bytes, target_size: int = 256):
     if PIL is None:
@@ -645,7 +765,7 @@ def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara
     log(f"  🎯 Chara ID: {cid}")
 
     thumb_bytes = (make_thumbnail_png(tex_png_bytes, thumbnail_size) if tex_png_bytes
-                   else make_placeholder_thumbnail_png("No Body Texture", thumbnail_size))
+                   else make_name_thumbnail_png(bn_no_ext, thumbnail_size, cid))
     if not thumb_bytes:
         log("  ❌ Thumbnail creation failed."); return None
     thumb_name = "im" + pack_safe_stem(bn_no_ext) + ".png"
@@ -705,7 +825,7 @@ def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_i
     log(f"  🎯 Chara ID: {cid}")
 
     thumb_bytes = (make_thumbnail_png(tex_png_bytes, thumbnail_size) if tex_png_bytes
-                   else make_placeholder_thumbnail_png("No Body Texture", thumbnail_size))
+                   else make_name_thumbnail_png(pair_key, thumbnail_size, cid))
     if not thumb_bytes:
         log("  ❌ Thumbnail creation failed."); return False
     thumb_name = "im" + pack_safe_stem(pair_key) + ".png"
@@ -1366,7 +1486,7 @@ class UnityAssetBundleModPackerAutoCharaID:
                 cid = 209
 
         self.update_current_progress(60); self.update_current_status("Creating thumbnail...")
-        thumb_bytes = make_thumbnail_png(tex_png_bytes, self.thumbnail_size.get()) if tex_png_bytes else make_placeholder_thumbnail_png("No Body Texture", self.thumbnail_size.get())
+        thumb_bytes = make_thumbnail_png(tex_png_bytes, self.thumbnail_size.get()) if tex_png_bytes else make_name_thumbnail_png(bn_no_ext, self.thumbnail_size.get(), cid)
         if not thumb_bytes: self.log("❌ Thumbnail creation failed."); return None
         thumb_name = "im" + pack_safe_stem(bn_no_ext) + ".png"
         
@@ -1457,7 +1577,7 @@ class UnityAssetBundleModPackerAutoCharaID:
                 cid = 209
 
         self.update_current_progress(60); self.update_current_status("Creating thumbnail...")
-        thumb_bytes = make_thumbnail_png(tex_png_bytes, self.thumbnail_size.get()) if tex_png_bytes else make_placeholder_thumbnail_png("No Body Texture", self.thumbnail_size.get())
+        thumb_bytes = make_thumbnail_png(tex_png_bytes, self.thumbnail_size.get()) if tex_png_bytes else make_name_thumbnail_png(pair_key, self.thumbnail_size.get(), cid)
         if not thumb_bytes:
             self.log("❌ Thumbnail creation failed.")
             return False
