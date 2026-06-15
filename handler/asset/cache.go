@@ -277,11 +277,16 @@ func downloadFromURLProgress(url, dest string, progress *int64) error {
 	if progress != nil {
 		w = io.MultiWriter(tmp, countWriter{progress})
 	}
-	_, err = io.Copy(w, res.Body)
+	written, err := io.Copy(w, res.Body)
 	tmp.Close()
 	if err != nil {
 		os.Remove(tmpName)
 		return err
+	}
+	// reject empty or truncated responses so we never cache a 0-byte / partial pack
+	if written == 0 || (res.ContentLength >= 0 && written != res.ContentLength) {
+		os.Remove(tmpName)
+		return fmt.Errorf("incomplete download for %s (%d of %d bytes)", url, written, res.ContentLength)
 	}
 	if err := os.Rename(tmpName, dest); err != nil {
 		os.Remove(tmpName)
