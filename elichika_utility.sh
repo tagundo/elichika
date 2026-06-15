@@ -338,6 +338,7 @@ while true; do
 			echo "1. extract assetbundle from sukusta/packs or static or CDN" 
 			echo "2. unity_costumemod_packer.py"
 			echo "3. sifas_breast_tuner.py"
+			echo "4. skirt_length_changer.py"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
@@ -358,7 +359,13 @@ while true; do
 						clear
 						pkill elichika
 						python3 sifas_breast_tuner.py
-                        read -p "Press Enter to continue..." _dummy0123
+                        read -p "Press Enter to continue..." _dummy01234
+                        ;;
+                    4)
+						clear
+						pkill elichika
+						python3 skirt_length_changer.py
+                        read -p "Press Enter to continue..." _dummy01235
                         ;;
                     0)
                         break
