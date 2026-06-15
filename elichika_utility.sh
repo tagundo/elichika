@@ -336,6 +336,7 @@ while true; do
                 clear
                 echo "==== Mod Menu ===="
 			echo "1. extract assetbundle from sukusta/packs or static or CDN"
+			echo "2. sifas_breast_tuner.py"
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
@@ -345,6 +346,12 @@ while true; do
 						pkill elichika
 						python3 llas_asset_extractor.py
                         read -p "Press Enter to continue..." _dummy012
+                        ;;
+                    2)
+						clear
+						pkill elichika
+						python3 sifas_breast_tuner.py
+                        read -p "Press Enter to continue..." _dummy0123
                         ;;
                     0)
                         break
