@@ -15,6 +15,7 @@ import (
 
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,6 +29,52 @@ var cacheLocks sync.Map // string -> *sync.Mutex
 func cacheLockFor(name string) *sync.Mutex {
 	lock, _ := cacheLocks.LoadOrStore(name, &sync.Mutex{})
 	return lock.(*sync.Mutex)
+}
+
+// Pack files can live at any depth under the cache dir: flat (files/<name>), or in buckets like the
+// archive.org dumps (files/pac0/<name>, ...). We index every file by basename once so a pack can be
+// found by name regardless of how the cache is organised, like llas_asset_extractor.py does.
+// The index is built lazily and reflects on-disk files at that moment; files added later (e.g. a
+// fresh tar extract) are picked up after a server restart.
+var (
+	packIndex     map[string]string
+	packIndexOnce sync.Once
+	packIndexMu   sync.RWMutex
+)
+
+func buildPackIndex() {
+	idx := map[string]string{}
+	root := cacheDir()
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip unreadable dirs/files
+		}
+		if d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if strings.HasPrefix(name, ".") {
+			return nil // skip temp/hidden files (.cdncache-*, .tmp-*)
+		}
+		idx[name] = path
+		return nil
+	})
+	packIndexMu.Lock()
+	packIndex = idx
+	packIndexMu.Unlock()
+	log.Printf("cdn cache: indexed %d files under %s\n", len(idx), root)
+}
+
+// indexLookup finds a pack file by name anywhere under the cache dir.
+func indexLookup(name string) (string, bool) {
+	packIndexOnce.Do(buildPackIndex)
+	packIndexMu.RLock()
+	p, ok := packIndex[name]
+	packIndexMu.RUnlock()
+	if ok && utils.PathExists(p) {
+		return p, true
+	}
+	return "", false
 }
 
 // cacheEnabled reports whether elichika should act as a caching CDN.
@@ -57,35 +104,50 @@ func cacheDir() string {
 	return dir
 }
 
+// packPath returns the canonical cache path for a pack/metapack file: directly under the cache dir.
+// On-demand downloads go here. Bulk dumps may instead place packs in bucket subdirs (e.g.
+// pac0/<name>); those are still found by the recursive index (see localPath).
+func packPath(file string) string {
+	return cacheDir() + file
+}
+
 // localPath resolves a whole pack/metapack file to an existing local path, without downloading.
 // It returns (path, true) when the file is already available locally.
 //
 // Lookup order:
 //  1. <cdn_cache_dir>/<file>
-//  2. static/<file> — a legacy location. Flat pack/metapack files found here are migrated into the
-//     cache dir so everything ends up in one place; nested paths (e.g. the generated
-//     masterdata <version>/... files) are served from static/ as-is and never moved.
+//  2. by name anywhere under <cdn_cache_dir> (the recursive index) — handles bucketed dumps like
+//     <cdn_cache_dir>/pac0/<name>
+//  3. static/<file> — a legacy source. Flat pack/metapack files found here are migrated into the
+//     cache; nested paths (the generated masterdata <version>/... files) are served from static/
+//     as-is and never moved.
 //
-// When the file isn't found, it returns the cache-dir path (where it would be downloaded) and false.
+// When the file isn't found, it returns the canonical path (where it would be downloaded) and false.
 func localPath(file string) (string, bool) {
-	cachePath := cacheDir() + file
-	if utils.PathExists(cachePath) {
-		return cachePath, true
+	canonical := packPath(file)
+	if utils.PathExists(canonical) {
+		return canonical, true
+	}
+	// bucketed dumps (e.g. pac0/<name>): find it by name via the recursive index.
+	if !strings.Contains(file, "/") {
+		if p, ok := indexLookup(file); ok {
+			return p, true
+		}
 	}
 	staticPath := config.StaticDataPath + file
 	if (cacheDir() != config.StaticDataPath) && utils.PathExists(staticPath) {
 		if !strings.Contains(file, "/") {
-			// legacy pack file placed in static/ by an older setup: move it into the cache dir.
-			if err := moveToCache(staticPath, cachePath); err == nil {
+			// legacy pack file placed in static/ by an older setup: move it into the cache.
+			if err := moveToCache(staticPath, canonical); err == nil {
 				log.Printf("migrated pack from static into cache: %s\n", file)
-				return cachePath, true
+				return canonical, true
 			} else {
 				log.Printf("failed to migrate %s from static (serving from static): %v\n", file, err)
 			}
 		}
 		return staticPath, true
 	}
-	return cachePath, false
+	return canonical, false
 }
 
 // ensureLocalFile returns a local filesystem path to the given whole pack/metapack file, downloading
@@ -106,7 +168,7 @@ func ensureLocalFile(file string) string {
 	if p, ok := localPath(file); ok { // another request cached it while we waited
 		return p
 	}
-	dest := cacheDir() + file
+	dest := packPath(file)
 	if err := downloadPack(file, dest); err != nil {
 		log.Printf("failed to cache pack %s from cdn: %v\n", file, err)
 	}
