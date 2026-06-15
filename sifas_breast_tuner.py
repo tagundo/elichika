@@ -1040,7 +1040,7 @@ def run_size_batch(in_dir, out_dir, prefix, suffix, breast_name, setv, addv,
 
 def run_both_batch(in_dir, out_dir, prefix, suffix, patterns, stiff, drag,
                    breast_name, set_xyz, target_n, append_jiggle,
-                   on_log, on_progress, should_stop=None, source_n=None):
+                   on_log, on_progress, should_stop=None, source_n=None, label=""):
     files = _iter_files(in_dir)
     total = len(files)
     ok = fail = 0
@@ -1049,7 +1049,7 @@ def run_both_batch(in_dir, out_dir, prefix, suffix, patterns, stiff, drag,
             on_log("[stopped]")
             break
         rel = file.relative_to(in_dir)
-        jig = f"jiggle{target_n}" if (append_jiggle and target_n is not None) else ""
+        jig = _both_filename_suffix(label, target_n, append_jiggle)
         out_name = f"{prefix}{file.stem}{suffix}{jig}{file.suffix}"
         out_path = Path(out_dir) / rel.parent / out_name
         try:
@@ -1285,8 +1285,7 @@ def menu_dyna():
     print("\n" + _box("Physics (SwingBone Dyna)"))
     mode = _ask("Mode   1) Single file   2) Batch (folder)", "1")
 
-    patterns_raw = _ask("Target GO patterns (comma-separated)", "LeftBreast_Dyna, RightBreast_Dyna")
-    patterns = [p.strip() for p in patterns_raw.replace(",", " ").split() if p.strip()]
+    patterns = ["LeftBreast_Dyna", "RightBreast_Dyna"]  # standard SIFAS breast bones
 
     use_auto = _ask_yesno("Per-character auto mode? (rotation limits from char ID + jiggleN filename)",
                           default=False)
@@ -1381,7 +1380,7 @@ def _menu_choose_breast_scale():
 def menu_size():
     print("\n" + _box("Size (LiveCore Scale)"))
     mode = _ask("Mode   1) Single file   2) Batch (folder)", "1")
-    breast_name = _ask("Breast GameObject name", "BreastSize")
+    breast_name = "BreastSize"  # standard SIFAS scaling GameObject
 
     setv, addv = _menu_choose_breast_scale()
 
@@ -1413,6 +1412,24 @@ def menu_size():
                 _print_logs_paged(logs)
         except Exception as e:
             print(f"Error: {e}")
+
+
+def _safe_token(s):
+    """Filename-safe token from a preset label (letters/digits only)."""
+    return "".join(c for c in (s or "") if c.isalnum())
+
+
+def _both_filename_suffix(label, target_n, want=True):
+    """Optional '_<Size>_jiggleN' filename tag for Both mode (size + jiggle)."""
+    if not want:
+        return ""
+    parts = []
+    tok = _safe_token(label)
+    if tok:
+        parts.append(tok)
+    if target_n is not None:
+        parts.append(f"jiggle{target_n}")
+    return ("_" + "_".join(parts)) if parts else ""
 
 
 def _menu_pick_both_params():
@@ -1449,11 +1466,10 @@ def menu_both():
     print("\n" + _box("Both (Dyna + Size)"))
     mode = _ask("Mode   1) Single file   2) Batch (folder)", "1")
 
-    _label, xyz, target_n, source_n = _menu_pick_both_params()
+    label, xyz, target_n, source_n = _menu_pick_both_params()
 
-    patterns_raw = _ask("Dyna target GO patterns", "LeftBreast_Dyna, RightBreast_Dyna")
-    patterns = [p.strip() for p in patterns_raw.replace(",", " ").split() if p.strip()]
-    breast_name = _ask("Breast GameObject name", "BreastSize")
+    patterns = ["LeftBreast_Dyna", "RightBreast_Dyna"]  # standard SIFAS breast bones
+    breast_name = "BreastSize"                            # standard scaling GameObject
     stiff = _ask_float("stiffnessForce (blank = keep)", "0.02")
     drag = _ask_float("dragForce (blank = keep)", "0.3")
 
@@ -1465,13 +1481,14 @@ def menu_both():
         out_dir = _ask_path("Output folder")
         prefix = _ask("Output prefix", "")
         suffix = _ask("Output suffix", "")
-        append_jiggle = _ask_yesno("Append jiggleN to output filename?", default=True)
+        append_jiggle = _ask_yesno("Append size + jiggle to output filename? (e.g. _Emma_jiggle6)",
+                                   default=True)
         if not in_dir or not out_dir:
             print("Input/output folders are required."); return
         print("\nWorking...\n")
         run_both_batch(in_dir, out_dir, prefix, suffix, patterns, stiff, drag,
                        breast_name, xyz, target_n, append_jiggle, on_log, _progress_bar,
-                       source_n=source_n)
+                       source_n=source_n, label=label)
     else:
         in_file = _ask_path("Input bundle", must_exist=True)
         out_file = _ask_path("Output path")
@@ -1544,18 +1561,15 @@ def menu_library():
             params["hdz"] = _ask_float("high Z delta", "1.0", allow_blank=False)
     else:
         mode = "both"
-        _label, xyz, target_n, source_n = _menu_pick_both_params()
+        label, xyz, target_n, source_n = _menu_pick_both_params()
         params["set_xyz"], params["target_n"], params["source_n"] = xyz, target_n, source_n
         params["stiff"] = _ask_float("stiffnessForce (blank = keep)", "0.02")
         params["drag"] = _ask_float("dragForce (blank = keep)", "0.3")
-        if target_n is not None and _ask_yesno("Append jiggleN to output filename?", default=True):
-            extra_suffix = f"jiggle{target_n}"
+        if _ask_yesno("Append size + jiggle to output filename? (e.g. _Emma_jiggle6)", default=True):
+            extra_suffix = _both_filename_suffix(label, target_n, True)
 
-    params["patterns"] = [p.strip() for p in
-                          _ask("Dyna target GO patterns", "LeftBreast_Dyna, RightBreast_Dyna")
-                          .replace(",", " ").split() if p.strip()] if mode != "size" else params["patterns"]
-    if mode != "dyna":
-        params["breast_name"] = _ask("Breast GameObject name", "BreastSize")
+    # Bone/GameObject names use the standard SIFAS defaults
+    # (LeftBreast_Dyna / RightBreast_Dyna, BreastSize) - no need to ask.
 
     print(f"\nExporting to {modded} ...\n")
     ok = fail = 0
@@ -1576,6 +1590,27 @@ def menu_library():
     print(f"\nDone. ok={ok}  fail={fail}   (output root: {modded})")
 
 
+def _menu_advanced():
+    """Manual file/folder path modes (for power users)."""
+    while True:
+        print("\nAdvanced - manual file/folder paths")
+        print("  1) Physics (SwingBone dynamics)")
+        print("  2) Size (LiveCore scale)")
+        print("  3) Both (Dyna + Size)")
+        print("  b) Back")
+        choice = input("> ").strip().lower()
+        if choice in ("b", "back", "q", "0", ""):
+            return
+        elif choice == "1":
+            menu_dyna()
+        elif choice == "2":
+            menu_size()
+        elif choice == "3":
+            menu_both()
+        else:
+            print("Please choose 1, 2, 3, or b.")
+
+
 def run_menu():
     ensure_unitypy()
     _menu_setup_readline()
@@ -1586,25 +1621,19 @@ def run_menu():
     print("==========================================")
     while True:
         print("\nWhat would you like to do?")
-        print("  1) Physics (SwingBone dynamics)")
-        print("  2) Size (LiveCore scale)")
-        print("  3) Both (Dyna + Size, preset-driven)")
-        print("  4) Mod from library (extracted -> modded)")
+        print("  1) Mod costumes from your library   (recommended - just pick from a list)")
+        print("  2) Advanced (type file/folder paths)")
         print("  q) Quit")
         choice = input("> ").strip().lower()
-        if choice in ("q", "quit", "exit", "0"):
+        if choice in ("q", "quit", "exit"):
             print("Bye.")
             break
-        elif choice == "1":
-            menu_dyna()
-        elif choice == "2":
-            menu_size()
-        elif choice == "3":
-            menu_both()
-        elif choice == "4":
+        elif choice in ("1", ""):     # default = the easy, no-typing flow
             menu_library()
+        elif choice == "2":
+            _menu_advanced()
         else:
-            print("Please choose 1, 2, 3, 4, or q.")
+            print("Please choose 1, 2, or q.")
 
 
 # ==========================================================================
@@ -2345,7 +2374,7 @@ def run_gui():
                 self.q.put(("log", f"[both] -> {label}: scale={xyz}, target jiggle{tn}, source {src}"))
                 run_both_batch(ind, outd, prefix, suffix, patterns, stiff, drag,
                                name, xyz, tn, append, self._cb_log, self._cb_prog,
-                               source_n=source_n)
+                               source_n=source_n, label=label)
             self._start(job)
 
         # ---------- library (extracted -> modded) ----------
@@ -2407,7 +2436,8 @@ def run_gui():
                 params["stiff"] = self._parse_float(self.lib_stiff.get(), None)
                 params["drag"] = self._parse_float(self.lib_drag.get(), None)
                 if self.lib_jiggle_fn.get() and params["target_n"] is not None:
-                    extra_suffix = f"jiggle{params['target_n']}"
+                    extra_suffix = _both_filename_suffix(
+                        self.lib_presets[ti][0], params["target_n"], True)
 
             out_path = modded_output_path(in_path, src_root, modded, extra_suffix=extra_suffix)
 
