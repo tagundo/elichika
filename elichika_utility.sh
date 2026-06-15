@@ -1,11 +1,75 @@
 #!/bin/bash
 
-# Download ALL game files as one big archive from archive.org. This does NOT touch the game's CDN,
-# so it won't burden that server - prefer this for large downloads.
+# install/upgrade aria2 so it can actually RUN (a fresh Termux install can be linked against newer
+# libs than installed, e.g. libxml2.so.16, so the binary exists but fails - test with --version).
+# Returns success if aria2c is usable.
+ensure_aria2() {
+    if command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "Setting up aria2 for faster downloads..."
+    if command -v pkg >/dev/null 2>&1; then
+        pkg install -y aria2
+        if ! { command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1; }; then
+            echo "Upgrading packages to fix libraries (one-time, may take a few minutes)..."
+            pkg upgrade -y
+            pkg install -y aria2
+        fi
+    elif command -v apt-get >/dev/null 2>&1; then
+        apt-get install -y aria2
+    fi
+    command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1
+}
+
+# Download one region's archive tar and extract it into the cache dir.
+# args: <region: gl|jp> <version hash> <cache_dir> <parent_dir>
+archive_one() {
+    a_region="$1"; a_ver="$2"; a_cache="$3"; a_parent="$4"
+    a_url="https://archive.org/download/ll-sifas-cdn-data/sifas-${a_region}-cdn-assets-${a_ver}.tar"
+    a_tar="$a_parent/.cdn-data-download.tar"
+    echo ""
+    echo "=== $a_region: $a_url ==="
+    a_rc=1
+    if ensure_aria2; then
+        # archive.org can throttle parallel connections, so step the count down on failure
+        # (resuming with -c) before giving up.
+        for a_conns in 16 8 4 2 1; do
+            echo "Downloading with aria2c ($a_conns connection(s))..."
+            aria2c -c -x"$a_conns" -s"$a_conns" -k1M --file-allocation=none \
+                   -d "$a_parent" -o ".cdn-data-download.tar" "$a_url"
+            a_rc=$?
+            [ "$a_rc" -eq 0 ] && break
+            echo "Failed (rc=$a_rc), retrying with fewer connections..."
+        done
+    fi
+    if [ "$a_rc" -ne 0 ]; then
+        echo "aria2 unavailable - falling back to curl (single connection, resumable, slow)."
+        curl -L -C - -o "$a_tar" "$a_url"
+        a_rc=$?
+    fi
+    if [ "$a_rc" -ne 0 ] || [ ! -s "$a_tar" ]; then
+        echo "$a_region download failed (rc=$a_rc). Check the version and your connection."
+        return 1
+    fi
+    echo "Extracting $a_region into $a_cache ..."
+    mkdir -p "$a_cache"
+    # --strip-components=1 drops the "sifas-..-<hash>/" wrapper; --skip-old-files keeps files you
+    # already have (fast incremental, no manual move needed).
+    if tar -xf "$a_tar" -C "$a_cache" --strip-components=1 --skip-old-files; then
+        rm -f "$a_tar"
+        echo "$a_region done."
+    else
+        echo "Extract failed. If your tar lacks --skip-old-files (busybox), run: pkg install tar"
+        return 1
+    fi
+}
+
+# Download ALL game files as big archives from archive.org (gl, jp, or both). This does NOT touch
+# the game's CDN, so it won't burden it - this is the recommended way to get everything.
 download_all_archive() {
     clear
-    echo "Download ALL game files (one big archive from archive.org)."
-    echo "This does NOT use the CDN, so it won't burden it."
+    echo "Download ALL game files (big archives from archive.org)."
+    echo "This does NOT use the game CDN, so it won't burden it."
     echo ""
     # resolve cdn_cache_dir from config.json (default ~/storage/downloads/sukusta/packs)
     cache_dir=$(grep -oE '"cdn_cache_dir":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
@@ -16,68 +80,22 @@ download_all_archive() {
         "~/"*) cache_dir="$HOME/${cache_dir#\~/}" ;;
     esac
     mkdir -p "$cache_dir"
+    dl_parent=$(dirname "$cache_dir")
     echo "Save location: $cache_dir"
     echo ""
-    read -p "Region (gl/jp) [gl]: " dl_region; dl_region=${dl_region:-gl}
-    if [ "$dl_region" = "jp" ]; then
-        def_ver="b66ec2295e9a00aa"
-    else
-        def_ver="2d61e7b4e89961c7"
-    fi
-    read -p "Master version hash [$def_ver]: " dl_ver; dl_ver=${dl_ver:-$def_ver}
-    dl_url="https://archive.org/download/ll-sifas-cdn-data/sifas-${dl_region}-cdn-assets-${dl_ver}.tar"
-    # download the (temporary) tar to the parent of the cache dir, then extract into the cache dir.
-    dl_parent=$(dirname "$cache_dir")
-    dl_tar="$dl_parent/.cdn-data-download.tar"
-    echo "Downloading: $dl_url"
-    # aria2c must actually RUN, not just exist: a fresh install can be linked against newer libs than
-    # installed (e.g. libxml2.so.16) so it fails with "library not found". Test with --version.
-    aria_ok() { command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1; }
-    if ! aria_ok; then
-        echo "Setting up aria2 for faster downloads..."
-        if command -v pkg >/dev/null 2>&1; then
-            pkg install -y aria2
-            if ! aria_ok; then
-                echo "Upgrading packages to fix libraries (one-time, may take a few minutes)..."
-                pkg upgrade -y
-                pkg install -y aria2
-            fi
-        elif command -v apt-get >/dev/null 2>&1; then
-            apt-get install -y aria2
-        fi
-    fi
-    dl_rc=1
-    if aria_ok; then
-        # archive.org can throttle parallel connections, so step the count down on failure (resuming
-        # with -c) before giving up.
-        for dl_conns in 16 8 4 2 1; do
-            echo "Downloading with aria2c ($dl_conns connection(s))..."
-            aria2c -c -x"$dl_conns" -s"$dl_conns" -k1M --file-allocation=none \
-                   -d "$dl_parent" -o ".cdn-data-download.tar" "$dl_url"
-            dl_rc=$?
-            [ "$dl_rc" -eq 0 ] && break
-            echo "Failed (rc=$dl_rc), retrying with fewer connections..."
-        done
-    fi
-    if [ "$dl_rc" -ne 0 ]; then
-        echo "aria2 unavailable - falling back to curl (single connection, resumable, slow)."
-        curl -L -C - -o "$dl_tar" "$dl_url"
-        dl_rc=$?
-    fi
-    if [ "$dl_rc" -ne 0 ] || [ ! -s "$dl_tar" ]; then
-        echo "Download failed (rc=$dl_rc). Check the region/version and your connection."
-    else
-        echo "Extracting into $cache_dir ..."
-        mkdir -p "$cache_dir"
-        # --strip-components=1 drops the "sifas-..-<hash>/" wrapper; --skip-old-files keeps files you
-        # already have (fast incremental, no manual move needed).
-        if tar -xf "$dl_tar" -C "$cache_dir" --strip-components=1 --skip-old-files; then
-            rm -f "$dl_tar"
-            echo "Done. Now restart the server (option 1) so it sees the new files."
-        else
-            echo "Extract failed. If your tar lacks --skip-old-files (busybox), run: pkg install tar"
-        fi
-    fi
+    echo "GL = Global (English/Korean/Chinese), JP = Japan. 'both' gets everything."
+    read -p "Region (gl/jp/both) [both]: " dl_region; dl_region=${dl_region:-both}
+    case "$dl_region" in
+        gl) dl_regions="gl" ;;
+        jp) dl_regions="jp" ;;
+        *)  dl_regions="gl jp" ;;
+    esac
+    for r in $dl_regions; do
+        if [ "$r" = "jp" ]; then rv="b66ec2295e9a00aa"; else rv="2d61e7b4e89961c7"; fi
+        archive_one "$r" "$rv" "$cache_dir" "$dl_parent"
+    done
+    echo ""
+    echo "All done. Restart the server (option 1) so it indexes the new files."
     read -p "Press Enter to continue..." _dummy_dlall
 }
 
@@ -93,6 +111,9 @@ download_missing_cdn() {
     echo ""
     echo "Each file is pulled from archive.org first (no load on the game server);"
     echo "only files the archive doesn't have are fetched from the CDN ($cdn_host)."
+    echo ""
+    echo "TIP: this is best for a SMALL number of missing files. If you're missing a lot,"
+    echo "     use option 6 (download all) first - it's much faster for bulk."
     echo ""
     pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
     sleep 1
