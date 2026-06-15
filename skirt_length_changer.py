@@ -524,6 +524,33 @@ def modded_output_path(src_path, src_root, modded_root, extra_suffix=""):
     return modded_root / rel.parent / (rel.stem + extra_suffix + rel.suffix)
 
 
+def _skirt_suffix(set_xyz, add_dxyz):
+    """A short filename tag describing the skirt change, e.g. '_skirt085' for a
+    0.85x (shorter) uniform scale, '_skirt115' for 1.15x (longer), '_skirt100'
+    for reset. Non-uniform set -> per-axis '_skirt085_100_120'; add-delta mode
+    -> '_skirtadd+10'. Returns '' when there's no meaningful change to encode."""
+    def pct(v):
+        return f"{int(round(float(v) * 100)):03d}"
+
+    if set_xyz is not None:
+        x, y, z = set_xyz
+        vals = [v for v in (x, y, z) if v is not None]
+        if not vals:
+            pass  # all axes blank -> fall through to add-delta / empty
+        elif len(vals) == 3 and abs(x - y) < 1e-6 and abs(y - z) < 1e-6:
+            return f"_skirt{pct(x)}"                       # uniform (the usual case)
+        else:
+            parts = [pct(v) if v is not None else "x" for v in (x, y, z)]
+            return "_skirt" + "_".join(parts)             # per-axis
+
+    if add_dxyz and any(abs(float(v)) > 1e-9 for v in add_dxyz):
+        dx, dy, dz = add_dxyz
+        # vertical delta is the meaningful one for skirt length; tag it
+        d = dy if abs(dy) > 1e-9 else (dx if abs(dx) > 1e-9 else dz)
+        return f"_skirtadd{int(round(d * 100)):+d}"
+    return ""
+
+
 def run_library_mod_one(in_path, out_path, patterns, set_xyz, add_dxyz):
     """Apply skirt scaling to in_path and write to out_path. Handles in-place
     overwrite safely (temp + replace) and writes no .log sidecar. Returns a
@@ -685,6 +712,10 @@ def menu_batch():
     suffix = _ask("Output suffix", "")
     patterns = _menu_ask_patterns()
     setv, addv = _menu_choose_skirt_scale()
+    skirt_sfx = _skirt_suffix(setv, addv)
+    if skirt_sfx and _ask_yesno(
+            f"Append the skirt length to the output filename? (e.g. {skirt_sfx})", True):
+        suffix = suffix + skirt_sfx
     files = [p for p in Path(in_dir).rglob("*") if p.is_file()]
     total = len(files); ok = fail = tot_changed = 0
     print(f"\nWorking on {total} file(s)...\n")
@@ -734,12 +765,16 @@ def menu_library():
 
     patterns = _menu_ask_patterns()
     setv, addv = _menu_choose_skirt_scale()
+    skirt_sfx = _skirt_suffix(setv, addv)
+    append_len = bool(skirt_sfx) and _ask_yesno(
+        f"Append the skirt length to the output filename? (e.g. {skirt_sfx})", True)
 
     print(f"\nExporting to {modded} ...\n")
     ok = fail = 0
     for i in chosen:
         b = bundles[i]
-        out_path = modded_output_path(b, src_root, modded)
+        out_path = modded_output_path(b, src_root, modded,
+                                      extra_suffix=skirt_sfx if append_len else "")
         try:
             summary = run_library_mod_one(b, out_path, patterns, setv, addv)
             ok += 1
@@ -824,6 +859,7 @@ def run_gui():
     out_dir = tk.StringVar()
     out_prefix = tk.StringVar(value="")
     out_suffix = tk.StringVar(value="")
+    append_len = tk.BooleanVar(value=True)
 
     def parse_set():
         s = (set_x.get().strip(), set_y.get().strip(), set_z.get().strip())
@@ -937,16 +973,19 @@ def run_gui():
     ttk.Entry(b, textvariable=out_prefix, width=18).grid(row=2, column=1, sticky="w", **PAD)
     ttk.Label(b, text="suffix").grid(row=3, column=0, sticky="w", **PAD)
     ttk.Entry(b, textvariable=out_suffix, width=18).grid(row=3, column=1, sticky="w", **PAD)
+    ttk.Checkbutton(b, text="Append skirt length to filenames (e.g. _skirt085)",
+                    variable=append_len).grid(row=4, column=0, columnspan=3, sticky="w", **PAD)
 
     def run_batch():
         if not in_dir.get() or not out_dir.get():
             messagebox.showerror("Error", "Please set input and output folders."); return
         setv, addv, pats = parse_set(), parse_add(), parse_patterns()
+        eff_suffix = out_suffix.get() + (_skirt_suffix(setv, addv) if append_len.get() else "")
         files = [p for p in Path(in_dir.get()).rglob("*") if p.is_file()]
         ok = fail = tot_changed = 0
         for p in files:
             out_p = name_transform_for_output(p, Path(out_dir.get()), Path(in_dir.get()),
-                                              out_prefix.get(), out_suffix.get())
+                                              out_prefix.get(), eff_suffix)
             try:
                 _, changed, _ = modify_skirt_scaling(p, out_p, pats, setv, addv, write_log_file=False)
                 tot_changed += changed; ok += 1
@@ -955,7 +994,7 @@ def run_gui():
         show_log([f"[BATCH] files={len(files)} ok={ok} fail={fail} changed={tot_changed}"])
 
     ttk.Button(b, text="Run (batch)", style="Run.TButton",
-               command=run_batch).grid(row=4, column=0, columnspan=3, pady=6)
+               command=run_batch).grid(row=5, column=0, columnspan=3, pady=6)
 
     # ---------- Scale options ----------
     o = ttk.LabelFrame(frm, text="Skirt scale options", padding=8)
