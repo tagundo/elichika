@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# keep the device awake during long downloads (Android suspends Termux when the screen is off).
+wake_lock()   { command -v termux-wake-lock   >/dev/null 2>&1 && termux-wake-lock; }
+wake_unlock() { command -v termux-wake-unlock >/dev/null 2>&1 && termux-wake-unlock; }
+
 # install/upgrade aria2 so it can actually RUN (a fresh Termux install can be linked against newer
 # libs than installed, e.g. libxml2.so.16, so the binary exists but fails - test with --version).
 # Returns success if aria2c is usable.
@@ -90,10 +94,12 @@ download_all_archive() {
         jp) dl_regions="jp" ;;
         *)  dl_regions="gl jp" ;;
     esac
+    wake_lock   # keep going with the screen off
     for r in $dl_regions; do
         if [ "$r" = "jp" ]; then rv="b66ec2295e9a00aa"; else rv="2d61e7b4e89961c7"; fi
         archive_one "$r" "$rv" "$cache_dir" "$dl_parent"
     done
+    wake_unlock
     echo ""
     echo "All done. Restart the server (option 1) so it indexes the new files."
     read -p "Press Enter to continue..." _dummy_dlall
@@ -115,10 +121,12 @@ download_missing_cdn() {
     echo "           few newest files from the CDN, instead of a lot."
     echo "(These files also download automatically as you play, so this is optional.)"
     echo ""
+    wake_lock   # keep going with the screen off
     pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
     sleep 1
     read -p "Simultaneous downloads [3]: " dl_workers; dl_workers=${dl_workers:-3}
     ./elichika download_packs "$dl_workers"
+    wake_unlock
     read -p "Press Enter to continue..." _dummy_dlmiss
 }
 
