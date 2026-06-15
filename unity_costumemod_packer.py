@@ -13,6 +13,17 @@ import sys
 import struct
 import lzma
 import argparse
+import platform as _platform
+
+# Termux's Python 3.13 reports platform.system() == "Android". The texture
+# decoder (astc_encoder -> archspec CPU detection) doesn't recognise "Android"
+# and raises "Unsupported system: Android", so body textures can't be decoded
+# and thumbnails fall back to a gray placeholder. Termux is Linux underneath
+# (and the wheels are built for android arm64), so presenting as "Linux" lets
+# decoding run and produces real thumbnails. We detect Termux via $PREFIX, not
+# platform.system(), so this shim doesn't affect anything else.
+if _platform.system() == "Android":
+    _platform.system = lambda: "Linux"
 
 try:
     import tkinter as tk
@@ -428,7 +439,10 @@ def extract_body_texture_with_unitypy(bundle_path: str, log=None):
 
     _log("  ⚠️ thumbnail: textures present but none could be decoded "
          "(unsupported compression) - using a placeholder")
-    return None, None
+    # Even if the image can't be decoded, hand back a texture name so the
+    # character ID can still be read from it (e.g. 'ch0004_co0033_body' -> 4).
+    name_for_id = next((n for (n, _) in textures if re.search(r"ch\d{4}", n or "")), None)
+    return name_for_id, None
 
 def extract_chara_id_from_texture_name(tex_name: str):
     if not tex_name:
