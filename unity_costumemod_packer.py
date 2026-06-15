@@ -393,12 +393,17 @@ def extract_chara_id_from_texture_name(tex_name: str):
     return None
 
 def extract_chara_id_from_filename(filename: str):
-    m = re.match(r"^(\d+)", filename)
+    if not filename:
+        return None
+    m = re.match(r"^(\d+)", filename)          # leading id, e.g. "209rina...", "204suit"
     if m:
         try:
             return int(m.group(1))
-        except:
+        except Exception:
             pass
+    m = re.search(r"ch(\d{4})", filename.lower())   # SIFAS style "ch0001_body...", "ch0209..."
+    if m:
+        return int(m.group(1))
     return None
 
 # -------- Image helpers --------
@@ -533,9 +538,9 @@ def normalize_rina_key(filename: str):
     return s
 
 
-def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara_id=209,
+def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara_id=0,
                        thumbnail_size=256, append_suffix=True, rina_unmasked_map=None,
-                       platform=None, log=print):
+                       platform=None, ask_chara_id=None, log=print):
     """Package one bundle into a zip in out_dir. Returns the zip path or None."""
     rina_unmasked_map = rina_unmasked_map or {}
     bn_with_ext = os.path.basename(bundle_path)
@@ -550,7 +555,11 @@ def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara
 
     if auto_chara_id:
         cid = (extract_chara_id_from_texture_name(tex_name)
-               or extract_chara_id_from_filename(bn_no_ext) or manual_chara_id)
+               or extract_chara_id_from_filename(bn_no_ext))
+        if cid is None:
+            # Don't silently fall back to 209 (that triggers the installer's Rina
+            # path and crashes without an unmasked model). Ask, or use the manual id.
+            cid = ask_chara_id(bn_with_ext) if ask_chara_id else manual_chara_id
     else:
         cid = manual_chara_id
     if bn_no_ext.lower().startswith("209rinamasked") and cid != 209:
@@ -572,6 +581,13 @@ def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara
             unmasked_filename = os.path.basename(unmasked_bundle_path)
             log(f"  🎭 Paired with '{unmasked_filename}'")
 
+    if cid == 209 and not unmasked_bundle_path:
+        log("  ❌ chara_id is 209 (Rina), which REQUIRES an unmasked model "
+            "('209rinaunmasked...') - none was found.")
+        log("     Add the unmasked file next to this one, or set the correct "
+            "character ID. Skipping (the installer would crash otherwise).")
+        return None
+
     safe_costume = safe_arc_name(bn_with_ext)
     safe_unmask = safe_arc_name(unmasked_filename) if unmasked_filename else None
     modinstall = generate_modinstall_txt(bn_no_ext, safe_costume, thumb_name, cid, safe_unmask)
@@ -586,7 +602,8 @@ def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara
 
 
 def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_id=True,
-                      manual_chara_id=209, thumbnail_size=256, rina_unmasked_map=None, log=print):
+                      manual_chara_id=0, thumbnail_size=256, rina_unmasked_map=None,
+                      ask_chara_id=None, log=print):
     """Package an Android+iOS pair into one combined zip. Returns True/False."""
     rina_unmasked_map = rina_unmasked_map or {}
     and_name = os.path.basename(android_path)
@@ -600,7 +617,9 @@ def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_i
     if auto_chara_id:
         cid = (extract_chara_id_from_texture_name(tex_name)
                or extract_chara_id_from_filename(and_no_ext)
-               or extract_chara_id_from_filename(os.path.splitext(ios_name)[0]) or manual_chara_id)
+               or extract_chara_id_from_filename(os.path.splitext(ios_name)[0]))
+        if cid is None:
+            cid = ask_chara_id(and_name) if ask_chara_id else manual_chara_id
     else:
         cid = manual_chara_id
     if (and_no_ext.lower().startswith("209rinamasked")
@@ -626,6 +645,13 @@ def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_i
             unmask_ios_path = rina_unmasked_map[key_ios]; unmask_ios_name = os.path.basename(unmask_ios_path)
             log(f"  🎭 Paired ios with '{unmask_ios_name}'")
 
+    if cid == 209 and not unmask_and_path:
+        log("  ❌ chara_id is 209 (Rina), which REQUIRES an unmasked model "
+            "('209rinaunmasked...') - none was found.")
+        log("     Add the unmasked file, or set the correct character ID. "
+            "Skipping (the installer would crash otherwise).")
+        return False
+
     safe_and = safe_arc_name(and_name)
     safe_ios = safe_arc_name(ios_name)
     safe_unmask_and = safe_arc_name(unmask_and_name) if unmask_and_name else None
@@ -647,8 +673,9 @@ def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_i
     return True
 
 
-def run_pack_jobs(files, out_dir, *, auto_chara_id=True, manual_chara_id=209,
-                  thumbnail_size=256, append_suffix=True, combine_pairs=True, log=print):
+def run_pack_jobs(files, out_dir, *, auto_chara_id=True, manual_chara_id=0,
+                  thumbnail_size=256, append_suffix=True, combine_pairs=True,
+                  ask_chara_id=None, log=print):
     """Pre-scan Rina unmasked helpers, detect platforms, build jobs (pairing
     android+ios), and package each into out_dir. Returns (success, fail)."""
     out_dir = os.path.expanduser(out_dir)
@@ -690,13 +717,14 @@ def run_pack_jobs(files, out_dir, *, auto_chara_id=True, manual_chara_id=209,
                 log(f"\n📦 [{i}/{total}] pair: {os.path.basename(ap)} + {os.path.basename(ip)}")
                 ok = pack_pair_bundles(key, ap, ip, out_dir, auto_chara_id=auto_chara_id,
                                        manual_chara_id=manual_chara_id, thumbnail_size=thumbnail_size,
-                                       rina_unmasked_map=rina_map, log=log)
+                                       rina_unmasked_map=rina_map, ask_chara_id=ask_chara_id, log=log)
             else:
                 bp = job[1]
                 log(f"\n📦 [{i}/{total}] {os.path.basename(bp)}")
                 ok = bool(pack_single_bundle(bp, out_dir, auto_chara_id=auto_chara_id,
                                              manual_chara_id=manual_chara_id, thumbnail_size=thumbnail_size,
                                              append_suffix=append_suffix, rina_unmasked_map=rina_map,
+                                             ask_chara_id=ask_chara_id,
                                              platform=platforms.get(bp), log=log))
             if ok:
                 success += 1
@@ -744,6 +772,15 @@ def _ask_yesno(prompt, default=True):
     if s == "":
         return default
     return s in ("y", "yes")
+
+
+def _ask_int(prompt):
+    """Prompt until the user enters a non-negative integer (no risky default)."""
+    while True:
+        s = input(f"{prompt}: ").strip()
+        if s.isdigit():
+            return int(s)
+        print("   Please enter a number (digits only).")
 
 
 def _parse_multi_select(s, n):
@@ -816,18 +853,20 @@ def run_menu():
 
     combine_pairs = _ask_yesno("Combine detected Android+iOS pairs into one zip?", default=True)
     append_suffix = _ask_yesno("Append platform suffix (_apk / _ios) to zip names?", default=True)
-    auto_cid = _ask_yesno("Auto-detect character ID (texture/filename)?", default=True)
-    manual_cid = 209
+    auto_cid = _ask_yesno("Auto-detect character ID from each file?", default=True)
+    manual_cid = 0
     if not auto_cid:
-        try:
-            manual_cid = int(_ask("Manual character ID", "209"))
-        except ValueError:
-            manual_cid = 209
+        manual_cid = _ask_int("Character ID to use for ALL selected files (e.g. 1, 105, 209)")
+
+    def _ask_cid_for(fname):
+        print(f"\n⚠️  Could not auto-detect the character ID for: {fname}")
+        return _ask_int("   Enter character ID "
+                        "(1-9 = mu's, 101-109 = Aqours, 201-212 = Nijigasaki; 209 = Rina)")
 
     print(f"\nPackaging {len(files)} bundle(s) -> {suit}\n")
     run_pack_jobs(files, suit, auto_chara_id=auto_cid, manual_chara_id=manual_cid,
                   thumbnail_size=256, append_suffix=append_suffix, combine_pairs=combine_pairs,
-                  log=print)
+                  ask_chara_id=(_ask_cid_for if auto_cid else None), log=print)
 
 
 # -------- GUI App --------
@@ -1270,7 +1309,13 @@ class UnityAssetBundleModPackerAutoCharaID:
                              f"- the unmasked model will not load on {platform}")
             else:
                 self.log(f"⚠️ Could not find a matching 'unmasked' file for key: '{key}'")
-        
+
+        if cid == 209 and not unmasked_bundle_path:
+            self.log("❌ chara_id is 209 (Rina), which needs an unmasked model "
+                     "('209rinaunmasked...') - none was found. Skipping this file "
+                     "(the installer would crash). Add the unmasked file or set the correct chara ID.")
+            return None
+
         self.update_current_progress(80); self.update_current_status("Creating modinstall.txt...")
         safe_costume = safe_arc_name(bn_with_ext)
         safe_unmask = safe_arc_name(unmasked_filename) if unmasked_filename else None
@@ -1359,6 +1404,12 @@ class UnityAssetBundleModPackerAutoCharaID:
                 self.log(f"🎭 Paired ios '{ios_name}' with '{unmask_ios_name}'")
             else:
                 self.log(f"⚠️ No ios 'unmasked' match for key: '{key_ios}'")
+
+        if cid == 209 and not unmask_and_path:
+            self.log("❌ chara_id is 209 (Rina), which needs an unmasked model "
+                     "('209rinaunmasked...') - none was found. Skipping this pair "
+                     "(the installer would crash). Add the unmasked file or set the correct chara ID.")
+            return False
 
         self.update_current_progress(80); self.update_current_status("Creating modinstall.txt...")
         safe_and = safe_arc_name(and_name)
