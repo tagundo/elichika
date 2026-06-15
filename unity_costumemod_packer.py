@@ -1,7 +1,8 @@
 # unity_costumemod_packer.py (modified)
+# Adds a "modded -> suit" library workflow (Termux text menu) on top of the
+# original GUI packer, and makes the script importable/runnable where tkinter
+# isn't installed (e.g. Termux).
 
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
 import os
 import zipfile
 import io
@@ -11,6 +12,41 @@ import subprocess
 import sys
 import struct
 import lzma
+import argparse
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+except Exception:
+    tk = None
+    filedialog = messagebox = ttk = None
+
+
+def is_termux():
+    if "com.termux" in (os.environ.get("PREFIX", "") + os.environ.get("HOME", "")):
+        return True
+    return os.path.isdir("/data/data/com.termux")
+
+
+def gui_available():
+    if tk is None:
+        return False
+    if is_termux():
+        return False
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        return False
+    return True
+
+
+def default_sukusta_dir(name):
+    """sukusta/<name> path. The SUKUSTA_DIR env var overrides the base.
+    Termux uses shared Downloads; otherwise ~/sukusta."""
+    base = os.environ.get("SUKUSTA_DIR")
+    if base:
+        return os.path.join(os.path.expanduser(base), name)
+    if is_termux():
+        return os.path.expanduser(f"~/storage/downloads/sukusta/{name}")
+    return os.path.expanduser(f"~/sukusta/{name}")
 
 # ============================================================
 # Unity 에셋번들 플랫폼 감지 (Android / iOS)
@@ -266,21 +302,56 @@ def build_pack_jobs(masked_files, platforms, combine_pairs):
 
 
 # -------- Dependency helpers --------
+def _run_cmd(cmd):
+    try:
+        subprocess.check_call(cmd)
+        return True
+    except Exception:
+        return False
+
+
+def _termux_install_pillow():
+    """Install Termux's prebuilt Pillow (pip can't compile it there: no libjpeg)."""
+    print("[setup] Installing image library (Pillow) via Termux packages - "
+          "one-time, no action needed...")
+    if (_run_cmd(["pkg", "install", "-y", "python-pillow"])
+            or _run_cmd(["apt", "install", "-y", "python-pillow"])):
+        return
+    _run_cmd(["apt", "update", "-y"])
+    (_run_cmd(["pkg", "install", "-y", "python-pillow"])
+     or _run_cmd(["apt", "install", "-y", "python-pillow"]))
+
+
 def ensure_module(mod_name: str, pip_name: str):
     try:
         return __import__(mod_name)
     except ImportError:
+        pass
+    # On Termux, Pillow can't be pip-compiled (missing libjpeg); install the
+    # prebuilt system package instead so it 'just works' with no manual steps.
+    if pip_name.lower() == "pillow" and is_termux():
+        _termux_install_pillow()
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
             return __import__(mod_name)
-        except Exception:
-            return None
+        except ImportError:
+            pass
+    try:
+        print(f"[setup] Installing {pip_name} (first run only, can take a minute)...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
+        return __import__(mod_name)
+    except Exception:
+        return None
 
-def ensure_unitypy():
-    return ensure_module("UnityPy", "UnityPy")
 
 def ensure_pillow():
     return ensure_module("PIL", "Pillow")
+
+
+def ensure_unitypy():
+    # UnityPy imports Pillow at import time, so make sure Pillow is present first.
+    ensure_pillow()
+    return ensure_module("UnityPy", "UnityPy")
+
 
 PIL = ensure_pillow()
 UnityPy = ensure_unitypy()
@@ -422,6 +493,311 @@ def create_zip_package(output_zip_path: str, masked_bundle_path: str, thumbnail_
         zf.writestr("modinstall.txt", modinstall_txt.encode("utf-8"))
     return True
 
+
+# ============================================================
+# Headless packaging (used by the Termux text menu). These mirror the GUI's
+# process_single_file / process_pair / process_files, but take plain params and
+# a `log` callback instead of touching Tk widgets.
+# ============================================================
+def normalize_rina_key(filename: str):
+    """'209rinamasked...' / '209rinaunmasked...' -> 'rina...' for pairing."""
+    s = re.sub(r"^\d+", "", filename, count=1).lower()
+    if s.startswith("rinamasked"):
+        return s.replace("rinamasked", "rina", 1)
+    if s.startswith("rinaunmasked"):
+        return s.replace("rinaunmasked", "rina", 1)
+    return s
+
+
+def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara_id=209,
+                       thumbnail_size=256, append_suffix=True, rina_unmasked_map=None,
+                       platform=None, log=print):
+    """Package one bundle into a zip in out_dir. Returns the zip path or None."""
+    rina_unmasked_map = rina_unmasked_map or {}
+    bn_with_ext = os.path.basename(bundle_path)
+    bn_no_ext = os.path.splitext(bn_with_ext)[0]
+
+    if platform is None:
+        platform = detect_bundle_platform(bundle_path)
+    if platform is None and append_suffix:
+        log(f"  ❓ Platform unknown for '{bn_with_ext}' - zip name will have no platform suffix")
+
+    tex_name, tex_png_bytes = extract_body_texture_with_unitypy(bundle_path)
+
+    if auto_chara_id:
+        cid = (extract_chara_id_from_texture_name(tex_name)
+               or extract_chara_id_from_filename(bn_no_ext) or manual_chara_id)
+    else:
+        cid = manual_chara_id
+    if bn_no_ext.lower().startswith("209rinamasked") and cid != 209:
+        log(f"  ⚠️ Overriding chara_id to 209 for Rina file '{bn_with_ext}'")
+        cid = 209
+    log(f"  🎯 Chara ID: {cid}")
+
+    thumb_bytes = (make_thumbnail_png(tex_png_bytes, thumbnail_size) if tex_png_bytes
+                   else make_placeholder_thumbnail_png("No Body Texture", thumbnail_size))
+    if not thumb_bytes:
+        log("  ❌ Thumbnail creation failed."); return None
+    thumb_name = f"im{bn_no_ext}.png"
+
+    unmasked_bundle_path = unmasked_filename = None
+    if cid == 209 and bn_no_ext.lower().startswith("209rinamasked"):
+        key = normalize_rina_key(bn_no_ext.lower())
+        if key in rina_unmasked_map:
+            unmasked_bundle_path = rina_unmasked_map[key]
+            unmasked_filename = os.path.basename(unmasked_bundle_path)
+            log(f"  🎭 Paired with '{unmasked_filename}'")
+
+    modinstall = generate_modinstall_txt(bn_no_ext, bn_with_ext, thumb_name, cid, unmasked_filename)
+    zip_base = compute_zip_basename(bn_no_ext, platform, append_suffix)
+    out_zip = os.path.join(out_dir, f"{zip_base}.zip")
+    if create_zip_package(out_zip, bundle_path, thumb_bytes, thumb_name, modinstall, unmasked_bundle_path):
+        log(f"  💾 Created: {os.path.basename(out_zip)}")
+        return out_zip
+    return None
+
+
+def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_id=True,
+                      manual_chara_id=209, thumbnail_size=256, rina_unmasked_map=None, log=print):
+    """Package an Android+iOS pair into one combined zip. Returns True/False."""
+    rina_unmasked_map = rina_unmasked_map or {}
+    and_name = os.path.basename(android_path)
+    ios_name = os.path.basename(ios_path)
+    and_no_ext = os.path.splitext(and_name)[0]
+
+    tex_name, tex_png_bytes = extract_body_texture_with_unitypy(android_path)
+    if not tex_png_bytes:
+        tex_name, tex_png_bytes = extract_body_texture_with_unitypy(ios_path)
+
+    if auto_chara_id:
+        cid = (extract_chara_id_from_texture_name(tex_name)
+               or extract_chara_id_from_filename(and_no_ext)
+               or extract_chara_id_from_filename(os.path.splitext(ios_name)[0]) or manual_chara_id)
+    else:
+        cid = manual_chara_id
+    if (and_no_ext.lower().startswith("209rinamasked")
+            or os.path.splitext(ios_name)[0].lower().startswith("209rinamasked")) and cid != 209:
+        cid = 209
+    log(f"  🎯 Chara ID: {cid}")
+
+    thumb_bytes = (make_thumbnail_png(tex_png_bytes, thumbnail_size) if tex_png_bytes
+                   else make_placeholder_thumbnail_png("No Body Texture", thumbnail_size))
+    if not thumb_bytes:
+        log("  ❌ Thumbnail creation failed."); return False
+    thumb_name = f"im{pair_key}.png"
+
+    unmask_and_path = unmask_and_name = None
+    unmask_ios_path = unmask_ios_name = None
+    if cid == 209:
+        key_and = normalize_rina_key(and_no_ext.lower())
+        key_ios = normalize_rina_key(os.path.splitext(ios_name)[0].lower())
+        if key_and in rina_unmasked_map:
+            unmask_and_path = rina_unmasked_map[key_and]; unmask_and_name = os.path.basename(unmask_and_path)
+            log(f"  🎭 Paired android with '{unmask_and_name}'")
+        if key_ios in rina_unmasked_map:
+            unmask_ios_path = rina_unmasked_map[key_ios]; unmask_ios_name = os.path.basename(unmask_ios_path)
+            log(f"  🎭 Paired ios with '{unmask_ios_name}'")
+
+    modinstall = generate_modinstall_txt(pair_key, and_name, thumb_name, cid, unmask_and_name,
+                                         ios_costume_filename=ios_name, ios_unmask_filename=unmask_ios_name)
+    combined = os.path.join(out_dir, f"{pair_key}_apk_ios.zip")
+    os.makedirs(os.path.dirname(combined), exist_ok=True)
+    with zipfile.ZipFile(combined, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        zf.write(android_path, and_name)
+        zf.write(ios_path, ios_name)
+        if unmask_and_path and os.path.isfile(unmask_and_path):
+            zf.write(unmask_and_path, unmask_and_name)
+        if unmask_ios_path and os.path.isfile(unmask_ios_path):
+            zf.write(unmask_ios_path, unmask_ios_name)
+        zf.writestr(thumb_name, thumb_bytes)
+        zf.writestr("modinstall.txt", modinstall.encode("utf-8"))
+    log(f"  💾 Created combined: {os.path.basename(combined)} (android={and_name}, ios={ios_name})")
+    return True
+
+
+def run_pack_jobs(files, out_dir, *, auto_chara_id=True, manual_chara_id=209,
+                  thumbnail_size=256, append_suffix=True, combine_pairs=True, log=print):
+    """Pre-scan Rina unmasked helpers, detect platforms, build jobs (pairing
+    android+ios), and package each into out_dir. Returns (success, fail)."""
+    out_dir = os.path.expanduser(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+
+    rina_map = {}
+    masked = []
+    for p in files:
+        bn = os.path.splitext(os.path.basename(p))[0].lower()
+        if bn.startswith("209rinaunmasked"):
+            rina_map[normalize_rina_key(bn)] = p
+        else:
+            masked.append(p)
+    if rina_map:
+        log(f"✅ Found {len(rina_map)} '209rinaunmasked' helper file(s).")
+
+    log("🔎 Detecting bundle platforms (Android / iOS)...")
+    platforms = {}
+    for p in masked:
+        plat = detect_bundle_platform(p)
+        platforms[p] = plat
+        icon = {'android': '🤖', 'ios': '🍎'}.get(plat, '❓')
+        log(f"  {icon} {os.path.basename(p)}: {plat or 'unknown'}")
+
+    jobs = build_pack_jobs(masked, platforms, combine_pairs)
+    pair_count = sum(1 for j in jobs if j[0] == 'pair')
+    if combine_pairs:
+        if pair_count:
+            log(f"🔗 Matched {pair_count} Android+iOS pair(s) -> combined zip(s)")
+        else:
+            log("🟡 No Android+iOS pairs matched (files packed individually).")
+
+    success = fail = 0
+    total = len(jobs)
+    for i, job in enumerate(jobs, 1):
+        try:
+            if job[0] == 'pair':
+                _, key, ap, ip = job
+                log(f"\n📦 [{i}/{total}] pair: {os.path.basename(ap)} + {os.path.basename(ip)}")
+                ok = pack_pair_bundles(key, ap, ip, out_dir, auto_chara_id=auto_chara_id,
+                                       manual_chara_id=manual_chara_id, thumbnail_size=thumbnail_size,
+                                       rina_unmasked_map=rina_map, log=log)
+            else:
+                bp = job[1]
+                log(f"\n📦 [{i}/{total}] {os.path.basename(bp)}")
+                ok = bool(pack_single_bundle(bp, out_dir, auto_chara_id=auto_chara_id,
+                                             manual_chara_id=manual_chara_id, thumbnail_size=thumbnail_size,
+                                             append_suffix=append_suffix, rina_unmasked_map=rina_map,
+                                             platform=platforms.get(bp), log=log))
+            if ok:
+                success += 1
+            else:
+                fail += 1
+        except Exception as e:
+            fail += 1
+            log(f"  ❌ ERROR: {e}")
+    log(f"\n🎉 Done. ✅ Successful: {success}  ❌ Failed: {fail}   (output: {out_dir})")
+    return success, fail
+
+
+# -------- Library scan helpers (modded source) --------
+def is_unity_bundle(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read(7) == b"UnityFS"
+    except Exception:
+        return False
+
+
+def find_asset_bundles(root):
+    """Recursively list UnityFS asset bundles under root (sorted)."""
+    root = os.path.expanduser(str(root))
+    if not os.path.isdir(root):
+        return []
+    out = []
+    for dp, _, files in os.walk(root):
+        for fn in files:
+            p = os.path.join(dp, fn)
+            if is_unity_bundle(p):
+                out.append(p)
+    return sorted(out)
+
+
+# -------- Text menu (Termux / headless): modded -> suit --------
+def _ask(prompt, default=""):
+    s = input(f"{prompt} [{default}]: ").strip() if default != "" else input(f"{prompt}: ").strip()
+    return s if s else default
+
+
+def _ask_yesno(prompt, default=True):
+    d = "Y/n" if default else "y/N"
+    s = input(f"{prompt} [{d}]: ").strip().lower()
+    if s == "":
+        return default
+    return s in ("y", "yes")
+
+
+def _parse_multi_select(s, n):
+    """'3' / '1,4-8' / 'all' -> sorted 0-based indices in 1..n."""
+    s = (s or "").strip().lower()
+    if s in ("all", "*"):
+        return list(range(n))
+    out = set()
+    for part in s.replace(" ", "").split(","):
+        if not part:
+            continue
+        if "-" in part:
+            a, _, b = part.partition("-")
+            try:
+                a, b = int(a), int(b)
+            except ValueError:
+                continue
+            for k in range(min(a, b), max(a, b) + 1):
+                if 1 <= k <= n:
+                    out.add(k - 1)
+        else:
+            try:
+                k = int(part)
+            except ValueError:
+                continue
+            if 1 <= k <= n:
+                out.add(k - 1)
+    return sorted(out)
+
+
+def run_menu():
+    """Termux/headless: pick bundles from sukusta/modded, pack -> sukusta/suit."""
+    try:
+        import readline  # noqa: F401  (arrow-key editing / history)
+    except Exception:
+        pass
+
+    if UnityPy is None or PIL is None:
+        print("⚠️  UnityPy/Pillow are required for packaging.")
+        print(f"   UnityPy: {'OK' if UnityPy else 'MISSING'}   Pillow: {'OK' if PIL else 'MISSING'}")
+        print("   Install with:  pip install UnityPy Pillow")
+        return
+
+    modded = default_sukusta_dir("modded")
+    suit = default_sukusta_dir("suit")
+    print()
+    print("==========================================")
+    print("     Unity Costume Mod Packer")
+    print("     (modded -> suit, text mode)")
+    print("==========================================")
+    print(f"  source (modded): {modded}")
+    print(f"  output (suit)  : {suit}")
+
+    print(f"\nScanning {modded} ...")
+    bundles = find_asset_bundles(modded)
+    if not bundles:
+        print("No unity asset bundles (UnityFS files) found in modded.")
+        print("Put your modded .unity bundles there first, or set SUKUSTA_DIR.")
+        return
+    for i, b in enumerate(bundles, 1):
+        try:
+            rel = os.path.relpath(b, modded)
+        except Exception:
+            rel = os.path.basename(b)
+        print(f"  {i:3d}) {rel}")
+    chosen = _parse_multi_select(_ask("Select bundle(s)  (e.g. 3, 1,4-8, all)", "all"), len(bundles))
+    if not chosen:
+        print("Nothing selected."); return
+    files = [bundles[i] for i in chosen]
+
+    combine_pairs = _ask_yesno("Combine detected Android+iOS pairs into one zip?", default=True)
+    append_suffix = _ask_yesno("Append platform suffix (_apk / _ios) to zip names?", default=True)
+    auto_cid = _ask_yesno("Auto-detect character ID (texture/filename)?", default=True)
+    manual_cid = 209
+    if not auto_cid:
+        try:
+            manual_cid = int(_ask("Manual character ID", "209"))
+        except ValueError:
+            manual_cid = 209
+
+    print(f"\nPackaging {len(files)} bundle(s) -> {suit}\n")
+    run_pack_jobs(files, suit, auto_chara_id=auto_cid, manual_chara_id=manual_cid,
+                  thumbnail_size=256, append_suffix=append_suffix, combine_pairs=combine_pairs,
+                  log=print)
+
+
 # -------- GUI App --------
 class UnityAssetBundleModPackerAutoCharaID:
     
@@ -448,7 +824,7 @@ class UnityAssetBundleModPackerAutoCharaID:
         self.root.resizable(True, True)
         
         self.bundle_files = []
-        self.output_dir = tk.StringVar(value=os.getcwd())
+        self.output_dir = tk.StringVar(value=default_sukusta_dir("suit"))
         self.thumbnail_size = tk.IntVar(value=256)
         self.chara_id = tk.IntVar(value=209) # Default for Rina
         self.auto_chara_id = tk.BooleanVar(value=True)
@@ -642,11 +1018,15 @@ class UnityAssetBundleModPackerAutoCharaID:
             child.configure(state=state)
 
     def browse_single_bundle(self):
-        fn = filedialog.askopenfilename(title="Select Asset Bundle File", filetypes=[("All files", "*.*")])
+        fn = filedialog.askopenfilename(title="Select Asset Bundle File",
+                                        initialdir=default_sukusta_dir("modded"),
+                                        filetypes=[("All files", "*.*")])
         if fn: self.bundle_path.set(fn); self.log(f"Selected: {os.path.basename(fn)}")
 
     def add_batch_files(self):
-        fns = filedialog.askopenfilenames(title="Select Asset Bundle Files", filetypes=[("All files", "*.*")])
+        fns = filedialog.askopenfilenames(title="Select Asset Bundle Files",
+                                          initialdir=default_sukusta_dir("modded"),
+                                          filetypes=[("All files", "*.*")])
         count = 0
         for fn in fns:
             if fn not in self.bundle_files:
@@ -654,7 +1034,7 @@ class UnityAssetBundleModPackerAutoCharaID:
         self.log(f"Added {count} files. Total: {len(self.bundle_files)}")
 
     def add_batch_folder(self):
-        folder = filedialog.askdirectory(title="Select Folder")
+        folder = filedialog.askdirectory(title="Select Folder", initialdir=default_sukusta_dir("modded"))
         if not folder: return
         added = 0
         for root, _, files in os.walk(folder):
@@ -676,7 +1056,8 @@ class UnityAssetBundleModPackerAutoCharaID:
         self.log(f"Removed {len(sel)} files.")
         
     def browse_output(self):
-        d = filedialog.askdirectory(title="Select Output Directory")
+        d = filedialog.askdirectory(title="Select Output Directory",
+                                    initialdir=default_sukusta_dir("suit"))
         if d: self.output_dir.set(d); self.log(f"Output directory set to: {d}")
 
     def log(self, msg):
@@ -990,10 +1371,33 @@ class UnityAssetBundleModPackerAutoCharaID:
                 else: subprocess.Popen(["xdg-open", folder])
             except Exception: pass
 
-def main():
+def run_gui():
+    if tk is None:
+        print("tkinter is not available here; falling back to the text menu.")
+        return run_menu()
     root = tk.Tk()
     app = UnityAssetBundleModPackerAutoCharaID(root)
     root.mainloop()
+
+
+def build_parser():
+    p = argparse.ArgumentParser(description="Unity costume mod packer (modded -> suit).")
+    p.add_argument("--gui", action="store_true", help="force the GUI")
+    p.add_argument("--menu", "--cli", dest="menu", action="store_true",
+                   help="force the Termux/headless text menu (modded -> suit)")
+    return p
+
+
+def main():
+    args = build_parser().parse_args()
+    if args.menu:
+        return run_menu()
+    if args.gui:
+        return run_gui()
+    if gui_available():
+        return run_gui()
+    return run_menu()
+
 
 if __name__ == "__main__":
     main()
