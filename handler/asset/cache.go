@@ -16,12 +16,30 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
+
+// httpClient is used for all CDN/archive downloads. It bounds connect and response-header time so a
+// hung/unresponsive server (archive.org sometimes stalls) fails quickly and the caller can try the
+// next source, instead of blocking a worker forever. It does NOT bound total time, so slow-but-
+// progressing downloads of large files still complete.
+var httpClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 15 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+	},
+}
 
 // one lock per pack name so concurrent requests for the same pack download it only once
 var cacheLocks sync.Map // string -> *sync.Mutex
@@ -219,10 +237,24 @@ func downloadPack(fileName, dest string) error {
 	return downloadFromURL(url, dest)
 }
 
+// countWriter atomically adds the number of bytes written to *n, for a live download total/speed.
+type countWriter struct{ n *int64 }
+
+func (c countWriter) Write(p []byte) (int, error) {
+	atomic.AddInt64(c.n, int64(len(p)))
+	return len(p), nil
+}
+
 // downloadFromURL downloads url into dest atomically (temp file + rename). It returns an error for
 // any non-200 response (e.g. 404) without writing anything, so callers can try another source.
 func downloadFromURL(url, dest string) error {
-	res, err := http.Get(url)
+	return downloadFromURLProgress(url, dest, nil)
+}
+
+// downloadFromURLProgress is downloadFromURL but, when progress != nil, adds bytes to it as they
+// arrive so a caller can show live progress.
+func downloadFromURLProgress(url, dest string, progress *int64) error {
+	res, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -241,7 +273,11 @@ func downloadFromURL(url, dest string) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	_, err = io.Copy(tmp, res.Body)
+	var w io.Writer = tmp
+	if progress != nil {
+		w = io.MultiWriter(tmp, countWriter{progress})
+	}
+	_, err = io.Copy(w, res.Body)
 	tmp.Close()
 	if err != nil {
 		os.Remove(tmpName)
