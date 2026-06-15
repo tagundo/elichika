@@ -60,8 +60,73 @@ def gui_available() -> bool:
     return True
 
 
+def _run_cmd(cmd):
+    """Run a command, returning True on success. Silent on failure."""
+    import subprocess
+    try:
+        subprocess.check_call(cmd)
+        return True
+    except Exception:
+        return False
+
+
+def _pip_install(*pkgs):
+    return _run_cmd([sys.executable, "-m", "pip", "install", *pkgs])
+
+
+def _ensure_pillow_on_termux():
+    """Make Pillow importable on Termux WITHOUT the user doing anything.
+
+    On Termux `pip install Pillow` builds from source and fails (no libjpeg),
+    which is why `pip install UnityPy` (Pillow is a dependency) fails. So we
+    install Termux's prebuilt python-pillow via pkg first. Returns True if PIL
+    ends up importable."""
+    try:
+        __import__("PIL")
+        return True
+    except Exception:
+        pass
+    print("[setup] Installing image library (Pillow) via Termux packages - "
+          "one-time, no action needed...")
+    ok = (_run_cmd(["pkg", "install", "-y", "python-pillow"])
+          or _run_cmd(["apt", "install", "-y", "python-pillow"]))
+    if not ok:
+        # package lists may be stale - refresh once and retry
+        _run_cmd(["apt", "update", "-y"])
+        ok = (_run_cmd(["pkg", "install", "-y", "python-pillow"])
+              or _run_cmd(["apt", "install", "-y", "python-pillow"]))
+    try:
+        __import__("PIL")
+        return True
+    except Exception:
+        return False
+
+
+def _unitypy_install_help():
+    """Last-resort guidance if the automatic setup couldn't finish."""
+    print("\n" + "=" * 64)
+    print("Automatic setup couldn't finish installing UnityPy.")
+    if is_termux():
+        print(
+            "On Termux, UnityPy needs the prebuilt Pillow package. Please run\n"
+            "these two lines once, then start the tool again:\n"
+            "\n"
+            "    pkg install python-pillow\n"
+            "    pip install UnityPy\n"
+            "\n"
+            "If it still fails, also run:  pkg install libjpeg-turbo zlib\n"
+        )
+    else:
+        print("Please install it manually, then re-run:\n    pip install UnityPy\n")
+    print("=" * 64)
+
+
 def ensure_unitypy():
-    """Load UnityPy, installing it on first run if missing."""
+    """Load UnityPy, auto-installing it (and its prerequisites) on first run.
+
+    Designed to 'just work' with no manual steps: on Termux it installs the
+    prebuilt Pillow via pkg before pip-installing UnityPy. Falls back to clear
+    guidance (instead of crashing) only if every automatic attempt fails."""
     global UnityPy
     if UnityPy is not None:
         return
@@ -71,14 +136,24 @@ def ensure_unitypy():
         return
     except ImportError:
         pass
-    print("[setup] UnityPy not found - installing (first run only)...")
-    import subprocess
-    # Typetree editing only needs UnityPy + lz4. Pillow is only required for
-    # texture work, which this tool never does, so we skip it to keep Termux
-    # happy (Pillow can be painful to build there).
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "UnityPy"])
-    import UnityPy as _u
-    UnityPy = _u
+
+    print("[setup] First-time setup: installing UnityPy. This can take a few "
+          "minutes on the first run - please wait...")
+    if is_termux():
+        _ensure_pillow_on_termux()      # avoid the libjpeg source-build failure
+    if not _pip_install("UnityPy"):
+        if is_termux():                 # one more try after ensuring Pillow
+            _ensure_pillow_on_termux()
+            _pip_install("UnityPy")
+
+    try:
+        import UnityPy as _u
+        UnityPy = _u
+        print("[setup] Done.")
+        return
+    except ImportError:
+        _unitypy_install_help()
+        raise SystemExit(1)
 
 
 # ==========================================================================
