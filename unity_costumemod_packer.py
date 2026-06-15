@@ -436,6 +436,29 @@ def make_thumbnail_png(image_bytes: bytes, target_size: int = 256):
         return None
 
 # -------- Packaging helpers --------
+def pack_safe_stem(stem):
+    """Lowercase, ASCII-alphanumeric-only stem.
+
+    costume_addon_installer renames each packed file to '<crc32hex><stem>' and
+    rejects it unless that whole string is .isalnum() and .islower(). The crc32
+    prefix is already lowercase hex, so the stem must be lowercase a-z / 0-9 with
+    NO underscores, spaces, hyphens or capitals. Leading digits (the character-id
+    prefix like '305') are preserved."""
+    s = "".join(c for c in str(stem).lower() if ("a" <= c <= "z") or ("0" <= c <= "9"))
+    return s or "costume"
+
+
+def safe_arc_name(original_filename):
+    """Zip arcname / costume_file value with a sanitized stem. The extension is
+    stripped by the installer (only the stem becomes the asset-bundle name), so we
+    just keep a harmless, non-numeric '.unity' extension."""
+    base = os.path.basename(str(original_filename))
+    stem, ext = os.path.splitext(base)
+    if not ext or ext[1:].isdigit():   # never leave a numeric ext (installer reads it as chara_id)
+        ext = ".unity"
+    return pack_safe_stem(stem) + ext
+
+
 def generate_modinstall_txt(display_name: str, costume_file_name_with_ext: str, thumbnail_name: str, chara_id: int, unmask_filename: str = None,
                             ios_costume_filename: str = None, ios_unmask_filename: str = None):
     """modinstall.txt 내용을 생성한다.
@@ -478,16 +501,17 @@ def generate_modinstall_txt(display_name: str, costume_file_name_with_ext: str, 
 
     return "\n".join(lines)
 
-def create_zip_package(output_zip_path: str, masked_bundle_path: str, thumbnail_bytes: bytes, thumbnail_name: str, modinstall_txt: str, unmasked_bundle_path: str = None):
+def create_zip_package(output_zip_path: str, masked_bundle_path: str, thumbnail_bytes: bytes, thumbnail_name: str, modinstall_txt: str, unmasked_bundle_path: str = None,
+                       masked_arcname: str = None, unmasked_arcname: str = None):
     os.makedirs(os.path.dirname(output_zip_path), exist_ok=True)
     with zipfile.ZipFile(output_zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-        # masked (main) file
-        zf.write(masked_bundle_path, os.path.basename(masked_bundle_path))
-        
+        # masked (main) file - stored under an installer-safe name
+        zf.write(masked_bundle_path, masked_arcname or os.path.basename(masked_bundle_path))
+
         # unmasked (paired) file if it exists
         if unmasked_bundle_path and os.path.isfile(unmasked_bundle_path):
-            zf.write(unmasked_bundle_path, os.path.basename(unmasked_bundle_path))
-            
+            zf.write(unmasked_bundle_path, unmasked_arcname or os.path.basename(unmasked_bundle_path))
+
         # thumbnail and modinstall
         zf.writestr(thumbnail_name, thumbnail_bytes)
         zf.writestr("modinstall.txt", modinstall_txt.encode("utf-8"))
@@ -538,7 +562,7 @@ def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara
                    else make_placeholder_thumbnail_png("No Body Texture", thumbnail_size))
     if not thumb_bytes:
         log("  ❌ Thumbnail creation failed."); return None
-    thumb_name = f"im{bn_no_ext}.png"
+    thumb_name = "im" + pack_safe_stem(bn_no_ext) + ".png"
 
     unmasked_bundle_path = unmasked_filename = None
     if cid == 209 and bn_no_ext.lower().startswith("209rinamasked"):
@@ -548,10 +572,14 @@ def pack_single_bundle(bundle_path, out_dir, *, auto_chara_id=True, manual_chara
             unmasked_filename = os.path.basename(unmasked_bundle_path)
             log(f"  🎭 Paired with '{unmasked_filename}'")
 
-    modinstall = generate_modinstall_txt(bn_no_ext, bn_with_ext, thumb_name, cid, unmasked_filename)
+    safe_costume = safe_arc_name(bn_with_ext)
+    safe_unmask = safe_arc_name(unmasked_filename) if unmasked_filename else None
+    modinstall = generate_modinstall_txt(bn_no_ext, safe_costume, thumb_name, cid, safe_unmask)
     zip_base = compute_zip_basename(bn_no_ext, platform, append_suffix)
     out_zip = os.path.join(out_dir, f"{zip_base}.zip")
-    if create_zip_package(out_zip, bundle_path, thumb_bytes, thumb_name, modinstall, unmasked_bundle_path):
+    if create_zip_package(out_zip, bundle_path, thumb_bytes, thumb_name, modinstall,
+                          unmasked_bundle_path, masked_arcname=safe_costume,
+                          unmasked_arcname=safe_unmask):
         log(f"  💾 Created: {os.path.basename(out_zip)}")
         return out_zip
     return None
@@ -584,7 +612,7 @@ def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_i
                    else make_placeholder_thumbnail_png("No Body Texture", thumbnail_size))
     if not thumb_bytes:
         log("  ❌ Thumbnail creation failed."); return False
-    thumb_name = f"im{pair_key}.png"
+    thumb_name = "im" + pack_safe_stem(pair_key) + ".png"
 
     unmask_and_path = unmask_and_name = None
     unmask_ios_path = unmask_ios_name = None
@@ -598,17 +626,21 @@ def pack_pair_bundles(pair_key, android_path, ios_path, out_dir, *, auto_chara_i
             unmask_ios_path = rina_unmasked_map[key_ios]; unmask_ios_name = os.path.basename(unmask_ios_path)
             log(f"  🎭 Paired ios with '{unmask_ios_name}'")
 
-    modinstall = generate_modinstall_txt(pair_key, and_name, thumb_name, cid, unmask_and_name,
-                                         ios_costume_filename=ios_name, ios_unmask_filename=unmask_ios_name)
+    safe_and = safe_arc_name(and_name)
+    safe_ios = safe_arc_name(ios_name)
+    safe_unmask_and = safe_arc_name(unmask_and_name) if unmask_and_name else None
+    safe_unmask_ios = safe_arc_name(unmask_ios_name) if unmask_ios_name else None
+    modinstall = generate_modinstall_txt(pair_key, safe_and, thumb_name, cid, safe_unmask_and,
+                                         ios_costume_filename=safe_ios, ios_unmask_filename=safe_unmask_ios)
     combined = os.path.join(out_dir, f"{pair_key}_apk_ios.zip")
     os.makedirs(os.path.dirname(combined), exist_ok=True)
     with zipfile.ZipFile(combined, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-        zf.write(android_path, and_name)
-        zf.write(ios_path, ios_name)
+        zf.write(android_path, safe_and)
+        zf.write(ios_path, safe_ios)
         if unmask_and_path and os.path.isfile(unmask_and_path):
-            zf.write(unmask_and_path, unmask_and_name)
+            zf.write(unmask_and_path, safe_unmask_and)
         if unmask_ios_path and os.path.isfile(unmask_ios_path):
-            zf.write(unmask_ios_path, unmask_ios_name)
+            zf.write(unmask_ios_path, safe_unmask_ios)
         zf.writestr(thumb_name, thumb_bytes)
         zf.writestr("modinstall.txt", modinstall.encode("utf-8"))
     log(f"  💾 Created combined: {os.path.basename(combined)} (android={and_name}, ios={ios_name})")
@@ -1220,7 +1252,7 @@ class UnityAssetBundleModPackerAutoCharaID:
         self.update_current_progress(60); self.update_current_status("Creating thumbnail...")
         thumb_bytes = make_thumbnail_png(tex_png_bytes, self.thumbnail_size.get()) if tex_png_bytes else make_placeholder_thumbnail_png("No Body Texture", self.thumbnail_size.get())
         if not thumb_bytes: self.log("❌ Thumbnail creation failed."); return None
-        thumb_name = f"im{bn_no_ext}.png"
+        thumb_name = "im" + pack_safe_stem(bn_no_ext) + ".png"
         
         unmasked_bundle_path = None
         unmasked_filename = None
@@ -1240,7 +1272,9 @@ class UnityAssetBundleModPackerAutoCharaID:
                 self.log(f"⚠️ Could not find a matching 'unmasked' file for key: '{key}'")
         
         self.update_current_progress(80); self.update_current_status("Creating modinstall.txt...")
-        modinstall = generate_modinstall_txt(bn_no_ext, bn_with_ext, thumb_name, cid, unmasked_filename)
+        safe_costume = safe_arc_name(bn_with_ext)
+        safe_unmask = safe_arc_name(unmasked_filename) if unmasked_filename else None
+        modinstall = generate_modinstall_txt(bn_no_ext, safe_costume, thumb_name, cid, safe_unmask)
         
         if out_dir_override:
             out_dir = out_dir_override
@@ -1254,7 +1288,9 @@ class UnityAssetBundleModPackerAutoCharaID:
         out_zip = os.path.join(out_dir, f"{zip_base}.zip")
         
         self.update_current_status("Creating ZIP package...")
-        ok = create_zip_package(out_zip, bundle_path, thumb_bytes, thumb_name, modinstall, unmasked_bundle_path)
+        ok = create_zip_package(out_zip, bundle_path, thumb_bytes, thumb_name, modinstall,
+                                unmasked_bundle_path, masked_arcname=safe_costume,
+                                unmasked_arcname=safe_unmask)
         
         if ok:
             self.update_current_progress(100)
@@ -1303,7 +1339,7 @@ class UnityAssetBundleModPackerAutoCharaID:
         if not thumb_bytes:
             self.log("❌ Thumbnail creation failed.")
             return False
-        thumb_name = f"im{pair_key}.png"
+        thumb_name = "im" + pack_safe_stem(pair_key) + ".png"
 
         # ---- 리나(209) 가면 해제 페어: 플랫폼별로 각각 매칭 ----
         unmask_and_path = unmask_and_name = None
@@ -1325,10 +1361,14 @@ class UnityAssetBundleModPackerAutoCharaID:
                 self.log(f"⚠️ No ios 'unmasked' match for key: '{key_ios}'")
 
         self.update_current_progress(80); self.update_current_status("Creating modinstall.txt...")
-        modinstall = generate_modinstall_txt(pair_key, and_name, thumb_name, cid,
-                                             unmask_and_name,
-                                             ios_costume_filename=ios_name,
-                                             ios_unmask_filename=unmask_ios_name)
+        safe_and = safe_arc_name(and_name)
+        safe_ios = safe_arc_name(ios_name)
+        safe_unmask_and = safe_arc_name(unmask_and_name) if unmask_and_name else None
+        safe_unmask_ios = safe_arc_name(unmask_ios_name) if unmask_ios_name else None
+        modinstall = generate_modinstall_txt(pair_key, safe_and, thumb_name, cid,
+                                             safe_unmask_and,
+                                             ios_costume_filename=safe_ios,
+                                             ios_unmask_filename=safe_unmask_ios)
 
         if self.output_to_bundle_location.get():
             out_dir = os.path.dirname(os.path.abspath(android_path))
@@ -1339,12 +1379,12 @@ class UnityAssetBundleModPackerAutoCharaID:
         self.update_current_status("Creating combined ZIP package...")
         os.makedirs(os.path.dirname(combined), exist_ok=True)
         with zipfile.ZipFile(combined, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-            zf.write(android_path, and_name)
-            zf.write(ios_path, ios_name)
+            zf.write(android_path, safe_and)
+            zf.write(ios_path, safe_ios)
             if unmask_and_path and os.path.isfile(unmask_and_path):
-                zf.write(unmask_and_path, unmask_and_name)
+                zf.write(unmask_and_path, safe_unmask_and)
             if unmask_ios_path and os.path.isfile(unmask_ios_path):
-                zf.write(unmask_ios_path, unmask_ios_name)
+                zf.write(unmask_ios_path, safe_unmask_ios)
             zf.writestr(thumb_name, thumb_bytes)
             zf.writestr("modinstall.txt", modinstall.encode("utf-8"))
 
