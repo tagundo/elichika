@@ -51,6 +51,13 @@ func DownloadAllMissing(workers int) {
 		return
 	}
 
+	// log progress about 50 times regardless of how many files there are (so small batches still
+	// show movement instead of looking frozen until they finish).
+	step := int64(total / 50)
+	if step < 1 {
+		step = 1
+	}
+
 	ch := make(chan string)
 	var wg sync.WaitGroup
 	var done, failed int64
@@ -63,7 +70,7 @@ func DownloadAllMissing(workers int) {
 					atomic.AddInt64(&failed, 1)
 					log.Printf("download_packs: failed %s: %v\n", name, err)
 				}
-				if n := atomic.AddInt64(&done, 1); n%100 == 0 || n == int64(total) {
+				if n := atomic.AddInt64(&done, 1); n%step == 0 || n == int64(total) {
 					log.Printf("download_packs: %d/%d\n", n, total)
 				}
 			}
