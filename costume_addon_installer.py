@@ -19,7 +19,7 @@ import zipfile
 import io
 import platform
 import random
-Åimport sys
+import sys
 import shutil
 import json
 import hashlib
