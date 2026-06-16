@@ -339,6 +339,7 @@ while true; do
 			echo "2. unity_costumemod_packer.py"
 			echo "3. sifas_breast_tuner.py"
 			echo "4. skirt_length_changer.py"
+			echo "5. sifas_mesh_baker.py"			
             echo "0. Back to Main Menu"
                 read -p "Enter your choice: " mod_option
 
@@ -366,6 +367,12 @@ while true; do
 						pkill elichika
 						python3 skirt_length_changer.py
                         read -p "Press Enter to continue..." _dummy01235
+                        ;;
+                    5)
+						clear
+						pkill elichika
+						python3 sifas_mesh_baker.py
+                        read -p "Press Enter to continue..." _dummy012356
                         ;;
                     0)
                         break
