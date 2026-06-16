@@ -19,7 +19,7 @@ import zipfile
 import io
 import platform
 import random
-import sys
+Åimport sys
 import shutil
 import json
 import hashlib
@@ -791,17 +791,19 @@ def open_and_check_zip(file_path):
         print(f"An error occurred: {e}")
 
 
-def _server_cache_dir():
-    """Resolve the same packs/cache directory the elichika server uses, so the
-    packs we write land where the server finds them *directly*.
+def _pack_output_dir():
+    """Directory where encrypted packs are written.
 
-    The server looks up /static/<name> as <cdn_cache_dir>/<name> first; only if
-    that's missing does it fall back to static/ (migrating the file into the
-    cache and, on the first such miss, walking the whole packs dir to build its
-    name index - the ~8s stall). Writing straight into the cache dir skips both.
-
-    Mirrors the server's cacheDir(): config.json 'cdn_cache_dir', or the default
-    when it's unset/empty; '~' expanded; trailing slash."""
+    - Termux: straight into the server's packs cache dir (config.json
+      'cdn_cache_dir', or the default when unset/empty). The server serves
+      /static/<name> from there directly, skipping both the static->cache
+      migration and the slow first-load index rebuild over the (huge,
+      FUSE-backed) packs dir - the ~8s stall on Android.
+    - PC / macOS: the elichika static/ folder. It sits right next to the server
+      (easy to find and manage), and on a normal filesystem the migration +
+      index build are cheap, so there's no downside to keeping packs there."""
+    if not is_termux():
+        return "static/"
     cdir = "~/storage/downloads/sukusta/packs"   # server default (DefaultCdnCacheDir)
     try:
         with open("config.json", "r", encoding="utf-8") as f:
@@ -817,9 +819,9 @@ def _server_cache_dir():
     return cdir
 
 
-# Where encrypted packs are written. The server serves /static/<name> from here
-# directly (no static->cache migration, no full-dir index rebuild on first load).
-PACKS_DIR = _server_cache_dir()
+# Where encrypted packs are written (see _pack_output_dir): the packs cache dir
+# on Termux, the static/ folder on PC/macOS.
+PACK_DEST_DIR = _pack_output_dir()
 
 
 def crc32_prefix_rename(rel_name):
@@ -831,7 +833,7 @@ def crc32_prefix_rename(rel_name):
     os.rename(src, renamed)
     filename = os.path.splitext(renamed.split("/")[-1])[0]
     filesize = os.path.getsize(renamed)
-    encrypted = PACKS_DIR + os.path.splitext(renamed.split("/")[-1])[0]
+    encrypted = PACK_DEST_DIR + os.path.splitext(renamed.split("/")[-1])[0]
     return renamed, filename, filesize, encrypted
 
 
@@ -841,7 +843,7 @@ def valid_pack_filename(filename):
 
 
 def encrypt_to_static(src_path, dest_path, label):
-    """파일을 XOR 암호화하여 팩 캐시 폴더(PACKS_DIR)에 저장한다. 이미 있으면 건너뛴다."""
+    """파일을 XOR 암호화하여 팩 저장 폴더(PACK_DEST_DIR)에 저장한다. 이미 있으면 건너뛴다."""
     if not os.path.exists(dest_path):
         with open(src_path, "rb") as f:
             data = bytearray(f.read())
@@ -1022,8 +1024,8 @@ if is_termux():
     if not os.path.exists(modding_elichika_path):
         os.makedirs(modding_elichika_path)
 
-encrypted_folder = PACKS_DIR
-print(f"packs are written to: {encrypted_folder}")
+encrypted_folder = PACK_DEST_DIR
+print(f"packs are written to: {encrypted_folder}  ({'termux: packs cache' if is_termux() else 'static/'})")
 if not os.path.exists(encrypted_folder):
     os.makedirs(encrypted_folder)
 
@@ -1156,7 +1158,7 @@ for mass_addon in batch_proccess_list:
     start_encrypt1 = crc32_rename_costume
     costume_filename = os.path.splitext(start_encrypt1.split("/")[-1])[0]
     costume_filesize = os.path.getsize(start_encrypt1)
-    encrypted_costume = PACKS_DIR + os.path.splitext(start_encrypt1.split("/")[-1])[0]
+    encrypted_costume = PACK_DEST_DIR + os.path.splitext(start_encrypt1.split("/")[-1])[0]
     file_extension = start_encrypt1.split(".")[-1]
 
     # 코스튬 파일 확장자가 숫자면 캐릭터 ID로 사용
