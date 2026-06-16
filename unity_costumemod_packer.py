@@ -13,15 +13,25 @@ import sys
 import struct
 import lzma
 import argparse
+import base64
+import tempfile
 import platform as _platform
 
-# NOTE: on Termux the native texture decoders (astc_encoder / texture2ddecoder)
-# are unreliable - depending on the device/build they raise, fail to load
-# libfmod, or hard-crash the process with SIGILL ("Illegal instruction"). So
-# texture decoding is DISABLED on Termux by default (see _texture_decode_enabled
-# below): we still read the texture *name* for the character ID and just use a
-# placeholder thumbnail. Real thumbnails: run this packer on a PC/Mac. Adventurous
-# users can set PACKER_DECODE_THUMBNAILS=1 to attempt decoding on Termux anyway.
+# NOTE: on Termux the native texture decoders (astc-encoder-py / texture2ddecoder
+# / etcpak) are unreliable - depending on the device/build they raise, fail to
+# load libfmod, or hard-crash the whole process with SIGILL ("Illegal
+# instruction") the moment a texture is decoded (the crash is at DECODE time, not
+# at `import UnityPy` - the native libs are imported lazily on the first decode).
+#
+# To still get REAL thumbnails there without risking the run, texture decoding on
+# Termux is now done in a throwaway CHILD PROCESS (see _decode_mode /
+# _decode_texture_via_subprocess): if the native decoder crashes, only the child
+# dies and we fall back to a name thumbnail instead of taking the packer down with
+# it. So decoding is attempted by default everywhere; set PACKER_DECODE_THUMBNAILS=0
+# to skip it (fast, name-only thumbnails). If the child keeps crashing on your
+# device, rebuilding the decoders from source usually fixes it (prebuilt wheels can
+# be glibc/CPU-incompatible with Termux):
+#     pip install --force-reinstall --no-binary :all: astc-encoder-py texture2ddecoder etcpak
 
 # UnityPy's export package eagerly imports AudioClipConverter, which runs
 # `import fmod_toolkit` at module load. fmod_toolkit then tries to dlopen a
@@ -39,6 +49,13 @@ if "fmod_toolkit" not in sys.modules:
     _fmod_stub.raw_to_wav = _fmod_unavailable
     sys.modules["fmod_toolkit"] = _fmod_stub
 
+# Absolute path to this script, captured at import time so the decode-worker
+# subprocess can re-launch it even if the cwd changes later.
+try:
+    _THIS_FILE = os.path.abspath(__file__)
+except NameError:
+    _THIS_FILE = os.path.abspath(sys.argv[0])
+
 try:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
@@ -53,23 +70,40 @@ def is_termux():
     return os.path.isdir("/data/data/com.termux")
 
 
-def _texture_decode_enabled():
-    """Whether to attempt native texture decoding (for real thumbnails).
-
-    Off on Termux by default because the native decoders can hard-crash the
-    process there; set PACKER_DECODE_THUMBNAILS=1 to try anyway. Always on
-    elsewhere (desktop decoding is reliable)."""
-    if is_termux():
-        return os.environ.get("PACKER_DECODE_THUMBNAILS", "") not in ("", "0", "false", "False", "no")
-    return True
+def _env_flag(name):
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
-# archspec (used by astc_encoder) doesn't recognise Termux's platform.system()
-# == "Android" and raises. Only when we're actually going to decode on Termux do
-# we present as "Linux" so the decoder can run. (Detection uses $PREFIX, so this
-# doesn't affect is_termux().)
-if _texture_decode_enabled() and _platform.system() == "Android":
-    _platform.system = lambda: "Linux"
+def _decode_mode():
+    """How thumbnail texture decoding should run in THIS process.
+
+    Returns one of:
+      'off'         - never decode; use name-only thumbnails (fast, can't crash).
+      'inprocess'   - decode directly (reliable on desktop).
+      'subprocess'  - decode in a throwaway child so a native-decoder SIGILL only
+                      kills the child, not the packer (the default on Termux).
+
+    Overrides:
+      PACKER_DECODE_THUMBNAILS=0  -> 'off'
+      PACKER_DECODE_INPROCESS=1   -> force 'inprocess' even on Termux (debug)
+      PACKER_DECODE_ISOLATE=1     -> force 'subprocess' even on desktop
+    """
+    if os.environ.get("PACKER_DECODE_THUMBNAILS", "").strip().lower() in ("0", "false", "no", "off"):
+        return "off"
+    if _env_flag("PACKER_DECODE_INPROCESS"):
+        return "inprocess"
+    if _env_flag("PACKER_DECODE_ISOLATE") or is_termux():
+        return "subprocess"
+    return "inprocess"
+
+
+def _patch_platform_for_decode():
+    """archspec (pulled in lazily by astc-encoder-py on the first decode) doesn't
+    recognise Termux's platform.system() == "Android" and raises. Present as
+    "Linux" so the decoder can initialise. Detection uses $PREFIX, so this does
+    not affect is_termux(). Safe to call repeatedly; a no-op off Android."""
+    if _platform.system() == "Android":
+        _platform.system = lambda: "Linux"
 
 
 def gui_available():
@@ -402,14 +436,33 @@ UnityPy = ensure_unitypy()
 
 # -------- Texture extraction (body only, safe) --------
 def extract_body_texture_with_unitypy(bundle_path: str, log=None):
-    """Find a body Texture2D and return (name, png_bytes), else (None, None).
+    """Find a body Texture2D and return (name, png_bytes), else (name_or_None, None).
+
+    Dispatches according to _decode_mode():
+      - 'off'        : read only the texture *name* (for the character ID) and
+                       leave the caller to build a name thumbnail.
+      - 'subprocess' : decode in a throwaway child (Termux default) so a native
+                       decoder SIGILL can't take the whole packer down.
+      - 'inprocess'  : decode directly (desktop default)."""
+    mode = _decode_mode()
+    if mode == "subprocess":
+        return _decode_texture_via_subprocess(bundle_path, log)
+    return _extract_body_texture_core(bundle_path, log=log, allow_decode=(mode != "off"))
+
+
+def _extract_body_texture_core(bundle_path: str, log=None, allow_decode=True):
+    """Find a body Texture2D and (when allow_decode) return (name, png_bytes).
 
     Tries hard so a real preview is produced when any texture exists:
       1) exact 'chXXXX_coXXXX_body' texture,
       2) any texture whose name contains 'body',
       3) the largest decodable texture.
     Crunched/compressed formats are decoded (not skipped). A `log` callback, when
-    given, explains exactly why a placeholder ends up being used."""
+    given, explains exactly why a placeholder ends up being used.
+
+    WARNING: when allow_decode is True this touches the native texture decoders,
+    which can hard-crash (SIGILL) on some Termux builds - run it in a child
+    process there (see _decode_texture_via_subprocess)."""
     def _log(msg):
         if log:
             log(msg)
@@ -438,15 +491,18 @@ def extract_body_texture_with_unitypy(bundle_path: str, log=None):
              "in a separate bundle) - using a placeholder")
         return None, None
 
-    # On Termux the native decoders can hard-crash the process, so don't touch
-    # the image data there - just hand back a texture name for the character ID
-    # and let the caller use a placeholder thumbnail.
-    if not _texture_decode_enabled():
+    # Decoding disabled (PACKER_DECODE_THUMBNAILS=0): don't touch the image data,
+    # just hand back a texture name for the character ID and let the caller use a
+    # name thumbnail.
+    if not allow_decode:
         name_for_id = next((n for (n, _) in textures if re.search(r"ch\d{4}", n or "")), None)
-        _log("  ℹ️ thumbnail: skipping texture decode on Termux (it can crash the "
-             "decoder) - using a placeholder. Run on a PC/Mac for a real preview, "
-             "or set PACKER_DECODE_THUMBNAILS=1 to try anyway.")
+        _log("  ℹ️ thumbnail: texture decode disabled (PACKER_DECODE_THUMBNAILS=0) "
+             "- using a name thumbnail.")
         return name_for_id, None
+
+    # astc-encoder-py imports archspec on the first decode; make it tolerate
+    # Termux's platform.system() == "Android" before we touch any image data.
+    _patch_platform_for_decode()
 
     def decode(name, data):
         try:
@@ -486,6 +542,104 @@ def extract_body_texture_with_unitypy(bundle_path: str, log=None):
     # character ID can still be read from it (e.g. 'ch0004_co0033_body' -> 4).
     name_for_id = next((n for (n, _) in textures if re.search(r"ch\d{4}", n or "")), None)
     return name_for_id, None
+
+
+# A unique marker so the parent can pick the result line out of the child's
+# stdout even if UnityPy/Pillow print their own noise around it.
+_DECODE_RESULT_MARKER = b"__PACKER_DECODE_RESULT__"
+
+
+def _decode_worker_main(bundle_path, out_png):
+    """Child-process entry: decode the body texture and report back.
+
+    Writes the PNG to out_png (if any) and prints one marker line carrying the
+    base64 texture name and a 0/1 'png written' flag. Kept tiny so that if a
+    native decoder hard-crashes (SIGILL) only this process dies."""
+    name = png = None
+    try:
+        name, png = _extract_body_texture_core(bundle_path, log=None, allow_decode=True)
+    except Exception:
+        name, png = None, None
+    wrote = False
+    if png:
+        try:
+            with open(out_png, "wb") as f:
+                f.write(png)
+            wrote = True
+        except Exception:
+            wrote = False
+    b64 = base64.b64encode((name or "").encode("utf-8"))
+    sys.stdout.buffer.write(_DECODE_RESULT_MARKER + b"\t" + b64 + b"\t" + (b"1" if wrote else b"0") + b"\n")
+    sys.stdout.buffer.flush()
+    return 0
+
+
+def _decode_texture_via_subprocess(bundle_path, log=None):
+    """Decode the body texture in a throwaway child process.
+
+    A native-decoder SIGILL ("Illegal instruction") then only kills the child;
+    we read the texture name (for the character ID) from its stdout and fall back
+    to a name thumbnail. Returns (name_or_None, png_bytes_or_None)."""
+    def _log(msg):
+        if log:
+            log(msg)
+
+    if UnityPy is None:
+        _log("  ⚠️ thumbnail: UnityPy not available"); return None, None
+
+    fd, out_png = tempfile.mkstemp(prefix="packer_thumb_", suffix=".png")
+    os.close(fd)
+    try:
+        cmd = [sys.executable, _THIS_FILE, "--decode-worker", bundle_path, out_png]
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+        except subprocess.TimeoutExpired:
+            _log("  ⚠️ thumbnail: texture decode timed out - using a name thumbnail.")
+            return None, None
+        except Exception as e:
+            _log(f"  ⚠️ thumbnail: could not start decode worker ({e}) - using a name thumbnail.")
+            return None, None
+
+        name, png_flag = None, False
+        for line in proc.stdout.splitlines():
+            if line.startswith(_DECODE_RESULT_MARKER):
+                parts = line.split(b"\t")
+                if len(parts) >= 3:
+                    try:
+                        name = base64.b64decode(parts[1]).decode("utf-8", "replace") or None
+                    except Exception:
+                        name = None
+                    png_flag = parts[2].strip() == b"1"
+
+        if proc.returncode != 0 and not png_flag:
+            if proc.returncode < 0:
+                # negative == killed by a signal (e.g. -4 SIGILL, -11 SIGSEGV)
+                _log(f"  ⚠️ thumbnail: the native texture decoder crashed (signal "
+                     f"{-proc.returncode}) on this device - using a name thumbnail. "
+                     f"Try rebuilding it from source:  pip install --force-reinstall "
+                     f"--no-binary :all: astc-encoder-py texture2ddecoder etcpak")
+            else:
+                tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+                extra = f" ({tail[-1]})" if tail else ""
+                _log(f"  ⚠️ thumbnail: decode worker failed{extra} - using a name thumbnail.")
+            return name, None
+
+        png = None
+        if png_flag:
+            try:
+                with open(out_png, "rb") as f:
+                    png = f.read() or None
+            except Exception:
+                png = None
+        if not png:
+            _log("  ℹ️ thumbnail: no decodable body texture in this bundle - using a name thumbnail.")
+        return name, png
+    finally:
+        try:
+            os.remove(out_png)
+        except OSError:
+            pass
+
 
 def extract_chara_id_from_texture_name(tex_name: str):
     if not tex_name:
@@ -1677,6 +1831,11 @@ def build_parser():
 
 
 def main():
+    # Hidden subcommand: decode one bundle's body texture in this (child) process.
+    # Used by _decode_texture_via_subprocess so a native-decoder crash is isolated.
+    if len(sys.argv) >= 4 and sys.argv[1] == "--decode-worker":
+        return _decode_worker_main(sys.argv[2], sys.argv[3])
+
     args = build_parser().parse_args()
     if args.menu:
         return run_menu()
