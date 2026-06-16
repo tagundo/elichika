@@ -791,16 +791,47 @@ def open_and_check_zip(file_path):
         print(f"An error occurred: {e}")
 
 
+def _server_cache_dir():
+    """Resolve the same packs/cache directory the elichika server uses, so the
+    packs we write land where the server finds them *directly*.
+
+    The server looks up /static/<name> as <cdn_cache_dir>/<name> first; only if
+    that's missing does it fall back to static/ (migrating the file into the
+    cache and, on the first such miss, walking the whole packs dir to build its
+    name index - the ~8s stall). Writing straight into the cache dir skips both.
+
+    Mirrors the server's cacheDir(): config.json 'cdn_cache_dir', or the default
+    when it's unset/empty; '~' expanded; trailing slash."""
+    cdir = "~/storage/downloads/sukusta/packs"   # server default (DefaultCdnCacheDir)
+    try:
+        with open("config.json", "r", encoding="utf-8") as f:
+            v = json.load(f).get("cdn_cache_dir", "")
+        if isinstance(v, str) and v.strip():
+            cdir = v                             # explicit dir wins
+        # empty / missing -> default (matches the server)
+    except Exception:
+        pass                                     # no/unreadable config.json -> default
+    cdir = os.path.expanduser(cdir)
+    if not cdir.endswith("/"):
+        cdir += "/"
+    return cdir
+
+
+# Where encrypted packs are written. The server serves /static/<name> from here
+# directly (no static->cache migration, no full-dir index rebuild on first load).
+PACKS_DIR = _server_cache_dir()
+
+
 def crc32_prefix_rename(rel_name):
     """temp 내 파일을 CRC32 접두사로 개명하고
-    (새 경로, 파일명(확장자 제외), 크기, static 대상 경로)를 반환한다."""
+    (새 경로, 파일명(확장자 제외), 크기, 팩 저장 대상 경로)를 반환한다."""
     src = temp_directory + rel_name
     checksum = generate_crc32(src)
     renamed = temp_directory + checksum + rel_name
     os.rename(src, renamed)
     filename = os.path.splitext(renamed.split("/")[-1])[0]
     filesize = os.path.getsize(renamed)
-    encrypted = "static/" + os.path.splitext(renamed.split("/")[-1])[0]
+    encrypted = PACKS_DIR + os.path.splitext(renamed.split("/")[-1])[0]
     return renamed, filename, filesize, encrypted
 
 
@@ -810,7 +841,7 @@ def valid_pack_filename(filename):
 
 
 def encrypt_to_static(src_path, dest_path, label):
-    """파일을 XOR 암호화하여 static/에 저장한다. 이미 있으면 건너뛴다."""
+    """파일을 XOR 암호화하여 팩 캐시 폴더(PACKS_DIR)에 저장한다. 이미 있으면 건너뛴다."""
     if not os.path.exists(dest_path):
         with open(src_path, "rb") as f:
             data = bytearray(f.read())
@@ -991,7 +1022,8 @@ if is_termux():
     if not os.path.exists(modding_elichika_path):
         os.makedirs(modding_elichika_path)
 
-encrypted_folder = "static/"
+encrypted_folder = PACKS_DIR
+print(f"packs are written to: {encrypted_folder}")
 if not os.path.exists(encrypted_folder):
     os.makedirs(encrypted_folder)
 
@@ -1124,7 +1156,7 @@ for mass_addon in batch_proccess_list:
     start_encrypt1 = crc32_rename_costume
     costume_filename = os.path.splitext(start_encrypt1.split("/")[-1])[0]
     costume_filesize = os.path.getsize(start_encrypt1)
-    encrypted_costume = "static/" + os.path.splitext(start_encrypt1.split("/")[-1])[0]
+    encrypted_costume = PACKS_DIR + os.path.splitext(start_encrypt1.split("/")[-1])[0]
     file_extension = start_encrypt1.split(".")[-1]
 
     # 코스튬 파일 확장자가 숫자면 캐릭터 ID로 사용
@@ -1248,7 +1280,7 @@ for mass_addon in batch_proccess_list:
         addon_asset_db_paths = filter_dbs_by_platform(ASSET_DB_PATHS, addon_platform)
         addon_package_db_paths = filter_dbs_by_platform(PACKAGE_DB_PATHS, addon_platform)
 
-    # ---- static/ 암호화 ----
+    # ---- 캐시 폴더(packs)로 암호화 저장 ----
     encrypt_to_static(start_encrypt1, encrypted_costume, "costume")
     if thumbnail_file != "":
         encrypt_to_static(start_encrypt2, encrypted_thumbnail, "thumbnail")
