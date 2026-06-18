@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>elichika · DB Admin</title>
+  <link rel="stylesheet" href="/ui/style.css"/>
+</head>
+<body>
+  <header><h1>elichika · Database Admin</h1></header>
+  <main>
+    <aside id="tool-list" class="tool-list"></aside>
+    <div id="tool-panel" class="tool-panel">
+      <p class="hint">Pick a tool on the left.</p>
+    </div>
+  </main>
+
+  <div id="console" class="console hidden">
+    <div class="console-head">
+      <span id="console-title">Running…</span>
+      <progress id="progress" max="1" value="0"></progress>
+      <span id="progress-text"></span>
+      <button id="cancel-btn">Cancel</button>
+      <button id="console-close" class="ghost">✕</button>
+    </div>
+    <pre id="log"></pre>
+  </div>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>
