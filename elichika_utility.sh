@@ -169,14 +169,18 @@ while true; do
 			rm config.json
 			clear
 			python3 elichika_reset.py
+			# reset the code to whatever branch this copy tracks (stable -> main,
+			# test -> Test). relative paths are used so this works no matter what
+			# the install directory is named (elichika3, elichika3_test, ...).
+			CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+			git fetch origin "$CUR_BRANCH"
+			git reset --hard "origin/$CUR_BRANCH"
+			git clean -fd
+			cd assets
 			git fetch origin main
 			git reset --hard origin/main
 			git clean -fd
-			cd ~/elichika2/assets
-			git fetch origin main
-			git reset --hard origin/main
-			git clean -fd
-			cd ~/elichika2
+			cd ..
 			echo "Building server..."
 			CGO_ENABLED=0 go build -o elichika || go build
 			echo "Finished, please run again"
@@ -390,7 +394,7 @@ while true; do
             echo "Stopping any running elichika..."
             # plain SIGTERM / pkill -x don't reliably kill "./elichika" on Termux, so match the
             # command line and use SIGKILL. the pattern targets the server binary only, not this
-            # script or the elichika2 directory name.
+            # script or the elichika3 directory name.
             pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
             sleep 1
             if pgrep -f '(^|/)elichika( |$)' >/dev/null 2>&1; then

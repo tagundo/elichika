@@ -22,13 +22,13 @@ echo ""
 echo "Installing Elichika... PLEASE DO NOT DISCONNECT INTERNET"
 echo "Download speed too slow? close installer by CTRL+C then use 1.1.1.1 and try again"
 cd
-rm -rf elichika2
+rm -rf elichika3
 pkg install golang git -y || echo "assuming go and git are already installed"
 pkg install git -y || echo "assuming go and git are already installed"
 pkg install python -y || echo "assuming go and git are already installed"
 # clone the source code
-git clone --depth 1 --branch developement --single-branch https://github.com/tagundo/elichika.git elichika2 && \
-cd elichika2 && \
+git clone --depth 1 --branch developement --single-branch https://github.com/tagundo/elichika.git elichika3 && \
+cd elichika3 && \
 # get the submodules (i.e. assets and other)
 git submodule update --init && \
 # build server, fallback to not using CGO to work on some devices

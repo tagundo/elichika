@@ -1,4 +1,4 @@
-# elichika2
+# elichika3
 This is a fork of [[tatara_hisoka/elichika]](https://gitlab.com/tatara_hisoka/elichika), which is based on [[arina999999997/elichika]](https://github.com/arina999999997/elichika) and originally derived from [[YumeMichi/elichika]](https://github.com/YumeMichi/elichika).
 
 **Note**: This repository is intended for my personal use.
@@ -40,7 +40,7 @@ This will leave some trashes, so you can clone the respository and build manuall
 After installing, you need to run the server to play using the following command:
 
 ```
-~/run_elichika2
+~/run_elichika3
 ```
 
 If you have GUI for Windows/Linux, you can also just run the executable directly.
@@ -66,7 +66,7 @@ curl -L https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/b
 If you have a new enough version, you can also run:
 
 ```
-~/basic_update_elichika2
+~/basic_update_elichika3
 ```
 to do the same thing.
 
@@ -82,10 +82,30 @@ curl -L https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/u
 If your version is new enough, then running:
 
 ```
-~/update_elichika2
+~/update_elichika3
 ```
 
 would be enough.
+
+## Test build (Test branch)
+If you want to try the `Test` branch without disturbing your stable install, you can install it into a **separate** directory (`elichika3_test`). The stable (`elichika3`) and test (`elichika3_test`) installs are independent and can coexist, each with its own shortcuts.
+
+To install the test build (the installer is fetched from `main`; it clones the `Test` branch's code):
+
+```
+curl -L https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/install_test.sh | bash
+```
+
+This creates a parallel set of shortcuts so it's easy to use from Termux on Android:
+
+```
+~/run_elichika3_test            # run the test server
+~/menu_elichika3_test           # open the menu for the test build
+~/update_elichika3_test         # normal update (pulls the Test branch)
+~/basic_update_elichika3_test   # basic update (reinstalls from the Test branch)
+```
+
+The update commands work exactly like the stable ones, except they track the `Test` branch and operate on the `elichika3_test` directory. As with the stable build, backing up `userdata.db` (or exporting via the WebUI) before updating is recommended.
 
 ## Playing the game
 With the server running, and the client network setup correctly, simply open the game and play.

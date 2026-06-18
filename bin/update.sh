@@ -30,7 +30,7 @@ fi
 #   - Termux 에서는 `pkill -x elichika` 가 `./elichika` 실행 형태와 안 맞아 못 죽인다.
 #   - 그래서 커맨드라인(-f)으로 매칭하고, SIGTERM 을 씹을 수 있으니 SIGKILL(-9) 로 죽인다.
 #   - 패턴 '(^|/)elichika( |$)' 는 서버 바이너리(./elichika, /path/elichika)만 잡고,
-#     이 업데이트 스크립트(update_elichika2)나 디렉터리명(elichika2)은 건드리지 않는다.
+#     이 업데이트 스크립트(update_elichika3)나 디렉터리명(elichika3 / elichika3_test)은 건드리지 않는다.
 # ---------------------------------------------------------------------------
 echo "==> Stopping any running elichika..."
 pkill -9 -f '(^|/)elichika( |$)' 2>/dev/null || true
@@ -116,11 +116,16 @@ if [ "$update_ok" -eq 1 ]; then
     [ -f "$BACKUP_SERVER" ] && mv -f "$BACKUP_SERVER" serverdata.db
     [ -f "$BACKUP_USER" ]   && mv -f "$BACKUP_USER"   userdata.db
 
-    # 부가 스크립트 실행 (있을 때만)
-    if [ -f ./bin/shortcut.sh ]; then
+    # 단축키 재생성 — 생성기(shortcut.sh)는 main 에만 유지되므로 main 에서 받아 실행한다.
+    # (테스트 설치는 Test 코드를 체크아웃하므로 로컬 bin/shortcut.sh 가 오래됐을 수 있음)
+    _sc="$(mktemp 2>/dev/null || echo /tmp/elichika_shortcut.sh)"
+    if curl -fsSL "https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/shortcut.sh" -o "$_sc" && [ -s "$_sc" ]; then
+        bash "$_sc"
+    elif [ -f ./bin/shortcut.sh ]; then
         chmod +x ./bin/shortcut.sh
         ./bin/shortcut.sh
     fi
+    rm -f "$_sc"
 
     echo "==> Updated successfully with preserved databases!"
 else

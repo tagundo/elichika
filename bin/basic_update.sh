@@ -9,23 +9,26 @@
 #   4. 에셋 재빌드 및 shortcut 실행
 #   실패 시: 어디에 백업이 남아 있는지 안내하고 종료.
 #
-# 주의: 현재 elichika 설치 디렉터리(보통 elichika2) 안에서 실행할 것.
+# 주의: 현재 elichika 설치 디렉터리(보통 elichika3, 테스트는 elichika3_test) 안에서 실행할 것.
 
 set -uo pipefail   # -e 는 조건문(&&,||) 오작동 위험이 있어 일부러 미사용
 
-INSTALL_URL="https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/install.sh"
-
 # ---------------------------------------------------------------------------
-# 0. 경로 확정 — 절대경로로 고정해 cd 이후 경로 혼동을 원천 차단
+# 0. 경로/브랜치 확정 — 절대경로로 고정해 cd 이후 경로 혼동을 원천 차단
 # ---------------------------------------------------------------------------
 INSTALL_DIR="$(pwd)"
-INSTALL_NAME="$(basename "$INSTALL_DIR")"   # 보통 "elichika2"
+INSTALL_NAME="$(basename "$INSTALL_DIR")"   # 보통 "elichika3" 또는 "elichika3_test"
 PARENT_DIR="$(dirname "$INSTALL_DIR")"
 
 if [ ! -x ./elichika ] && [ ! -d assets ]; then
-    echo "ERROR: elichika 설치 디렉터리(예: elichika2) 안에서 실행하세요." >&2
+    echo "ERROR: elichika 설치 디렉터리(예: elichika3) 안에서 실행하세요." >&2
     exit 1
 fi
+
+# 재설치 시 게임 CODE 는 현재 체크아웃된 브랜치(테스트 설치는 Test)에서 받아오지만,
+# 헬퍼 스크립트(install.sh)는 항상 main 에서 받아온다(스크립트는 main 에만 유지).
+CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+INSTALL_URL="https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/install.sh"
 
 # 백업 경로 (전부 절대경로)
 BK_USER="$PARENT_DIR/userdata.db.temp"
@@ -73,11 +76,12 @@ echo "    backup OK"
 # ---------------------------------------------------------------------------
 # 3. 완전 재설치
 # ---------------------------------------------------------------------------
-echo "==> Reinstalling $INSTALL_NAME ..."
+echo "==> Reinstalling $INSTALL_NAME (branch: $CUR_BRANCH) ..."
 cd "$PARENT_DIR" || { echo "ERROR: '$PARENT_DIR' 로 이동 실패" >&2; exit 1; }
 
-# install.sh 자체가 'rm -rf elichika2' 를 수행하므로 여기서 별도 삭제는 불필요.
-curl -L "$INSTALL_URL" | bash
+# install.sh 가 'rm -rf "$INSTALL_NAME"' 를 수행하므로 여기서 별도 삭제는 불필요.
+# 같은 디렉터리/브랜치로 재설치되도록 INSTALL_NAME, BRANCH 를 넘긴다.
+curl -L "$INSTALL_URL" | BRANCH="$CUR_BRANCH" INSTALL_NAME="$INSTALL_NAME" bash
 
 # install.sh 는 내부 실패에도 0 으로 끝날 수 있으므로, 결과물(빌드 산출물)로 성공 판정한다.
 if [ ! -x "$INSTALL_NAME/elichika" ]; then
@@ -115,10 +119,15 @@ cd "$INSTALL_NAME" || { echo "ERROR: '$INSTALL_NAME' 로 이동 실패" >&2; exi
 
 echo "==> Rebuilding assets..."
 if ./elichika rebuild_assets; then
-    if [ -f ./bin/shortcut.sh ]; then
+    # 단축키 재생성 — 생성기는 main 에만 유지되므로 main 에서 받아 실행한다.
+    _sc="$(mktemp 2>/dev/null || echo /tmp/elichika_shortcut.sh)"
+    if curl -fsSL "https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin/shortcut.sh" -o "$_sc" && [ -s "$_sc" ]; then
+        bash "$_sc"
+    elif [ -f ./bin/shortcut.sh ]; then
         chmod +x ./bin/shortcut.sh
         ./bin/shortcut.sh
     fi
+    rm -f "$_sc"
     echo "==> Updated successfully with preserved databases!"
 else
     echo "ERROR: rebuild_assets 실패. 데이터는 복원됐지만 에셋 재빌드가 실패했습니다." >&2
