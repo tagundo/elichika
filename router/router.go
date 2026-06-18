@@ -85,6 +85,7 @@ func Router(r *gin.Engine) {
 	// cdn_cache is enabled.
 
 	r.StaticFile("/favicon.ico", config.RootPath+"webui/favicon.ico")
+	r.StaticFile("/webui/webui.css", config.RootPath+"webui/webui.css")
 
 	funcs := template.FuncMap{}
 	funcs["noescape"] = func(s string) template.HTML {

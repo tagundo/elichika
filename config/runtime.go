@@ -26,6 +26,7 @@ type RuntimeConfig struct {
 	ResourceConfigType       *string `json:"resource_config_type" of_type:"select" of_options:"Original\noriginal\nComfortable\ncomfortable\nFree\nfree" of_label:"Resource config"`
 	EventAutoSchedulerPeriod *string `json:"event_auto_scheduler_period" of_type:"select" of_options:"Disabled\ndisabled\nonce per day\n1_day\nonce per week\n7_days" of_label:"Event frequency"`
 	MaintenanceUrl           *string `json:"maintenance_url" of_label:"Maintenance Url"`
+	LocalTrustLoopback       *bool   `json:"local_trust_loopback" of_label:"Trust loopback (127.0.0.1) without login - single-user local/APK use only"` // when true, WebUI requests from a loopback peer skip session-key auth (judged by the real TCP peer, not headers)
 }
 
 // DefaultCdnCacheDir is where cdn_cache stores packs when cdn_cache_dir is unset/empty. It's the
@@ -50,6 +51,7 @@ func defaultConfigs() *RuntimeConfig {
 		ResourceConfigType:       new(string),
 		EventAutoSchedulerPeriod: new(string),
 		MaintenanceUrl:           new(string),
+		LocalTrustLoopback:       new(bool),
 	}
 	*configs.ServerAddress = "0.0.0.0:8080"
 	*configs.CdnServer = "https://llsifas.imsofucking.gay/static/"
@@ -67,6 +69,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.ResourceConfigType = "free"
 	*configs.EventAutoSchedulerPeriod = "disabled"
 	*configs.MaintenanceUrl = "http://127.0.0.1:8080/webui/admin/"
+	*configs.LocalTrustLoopback = false
 	return &configs
 }
 

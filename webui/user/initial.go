@@ -6,6 +6,7 @@ import (
 	"elichika/shutdown"
 	"elichika/userdata"
 	"elichika/utils"
+	"elichika/webui/webui_utils"
 
 	"bytes"
 	"encoding/base64"
@@ -46,10 +47,12 @@ func userInitial(ctx *gin.Context) {
 			ctx.Set("user_id", userId)
 			session = userdata.GetSession(ctx, int32(userId))
 			if !strings.HasPrefix(ctx.Request.URL.String(), "/webui/user/login") {
-				sessionKey, err := base64.StdEncoding.DecodeString(form.Value["user_session_key"][0])
-				utils.CheckErr(err)
-				if !bytes.Equal(sessionKey, session.SessionKey()) {
-					log.Panic("wrong session key")
+				if !webui_utils.LocalTrusted(ctx) {
+					sessionKey, err := base64.StdEncoding.DecodeString(form.Value["user_session_key"][0])
+					utils.CheckErr(err)
+					if !bytes.Equal(sessionKey, session.SessionKey()) {
+						log.Panic("wrong session key")
+					}
 				}
 			} else {
 				session.SessionType = userdata.SessionTypeLogin
