@@ -4,6 +4,7 @@ import (
 	"elichika/log"
 	"elichika/router"
 	"elichika/utils"
+	"elichika/webui/webui_utils"
 
 	"bytes"
 	"encoding/base64"
@@ -17,7 +18,7 @@ func adminInitial(ctx *gin.Context) {
 		form, err := ctx.MultipartForm()
 		utils.CheckErr(err)
 		ctx.Set("form", form)
-		if !strings.HasPrefix(ctx.Request.URL.String(), "/webui/admin/login") {
+		if !strings.HasPrefix(ctx.Request.URL.String(), "/webui/admin/login") && !webui_utils.LocalTrusted(ctx) {
 			sessionKey, err := base64.StdEncoding.DecodeString(form.Value["admin_session_key"][0])
 			utils.CheckErr(err)
 			if !bytes.Equal(sessionKey, adminSessionKey) {
