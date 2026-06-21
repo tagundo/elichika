@@ -10,19 +10,26 @@
 # update.sh/basic_update.sh act on whatever branch this copy tracks (git pull /
 # reinstall of the same branch), so a test install keeps tracking the Test code.
 #
+# Works on Termux/Android, macOS, Linux and Windows (Git Bash/MSYS/Cygwin).
+#
 # NAME = install directory name (e.g. elichika3 or elichika3_test)
 NAME="$(basename "$PWD")"
 RAW="https://raw.githubusercontent.com/tagundo/elichika/refs/heads/main/bin"
 
-echo "cd $PWD && ./elichika"                       > ~/run_"$NAME" && \
-echo "cd $PWD && sh elichika_utility.sh"           > ~/menu_"$NAME" && \
+# The server binary is "elichika" everywhere except Windows, where Go produces
+# "elichika.exe". Detect it from whatever was actually built.
+BIN="./elichika"
+[ -f ./elichika.exe ] && BIN="./elichika.exe"
+
+echo "cd $PWD && $BIN"                                  > ~/run_"$NAME" && \
+echo "cd $PWD && sh elichika_utility.sh"               > ~/menu_"$NAME" && \
 echo "cd $PWD && curl -L $RAW/update.sh | bash"        > ~/update_"$NAME" && \
 echo "cd $PWD && curl -L $RAW/basic_update.sh | bash"  > ~/basic_update_"$NAME" && \
-chmod +x ~/run_"$NAME" && \
-chmod +x ~/menu_"$NAME" && \
-chmod +x ~/update_"$NAME" && \
-chmod +x ~/basic_update_"$NAME" && \
-echo "Use \"~/run_$NAME\" in termux to run the server!" && \
-echo "Use \"~/menu_$NAME\" in termux to run the menu!" && \
-echo "Use \"~/update_$NAME\" in termux to update the server!" && \
-echo "Use \"~/basic_update_$NAME\" in termux to update the server using basic logic (slower, but works even from a really old version)!"
+chmod +x ~/run_"$NAME" 2>/dev/null
+chmod +x ~/menu_"$NAME" 2>/dev/null
+chmod +x ~/update_"$NAME" 2>/dev/null
+chmod +x ~/basic_update_"$NAME" 2>/dev/null
+echo "Use \"~/run_$NAME\" to run the server!" && \
+echo "Use \"~/menu_$NAME\" to run the menu!" && \
+echo "Use \"~/update_$NAME\" to update the server!" && \
+echo "Use \"~/basic_update_$NAME\" to update the server using basic logic (slower, but works even from a really old version)!"
