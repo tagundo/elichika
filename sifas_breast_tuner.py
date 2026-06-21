@@ -60,73 +60,8 @@ def gui_available() -> bool:
     return True
 
 
-def _run_cmd(cmd):
-    """Run a command, returning True on success. Silent on failure."""
-    import subprocess
-    try:
-        subprocess.check_call(cmd)
-        return True
-    except Exception:
-        return False
-
-
-def _pip_install(*pkgs):
-    return _run_cmd([sys.executable, "-m", "pip", "install", *pkgs])
-
-
-def _ensure_pillow_on_termux():
-    """Make Pillow importable on Termux WITHOUT the user doing anything.
-
-    On Termux `pip install Pillow` builds from source and fails (no libjpeg),
-    which is why `pip install UnityPy` (Pillow is a dependency) fails. So we
-    install Termux's prebuilt python-pillow via pkg first. Returns True if PIL
-    ends up importable."""
-    try:
-        __import__("PIL")
-        return True
-    except Exception:
-        pass
-    print("[setup] Installing image library (Pillow) via Termux packages - "
-          "one-time, no action needed...")
-    ok = (_run_cmd(["pkg", "install", "-y", "python-pillow"])
-          or _run_cmd(["apt", "install", "-y", "python-pillow"]))
-    if not ok:
-        # package lists may be stale - refresh once and retry
-        _run_cmd(["apt", "update", "-y"])
-        ok = (_run_cmd(["pkg", "install", "-y", "python-pillow"])
-              or _run_cmd(["apt", "install", "-y", "python-pillow"]))
-    try:
-        __import__("PIL")
-        return True
-    except Exception:
-        return False
-
-
-def _unitypy_install_help():
-    """Last-resort guidance if the automatic setup couldn't finish."""
-    print("\n" + "=" * 64)
-    print("Automatic setup couldn't finish installing UnityPy.")
-    if is_termux():
-        print(
-            "On Termux, UnityPy needs the prebuilt Pillow package. Please run\n"
-            "these two lines once, then start the tool again:\n"
-            "\n"
-            "    pkg install python-pillow\n"
-            "    pip install UnityPy\n"
-            "\n"
-            "If it still fails, also run:  pkg install libjpeg-turbo zlib\n"
-        )
-    else:
-        print("Please install it manually, then re-run:\n    pip install UnityPy\n")
-    print("=" * 64)
-
-
 def ensure_unitypy():
-    """Load UnityPy, auto-installing it (and its prerequisites) on first run.
-
-    Designed to 'just work' with no manual steps: on Termux it installs the
-    prebuilt Pillow via pkg before pip-installing UnityPy. Falls back to clear
-    guidance (instead of crashing) only if every automatic attempt fails."""
+    """Load UnityPy, installing it on first run if missing."""
     global UnityPy
     if UnityPy is not None:
         return
@@ -136,24 +71,14 @@ def ensure_unitypy():
         return
     except ImportError:
         pass
-
-    print("[setup] First-time setup: installing UnityPy. This can take a few "
-          "minutes on the first run - please wait...")
-    if is_termux():
-        _ensure_pillow_on_termux()      # avoid the libjpeg source-build failure
-    if not _pip_install("UnityPy"):
-        if is_termux():                 # one more try after ensuring Pillow
-            _ensure_pillow_on_termux()
-            _pip_install("UnityPy")
-
-    try:
-        import UnityPy as _u
-        UnityPy = _u
-        print("[setup] Done.")
-        return
-    except ImportError:
-        _unitypy_install_help()
-        raise SystemExit(1)
+    print("[setup] UnityPy not found - installing (first run only)...")
+    import subprocess
+    # Typetree editing only needs UnityPy + lz4. Pillow is only required for
+    # texture work, which this tool never does, so we skip it to keep Termux
+    # happy (Pillow can be painful to build there).
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "UnityPy"])
+    import UnityPy as _u
+    UnityPy = _u
 
 
 # ==========================================================================
@@ -896,6 +821,32 @@ def _apply_livecore_scaling(env, breast_go_name, set_xyz, add_dxyz):
     return scanned, changed, header + logs
 
 
+def _resolve_both_jiggle(target_n, src_eff, jiggle_mode):
+    """Pick the swing-bone jiggle tier for Both mode.
+
+    Returns (effective_n, mode_desc). The rotation limits then move by
+    low=-effective_n, high=+effective_n -- the same additive convention the
+    standalone Dyna auto mode uses, so a tier maps cleanly to a 'jiggleN'
+    (e.g. a "target"-mode Nozomi size yields jiggle7, matching `dyna --auto`).
+
+      jiggle_mode (which size the jiggle follows):
+        "target" (default) -> the NEW size:        effective_n = target_n
+        "source"           -> the previous size:   effective_n = src_eff
+        "sum"              -> both added together: effective_n = target_n + src_eff
+
+    `target_n=None` means 'leave the rotation limits alone' (effective_n None).
+    """
+    if target_n is None:
+        return None, "target tier unset -> no rotation-limit change"
+    tgt, src = int(target_n), int(src_eff)
+    mode = (jiggle_mode or "target").lower()
+    if mode in ("source", "prev", "previous", "old"):
+        return src, f"follow previous size -> jiggle{src}"
+    if mode == "sum":
+        return tgt + src, f"sum of both -> jiggle{tgt} + jiggle{src} = jiggle{tgt + src}"
+    return tgt, f"follow new size -> jiggle{tgt}"   # "target"/"new"/default
+
+
 def modify_both_in_bundle(
     in_path: Path,
     out_path: Path,
@@ -906,20 +857,23 @@ def modify_both_in_bundle(
     set_xyz,
     target_n,
     source_n=None,
+    jiggle_mode="target",
     write_log_file=True,
 ):
     """Apply BOTH swing-bone physics and LiveCore scale to one bundle, save once.
 
-    The size is set absolutely to `set_xyz`. The jiggle change is *relative*:
-    the rotation limits move by `effective_n = target_n - source_n`, so the
-    increase reflects how much the body actually changed.
+    The size is set absolutely to `set_xyz`. The jiggle delta applied to the
+    rotation limits is chosen by `jiggle_mode` (see `_resolve_both_jiggle`):
 
-      * source_n is None  -> auto-detect the bundle's own tier from its
-        character ID (unknown -> 0, i.e. treat as a flat base).
-      * source_n given     -> use that tier as the 'before' body.
+      * "target" (default) -> jiggle follows the NEW size  (e.g. Nozomi -> jiggle7)
+      * "source"           -> jiggle follows the previous/'before' size
+      * "sum"              -> the two tiers added together
 
-    A character already at the target tier gets no jiggle change; a flat base
-    converted to a big body gets the full increase; shrinking lowers the jiggle.
+    The 'before' tier comes from `source_n`:
+      * source_n is None  -> auto-detect from the bundle's character ID
+                             (unknown -> 0, i.e. treat as a flat base).
+      * source_n given    -> use that tier as the 'before' body.
+
     `target_n=None` skips the rotation-limit change entirely.
     """
     env = UnityPy.load(str(in_path))
@@ -934,14 +888,13 @@ def modify_both_in_bundle(
                     if detected is not None
                     else f"auto: character id {auto_cid} (unrecognized) -> treated as jiggle0")
     else:
-        src_eff = source_n
+        src_eff = int(source_n)
         src_desc = f"manual -> jiggle{source_n}"
 
-    if target_n is None:
-        effective_n = None
+    effective_n, mode_desc = _resolve_both_jiggle(target_n, src_eff, jiggle_mode)
+    if effective_n is None:
         low = high = 0.0
     else:
-        effective_n = int(target_n) - int(src_eff)
         low = float(-effective_n)
         high = float(effective_n)
 
@@ -957,8 +910,8 @@ def modify_both_in_bundle(
     lines = (
         [f"Target body: jiggle{target_n},  scale = {set_xyz}",
          f"Source body: {src_desc}",
-         f"Jiggle change (target - source) = {effective_n}  "
-         f"(rotation limits low={low}, high={high})",
+         f"Jiggle mode: {(jiggle_mode or 'target').lower()}  ({mode_desc})",
+         f"Jiggle applied = {effective_n}  (rotation limits low={low}, high={high})",
          "", "=== Physics (Dyna) ==="]
         + d_lines + ["", "=== Size (LiveCore) ==="] + s_lines
     )
@@ -1040,7 +993,8 @@ def run_size_batch(in_dir, out_dir, prefix, suffix, breast_name, setv, addv,
 
 def run_both_batch(in_dir, out_dir, prefix, suffix, patterns, stiff, drag,
                    breast_name, set_xyz, target_n, append_jiggle,
-                   on_log, on_progress, should_stop=None, source_n=None, label=""):
+                   on_log, on_progress, should_stop=None, source_n=None,
+                   jiggle_mode="target"):
     files = _iter_files(in_dir)
     total = len(files)
     ok = fail = 0
@@ -1049,16 +1003,16 @@ def run_both_batch(in_dir, out_dir, prefix, suffix, patterns, stiff, drag,
             on_log("[stopped]")
             break
         rel = file.relative_to(in_dir)
-        jig = _both_filename_suffix(label, target_n, append_jiggle)
+        jig = f"jiggle{target_n}" if (append_jiggle and target_n is not None) else ""
         out_name = f"{prefix}{file.stem}{suffix}{jig}{file.suffix}"
         out_path = Path(out_dir) / rel.parent / out_name
         try:
             _, d_ch, _, s_ch, _, eff, _ = modify_both_in_bundle(
                 file, out_path, patterns, stiff, drag, breast_name, set_xyz,
-                target_n, source_n=source_n,
+                target_n, source_n=source_n, jiggle_mode=jiggle_mode,
             )
             ok += 1
-            d_tag = f"Δjiggle={eff:+d}" if eff is not None else ""
+            d_tag = f"jiggle={eff}" if eff is not None else ""
             on_log(f"OK   {file.name} -> {out_name} (dyna={d_ch}, size={s_ch}) {d_tag}".rstrip())
         except Exception as e:
             fail += 1
@@ -1123,7 +1077,7 @@ def _default_library_params():
         "breast_name": "BreastSize",
         "stiff": None, "drag": None,
         "set_xyz": None, "add_dxyz": (0.0, 0.0, 0.0),
-        "target_n": None, "source_n": None,
+        "target_n": None, "source_n": None, "jiggle_mode": "target",
         "ldy": 0.0, "ldz": 0.0, "hdy": 0.0, "hdz": 0.0, "use_auto": False,
     }
 
@@ -1149,10 +1103,11 @@ def run_library_mod(in_path, out_path, mode, params):
         res = modify_both_in_bundle(
             in_path, write_path, p["patterns"], p["stiff"], p["drag"],
             p["breast_name"], p["set_xyz"], p["target_n"],
-            source_n=p["source_n"], write_log_file=False)
+            source_n=p["source_n"], jiggle_mode=p.get("jiggle_mode", "target"),
+            write_log_file=False)
         eff = res[5]
         summary = (f"both: dyna changed={res[1]}, size changed={res[3]}, "
-                   f"jiggle change={eff:+d}" if eff is not None
+                   f"jiggle={eff}" if eff is not None
                    else f"both: dyna changed={res[1]}, size changed={res[3]}")
     elif mode == "size":
         sc, ch, _ = modify_livecore_scaling(
@@ -1285,7 +1240,8 @@ def menu_dyna():
     print("\n" + _box("Physics (SwingBone Dyna)"))
     mode = _ask("Mode   1) Single file   2) Batch (folder)", "1")
 
-    patterns = ["LeftBreast_Dyna", "RightBreast_Dyna"]  # standard SIFAS breast bones
+    patterns_raw = _ask("Target GO patterns (comma-separated)", "LeftBreast_Dyna, RightBreast_Dyna")
+    patterns = [p.strip() for p in patterns_raw.replace(",", " ").split() if p.strip()]
 
     use_auto = _ask_yesno("Per-character auto mode? (rotation limits from char ID + jiggleN filename)",
                           default=False)
@@ -1380,7 +1336,7 @@ def _menu_choose_breast_scale():
 def menu_size():
     print("\n" + _box("Size (LiveCore Scale)"))
     mode = _ask("Mode   1) Single file   2) Batch (folder)", "1")
-    breast_name = "BreastSize"  # standard SIFAS scaling GameObject
+    breast_name = _ask("Breast GameObject name", "BreastSize")
 
     setv, addv = _menu_choose_breast_scale()
 
@@ -1414,27 +1370,9 @@ def menu_size():
             print(f"Error: {e}")
 
 
-def _safe_token(s):
-    """Filename-safe token from a preset label (letters/digits only)."""
-    return "".join(c for c in (s or "") if c.isalnum())
-
-
-def _both_filename_suffix(label, target_n, want=True):
-    """Optional '_<Size>_jiggleN' filename tag for Both mode (size + jiggle)."""
-    if not want:
-        return ""
-    parts = []
-    tok = _safe_token(label)
-    if tok:
-        parts.append(tok)
-    if target_n is not None:
-        parts.append(f"jiggle{target_n}")
-    return ("_" + "_".join(parts)) if parts else ""
-
-
 def _menu_pick_both_params():
-    """Interactively choose target + source body for combined mode.
-    Returns (label, xyz, target_n, source_n)."""
+    """Interactively choose target + source body and the jiggle mode.
+    Returns (label, xyz, target_n, source_n, jiggle_mode)."""
     print("\nTarget body  (sets the new scale and the target jiggle tier):")
     for i, (nm, (x, y, z), n) in enumerate(BREAST_PRESETS_ALL, 1):
         print(f"  {i:2d}) {nm:18s} -> scale ({_fmt_num(x)}, {_fmt_num(y)}, {_fmt_num(z)})  jiggle{n}")
@@ -1442,7 +1380,7 @@ def _menu_pick_both_params():
     label, xyz, target_n = BREAST_PRESETS_ALL[idx]
     print(f"  target: {label}  scale={xyz}  jiggle{target_n}")
 
-    print("\nSource body  (the 'before' body; jiggle change = target - source):")
+    print("\nSource body  (the 'before' body, used by the 'previous'/'sum' jiggle modes):")
     print("   0) Auto-detect from each bundle's character ID  (recommended)")
     for i, (snm, (x, y, z), sn) in enumerate(BREAST_PRESETS_ALL, 1):
         print(f"  {i:2d}) {snm:18s} (jiggle{sn})")
@@ -1455,21 +1393,27 @@ def _menu_pick_both_params():
                 source_n = BREAST_PRESETS_ALL[si][2]
         except ValueError:
             source_n = None
-    if source_n is None:
-        print("  source: auto-detect")
-    else:
-        print(f"  source: jiggle{source_n}  ->  jiggle change {target_n - source_n:+d}")
-    return label, xyz, target_n, source_n
+    print("  source: auto-detect" if source_n is None else f"  source: jiggle{source_n}")
+
+    print("\nWhich size should the jiggle follow?")
+    print(f"  1) New size       (jiggle = target tier, jiggle{target_n})   [default]")
+    print("  2) Previous size  (jiggle = source tier)")
+    print("  3) Sum of both    (jiggle = target + source)")
+    jraw = _ask("Select", "1")
+    jiggle_mode = {"2": "source", "3": "sum"}.get(jraw.strip(), "target")
+    print(f"  jiggle mode: {jiggle_mode}")
+    return label, xyz, target_n, source_n, jiggle_mode
 
 
 def menu_both():
     print("\n" + _box("Both (Dyna + Size)"))
     mode = _ask("Mode   1) Single file   2) Batch (folder)", "1")
 
-    label, xyz, target_n, source_n = _menu_pick_both_params()
+    _label, xyz, target_n, source_n, jiggle_mode = _menu_pick_both_params()
 
-    patterns = ["LeftBreast_Dyna", "RightBreast_Dyna"]  # standard SIFAS breast bones
-    breast_name = "BreastSize"                            # standard scaling GameObject
+    patterns_raw = _ask("Dyna target GO patterns", "LeftBreast_Dyna, RightBreast_Dyna")
+    patterns = [p.strip() for p in patterns_raw.replace(",", " ").split() if p.strip()]
+    breast_name = _ask("Breast GameObject name", "BreastSize")
     stiff = _ask_float("stiffnessForce (blank = keep)", "0.02")
     drag = _ask_float("dragForce (blank = keep)", "0.3")
 
@@ -1481,14 +1425,13 @@ def menu_both():
         out_dir = _ask_path("Output folder")
         prefix = _ask("Output prefix", "")
         suffix = _ask("Output suffix", "")
-        append_jiggle = _ask_yesno("Append size + jiggle to output filename? (e.g. _Emma_jiggle6)",
-                                   default=True)
+        append_jiggle = _ask_yesno("Append jiggleN to output filename?", default=True)
         if not in_dir or not out_dir:
             print("Input/output folders are required."); return
         print("\nWorking...\n")
         run_both_batch(in_dir, out_dir, prefix, suffix, patterns, stiff, drag,
                        breast_name, xyz, target_n, append_jiggle, on_log, _progress_bar,
-                       source_n=source_n, label=label)
+                       source_n=source_n, jiggle_mode=jiggle_mode)
     else:
         in_file = _ask_path("Input bundle", must_exist=True)
         out_file = _ask_path("Output path")
@@ -1498,10 +1441,10 @@ def menu_both():
         try:
             d_sc, d_ch, s_sc, s_ch, tn, eff, logs = modify_both_in_bundle(
                 Path(in_file), Path(out_file), patterns, stiff, drag, breast_name, xyz,
-                target_n, source_n=source_n
+                target_n, source_n=source_n, jiggle_mode=jiggle_mode
             )
             print(f"Done. dyna changed={d_ch}, size changed={s_ch}, "
-                  f"jiggle change={eff:+d}" if eff is not None else
+                  f"jiggle={eff}" if eff is not None else
                   f"Done. dyna changed={d_ch}, size changed={s_ch}")
             if _ask_yesno("Show detailed log?", default=False):
                 _print_logs_paged(logs)
@@ -1561,15 +1504,19 @@ def menu_library():
             params["hdz"] = _ask_float("high Z delta", "1.0", allow_blank=False)
     else:
         mode = "both"
-        label, xyz, target_n, source_n = _menu_pick_both_params()
+        _label, xyz, target_n, source_n, jiggle_mode = _menu_pick_both_params()
         params["set_xyz"], params["target_n"], params["source_n"] = xyz, target_n, source_n
+        params["jiggle_mode"] = jiggle_mode
         params["stiff"] = _ask_float("stiffnessForce (blank = keep)", "0.02")
         params["drag"] = _ask_float("dragForce (blank = keep)", "0.3")
-        if _ask_yesno("Append size + jiggle to output filename? (e.g. _Emma_jiggle6)", default=True):
-            extra_suffix = _both_filename_suffix(label, target_n, True)
+        if target_n is not None and _ask_yesno("Append jiggleN to output filename?", default=True):
+            extra_suffix = f"jiggle{target_n}"
 
-    # Bone/GameObject names use the standard SIFAS defaults
-    # (LeftBreast_Dyna / RightBreast_Dyna, BreastSize) - no need to ask.
+    params["patterns"] = [p.strip() for p in
+                          _ask("Dyna target GO patterns", "LeftBreast_Dyna, RightBreast_Dyna")
+                          .replace(",", " ").split() if p.strip()] if mode != "size" else params["patterns"]
+    if mode != "dyna":
+        params["breast_name"] = _ask("Breast GameObject name", "BreastSize")
 
     print(f"\nExporting to {modded} ...\n")
     ok = fail = 0
@@ -1590,27 +1537,6 @@ def menu_library():
     print(f"\nDone. ok={ok}  fail={fail}   (output root: {modded})")
 
 
-def _menu_advanced():
-    """Manual file/folder path modes (for power users)."""
-    while True:
-        print("\nAdvanced - manual file/folder paths")
-        print("  1) Physics (SwingBone dynamics)")
-        print("  2) Size (LiveCore scale)")
-        print("  3) Both (Dyna + Size)")
-        print("  b) Back")
-        choice = input("> ").strip().lower()
-        if choice in ("b", "back", "q", "0", ""):
-            return
-        elif choice == "1":
-            menu_dyna()
-        elif choice == "2":
-            menu_size()
-        elif choice == "3":
-            menu_both()
-        else:
-            print("Please choose 1, 2, 3, or b.")
-
-
 def run_menu():
     ensure_unitypy()
     _menu_setup_readline()
@@ -1621,19 +1547,25 @@ def run_menu():
     print("==========================================")
     while True:
         print("\nWhat would you like to do?")
-        print("  1) Mod costumes from your library   (recommended - just pick from a list)")
-        print("  2) Advanced (type file/folder paths)")
+        print("  1) Physics (SwingBone dynamics)")
+        print("  2) Size (LiveCore scale)")
+        print("  3) Both (Dyna + Size, preset-driven)")
+        print("  4) Mod from library (extracted -> modded)")
         print("  q) Quit")
         choice = input("> ").strip().lower()
-        if choice in ("q", "quit", "exit"):
+        if choice in ("q", "quit", "exit", "0"):
             print("Bye.")
             break
-        elif choice in ("1", ""):     # default = the easy, no-typing flow
-            menu_library()
+        elif choice == "1":
+            menu_dyna()
         elif choice == "2":
-            _menu_advanced()
+            menu_size()
+        elif choice == "3":
+            menu_both()
+        elif choice == "4":
+            menu_library()
         else:
-            print("Please choose 1, 2, or q.")
+            print("Please choose 1, 2, 3, 4, or q.")
 
 
 # ==========================================================================
@@ -1989,7 +1921,7 @@ def run_gui():
             self.c_preset_info = ttk.Label(of, text="", foreground="#555")
             self.c_preset_info.grid(row=2, column=0, columnspan=2, sticky="w", **PAD)
 
-            ttk.Label(of, text="Source body  (the 'before' body — jiggle change = target − source)",
+            ttk.Label(of, text="Source body  (the 'before' body, used by Previous/Sum jiggle modes)",
                       font=("TkDefaultFont", 9, "bold")).grid(row=3, column=0, columnspan=2, sticky="w", **PAD)
             src_values = ["Auto-detect from bundle  (recommended)"] + [
                 f"{nm}   (jiggle{n})" for nm, (x, y, z), n in self.c_presets]
@@ -2000,23 +1932,34 @@ def run_gui():
             self.c_src_info = ttk.Label(of, text="", foreground="#555")
             self.c_src_info.grid(row=5, column=0, columnspan=2, sticky="w", **PAD)
 
-            grid2 = ttk.Frame(of); grid2.grid(row=6, column=0, columnspan=2, sticky="w", pady=(4, 0))
+            ttk.Label(of, text="Jiggle follows which size?",
+                      font=("TkDefaultFont", 9, "bold")).grid(row=6, column=0, columnspan=2, sticky="w", **PAD)
+            self.c_jmode = ttk.Combobox(
+                of, state="readonly",
+                values=["New size (jiggle = target tier)",
+                        "Previous size (jiggle = source tier)",
+                        "Sum of both (target + source)"])
+            self.c_jmode.grid(row=7, column=0, columnspan=2, sticky="ew", **PAD)
+            self.c_jmode.current(0)
+            self.c_jmode.bind("<<ComboboxSelected>>", lambda e: self._update_both_info())
+
+            grid2 = ttk.Frame(of); grid2.grid(row=8, column=0, columnspan=2, sticky="w", pady=(4, 0))
             ttk.Label(grid2, text="stiffnessForce").grid(row=0, column=0, sticky="w", **PAD)
             ttk.Entry(grid2, textvariable=self.c_stiff, width=10).grid(row=0, column=1, **PAD)
             ttk.Label(grid2, text="dragForce").grid(row=0, column=2, sticky="w", **PAD)
             ttk.Entry(grid2, textvariable=self.c_drag, width=10).grid(row=0, column=3, **PAD)
 
-            adv = ttk.Frame(of); adv.grid(row=7, column=0, columnspan=2, sticky="ew")
+            adv = ttk.Frame(of); adv.grid(row=9, column=0, columnspan=2, sticky="ew")
             adv.columnconfigure(1, weight=1)
             ttk.Label(adv, text="Dyna patterns").grid(row=0, column=0, sticky="w", **PAD)
             ttk.Entry(adv, textvariable=self.c_patterns).grid(row=0, column=1, sticky="ew", **PAD)
             ttk.Label(adv, text="BreastSize name").grid(row=1, column=0, sticky="w", **PAD)
             ttk.Entry(adv, textvariable=self.c_name, width=20).grid(row=1, column=1, sticky="w", **PAD)
 
-            ttk.Label(of, text="Jiggle change is relative: an unchanged body gets no extra jiggle; "
-                               "a big size increase adds the most; shrinking reduces it.",
+            ttk.Label(of, text="New size: jiggle matches the size you picked (recommended). "
+                               "Previous: keep the original body's jiggle. Sum: add both tiers.",
                       font=("TkDefaultFont", 8), foreground="#777", wraplength=520, justify="left")\
-                .grid(row=8, column=0, columnspan=2, sticky="w", **PAD)
+                .grid(row=10, column=0, columnspan=2, sticky="w", **PAD)
 
             self._update_both_info()
 
@@ -2079,7 +2022,15 @@ def run_gui():
             self.lib_src_combo.grid(row=2, column=1, sticky="ew", **PAD)
             self.lib_src_combo.current(0)
 
-            g = ttk.Frame(mf); g.grid(row=3, column=0, columnspan=2, sticky="w", pady=(4, 0))
+            ttk.Label(mf, text="Jiggle follows (Both)").grid(row=3, column=0, sticky="w", **PAD)
+            self.lib_jmode = ttk.Combobox(
+                mf, state="readonly",
+                values=["New size (target tier)", "Previous size (source tier)",
+                        "Sum of both (target + source)"])
+            self.lib_jmode.grid(row=3, column=1, sticky="ew", **PAD)
+            self.lib_jmode.current(0)
+
+            g = ttk.Frame(mf); g.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
             ttk.Label(g, text="stiffnessForce").grid(row=0, column=0, sticky="w", **PAD)
             ttk.Entry(g, textvariable=self.lib_stiff, width=9).grid(row=0, column=1, **PAD)
             ttk.Label(g, text="dragForce").grid(row=0, column=2, sticky="w", **PAD)
@@ -2087,7 +2038,7 @@ def run_gui():
             ttk.Checkbutton(g, text="Physics: per-character auto",
                             variable=self.lib_auto).grid(row=0, column=4, sticky="w", **PAD)
 
-            adv = ttk.Frame(mf); adv.grid(row=4, column=0, columnspan=2, sticky="ew")
+            adv = ttk.Frame(mf); adv.grid(row=5, column=0, columnspan=2, sticky="ew")
             adv.columnconfigure(1, weight=1)
             ttk.Label(adv, text="Dyna patterns").grid(row=0, column=0, sticky="w", **PAD)
             ttk.Entry(adv, textvariable=self.lib_patterns).grid(row=0, column=1, sticky="ew", **PAD)
@@ -2321,15 +2272,22 @@ def run_gui():
             si = self.c_src_combo.current()
             if si is None or si < 0:
                 si = 0
+            ji = self.c_jmode.current()
+            if ji is None or ji < 0:
+                ji = 0
+            mode = ("target", "source", "sum")[ji]
             if si == 0:
-                self.c_src_info.configure(
-                    text=f"jiggle change = jiggle{tn} − (each bundle's detected tier), per file"
-                )
+                src_txt = "each bundle's detected tier"
+                eff = {"target": f"jiggle{tn}",
+                       "source": "detected tier (per file)",
+                       "sum": f"jiggle{tn} + detected tier (per file)"}[mode]
             else:
                 snm, _, sn = self.c_presets[si - 1]
-                self.c_src_info.configure(
-                    text=f"jiggle change = {tn} − {sn} = {tn - sn:+d}"
-                )
+                src_txt = f"jiggle{sn}"
+                eff = {"target": f"jiggle{tn}",
+                       "source": f"jiggle{sn}",
+                       "sum": f"jiggle{tn + sn}"}[mode]
+            self.c_src_info.configure(text=f"source: {src_txt}   ->   applied jiggle: {eff}")
 
         def _both_params(self):
             ti = self.c_combo.current()
@@ -2340,41 +2298,48 @@ def run_gui():
             if si is None or si < 0:
                 si = 0
             source_n = None if si == 0 else self.c_presets[si - 1][2]
+            ji = self.c_jmode.current()
+            if ji is None or ji < 0:
+                ji = 0
+            jiggle_mode = ("target", "source", "sum")[ji]
             stiff = self._parse_float(self.c_stiff.get(), None)
             drag = self._parse_float(self.c_drag.get(), None)
             patterns = [p.strip() for p in self.c_patterns.get().replace(",", " ").split() if p.strip()]
-            return self.c_name.get(), xyz, tn, source_n, stiff, drag, patterns, tnm
+            return self.c_name.get(), xyz, tn, source_n, stiff, drag, patterns, tnm, jiggle_mode
 
         def _run_both_single(self):
             inf, outf = self.c_in_file.get(), self.c_out_file.get()
             if not inf or not outf:
                 messagebox.showerror("Error", "Please set input/output paths."); return
-            name, xyz, tn, source_n, stiff, drag, patterns, label = self._both_params()
+            name, xyz, tn, source_n, stiff, drag, patterns, label, jiggle_mode = self._both_params()
 
             def job():
                 src = "auto-detect" if source_n is None else f"jiggle{source_n}"
-                self.q.put(("log", f"[both] -> {label}: scale={xyz}, target jiggle{tn}, source {src}"))
+                self.q.put(("log", f"[both] -> {label}: scale={xyz}, target jiggle{tn}, "
+                                   f"source {src}, jiggle mode {jiggle_mode}"))
                 d_sc, d_ch, s_sc, s_ch, t_n, eff, logs = modify_both_in_bundle(
-                    Path(inf), Path(outf), patterns, stiff, drag, name, xyz, tn, source_n=source_n)
+                    Path(inf), Path(outf), patterns, stiff, drag, name, xyz, tn,
+                    source_n=source_n, jiggle_mode=jiggle_mode)
                 for ln in logs:
                     self.q.put(("log", ln))
-                self.q.put(("log", f"-> dyna changed={d_ch}, size changed={s_ch}, jiggle change={eff:+d}"))
+                self.q.put(("log", f"-> dyna changed={d_ch}, size changed={s_ch}, jiggle={eff}"))
             self._start(job)
 
         def _run_both_batch(self):
             ind, outd = self.c_in_dir.get(), self.c_out_dir.get()
             if not ind or not outd:
                 messagebox.showerror("Error", "Please set input/output folders."); return
-            name, xyz, tn, source_n, stiff, drag, patterns, label = self._both_params()
+            name, xyz, tn, source_n, stiff, drag, patterns, label, jiggle_mode = self._both_params()
             prefix, suffix = self.c_prefix.get(), self.c_suffix.get()
             append = self.c_jiggle_fn.get()
 
             def job():
                 src = "auto-detect" if source_n is None else f"jiggle{source_n}"
-                self.q.put(("log", f"[both] -> {label}: scale={xyz}, target jiggle{tn}, source {src}"))
+                self.q.put(("log", f"[both] -> {label}: scale={xyz}, target jiggle{tn}, "
+                                   f"source {src}, jiggle mode {jiggle_mode}"))
                 run_both_batch(ind, outd, prefix, suffix, patterns, stiff, drag,
                                name, xyz, tn, append, self._cb_log, self._cb_prog,
-                               source_n=source_n, label=label)
+                               source_n=source_n, jiggle_mode=jiggle_mode)
             self._start(job)
 
         # ---------- library (extracted -> modded) ----------
@@ -2433,11 +2398,12 @@ def run_gui():
                 params["target_n"] = self.lib_presets[ti][2]
                 si = self.lib_src_combo.current(); si = 0 if (si is None or si < 0) else si
                 params["source_n"] = None if si == 0 else self.lib_presets[si - 1][2]
+                ji = self.lib_jmode.current(); ji = 0 if (ji is None or ji < 0) else ji
+                params["jiggle_mode"] = ("target", "source", "sum")[ji]
                 params["stiff"] = self._parse_float(self.lib_stiff.get(), None)
                 params["drag"] = self._parse_float(self.lib_drag.get(), None)
                 if self.lib_jiggle_fn.get() and params["target_n"] is not None:
-                    extra_suffix = _both_filename_suffix(
-                        self.lib_presets[ti][0], params["target_n"], True)
+                    extra_suffix = f"jiggle{params['target_n']}"
 
             out_path = modded_output_path(in_path, src_root, modded, extra_suffix=extra_suffix)
 
@@ -2556,6 +2522,10 @@ def cli_both(args):
             return 2
         source_n = sp[2]
 
+    # jiggle mode: which size the swing-bone jiggle follows
+    jiggle_mode = {"new": "target", "prev": "source"}.get(
+        (args.jiggle or "target").lower(), (args.jiggle or "target").lower())
+
     patterns = [p.strip() for p in args.patterns.replace(",", " ").split() if p.strip()]
 
     def on_log(s): print(s)
@@ -2566,20 +2536,23 @@ def cli_both(args):
             print()
 
     print(f"target: {label}  scale={xyz}  jiggle{target_n}   "
-          f"source: {'auto-detect' if source_n is None else 'jiggle' + str(source_n)}")
+          f"source: {'auto-detect' if source_n is None else 'jiggle' + str(source_n)}   "
+          f"jiggle mode: {jiggle_mode}")
     if args.in_dir:
         if not args.out_dir:
             print("--out-dir is required."); return 2
         run_both_batch(args.in_dir, args.out_dir, args.prefix, args.suffix, patterns,
                        args.stiff, args.drag, args.name, xyz, target_n,
-                       not args.no_jiggle_name, on_log, on_prog, source_n=source_n)
+                       not args.no_jiggle_name, on_log, on_prog,
+                       source_n=source_n, jiggle_mode=jiggle_mode)
     else:
         if not args.infile or not args.outfile:
             print("--in and --out are required (or --in-dir/--out-dir)."); return 2
         d_sc, d_ch, s_sc, s_ch, t_n, eff, logs = modify_both_in_bundle(
             Path(args.infile), Path(args.outfile), patterns,
-            args.stiff, args.drag, args.name, xyz, target_n, source_n=source_n)
-        print(f"dyna changed={d_ch}  size changed={s_ch}  jiggle change={eff:+d}")
+            args.stiff, args.drag, args.name, xyz, target_n,
+            source_n=source_n, jiggle_mode=jiggle_mode)
+        print(f"dyna changed={d_ch}  size changed={s_ch}  jiggle={eff}")
         if args.verbose:
             print("\n".join(logs))
     return 0
@@ -2648,7 +2621,11 @@ def build_parser():
                                      "sets the new scale AND the target jiggle tier")
     bo.add_argument("--source", default="auto",
                     help="SOURCE ('before') body: 'auto' to detect each bundle's tier, "
-                         "or a preset name/index; jiggle change = target - source")
+                         "or a preset name/index; used by --jiggle source/sum")
+    bo.add_argument("--jiggle", default="target",
+                    choices=["target", "new", "source", "prev", "sum"],
+                    help="which size the jiggle follows: target/new = new size (default), "
+                         "source/prev = previous size, sum = both tiers added")
     bo.add_argument("--stiff", type=float, default=0.02, help="stiffnessForce")
     bo.add_argument("--drag", type=float, default=0.3, help="dragForce")
     bo.add_argument("--patterns", default="LeftBreast_Dyna, RightBreast_Dyna",
