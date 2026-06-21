@@ -1,3 +1,10 @@
+# NOTE: For a friendlier, GUI-driven way to install a *whole* dance live — pick
+# the target song by name (including songs that have no dance yet, like Maki's
+# Daring!!), install the timeline + dance motion + optional facial, choose a
+# stage / stage effect, and preview before writing — see the newer
+# `live_dance_installer.py` (built on the tested `live_install_core.py`, which
+# reuses this script's exact encryption and SQL). Guide: docs/dance_live_timeline.md
+# This original script still works as-is for a single-timeline swap.
 import sqlite3
 import os
 import zipfile
