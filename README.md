@@ -47,6 +47,14 @@ If you have GUI for Windows/Linux, you can also just run the executable directly
 
 Note that whenever you want to play, the server need to be on, so if you already closed termux or the server, you will have to run it again.
 
+### Double-click the menu (macOS / Windows)
+If you'd rather not type anything in a terminal, the install folder ships with double-click launchers for the menu (run server, update, downloads, dev/mod tools, ...):
+
+- **macOS**: double-click `elichika_menu.command` inside the install folder.
+- **Windows**: double-click `elichika_menu.cmd` inside the install folder (it uses the Git Bash that comes with Git for Windows).
+
+After installing/updating, a matching shortcut is also placed on your **Desktop** (`menu_elichika3.command` on macOS, `menu_elichika3.cmd` on Windows), so you can open the menu without digging into the folder. From there, pick `1` to run the server.
+
 ## Updating the server
 There are 2 ways to update the server:
 

@@ -1,0 +1,9 @@
+# Line-ending normalization for the launcher / helper scripts.
+#
+# Shell scripts (and the macOS .command launcher) MUST stay LF even when the
+# repo is checked out on Windows, otherwise bash chokes on the carriage returns
+# ("\r command not found"). Windows batch launchers conversely need CRLF.
+*.sh        text eol=lf
+*.command   text eol=lf
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
