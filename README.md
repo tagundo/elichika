@@ -160,6 +160,17 @@ The WebUI allow you to interact with the server in a more direct way, both to ch
 
 To use the WebUI, navigate to the relevant address using a web browser.
 
+### Language
+The WebUI interface runs in **English by default** and can switch to **한국어**
+or **日本語**. Set the default with the `webui_language` option in the admin
+Config Editor (or in `config.json`), and switch per-session with the language
+selector in the admin panel — it adds `?l=en|ko|ja` to the URL. Untranslated
+labels fall back to English. This is the *interface* language only; the in-game
+data locale (cards, skills, events) is chosen separately via the `?l=` selector
+in the user WebUI and is unaffected. WebUI interface strings are translated in
+the [`i18n`](i18n/i18n.go) package, keyed by their English source text; the
+admin panel is translated first, with the remaining pages filled in over time.
+
 ### Admin
 The admin WebUI is used to change the server's behaviors.
 

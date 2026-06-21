@@ -2,7 +2,13 @@
 <head><meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8"/><link rel="stylesheet" href="/webui/webui.css"/></head>
 <body onload="check_login()">
     <div>
-        <button onclick="window.location.replace('/webui/admin' + window.location.search)">Return to main menu</button>
+        <button onclick="window.location.replace('/webui/admin' + window.location.search)">{{ T .lang "Return to main menu" }}</button>
+        <label>{{ T .lang "Language" }}</label>
+        <select id="lang_select" onchange="set_lang(this.value)">
+            <option value="en" {{ if eq .lang "en" }}selected{{ end }}>English</option>
+            <option value="ko" {{ if eq .lang "ko" }}selected{{ end }}>한국어</option>
+            <option value="ja" {{ if eq .lang "ja" }}selected{{ end }}>日本語</option>
+        </select>
     </div>
     {{ .body | noescape }}
 </body>
@@ -20,6 +26,14 @@
 
     function clear_login_data() {
         sessionStorage.removeItem("admin_session_key")
+    }
+
+    // switch the WebUI language by reloading with ?l=; sub-pages and the server
+    // both read this parameter (see webui_utils.Lang).
+    function set_lang(l) {
+        var u = new URL(window.location)
+        u.searchParams.set("l", l)
+        window.location.replace(u)
     }
 
     function change_disable_state(disabled = false) {

@@ -1,23 +1,78 @@
 <!-- User template -->
 <html>
 <head><meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8"/><link rel="stylesheet" href="/webui/webui.css"/></head>
-<body onload="try_login()">
+<body onload="apply_i18n()">
+    <div><label data-i18n="Language">Language</label>
+        <select id="lang_select" onchange="set_lang(this.value)"></select></div>
     <form id="login_form" method="POST" enctype="multipart/form-data" onkeydown="if(event.keyCode === 13) {
-        alert('You have pressed Enter key, use submit button instead'); 
+        alert(T('You have pressed Enter key, use submit button instead'));
         return false;
     }">
-        <div><label>Admin Password</label><input type="password" id="admin_password" name="admin_password"></div>
-        <div><input type="button" onclick="login()" value="Login" /></div>
-        <div><label>The admin password is stored in config.json, defaulted to an empty string (so just click the login button).</label></div>
+        <div><label data-i18n="Admin Password">Admin Password</label><input type="password" id="admin_password" name="admin_password"></div>
+        <div><input type="button" onclick="login()" data-i18n-val="Login" value="Login" /></div>
+        <div><label data-i18n="The admin password is stored in config.json, defaulted to an empty string (so just click the login button).">The admin password is stored in config.json, defaulted to an empty string (so just click the login button).</label></div>
     </form>
 </body>
 </html>
 <script>
+    // Lightweight i18n for the (static) login page: English by default, with
+    // 한국어 / 日本語. The picked language is carried via the ?l= query into the
+    // login POST and the admin panel, where the rest of the UI is translated.
+    var STRINGS = {
+        ko: {
+            "Language": "언어",
+            "Admin Password": "관리자 비밀번호",
+            "Login": "로그인",
+            "The admin password is stored in config.json, defaulted to an empty string (so just click the login button).":
+                "관리자 비밀번호는 config.json에 저장되며 기본값은 빈 문자열입니다(그냥 로그인 버튼을 누르면 됩니다).",
+            "You have pressed Enter key, use submit button instead":
+                "Enter 키를 눌렀습니다. 대신 제출 버튼을 사용하세요."
+        },
+        ja: {
+            "Language": "言語",
+            "Admin Password": "管理者パスワード",
+            "Login": "ログイン",
+            "The admin password is stored in config.json, defaulted to an empty string (so just click the login button).":
+                "管理者パスワードは config.json に保存され、初期値は空文字列です（そのままログインボタンを押してください）。",
+            "You have pressed Enter key, use submit button instead":
+                "Enter キーが押されました。代わりに送信ボタンを使用してください。"
+        }
+    }
+    var LANG_NAMES = { en: "English", ko: "한국어", ja: "日本語" }
+
+    function cur_lang() {
+        var l = new URLSearchParams(window.location.search).get("l") || ""
+        l = l.toLowerCase().split(/[-_]/)[0]
+        return STRINGS[l] || l === "en" ? l : "en"
+    }
+    function T(s) {
+        var l = cur_lang()
+        return (STRINGS[l] && STRINGS[l][s]) || s
+    }
+    function set_lang(l) {
+        var u = new URL(window.location)
+        u.searchParams.set("l", l)
+        window.location.replace(u)
+    }
+    function apply_i18n() {
+        var l = cur_lang()
+        document.querySelectorAll("[data-i18n]").forEach(function (n) { n.textContent = T(n.dataset.i18n) })
+        document.querySelectorAll("[data-i18n-val]").forEach(function (n) { n.value = T(n.dataset.i18nVal) })
+        var sel = document.getElementById("lang_select")
+        sel.innerHTML = ""
+        Object.keys(LANG_NAMES).forEach(function (code) {
+            var o = document.createElement("option")
+            o.value = code; o.textContent = LANG_NAMES[code]
+            if (code === l) o.selected = true
+            sel.appendChild(o)
+        })
+    }
 
     function login() {
         var formData = new FormData(document.getElementById("login_form"))
         var req = new XMLHttpRequest()
-        req.open("POST", "/webui/admin/login")
+        // carry ?l= so the server localises its responses too
+        req.open("POST", "/webui/admin/login" + window.location.search)
         req.send(formData)
         req.onreadystatechange = function () {
             if (req.readyState != 4) return
@@ -27,8 +82,8 @@
                     alert(resp.error)
                 } else {
                     sessionStorage.setItem("admin_session_key", resp.response)
-                    // nagivate to the main user webui hub
-                    window.location.replace("/webui/admin")
+                    // nagivate to the main user webui hub (keep the language)
+                    window.location.replace("/webui/admin" + window.location.search)
                 }
             } else {
                 alert("unexpected error, status: " + req.status)

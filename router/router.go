@@ -2,6 +2,7 @@ package router
 
 import (
 	"elichika/config"
+	"elichika/i18n"
 	"elichika/log"
 	// "elichika/webui/user"
 
@@ -90,6 +91,11 @@ func Router(r *gin.Engine) {
 	funcs := template.FuncMap{}
 	funcs["noescape"] = func(s string) template.HTML {
 		return template.HTML(s)
+	}
+	// T localises a WebUI string into the given language (English fallback), e.g.
+	// {{ T .lang "Return to main menu" }}.
+	funcs["T"] = func(lang, text string) string {
+		return i18n.T(lang, text)
 	}
 	r.SetFuncMap(funcs)
 	r.LoadHTMLFiles(templates...)

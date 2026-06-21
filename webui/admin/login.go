@@ -2,6 +2,7 @@ package admin
 
 import (
 	"elichika/config"
+	"elichika/i18n"
 	"elichika/router"
 	"elichika/utils"
 	"elichika/webui/webui_utils"
@@ -27,7 +28,7 @@ func login(ctx *gin.Context) {
 		*resp.Response = base64.StdEncoding.EncodeToString(adminSessionKey)
 	} else {
 		resp.Error = &respString
-		*resp.Error = "Wrong password!"
+		*resp.Error = i18n.T(webui_utils.Lang(ctx), "Wrong password!")
 	}
 
 	jsonBytes, err := json.Marshal(resp)
