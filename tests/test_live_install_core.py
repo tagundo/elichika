@@ -58,7 +58,26 @@ def _make_masterdata_db(path):
     con = sqlite3.connect(path)
     cur = con.cursor()
     cur.execute("CREATE TABLE m_live (live_id INTEGER PRIMARY KEY, music_id INTEGER, "
-                "name TEXT, pronunciation TEXT);")
+                "is_2d_live INTEGER, live_member_mapping_id INTEGER, name TEXT, pronunciation TEXT);")
+    cur.execute("CREATE TABLE m_live_member_mapping (mapping_id INTEGER, position INTEGER, "
+                "member_master_id INTEGER, is_center INTEGER, suit_master_id INTEGER);")
+    cur.execute("CREATE TABLE m_suit (id INTEGER PRIMARY KEY, member_m_id INTEGER, "
+                "name TEXT, model_asset_path TEXT);")
+    cur.execute("CREATE TABLE m_live_mv (live_id INTEGER, live_stage_master_id INTEGER, "
+                "position INTEGER, live_3d_asset_master_id INTEGER);")
+    # 1001 (group, has dance) ships with the 3-position MV list (template source)
+    cur.execute("INSERT INTO m_live_mv VALUES (1001, 1000702, 1, 9001);")
+    cur.execute("INSERT INTO m_live_mv VALUES (1001, 1000801, 2, 9001);")
+    cur.execute("INSERT INTO m_live_mv VALUES (1001, 1000601, 3, 9001);")
+    # 1002 (the no-dance solo target) ships with NONE -> must be filled
+    # 1001 = group (2 positions, one suit already NULL -> must be left alone)
+    cur.execute("INSERT INTO m_live_member_mapping VALUES (1001, 1, 5, 1, 5001);")
+    cur.execute("INSERT INTO m_live_member_mapping VALUES (1001, 2, 6, 0, NULL);")
+    # 1002 = SOLO (1 position, member 7, suit NULL -> must be auto-filled)
+    cur.execute("INSERT INTO m_live_member_mapping VALUES (1002, 1, 7, 1, NULL);")
+    # a 3D suit with a model for member 7 (fallback pick source)
+    cur.execute("INSERT INTO m_suit VALUES (7001, 7, 'k.suit_7001', 'model_7001');")
+    cur.execute("INSERT INTO m_suit VALUES (5001, 5, 'k.suit_5001', 'model_5001');")
     cur.execute("CREATE TABLE m_live_difficulty (live_difficulty_id INTEGER PRIMARY KEY, "
                 "live_id INTEGER, live_3d_asset_master_id INTEGER, live_difficulty_type INTEGER);")
     # m_live_3d_asset: extra 'note' column proves a full-row clone preserves
@@ -68,16 +87,28 @@ def _make_masterdata_db(path):
                 "quality_setitng_set_id INTEGER, shader_variant_asset_path TEXT, note TEXT);")
 
     # Song 1001: HAS a dance (3d asset 9001), three difficulties point at it.
-    cur.execute("INSERT INTO m_live VALUES (1001, 5001, 'k.live_name_1001', 'Aishiteru Banzai');")
+    cur.execute("INSERT INTO m_live (live_id, music_id, is_2d_live, live_member_mapping_id, name, pronunciation) "
+                "VALUES (1001, 5001, 0, 1001, 'k.live_name_1001', 'Aishiteru Banzai');")
     cur.execute("INSERT INTO m_live_3d_asset VALUES (9001, 'deadbeef', 1, 'oldeffect', 7, 'oldshader', 'KEEPME');")
     for did, dt in ((10011, 10), (10012, 20), (10013, 30)):
         cur.execute("INSERT INTO m_live_difficulty VALUES (?, 1001, 9001, ?);", (did, dt))
 
-    # Song 1002: NO dance (Daring-style: audio only, NULL 3d link).
-    cur.execute("INSERT INTO m_live VALUES (1002, 5002, 'k.live_name_1002', 'Daring');")
+    # Song 1002: NO dance, SOLO (audio only, NULL 3d link, 2D-PV solo live).
+    cur.execute("INSERT INTO m_live (live_id, music_id, is_2d_live, live_member_mapping_id, name, pronunciation) "
+                "VALUES (1002, 5002, 1, 1002, 'k.live_name_1002', 'Daring');")
     for did, dt in ((10021, 10), (10022, 20), (10023, 30)):
         cur.execute("INSERT INTO m_live_difficulty VALUES (?, 1002, NULL, ?);", (did, dt))
 
+    con.commit()
+    con.close()
+
+
+def _make_dictionary_db(path):
+    con = sqlite3.connect(path)
+    cur = con.cursor()
+    cur.execute("CREATE TABLE m_dictionary (id TEXT PRIMARY KEY, message TEXT);")
+    cur.execute("INSERT INTO m_dictionary VALUES ('k.live_name_1001', 'Aishiteru Banzai!');")
+    cur.execute("INSERT INTO m_dictionary VALUES ('k.live_name_1002', 'Daring!!');")
     con.commit()
     con.close()
 
@@ -91,6 +122,8 @@ def build_tree(root):
         _make_asset_db(assets / rel)
     for rel in core.MASTERDATA_RELPATHS:
         _make_masterdata_db(assets / rel)
+    # one dictionary DB so name resolution can be exercised
+    _make_dictionary_db(assets / "db" / "gl" / "dictionary_en_k.db")
     return str(assets)
 
 
@@ -226,8 +259,27 @@ def test_install_song_without_dance_clones_and_repoints():
         cur.execute("SELECT DISTINCT live_3d_asset_master_id FROM m_live_difficulty WHERE live_id=1002;")
         pointed = {r[0] for r in cur.fetchall()}
         assert pointed == {new_id}, pointed
+        # and the song was flipped to 3D rendering (else the client shows 2D)
+        cur.execute("SELECT is_2d_live FROM m_live WHERE live_id=1002;")
+        assert cur.fetchone()[0] == 0, "m_live.is_2d_live must become 0"
+        assert summary["is_2d_live_set_to_3d"] is True
+        # solo target's NULL suit was filled so the costume screen can open
+        cur.execute("SELECT suit_master_id FROM m_live_member_mapping WHERE mapping_id=1002;")
+        assert cur.fetchone()[0] == 7001, "solo member suit must be auto-set"
+        assert summary["solo_suit_set"] == 7001
+        # m_live_mv positions were added (so the MV mode can render), pointed at new asset
+        cur.execute("SELECT position, live_stage_master_id, live_3d_asset_master_id "
+                    "FROM m_live_mv WHERE live_id=1002 ORDER BY position;")
+        mv = cur.fetchall()
+        assert len(mv) == 3, "MV needs the 3-position list"
+        assert [r[0] for r in mv] == [1, 2, 3]
+        # positions 1/2 are the universal stages; position 3 = this song's own
+        # stage (the cloned asset's live_stage_master_id, 7 in this plan)
+        assert [r[1] for r in mv] == [1000702, 1000801, 7], "p1/p2 template, p3 asset stage"
+        assert all(r[2] == new_id for r in mv), "MV positions point at the new 3D asset"
+        assert summary["live_mv_positions_added"] == 3
         con.close()
-        print("[ok] install (no dance -> clone + re-point): Daring now has a 3D live")
+        print("[ok] install (no dance -> 3D ready: clone+repoint+is_2d_live+suit+m_live_mv)")
 
 
 def test_modinstall_pack_roundtrip_and_install():
@@ -412,9 +464,144 @@ def test_dry_run_changes_nothing():
         print("[ok] dry run: no DB or filesystem changes")
 
 
+def test_names_resolved_from_dictionary():
+    with tempfile.TemporaryDirectory() as root:
+        assets = build_tree(root)
+        master = core.primary_masterdata_db(assets)
+        dicts = core.dictionary_db_paths(assets)
+        assert dicts, "dictionary DB should be discovered"
+        songs = {s.live_id: s for s in core.list_songs(master, dicts)}
+        # raw key -> readable title via m_dictionary
+        assert songs[1001].name == "Aishiteru Banzai!"
+        assert songs[1002].name == "Daring!!"
+        assert songs[1001].name_key == "k.live_name_1001"
+        # without a dictionary, name falls back to pronunciation/key (still usable)
+        songs_raw = {s.live_id: s for s in core.list_songs(master)}
+        assert songs_raw[1002].name in ("Daring", "k.live_name_1002")
+        print("[ok] list_songs resolves readable titles from the dictionary DB")
+
+
+def test_keep_2d_leaves_flag():
+    with tempfile.TemporaryDirectory() as root:
+        assets = build_tree(root)
+        tl = _make_source_asset(root, "tl.bytes")
+        plan = core.InstallPlan(
+            target_live_id=1002, target_3d_asset_id=None, donor_3d_asset_id=9001,
+            difficulty_ids=[10021, 10022, 10023], make_3d=False,
+            assets=[core.AssetInput(tl, role="timeline", is_timeline=True, is_dependency=False)],
+        )
+        summary = core.install_dance_live(plan, assets,
+                                          static_dir=os.path.join(root, "static"),
+                                          backup=False, log=print)
+        assert summary["is_2d_live_set_to_3d"] is False
+        con = sqlite3.connect(core.primary_masterdata_db(assets)); cur = con.cursor()
+        cur.execute("SELECT is_2d_live FROM m_live WHERE live_id=1002;")
+        assert cur.fetchone()[0] == 1, "make_3d=False must leave is_2d_live untouched"
+        con.close()
+        print("[ok] make_3d=False keeps is_2d_live (opt-out honored)")
+
+
+def test_solo_suit_override_and_group_untouched():
+    with tempfile.TemporaryDirectory() as root:
+        assets = build_tree(root)
+        tl = _make_source_asset(root, "tl.bytes")
+        # SOLO 1002 with an explicit suit override
+        plan = core.InstallPlan(
+            target_live_id=1002, target_3d_asset_id=None, donor_3d_asset_id=9001,
+            difficulty_ids=[10021, 10022, 10023], solo_suit_master_id=999111,
+            assets=[core.AssetInput(tl, role="timeline", is_timeline=True, is_dependency=False)],
+        )
+        summary = core.install_dance_live(plan, assets,
+                                          static_dir=os.path.join(root, "static"),
+                                          backup=False, log=print)
+        assert summary["solo_suit_set"] == 999111
+        con = sqlite3.connect(core.primary_masterdata_db(assets)); cur = con.cursor()
+        cur.execute("SELECT suit_master_id FROM m_live_member_mapping WHERE mapping_id=1002;")
+        assert cur.fetchone()[0] == 999111, "override suit must win"
+        # a GROUP live's NULL-suit position must be left alone (deck supplies costume)
+        tl2 = _make_source_asset(root, "tl2.bytes")
+        plan2 = core.InstallPlan(
+            target_live_id=1001, target_3d_asset_id=9001,
+            difficulty_ids=[10011, 10012, 10013],
+            assets=[core.AssetInput(tl2, role="timeline", is_timeline=True, is_dependency=False)],
+        )
+        summary2 = core.install_dance_live(plan2, assets,
+                                           static_dir=os.path.join(root, "static"),
+                                           backup=False, log=print)
+        assert summary2["solo_suit_set"] is None, "group live must not be suit-filled"
+        cur.execute("SELECT position, suit_master_id FROM m_live_member_mapping "
+                    "WHERE mapping_id=1001 ORDER BY position;")
+        rows = dict(cur.fetchall())
+        assert rows[1] == 5001 and rows[2] is None, "group mapping untouched"
+        con.close()
+        print("[ok] solo suit override honored; group lives left untouched")
+
+
+def test_live_mv_not_duplicated_and_opt_out():
+    with tempfile.TemporaryDirectory() as root:
+        assets = build_tree(root)
+        tl = _make_source_asset(root, "tl.bytes")
+        # 1001 already HAS m_live_mv (3 rows) -> replace must not add/duplicate
+        plan = core.InstallPlan(
+            target_live_id=1001, target_3d_asset_id=9001,
+            difficulty_ids=[10011, 10012, 10013],
+            assets=[core.AssetInput(tl, role="timeline", is_timeline=True, is_dependency=False)],
+        )
+        summary = core.install_dance_live(plan, assets,
+                                          static_dir=os.path.join(root, "static"),
+                                          backup=False, log=print)
+        assert summary["live_mv_positions_added"] == 0, "existing MV list must not be touched"
+        con = sqlite3.connect(core.primary_masterdata_db(assets)); cur = con.cursor()
+        cur.execute("SELECT COUNT(*) FROM m_live_mv WHERE live_id=1001;")
+        assert cur.fetchone()[0] == 3, "no duplicate MV rows"
+        con.close()
+
+        # opt-out: --no-mv-fix leaves a no-dance solo without MV rows
+        tl2 = _make_source_asset(root, "tl2.bytes")
+        plan2 = core.InstallPlan(
+            target_live_id=1002, target_3d_asset_id=None, donor_3d_asset_id=9001,
+            difficulty_ids=[10021, 10022, 10023], fix_live_mv=False,
+            assets=[core.AssetInput(tl2, role="timeline", is_timeline=True, is_dependency=False)],
+        )
+        summary2 = core.install_dance_live(plan2, assets,
+                                           static_dir=os.path.join(root, "static"),
+                                           backup=False, log=print)
+        assert summary2["live_mv_positions_added"] == 0
+        con = sqlite3.connect(core.primary_masterdata_db(assets)); cur = con.cursor()
+        cur.execute("SELECT COUNT(*) FROM m_live_mv WHERE live_id=1002;")
+        assert cur.fetchone()[0] == 0, "fix_live_mv=False leaves no MV rows"
+        con.close()
+        print("[ok] m_live_mv: not duplicated on replace; opt-out honored")
+
+
+def test_no_suit_fix_opt_out():
+    with tempfile.TemporaryDirectory() as root:
+        assets = build_tree(root)
+        tl = _make_source_asset(root, "tl.bytes")
+        plan = core.InstallPlan(
+            target_live_id=1002, target_3d_asset_id=None, donor_3d_asset_id=9001,
+            difficulty_ids=[10021, 10022, 10023], fix_solo_suit=False,
+            assets=[core.AssetInput(tl, role="timeline", is_timeline=True, is_dependency=False)],
+        )
+        summary = core.install_dance_live(plan, assets,
+                                          static_dir=os.path.join(root, "static"),
+                                          backup=False, log=print)
+        assert summary["solo_suit_set"] is None
+        con = sqlite3.connect(core.primary_masterdata_db(assets)); cur = con.cursor()
+        cur.execute("SELECT suit_master_id FROM m_live_member_mapping WHERE mapping_id=1002;")
+        assert cur.fetchone()[0] is None, "fix_solo_suit=False must leave suit NULL"
+        con.close()
+        print("[ok] fix_solo_suit=False leaves the suit NULL (opt-out honored)")
+
+
 ALL_TESTS = [
     test_encryption_roundtrip,
     test_list_songs_detects_dance,
+    test_names_resolved_from_dictionary,
+    test_keep_2d_leaves_flag,
+    test_solo_suit_override_and_group_untouched,
+    test_live_mv_not_duplicated_and_opt_out,
+    test_no_suit_fix_opt_out,
     test_list_assets_catalog,
     test_existing_3d_value_suggestions,
     test_install_replace_existing_dance,
