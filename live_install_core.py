@@ -642,6 +642,10 @@ class InstallPlan:
     # flip m_live.is_2d_live -> 0 for the target song so the game actually
     # renders the dance (without this, a former 2D-PV song still shows as 2D).
     make_3d: bool = True
+    # for a SOLO target whose member mapping has suit_master_id = NULL, set a
+    # valid 3D suit so the costume/deck screen can open (else it can't enter).
+    fix_solo_suit: bool = True
+    solo_suit_master_id: Optional[int] = None   # force a specific suit id
 
     def timeline_asset(self) -> Optional[AssetInput]:
         for a in self.assets:
@@ -851,6 +855,7 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
     cv["timeline"] = tl.asset_path
     final_3d_id = plan.target_3d_asset_id
     rendered_3d = False
+    solo_suit_set = None
 
     # Resolve the install mode (replace existing dance vs add a new one).
     song_has_dance = not _needs_clone(master_dbs, plan.target_3d_asset_id)
@@ -890,6 +895,13 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
             if plan.make_3d and plan.target_live_id is not None:
                 if set_live_render_mode(cur, plan.target_live_id, is_2d=0, log=log):
                     rendered_3d = True
+                # A solo target needs its member's 3D suit set, or the costume
+                # screen won't open (former 2D-only solo songs ship with NULL).
+                if plan.fix_solo_suit:
+                    s = ensure_solo_3d_suit(cur, plan.target_live_id,
+                                            override=plan.solo_suit_master_id, log=log)
+                    if s is not None:
+                        solo_suit_set = s
             if dry_run:
                 con.rollback()
             else:
@@ -905,6 +917,7 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
         "package_key": package_key,
         "final_3d_asset_id": final_3d_id,
         "is_2d_live_set_to_3d": rendered_3d,
+        "solo_suit_set": solo_suit_set,
         "asset_dbs": len(asset_dbs),
         "masterdata_dbs": len(master_dbs),
         "dependencies_copied": deps_copied,
@@ -1011,6 +1024,105 @@ def set_live_render_mode(cur: sqlite3.Cursor, live_id: int, is_2d: int = 0,
     _log(log, "[3d] m_live.%s = %d for live_id=%s (%s)"
          % (flag_col, is_2d, live_id, "render 3D dance" if is_2d == 0 else "render 2D"))
     return cur.rowcount > 0
+
+
+def _pick_3d_suit(cur: sqlite3.Cursor, member_master_id: int) -> Optional[int]:
+    """A valid 3D suit id for a member: prefer one already used by a working 3D
+    live's mapping (proven renderable), else any m_suit row with a 3D model."""
+    # proven: a suit a real is_2d_live=0 live assigns to this member
+    if table_exists(cur, "m_live_member_mapping") and table_exists(cur, "m_live"):
+        try:
+            cur.execute(
+                "SELECT mm.suit_master_id FROM m_live_member_mapping mm "
+                "JOIN m_live l ON l.live_member_mapping_id = mm.mapping_id "
+                "WHERE l.is_2d_live = 0 AND mm.member_master_id = ? "
+                "AND mm.suit_master_id IS NOT NULL LIMIT 1;", (member_master_id,))
+            r = cur.fetchone()
+            if r and r[0] is not None:
+                return r[0]
+        except sqlite3.Error:
+            pass
+    # fallback: any suit for this member that has a 3D model
+    if table_exists(cur, "m_suit"):
+        sc = {c.lower(): c for c in table_columns(cur, "m_suit")}
+        idc = sc.get("id")
+        memc = sc.get("member_m_id") or sc.get("member_master_id")
+        modc = sc.get("model_asset_path")
+        if idc and memc:
+            try:
+                if modc:
+                    cur.execute("SELECT \"%s\" FROM m_suit WHERE \"%s\"=? AND \"%s\" "
+                                "IS NOT NULL AND \"%s\" <> '' ORDER BY \"%s\" LIMIT 1;"
+                                % (idc, memc, modc, modc, idc), (member_master_id,))
+                else:
+                    cur.execute('SELECT "%s" FROM m_suit WHERE "%s"=? ORDER BY "%s" LIMIT 1;'
+                                % (idc, memc, idc), (member_master_id,))
+                r = cur.fetchone()
+                if r:
+                    return r[0]
+            except sqlite3.Error:
+                pass
+    return None
+
+
+def ensure_solo_3d_suit(cur: sqlite3.Cursor, live_id: int,
+                        override: Optional[int] = None,
+                        log: Optional[Callable[[str], None]] = None) -> Optional[int]:
+    """For a SOLO (1-member) 3D live, ensure the member's mapping has a
+    ``suit_master_id``.
+
+    A solo 3D live loads its single member's costume/model from
+    ``m_live_member_mapping.suit_master_id``; if it is NULL the deck/costume
+    waiting screen has no model to build and **won't open** (so the MV never
+    loads).  This is exactly what bites a former 2D-only solo character song
+    turned 3D — every shipped solo 3D live has the suit set.  Group lives are
+    left alone (their costumes come from the player's deck, so NULL is fine).
+
+    Returns the suit id that was set, or None if nothing changed.
+    """
+    if not (table_exists(cur, "m_live") and table_exists(cur, "m_live_member_mapping")):
+        return None
+    lc = {c.lower(): c for c in table_columns(cur, "m_live")}
+    map_col = lc.get("live_member_mapping_id")
+    id_col = lc.get("live_id") or lc.get("id")
+    if not map_col or not id_col:
+        return None
+    cur.execute('SELECT "%s" FROM m_live WHERE "%s" = ?;' % (map_col, id_col), (live_id,))
+    row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    mapping_id = row[0]
+    mc = {c.lower(): c for c in table_columns(cur, "m_live_member_mapping")}
+    mid_col = mc.get("mapping_id")
+    pos_col = mc.get("position")
+    mem_col = mc.get("member_master_id")
+    suit_col = mc.get("suit_master_id")
+    if not (mid_col and mem_col and suit_col):
+        return None
+    sel_pos = pos_col or mid_col
+    cur.execute('SELECT "%s","%s","%s" FROM m_live_member_mapping WHERE "%s" = ?;'
+                % (sel_pos, mem_col, suit_col, mid_col), (mapping_id,))
+    rows = cur.fetchall()
+    if len(rows) != 1:
+        return None                      # only the solo case is auto-fixed
+    position, member, cur_suit = rows[0]
+    if cur_suit is not None:
+        return None                      # already has a costume
+    new_suit = override if override is not None else _pick_3d_suit(cur, member)
+    if new_suit is None:
+        _log(log, "[3d] solo live %s: member %s has suit=NULL and no 3D suit was found; "
+                  "set m_live_member_mapping.suit_master_id manually or the costume "
+                  "screen won't open" % (live_id, member))
+        return None
+    if pos_col:
+        cur.execute('UPDATE main.m_live_member_mapping SET "%s"=? WHERE "%s"=? AND "%s"=?;'
+                    % (suit_col, mid_col, pos_col), (new_suit, mapping_id, position))
+    else:
+        cur.execute('UPDATE main.m_live_member_mapping SET "%s"=? WHERE "%s"=?;'
+                    % (suit_col, mid_col), (new_suit, mapping_id))
+    _log(log, "[3d] solo live %s: set member %s suit_master_id=%s (was NULL; the 3D "
+              "costume screen needs it)" % (live_id, member, new_suit))
+    return new_suit
 
 
 # --------------------------------------------------------------------------- #
