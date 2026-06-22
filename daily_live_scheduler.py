@@ -436,7 +436,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="elichika root / assets / assets/db (default: current dir)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_list = sub.add_parser("list", help="show the daily schedule grouped by weekday")
+    # Let --root be given either before OR after the subcommand.  SUPPRESS keeps
+    # the subparser from clobbering a value the top-level parser already set.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--root", default=argparse.SUPPRESS,
+                        help="elichika root / assets / assets/db (default: current dir)")
+
+    p_list = sub.add_parser("list", parents=[common],
+                            help="show the daily schedule grouped by weekday")
     p_list.add_argument("--dictionary", default=None,
                         help="optional dictionary DB to resolve song names")
     p_list.set_defaults(func=cmd_list)
@@ -453,13 +460,15 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--no-backup", action="store_true",
                        help="do not back up the masterdata DBs first")
 
-    p_wd = sub.add_parser("set-weekday", help="move a daily entry to another weekday")
+    p_wd = sub.add_parser("set-weekday", parents=[common],
+                          help="move a daily entry to another weekday")
     add_target(p_wd)
     p_wd.add_argument("--weekday", required=True,
                       help="target weekday (1=Mon .. 7=Sun, or mon..sun)")
     p_wd.set_defaults(func=cmd_set)
 
-    p_set = sub.add_parser("set", help="edit weekday and/or other fields of a daily entry")
+    p_set = sub.add_parser("set", parents=[common],
+                           help="edit weekday and/or other fields of a daily entry")
     add_target(p_set)
     p_set.add_argument("--weekday", default=None,
                        help="target weekday (1=Mon .. 7=Sun, or mon..sun)")
