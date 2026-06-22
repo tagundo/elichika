@@ -73,20 +73,30 @@ def default_db_root() -> str:
 # Headless / CLI
 # --------------------------------------------------------------------------- #
 
+def song_label(s) -> str:
+    """Readable title for a song: the dictionary-resolved name, with the kana
+    pronunciation appended when it adds information."""
+    nm = s.name or s.name_key
+    if s.pronunciation and s.pronunciation not in (s.name, s.name_key):
+        nm = "%s (%s)" % (nm, s.pronunciation)
+    return nm
+
+
 def cli_list_songs(db_root: str, only_no_dance: bool = False) -> int:
-    master = core.primary_masterdata_db(core.resolve_db_root(db_root))
+    root = core.resolve_db_root(db_root)
+    master = core.primary_masterdata_db(root)
     if not os.path.exists(master):
         print("masterdata not found: %s" % master)
         return 2
-    songs = core.list_songs(master)
+    songs = core.list_songs(master, core.dictionary_db_paths(root))
     for s in songs:
         if only_no_dance and s.has_dance:
             continue
         flag = ("3d=%s" % s.asset_3d_id) if s.has_dance else "NO DANCE"
         diffs = " ".join("%s:%s" % (d.label, d.asset_3d_id if d.has_dance else "—")
                          for d in s.difficulties) or "(no difficulties)"
-        print("live_id=%-8s music=%-8s [%-9s] %-28s  %s"
-              % (s.live_id, s.music_id, flag, s.name, diffs))
+        print("live_id=%-8s music=%-8s [%-9s] %-36s  %s"
+              % (s.live_id, s.music_id, flag, song_label(s), diffs))
     print("\n%d song(s)%s" % (len(songs), " (only no-dance shown)" if only_no_dance else ""))
     return 0
 
@@ -104,7 +114,7 @@ def build_plan_from_args(args, db_root: str) -> core.InstallPlan:
     master = core.primary_masterdata_db(db_root)
     song = None
     if args.live_id is not None and os.path.exists(master):
-        for s in core.list_songs(master):
+        for s in core.list_songs(master, core.dictionary_db_paths(db_root)):
             if s.live_id == args.live_id:
                 song = s
                 break
@@ -140,6 +150,7 @@ def build_plan_from_args(args, db_root: str) -> core.InstallPlan:
         stage_effect_asset_path=args.effect,
         quality_setting_set_id=args.quality,
         shader_variant_asset_path=args.shader,
+        make_3d=not getattr(args, "keep_2d", False),
     )
 
 
@@ -252,7 +263,7 @@ def run_gui() -> int:
             if var_only.get() and s.has_dance:
                 continue
             flag = "DANCE" if s.has_dance else "— no dance —"
-            items.append("live %s · %s · [%s]" % (s.live_id, s.name, flag))
+            items.append("live %s · %s · [%s]" % (s.live_id, song_label(s), flag))
             state["filtered"].append(s)
         song_cb["values"] = items
         if items:
@@ -263,12 +274,13 @@ def run_gui() -> int:
 
     def load_songs():
         try:
-            master = core.primary_masterdata_db(core.resolve_db_root(var_db.get()))
+            root = core.resolve_db_root(var_db.get())
+            master = core.primary_masterdata_db(root)
             if not os.path.exists(master):
                 messagebox.showerror("No masterdata",
                                      "masterdata.db not found under:\n%s" % var_db.get())
                 return
-            state["songs"] = core.list_songs(master)
+            state["songs"] = core.list_songs(master, core.dictionary_db_paths(root))
             log("[songs] loaded %d song(s) from %s" % (len(state["songs"]), master))
             refresh_song_list()
             populate_catalogs()
@@ -544,6 +556,9 @@ def main(argv=None) -> int:
     ap.add_argument("--effect", help="stage_effect_asset_path")
     ap.add_argument("--quality", type=int, help="quality_setitng_set_id")
     ap.add_argument("--shader", help="shader_variant_asset_path")
+    ap.add_argument("--keep-2d", action="store_true",
+                    help="do NOT flip m_live.is_2d_live to 0 (advanced; by default "
+                         "the installer sets it so the game renders the 3D dance)")
     ap.add_argument("--dry-run", action="store_true", help="preview only; do not write")
     ap.add_argument("--no-backup", action="store_true", help="skip the DB backup")
     ap.add_argument("--build-pack", metavar="OUT.zip",
