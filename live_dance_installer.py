@@ -153,6 +153,7 @@ def build_plan_from_args(args, db_root: str) -> core.InstallPlan:
         make_3d=not getattr(args, "keep_2d", False),
         fix_solo_suit=not getattr(args, "no_suit_fix", False),
         solo_suit_master_id=getattr(args, "solo_suit", None),
+        fix_live_mv=not getattr(args, "no_mv_fix", False),
     )
 
 
@@ -567,6 +568,9 @@ def main(argv=None) -> int:
     ap.add_argument("--no-suit-fix", action="store_true",
                     help="do NOT auto-set a solo live's member suit (advanced; a solo "
                          "3D live with suit=NULL can't open its costume screen)")
+    ap.add_argument("--no-mv-fix", action="store_true",
+                    help="do NOT add m_live_mv positions (advanced; a 3D live with no "
+                         "m_live_mv rows has nothing for the MV mode to render)")
     ap.add_argument("--dry-run", action="store_true", help="preview only; do not write")
     ap.add_argument("--no-backup", action="store_true", help="skip the DB backup")
     ap.add_argument("--build-pack", metavar="OUT.zip",
