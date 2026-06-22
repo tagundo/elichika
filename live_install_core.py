@@ -646,6 +646,9 @@ class InstallPlan:
     # valid 3D suit so the costume/deck screen can open (else it can't enter).
     fix_solo_suit: bool = True
     solo_suit_master_id: Optional[int] = None   # force a specific suit id
+    # add m_live_mv positions (the MV stage list) when the target has none, else
+    # the MV mode has nothing to show and won't load.
+    fix_live_mv: bool = True
 
     def timeline_asset(self) -> Optional[AssetInput]:
         for a in self.assets:
@@ -856,6 +859,7 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
     final_3d_id = plan.target_3d_asset_id
     rendered_3d = False
     solo_suit_set = None
+    live_mv_added = 0
 
     # Resolve the install mode (replace existing dance vs add a new one).
     song_has_dance = not _needs_clone(master_dbs, plan.target_3d_asset_id)
@@ -902,6 +906,11 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
                                             override=plan.solo_suit_master_id, log=log)
                     if s is not None:
                         solo_suit_set = s
+                # A 3D MV live needs m_live_mv positions, or the MV won't load.
+                if plan.fix_live_mv:
+                    nmv = ensure_live_mv(cur, plan.target_live_id, rid, log=log)
+                    if nmv:
+                        live_mv_added = nmv
             if dry_run:
                 con.rollback()
             else:
@@ -918,6 +927,7 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
         "final_3d_asset_id": final_3d_id,
         "is_2d_live_set_to_3d": rendered_3d,
         "solo_suit_set": solo_suit_set,
+        "live_mv_positions_added": live_mv_added,
         "asset_dbs": len(asset_dbs),
         "masterdata_dbs": len(master_dbs),
         "dependencies_copied": deps_copied,
@@ -1123,6 +1133,91 @@ def ensure_solo_3d_suit(cur: sqlite3.Cursor, live_id: int,
     _log(log, "[3d] solo live %s: set member %s suit_master_id=%s (was NULL; the 3D "
               "costume screen needs it)" % (live_id, member, new_suit))
     return new_suit
+
+
+def ensure_live_mv(cur: sqlite3.Cursor, live_id: int, asset_3d_id: Optional[int],
+                   log: Optional[Callable[[str], None]] = None) -> int:
+    """Ensure ``live_id`` has ``m_live_mv`` rows (the 3D MV stage/position list).
+
+    The MV mode reads ``m_live_mv`` for the stages/positions it can show; every
+    MV-playable live ships with a fixed set (3 positions in the observed data).
+    A former 2D song turned 3D has **none**, so the MV has nothing to render and
+    **won't load**.  We clone the position list from a template live (preferring
+    one of the same member_group for sensible stages), re-pointed to this live
+    and its 3D asset.  No-op if the live already has rows.
+
+    Returns the number of rows added.
+    """
+    if not table_exists(cur, "m_live_mv"):
+        return 0
+    cols = table_columns(cur, "m_live_mv")
+    if not cols:
+        return 0
+    lc = {c.lower(): c for c in cols}
+    lid_c = lc.get("live_id")
+    a3_c = lc.get("live_3d_asset_master_id")
+    if not lid_c:
+        return 0
+    cur.execute('SELECT COUNT(*) FROM m_live_mv WHERE "%s" = ?;' % lid_c, (live_id,))
+    if cur.fetchone()[0] > 0:
+        return 0                              # already configured
+    # pick a template: prefer the same member_group, else any live with mv rows
+    template = None
+    if table_exists(cur, "m_live"):
+        mlc = {c.lower(): c for c in table_columns(cur, "m_live")}
+        grp_c = mlc.get("member_group")
+        mlid = mlc.get("live_id") or mlc.get("id")
+        if grp_c and mlid:
+            cur.execute('SELECT "%s" FROM m_live WHERE "%s" = ?;' % (grp_c, mlid), (live_id,))
+            r = cur.fetchone()
+            if r and r[0] is not None:
+                cur.execute('SELECT mv."%s" FROM m_live_mv mv JOIN m_live l '
+                            'ON l."%s" = mv."%s" WHERE l."%s" = ? AND mv."%s" <> ? LIMIT 1;'
+                            % (lid_c, mlid, lid_c, grp_c, lid_c), (r[0], live_id))
+                rr = cur.fetchone()
+                if rr:
+                    template = rr[0]
+    if template is None:
+        cur.execute('SELECT "%s" FROM m_live_mv WHERE "%s" <> ? LIMIT 1;'
+                    % (lid_c, lid_c), (live_id,))
+        rr = cur.fetchone()
+        if rr:
+            template = rr[0]
+    if template is None:
+        _log(log, "[3d] live %s has no m_live_mv rows and no template was found; the "
+                  "MV may not load (add m_live_mv positions manually)" % live_id)
+        return 0
+    # the song-specific (last) MV position should use the 3D asset's own stage
+    stage_c = lc.get("live_stage_master_id")
+    pos_c = lc.get("position")
+    asset_stage = None
+    if stage_c and asset_3d_id is not None and table_exists(cur, "m_live_3d_asset"):
+        a3cols = {c.lower(): c for c in table_columns(cur, "m_live_3d_asset")}
+        if a3cols.get("live_stage_master_id") and a3cols.get("id"):
+            cur.execute('SELECT "%s" FROM m_live_3d_asset WHERE "%s" = ?;'
+                        % (a3cols["live_stage_master_id"], a3cols["id"]), (asset_3d_id,))
+            r = cur.fetchone()
+            if r:
+                asset_stage = r[0]
+    cur.execute('SELECT * FROM m_live_mv WHERE "%s" = ?;' % lid_c, (template,))
+    rows = cur.fetchall()
+    max_pos = max((row[cols.index(pos_c)] for row in rows), default=None) if pos_c else None
+    n = 0
+    for row in rows:
+        d = {c: row[i] for i, c in enumerate(cols)}
+        d[lid_c] = live_id
+        if a3_c and asset_3d_id is not None:
+            d[a3_c] = asset_3d_id
+        # last position = the song's own stage (matches the shipped solo pattern)
+        if stage_c and asset_stage is not None and pos_c and d[pos_c] == max_pos:
+            d[stage_c] = asset_stage
+        cur.execute('INSERT INTO main.m_live_mv (%s) VALUES (%s);'
+                    % (",".join('"%s"' % c for c in cols), ",".join("?" * len(cols))),
+                    [d[c] for c in cols])
+        n += 1
+    _log(log, "[3d] live %s: added %d m_live_mv position(s) from template live %s "
+              "(MV stage list was empty, so the MV wouldn't load)" % (live_id, n, template))
+    return n
 
 
 # --------------------------------------------------------------------------- #
