@@ -151,6 +151,8 @@ def build_plan_from_args(args, db_root: str) -> core.InstallPlan:
         quality_setting_set_id=args.quality,
         shader_variant_asset_path=args.shader,
         make_3d=not getattr(args, "keep_2d", False),
+        fix_solo_suit=not getattr(args, "no_suit_fix", False),
+        solo_suit_master_id=getattr(args, "solo_suit", None),
     )
 
 
@@ -559,6 +561,12 @@ def main(argv=None) -> int:
     ap.add_argument("--keep-2d", action="store_true",
                     help="do NOT flip m_live.is_2d_live to 0 (advanced; by default "
                          "the installer sets it so the game renders the 3D dance)")
+    ap.add_argument("--solo-suit", type=int, metavar="SUIT_ID",
+                    help="for a solo target, force this 3D suit_master_id on the member "
+                         "(else a valid one is auto-picked)")
+    ap.add_argument("--no-suit-fix", action="store_true",
+                    help="do NOT auto-set a solo live's member suit (advanced; a solo "
+                         "3D live with suit=NULL can't open its costume screen)")
     ap.add_argument("--dry-run", action="store_true", help="preview only; do not write")
     ap.add_argument("--no-backup", action="store_true", help="skip the DB backup")
     ap.add_argument("--build-pack", metavar="OUT.zip",
