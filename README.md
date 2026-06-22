@@ -53,9 +53,14 @@ If you'd rather not type anything in a terminal, the install folder ships with d
 - **macOS**: double-click `elichika_menu.command` inside the install folder.
 - **Windows**: double-click `elichika_menu.cmd` inside the install folder (it uses the Git Bash that comes with Git for Windows).
 
-After installing/updating, a matching shortcut is also placed on your **Desktop** (`menu_elichika3.command` on macOS, `menu_elichika3.cmd` on Windows), so you can open the menu without digging into the folder. From there, pick `1` to run the server.
+After installing/updating, a matching shortcut is also placed on your **Desktop** (`menu_elichika3.command` on macOS, `menu_elichika3.cmd` on Windows), so you can open the menu without digging into the folder. From there, pick `1` to run the server (press **Ctrl+C** while it's running to stop it and return to the menu — there is no separate "stop server" entry anymore), or `2` to update.
 
 ## Updating the server
+The easiest way on macOS/Windows (and Linux/Android too) is straight from the
+**menu**: open it (double-click the launcher, or run `~/menu_elichika3`) and
+choose **`2. Update Server`**, then pick the normal or basic update below. Both
+keep your data. You can also run either update directly from the command line.
+
 There are 2 ways to update the server:
 
 - The basic update is more stable but will take longer because it will be downloading more stuff and rebuilding more stuff.
