@@ -75,6 +75,17 @@ MASTERDATA_RELPATHS = (
     "db/jp/masterdata.db",
 )
 
+# Dictionary databases — m_live.name is a *key*; the human-readable song title
+# is m_dictionary.message for that key (the server does the same:
+# gamedata/live.go -> live.Name = gamedata.Dictionary.Resolve(live.Name)).
+# Listed in resolution-preference order; the first DB that resolves a key wins.
+DICTIONARY_RELPATHS = (
+    "db/gl/dictionary_en_k.db",
+    "db/gl/dictionary_ko_k.db",
+    "db/gl/dictionary_zh_k.db",
+    "db/jp/dictionary_ja_k.db",
+)
+
 # The asset DB used as the "source of truth" for reading (song lists come from
 # masterdata; existing dependency lists and stage catalogs from here).
 PRIMARY_ASSET_RELPATH = "db/gl/asset_a_en.db"
@@ -217,7 +228,8 @@ class SongInfo:
     music_id: Optional[int]
     name: str                       # resolved display name (or the raw key)
     name_key: str                   # raw m_live.name dictionary key
-    asset_3d_id: Optional[int]      # first non-NULL 3D asset across difficulties
+    pronunciation: str = ""         # m_live.pronunciation (kana reading), if any
+    asset_3d_id: Optional[int] = None  # first non-NULL 3D asset across difficulties
     difficulty_ids: List[int] = field(default_factory=list)
     difficulties: List[Difficulty] = field(default_factory=list)
 
@@ -232,43 +244,52 @@ class SongInfo:
         return [d for d in self.difficulties if not d.has_dance]
 
 
-def _resolve_names(name_keys: Sequence[str], dictionary_db: Optional[str]) -> Dict[str, str]:
+def _resolve_names(name_keys: Sequence[str], dictionary_db) -> Dict[str, str]:
     """Best-effort map raw m_live.name keys -> human text via a dictionary DB.
 
-    The dictionary tables vary by build; we try the common shapes and silently
-    give up (returning the key unchanged) if none match.
+    ``dictionary_db`` may be a single path or a sequence of paths (tried in
+    order, first match wins per key — e.g. en, ko, zh, ja).  The dictionary
+    tables vary by build; we try the common shapes (m_dictionary's id/message)
+    and silently give up (returning the key unchanged) if none match.
     """
     out: Dict[str, str] = {}
-    if not dictionary_db or not os.path.exists(dictionary_db):
+    if not dictionary_db:
         return out
+    dbs = [dictionary_db] if isinstance(dictionary_db, str) else list(dictionary_db)
     keys = [k for k in {k for k in name_keys if k}]
     if not keys:
         return out
-    try:
-        con = sqlite3.connect(dictionary_db)
-        cur = con.cursor()
-        # find a table that has an id-like and a message-like column
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = [r[0] for r in cur.fetchall()]
-        for tbl in tables:
-            cols = table_columns(cur, tbl)
-            lc = {c.lower(): c for c in cols}
-            id_col = lc.get("id") or lc.get("key") or lc.get("message_id")
-            msg_col = lc.get("message") or lc.get("text") or lc.get("value")
-            if not id_col or not msg_col:
-                continue
-            placeholders = ",".join("?" * len(keys))
-            try:
-                cur.execute('SELECT "%s","%s" FROM "%s" WHERE "%s" IN (%s);'
-                            % (id_col, msg_col, tbl, id_col, placeholders), keys)
-            except sqlite3.Error:
-                continue
-            for k, v in cur.fetchall():
-                if k not in out and v:
-                    out[str(k)] = str(v)
-        con.close()
-    except sqlite3.Error:
-        pass
+    for db in dbs:
+        if not db or not os.path.exists(db):
+            continue
+        # everything already resolved? stop early
+        if all(k in out for k in keys):
+            break
+        try:
+            con = sqlite3.connect(db)
+            cur = con.cursor()
+            # find a table that has an id-like and a message-like column
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = [r[0] for r in cur.fetchall()]
+            for tbl in tables:
+                cols = table_columns(cur, tbl)
+                lc = {c.lower(): c for c in cols}
+                id_col = lc.get("id") or lc.get("key") or lc.get("message_id")
+                msg_col = lc.get("message") or lc.get("text") or lc.get("value")
+                if not id_col or not msg_col:
+                    continue
+                placeholders = ",".join("?" * len(keys))
+                try:
+                    cur.execute('SELECT "%s","%s" FROM "%s" WHERE "%s" IN (%s);'
+                                % (id_col, msg_col, tbl, id_col, placeholders), keys)
+                except sqlite3.Error:
+                    continue
+                for k, v in cur.fetchall():
+                    if str(k) not in out and v:
+                        out[str(k)] = str(v)
+            con.close()
+        except sqlite3.Error:
+            pass
     return out
 
 
@@ -339,6 +360,7 @@ def list_songs(masterdata_db: str,
             first_3d = next((d.asset_3d_id for d in diffs if d.asset_3d_id is not None), None)
             out.append(SongInfo(
                 live_id=live_id, music_id=music_id, name=disp, name_key=name_key,
+                pronunciation=pron,
                 asset_3d_id=first_3d, difficulty_ids=[d.difficulty_id for d in diffs],
                 difficulties=diffs,
             ))
@@ -617,6 +639,9 @@ class InstallPlan:
     shader_variant_asset_path: Optional[str] = None
     extra_columns: Dict[str, object] = field(default_factory=dict)
     copy_old_dependencies: bool = True
+    # flip m_live.is_2d_live -> 0 for the target song so the game actually
+    # renders the dance (without this, a former 2D-PV song still shows as 2D).
+    make_3d: bool = True
 
     def timeline_asset(self) -> Optional[AssetInput]:
         for a in self.assets:
@@ -679,6 +704,12 @@ def primary_asset_db(db_root: str) -> str:
 
 def primary_masterdata_db(db_root: str) -> str:
     return masterdata_paths(db_root)[0]
+
+
+def dictionary_db_paths(db_root: str) -> List[str]:
+    """Existing dictionary DBs under ``db_root`` in resolution-preference order."""
+    return [p for p in (str(Path(db_root) / rel) for rel in DICTIONARY_RELPATHS)
+            if os.path.exists(p)]
 
 
 def existing(paths: Sequence[str]) -> List[str]:
@@ -819,6 +850,7 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
     cv = plan.column_values()
     cv["timeline"] = tl.asset_path
     final_3d_id = plan.target_3d_asset_id
+    rendered_3d = False
 
     # Resolve the install mode (replace existing dance vs add a new one).
     song_has_dance = not _needs_clone(master_dbs, plan.target_3d_asset_id)
@@ -854,6 +886,10 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
                 forced_new_id=forced_new_id, force_clone=do_clone, log=log)
             if rid is not None:
                 final_3d_id = rid
+            # Flip the song to 3D rendering, else the client keeps showing 2D.
+            if plan.make_3d and plan.target_live_id is not None:
+                if set_live_render_mode(cur, plan.target_live_id, is_2d=0, log=log):
+                    rendered_3d = True
             if dry_run:
                 con.rollback()
             else:
@@ -868,6 +904,7 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
         "assets": [(a.pack_name, a.asset_path, a.resolved_table()) for a in plan.assets],
         "package_key": package_key,
         "final_3d_asset_id": final_3d_id,
+        "is_2d_live_set_to_3d": rendered_3d,
         "asset_dbs": len(asset_dbs),
         "masterdata_dbs": len(master_dbs),
         "dependencies_copied": deps_copied,
@@ -947,6 +984,33 @@ def _current_timeline_path(master_dbs: Sequence[str],
         finally:
             con.close()
     return None
+
+
+def set_live_render_mode(cur: sqlite3.Cursor, live_id: int, is_2d: int = 0,
+                         log: Optional[Callable[[str], None]] = None) -> bool:
+    """Set ``m_live.is_2d_live`` for ``live_id`` (schema-agnostic; no-op if the
+    column/table is absent).
+
+    SIFAS renders the 3D dance **only when ``is_2d_live = 0``**.  A song that
+    shipped as audio/2D-PV keeps ``is_2d_live = 1`` and the client ignores any
+    ``m_live_3d_asset`` you attach — so it still shows as 2D.  Installing a dance
+    therefore has to flip this flag, which the timeline/3d-asset writes alone do
+    not do.  (The full live_addon_installer.py inserts m_live with is_2d_live='1'
+    for its 2D-PV lives, confirming the column's meaning.)
+    """
+    if not table_exists(cur, "m_live"):
+        return False
+    cols = {c.lower(): c for c in table_columns(cur, "m_live")}
+    flag_col = cols.get("is_2d_live")
+    id_col = cols.get("live_id") or cols.get("id")
+    if not flag_col or not id_col:
+        _log(log, "[3d] m_live.is_2d_live column not present; skipping render-mode flip")
+        return False
+    cur.execute('UPDATE main.m_live SET "%s" = ? WHERE "%s" = ?;'
+                % (flag_col, id_col), (is_2d, live_id))
+    _log(log, "[3d] m_live.%s = %d for live_id=%s (%s)"
+         % (flag_col, is_2d, live_id, "render 3D dance" if is_2d == 0 else "render 2D"))
+    return cur.rowcount > 0
 
 
 # --------------------------------------------------------------------------- #
