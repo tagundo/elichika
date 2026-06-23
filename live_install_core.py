@@ -756,6 +756,44 @@ def _sanitize_pack_name(path: str) -> str:
     return safe or "asset"
 
 
+def _read_asset_bundle(path: str):
+    """Return the AssetBundle object of a Unity bundle file, or None if it can't
+    be read (UnityPy missing, not a bundle, parse error)."""
+    try:
+        import UnityPy
+        env = UnityPy.load(str(path))
+        for o in env.objects:
+            if o.type.name == "AssetBundle":
+                return o.read()
+    except Exception:
+        return None
+    return None
+
+
+def _bundle_dependency_names(path: str):
+    """Set of bundle names this timeline bundle references (its Unity
+    ``m_Dependencies``), or None when the bundle can't be read."""
+    ab = _read_asset_bundle(path)
+    if ab is None:
+        return None
+    deps = getattr(ab, "m_Dependencies", None)
+    if deps is None:
+        return set()
+    return {str(d) for d in deps}
+
+
+def _bundle_provided_names(paths) -> set:
+    """Set of internal AssetBundle names provided by the given bundle files
+    (each bundle's ``m_Name``)."""
+    out: set = set()
+    for p in paths:
+        ab = _read_asset_bundle(p)
+        nm = getattr(ab, "m_Name", None) if ab is not None else None
+        if nm:
+            out.add(str(nm))
+    return out
+
+
 def install_dance_live(plan: InstallPlan, db_root: str, *,
                        static_dir: str = "static",
                        backup: bool = True,
@@ -795,6 +833,15 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
             pack = pack + format(random.randint(0, 0xFFFF), "x")
         used_packs.add(pack)
         a.pack_name = pack
+        # The CDN/cache serves packs by EXACT file name (== pack_name).  Spaces and
+        # other non [A-Za-z0-9_-] characters are stripped from the source filename, so
+        # a name like "v7i875_0 camera lips.unity" becomes pack "v7i875_0cameralips" —
+        # which no longer matches the file the user copies by hand.  Warn loudly.
+        stem = Path(a.path).stem
+        if pack != stem:
+            _log(log, "[warn] pack name sanitized: %r -> %r; the served file MUST be "
+                      "named exactly %r (no extension, no spaces)"
+                      % (Path(a.path).name, pack, pack))
     con0.close()
 
     written_files: List[str] = []
@@ -821,6 +868,26 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
         uid = random.randint(1, 999999999)
     package_key = "live:%d" % uid
 
+    # Decide whether to carry the donor timeline's old dependency rows over.  If
+    # the plan's own dependency bundles already provide every bundle the new
+    # timeline references (its Unity m_Dependencies), carrying the donor's deps
+    # would just drag the *previous* (now-replaced) motion bundle along — which is
+    # how reinstalling camera+motion accumulated a stale motion dep that the game
+    # then failed to download.  Only fall back to copying when the plan doesn't
+    # fully cover the timeline's bundle deps (e.g. a camera-only swap on a native
+    # song that still needs its original model/motion), or when the bundle can't
+    # be inspected.
+    carry_old_deps = plan.copy_old_dependencies and plan.target_3d_asset_id is not None
+    if carry_old_deps:
+        needed = _bundle_dependency_names(tl.path)
+        provided = _bundle_provided_names(
+            [a.path for a in plan.assets if a.is_dependency])
+        if needed is not None and needed <= provided:
+            carry_old_deps = False
+            _log(log, "[deps] plan supplies all %d bundle dependency(ies) the "
+                      "timeline references; not carrying the donor's old deps "
+                      "(avoids stale motion packs)" % len(needed))
+
     # 2) Register every asset into every asset DB (+ CDN package + dependencies).
     deps_copied = 0
     for dbp in asset_dbs:
@@ -833,7 +900,7 @@ def install_dance_live(plan: InstallPlan, db_root: str, *,
                 register_cdn_package(cur, package_key + ":" + a.pack_name,
                                      a.pack_name, a.size)
             # carry over the donor timeline's dependencies onto the new timeline
-            if plan.copy_old_dependencies and plan.target_3d_asset_id is not None:
+            if carry_old_deps:
                 # the donor timeline path == current m_live_3d_asset.timeline
                 old_tl = _current_timeline_path(master_dbs, plan.target_3d_asset_id)
                 if old_tl:
