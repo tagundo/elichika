@@ -15,6 +15,7 @@ import random
 import sys
 import shutil
 import hashlib
+import zlib
 from datetime import datetime
 
 
