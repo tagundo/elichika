@@ -190,6 +190,42 @@ def find_member_main(root, asset_db, want_shader="Hidden/AS/Member/Main", log=pr
 # --------------------------------------------------------------------------- #
 # shader: apply the transparent-skirt blend + install
 # --------------------------------------------------------------------------- #
+# Unity ShaderCompilerPlatform ids -> our platform label.
+_GPU_IOS = {14}                    # Metal
+_GPU_ANDROID = {0, 2, 5, 9, 11, 18}  # GLES / GLES3 / GLES3Plus / Vulkan
+
+
+def bundle_platform(bundle_bytes):
+    """Detect whether a member-shader bundle is the iOS (Metal) or Android
+    (GLES/Vulkan) build by reading the compiled Shader's target GPU platforms.
+    The compiled program is platform-specific, so this is the authoritative way
+    to know which platform's DBs a bundle may be installed into.
+    Returns 'ios' | 'android' | 'unknown'."""
+    import UnityPy
+    env = UnityPy.load(bundle_bytes)
+    ids = set()
+    for o in env.objects:
+        if o.type.name != "Shader":
+            continue
+        try:
+            t = o.read_typetree()
+        except Exception:
+            continue
+        plats = t.get("platforms") or (t.get("m_ParsedForm") or {}).get("m_Platforms") or []
+        for p in plats:
+            try:
+                ids.add(int(p))
+            except (TypeError, ValueError):
+                pass
+    ios = bool(ids & _GPU_IOS)
+    android = bool(ids & _GPU_ANDROID)
+    if ios and not android:
+        return "ios"
+    if android and not ios:
+        return "android"
+    return "unknown"
+
+
 def apply_transparent_blend(src_bytes):
     """Return new bundle bytes with the member Main color pass switched to
     alpha blending (SrcAlpha / OneMinusSrcAlpha) so the skirt becomes
@@ -263,17 +299,49 @@ def register_pack(cur, pack_name, size, old_pack=None):
                     (fresh, str(cnt)))
 
 
-def install_shader(root, bundle_path, platform="ios", make_transparent=True,
+def install_shader(root, bundle_path, platform="auto", make_transparent=True,
                    do_backup=True, asset_path=None, log=print):
-    """Install a member-Main shader bundle into elichika for the chosen platform.
-    platform: 'ios' | 'android' | 'both'.  The compiled shader is platform-specific
-    (iOS=Metal, Android=GLES), so the bundle is written ONLY to DBs whose platform
-    matches; an iOS bundle is never written to Android DBs (or vice versa)."""
+    """Install ONE member-Main shader bundle into elichika.
+
+    The compiled shader is platform-specific (iOS=Metal, Android=GLES), so the
+    bundle's real platform is auto-detected from its compiled programs and it is
+    written ONLY to that platform's DBs (asset_i for iOS, asset_a for Android).
+
+    platform: 'auto' (default, detect from the bundle) | 'ios' | 'android'.
+      A specific value is treated as a guard: if it contradicts the detected
+      platform the install is refused, so you can never cross-install a Metal
+      bundle into Android DBs (or vice versa).  There is no 'both' — a single
+      bundle is one platform; install each platform's bundle separately."""
     with open(bundle_path, "rb") as f:
         raw = f.read()
     if make_transparent:
         raw = apply_transparent_blend(raw)
         log("[shader] applied transparent-skirt blend (SrcAlpha/OneMinusSrcAlpha)")
+
+    # Decide the target platform from the bundle's own compiled programs and
+    # refuse any mismatch BEFORE writing anything.
+    detected = bundle_platform(raw)
+    log("[shader] bundle platform detected: %s" % detected)
+    if platform == "both":
+        raise RuntimeError(
+            "a single bundle is one platform only — install the iOS and Android "
+            "bundles separately (each platform's compiled shader differs).")
+    if platform == "auto":
+        if detected == "unknown":
+            raise RuntimeError("could not auto-detect the bundle's platform; "
+                               "pass --platform ios|android explicitly.")
+        target = detected
+    else:
+        if detected != "unknown" and detected != platform:
+            raise RuntimeError(
+                "refusing to install: bundle is %s but --platform %s was given. "
+                "Installing a %s shader into %s DBs would corrupt them."
+                % (detected, platform, detected, platform))
+        target = platform
+    want = {target}
+    log("[shader] target platform: %s (DBs: asset_%s_*)"
+        % (target, "i" if target == "ios" else "a"))
+
     size = len(raw)
     enc = xor_bytes(raw, 0, 0)
     pack_name = ("%08x" % (zlib.crc32(raw) & 0xFFFFFFFF)) + "membertransp"
@@ -299,7 +367,6 @@ def install_shader(root, bundle_path, platform="ios", make_transparent=True,
                            "(no decryptable pack contained 'Hidden/AS/Member/Main'). "
                            "Pass an explicit --asset-path if you know it.")
 
-    want = {"ios", "android"} if platform == "both" else {platform}
     touched = []
     for adb in asset_dbs(root):
         plat = db_platform(adb)
@@ -542,8 +609,8 @@ def run_gui():
 
     root = tk.Tk(); root.title("elichika Costume Transparency Tool"); root.geometry("860x680")
     rootvar = tk.StringVar(value=os.getcwd())
-    bundlevar = tk.StringVar()
-    platvar = tk.StringVar(value="ios")
+    iosvar = tk.StringVar()
+    androidvar = tk.StringVar()
     transpvar = tk.BooleanVar(value=True)
     livevar = tk.StringVar(value="ALL")
     allvar = tk.BooleanVar(value=True)
@@ -564,25 +631,36 @@ def run_gui():
 
     # --- shader tab ---
     f1 = ttk.Frame(nb, padding=8); nb.add(f1, text="1) Transparent shader")
-    ttk.Label(f1, text="Member-Main shader bundle (.unity):").grid(row=0, column=0, sticky="w")
-    ttk.Entry(f1, textvariable=bundlevar, width=52).grid(row=0, column=1, padx=4)
-    ttk.Button(f1, text="Browse", command=lambda: bundlevar.set(
-        filedialog.askopenfilename(filetypes=[("Unity", "*.unity *.unity3d"), ("All", "*.*")]) or bundlevar.get())
-    ).grid(row=0, column=2)
-    ttk.Label(f1, text="Platform of this bundle:").grid(row=1, column=0, sticky="w", pady=4)
-    ttk.Combobox(f1, textvariable=platvar, values=["ios", "android"], width=10, state="readonly").grid(row=1, column=1, sticky="w")
+    _uft = [("Unity", "*.unity *.unity3d"), ("All", "*.*")]
+    ttk.Label(f1, text="iOS bundle (Metal):").grid(row=0, column=0, sticky="w")
+    ttk.Entry(f1, textvariable=iosvar, width=52).grid(row=0, column=1, padx=4)
+    ttk.Button(f1, text="Browse", command=lambda: iosvar.set(
+        filedialog.askopenfilename(filetypes=_uft) or iosvar.get())).grid(row=0, column=2)
+    ttk.Label(f1, text="Android bundle (GLES):").grid(row=1, column=0, sticky="w", pady=4)
+    ttk.Entry(f1, textvariable=androidvar, width=52).grid(row=1, column=1, padx=4)
+    ttk.Button(f1, text="Browse", command=lambda: androidvar.set(
+        filedialog.askopenfilename(filetypes=_uft) or androidvar.get())).grid(row=1, column=2)
     ttk.Checkbutton(f1, text="apply transparent-skirt blend (uncheck if bundle is already edited)",
                     variable=transpvar).grid(row=2, column=0, columnspan=3, sticky="w")
 
     def do_shader():
+        bundles = [b for b in (iosvar.get().strip(), androidvar.get().strip()) if b]
+        if not bundles:
+            messagebox.showinfo("Shader", "Pick at least one bundle (iOS and/or Android).")
+            return
         try:
-            install_shader(rootvar.get(), bundlevar.get(), platform=platvar.get(),
-                           make_transparent=transpvar.get(), log=L)
-            messagebox.showinfo("Done", "Shader installed. Re-sync the client.")
+            ok = 0
+            for b in bundles:
+                L("[shader] === %s ===" % os.path.basename(b))
+                # platform is auto-detected from each bundle; mismatches are refused
+                ok += len(install_shader(rootvar.get(), b, platform="auto",
+                                         make_transparent=transpvar.get(), log=L))
+            messagebox.showinfo("Done", "Installed into %d DB(s). Re-sync the client." % ok)
         except Exception as e:
             L("[error]", e); messagebox.showerror("Error", str(e))
-    ttk.Button(f1, text="Install shader", command=do_shader).grid(row=3, column=0, pady=8, sticky="w")
-    ttk.Label(f1, text="(iOS uses asset_i DBs, Android asset_a. Install once per platform you play.)",
+    ttk.Button(f1, text="Install shader(s)", command=do_shader).grid(row=3, column=0, pady=8, sticky="w")
+    ttk.Label(f1, text="(Each bundle's platform is auto-detected and installed to its own DBs: "
+                       "iOS→asset_i, Android→asset_a. Provide the bundle(s) for the platform(s) you play.)",
               foreground="#666").grid(row=4, column=0, columnspan=3, sticky="w")
 
     # --- per-live fix tab ---
@@ -630,8 +708,14 @@ def run_gui():
 def main():
     ap = argparse.ArgumentParser(description="elichika costume transparency tool (shader + per-live leg fix)")
     ap.add_argument("-r", "--root", default=".", help="elichika root")
-    ap.add_argument("--shader", metavar="BUNDLE", help="install transparent member shader from BUNDLE")
-    ap.add_argument("--platform", choices=["ios", "android", "both"], default="ios")
+    ap.add_argument("--shader", metavar="BUNDLE", action="append",
+                    help="install transparent member shader from BUNDLE. Repeatable: "
+                         "pass it once per platform (e.g. --shader ios.unity --shader android.unity) "
+                         "and each is auto-detected and installed to its own platform's DBs.")
+    ap.add_argument("--platform", choices=["ios", "android", "auto"], default="auto",
+                    help="platform guard for the bundle(s). 'auto' (default) detects each "
+                         "bundle's platform from its compiled programs; a specific value is "
+                         "enforced and a mismatching bundle is refused.")
     ap.add_argument("--no-transparent", action="store_true", help="bundle is already edited; don't re-blend")
     ap.add_argument("--asset-path", default=None, help="member shader asset_path override (if auto-detect fails)")
     ap.add_argument("--fix-live", metavar="LIVES", nargs="?", const="ALL",
@@ -650,11 +734,13 @@ def main():
     did = False
     changed = False
     if a.shader:
-        touched = install_shader(a.root, a.shader, platform=a.platform,
-                                 make_transparent=not a.no_transparent,
-                                 asset_path=a.asset_path, log=print)
+        for bundle in a.shader:
+            print("[shader] === %s ===" % os.path.basename(bundle))
+            touched = install_shader(a.root, bundle, platform=a.platform,
+                                     make_transparent=not a.no_transparent,
+                                     asset_path=a.asset_path, log=print)
+            changed = changed or bool(touched)
         did = True
-        changed = changed or bool(touched)
     if a.fix_live:
         total = fix_live(a.root, [k.strip() for k in a.fix_live.split(",") if k.strip()],
                          skin_merge=0, safe_swing=(0 if a.safe_swing_off else None), log=print)
