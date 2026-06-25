@@ -33,9 +33,11 @@ Options: `--host 0.0.0.0` (LAN), `--port 8772`, `--no-browser`.
 - **Backup / Restore** call the scripts' real functions directly
   (`backup_database_files`, `list_backup_folders`, `restore_from_backup`), so the
   behaviour is identical to the CLI. Restore auto-backs up the current state first.
-- **Costume Clone** lists a character's costumes with a read-only query, then runs
-  the unchanged `costume_clone.py` as a subprocess (feeding the answers), so the
-  actual DB inserts are exactly what the CLI does.
+- **Costume Clone** imports `costume_clone.py` and calls its `list_costumes` /
+  `clone_costume` functions directly (the script is import-safe; its interactive
+  CLI lives under `__main__`), so the behaviour matches the CLI. The clone
+  validates the ids, takes a backup first, and stages all writes so a failure
+  leaves nothing committed.
 - These are **offline DB operations**: keep "Stop the elichika server first" on,
   and restart the server afterwards.
 - Pure standard-library (no web framework). Same pattern as the SIFAS `webtools`

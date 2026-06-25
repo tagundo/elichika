@@ -89,28 +89,61 @@ def test_backup_restore(root):
 def test_costume(root):
     print("costume clone:")
     from adminui.jobs import Job
+    from adminui.tools.common import ensure_repo_on_path
     from adminui.tools.costume_clone import costume_options, run_costume_clone
+
+    ensure_repo_on_path()
+    import costume_clone
 
     opts = costume_options({"src_id": "101"})
     check("costume listing finds the suit", any(o["value"] == "5001" for o in opts),
           str(opts))
 
     job = Job("t", "costume_clone")
-    summary = run_costume_clone(job, {"src_id": "101", "costume": "5001", "tgt_id": "101",
-                                      "mask": "1", "stop_server": False})
-    # verify a cloned suit + a user grant were inserted
+    run_costume_clone(job, {"src_id": "101", "costume": "5001", "tgt_id": "101",
+                            "mask": "1", "stop_server": False, "backup": False})
+    # verify a cloned suit + a user grant were inserted (in BOTH masterdata DBs)
     md = sqlite3.connect(os.path.join(root, "assets/db/gl/masterdata.db"))
     n_clone = md.execute("SELECT COUNT(*) FROM m_suit WHERE name LIKE '%_cloned'").fetchone()[0]
     md.close()
+    jp = sqlite3.connect(os.path.join(root, "assets/db/jp/masterdata.db"))
+    n_clone_jp = jp.execute("SELECT COUNT(*) FROM m_suit WHERE name LIKE '%_cloned'").fetchone()[0]
+    jp.close()
     u = sqlite3.connect(os.path.join(root, "userdata.db"))
     n_grant = u.execute("SELECT COUNT(*) FROM u_suit").fetchone()[0]
     u.close()
-    check("clone inserted a cloned suit", n_clone == 1, f"n={n_clone}")
+    check("clone inserted a cloned suit (GL)", n_clone == 1, f"n={n_clone}")
+    check("clone inserted a cloned suit (JP)", n_clone_jp == 1, f"n={n_clone_jp}")
     check("clone granted suit to user", n_grant == 1, f"n={n_grant}")
     d = sqlite3.connect(os.path.join(root, "assets/db/gl/dictionary_en_k.db"))
     n_dict = d.execute("SELECT COUNT(*) FROM m_dictionary WHERE id LIKE '%_cloned'").fetchone()[0]
     d.close()
     check("clone added a dictionary entry", n_dict == 1, f"n={n_dict}")
+
+    # empty-target path: character 102 has no suits, so MIN(display_order) is NULL.
+    # the old code crashed here (None - 1); now it must place the suit at order 0.
+    job2 = Job("t2", "costume_clone")
+    run_costume_clone(job2, {"src_id": "101", "costume": "5001", "tgt_id": "102",
+                             "mask": "1", "stop_server": False, "backup": False})
+    md = sqlite3.connect(os.path.join(root, "assets/db/gl/masterdata.db"))
+    row = md.execute("SELECT display_order FROM m_suit WHERE member_m_id = 102").fetchone()
+    md.close()
+    check("clone onto a costume-less character succeeds", row is not None and row[0] == 0,
+          f"row={row}")
+
+    # validation: an unknown character id is rejected before any write
+    try:
+        costume_clone.clone_costume("101", "5001", "999", do_backup=False)
+        check("invalid target id rejected", False, "no error raised")
+    except ValueError:
+        check("invalid target id rejected", True)
+
+    # a costume that doesn't belong to the source character is rejected
+    try:
+        costume_clone.clone_costume("102", "5001", "101", do_backup=False)
+        check("mismatched costume/source rejected", False, "no error raised")
+    except ValueError:
+        check("mismatched costume/source rejected", True)
 
 
 def test_http():

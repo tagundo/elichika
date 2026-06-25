@@ -44,6 +44,8 @@ TOOLS = [
             {"name": "mask", "label": "Rina version (only character 209)", "type": "select",
              "options": ["1 (with mask)", "2 (no mask)"], "default": "1 (with mask)"},
             {"name": "tgt_id", "label": "Target character ID", "type": "text", "required": True},
+            {"name": "backup", "label": "Back up databases first", "type": "checkbox",
+             "default": True, "help": "Recommended: a full DB backup is taken before the clone."},
             _STOP,
         ],
     },
