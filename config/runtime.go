@@ -6,7 +6,10 @@ import (
 	"elichika/utils"
 
 	"encoding/json"
+	"os"
 	"reflect"
+	"runtime"
+	"strings"
 )
 
 type RuntimeConfig struct {
@@ -14,7 +17,7 @@ type RuntimeConfig struct {
 	CdnServer                *string `json:"cdn_server" of_label:"CDN server's address"`
 	CdnPartialFileCapability *string `json:"cdn_partial_file_capability" of_type:"select" of_options:"Has static partial file\nstatic_file\nHas partial file mapping\nmapped_file\nHas range API\nhas_range_api\nNothing\nnothing" of_label:"CDN server's partial file capability" `
 	CdnCache                 *bool   `json:"cdn_cache" of_label:"Cache CDN packs locally and serve them"`                                               // when true, elichika serves packs itself, downloading missing ones from cdn_server (the upstream) into the cache directory
-	CdnCacheDir              *string `json:"cdn_cache_dir" of_label:"CDN cache directory (default ~/storage/downloads/sukusta/packs; empty = static/)"` // where cached packs are stored/shared; empty falls back to static/
+	CdnCacheDir              *string `json:"cdn_cache_dir" of_label:"CDN cache directory (empty = the local static/ folder, the PC default; e.g. ~/storage/downloads/sukusta/packs on Android)"` // where cached packs are stored/shared; empty (the PC default) means the local static/ folder
 	AdminPassword            *string `json:"admin_password" of_label:"Admin password" of_type:"password""`
 	TapBondGain              *int32  `json:"tap_bond_gain" of_label:"Partner tap bond reward" of_attrs:"min=\"0\" max=\"20000000\"`
 	AutoJudgeType            *int32  `json:"auto_judge_type" of_type:"select" of_options:"None\n1\nMiss\n10\nBad\n12\nGood\n14\nGreat\n20\nPerfect\n30" of_label:"Autoplay judge type"`
@@ -30,9 +33,30 @@ type RuntimeConfig struct {
 	WebUILanguage            *string `json:"webui_language" of_type:"select" of_options:"English\nen\n한국어\nko\n日本語\nja" of_label:"WebUI language (default; override per-request with ?l=)"` // default interface language for the admin/user WebUI; game data localisation is separate
 }
 
-// DefaultCdnCacheDir is where cdn_cache stores packs when cdn_cache_dir is unset/empty. It's the
-// shared sukusta folder so the cache lines up with the game and llas_asset_extractor.py.
+// DefaultCdnCacheDir is the cdn_cache directory used on Android (Termux and the embedded APK build):
+// the shared sukusta folder, so the cache lines up with the game and llas_asset_extractor.py.
 const DefaultCdnCacheDir = "~/storage/downloads/sukusta/packs"
+
+// isAndroid reports whether elichika is running on Android - either the embedded APK build
+// (GOOS=android) or a Termux server. Termux's Go toolchain does not always report GOOS=android, so
+// we also match the Termux environment the way the repo's Python tooling (is_termux()) does: the
+// PREFIX env var points inside the Termux app dir. On PC (Windows/macOS/Linux/Docker) both checks
+// are false, so the cache defaults to the local static/ folder there - and never on Termux.
+func isAndroid() bool {
+	return runtime.GOOS == "android" || strings.Contains(os.Getenv("PREFIX"), "com.termux")
+}
+
+// defaultCdnCacheDir is the cdn_cache_dir written into a fresh config.json. On PC (Windows/macOS/
+// Linux/Docker) it is empty, which cacheDir() resolves to the local static/ folder sitting next to
+// the server - easy to find, already gitignored, and consistent with the Python modding tools. On
+// Android (Termux or the embedded APK) it is the shared sukusta folder. This mirrors
+// costume_addon_installer.py's _pack_output_dir() (PC/macOS -> static/, Termux -> sukusta).
+func defaultCdnCacheDir() string {
+	if isAndroid() {
+		return DefaultCdnCacheDir
+	}
+	return ""
+}
 
 func defaultConfigs() *RuntimeConfig {
 	configs := RuntimeConfig{
@@ -59,7 +83,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.CdnServer = "https://llsifas.imsofucking.gay/static/"
 	*configs.CdnPartialFileCapability = "nothing"
 	*configs.CdnCache = false
-	*configs.CdnCacheDir = DefaultCdnCacheDir
+	*configs.CdnCacheDir = defaultCdnCacheDir()
 	*configs.AdminPassword = ""
 	*configs.TapBondGain = 20
 	*configs.AutoJudgeType = enum.JudgeTypePerfect
@@ -103,11 +127,19 @@ func Load(p string) *RuntimeConfig {
 		*c.CdnServer = "https://llsifas.imsofucking.gay/static/"
 		changed = true
 	}
-	if *c.CdnCacheDir == "" {
-		// an empty value (e.g. left over from an older default) would route the cache into static/;
-		// upgrade it to the shared sukusta default instead. To deliberately cache into static, set
-		// cdn_cache_dir to "static/".
+	// On PC the default cdn_cache_dir is empty, which means "use the local static/ folder" (resolved
+	// in the asset handler's cacheDir()). On Android (Termux / embedded APK), fill an empty value with
+	// the shared sukusta folder so the cache is reachable by the game and the Python tooling.
+	if *c.CdnCacheDir == "" && isAndroid() {
 		*c.CdnCacheDir = DefaultCdnCacheDir
+		changed = true
+	}
+	// Migrate PC configs written by older builds that hard-coded the Android sukusta path as the
+	// default even on desktop: move them back to the static/ default (empty). This only runs off
+	// Android, so a Termux/APK install keeps its sukusta cache untouched. A directory the user chose
+	// for themselves is something else, but the old auto-default literal is safe to upgrade.
+	if !isAndroid() && *c.CdnCacheDir == DefaultCdnCacheDir {
+		*c.CdnCacheDir = ""
 		changed = true
 	}
 	if changed {

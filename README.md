@@ -212,7 +212,7 @@ Detailed explanations of some config options:
     - The first time a pack is needed, `elichika` downloads it from the CDN server's address (the upstream) into the cache directory and then serves it from there. Later requests are served straight from the cache without touching the network.
     - The cache directory is set by `cdn_cache_dir`:
         - Leave it empty (default) and packs are cached in the existing `static/` folder. This is the simplest option for PC/Docker, where no extra folder is needed.
-        - On termux/Android, set it to the shared sukusta folder (e.g. `~/storage/downloads/sukusta/packs`) so the cache is shared with the game and the `llas_asset_extractor.py` tooling. A leading `~/` is expanded to your home directory.
+        - On termux/Android it instead defaults to the shared sukusta folder (`~/storage/downloads/sukusta/packs`) so the cache is shared with the game and the `llas_asset_extractor.py` tooling; you can still set it explicitly. A leading `~/` is expanded to your home directory.
     - Lookup order when serving a pack is `<cdn_cache_dir>/` -> `static/` -> download from the upstream into `<cdn_cache_dir>/`.
     - This is useful if you want a local mirror that fills itself up on demand: keep the CDN server's address pointed at a real CDN (the upstream to pull from) and turn this on.
 

@@ -205,9 +205,15 @@ download_all_archive() {
     echo "Download ALL game files (big archives from archive.org)."
     echo "This does NOT use the game CDN, so it won't burden it."
     echo ""
-    # resolve cdn_cache_dir from config.json (default ~/storage/downloads/sukusta/packs)
+    # resolve cdn_cache_dir from config.json. Empty/unset means the local static/ folder on PC and
+    # the shared sukusta folder on Termux/Android - matching the server's default for each.
     cache_dir=$(grep -oE '"cdn_cache_dir":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
-    [ -z "$cache_dir" ] && cache_dir="$HOME/storage/downloads/sukusta/packs"
+    if [ -z "$cache_dir" ]; then
+        case "${PREFIX:-}" in
+            *com.termux*) cache_dir="$HOME/storage/downloads/sukusta/packs" ;;
+            *)            cache_dir="static" ;;
+        esac
+    fi
     # expand a leading ~ (POSIX-safe; escape the ~ so it isn't tilde-expanded inside the pattern)
     case "$cache_dir" in
         "~")   cache_dir="$HOME" ;;
@@ -334,7 +340,8 @@ while true; do
         6)
             # Toggle CDN Cache: when ON, elichika downloads any pack the game needs from the CDN,
             # stores it locally (cdn_cache_dir), and serves it - so it loads fast next time.
-            # cdn_cache_dir is set on the admin config page (default ~/storage/downloads/sukusta/packs).
+            # cdn_cache_dir is set on the admin config page (default: the local static/ folder on PC,
+            # the shared ~/storage/downloads/sukusta/packs folder on Termux/Android).
             clear
             stop_server
             if grep -q '"cdn_cache":true' "config.json"; then

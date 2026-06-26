@@ -4,9 +4,11 @@ package asset
 // redirecting the game to the upstream CDN. Any pack that isn't already on disk is downloaded from
 // the upstream (cdn_server) into the cache directory on first request, and reused from there afterwards.
 //
-// The cache directory is cdn_cache_dir (default ~/storage/downloads/sukusta/packs), so the cache is
-// shared with the game and the llas_asset_extractor.py tooling. The static/ folder is only consulted
-// as a legacy source: if an older setup left pack files there, they are migrated into the cache dir.
+// The cache directory is cdn_cache_dir; when empty (the PC default) it is the local static/ folder
+// sitting next to the server, so nothing extra is needed on PC/Docker. On Android cdn_cache_dir is
+// the shared sukusta folder, so the cache lines up with the game and the llas_asset_extractor.py
+// tooling; there, static/ is consulted only as a legacy source and any pack files left in it are
+// migrated into the cache dir.
 
 import (
 	"elichika/config"
@@ -101,15 +103,16 @@ func cacheEnabled() bool {
 }
 
 // cacheDir returns the directory (with a trailing slash) where cached packs are stored and looked up.
-// It's cdn_cache_dir, with ~ expanded; when explicitly empty it falls back to the static/ folder.
+// It's cdn_cache_dir, with ~ expanded; when empty (the PC default) it is the local static/ folder.
 func cacheDir() string {
 	dir := ""
 	if config.Conf.CdnCacheDir != nil {
 		dir = *config.Conf.CdnCacheDir
 	}
 	if dir == "" {
-		// empty falls back to the shared sukusta default, not static/
-		dir = config.DefaultCdnCacheDir
+		// empty (the PC default) means the local static/ folder next to the server.
+		// StaticDataPath already ends in "/", so return it directly.
+		return config.StaticDataPath
 	}
 	if strings.HasPrefix(dir, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
