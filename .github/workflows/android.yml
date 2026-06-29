@@ -25,8 +25,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Tools repo branch to pull modding scripts/webtools from.
-      MODTOOLS_REF: claude/elichika-apk-build-wwkuu3
+      # Tools repo branch to pull modding scripts/webtools from (its default branch).
+      MODTOOLS_REF: main
       NDK_VERSION: "26.3.11579264"
     steps:
       - name: Checkout elichika (with harasho assets submodule)
