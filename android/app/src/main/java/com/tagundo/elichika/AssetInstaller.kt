@@ -4,7 +4,7 @@ import android.content.Context
 import java.io.File
 
 /**
- * Unpacks the bundled server payload (assets/payload/**, assembled by CI) into
+ * Unpacks the bundled server payload (the assets/payload tree, assembled by CI) into
  * the app's files dir, which is also the elichika server's working directory.
  *
  * Overwrite policy:
