@@ -18,7 +18,10 @@ func isNotChanged(file string) bool {
 	}
 	exitError, ok := err.(*exec.ExitError)
 	if !ok {
-		log.Panic(err)
+		// git could not be run at all (e.g. the standalone Android app has no git
+		// binary in PATH). Fall back to the packaged-build behaviour and treat the
+		// file as unchanged, matching is_not_changed_embedded.go, instead of crashing.
+		return true
 	}
 	if exitError.ExitCode() != 1 {
 		log.Panic(err)
