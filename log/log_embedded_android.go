@@ -1,4 +1,5 @@
-// go:build embedded
+//go:build embedded
+
 package log
 
 /*

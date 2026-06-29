@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">elichika</string>
+    <string name="start_server">서버 시작</string>
+    <string name="stop_server">서버 중지</string>
+    <string name="tab_console">콘솔</string>
+    <string name="tab_webui">서버 WebUI</string>
+    <string name="tab_dev">개발 도구</string>
+    <string name="tab_mod">모드 도구</string>
+    <string name="notif_channel">elichika 서버</string>
+    <string name="notif_running">elichika 서버 실행 중</string>
+    <string name="notif_text">게임을 127.0.0.1:8080 으로 연결하세요. 탭하면 앱이 열립니다.</string>
+    <string name="first_run_setup">최초 설정: 서버 파일을 준비하는 중…</string>
+</resources>

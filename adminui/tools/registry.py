@@ -10,6 +10,29 @@ from adminui.tools.restore import restore_options, run_restore
 _STOP = {"name": "stop_server", "label": "Stop the elichika server first", "type": "checkbox",
          "default": True, "help": "Recommended: these tools modify the server's database files."}
 
+# --- Adding the Developer-Menu zip installers to this web UI (TODO) -----------
+# The Android app surfaces every tool registered here in a WebView, so exposing a
+# new tool is a Python-only change (see android/README.md). The zip installers
+# from elichika_utility.sh's Developer Menu — costume_addon_installer.py,
+# live_addon_installer.py, card_addon_installer.py, elichika_db_importer.py,
+# replace_jp_client_dictionary.py — are not yet here because they run their whole
+# flow at *module top level* with input() prompts (and exec() config .txt into
+# module globals), so they cannot be imported in-process without hanging.
+#
+# Recipe to wrap one (keeps the CLI working too):
+#   1. In the installer, move the module-body flow into `def install(zip_path,
+#      **opts): ...`, replacing each input() with a parameter; guard the CLI with
+#      `if __name__ == "__main__": install(<prompted zip>)`.
+#   2. Add adminui/tools/<name>.py with `run_<name>(job, params)` that does
+#      ensure_repo_on_path(); import <module>; optional stop_server(job.log);
+#      with capture_stdout(job): <module>.install(params["zip"], ...). Mirror
+#      adminui/tools/backup.py.
+#   3. Provide the zip via a dynamic_select field listing *.zip in a drop folder
+#      (see costume_clone's dynamic_select) — adminui has no file-upload field.
+#   4. Append a TOOLS entry below.
+# Until then these remain CLI-only via the Termux menu.
+# -----------------------------------------------------------------------------
+
 TOOLS = [
     {
         "id": "backup",

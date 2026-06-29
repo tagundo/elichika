@@ -1,0 +1,120 @@
+# Builds the standalone elichika Android server app (see android/README.md).
+#
+# This is the "update = rebuild" path: it pulls the latest server (this repo) and
+# the latest modding tools (SIFAS-MODDING-HELPING-TOOLS), assembles everything the
+# app bundles, and produces an installable debug-signed APK as an artifact. No
+# local Android toolchain needed.
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/elichika-apk-build-wwkuu3, main]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+      - "log/**"
+      - "main.go"
+      - "adminui/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Tools repo branch to pull modding scripts/webtools from.
+      MODTOOLS_REF: claude/elichika-apk-build-wwkuu3
+      NDK_VERSION: "26.3.11579264"
+    steps:
+      - name: Checkout elichika (with harasho assets submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Checkout SIFAS-MODDING-HELPING-TOOLS
+        uses: actions/checkout@v4
+        with:
+          repository: tagundo/SIFAS-MODDING-HELPING-TOOLS
+          ref: ${{ env.MODTOOLS_REF }}
+          path: _modtools
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install platform / build-tools / NDK
+        run: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
+
+      - name: Build master data (serverdata.db) on the host
+        run: |
+          # Pure-Go host build, then rebuild_assets turns the harasho submodule
+          # (assets/db/{jp,gl}) into serverdata.db and writes a default config.json.
+          CGO_ENABLED=0 go build -o elichika_host .
+          ./elichika_host rebuild_assets || echo "::warning::rebuild_assets failed; APK will need an on-device rebuild"
+
+      - name: Assemble bundled payload
+        run: |
+          set -eux
+          PAY=android/app/src/main/assets/payload
+          rm -rf "$PAY"; mkdir -p "$PAY"
+          cp -r "server init jsons" "$PAY/"
+          cp -r webui "$PAY/webui"
+          find "$PAY/webui" -name '*.go' -delete
+          cp privatekey.pem publickey.pem "$PAY/"
+          [ -f serverdata.db ] && cp serverdata.db "$PAY/" || echo "no serverdata.db"
+          [ -f config.json ] && cp config.json "$PAY/" || echo "no config.json"
+
+      - name: Sync Python sources (both repos)
+        run: |
+          set -eux
+          PY=android/app/src/main/python
+          # keep the committed launcher, drop any previous sync
+          find "$PY" -mindepth 1 -not -name 'elichika_launch.py' -delete 2>/dev/null || true
+          mkdir -p "$PY"
+          # elichika dev tools: adminui package + the installer/util scripts it calls
+          cp -r adminui "$PY/adminui"
+          cp ./*.py "$PY/" 2>/dev/null || true
+          # modding tools: webtools package + the mod scripts (copied last so the
+          # tools-repo version wins for any duplicate module name)
+          cp -r _modtools/webtools "$PY/webtools"
+          cp _modtools/*.py "$PY/" 2>/dev/null || true
+          [ -d _modtools/live_timeline ] && cp -r _modtools/live_timeline "$PY/" || true
+          # drop the host build artifact if it landed in python/
+          rm -f "$PY/elichika_host"
+
+      - name: Cross-compile libelichika.so (android/arm64, cgo)
+        run: |
+          set -eux
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}"
+          TC="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          CC="$TC/aarch64-linux-android24-clang" \
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
+          go build -buildmode=pie -trimpath -ldflags "-s -w" \
+            -o android/app/src/main/jniLibs/arm64-v8a/libelichika.so .
+          file android/app/src/main/jniLibs/arm64-v8a/libelichika.so
+
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
