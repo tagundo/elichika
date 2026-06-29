@@ -21,10 +21,15 @@ object AssetInstaller {
     private const val PAYLOAD = "payload"
     private const val MARKER = "installed_version"
 
-    // Refresh-on-upgrade (server-owned, safe to overwrite).
-    private val ALWAYS = listOf("webui", "server init jsons", "privatekey.pem", "publickey.pem")
-    // Create-if-missing (user-owned, preserve).
-    private val PRESERVE = listOf("config.json", "serverdata.db", "userdata.db")
+    // Refresh-on-upgrade (server-owned master data / static assets, safe to overwrite
+    // so a new APK ships updated game data). serverdata.db + the harasho assets/ tree +
+    // the rekeyed static/ output are all regenerated from the build, not user state.
+    private val ALWAYS = listOf(
+        "webui", "server init jsons", "privatekey.pem", "publickey.pem",
+        "assets", "static", "serverdata.db"
+    )
+    // Create-if-missing (user-owned, preserve across upgrades).
+    private val PRESERVE = listOf("config.json", "userdata.db")
 
     /** Returns the server working dir (== app files dir). */
     fun install(ctx: Context, log: (String) -> Unit): File {

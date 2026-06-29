@@ -77,6 +77,15 @@ jobs:
           cp privatekey.pem publickey.pem "$PAY/"
           [ -f serverdata.db ] && cp serverdata.db "$PAY/" || echo "no serverdata.db"
           [ -f config.json ] && cp config.json "$PAY/" || echo "no config.json"
+          # The server reads the whole harasho master-data tree at startup (assets/db,
+          # assets/sql, assets/event, assets/dictionary.json, …) via clientdb.init —
+          # without it the server panics ("open assets/db/gl/masterdata_a_en: no such
+          # file"). Bundle assets/ (minus any submodule .git). static/ is NOT bundled:
+          # the server rekeys it from assets/ on first start, like the Termux install.
+          cp -r assets "$PAY/assets"
+          find "$PAY/assets" -name '.git' -print0 | xargs -0 -r rm -rf
+          echo "payload sizes (static/ measured for info, not bundled):"
+          du -sh "$PAY/assets" "$PAY/serverdata.db" "$PAY" static 2>/dev/null || true
 
       - name: Sync Python sources (both repos)
         run: |

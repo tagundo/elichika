@@ -16,8 +16,8 @@ android {
         applicationId = "com.tagundo.elichika"
         minSdk = 29          // first API with a dependable exec-from-nativeLibraryDir guarantee
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.1.1"
 
         // arm64 only: matches modern devices and the SIFAS client; keeps the APK small.
         ndk { abiFilters += listOf("arm64-v8a") }
