@@ -51,8 +51,11 @@ Termux + `bin/install.sh` 과정을 대체하는 **설치형 APK** 입니다. �
   웹 UI에 없습니다. 해당 스크립트들이 모듈 최상단에서 `input()`/`exec()` 로 동작해 그대로는
   인프로세스 호출이 안 됩니다. 래핑 레시피는 `adminui/tools/registry.py` 상단 주석에 적어 두었고,
   그 전까지는 Termux CLI 로만 사용합니다.
-- **모드 도구(UnityPy 의존):** Chaquopy 가 `UnityPy`/`numpy`/`Pillow` 를 APK에 넣습니다. 일부
-  텍스처 디코더 휠이 arm64 에서 빌드되지 않으면 텍스처 계열 도구가 제한될 수 있습니다(본/골격
-  편집 도구는 영향 없음). CI 빌드 로그에서 pip 단계를 확인하세요.
+- **모드 도구(UnityPy 의존):** 현재 Chaquopy 가 `numpy`/`Pillow` 만 APK에 넣고 **`UnityPy` 는
+  넣지 않습니다.** UnityPy 가 Chaquopy 프리빌트 휠 저장소에 없고 네이티브 디코더 의존성
+  (texture2ddecoder/etcpak 등)이 arm64 빌드에 실패해 APK 빌드 전체를 깨뜨리기 때문입니다.
+  모드 도구는 UnityPy 를 lazy import 하므로 없을 때 안내 메시지로 graceful 하게 동작하고, 서버·개발
+  도구·UnityPy 비의존 경로는 정상 동작합니다. arm64 용 UnityPy 휠 세트가 마련되면
+  `android/app/build.gradle.kts` 의 pip 블록에 `install("UnityPy")` 를 다시 추가하세요.
 - **DNS:** 서버는 `GOOS=android` + cgo 로 빌드되어 bionic resolver 를 써 CDN 다운로드가 됩니다.
 - **지역:** JP 안드로이드 클라이언트가 검증된 경로입니다.

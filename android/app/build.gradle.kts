@@ -66,11 +66,14 @@ chaquopy {
             // numpy + Pillow are Chaquopy-provided prebuilt wheels (safe).
             install("numpy")
             install("Pillow")
-            // UnityPy + its native decoders are the feasibility risk verified by the
-            // CI build / the Chaquopy spike. If a decoder wheel is unavailable for
-            // arm64, bone/skeleton mod tools (which only touch Transform/MonoBehaviour
-            // data) still work; texture-decoding tools may be limited.
-            install("UnityPy")
+            // NOTE: UnityPy is intentionally NOT installed here. It is not in
+            // Chaquopy's prebuilt-wheel repo and pulls native decoder deps
+            // (texture2ddecoder/etcpak/astc_encoder_py) that fail to build for
+            // Android, which breaks the whole APK build (Chaquopy's createReqsTask).
+            // The modding tools lazy-import UnityPy (ensure_unitypy) and degrade with
+            // guidance when it is absent, so the server + dev tools + non-UnityPy
+            // paths all still ship. Re-enable once a working arm64 wheel set exists
+            // (e.g. a custom Chaquopy package repo), then: install("UnityPy").
         }
     }
     // CI syncs the Python sources (adminui/, webtools/, and the dev/mod scripts)
