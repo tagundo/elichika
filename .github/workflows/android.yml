@@ -10,13 +10,10 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
+    # No paths filter: the APK bundles the whole Go server, so any source change
+    # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
+    # previously skipped a clientdb/ fix and shipped a stale APK.
     branches: [claude/elichika-apk-build-wwkuu3, main]
-    paths:
-      - "android/**"
-      - ".github/workflows/android.yml"
-      - "log/**"
-      - "main.go"
-      - "adminui/**"
 
 permissions:
   contents: read
