@@ -1,35 +1,52 @@
 {
-  "_comment": "Declarative mirror of the elichika_utility.sh menu. Add an entry here to surface a new action in the app's Console tab — no Kotlin changes needed. type=binary runs libelichika.so with args (the server is stopped first); type=url opens a browser. CDN cache on/off and the CDN source URL are set in the Server WebUI admin page, not here.",
+  "_comment": "Declarative mirror of the elichika_utility.sh menu. label_id names a string resource (localized); label is the fallback. type=binary runs libelichika.so with args (server stopped first); type=url opens a browser; type=import_zip opens the file picker; type=settings/about open dialogs.",
   "actions": [
     {
       "id": "download_archive",
-      "label": "전체 게임파일 다운로드 (archive.org · 권장)",
+      "label_id": "act_download_archive",
+      "label": "Download all game files (archive.org)",
       "type": "binary",
       "args": ["download_archive", "both"],
       "stop_server": true
     },
     {
       "id": "download_packs",
-      "label": "누락분만 받기 (게임 CDN)",
+      "label_id": "act_download_packs",
+      "label": "Download missing (game CDN)",
       "type": "binary",
       "args": ["download_packs", "4"],
       "stop_server": true
     },
     {
       "id": "cdn_cache_toggle",
-      "label": "CDN 캐시 켜기/끄기",
+      "label_id": "act_cdn_cache",
+      "label": "CDN cache on/off",
       "type": "binary",
       "args": ["cdn_cache", "toggle"],
       "stop_server": true
     },
     {
       "id": "import_addon",
-      "label": "애드온 zip 가져오기",
+      "label_id": "act_import_addon",
+      "label": "Import addon zip",
       "type": "import_zip"
     },
     {
+      "id": "settings",
+      "label_id": "act_settings",
+      "label": "Settings",
+      "type": "settings"
+    },
+    {
+      "id": "about",
+      "label_id": "act_about",
+      "label": "About",
+      "type": "about"
+    },
+    {
       "id": "rebuild_assets",
-      "label": "마스터 데이터 재빌드",
+      "label_id": "act_rebuild_assets",
+      "label": "Rebuild master data",
       "type": "binary",
       "args": ["rebuild_assets"],
       "stop_server": true,
@@ -37,7 +54,8 @@
     },
     {
       "id": "fix_training_trees",
-      "label": "트레이닝 트리 복구",
+      "label_id": "act_fix_training",
+      "label": "Fix training trees",
       "type": "binary",
       "args": ["fix_training_trees"],
       "stop_server": true,
@@ -45,13 +63,15 @@
     },
     {
       "id": "gamebanana",
-      "label": "GameBanana 모드페이지",
+      "label_id": "act_gamebanana",
+      "label": "GameBanana mod page",
       "type": "url",
       "url": "https://gamebanana.com/games/20519"
     },
     {
       "id": "ayakamods",
-      "label": "AyakaMods 모드페이지",
+      "label_id": "act_ayakamods",
+      "label": "AyakaMods mod page",
       "type": "url",
       "url": "https://ayakamods.cc/games/love-live-school-idol-festival-all-stars.217/"
     }

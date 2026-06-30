@@ -51,7 +51,7 @@ object AssetInstaller {
 
         ensureSharedLinks(root, log)
         ensureCacheDir(ctx, root, log)
-        ensureLanguage(root, log)
+        ensureLanguage(ctx, root, log)
         File(root, MARKER).writeText(currentVersion)
         log("[setup] 준비 완료.")
         return root
@@ -61,24 +61,12 @@ object AssetInstaller {
     private const val SUKUSTA_DEFAULT = "~/storage/downloads/sukusta/packs"
 
     /**
-     * Unify the language: the app UI and the Python tools are Korean, but the server
-     * WebUI defaults to English (webui_language=en). Set it to ko ONCE (guarded by a
-     * marker) so everything matches, then leave it alone so a later WebUI change by
-     * the user sticks.
+     * Keep the server WebUI language in sync with the app's language preference
+     * (Settings → Language; default = follow system). The app pref is the single
+     * source of truth, so this runs every server start.
      */
-    private fun ensureLanguage(root: File, log: (String) -> Unit) {
-        val marker = File(root, "lang_set")
-        if (marker.exists()) return
-        val cfg = File(root, "config.json")
-        if (cfg.exists()) {
-            val before = cfg.readText()
-            val after = before.replace("\"webui_language\":\"en\"", "\"webui_language\":\"ko\"")
-            if (after != before) {
-                cfg.writeText(after)
-                log("[setup] WebUI 언어 → 한국어")
-            }
-        }
-        runCatching { marker.writeText("ko") }
+    private fun ensureLanguage(ctx: Context, root: File, log: (String) -> Unit) {
+        Lang.writeWebuiLanguage(ctx, root)
     }
 
     /**

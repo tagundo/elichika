@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Lang.applyToApp(this)
         setContentView(R.layout.activity_main)
 
         content = findViewById(R.id.content)
@@ -126,14 +127,53 @@ class MainActivity : AppCompatActivity() {
         if (line.contains("cdn_cache:")) refreshCdnLabel()
     }
 
+    /** Resolve a localized action label from its label_id resource, falling back to json. */
+    private fun actionLabel(a: JSONObject): String {
+        val id = a.optString("label_id")
+        if (id.isNotEmpty()) {
+            val resId = resources.getIdentifier(id, "string", packageName)
+            if (resId != 0) return getString(resId)
+        }
+        return a.optString("label", a.optString("id"))
+    }
+
     /** Relabel the CDN-cache button to show the current state read from config.json. */
     private fun refreshCdnLabel() {
         val b = cdnButton ?: return
         b.text = when (readCdnCache()) {
-            true -> "CDN 캐시: 켜짐 ✓ (눌러서 끄기)"
-            false -> "CDN 캐시: 꺼짐 (눌러서 켜기)"
-            else -> "CDN 캐시 켜기/끄기"
+            true -> getString(R.string.cdn_on)
+            false -> getString(R.string.cdn_off)
+            else -> getString(R.string.act_cdn_cache)
         }
+    }
+
+    private fun showSettings() {
+        val codes = listOf("auto") + Lang.SUPPORTED
+        val labels = arrayOf(getString(R.string.lang_auto), "English", "한국어", "日本語")
+        val current = codes.indexOf(Lang.pref(this)).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("${getString(R.string.settings_title)} · ${getString(R.string.language)}")
+            .setSingleChoiceItems(labels, current) { dialog, which ->
+                Lang.setPref(this, codes[which])
+                Lang.writeWebuiLanguage(this, filesDir)
+                dialog.dismiss()
+                Bus.log("[settings] language → ${codes[which]}. ${getString(R.string.restart_hint)}")
+                Lang.applyToApp(this) // recreates the activity to apply the new locale
+            }
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    private fun showAbout() {
+        val version = runCatching {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrNull()
+        AlertDialog.Builder(this)
+            .setTitle("${getString(R.string.about_title)} · elichika ${version ?: ""}")
+            .setMessage(getString(R.string.about_body))
+            .setPositiveButton(R.string.close, null)
+            .show()
     }
 
     private fun readCdnCache(): Boolean? = try {
@@ -204,9 +244,15 @@ class MainActivity : AppCompatActivity() {
         val advScroll = consolePanel.findViewById<View>(R.id.advanced_scroll)
         val advToggle = consolePanel.findViewById<Button>(R.id.btn_advanced)
         var hasAdvanced = false
+        val gap = (6 * resources.displayMetrics.density).toInt()
         for (a in loadActions()) {
             val b = Button(this)
-            b.text = a.optString("label", a.optString("id"))
+            b.text = actionLabel(a)
+            b.isAllCaps = false
+            b.layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = gap }
             b.setOnClickListener { runAction(a) }
             if (a.optBoolean("advanced", false)) {
                 advRow.addView(b); hasAdvanced = true
@@ -234,7 +280,9 @@ class MainActivity : AppCompatActivity() {
                 ServerService.runAction(this, args, a.optBoolean("stop_server", true))
             }
             "import_zip" -> pickAddon.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
-            else -> Bus.log("[action] 알 수 없는 액션 유형: ${a.optString("id")}")
+            "settings" -> showSettings()
+            "about" -> showAbout()
+            else -> Bus.log("[action] unknown action type: ${a.optString("id")}")
         }
     }
 

@@ -32,7 +32,7 @@ object PyServers {
                 )
                 val py = Python.getInstance()
                 py.getModule("elichika_launch")
-                    .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath)
+                    .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath, Lang.effective(ctx))
                 started = true
                 Bus.log("[pyservers] 개발/모드 도구 웹 UI 시작 (:8772 / :8770)")
             } catch (e: Throwable) {

@@ -1,0 +1,41 @@
+<resources>
+    <string name="start_server">서버 시작</string>
+    <string name="stop_server">서버 중지</string>
+    <string name="status_running">● 127.0.0.1:8080</string>
+    <string name="status_stopped">○ 중지됨</string>
+    <string name="tab_console">콘솔</string>
+    <string name="tab_webui">서버 설정</string>
+    <string name="tab_user">유저 관리</string>
+    <string name="tab_dev">개발 도구</string>
+    <string name="tab_mod">모드 도구</string>
+    <string name="notif_channel">elichika 서버</string>
+    <string name="notif_running">elichika 서버 실행 중</string>
+    <string name="notif_text">게임을 127.0.0.1:8080 으로 연결하세요. 탭하면 앱이 열립니다.</string>
+    <string name="first_run_setup">최초 설정: 서버 파일을 준비하는 중…</string>
+    <string name="perm_title">저장소 권한 필요</string>
+    <string name="perm_msg">게임 파일을 공유 Download/sukusta 폴더에 저장하려면 \'모든 파일 액세스\' 권한이 필요합니다. 설정에서 이 앱을 허용해 주세요.</string>
+    <string name="perm_open">설정 열기</string>
+    <string name="perm_later">나중에</string>
+    <string name="advanced">고급 ▾</string>
+
+    <string name="settings_title">설정</string>
+    <string name="about_title">정보</string>
+    <string name="language">언어</string>
+    <string name="lang_auto">자동 (시스템 따라가기)</string>
+    <string name="close">닫기</string>
+    <string name="restart_hint">적용됨. 웹 UI에 반영하려면 서버를 다시 시작하세요.</string>
+    <string name="about_body">elichika는 SIFAS(러브라이브! 스쿨아이돌페스티벌 ALL STARS)용 사설 서버입니다. 이 앱은 서버·WebUI·개발/모딩 도구를 폰에서 구동합니다 — 게임을 127.0.0.1:8080 으로 연결하세요.\n\n서버·개발 도구: elichika 프로젝트(YumeMichi / arina999999997 / tatara_hisoka 포크). 모딩 도구: SIFAS-MODDING-HELPING-TOOLS.</string>
+
+    <string name="act_download_archive">전체 게임파일 다운로드 (archive.org)</string>
+    <string name="act_download_packs">누락분만 받기 (게임 CDN)</string>
+    <string name="act_cdn_cache">CDN 캐시 켜기/끄기</string>
+    <string name="act_import_addon">애드온 zip 가져오기</string>
+    <string name="act_rebuild_assets">마스터 데이터 재빌드</string>
+    <string name="act_fix_training">트레이닝 트리 복구</string>
+    <string name="act_gamebanana">GameBanana 모드페이지</string>
+    <string name="act_ayakamods">AyakaMods 모드페이지</string>
+    <string name="act_settings">설정 ⚙</string>
+    <string name="act_about">정보 ℹ</string>
+    <string name="cdn_on">CDN 캐시: 켜짐 ✓ (눌러서 끄기)</string>
+    <string name="cdn_off">CDN 캐시: 꺼짐 (눌러서 켜기)</string>
+</resources>

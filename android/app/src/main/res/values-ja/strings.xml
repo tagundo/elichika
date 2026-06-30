@@ -1,0 +1,41 @@
+<resources>
+    <string name="start_server">サーバー開始</string>
+    <string name="stop_server">サーバー停止</string>
+    <string name="status_running">● 127.0.0.1:8080</string>
+    <string name="status_stopped">○ 停止中</string>
+    <string name="tab_console">コンソール</string>
+    <string name="tab_webui">サーバー設定</string>
+    <string name="tab_user">アカウント</string>
+    <string name="tab_dev">開発ツール</string>
+    <string name="tab_mod">MODツール</string>
+    <string name="notif_channel">elichika サーバー</string>
+    <string name="notif_running">elichika サーバー実行中</string>
+    <string name="notif_text">ゲームを 127.0.0.1:8080 に接続してください。タップでアプリを開きます。</string>
+    <string name="first_run_setup">初回設定: サーバーファイルを準備中…</string>
+    <string name="perm_title">ストレージ権限が必要</string>
+    <string name="perm_msg">ゲームファイルを共有の Download/sukusta フォルダに保存するには「すべてのファイルへのアクセス」権限が必要です。設定でこのアプリを許可してください。</string>
+    <string name="perm_open">設定を開く</string>
+    <string name="perm_later">後で</string>
+    <string name="advanced">詳細 ▾</string>
+
+    <string name="settings_title">設定</string>
+    <string name="about_title">情報</string>
+    <string name="language">言語</string>
+    <string name="lang_auto">自動 (システムに従う)</string>
+    <string name="close">閉じる</string>
+    <string name="restart_hint">適用しました。Web UI に反映するにはサーバーを再起動してください。</string>
+    <string name="about_body">elichika は SIFAS（ラブライブ！スクールアイドルフェスティバル ALL STARS）用の私設サーバーです。このアプリはサーバー・WebUI・開発/MODツールを端末上で動かします — ゲームを 127.0.0.1:8080 に接続してください。\n\nサーバー・開発ツール: elichika プロジェクト（YumeMichi / arina999999997 / tatara_hisoka フォーク）。MODツール: SIFAS-MODDING-HELPING-TOOLS。</string>
+
+    <string name="act_download_archive">全ゲームファイルをダウンロード (archive.org)</string>
+    <string name="act_download_packs">不足分のみ取得 (ゲームCDN)</string>
+    <string name="act_cdn_cache">CDNキャッシュ オン/オフ</string>
+    <string name="act_import_addon">アドオンzipを取り込む</string>
+    <string name="act_rebuild_assets">マスターデータ再構築</string>
+    <string name="act_fix_training">トレーニングツリー修復</string>
+    <string name="act_gamebanana">GameBanana MODページ</string>
+    <string name="act_ayakamods">AyakaMods MODページ</string>
+    <string name="act_settings">設定 ⚙</string>
+    <string name="act_about">情報 ℹ</string>
+    <string name="cdn_on">CDNキャッシュ: オン ✓ (タップで停止)</string>
+    <string name="cdn_off">CDNキャッシュ: オフ (タップで有効化)</string>
+</resources>

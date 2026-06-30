@@ -31,11 +31,12 @@ def _serve(module_name, port):
         print("[pyservers] %s crashed: %r" % (module_name, exc), flush=True)
 
 
-def start(server_cwd, sukusta_dir):
+def start(server_cwd, sukusta_dir, lang="en"):
     """Start both web UIs once. server_cwd == the app files dir (also the elichika
     server's working dir, so adminui tools see the same serverdata.db/userdata.db).
     sukusta_dir is an app-writable external dir the modding tools read/write
-    bundles from (extracted/, modded/, suit/)."""
+    bundles from (extracted/, modded/, suit/). lang is the app's effective UI
+    language (en/ko/ja) so the tool web UIs match the rest of the app."""
     global _started
     with _lock:
         if _started:
@@ -47,7 +48,7 @@ def start(server_cwd, sukusta_dir):
         # modding tools key off these (see is_termux()/SUKUSTA_DIR in the tools).
         os.environ["SUKUSTA_DIR"] = sukusta_dir
         os.environ.setdefault("HOME", server_cwd)
-        os.environ.setdefault("SIFAS_LANG", "ko")
+        os.environ["SIFAS_LANG"] = lang or "en"
 
         for name, port in (("adminui.server", ADMIN_PORT), ("webtools.server", MOD_PORT)):
             t = threading.Thread(target=_serve, args=(name, port), name=name, daemon=True)
