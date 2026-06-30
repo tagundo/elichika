@@ -5,7 +5,9 @@ Field types: text, checkbox, select, dynamic_select (options fetched from
 """
 from adminui.tools.backup import run_backup
 from adminui.tools.costume_clone import costume_options, run_costume_clone
-from adminui.tools.installers import drop_options, run_card, run_costume, run_db, run_live
+from adminui.tools.installers import (
+    drop_options, run_camera, run_card, run_costume, run_db, run_dictionary, run_live, run_tower,
+)
 from adminui.tools.restore import restore_options, run_restore
 
 # Field shared by the addon installers: pick a file dropped into
@@ -91,12 +93,39 @@ TOOLS = [
         "fields": [_ADDON, _BACKUP, _STOP],
     },
     {
+        "id": "install_tower",
+        "label": "타워(DLP) 설치 (zip)",
+        "description": "타워/DLP 애드온 zip을 설치합니다.",
+        "run": run_tower,
+        "options": drop_options,
+        "fields": [_ADDON, _BACKUP, _STOP],
+    },
+    {
+        "id": "install_camera",
+        "label": "라이브 카메라 타임라인 교체 (zip)",
+        "description": "라이브 카메라/타임라인 애드온 zip을 설치합니다.",
+        "run": run_camera,
+        "options": drop_options,
+        "fields": [_ADDON, _BACKUP, _STOP],
+    },
+    {
         "id": "install_db",
         "label": "DB SQL 임포트 (.sql)",
         "description": "마스터/유저 DB에 .sql을 임포트합니다 (고급).",
         "run": run_db,
         "options": drop_options,
         "fields": [_ADDON, _BACKUP, _STOP],
+    },
+    {
+        "id": "dictionary_swap",
+        "label": "JP 클라이언트 사전 교체",
+        "description": "JP 클라이언트의 텍스트를 다른 언어 사전으로 교체합니다. 되돌리려면 다시 ja로 바꿔야 합니다.",
+        "run": run_dictionary,
+        "fields": [
+            {"name": "language", "label": "교체할 언어", "type": "select",
+             "options": ["en", "ko", "zh", "th"], "default": "en"},
+            _STOP,
+        ],
     },
 ]
 

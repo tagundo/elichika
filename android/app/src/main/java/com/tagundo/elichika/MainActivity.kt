@@ -20,6 +20,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import com.google.android.material.tabs.TabLayout
 import org.json.JSONObject
 import java.io.File
@@ -154,6 +156,12 @@ class MainActivity : AppCompatActivity() {
                 )
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                // Follow the system light/dark theme. With the WebUIs declaring
+                // `color-scheme: light dark`, the WebView uses their own light/dark
+                // styles per the system setting instead of force-darkening.
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                    WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+                }
                 // Keep all navigation (links, form submits) inside the WebView instead
                 // of handing it to the system browser (Chrome), which is the default
                 // when no WebViewClient is set.
