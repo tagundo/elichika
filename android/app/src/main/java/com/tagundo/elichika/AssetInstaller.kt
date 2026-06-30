@@ -48,9 +48,41 @@ object AssetInstaller {
         log("[setup] 서버 파일 준비 중… (버전 $currentVersion, 정적자산 갱신=$refreshStatic)")
         copyDir(ctx, PAYLOAD, root, refreshStatic, log)
 
+        ensureCacheDir(ctx, root, log)
         File(root, MARKER).writeText(currentVersion)
         log("[setup] 준비 완료.")
         return root
+    }
+
+    // Termux default that the server injects into config.json on Android.
+    private const val SUKUSTA_DEFAULT = "~/storage/downloads/sukusta/packs"
+
+    /**
+     * Point cdn_cache_dir at a real, user-visible, app-writable folder
+     * (Android/data/<pkg>/files/packs) instead of the Termux "~/storage/downloads/
+     * sukusta/packs" default, which under our HOME resolves to an invisible
+     * app-private path. Only replaces an empty or default value — a dir the user
+     * chose in the WebUI is left alone. Setting a non-empty absolute path also
+     * stops the server's Load() from re-injecting the sukusta default.
+     */
+    private fun ensureCacheDir(ctx: Context, root: File, log: (String) -> Unit) {
+        val packs = File(ctx.getExternalFilesDir(null), "packs").apply { mkdirs() }
+        val path = packs.absolutePath
+        val cfg = File(root, "config.json")
+        if (cfg.exists()) {
+            val before = cfg.readText()
+            val after = before
+                .replace("\"cdn_cache_dir\":\"\"", "\"cdn_cache_dir\":\"$path\"")
+                .replace("\"cdn_cache_dir\":\"$SUKUSTA_DEFAULT\"", "\"cdn_cache_dir\":\"$path\"")
+            if (after != before) {
+                cfg.writeText(after)
+                log("[setup] CDN 캐시 폴더 → $path")
+            }
+        } else {
+            // server fills the remaining fields with defaults on first Load()
+            cfg.writeText("{\"cdn_cache_dir\":\"$path\"}")
+            log("[setup] config.json 생성, CDN 캐시 폴더 → $path")
+        }
     }
 
     private fun appVersion(ctx: Context): String =

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ScrollView
@@ -140,6 +141,10 @@ class MainActivity : AppCompatActivity() {
                 )
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                // Keep all navigation (links, form submits) inside the WebView instead
+                // of handing it to the system browser (Chrome), which is the default
+                // when no WebViewClient is set.
+                webViewClient = WebViewClient()
                 content.addView(this)
                 loadUrl(url)
             }
