@@ -7,7 +7,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.OpenableColumns
 import android.provider.Settings
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import android.view.View
 import android.webkit.WebView
@@ -20,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.tabs.TabLayout
 import org.json.JSONObject
+import java.io.File
 
 /**
  * Thin shell UI. Everything the user can do is either a service action declared
@@ -39,6 +42,12 @@ class MainActivity : AppCompatActivity() {
 
     // Lazily-created WebViews for the three local web UIs.
     private val webViews = HashMap<String, WebView>()
+
+    // File picker for addon zips: copies the chosen file into Download/sukusta/addons,
+    // where the dev-tools installers pick it up.
+    private val pickAddon = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importAddon(uri)
+    }
 
     private data class Tab(val title: String, val url: String?)
 
@@ -188,6 +197,7 @@ class MainActivity : AppCompatActivity() {
                 val args = (0 until argsArr.length()).map { argsArr.getString(it) }
                 ServerService.runAction(this, args, a.optBoolean("stop_server", true))
             }
+            "import_zip" -> pickAddon.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
             else -> Bus.log("[action] 알 수 없는 액션 유형: ${a.optString("id")}")
         }
     }
@@ -201,6 +211,33 @@ class MainActivity : AppCompatActivity() {
             Bus.log("[action] actions.json 로드 실패: ${e.message}")
             emptyList()
         }
+    }
+
+    private fun importAddon(uri: Uri) {
+        try {
+            val name = queryName(uri) ?: "addon_${System.currentTimeMillis()}.zip"
+            val dir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "sukusta/addons"
+            ).apply { mkdirs() }
+            val out = File(dir, name)
+            contentResolver.openInputStream(uri)?.use { input ->
+                out.outputStream().use { input.copyTo(it) }
+            }
+            Bus.log("[가져오기] ${out.absolutePath} — '개발 도구' 탭에서 설치하세요.")
+        } catch (e: Exception) {
+            Bus.log("[가져오기] 실패: ${e.message}")
+        }
+    }
+
+    private fun queryName(uri: Uri): String? {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (i >= 0) return c.getString(i)
+            }
+        }
+        return null
     }
 
     private fun requestNotifications() {

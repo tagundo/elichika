@@ -5,32 +5,26 @@ Field types: text, checkbox, select, dynamic_select (options fetched from
 """
 from adminui.tools.backup import run_backup
 from adminui.tools.costume_clone import costume_options, run_costume_clone
+from adminui.tools.installers import drop_options, run_card, run_costume, run_db, run_live
 from adminui.tools.restore import restore_options, run_restore
+
+# Field shared by the addon installers: pick a file dropped into
+# ~/storage/downloads/sukusta/addons (the in-app file picker copies it there).
+_ADDON = {"name": "addon", "label": "설치할 파일 (Download/sukusta/addons)",
+          "type": "dynamic_select", "source": "addon", "required": True}
+_BACKUP = {"name": "backup", "label": "DB 백업 먼저", "type": "checkbox", "default": True}
 
 _STOP = {"name": "stop_server", "label": "Stop the elichika server first", "type": "checkbox",
          "default": True, "help": "Recommended: these tools modify the server's database files."}
 
-# --- Adding the Developer-Menu zip installers to this web UI (TODO) -----------
-# The Android app surfaces every tool registered here in a WebView, so exposing a
-# new tool is a Python-only change (see android/README.md). The zip installers
-# from elichika_utility.sh's Developer Menu — costume_addon_installer.py,
-# live_addon_installer.py, card_addon_installer.py, elichika_db_importer.py,
-# replace_jp_client_dictionary.py — are not yet here because they run their whole
-# flow at *module top level* with input() prompts (and exec() config .txt into
-# module globals), so they cannot be imported in-process without hanging.
-#
-# Recipe to wrap one (keeps the CLI working too):
-#   1. In the installer, move the module-body flow into `def install(zip_path,
-#      **opts): ...`, replacing each input() with a parameter; guard the CLI with
-#      `if __name__ == "__main__": install(<prompted zip>)`.
-#   2. Add adminui/tools/<name>.py with `run_<name>(job, params)` that does
-#      ensure_repo_on_path(); import <module>; optional stop_server(job.log);
-#      with capture_stdout(job): <module>.install(params["zip"], ...). Mirror
-#      adminui/tools/backup.py.
-#   3. Provide the zip via a dynamic_select field listing *.zip in a drop folder
-#      (see costume_clone's dynamic_select) — adminui has no file-upload field.
-#   4. Append a TOOLS entry below.
-# Until then these remain CLI-only via the Termux menu.
+# --- Developer-Menu zip installers ------------------------------------------
+# These installers (costume/live/card/elichika_db) run their whole flow at module
+# top level with input() prompts, so rather than refactor them we drive them as-is
+# from adminui/tools/installers.py: a prompt-aware fake input() + a copy of the
+# chosen file into each installer's scan folder. The file comes from the shared
+# drop folder ~/storage/downloads/sukusta/addons (the in-app file picker drops it
+# there). Entries are in TOOLS below. Still CLI-only: tower_addon_installer
+# (unsorted listing) and replace_jp_client_dictionary (no file input).
 # -----------------------------------------------------------------------------
 
 TOOLS = [
@@ -71,6 +65,38 @@ TOOLS = [
              "default": True, "help": "Recommended: a full DB backup is taken before the clone."},
             _STOP,
         ],
+    },
+    {
+        "id": "install_costume",
+        "label": "코스튬 설치 (zip)",
+        "description": "코스튬 애드온 zip을 서버 DB에 설치합니다. zip을 Download/sukusta/addons 에 넣거나 파일 선택기로 가져온 뒤 고르세요.",
+        "run": run_costume,
+        "options": drop_options,
+        "fields": [_ADDON, _BACKUP, _STOP],
+    },
+    {
+        "id": "install_live",
+        "label": "라이브 설치 (zip)",
+        "description": "라이브곡 애드온 zip을 서버 DB에 설치합니다.",
+        "run": run_live,
+        "options": drop_options,
+        "fields": [_ADDON, _BACKUP, _STOP],
+    },
+    {
+        "id": "install_card",
+        "label": "카드 설치 (zip)",
+        "description": "카드 애드온 zip을 서버 DB에 설치합니다.",
+        "run": run_card,
+        "options": drop_options,
+        "fields": [_ADDON, _BACKUP, _STOP],
+    },
+    {
+        "id": "install_db",
+        "label": "DB SQL 임포트 (.sql)",
+        "description": "마스터/유저 DB에 .sql을 임포트합니다 (고급).",
+        "run": run_db,
+        "options": drop_options,
+        "fields": [_ADDON, _BACKUP, _STOP],
     },
 ]
 

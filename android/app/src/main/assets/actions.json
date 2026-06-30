@@ -23,6 +23,11 @@
       "stop_server": true
     },
     {
+      "id": "import_addon",
+      "label": "애드온 zip 가져오기",
+      "type": "import_zip"
+    },
+    {
       "id": "rebuild_assets",
       "label": "마스터 데이터 재빌드",
       "type": "binary",

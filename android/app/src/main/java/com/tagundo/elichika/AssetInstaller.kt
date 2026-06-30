@@ -49,6 +49,7 @@ object AssetInstaller {
         log("[setup] 서버 파일 준비 중… (버전 $currentVersion, 정적자산 갱신=$refreshStatic)")
         copyDir(ctx, PAYLOAD, root, refreshStatic, log)
 
+        ensureSharedLinks(root, log)
         ensureCacheDir(ctx, root, log)
         File(root, MARKER).writeText(currentVersion)
         log("[setup] 준비 완료.")
@@ -57,6 +58,28 @@ object AssetInstaller {
 
     // Termux default that the server injects into config.json on Android.
     private const val SUKUSTA_DEFAULT = "~/storage/downloads/sukusta/packs"
+
+    /**
+     * Make the Termux-style "~/storage/downloads" path resolve to the real shared
+     * Download/ folder, so the addon installers (and any tool using that path) read
+     * and write where the user can see them. The server/Python run with HOME = the
+     * files dir, so a symlink files/storage/downloads -> /sdcard/Download does it.
+     * Also pre-creates the unified addon drop folder.
+     */
+    private fun ensureSharedLinks(root: File, log: (String) -> Unit) {
+        try {
+            val download = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            runCatching { File(download, "sukusta/addons").mkdirs() }
+            val storageDir = File(root, "storage").apply { mkdirs() }
+            val link = File(storageDir, "downloads")
+            if (!link.exists()) {
+                android.system.Os.symlink(download.absolutePath, link.absolutePath)
+                log("[setup] ~/storage/downloads → ${download.absolutePath}")
+            }
+        } catch (e: Exception) {
+            log("[setup] 공유 폴더 링크 실패(권한 필요할 수 있음): ${e.message}")
+        }
+    }
 
     /**
      * Point cdn_cache_dir at the shared Download/sukusta/packs folder — the same
