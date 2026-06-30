@@ -41,7 +41,10 @@ class MainActivity : AppCompatActivity() {
     private val tabs by lazy {
         listOf(
             Tab(getString(R.string.tab_console), null),
-            Tab(getString(R.string.tab_webui), "http://127.0.0.1:8080/webui/"),
+            // The server has no /webui/ index — the panels live at /webui/admin/ and
+            // /webui/user/. Point at the admin panel (server config, CDN cache, etc.).
+            Tab(getString(R.string.tab_webui), "http://127.0.0.1:8080/webui/admin/"),
+            Tab(getString(R.string.tab_user), "http://127.0.0.1:8080/webui/user/"),
             Tab(getString(R.string.tab_dev), "http://127.0.0.1:8772/"),
             Tab(getString(R.string.tab_mod), "http://127.0.0.1:8770/"),
         )
@@ -60,7 +63,7 @@ class MainActivity : AppCompatActivity() {
         logScroll = consolePanel.findViewById(R.id.log_scroll)
         content.addView(consolePanel)
 
-        buildActionButtons(consolePanel.findViewById(R.id.actions_row))
+        setupActions()
         setupTabs()
         toggle.setOnClickListener { onToggle() }
 
@@ -143,13 +146,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildActionButtons(row: android.widget.LinearLayout) {
-        val actions = loadActions()
-        for (a in actions) {
+    private fun setupActions() {
+        val normalRow = consolePanel.findViewById<android.widget.LinearLayout>(R.id.actions_row)
+        val advRow = consolePanel.findViewById<android.widget.LinearLayout>(R.id.advanced_row)
+        val advScroll = consolePanel.findViewById<View>(R.id.advanced_scroll)
+        val advToggle = consolePanel.findViewById<Button>(R.id.btn_advanced)
+        var hasAdvanced = false
+        for (a in loadActions()) {
             val b = Button(this)
             b.text = a.optString("label", a.optString("id"))
             b.setOnClickListener { runAction(a) }
-            row.addView(b)
+            if (a.optBoolean("advanced", false)) {
+                advRow.addView(b); hasAdvanced = true
+            } else {
+                normalRow.addView(b)
+            }
+        }
+        if (hasAdvanced) {
+            advToggle.setOnClickListener {
+                advScroll.visibility = if (advScroll.visibility == View.GONE) View.VISIBLE else View.GONE
+            }
+        } else {
+            advToggle.visibility = View.GONE
         }
     }
 

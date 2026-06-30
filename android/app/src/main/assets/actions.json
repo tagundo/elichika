@@ -17,17 +17,19 @@
     },
     {
       "id": "rebuild_assets",
-      "label": "마스터 데이터 재빌드 (고급)",
+      "label": "마스터 데이터 재빌드",
       "type": "binary",
       "args": ["rebuild_assets"],
-      "stop_server": true
+      "stop_server": true,
+      "advanced": true
     },
     {
       "id": "fix_training_trees",
       "label": "트레이닝 트리 복구",
       "type": "binary",
       "args": ["fix_training_trees"],
-      "stop_server": true
+      "stop_server": true,
+      "advanced": true
     },
     {
       "id": "gamebanana",

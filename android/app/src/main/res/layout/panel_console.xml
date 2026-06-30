@@ -18,6 +18,30 @@
             android:padding="6dp" />
     </HorizontalScrollView>
 
+    <!-- Advanced (rarely needed) actions, collapsed by default. -->
+    <Button
+        android:id="@+id/btn_advanced"
+        style="?android:attr/buttonBarButtonStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:text="@string/advanced" />
+
+    <HorizontalScrollView
+        android:id="@+id/advanced_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/advanced_row"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="6dp" />
+    </HorizontalScrollView>
+
     <ScrollView
         android:id="@+id/log_scroll"
         android:layout_width="match_parent"
