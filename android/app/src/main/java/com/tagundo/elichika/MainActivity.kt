@@ -6,6 +6,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
+import androidx.appcompat.app.AlertDialog
 import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -71,6 +74,7 @@ class MainActivity : AppCompatActivity() {
         logText.text = Bus.snapshot()
         updateRunning(Bus.serverRunning)
         requestNotifications()
+        ensureStorageAccess()
     }
 
     override fun onResume() {
@@ -205,6 +209,36 @@ class MainActivity : AppCompatActivity() {
             != PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+    }
+
+    /**
+     * The pack cache + sukusta tree live in the shared Download/ folder (like Termux),
+     * which on Android 11+ requires the "All files access" special permission. Prompt
+     * the user to grant it in Settings; on Android 10 fall back to the legacy runtime
+     * WRITE permission.
+     */
+    private fun ensureStorageAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (Environment.isExternalStorageManager()) return
+            AlertDialog.Builder(this)
+                .setTitle(R.string.perm_title)
+                .setMessage(R.string.perm_msg)
+                .setPositiveButton(R.string.perm_open) { _, _ ->
+                    val pkg = Uri.parse("package:$packageName")
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, pkg)
+                    try {
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    }
+                }
+                .setNegativeButton(R.string.perm_later, null)
+                .show()
+        } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 2)
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.tagundo.elichika
 
 import android.content.Context
+import android.os.Environment
 import java.io.File
 
 /**
@@ -58,22 +59,30 @@ object AssetInstaller {
     private const val SUKUSTA_DEFAULT = "~/storage/downloads/sukusta/packs"
 
     /**
-     * Point cdn_cache_dir at a real, user-visible, app-writable folder
-     * (Android/data/<pkg>/files/packs) instead of the Termux "~/storage/downloads/
-     * sukusta/packs" default, which under our HOME resolves to an invisible
-     * app-private path. Only replaces an empty or default value — a dir the user
-     * chose in the WebUI is left alone. Setting a non-empty absolute path also
-     * stops the server's Load() from re-injecting the sukusta default.
+     * Point cdn_cache_dir at the shared Download/sukusta/packs folder — the same
+     * place the Termux install uses, so packs land where the user (and the modding
+     * tools) expect them. Writing there needs All-files access on Android 11+
+     * (requested in MainActivity). Only an empty value, the Termux default, or the
+     * earlier app-private path is replaced — a dir the user chose in the WebUI is
+     * left alone. A non-empty absolute path also stops the server re-injecting the
+     * sukusta default on Load().
      */
     private fun ensureCacheDir(ctx: Context, root: File, log: (String) -> Unit) {
-        val packs = File(ctx.getExternalFilesDir(null), "packs").apply { mkdirs() }
-        val path = packs.absolutePath
+        val shared = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "sukusta/packs"
+        )
+        runCatching { shared.mkdirs() } // succeeds once storage access is granted
+        val path = shared.absolutePath
+        // the path the previous build wrote, so we can migrate it forward
+        val oldAppPath = File(ctx.getExternalFilesDir(null), "packs").absolutePath
         val cfg = File(root, "config.json")
         if (cfg.exists()) {
             val before = cfg.readText()
             val after = before
                 .replace("\"cdn_cache_dir\":\"\"", "\"cdn_cache_dir\":\"$path\"")
                 .replace("\"cdn_cache_dir\":\"$SUKUSTA_DEFAULT\"", "\"cdn_cache_dir\":\"$path\"")
+                .replace("\"cdn_cache_dir\":\"$oldAppPath\"", "\"cdn_cache_dir\":\"$path\"")
             if (after != before) {
                 cfg.writeText(after)
                 log("[setup] CDN 캐시 폴더 → $path")

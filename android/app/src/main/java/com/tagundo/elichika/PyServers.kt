@@ -1,6 +1,7 @@
 package com.tagundo.elichika
 
 import android.content.Context
+import android.os.Environment
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import java.io.File
@@ -23,7 +24,12 @@ object PyServers {
                 if (!Python.isStarted()) {
                     Python.start(AndroidPlatform(ctx.applicationContext))
                 }
-                val sukusta = File(ctx.getExternalFilesDir(null), "sukusta")
+                // shared Download/sukusta (same as Termux), so the modding tools'
+                // extracted/ + modded/ folders are user-visible. Needs storage access.
+                val sukusta = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "sukusta"
+                )
                 val py = Python.getInstance()
                 py.getModule("elichika_launch")
                     .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath)
