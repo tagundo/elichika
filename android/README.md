@@ -45,8 +45,10 @@ The Go binary, the bundled data payload and the embedded Python sources are
   `serverdata.db` (built on the runner via `rebuild_assets`). Extracted to the
   app files dir on first launch by `AssetInstaller`.
 - `app/src/main/python/` — `adminui/` and the dev installer scripts (this repo),
-  plus `webtools/` and the modding scripts (SIFAS-MODDING-HELPING-TOOLS),
-  alongside the committed `elichika_launch.py`.
+  plus `webtools/` and the modding scripts from the **`modtools/` git submodule**
+  (SIFAS-MODDING-HELPING-TOOLS), alongside the committed `elichika_launch.py`. CI
+  bumps the submodule to its latest `main` before building, so the app always
+  ships the newest tools; elichika no longer vendors its own (stale) copies.
 
 ## Building locally
 

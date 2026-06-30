@@ -22,21 +22,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Tools repo branch to pull modding scripts/webtools from (its default branch).
-      MODTOOLS_REF: main
       NDK_VERSION: "26.3.11579264"
     steps:
-      - name: Checkout elichika (with harasho assets submodule)
+      - name: Checkout elichika (with harasho + modtools submodules)
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Checkout SIFAS-MODDING-HELPING-TOOLS
-        uses: actions/checkout@v4
-        with:
-          repository: tagundo/SIFAS-MODDING-HELPING-TOOLS
-          ref: ${{ env.MODTOOLS_REF }}
-          path: _modtools
+      - name: Update modtools submodule to latest main
+        run: |
+          # The modtools/ submodule (SIFAS-MODDING-HELPING-TOOLS) is pinned in git,
+          # but we want each APK to ship the latest tools — bump it to origin/main.
+          git submodule update --remote --recursive modtools
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -94,11 +91,12 @@ jobs:
           # elichika dev tools: adminui package + the installer/util scripts it calls
           cp -r adminui "$PY/adminui"
           cp ./*.py "$PY/" 2>/dev/null || true
-          # modding tools: webtools package + the mod scripts (copied last so the
-          # tools-repo version wins for any duplicate module name)
-          cp -r _modtools/webtools "$PY/webtools"
-          cp _modtools/*.py "$PY/" 2>/dev/null || true
-          [ -d _modtools/live_timeline ] && cp -r _modtools/live_timeline "$PY/" || true
+          # modding tools from the modtools/ submodule: webtools package + the mod
+          # scripts (copied last so the tools-repo version wins for any duplicate
+          # module name — though elichika no longer vendors its own copies)
+          cp -r modtools/webtools "$PY/webtools"
+          cp modtools/*.py "$PY/" 2>/dev/null || true
+          [ -d modtools/live_timeline ] && cp -r modtools/live_timeline "$PY/" || true
           # drop the host build artifact if it landed in python/
           rm -f "$PY/elichika_host"
 

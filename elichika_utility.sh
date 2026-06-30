@@ -494,25 +494,25 @@ while true; do
                     2)
                         clear
                         stop_server
-                        python3 unity_costumemod_packer.py
+                        python3 modtools/unity_costumemod_packer.py
                         read -p "Press Enter to continue..." _dummy0123
                         ;;
                     3)
                         clear
                         stop_server
-                        python3 sifas_breast_tuner.py
+                        python3 modtools/sifas_breast_tuner.py
                         read -p "Press Enter to continue..." _dummy01234
                         ;;
                     4)
                         clear
                         stop_server
-                        python3 skirt_length_changer.py
+                        python3 modtools/skirt_length_changer.py
                         read -p "Press Enter to continue..." _dummy01235
                         ;;
                     5)
                         clear
                         stop_server
-                        python3 sifas_mesh_baker.py
+                        python3 modtools/sifas_mesh_baker.py
                         read -p "Press Enter to continue..." _dummy012356
                         ;;
                     0)
