@@ -56,6 +56,31 @@ func checkCli() bool {
 		}
 		asset.DownloadArchive(regions)
 	}
+	if os.Args[1] == "cdn_cache" {
+		// toggle (or set on/off) the CDN cache flag in config.json, so the app can
+		// expose it as a console button. os.Args[2]: on | off | toggle (default toggle).
+		if config.Conf.CdnCache == nil {
+			b := false
+			config.Conf.CdnCache = &b
+		}
+		next := !*config.Conf.CdnCache
+		if len(os.Args) > 2 {
+			switch os.Args[2] {
+			case "on", "true", "1":
+				next = true
+			case "off", "false", "0":
+				next = false
+			}
+		}
+		*config.Conf.CdnCache = next
+		if err := config.Conf.Save("./config.json"); err != nil {
+			log.Println("cdn_cache: save failed:", err)
+		} else if next {
+			log.Println("cdn_cache: now ON (restart the server to apply)")
+		} else {
+			log.Println("cdn_cache: now OFF (restart the server to apply)")
+		}
+	}
 	log.Println("CLI is reserved for special behaviour, the server will now exit, start it again without any argument!")
 	return false
 }
