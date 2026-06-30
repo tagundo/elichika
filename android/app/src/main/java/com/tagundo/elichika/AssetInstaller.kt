@@ -121,9 +121,13 @@ object AssetInstaller {
                 log("[setup] CDN 캐시 폴더 → $path")
             }
         } else {
-            // server fills the remaining fields with defaults on first Load()
-            cfg.writeText("{\"cdn_cache_dir\":\"$path\"}")
-            log("[setup] config.json 생성, CDN 캐시 폴더 → $path")
+            // server fills the remaining fields with defaults on first Load().
+            // cdn_cache defaults to true so a fresh install serves & caches packs
+            // out of the box; the console toggle can still turn it off afterwards
+            // (this branch only runs when there is no config.json yet, so it never
+            // overrides a choice the user made later).
+            cfg.writeText("{\"cdn_cache\":true,\"cdn_cache_dir\":\"$path\"}")
+            log("[setup] config.json created, CDN cache ON, folder → $path")
         }
     }
 

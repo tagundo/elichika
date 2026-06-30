@@ -26,12 +26,6 @@
       "stop_server": true
     },
     {
-      "id": "import_addon",
-      "label_id": "act_import_addon",
-      "label": "Import addon zip",
-      "type": "import_zip"
-    },
-    {
       "id": "settings",
       "label_id": "act_settings",
       "label": "Settings",

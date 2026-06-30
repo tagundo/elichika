@@ -9,6 +9,9 @@ language (SIFAS_LANG). Option *values* are never translated — they double as t
 identifiers the tools dispatch on.
 """
 from adminui import i18n
+from adminui.tools.assets_extract import character_choices as extract_characters
+from adminui.tools.assets_extract import costume_options as extract_costume_options
+from adminui.tools.assets_extract import run_extract
 from adminui.tools.backup import run_backup
 from adminui.tools.costume_clone import character_choices, costume_options, run_costume_clone
 from adminui.tools.installers import (
@@ -20,9 +23,10 @@ _BACKUP = {"name": "backup", "label": "Back up the database first", "type": "che
 _STOP = {"name": "stop_server", "label": "Stop the elichika server first", "type": "checkbox",
          "default": True, "help": "Recommended: these tools modify the server's database files."}
 
-# Character picker shared by costume clone — built once from CHARACTER_NAMES so a
-# beginner can choose by name instead of memorising numeric IDs.
+# Character pickers — built once from each tool's name table so a beginner can
+# choose by name instead of memorising numeric IDs.
 _CHARACTERS = character_choices()
+_EXTRACT_CHARACTERS = extract_characters()
 
 
 def _addon(folder):
@@ -36,11 +40,12 @@ def _addon(folder):
             "help_folder": folder}
 
 
-def _char_field(name, label, help_text=None):
+def _char_field(name, label, help_text=None, choices=None):
     """A character field: a dropdown when the names table loaded, else plain text."""
+    opts = _CHARACTERS if choices is None else choices
     f = {"name": name, "label": label, "required": True}
-    if _CHARACTERS:
-        f.update({"type": "select", "options": _CHARACTERS})
+    if opts:
+        f.update({"type": "select", "options": opts})
     else:
         f["type"] = "text"
     if help_text:
@@ -92,6 +97,24 @@ TOOLS = [
             {"name": "backup", "label": "Back up databases first", "type": "checkbox",
              "default": True, "help": "Recommended: a full DB backup is taken before the clone."},
             _STOP,
+        ],
+    },
+    {
+        "id": "extract_assets",
+        "label": "Extract / Decrypt Assets",
+        "description": ("Decrypt a character's costume model out of the game packs into the shared "
+                        "extracted/ folder, ready for the Asset editing tools. Missing packs are "
+                        "pulled from the CDN when enabled."),
+        "run": run_extract,
+        "options": extract_costume_options,
+        "fields": [
+            _char_field("character", "Character",
+                        "Pick a character, then press ↻ to list their costumes.",
+                        choices=_EXTRACT_CHARACTERS),
+            {"name": "costume", "label": "Costume to extract", "type": "dynamic_select",
+             "source": "costume", "depends_on": "character", "required": True},
+            {"name": "cdn", "label": "Download missing packs from CDN", "type": "checkbox",
+             "default": True, "help": "Off = only use packs already downloaded locally."},
         ],
     },
     {
