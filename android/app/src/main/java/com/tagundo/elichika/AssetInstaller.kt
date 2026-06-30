@@ -51,6 +51,7 @@ object AssetInstaller {
 
         ensureSharedLinks(root, log)
         ensureCacheDir(ctx, root, log)
+        ensureLanguage(root, log)
         File(root, MARKER).writeText(currentVersion)
         log("[setup] 준비 완료.")
         return root
@@ -58,6 +59,27 @@ object AssetInstaller {
 
     // Termux default that the server injects into config.json on Android.
     private const val SUKUSTA_DEFAULT = "~/storage/downloads/sukusta/packs"
+
+    /**
+     * Unify the language: the app UI and the Python tools are Korean, but the server
+     * WebUI defaults to English (webui_language=en). Set it to ko ONCE (guarded by a
+     * marker) so everything matches, then leave it alone so a later WebUI change by
+     * the user sticks.
+     */
+    private fun ensureLanguage(root: File, log: (String) -> Unit) {
+        val marker = File(root, "lang_set")
+        if (marker.exists()) return
+        val cfg = File(root, "config.json")
+        if (cfg.exists()) {
+            val before = cfg.readText()
+            val after = before.replace("\"webui_language\":\"en\"", "\"webui_language\":\"ko\"")
+            if (after != before) {
+                cfg.writeText(after)
+                log("[setup] WebUI 언어 → 한국어")
+            }
+        }
+        runCatching { marker.writeText("ko") }
+    }
 
     /**
      * Make the Termux-style "~/storage/downloads" path resolve to the real shared

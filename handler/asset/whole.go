@@ -76,7 +76,7 @@ func staticWhole(ctx *gin.Context) {
 // streamWholeFromCdn proxies a whole file from the upstream CDN to the client while writing it to the
 // cache at the same time.
 func streamWholeFromCdn(ctx *gin.Context, fileName, dest string) {
-	res, err := httpClient.Get(cdnURL(fileName))
+	res, err := cdnGet(cdnURL(fileName))
 	if err != nil {
 		log.Printf("cdn fetch failed for %s: %v\n", fileName, err)
 		ctx.Status(http.StatusBadGateway)

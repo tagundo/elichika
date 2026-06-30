@@ -51,6 +51,9 @@ class MainActivity : AppCompatActivity() {
         if (uri != null) importAddon(uri)
     }
 
+    // the CDN-cache toggle button, relabelled to show the current on/off state.
+    private var cdnButton: Button? = null
+
     private data class Tab(val title: String, val url: String?)
 
     private val tabs by lazy {
@@ -94,6 +97,7 @@ class MainActivity : AppCompatActivity() {
         Bus.stateListener = { updateRunning(it) }
         logText.text = Bus.snapshot()
         updateRunning(Bus.serverRunning)
+        refreshCdnLabel()
     }
 
     override fun onPause() {
@@ -119,6 +123,28 @@ class MainActivity : AppCompatActivity() {
         logText.append(line)
         if (!line.endsWith("\n")) logText.append("\n")
         logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
+        if (line.contains("cdn_cache:")) refreshCdnLabel()
+    }
+
+    /** Relabel the CDN-cache button to show the current state read from config.json. */
+    private fun refreshCdnLabel() {
+        val b = cdnButton ?: return
+        b.text = when (readCdnCache()) {
+            true -> "CDN 캐시: 켜짐 ✓ (눌러서 끄기)"
+            false -> "CDN 캐시: 꺼짐 (눌러서 켜기)"
+            else -> "CDN 캐시 켜기/끄기"
+        }
+    }
+
+    private fun readCdnCache(): Boolean? = try {
+        val txt = File(filesDir, "config.json").readText()
+        when {
+            Regex("\"cdn_cache\"\\s*:\\s*true").containsMatchIn(txt) -> true
+            Regex("\"cdn_cache\"\\s*:\\s*false").containsMatchIn(txt) -> false
+            else -> null
+        }
+    } catch (e: Exception) {
+        null
     }
 
     private fun setupTabs() {
@@ -187,7 +213,9 @@ class MainActivity : AppCompatActivity() {
             } else {
                 normalRow.addView(b)
             }
+            if (a.optString("id") == "cdn_cache_toggle") cdnButton = b
         }
+        refreshCdnLabel()
         if (hasAdvanced) {
             advToggle.setOnClickListener {
                 advScroll.visibility = if (advScroll.visibility == View.GONE) View.VISIBLE else View.GONE
