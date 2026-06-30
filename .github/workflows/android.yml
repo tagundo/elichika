@@ -29,11 +29,15 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Update modtools submodule to latest main
+      - name: Update modtools submodule to latest
         run: |
-          # The modtools/ submodule (SIFAS-MODDING-HELPING-TOOLS) is pinned in git,
-          # but we want each APK to ship the latest tools — bump it to origin/main.
-          git submodule update --remote --recursive modtools
+          # Ship the latest modding tools: fetch the tracked branch in the submodule
+          # and check out its tip. (`git submodule update --remote` needs that ref
+          # fetched, which the shallow recursive checkout doesn't provide.)
+          BR="claude/elichika-apk-build-wwkuu3"
+          git -C modtools fetch --depth 1 origin "$BR"
+          git -C modtools checkout -q FETCH_HEAD
+          git -C modtools log -1 --oneline
 
       - name: Set up Go
         uses: actions/setup-go@v5
