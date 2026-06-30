@@ -19,9 +19,14 @@ func isNotChanged(file string) bool {
 	exitError, ok := err.(*exec.ExitError)
 	if !ok {
 		// git could not be run at all (e.g. the standalone Android app has no git
-		// binary in PATH). Fall back to the packaged-build behaviour and treat the
-		// file as unchanged, matching is_not_changed_embedded.go, instead of crashing.
-		return true
+		// binary in PATH). The git check is elichika's "have these SQL migrations
+		// already been applied?" flag: a pristine (committed) DB returns true so the
+		// migration runs once, after which the modified file returns false and is
+		// skipped. The Android APK ships DBs that CI already migrated via
+		// rebuild_assets, so without git we must treat them as already-applied and
+		// SKIP (return false) — re-running the migrations hits UNIQUE constraint
+		// errors (e.g. m_live.live_id). Returning false here, not panicking.
+		return false
 	}
 	if exitError.ExitCode() != 1 {
 		log.Panic(err)
