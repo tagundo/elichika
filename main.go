@@ -42,6 +42,20 @@ func checkCli() bool {
 		}
 		asset.DownloadAllMissing(workers)
 	}
+	if os.Args[1] == "download_archive" {
+		// bulk-download every game file from archive.org (does NOT use the game CDN),
+		// then extract into the cache dir. os.Args[2] picks the region: gl | jp | both.
+		regions := []string{"gl", "jp"}
+		if len(os.Args) > 2 {
+			switch os.Args[2] {
+			case "gl":
+				regions = []string{"gl"}
+			case "jp":
+				regions = []string{"jp"}
+			}
+		}
+		asset.DownloadArchive(regions)
+	}
 	log.Println("CLI is reserved for special behaviour, the server will now exit, start it again without any argument!")
 	return false
 }

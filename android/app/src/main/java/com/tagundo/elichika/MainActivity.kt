@@ -120,7 +120,12 @@ class MainActivity : AppCompatActivity() {
         if (tab.url == null) {
             consolePanel.visibility = View.VISIBLE
         } else {
-            webViewFor(tab.url).visibility = View.VISIBLE
+            val existed = webViews.containsKey(tab.url)
+            val wv = webViewFor(tab.url)
+            wv.visibility = View.VISIBLE
+            // Reload on re-open: a tab first viewed before the server was up cached a
+            // connection error; reloading now that it may be running recovers it.
+            if (existed) wv.loadUrl(tab.url)
         }
     }
 

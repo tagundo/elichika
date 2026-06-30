@@ -44,8 +44,9 @@ class ServerProcess(private val ctx: Context) {
             .directory(workDir)
             .redirectErrorStream(true)
         pb.environment()["HOME"] = workDir.absolutePath
-        // Pure-Go fallback resolver hint; harmless under the cgo/bionic build.
-        pb.environment()["GODEBUG"] = "netdns=go+1"
+        // Do NOT force GODEBUG=netdns=go here: Android has no /etc/resolv.conf, so the
+        // pure-Go resolver fails ("lookup ... on [::1]:53: connection refused") and every
+        // download dies. The cgo/NDK build defaults to bionic's resolver, which works.
 
         val p = try {
             pb.start()

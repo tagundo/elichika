@@ -1,23 +1,30 @@
 {
-  "_comment": "Declarative mirror of the elichika_utility.sh menu. Add an entry here to surface a new action in the app's Console tab — no Kotlin changes needed. type=binary runs libelichika.so with args (the server is stopped first); type=url opens a browser.",
+  "_comment": "Declarative mirror of the elichika_utility.sh menu. Add an entry here to surface a new action in the app's Console tab — no Kotlin changes needed. type=binary runs libelichika.so with args (the server is stopped first); type=url opens a browser. CDN cache on/off and the CDN source URL are set in the Server WebUI admin page, not here.",
   "actions": [
     {
+      "id": "download_archive",
+      "label": "전체 게임파일 다운로드 (archive.org · 권장)",
+      "type": "binary",
+      "args": ["download_archive", "both"],
+      "stop_server": true
+    },
+    {
       "id": "download_packs",
-      "label": "게임 파일 다운로드 (CDN)",
+      "label": "누락분만 받기 (게임 CDN)",
       "type": "binary",
       "args": ["download_packs", "4"],
       "stop_server": true
     },
     {
       "id": "rebuild_assets",
-      "label": "마스터 데이터 재빌드",
+      "label": "마스터 데이터 재빌드 (고급)",
       "type": "binary",
       "args": ["rebuild_assets"],
       "stop_server": true
     },
     {
       "id": "fix_training_trees",
-      "label": "트레이닝 트리 수정",
+      "label": "트레이닝 트리 복구",
       "type": "binary",
       "args": ["fix_training_trees"],
       "stop_server": true
