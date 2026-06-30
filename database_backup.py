@@ -20,7 +20,13 @@ LOCAL_BACKUP_ROOT = "backup_db"
 
 
 def get_backup_root():
-    """현재 환경에서 새 백업을 만들 루트 폴더."""
+    """현재 환경에서 새 백업을 만들 루트 폴더.
+
+    SUKUSTA_BACKUP_ROOT 환경변수가 있으면 그 위치를 사용한다(안드로이드 APK 가
+    공유 Download/sukusta/backup 로 지정). Termux/PC 동작은 그대로 유지."""
+    env = os.environ.get("SUKUSTA_BACKUP_ROOT")
+    if env:
+        return os.path.expanduser(env)
     return TERMUX_BACKUP_ROOT if is_termux() else LOCAL_BACKUP_ROOT
 
 

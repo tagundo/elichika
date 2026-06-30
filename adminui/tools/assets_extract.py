@@ -57,6 +57,30 @@ def character_choices():
             for cid, name in sorted(chars.items())]
 
 
+def _costume_name(x, model_path):
+    """Resolve a costume model's display name (for the output filename)."""
+    if not model_path:
+        return ""
+    md_path = x.find_masterdata(".")
+    if not md_path:
+        return ""
+    md = sqlite3.connect(md_path)
+    try:
+        row = md.execute("SELECT name FROM m_suit WHERE model_asset_path = ? LIMIT 1",
+                         (model_path,)).fetchone()
+    finally:
+        md.close()
+    if not row:
+        return ""
+    dp = x.find_dictionary(".")
+    dc = sqlite3.connect(dp) if dp else None
+    try:
+        return x.real_costume_name(dc, row[0]) or ""
+    finally:
+        if dc:
+            dc.close()
+
+
 def costume_options(params):
     """List a character's costumes (id — display name) for the dynamic dropdown."""
     cid = (params.get("character") or "").strip()
@@ -120,7 +144,9 @@ def run_extract(job, params):
                 raise ValueError(f"{model} is not in member_model in {os.path.basename(asset_db)}")
             pack_name, head, size, key1, key2 = mm
             cname = x.CHARACTERS.get(int(cid), cid) if cid.isdigit() else cid
-            label = x.sanitize(f"{cname}_{model}")
+            # include the costume's display name in the filename (the CLI does too)
+            rname = _costume_name(x, model)
+            label = x.sanitize("_".join(p for p in (str(cname), rname, model) if p))
             used, manifest = set(), []
             ok = x.extract_one(resolver, out_dir, "member_model", label,
                                pack_name, head, size, key1, key2, used, manifest)

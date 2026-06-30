@@ -49,6 +49,9 @@ def start(server_cwd, sukusta_dir, lang="en"):
         os.environ["SUKUSTA_DIR"] = sukusta_dir
         os.environ.setdefault("HOME", server_cwd)
         os.environ["SIFAS_LANG"] = lang or "en"
+        # DB backups go to the shared Download/sukusta/backup (same place as Termux)
+        # so they are user-visible; database_backup.py / database_restore.py honour it.
+        os.environ["SUKUSTA_BACKUP_ROOT"] = os.path.join(sukusta_dir, "backup")
 
         for name, port in (("adminui.server", ADMIN_PORT), ("webtools.server", MOD_PORT)):
             t = threading.Thread(target=_serve, args=(name, port), name=name, daemon=True)

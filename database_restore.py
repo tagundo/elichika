@@ -18,7 +18,12 @@ LOCAL_BACKUP_ROOT = "backup_db"
 
 
 def get_backup_root():
-    """새 백업(복원 전 백업 포함)을 만들 루트 폴더."""
+    """새 백업(복원 전 백업 포함)을 만들 루트 폴더.
+
+    SUKUSTA_BACKUP_ROOT 환경변수가 있으면 우선한다(안드로이드 APK)."""
+    env = os.environ.get("SUKUSTA_BACKUP_ROOT")
+    if env:
+        return os.path.expanduser(env)
     return TERMUX_BACKUP_ROOT if is_termux() else LOCAL_BACKUP_ROOT
 
 
@@ -26,6 +31,9 @@ def get_all_backup_roots():
     """복원 시 조사할 모든 백업 위치 (새 위치 + 기존 위치).
     예전에 Termux 내부 backup_db 에 만든 백업을 놓치지 않도록 둘 다 본다."""
     roots = []
+    env = os.environ.get("SUKUSTA_BACKUP_ROOT")
+    if env:
+        roots.append(env)                  # 안드로이드 APK 의 공유 백업 위치
     if is_termux():
         roots.append(TERMUX_BACKUP_ROOT)   # 새 위치 (공유 저장소)
     roots.append(LOCAL_BACKUP_ROOT)        # 기존 위치 (항상 포함)

@@ -44,6 +44,10 @@ class MainActivity : AppCompatActivity() {
 
     // Lazily-created WebViews for the three local web UIs.
     private val webViews = HashMap<String, WebView>()
+    // Tracks whether each WebView's last main-frame load failed (e.g. opened before
+    // the server was up). Only those are reloaded on re-open, so re-opening a tab
+    // with a running edit/extraction no longer wipes its live page state.
+    private val webViewErrored = HashMap<String, Boolean>()
 
     // File picker for addon zips: copies the chosen file into Download/sukusta/addons,
     // where the dev-tools installers pick it up.
@@ -208,9 +212,10 @@ class MainActivity : AppCompatActivity() {
             val existed = webViews.containsKey(tab.url)
             val wv = webViewFor(tab.url)
             wv.visibility = View.VISIBLE
-            // Reload on re-open: a tab first viewed before the server was up cached a
-            // connection error; reloading now that it may be running recovers it.
-            if (existed) wv.loadUrl(tab.url)
+            // Only reload if the previous load actually failed (e.g. the tab was
+            // first opened before the server was up). A successful page is left as
+            // is, so returning to a tab mid-edit keeps the running job's UI.
+            if (existed && webViewErrored[tab.url] == true) wv.loadUrl(tab.url)
         }
     }
 
@@ -230,8 +235,20 @@ class MainActivity : AppCompatActivity() {
                 }
                 // Keep all navigation (links, form submits) inside the WebView instead
                 // of handing it to the system browser (Chrome), which is the default
-                // when no WebViewClient is set.
-                webViewClient = WebViewClient()
+                // when no WebViewClient is set. Also track main-frame load failures so
+                // showTab() only reloads tabs that errored (see webViewErrored).
+                webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(view: WebView?, u: String?, favicon: android.graphics.Bitmap?) {
+                        if (u != null && u.startsWith(url)) webViewErrored[url] = false
+                    }
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: android.webkit.WebResourceRequest?,
+                        error: android.webkit.WebResourceError?,
+                    ) {
+                        if (request?.isForMainFrame == true) webViewErrored[url] = true
+                    }
+                }
                 content.addView(this)
                 loadUrl(url)
             }
