@@ -26,23 +26,24 @@ import sys
 from adminui.serverctl import stop_server
 from adminui.tools.common import capture_stdout, ensure_repo_on_path
 
-# Shared, user-visible drop folder (matches the in-app file picker + manual drops).
+# Shared, user-visible drop folder (the in-app file picker copies imports here).
 DROP_DIR = os.path.expanduser("~/storage/downloads/sukusta/addons")
 
-# module name + candidate scan folders (the tool uses one of them depending on
-# is_termux(); we cover both) + the file extension it wants.
+# module name + per-type drop folder ("folder", the original Termux convention,
+# e.g. costume zips live in sukusta/suit) + extra candidate scan folders the tool
+# itself reads (is_termux() picks one; we cover both) + the wanted extension.
 INSTALLERS = {
-    "costume": {"module": "costume_addon_installer",
+    "costume": {"module": "costume_addon_installer", "folder": "suit",
                 "scans": ["~/storage/downloads/sukusta/suit", "assets/package/suit"], "ext": ".zip"},
-    "live":    {"module": "live_addon_installer",
+    "live":    {"module": "live_addon_installer", "folder": "live",
                 "scans": ["~/storage/downloads/sukusta/live", "assets/package/live"], "ext": ".zip"},
-    "card":    {"module": "card_addon_installer",
+    "card":    {"module": "card_addon_installer", "folder": "card",
                 "scans": ["assets/package/card", "~/storage/downloads/sukusta/card"], "ext": ".zip"},
-    "tower":   {"module": "tower_addon_installer",
-                "scans": ["assets/data", "~/storage/downloads/sukusta/data"], "ext": ".zip"},
-    "camera":  {"module": "camera_live_timeline_replacer",
+    "tower":   {"module": "tower_addon_installer", "folder": "tower",
+                "scans": ["assets/data", "~/storage/downloads/sukusta/tower"], "ext": ".zip"},
+    "camera":  {"module": "camera_live_timeline_replacer", "folder": "livetimeline",
                 "scans": ["~/storage/downloads/sukusta/livetimeline", "assets/package/livetimeline"], "ext": ".zip"},
-    "db":      {"module": "elichika_db_importer",
+    "db":      {"module": "elichika_db_importer", "folder": "sql",
                 "scans": ["~/storage/downloads/sukusta/sql", "assets/package/sql"], "ext": ".sql"},
 }
 
@@ -51,14 +52,42 @@ def _dirs(spec):
     return [os.path.abspath(os.path.expanduser(s)) for s in spec["scans"]]
 
 
-def drop_options(params):
-    """List the .zip/.sql files sitting in the drop folder for the dropdown."""
-    os.makedirs(DROP_DIR, exist_ok=True)
-    out = []
-    for name in sorted(os.listdir(DROP_DIR)):
-        if os.path.isfile(os.path.join(DROP_DIR, name)) and name.lower().endswith((".zip", ".sql")):
-            out.append({"value": name, "label": name})
+def _candidate_dirs(key):
+    """Every folder a chosen file might already sit in: the shared addons drop
+    folder plus the installer's own per-type folders (suit / live / ...)."""
+    return [os.path.abspath(os.path.expanduser(DROP_DIR))] + _dirs(INSTALLERS[key])
+
+
+def _locate(key, name):
+    """First existing path of `name` across this installer's candidate folders."""
+    for d in _candidate_dirs(key):
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _list_candidates(key):
+    """List .zip/.sql files across the installer's per-type folder + the shared
+    addons folder, so files dropped either way (the original sukusta/suit etc. or
+    the in-app picker's addons/) all show up. De-duplicated by filename."""
+    seen, out = set(), []
+    for d in _candidate_dirs(key):
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            if name in seen:
+                continue
+            if os.path.isfile(os.path.join(d, name)) and name.lower().endswith((".zip", ".sql")):
+                seen.add(name)
+                out.append({"value": name, "label": name})
     return out
+
+
+def options_for(key):
+    """Build the dropdown's options function for one installer (bound to its key
+    so the server's single per-tool options callback lists the right folders)."""
+    return lambda params: _list_candidates(key)
 
 
 class _Answers:
@@ -116,12 +145,14 @@ def _reload(module_name):
 def _run_installer(job, key, params):
     spec = INSTALLERS[key]
     chosen = (params.get("addon") or "").strip()
+    folder = spec.get("folder", "addons")
     if not chosen:
-        raise ValueError("설치할 파일을 선택하세요 (Download/sukusta/addons 에 넣어두세요)")
+        raise ValueError(f"Select a file first (drop it into Download/sukusta/{folder} or …/addons).")
     ensure_repo_on_path()
-    src = os.path.join(DROP_DIR, chosen)
-    if not os.path.isfile(src):
-        raise FileNotFoundError(f"{src} 가 없습니다")
+    src = _locate(key, chosen)
+    if not src:
+        raise FileNotFoundError(
+            f"{chosen} not found in Download/sukusta/{folder} or …/addons.")
 
     scans = _dirs(spec)
     for d in scans:
@@ -145,7 +176,7 @@ def _run_installer(job, key, params):
     finally:
         builtins.input = real_input
         restore_listing()
-    return f"{key} 설치 완료 — 서버를 다시 시작하면 반영됩니다."
+    return f"{key} install complete — restart the server to apply it."
 
 
 def run_costume(job, params):
@@ -196,4 +227,4 @@ def run_dictionary(job, params):
         job.log(f"(exited: {exc})")
     finally:
         builtins.input = real_input
-    return "사전 교체 완료 — 서버를 다시 시작하세요. (되돌리려면 다시 ja로 바꿔야 함)"
+    return "Dictionary swap complete — restart the server. (Swap back to ja to revert.)"

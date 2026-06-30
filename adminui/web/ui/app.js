@@ -76,8 +76,11 @@ function renderField(field) {
     const sel = el("select", { id });
     sel.dataset.name = field.name; sel.dataset.ftype = "select";
     for (const opt of field.options || []) {
-      const o = el("option", { value: opt, text: opt });
-      if (opt === field.default) o.selected = true;
+      // options may be plain strings (value == label) or {value, label} objects
+      const value = (opt && typeof opt === "object") ? opt.value : opt;
+      const label = (opt && typeof opt === "object") ? opt.label : opt;
+      const o = el("option", { value: String(value), text: String(label) });
+      if (value === field.default) o.selected = true;
       sel.appendChild(o);
     }
     wrap.appendChild(sel);

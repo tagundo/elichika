@@ -165,7 +165,16 @@ def test_http():
             check("GET /ui/style.css 200", r.status == 200)
         with urllib.request.urlopen(base + "/api/tools", timeout=5) as r:
             tools = json.loads(r.read())["tools"]
-        check("GET /api/tools = 3 tools", len(tools) == 3, str([t["id"] for t in tools]))
+        ids = {t["id"] for t in tools}
+        expected = {"backup", "restore", "costume_clone", "install_costume", "install_live",
+                    "install_card", "install_tower", "install_camera", "install_db",
+                    "dictionary_swap"}
+        check("GET /api/tools has all tools", expected <= ids, str(sorted(ids)))
+        # localised labels: ?lang=ko should translate the English source labels
+        with urllib.request.urlopen(base + "/api/tools?lang=ko", timeout=5) as r:
+            ko = {t["id"]: t for t in json.loads(r.read())["tools"]}
+        check("GET /api/tools?lang=ko translates", ko["backup"]["label"] == "데이터베이스 백업",
+              ko["backup"]["label"])
         with urllib.request.urlopen(base + "/api/options/restore", timeout=5) as r:
             opts = json.loads(r.read())
         check("GET /api/options/restore", "options" in opts)

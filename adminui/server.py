@@ -6,6 +6,7 @@ endpoint backs the dynamic dropdowns (backup list, costume list).
 """
 import json
 import mimetypes
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -40,6 +41,11 @@ class Handler(BaseHTTPRequestHandler):
     def _query(self):
         return {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
 
+    def _lang(self):
+        """UI language: ?lang= override, else SIFAS_LANG (set by the app to the
+        user's chosen language), else English."""
+        return self._query().get("lang") or os.environ.get("SIFAS_LANG") or "en"
+
     def _read_json_body(self):
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
@@ -58,7 +64,7 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/ui/"):
                 return self._serve_static(path[len("/ui/"):])
             if path == "/api/tools":
-                return self._send_json({"tools": registry.public_tools()})
+                return self._send_json({"tools": registry.public_tools(self._lang())})
             if path.startswith("/api/options/"):
                 return self._api_options(path[len("/api/options/"):])
             if path.startswith("/api/jobs/") and path.endswith("/events"):
