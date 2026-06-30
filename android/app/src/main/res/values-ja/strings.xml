@@ -6,8 +6,8 @@
     <string name="tab_console">コンソール</string>
     <string name="tab_webui">サーバー設定</string>
     <string name="tab_user">アカウント</string>
-    <string name="tab_dev">開発ツール</string>
-    <string name="tab_mod">MODツール</string>
+    <string name="tab_dev">サーバーコンテンツ</string>
+    <string name="tab_mod">アセット編集</string>
     <string name="notif_channel">elichika サーバー</string>
     <string name="notif_running">elichika サーバー実行中</string>
     <string name="notif_text">ゲームを 127.0.0.1:8080 に接続してください。タップでアプリを開きます。</string>

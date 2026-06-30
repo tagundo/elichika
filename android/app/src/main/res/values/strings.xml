@@ -7,8 +7,8 @@
     <string name="tab_console">Console</string>
     <string name="tab_webui">Server</string>
     <string name="tab_user">Account</string>
-    <string name="tab_dev">Dev tools</string>
-    <string name="tab_mod">Mod tools</string>
+    <string name="tab_dev">Server content</string>
+    <string name="tab_mod">Asset editing</string>
     <string name="notif_channel">elichika server</string>
     <string name="notif_running">elichika server running</string>
     <string name="notif_text">Point the game at 127.0.0.1:8080. Tap to open the app.</string>
