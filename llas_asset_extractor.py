@@ -623,9 +623,11 @@ def category_dir(table):
 
 
 def extract_one(resolver, out_dir, table, asset_path, pack_name, head, size,
-                key1, key2, used_names, manifest):
+                key1, key2, used_names, manifest, file_label=None):
     """Decrypt one asset and write it into out_dir/<category>/. Reports success/failure.
-    The resolver finds the pack in packs/, or copies/downloads it into packs/ first."""
+    The resolver finds the pack in packs/, or copies/downloads it into packs/ first.
+    file_label (when given) is used for the on-disk filename; the manifest still
+    records the real asset_path so nothing is lost."""
     pack_path = resolver.resolve(pack_name)
     if pack_path is None:
         print(f"  [skip] {asset_path}: pack '{pack_name}' not found (local + CDN)")
@@ -648,7 +650,7 @@ def extract_one(resolver, out_dir, table, asset_path, pack_name, head, size,
         cat_path = os.path.join(out_dir, cat)
         os.makedirs(cat_path, exist_ok=True)
 
-        base_name = sanitize(asset_path)
+        base_name = sanitize(file_label if file_label else asset_path)
         out_name = base_name + ext
         rel = os.path.join(cat, out_name)
         if rel in used_names:                      # disambiguate with head (per folder)
@@ -776,6 +778,33 @@ def real_costume_name(dict_conn, name_key):
         return name_key
 
 
+_CHCO_RE = re.compile(r"ch\d+_co\d+", re.IGNORECASE)
+
+
+def costume_code(md_conn, model_path):
+    """The canonical chNNNN_coNNNN code for a costume (the identifier modders and
+    GameBanana use), parsed from its thumbnail / model asset paths in m_suit.
+    Falls back to id<suit_id> so the filename still carries a useful, complete,
+    unique reference; '' only if the costume can't be found."""
+    if md_conn is None or not model_path:
+        return ""
+    try:
+        row = md_conn.execute(
+            "SELECT id, thumbnail_image_asset_path, model_asset_path FROM m_suit "
+            "WHERE model_asset_path = ? LIMIT 1", (model_path,)).fetchone()
+    except sqlite3.Error:
+        return ""
+    if not row:
+        return ""
+    suit_id, thumb, model = row
+    for src in (thumb, model):
+        if src:
+            m = _CHCO_RE.search(str(src))
+            if m:
+                return m.group(0).lower()
+    return f"id{suit_id}" if suit_id is not None else ""
+
+
 def mode_costume(base_dir, out_dir, asset_db, pack_roots, cdn_base):
     md_path = find_masterdata(base_dir)
     if md_path is None:
@@ -840,10 +869,13 @@ def mode_costume(base_dir, out_dir, asset_db, pack_roots, cdn_base):
             print(f"  [skip] {rname}: '{model_path}' not in member_model")
             continue
         pack_name, head, size, key1, key2 = mm
-        # mix the costume name into the output filename for readability
-        label = sanitize(f"{CHARACTERS[chara]}_{rname}_{model_path}")
-        if extract_one(resolver, out_dir, "member_model", label, pack_name,
-                       head, size, key1, key2, used, manifest):
+        # Name the file with useful, complete identifiers — character, the
+        # canonical chNNNN_coNNNN code, and the costume name — instead of the
+        # cryptic internal model path (which stays in the manifest).
+        code = costume_code(md, model_path)
+        label = sanitize("_".join(p for p in (CHARACTERS[chara], code, rname) if p))
+        if extract_one(resolver, out_dir, "member_model", model_path, pack_name,
+                       head, size, key1, key2, used, manifest, file_label=label):
             ok += 1
     if manifest:
         write_manifest(out_dir, manifest)

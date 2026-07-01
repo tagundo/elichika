@@ -96,28 +96,31 @@ def character_choices():
             for cid, name in sorted(chars.items())]
 
 
-def _costume_name(x, model_path):
-    """Resolve a costume model's display name (for the output filename)."""
+def _costume_meta(x, model_path):
+    """(display_name, code) for a costume model, for the output filename: the
+    localized costume name plus its canonical chNNNN_coNNNN code (or id<n>
+    fallback). Empty strings when the costume can't be found."""
     if not model_path:
-        return ""
+        return "", ""
     md_path = x.find_masterdata(".")
     if not md_path:
-        return ""
+        return "", ""
     md = sqlite3.connect(md_path)
     try:
         row = md.execute("SELECT name FROM m_suit WHERE model_asset_path = ? LIMIT 1",
                          (model_path,)).fetchone()
+        code = x.costume_code(md, model_path)
     finally:
         md.close()
-    if not row:
-        return ""
-    dp = x.find_dictionary(".")
-    dc = sqlite3.connect(dp) if dp else None
-    try:
-        return x.real_costume_name(dc, row[0]) or ""
-    finally:
-        if dc:
-            dc.close()
+    rname = ""
+    if row:
+        dc = _dictionary_conn(x)
+        try:
+            rname = x.real_costume_name(dc, row[0]) or ""
+        finally:
+            if dc:
+                dc.close()
+    return rname, code
 
 
 def costume_options(params):
@@ -190,8 +193,10 @@ def _resolve_cid_and_label(x, base, model, cid):
         cname = (nm.FIRST_NAMES.get(int(cid)) if nm else None) or x.CHARACTERS.get(int(cid), cid)
     else:
         cname = cid
-    rname = _costume_name(x, model)  # display name, for the filename (the CLI does too)
-    return cid, x.sanitize("_".join(p for p in (str(cname), rname, model) if p))
+    # Useful, complete filename: character · canonical chNNNN_coNNNN code · costume
+    # name — not the cryptic internal model path (which stays in the manifest).
+    rname, code = _costume_meta(x, model)
+    return cid, x.sanitize("_".join(p for p in (str(cname), code, rname) if p))
 
 
 def run_extract(job, params):
@@ -241,8 +246,9 @@ def run_extract(job, params):
                 pack_name, head, size, key1, key2 = mm
                 _cid, label = _resolve_cid_and_label(x, base, model, cid0)
                 used, manifest = set(), []
-                ok = x.extract_one(resolver, out_dir, "member_model", label,
-                                   pack_name, head, size, key1, key2, used, manifest)
+                ok = x.extract_one(resolver, out_dir, "member_model", model,
+                                   pack_name, head, size, key1, key2, used, manifest,
+                                   file_label=label)
                 if manifest:
                     all_manifest.extend(manifest)
                 if ok:
