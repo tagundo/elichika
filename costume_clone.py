@@ -79,11 +79,22 @@ def list_costumes(md_conn, dict_conn, chara_id):
     return [(cid, key, get_real_costume_name(dcur, key)) for cid, key in cur.fetchall()]
 
 
-def list_costumes_for_character(chara_id):
+def dict_path_for_lang(lang=None):
+    """Dictionary DB matching the app language (SIFAS_LANG), English fallback, so
+    the WebUI costume list shows names in the user's language. 'ja' maps to the JP
+    dictionary; unknown/absent languages fall back to English."""
+    lang = (lang or os.environ.get("SIFAS_LANG") or "en").strip().lower()
+    lang = lang.split("-")[0].split("_")[0]
+    lang = {"ja": "jp", "jpn": "jp", "jp": "jp", "kr": "ko", "kor": "ko"}.get(lang, lang)
+    path = DICT_PATHS.get(lang, DICT_EN)
+    return path if os.path.exists(path) else DICT_EN
+
+
+def list_costumes_for_character(chara_id, lang=None):
     """Convenience wrapper: open the standard GL DBs, list a character's
-    costumes, and close. Used by the WebUI dropdown."""
+    costumes, and close. Used by the WebUI dropdown. Names use the app language."""
     md = sqlite3.connect(MASTERDATA_GL)
-    dc = sqlite3.connect(DICT_EN)
+    dc = sqlite3.connect(dict_path_for_lang(lang))
     try:
         return list_costumes(md, dc, chara_id)
     finally:

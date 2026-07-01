@@ -27,6 +27,29 @@ def _extracted_dir():
     return os.path.join(base, "extracted")
 
 
+# Dictionary file per UI language; SIFAS_LANG is set by the app (en/ko/ja).
+_DICT_BY_LANG = {
+    "en": "dictionary_en_k.db", "ko": "dictionary_ko_k.db",
+    "ja": "dictionary_ja_k.db", "jp": "dictionary_ja_k.db",
+    "zh": "dictionary_zh_k.db",
+}
+
+
+def _dictionary_conn(x, base="."):
+    """Open the dictionary DB matching the app language (SIFAS_LANG), so costume
+    names show in the user's language; fall back to the extractor's English-first
+    find_dictionary()."""
+    lang = (os.environ.get("SIFAS_LANG") or "en").strip().lower().split("-")[0].split("_")[0]
+    want = _DICT_BY_LANG.get(lang)
+    if want:
+        for loc in ("gl", "jp"):
+            p = os.path.join(base, "assets", "db", loc, want)
+            if os.path.isfile(p):
+                return sqlite3.connect(p)
+    dp = x.find_dictionary(base)
+    return sqlite3.connect(dp) if dp else None
+
+
 def _pick_asset_db(x, base="."):
     """Choose an asset DB without prompting: prefer Android (asset_a_*), GL, English."""
     dbs = x.list_asset_dbs(base)
@@ -82,32 +105,49 @@ def _costume_name(x, model_path):
 
 
 def costume_options(params):
-    """List a character's costumes (id — display name) for the dynamic dropdown."""
-    cid = (params.get("character") or "").strip()
-    if not cid.isdigit():
-        return []
+    """Costumes for the dynamic dropdown. Two modes:
+      - a non-empty `search` string matches costume/character names across ALL
+        characters (labels are "Character — costume");
+      - otherwise list the picked `character`'s costumes (label = costume name).
+    Names use the app-language dictionary."""
     x = _mod()
     md_path = x.find_masterdata(".")
     if not md_path:
         return []
+    search = (params.get("search") or "").strip()
+    cid = (params.get("character") or "").strip()
     md = sqlite3.connect(md_path)
     try:
-        rows = md.execute(
-            "SELECT id, name, model_asset_path FROM m_suit "
-            "WHERE member_m_id = ? AND name NOT LIKE '%_cloned' ORDER BY display_order",
-            (int(cid),)).fetchall()
+        if search:
+            rows = md.execute(
+                "SELECT member_m_id, name, model_asset_path FROM m_suit "
+                "WHERE name NOT LIKE '%_cloned' AND model_asset_path IS NOT NULL "
+                "AND model_asset_path <> '' ORDER BY member_m_id, display_order").fetchall()
+        elif cid.isdigit():
+            rows = md.execute(
+                "SELECT member_m_id, name, model_asset_path FROM m_suit "
+                "WHERE member_m_id = ? AND name NOT LIKE '%_cloned' ORDER BY display_order",
+                (int(cid),)).fetchall()
+        else:
+            return []
     finally:
         md.close()
-    dp = x.find_dictionary(".")
-    dc = sqlite3.connect(dp) if dp else None
+    dc = _dictionary_conn(x)
     try:
+        q = search.lower()
         out = []
-        for _suit_id, name_key, model_path in rows:
+        for member_id, name_key, model_path in rows:
             if not model_path:
                 continue
-            rname = x.real_costume_name(dc, name_key)
-            out.append({"value": model_path, "label": rname})
-        return out
+            rname = x.real_costume_name(dc, name_key) or ""
+            if search:
+                cname = x.CHARACTERS.get(member_id, str(member_id))
+                if q not in rname.lower() and q not in cname.lower():
+                    continue
+                out.append({"value": model_path, "label": f"{cname} — {rname}"})
+            else:
+                out.append({"value": model_path, "label": rname})
+        return out[:200]  # cap so a broad search stays a usable dropdown
     finally:
         if dc:
             dc.close()
@@ -143,6 +183,19 @@ def run_extract(job, params):
             if mm is None:
                 raise ValueError(f"{model} is not in member_model in {os.path.basename(asset_db)}")
             pack_name, head, size, key1, key2 = mm
+            # When the costume was chosen via search, `character` may be empty —
+            # recover the character id from masterdata so the filename is labelled.
+            if not cid.isdigit():
+                md_path = x.find_masterdata(base)
+                if md_path:
+                    md = sqlite3.connect(md_path)
+                    try:
+                        r = md.execute("SELECT member_m_id FROM m_suit WHERE model_asset_path = ? "
+                                       "LIMIT 1", (model,)).fetchone()
+                        if r:
+                            cid = str(r[0])
+                    finally:
+                        md.close()
             cname = x.CHARACTERS.get(int(cid), cid) if cid.isdigit() else cid
             # include the costume's display name in the filename (the CLI does too)
             rname = _costume_name(x, model)

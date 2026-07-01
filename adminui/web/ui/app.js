@@ -162,9 +162,9 @@ function renderField(field) {
 
   // If another field depends on this one, auto-load those dependent dynamic
   // selects whenever this (parent) field's value changes. The ↻ buttons still
-  // work as a manual fallback.
+  // work as a manual fallback. depends_on may be a single name or a list.
   const dependents = (state.currentTool && state.currentTool.fields || [])
-    .filter((f) => f.type === "dynamic_select" && f.depends_on === field.name);
+    .filter((f) => f.type === "dynamic_select" && dependsList(f).includes(field.name));
   if (dependents.length) {
     const parentInput = wrap.querySelector(`[data-name="${field.name}"]`);
     if (parentInput) {
@@ -179,11 +179,20 @@ function renderField(field) {
   return wrap;
 }
 
+// depends_on may be a single field name or a list of them.
+function dependsList(field) {
+  const d = field.depends_on;
+  return !d ? [] : (Array.isArray(d) ? d : [d]);
+}
+
 async function loadOptions(field) {
   const sel = document.querySelector(`#tool-form [data-name="${field.name}"]`);
   if (!sel) return;
   const params = collectParams();
-  const qs = field.depends_on ? "?" + encodeURIComponent(field.depends_on) + "=" + encodeURIComponent(params[field.depends_on] || "") : "";
+  const deps = dependsList(field);
+  const qs = deps.length
+    ? "?" + deps.map((d) => encodeURIComponent(d) + "=" + encodeURIComponent(params[d] || "")).join("&")
+    : "";
   sel.innerHTML = "<option value=''>" + T("loading…") + "</option>";
   try {
     const data = await (await fetch(withLang("/api/options/" + state.currentTool.id + qs))).json();

@@ -127,6 +127,11 @@ _TABLES = {
             "권장: 이 도구들은 서버의 데이터베이스 파일을 수정합니다.",
         "Pick a character, then press ↻ to list their costumes.":
             "캐릭터를 고른 뒤 ↻를 눌러 코스튬 목록을 불러오세요.",
+        "Pick a character to list their costumes — or use search below.":
+            "캐릭터를 고르면 코스튬 목록이 나옵니다 — 또는 아래 검색을 사용하세요.",
+        "Or search costumes": "또는 코스튬 검색",
+        "Type part of a costume or character name to search across everyone.":
+            "코스튬 또는 캐릭터 이름 일부를 입력하면 전체에서 검색합니다.",
         "Recommended: a full DB backup is taken before the clone.":
             "권장: 복제 전에 전체 DB 백업이 수행됩니다.",
         "Files in Download/sukusta/{folder} and …/addons appear here.":
@@ -209,6 +214,11 @@ _TABLES = {
             "推奨: これらのツールはサーバーのデータベースファイルを変更します。",
         "Pick a character, then press ↻ to list their costumes.":
             "キャラを選び、↻を押して衣装一覧を読み込んでください。",
+        "Pick a character to list their costumes — or use search below.":
+            "キャラを選ぶと衣装一覧が表示されます — または下の検索を使ってください。",
+        "Or search costumes": "または衣装を検索",
+        "Type part of a costume or character name to search across everyone.":
+            "衣装名またはキャラ名の一部を入力すると全員から検索します。",
         "Recommended: a full DB backup is taken before the clone.":
             "推奨: クローン前に完全なDBバックアップが取られます。",
         "Files in Download/sukusta/{folder} and …/addons appear here.":

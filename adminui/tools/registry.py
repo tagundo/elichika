@@ -41,10 +41,12 @@ def _addon(folder):
             "help_folder": folder}
 
 
-def _char_field(name, label, help_text=None, choices=None):
+def _char_field(name, label, help_text=None, choices=None, required=True):
     """A character field: a dropdown when the names table loaded, else plain text."""
     opts = _CHARACTERS if choices is None else choices
-    f = {"name": name, "label": label, "required": True}
+    f = {"name": name, "label": label}
+    if required:
+        f["required"] = True
     if opts:
         f.update({"type": "select", "options": opts})
     else:
@@ -118,10 +120,12 @@ TOOLS = [
         "options": extract_costume_options,
         "fields": [
             _char_field("character", "Character",
-                        "Pick a character, then press ↻ to list their costumes.",
-                        choices=_EXTRACT_CHARACTERS),
+                        "Pick a character to list their costumes — or use search below.",
+                        choices=_EXTRACT_CHARACTERS, required=False),
+            {"name": "search", "label": "Or search costumes", "type": "text",
+             "help": "Type part of a costume or character name to search across everyone."},
             {"name": "costume", "label": "Costume to extract", "type": "dynamic_select",
-             "source": "costume", "depends_on": "character", "required": True},
+             "source": "costume", "depends_on": ["character", "search"], "required": True},
             {"name": "cdn", "label": "Download missing packs from CDN", "type": "checkbox",
              "default": True, "help": "Off = only use packs already downloaded locally."},
         ],
