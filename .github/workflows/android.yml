@@ -103,6 +103,22 @@ jobs:
           [ -d modtools/live_timeline ] && cp -r modtools/live_timeline "$PY/" || true
           # drop the host build artifact if it landed in python/
           rm -f "$PY/elichika_host"
+          # Vendor UnityPy so the bundle-editing tools import it instantly instead
+          # of trying a runtime `pip install` (which cannot build on-device and
+          # just hangs/fails). --no-deps skips its native texture/audio decoders
+          # (texture2ddecoder/etcpak/astc/fmod), which are only lazy-imported for
+          # texture/audio ops — importing UnityPy and editing bones/mesh/physics
+          # does NOT need them (verified). Its import-time deps (lz4/brotli/attrs/
+          # fsspec) come from Chaquopy pip (see android/app/build.gradle.kts).
+          python3 -m pip install --no-deps --no-compile --target "$PY" "UnityPy==1.25.0"
+          # CRITICAL: the wheel bundles an x86 UnityPyBoost accelerator .so that
+          # would crash on arm64. Delete it — UnityPy falls back to its pure-Python
+          # path (guarded try/except -> None) which runs fine on-device (slower).
+          rm -f "$PY"/UnityPy/UnityPyBoost*.so
+          find "$PY/UnityPy" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+          # trim bulky metadata / console-script shim that would only bloat the APK
+          rm -rf "$PY"/UnityPy-*.dist-info "$PY"/bin 2>/dev/null || true
+          test -f "$PY/UnityPy/__init__.py"  # fail loudly if the vendor step didn't land
 
       - name: Cross-compile libelichika.so (android/arm64, cgo)
         run: |

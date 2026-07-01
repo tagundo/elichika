@@ -66,14 +66,18 @@ chaquopy {
             // numpy + Pillow are Chaquopy-provided prebuilt wheels (safe).
             install("numpy")
             install("Pillow")
-            // NOTE: UnityPy is intentionally NOT installed here. It is not in
-            // Chaquopy's prebuilt-wheel repo and pulls native decoder deps
-            // (texture2ddecoder/etcpak/astc_encoder_py) that fail to build for
-            // Android, which breaks the whole APK build (Chaquopy's createReqsTask).
-            // The modding tools lazy-import UnityPy (ensure_unitypy) and degrade with
-            // guidance when it is absent, so the server + dev tools + non-UnityPy
-            // paths all still ship. Re-enable once a working arm64 wheel set exists
-            // (e.g. a custom Chaquopy package repo), then: install("UnityPy").
+            // UnityPy itself is vendored as pure-Python source by CI (pip install
+            // --no-deps into src/main/python; see .github/workflows/android.yml).
+            // Here we provide only its IMPORT-TIME dependencies. `import UnityPy`
+            // and editing bones/mesh/physics need just these; the native texture/
+            // audio decoders (texture2ddecoder/etcpak/astc/fmod) are lazy-imported
+            // and intentionally omitted, so texture/audio ops degrade but bundle
+            // editing works. lz4/brotli are C — if Chaquopy has no arm64 wheel the
+            // build will surface it and we adjust.
+            install("lz4")
+            install("brotli")
+            install("attrs")
+            install("fsspec")
         }
     }
     // CI syncs the Python sources (adminui/, webtools/, and the dev/mod scripts)
