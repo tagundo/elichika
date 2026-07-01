@@ -77,6 +77,12 @@ class MainActivity : AppCompatActivity() {
         Lang.applyToApp(this)
         setContentView(R.layout.activity_main)
 
+        // Mirror the console to a user-visible log file so it can be attached when
+        // reporting a bug (needs storage access; fails silently until granted).
+        Bus.attachLogFile(File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "sukusta/logs/elichika.log"))
+
         content = findViewById(R.id.content)
         statusText = findViewById(R.id.txt_status)
         toggle = findViewById(R.id.btn_toggle)
