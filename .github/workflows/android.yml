@@ -119,6 +119,10 @@ jobs:
           # trim bulky metadata / console-script shim that would only bloat the APK
           rm -rf "$PY"/UnityPy-*.dist-info "$PY"/bin 2>/dev/null || true
           test -f "$PY/UnityPy/__init__.py"  # fail loudly if the vendor step didn't land
+          # Make UnityPy import without the native texture/audio codecs so that
+          # UNCOMPRESSED texture import (RGBA32, pure PIL) works on-device; the
+          # codecs are only needed for compressed formats (gated in the tool).
+          python3 android/ci/patch_unitypy.py "$PY"
 
       - name: Cross-compile libelichika.so (android/arm64, cgo)
         run: |
