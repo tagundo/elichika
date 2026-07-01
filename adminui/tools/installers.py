@@ -142,6 +142,25 @@ def _reload(module_name):
     importlib.import_module(module_name)
 
 
+def _force_termux_mode():
+    """These installers branch on is_termux() (== 'com.termux' in $PREFIX). Off
+    Termux they take a desktop path that `import tkinter` (absent in the app) and
+    pops a file dialog. We drive the Termux/CLI path instead (folder scan + fake
+    input), so spoof $PREFIX for the duration of the run. Returns a restore fn."""
+    had = "PREFIX" in os.environ
+    old = os.environ.get("PREFIX", "")
+    if "com.termux" not in old:
+        os.environ["PREFIX"] = "/data/data/com.termux/files/usr"
+
+    def restore():
+        if had:
+            os.environ["PREFIX"] = old
+        else:
+            os.environ.pop("PREFIX", None)
+
+    return restore
+
+
 def _run_installer(job, key, params):
     spec = INSTALLERS[key]
     chosen = (params.get("addon") or "").strip()
@@ -166,6 +185,7 @@ def _run_installer(job, key, params):
 
     job.log(f"[{key}] installing {chosen}")
     restore_listing = _patched_listing(scans, chosen)
+    restore_env = _force_termux_mode()
     real_input = builtins.input
     builtins.input = _Answers(bool(params.get("backup", True)))
     try:
@@ -176,6 +196,7 @@ def _run_installer(job, key, params):
     finally:
         builtins.input = real_input
         restore_listing()
+        restore_env()
     return f"{key} install complete — restart the server to apply it."
 
 
@@ -218,6 +239,7 @@ def run_dictionary(job, params):
     if params.get("stop_server", True):
         stop_server(job.log)
     job.log(f"[dictionary] swapping JP client text to: {lang}")
+    restore_env = _force_termux_mode()
     real_input = builtins.input
     builtins.input = _Answers(False, lang=num)
     try:
@@ -227,4 +249,5 @@ def run_dictionary(job, params):
         job.log(f"(exited: {exc})")
     finally:
         builtins.input = real_input
+        restore_env()
     return "Dictionary swap complete — restart the server. (Swap back to ja to revert.)"
