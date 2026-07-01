@@ -30,9 +30,15 @@ object PyServers {
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                     "sukusta"
                 )
+                // bundled ASTC encoder (shipped as a native lib so it's executable
+                // from nativeLibraryDir) — lets the texture tool import compressed
+                // ASTC textures on-device. Pass null if it isn't present.
+                val astcenc = File(ctx.applicationInfo.nativeLibraryDir, "libastcenc.so")
+                    .takeIf { it.exists() }?.absolutePath
                 val py = Python.getInstance()
                 py.getModule("elichika_launch")
-                    .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath, Lang.effective(ctx))
+                    .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath,
+                        Lang.effective(ctx), astcenc)
                 started = true
                 Bus.log("[pyservers] 개발/모드 도구 웹 UI 시작 (:8772 / :8770)")
             } catch (e: Throwable) {

@@ -31,12 +31,14 @@ def _serve(module_name, port):
         print("[pyservers] %s crashed: %r" % (module_name, exc), flush=True)
 
 
-def start(server_cwd, sukusta_dir, lang="en"):
+def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None):
     """Start both web UIs once. server_cwd == the app files dir (also the elichika
     server's working dir, so adminui tools see the same serverdata.db/userdata.db).
     sukusta_dir is an app-writable external dir the modding tools read/write
     bundles from (extracted/, modded/, suit/). lang is the app's effective UI
-    language (en/ko/ja) so the tool web UIs match the rest of the app."""
+    language (en/ko/ja) so the tool web UIs match the rest of the app. astcenc_bin
+    is the bundled ASTC encoder (nativeLibraryDir/libastcenc.so) the texture tool
+    shells out to for compressed (ASTC) texture import on-device."""
     global _started
     with _lock:
         if _started:
@@ -52,6 +54,9 @@ def start(server_cwd, sukusta_dir, lang="en"):
         # DB backups go to the shared Download/sukusta/backup (same place as Termux)
         # so they are user-visible; database_backup.py / database_restore.py honour it.
         os.environ["SUKUSTA_BACKUP_ROOT"] = os.path.join(sukusta_dir, "backup")
+        # bundled ASTC encoder for compressed texture import (webtools/tools/texture.py)
+        if astcenc_bin:
+            os.environ["ASTCENC_BIN"] = astcenc_bin
 
         for name, port in (("adminui.server", ADMIN_PORT), ("webtools.server", MOD_PORT)):
             t = threading.Thread(target=_serve, args=(name, port), name=name, daemon=True)
