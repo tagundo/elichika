@@ -12,18 +12,63 @@ import (
 	"strings"
 )
 
-// archiveVersions mirrors the per-region master versions the Termux menu uses to
-// build the archive.org URL (download_all_archive in elichika_utility.sh).
-var archiveVersions = map[string]string{
+// archiveItem is the archive.org item that hosts the bulk CDN asset tars. It is split
+// into several complete tars per region ("parts") so they can be uploaded/downloaded in
+// parallel; a per-region ".manifest" file lists the parts (see pack_ia_tars.py).
+const archiveItem = "llsifas-elichika-static-data"
+
+// legacyArchiveItem + legacyArchiveVersions are the older single-tar-per-region dump.
+// They are used as a fallback when archiveItem has no manifest for a region yet (e.g.
+// during migration, before the parts have been uploaded), so downloads keep working.
+const legacyArchiveItem = "ll-sifas-cdn-data"
+
+var legacyArchiveVersions = map[string]string{
 	"gl": "2d61e7b4e89961c7",
 	"jp": "b66ec2295e9a00aa",
 }
 
-// DownloadArchive downloads the bulk CDN asset tarball(s) from archive.org for the
-// given regions ("gl"/"jp") and extracts them into the cache dir — the same thing
-// as the Termux menu's "Download ALL game files (from archive.org)". It does not
-// touch the game CDN. Existing files are kept, so it is incremental/resumable at
-// the file level. Restart the server afterwards so the new files get indexed.
+func archiveDownloadBase(item string) string {
+	return "https://archive.org/download/" + item
+}
+
+// regionParts fetches the parts manifest for a region from archiveItem and returns the
+// tar filenames it lists. It returns (nil, nil) when there is no manifest yet (404) so
+// the caller can fall back to the legacy single tar.
+func regionParts(region string) ([]string, error) {
+	url := fmt.Sprintf("%s/sifas-%s-cdn-assets.manifest", archiveDownloadBase(archiveItem), region)
+	res, err := cdnGet(url) // retries transient failures; returns 404 without retrying
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return nil, nil // no manifest for this region yet
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("manifest status %d for %s", res.StatusCode, url)
+	}
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	var parts []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue // blank line / comment
+		}
+		parts = append(parts, line)
+	}
+	return parts, nil
+}
+
+// DownloadArchive downloads the bulk CDN asset tars from archive.org for the given
+// regions ("gl"/"jp") and extracts them into the cache dir — the same thing as the
+// Termux menu's "Download ALL game files (from archive.org)". Each region is several
+// tar parts listed by its manifest; if a region has no manifest yet it falls back to
+// the legacy single tar. It does not touch the game CDN. Existing files are kept, so it
+// is incremental/resumable at the file level. Restart the server afterwards so the new
+// files get indexed.
 func DownloadArchive(regions []string) {
 	dir := cacheDir()
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -31,20 +76,45 @@ func DownloadArchive(regions []string) {
 		return
 	}
 	for _, r := range regions {
-		ver, ok := archiveVersions[r]
-		if !ok {
-			log.Println("download_archive: unknown region:", r)
+		parts, err := regionParts(r)
+		if err != nil {
+			log.Printf("download_archive: %s manifest error: %v (falling back to legacy tar)\n", r, err)
+		}
+		if len(parts) == 0 {
+			downloadLegacyRegion(r, dir)
 			continue
 		}
-		url := fmt.Sprintf("https://archive.org/download/ll-sifas-cdn-data/sifas-%s-cdn-assets-%s.tar", r, ver)
-		log.Printf("download_archive: %s -> %s (into %s)\n", r, url, dir)
-		if err := downloadAndExtractTar(url, dir); err != nil {
-			log.Printf("download_archive: %s FAILED: %v\n", r, err)
-		} else {
-			log.Printf("download_archive: %s done\n", r)
+		log.Printf("download_archive: %s -> %d part(s) from %s (into %s)\n", r, len(parts), archiveItem, dir)
+		ok := 0
+		for i, part := range parts {
+			url := archiveDownloadBase(archiveItem) + "/" + part
+			log.Printf("download_archive: %s part %d/%d: %s\n", r, i+1, len(parts), part)
+			if err := downloadAndExtractTar(url, dir); err != nil {
+				log.Printf("download_archive: %s part %s FAILED: %v\n", r, part, err)
+			} else {
+				ok++
+			}
 		}
+		log.Printf("download_archive: %s done (%d/%d parts)\n", r, ok, len(parts))
 	}
 	log.Println("download_archive: all done. Restart the server so it indexes the new files.")
+}
+
+// downloadLegacyRegion downloads the older single-tar-per-region dump. Used only when
+// archiveItem has no manifest for the region yet.
+func downloadLegacyRegion(region, dir string) {
+	ver, ok := legacyArchiveVersions[region]
+	if !ok {
+		log.Println("download_archive: unknown region:", region)
+		return
+	}
+	url := fmt.Sprintf("%s/sifas-%s-cdn-assets-%s.tar", archiveDownloadBase(legacyArchiveItem), region, ver)
+	log.Printf("download_archive: %s -> %s (legacy single tar, into %s)\n", region, url, dir)
+	if err := downloadAndExtractTar(url, dir); err != nil {
+		log.Printf("download_archive: %s FAILED: %v\n", region, err)
+	} else {
+		log.Printf("download_archive: %s done\n", region)
+	}
 }
 
 // downloadAndExtractTar streams a tar from url and extracts it into destDir,

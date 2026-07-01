@@ -155,46 +155,93 @@ ensure_aria2() {
     command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1
 }
 
-# Download one region's archive tar and extract it into the cache dir.
-# args: <region: gl|jp> <version hash> <cache_dir> <parent_dir>
-archive_one() {
-    a_region="$1"; a_ver="$2"; a_cache="$3"; a_parent="$4"
-    a_url="https://archive.org/download/ll-sifas-cdn-data/sifas-${a_region}-cdn-assets-${a_ver}.tar"
-    a_tar="$a_parent/.cdn-data-download.tar"
-    echo ""
-    echo "=== $a_region: $a_url ==="
-    a_rc=1
+# archive.org item that hosts the bulk CDN asset tars. It is split into several complete
+# tars per region ("parts"), listed by a per-region ".manifest" file, so they can be
+# downloaded (and uploaded) in parallel. LEGACY_ITEM is the older single-tar-per-region
+# dump, used only as a fallback when a region has no manifest yet.
+ARCHIVE_ITEM="llsifas-elichika-static-data"
+LEGACY_ITEM="ll-sifas-cdn-data"
+
+# Fetch a region's parts manifest and echo the tar filenames (one per line). Echoes
+# nothing when there is no manifest (404), so the caller falls back to the legacy tar.
+region_parts() {
+    rp_url="https://archive.org/download/$ARCHIVE_ITEM/sifas-${1}-cdn-assets.manifest"
+    curl -fsSL "$rp_url" 2>/dev/null | sed -e 's/#.*$//' -e 's/[[:space:]]//g' | grep -v '^$'
+}
+
+# Download one tar (aria2c multi-connection, stepping down on throttle; curl fallback)
+# into a temp file and extract it into the cache dir, keeping files you already have.
+# args: <tar url> <cache_dir> <parent_dir>
+fetch_and_extract() {
+    fe_url="$1"; fe_cache="$2"; fe_parent="$3"
+    fe_tar="$fe_parent/.cdn-data-download.tar"
+    rm -f "$fe_tar"
+    echo "  $fe_url"
+    fe_rc=1
     if ensure_aria2; then
         # archive.org can throttle parallel connections, so step the count down on failure
         # (resuming with -c) before giving up.
-        for a_conns in 16 8 4 2 1; do
-            echo "Downloading with aria2c ($a_conns connection(s))..."
-            aria2c -c -x"$a_conns" -s"$a_conns" -k1M --file-allocation=none \
-                   -d "$a_parent" -o ".cdn-data-download.tar" "$a_url"
-            a_rc=$?
-            [ "$a_rc" -eq 0 ] && break
-            echo "Failed (rc=$a_rc), retrying with fewer connections..."
+        for fe_conns in 16 8 4 2 1; do
+            echo "  Downloading with aria2c ($fe_conns connection(s))..."
+            aria2c -c -x"$fe_conns" -s"$fe_conns" -k1M --file-allocation=none \
+                   -d "$fe_parent" -o ".cdn-data-download.tar" "$fe_url"
+            fe_rc=$?
+            [ "$fe_rc" -eq 0 ] && break
+            echo "  Failed (rc=$fe_rc), retrying with fewer connections..."
         done
     fi
-    if [ "$a_rc" -ne 0 ]; then
-        echo "aria2 unavailable - falling back to curl (single connection, resumable, slow)."
-        curl -L -C - -o "$a_tar" "$a_url"
-        a_rc=$?
+    if [ "$fe_rc" -ne 0 ]; then
+        echo "  aria2 unavailable - falling back to curl (single connection, resumable, slow)."
+        curl -L -C - -o "$fe_tar" "$fe_url"
+        fe_rc=$?
     fi
-    if [ "$a_rc" -ne 0 ] || [ ! -s "$a_tar" ]; then
-        echo "$a_region download failed (rc=$a_rc). Check the version and your connection."
+    if [ "$fe_rc" -ne 0 ] || [ ! -s "$fe_tar" ]; then
+        echo "  download failed (rc=$fe_rc)."
+        rm -f "$fe_tar"
         return 1
     fi
-    echo "Extracting $a_region into $a_cache ..."
-    mkdir -p "$a_cache"
-    # --strip-components=1 drops the "sifas-..-<hash>/" wrapper; --skip-old-files keeps files you
+    mkdir -p "$fe_cache"
+    # --strip-components=1 drops the "<prefix>/" wrapper; --skip-old-files keeps files you
     # already have (fast incremental, no manual move needed).
-    if tar -xf "$a_tar" -C "$a_cache" --strip-components=1 --skip-old-files; then
-        rm -f "$a_tar"
+    if tar -xf "$fe_tar" -C "$fe_cache" --strip-components=1 --skip-old-files; then
+        rm -f "$fe_tar"
+        return 0
+    else
+        echo "  Extract failed. If your tar lacks --skip-old-files (busybox), run: pkg install tar"
+        rm -f "$fe_tar"
+        return 1
+    fi
+}
+
+# Download one region's archive (all its parts) and extract them into the cache dir.
+# args: <region: gl|jp> <legacy version hash> <cache_dir> <parent_dir>
+archive_one() {
+    a_region="$1"; a_ver="$2"; a_cache="$3"; a_parent="$4"
+    echo ""
+    echo "=== $a_region ==="
+    a_parts=$(region_parts "$a_region")
+    if [ -n "$a_parts" ]; then
+        a_n=$(printf '%s\n' "$a_parts" | grep -c '^')
+        echo "$a_region: $a_n part(s) from $ARCHIVE_ITEM"
+        a_fail=0
+        printf '%s\n' "$a_parts" | while IFS= read -r a_part; do
+            [ -z "$a_part" ] && continue
+            echo "--- $a_part ---"
+            fetch_and_extract "https://archive.org/download/$ARCHIVE_ITEM/$a_part" \
+                "$a_cache" "$a_parent" || echo "  part $a_part FAILED (continuing)"
+        done
         echo "$a_region done."
     else
-        echo "Extract failed. If your tar lacks --skip-old-files (busybox), run: pkg install tar"
-        return 1
+        # no manifest yet: fall back to the legacy single tar for this region.
+        echo "$a_region: no parts manifest, using legacy single tar."
+        if fetch_and_extract \
+            "https://archive.org/download/$LEGACY_ITEM/sifas-${a_region}-cdn-assets-${a_ver}.tar" \
+            "$a_cache" "$a_parent"; then
+            echo "$a_region done."
+        else
+            echo "$a_region download failed. Check the version and your connection."
+            return 1
+        fi
     fi
 }
 
