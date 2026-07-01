@@ -32,19 +32,32 @@ android {
         }
     }
 
+    // A private release key, provided by CI from GitHub Secrets, signs the APKs
+    // published to GitHub Releases — so only the maintainer can issue updates.
+    // It is NEVER committed. When it isn't provided (local builds, PRs from
+    // forks), we fall back to the committed debug key so builds still work.
+    val releaseKeystore = System.getenv("RELEASE_KEYSTORE_FILE")
+    val hasReleaseKey = !releaseKeystore.isNullOrBlank() && file(releaseKeystore).exists()
+
     signingConfigs {
-        // A fixed, committed keystore so EVERY CI build is signed with the same
-        // certificate. The default debug signing uses an auto-generated
-        // ~/.android/debug.keystore, which differs on each fresh CI runner — so
-        // successive APKs had mismatched signatures and Android refused to update
-        // over the installed app (you had to uninstall first). This is a debug
-        // keystore with well-known credentials (not a secret); it only makes
-        // sideloaded updates install cleanly, it is not a release key.
+        // A fixed, committed keystore so EVERY CI build shares one certificate.
+        // The default debug signing uses an auto-generated ~/.android/debug.keystore
+        // that differs on each fresh CI runner, so successive APKs had mismatched
+        // signatures and Android refused to update over the installed app. This is
+        // a debug key with well-known credentials (not a secret) — sideload only.
         create("stable") {
             storeFile = file("elichika-debug.keystore")
             storePassword = "android"
             keyAlias = "elichika"
             keyPassword = "android"
+        }
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(releaseKeystore!!)
+                storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
         }
     }
 
@@ -54,11 +67,9 @@ android {
             signingConfig = signingConfigs.getByName("stable")
         }
         getByName("release") {
-            isMinifyEnabled = false
-            // Also signed with the stable keystore so release APKs install over
-            // debug ones and each other. Swap in a real release key (from CI
-            // secrets) if you ever publish.
-            signingConfig = signingConfigs.getByName("stable")
+            isMinifyEnabled = false   // Chaquopy/UnityPy rely on reflection; don't strip
+            // The private release key when CI provides it, else the debug key.
+            signingConfig = signingConfigs.getByName(if (hasReleaseKey) "release" else "stable")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

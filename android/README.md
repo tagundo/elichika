@@ -61,8 +61,36 @@ cd android
 ```
 
 The debug-signed APK at `app/build/outputs/apk/debug/app-debug.apk` is installable
-for personal sideloading. For a release-signed build, add a `signingConfig` and
-use `assembleRelease`.
+for personal sideloading. Every build shares one committed debug key
+(`app/elichika-debug.keystore`, password `android`) so updates install over each
+other without an uninstall. That key is public — fine for sideloading, but do NOT
+use it for public distribution (anyone could sign a same-identity "update").
+
+## Publishing a public release (GitHub Releases)
+
+For public distribution, sign with a PRIVATE key that only you hold, so only you
+can issue updates. One-time setup:
+
+1. Create a release keystore locally (keep the file + passwords safe, back them
+   up — losing them means you can never update the app again):
+   ```
+   keytool -genkeypair -v -keystore elichika-release.keystore \
+     -alias elichika -keyalg RSA -keysize 2048 -validity 10000 \
+     -storepass '<STORE_PW>' -keypass '<KEY_PW>' \
+     -dname "CN=elichika, O=elichika, C=US"
+   ```
+2. Add four repository secrets (Settings → Secrets and variables → Actions):
+   - `RELEASE_KEYSTORE_BASE64` — `base64 -w0 elichika-release.keystore`
+   - `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` (=`elichika`), `RELEASE_KEY_PASSWORD`
+3. Bump `versionCode` (must increase) and `versionName` in `app/build.gradle.kts`.
+4. Tag and push: `git tag v0.1.2 && git push origin v0.1.2`.
+
+CI then builds `assembleRelease` signed with your private key and attaches the
+APK to a GitHub Release. Without the secrets, the release build falls back to the
+debug key (so PR/local builds still work), so make sure the secrets are set before
+you tag. Users who had a debug-signed build installed must uninstall once when
+switching to the release-signed APK (different signature); after that, tagged
+releases update in place.
 
 ## Pointing the game at the server
 

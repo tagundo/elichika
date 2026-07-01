@@ -14,9 +14,12 @@ on:
     # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
     # previously skipped a clientdb/ fix and shipped a stale APK.
     branches: [claude/elichika-apk-build-wwkuu3, main]
+    # Pushing a version tag (v1.2.3) builds a release-signed APK and publishes it
+    # to a GitHub Release. See android/README.md for the one-time secret setup.
+    tags: ['v*']
 
 permissions:
-  contents: read
+  contents: write   # needed to create a GitHub Release on tag builds
 
 jobs:
   build:
@@ -152,13 +155,58 @@ jobs:
           cp "$BIN" android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
           file android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
 
-      - name: Build APK
+      - name: Build debug APK
         working-directory: android
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: elichika-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # --- Release-signed build (for public GitHub Release distribution) --------
+      # Requires four repo secrets (one-time setup, see android/README.md):
+      #   RELEASE_KEYSTORE_BASE64  - base64 of your private .keystore (NEVER committed)
+      #   RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD
+      # Without them, the release build falls back to the committed debug key.
+      - name: Decode release keystore
+        id: relkey
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          set -eu
+          if [ -n "${RELEASE_KEYSTORE_BASE64:-}" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+            echo "have_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_key=false" >> "$GITHUB_OUTPUT"
+            echo "No RELEASE_KEYSTORE_BASE64 secret; release APK will use the debug key."
+          fi
+
+      - name: Build release APK
+        working-directory: android
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      # On a version tag (v1.2.3), publish the release-signed APK to a GitHub Release.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true
