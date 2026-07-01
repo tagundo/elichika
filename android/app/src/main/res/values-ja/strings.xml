@@ -53,7 +53,7 @@
     <!-- first-run guide -->
     <string name="act_guide">ガイド ❓</string>
     <string name="guide_title">はじめに</string>
-    <string name="guide_body">1. ストレージ権限を許可してください（共有 Download/sukusta フォルダ用）。\n2. ゲームファイルを取得: 「全ゲームファイルをダウンロード」（archive.org 全体）または「不足分のみ取得」（CDN）。\n3. 「サーバー開始」をタップ。\n4. ゲームアプリを 127.0.0.1:8080 に接続（LL-hax ガイド参照）。\n\nタブ: 「サーバー設定」/「アカウント」= サーバーWeb UI ・「サーバーコンテンツ」= 開発ツール ・「アセット編集」= MODツール。</string>
+    <string name="guide_body">1. ストレージ権限を許可してください（共有 Download/sukusta フォルダ用）。\n2. ゲームファイルを取得: 「全ゲームファイルをダウンロード」（archive.org 全体）または「不足分のみ取得」（CDN）。\n3. 「サーバー開始」をタップ。\n4. ゲームアプリを 127.0.0.1:8080 に接続（LL-hax ガイド参照）。\n\nタブ: 「サーバー設定」/「アカウント」= サーバーWeb UI ・「サーバーコンテンツ」= 開発ツール ・「アセット編集」= MODツール。\n\nフォルダ (Download/sukusta): extracted = 復号済みモデル（編集の入力） ・ modded = 編集済みバンドル（編集の出力） ・ suit / live / card / livetimeline = アドオンのドロップ先 ・ sql = DBパッチ ・ packs = ゲームパックのキャッシュ ・ backup = DBバックアップ ・ logs = elichika.log。</string>
 
     <!-- console controls -->
     <string name="btn_share_log">ログを共有</string>

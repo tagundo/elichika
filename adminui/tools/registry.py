@@ -125,7 +125,10 @@ TOOLS = [
             {"name": "search", "label": "Or search costumes", "type": "text",
              "help": "Type part of a costume or character name to search across everyone."},
             {"name": "costume", "label": "Costume to extract", "type": "dynamic_select",
-             "source": "costume", "depends_on": ["character", "search"], "required": True},
+             "source": "costume", "depends_on": ["character", "search"]},
+            {"name": "batch", "label": "Extract all matches", "type": "checkbox", "default": False,
+             "help": "Extract every costume in the list above (the character's costumes, or all "
+             "search matches) instead of just the one picked."},
             {"name": "cdn", "label": "Download missing packs from CDN", "type": "checkbox",
              "default": True, "help": "Off = only use packs already downloaded locally."},
         ],

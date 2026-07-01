@@ -132,6 +132,9 @@ _TABLES = {
         "Or search costumes": "또는 코스튬 검색",
         "Type part of a costume or character name to search across everyone.":
             "코스튬 또는 캐릭터 이름 일부를 입력하면 전체에서 검색합니다.",
+        "Extract all matches": "일치 항목 모두 추출",
+        "Extract every costume in the list above (the character's costumes, or all search matches) instead of just the one picked.":
+            "고른 하나가 아니라 위 목록의 모든 코스튬(캐릭터의 코스튬 또는 검색 결과 전체)을 추출합니다.",
         "Recommended: a full DB backup is taken before the clone.":
             "권장: 복제 전에 전체 DB 백업이 수행됩니다.",
         "Files in Download/sukusta/{folder} and …/addons appear here.":
@@ -219,6 +222,9 @@ _TABLES = {
         "Or search costumes": "または衣装を検索",
         "Type part of a costume or character name to search across everyone.":
             "衣装名またはキャラ名の一部を入力すると全員から検索します。",
+        "Extract all matches": "一致するものをすべて抽出",
+        "Extract every costume in the list above (the character's costumes, or all search matches) instead of just the one picked.":
+            "選んだ1つではなく、上の一覧のすべての衣装（キャラの衣装、または検索結果すべて）を抽出します。",
         "Recommended: a full DB backup is taken before the clone.":
             "推奨: クローン前に完全なDBバックアップが取られます。",
         "Files in Download/sukusta/{folder} and …/addons appear here.":

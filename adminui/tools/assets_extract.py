@@ -21,6 +21,18 @@ def _mod():
     return llas_asset_extractor
 
 
+def _names():
+    """Shared character-name tables (full names for labels, first names for
+    filenames). None if the module can't be imported (callers fall back to the
+    extractor's own CHARACTERS)."""
+    ensure_repo_on_path()
+    try:
+        import character_names
+        return character_names
+    except Exception:
+        return None
+
+
 def _extracted_dir():
     """The shared extracted/ folder the modding tools read from."""
     base = os.environ.get("SUKUSTA_DIR") or os.path.expanduser("~/storage/downloads/sukusta")
@@ -71,11 +83,15 @@ def _pick_asset_db(x, base="."):
 
 
 def character_choices():
-    """[{value, label}] of every character the extractor knows, for the picker."""
-    try:
-        chars = _mod().CHARACTERS
-    except Exception:
-        return []
+    """[{value, label}] of every character for the picker, using the shared
+    full-name table (falls back to the extractor's own names)."""
+    nm = _names()
+    chars = nm.CHARACTERS if nm else {}
+    if not chars:
+        try:
+            chars = _mod().CHARACTERS
+        except Exception:
+            return []
     return [{"value": str(cid), "label": f"{cid} — {name}"}
             for cid, name in sorted(chars.items())]
 
@@ -132,6 +148,8 @@ def costume_options(params):
             return []
     finally:
         md.close()
+    nm = _names()
+    full = nm.CHARACTERS if nm else {}
     dc = _dictionary_conn(x)
     try:
         q = search.lower()
@@ -141,7 +159,7 @@ def costume_options(params):
                 continue
             rname = x.real_costume_name(dc, name_key) or ""
             if search:
-                cname = x.CHARACTERS.get(member_id, str(member_id))
+                cname = full.get(member_id) or x.CHARACTERS.get(member_id, str(member_id))
                 if q not in rname.lower() and q not in cname.lower():
                     continue
                 out.append({"value": model_path, "label": f"{cname} — {rname}"})
@@ -153,6 +171,29 @@ def costume_options(params):
             dc.close()
 
 
+def _resolve_cid_and_label(x, base, model, cid):
+    """(cid, filename label) for a model. Recovers the character id from
+    masterdata when it wasn't given (e.g. a search pick spanning characters)."""
+    if not cid.isdigit():
+        md_path = x.find_masterdata(base)
+        if md_path:
+            md = sqlite3.connect(md_path)
+            try:
+                r = md.execute("SELECT member_m_id FROM m_suit WHERE model_asset_path = ? "
+                               "LIMIT 1", (model,)).fetchone()
+                if r:
+                    cid = str(r[0])
+            finally:
+                md.close()
+    nm = _names()
+    if cid.isdigit():
+        cname = (nm.FIRST_NAMES.get(int(cid)) if nm else None) or x.CHARACTERS.get(int(cid), cid)
+    else:
+        cname = cid
+    rname = _costume_name(x, model)  # display name, for the filename (the CLI does too)
+    return cid, x.sanitize("_".join(p for p in (str(cname), rname, model) if p))
+
+
 def run_extract(job, params):
     x = _mod()
     base = "."
@@ -160,11 +201,20 @@ def run_extract(job, params):
     if not asset_db:
         raise FileNotFoundError(
             "No asset DB under assets/db — download or rebuild the game data first.")
-    model = (params.get("costume") or "").strip()
-    cid = (params.get("character") or "").strip()
-    if not model:
-        raise ValueError("Pick a costume to extract.")
 
+    # Work list: batch = every costume matched by the character/search filters;
+    # otherwise the single chosen costume.
+    if params.get("batch"):
+        models = [it["value"] for it in costume_options(params)]
+        if not models:
+            raise ValueError("No costumes matched — pick a character or type a search first.")
+    else:
+        model = (params.get("costume") or "").strip()
+        if not model:
+            raise ValueError("Pick a costume to extract (or turn on 'Extract all matches').")
+        models = [model]
+
+    cid0 = (params.get("character") or "").strip()
     out_dir = _extracted_dir()
     os.makedirs(out_dir, exist_ok=True)
     use_cdn = params.get("cdn", True)
@@ -172,44 +222,41 @@ def run_extract(job, params):
     pack_roots = x.build_pack_roots(base, None, game_found)
     cdn_base = x.DEFAULT_CDN_BASE if use_cdn else None
 
-    job.progress(0, 1)
+    total = len(models)
+    done_ok = 0
+    all_manifest = []
+    job.progress(0, total)
     with capture_stdout(job):
         asset = sqlite3.connect(asset_db)
         resolver = x.PackResolver(pack_roots, x.COPIED_PACKS_DIR, cdn_base, asset)
         try:
-            mm = asset.execute(
-                "SELECT pack_name, head, size, key1, key2 FROM member_model "
-                "WHERE asset_path = ?", (model,)).fetchone()
-            if mm is None:
-                raise ValueError(f"{model} is not in member_model in {os.path.basename(asset_db)}")
-            pack_name, head, size, key1, key2 = mm
-            # When the costume was chosen via search, `character` may be empty —
-            # recover the character id from masterdata so the filename is labelled.
-            if not cid.isdigit():
-                md_path = x.find_masterdata(base)
-                if md_path:
-                    md = sqlite3.connect(md_path)
-                    try:
-                        r = md.execute("SELECT member_m_id FROM m_suit WHERE model_asset_path = ? "
-                                       "LIMIT 1", (model,)).fetchone()
-                        if r:
-                            cid = str(r[0])
-                    finally:
-                        md.close()
-            cname = x.CHARACTERS.get(int(cid), cid) if cid.isdigit() else cid
-            # include the costume's display name in the filename (the CLI does too)
-            rname = _costume_name(x, model)
-            label = x.sanitize("_".join(p for p in (str(cname), rname, model) if p))
-            used, manifest = set(), []
-            ok = x.extract_one(resolver, out_dir, "member_model", label,
-                               pack_name, head, size, key1, key2, used, manifest)
-            if manifest:
-                x.write_manifest(out_dir, manifest)
+            for i, model in enumerate(models):
+                job.progress(i, total)
+                mm = asset.execute(
+                    "SELECT pack_name, head, size, key1, key2 FROM member_model "
+                    "WHERE asset_path = ?", (model,)).fetchone()
+                if mm is None:
+                    print(f"skip: {model} not in member_model in {os.path.basename(asset_db)}")
+                    continue
+                pack_name, head, size, key1, key2 = mm
+                _cid, label = _resolve_cid_and_label(x, base, model, cid0)
+                used, manifest = set(), []
+                ok = x.extract_one(resolver, out_dir, "member_model", label,
+                                   pack_name, head, size, key1, key2, used, manifest)
+                if manifest:
+                    all_manifest.extend(manifest)
+                if ok:
+                    done_ok += 1
+                    print(f"✓ {label}")
+            if all_manifest:
+                x.write_manifest(out_dir, all_manifest)
             x.print_resolver_stats(resolver)
         finally:
             resolver.cleanup()
             asset.close()
-    job.progress(1, 1)
-    if not ok:
+    job.progress(total, total)
+    if total > 1:
+        return f"extracted {done_ok}/{total} costumes to {out_dir} — open in the Asset editing tools"
+    if not done_ok:
         return f"nothing extracted (pack missing and CDN {'on' if use_cdn else 'off'}) — see log"
     return f"extracted to {out_dir} — open it in the Asset editing tools"

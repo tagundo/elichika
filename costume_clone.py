@@ -37,18 +37,23 @@ SUFFIX_MAP = {"en": " Cloned", "ko": " 복제", "zh": " 克隆", "th": " โค�
 
 # Known character ids -> display name (shared convention with the other modding
 # tools, e.g. costume_addon_installer.py).
-CHARACTER_NAMES = {
-    1: "Honoka Kousaka", 2: "Eli Ayase", 3: "Kotori Minami", 4: "Umi Sonoda",
-    5: "Rin Hoshizora", 6: "Maki Nishikino", 7: "Nozomi Tojo", 8: "Hanayo Koizumi",
-    9: "Nico Yazawa",
-    101: "Chika Takami", 102: "Riko Sakurauchi", 103: "Kanan Matsuura",
-    104: "Dia Kurosawa", 105: "You Watanabe", 106: "Yoshiko Tsushima",
-    107: "Hanamaru Kunikida", 108: "Mari Ohara", 109: "Ruby Kurosawa",
-    201: "Ayumu Uehara", 202: "Kasumi Nakasu", 203: "Shizuku Osaka",
-    204: "Karin Asaka", 205: "Ai Miyashita", 206: "Kanata Konoe",
-    207: "Setsuna Yuki", 208: "Emma Verde", 209: "Rina Tennoji",
-    210: "Shioriko Mifune", 211: "Mia Taylor", 212: "Lanzhu Zhong",
-}
+# Shared character table (single source of truth); embedded copy is the fallback
+# so this module still runs standalone if character_names.py isn't alongside.
+try:
+    from character_names import CHARACTERS as CHARACTER_NAMES
+except Exception:
+    CHARACTER_NAMES = {
+        1: "Honoka Kousaka", 2: "Eli Ayase", 3: "Kotori Minami", 4: "Umi Sonoda",
+        5: "Rin Hoshizora", 6: "Maki Nishikino", 7: "Nozomi Tojo", 8: "Hanayo Koizumi",
+        9: "Nico Yazawa",
+        101: "Chika Takami", 102: "Riko Sakurauchi", 103: "Kanan Matsuura",
+        104: "Dia Kurosawa", 105: "You Watanabe", 106: "Yoshiko Tsushima",
+        107: "Hanamaru Kunikida", 108: "Mari Ohara", 109: "Ruby Kurosawa",
+        201: "Ayumu Uehara", 202: "Kasumi Nakasu", 203: "Shizuku Osaka",
+        204: "Karin Asaka", 205: "Ai Miyashita", 206: "Kanata Konoe",
+        207: "Setsuna Yuki", 208: "Emma Verde", 209: "Rina Tennoji",
+        210: "Shioriko Mifune", 211: "Mia Taylor", 212: "Lanzhu Zhong",
+    }
 
 # Suffixes used to hide already-cloned suits from the listing (one per language).
 _CLONE_SUFFIXES = ("_cloned", "복제", "克隆", "โคลน", "クローン")

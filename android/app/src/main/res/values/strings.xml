@@ -54,7 +54,7 @@
     <!-- first-run guide -->
     <string name="act_guide">Guide ❓</string>
     <string name="guide_title">Getting started</string>
-    <string name="guide_body">1. Grant storage permission (for the shared Download/sukusta folder).\n2. Download game files: “Download all game files” (full, via archive.org) or “Download missing” (from the CDN).\n3. Tap “Start server”.\n4. Point the game app at 127.0.0.1:8080 (see the LL-hax guide).\n\nTabs: “Server” / “Account” = server web UI · “Server content” = dev tools · “Asset editing” = modding tools.</string>
+    <string name="guide_body">1. Grant storage permission (for the shared Download/sukusta folder).\n2. Download game files: “Download all game files” (full, via archive.org) or “Download missing” (from the CDN).\n3. Tap “Start server”.\n4. Point the game app at 127.0.0.1:8080 (see the LL-hax guide).\n\nTabs: “Server” / “Account” = server web UI · “Server content” = dev tools · “Asset editing” = modding tools.\n\nFolders (Download/sukusta): extracted = decrypted models (edit input) · modded = edited bundles (edit output) · suit / live / card / livetimeline = add-on drop folders · sql = DB patches · packs = game pack cache · backup = DB backups · logs = elichika.log.</string>
 
     <!-- console controls -->
     <string name="btn_share_log">Share log</string>
