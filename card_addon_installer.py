@@ -45,7 +45,16 @@ print("")
 confirm_script_card = input("Press Enter to Continue")
 
 def backup_operate(filelist):
-    # Create a folder with the current date and time as the name
+    """DB 백업. 가능하면 공유 백업 모듈(lz4 압축 + 공유 sukusta 위치 + 전체 asset DB
+    글롭)을 사용하고, 불가하면 기존 방식(로컬 backup_db 폴더, 무압축)으로 대체한다."""
+    try:
+        import database_backup
+        if database_backup.backup_database_files():
+            return
+    except Exception as exc:
+        print(f"공유 백업 모듈 사용 실패, 기존 방식으로 대체: {exc}")
+
+    # Fallback: 기존 로컬 방식
     backup_folder = datetime.now().strftime("backup_db/%Y-%m-%d_%H-%M-%S")
     os.makedirs(backup_folder)
 

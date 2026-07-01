@@ -647,7 +647,16 @@ def detect_addon_platform(file_labels):
 # ============================================================
 
 def backup_operate(files):
-    """디렉토리 구조를 유지하며 백업 폴더에 DB 파일들을 복사한다."""
+    """DB 백업. 가능하면 공유 백업 모듈(lz4 압축 + 공유 sukusta 위치 + 전체 asset DB
+    글롭)을 사용하고, 불가하면 기존 방식(로컬 backup_db 폴더, 무압축)으로 대체한다."""
+    try:
+        import database_backup
+        if database_backup.backup_database_files():
+            return
+    except Exception as exc:
+        print(f"공유 백업 모듈 사용 실패, 기존 방식으로 대체: {exc}")
+
+    # Fallback: 기존 로컬 방식 (디렉토리 구조를 유지하며 backup_db 로 복사)
     backup_folder = datetime.now().strftime("backup_db/%Y-%m-%d_%H-%M-%S")
     os.makedirs(backup_folder)
     for file_path in files:

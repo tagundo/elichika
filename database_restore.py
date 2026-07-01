@@ -3,6 +3,8 @@ import shutil
 import hashlib
 from datetime import datetime
 
+import database_backup
+
 
 # ============================================================
 # 백업 위치 설정 (database_backup.py 와 동일하게 유지)
@@ -94,45 +96,33 @@ def verify_file_integrity(file1, file2):
 
 
 def create_pre_restore_backup():
-    """Back up the current state before restoration (새 백업 위치에 저장)."""
+    """Back up the current state before restoration (새 백업 위치에 저장).
+
+    Uses the shared backup helpers so the pre-restore snapshot captures the same
+    globbed DB set and is lz4-compressed when available."""
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     pre_backup_folder = os.path.join(get_backup_root(), f"{timestamp}_pre_restore")
-
-    # List of files backed up by database_backup.py
-    current_files = [
-        "assets/db/gl/asset_a_en.db",
-        "assets/db/gl/asset_i_en.db",
-        "assets/db/gl/asset_a_ko.db",
-        "assets/db/gl/asset_i_ko.db",
-        "assets/db/gl/asset_a_zh.db",
-        "assets/db/gl/asset_i_zh.db",
-        "assets/db/gl/dictionary_en_k.db",
-        "assets/db/gl/dictionary_ko_k.db",
-        "assets/db/gl/dictionary_zh_k.db",
-        "assets/db/gl/masterdata.db",
-        "assets/db/jp/asset_a_ja.db",
-        "assets/db/jp/asset_i_ja.db",
-        "assets/db/jp/dictionary_ja_k.db",
-        "assets/db/jp/masterdata.db",
-        "serverdata.db",
-        "userdata.db",
-    ]
-
-    backed_up_files = []
-    for file_path in current_files:
-        if os.path.exists(file_path):
-            rel_path = os.path.relpath(file_path, start=".")
-            dest_path = os.path.join(pre_backup_folder, rel_path)
-
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            shutil.copy2(file_path, dest_path)
-            backed_up_files.append(file_path)
-
+    backed_up_files, _missing = database_backup.backup_files_to(pre_backup_folder)
     return pre_backup_folder, backed_up_files
 
 
+def _restore_lz4(backup_file_path, target_path):
+    """Decompress an lz4 backup file to *target_path*. Returns True on success."""
+    frame = database_backup._lz4()
+    if frame is None:
+        return False
+    os.makedirs(os.path.dirname(target_path) or ".", exist_ok=True)
+    with frame.open(backup_file_path, "rb") as src, open(target_path, "wb") as dst:
+        shutil.copyfileobj(src, dst, 1024 * 1024)
+    return True
+
+
 def restore_from_backup(backup_path):
-    """Restore files from the selected backup to their original locations."""
+    """Restore files from the selected backup to their original locations.
+
+    Handles both backup formats: new lz4-compressed entries ("<rel>.lz4", which
+    are decompressed on the way out) and old plain copies ("<rel>", verified by
+    SHA-256 as before)."""
     print(f"\nStarting restoration from backup '{backup_path}'...")
 
     # Backup current state before restore
@@ -149,33 +139,48 @@ def restore_from_backup(backup_path):
             backup_file_path = os.path.join(root, file)
             # Calculate relative path within backup
             rel_path = os.path.relpath(backup_file_path, backup_path)
+            # lz4 backups append .lz4; the real destination drops that suffix.
+            is_lz4 = rel_path.endswith(".lz4")
+            target_rel = rel_path[:-4] if is_lz4 else rel_path
             # Determine target path for restoration
-            target_path = os.path.join(".", rel_path)
+            target_path = os.path.join(".", target_rel)
 
             try:
+                if is_lz4:
+                    # Can't hash-compare a compressed blob against the target;
+                    # always decompress (this is the intended restore state).
+                    if not _restore_lz4(backup_file_path, target_path):
+                        failed_files.append(f"{target_rel} (lz4 unavailable)")
+                        print(f"❌ lz4 unavailable, cannot restore: {target_rel}")
+                        continue
+                    restored_files.append(target_rel)
+                    print(f"✓ Restored: {target_rel}")
+                    continue
+
+                # --- plain (old-format) file ---
                 # If target exists and is identical, skip
                 if os.path.exists(target_path):
                     if verify_file_integrity(backup_file_path, target_path):
-                        skipped_files.append(rel_path)
+                        skipped_files.append(target_rel)
                         continue
 
                 # Create directory if needed
-                os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                os.makedirs(os.path.dirname(target_path) or ".", exist_ok=True)
 
                 # Copy file
                 shutil.copy2(backup_file_path, target_path)
 
                 # Verify copy integrity
                 if verify_file_integrity(backup_file_path, target_path):
-                    restored_files.append(rel_path)
-                    print(f"✓ Restored: {rel_path}")
+                    restored_files.append(target_rel)
+                    print(f"✓ Restored: {target_rel}")
                 else:
-                    failed_files.append(f"{rel_path} (verification failed)")
-                    print(f"❌ Verification failed: {rel_path}")
+                    failed_files.append(f"{target_rel} (verification failed)")
+                    print(f"❌ Verification failed: {target_rel}")
 
             except Exception as e:
-                failed_files.append(f"{rel_path} ({str(e)})")
-                print(f"❌ Restoration failed: {rel_path} - {e}")
+                failed_files.append(f"{target_rel} ({str(e)})")
+                print(f"❌ Restoration failed: {target_rel} - {e}")
 
     return {
         "pre_backup_path": pre_backup_path,
