@@ -127,12 +127,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")  # disable any proxy buffering
         self.send_header("Connection", "close")
         self.end_headers()
+        # Prime the pipe with padding so Android WebViews that buffer a streamed
+        # response deliver events live instead of all at once when the job ends.
+        self.wfile.write(b":" + b" " * 2048 + b"\n\n")
+        self.wfile.flush()
         index = 0
         try:
             while True:
-                event = job.event_at(index, timeout=10.0)
+                event = job.event_at(index, timeout=2.0)
                 if event is None:
                     if job.is_done and index >= job.event_count:
                         break
