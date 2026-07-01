@@ -48,6 +48,25 @@ def all_strings(lang):
 # _TABLES[lang] maps an English source string -> its translation.
 _TABLES = {
     "ko": {
+        # static UI chrome (client-side, app.js / index.html)
+        "elichika · Database Admin": "elichika · 데이터베이스 관리",
+        "Pick a tool on the left.": "왼쪽에서 도구를 선택하세요.",
+        "Running…": "실행 중…",
+        "running…": "실행 중…",
+        "Cancel": "취소",
+        "Run": "실행",
+        "Failed to load tools: ": "도구를 불러오지 못했습니다: ",
+        "Please fill in: ": "다음 항목을 입력하세요: ",
+        "— (press ↻ to load) —": "— (↻를 눌러 불러오기) —",
+        "Load options": "옵션 불러오기",
+        "loading…": "불러오는 중…",
+        "— none —": "— 없음 —",
+        "done ✓": "완료 ✓",
+        "cancelled": "취소됨",
+        "error ✗": "오류 ✗",
+        "Job": "작업",
+        "[cancelling…]": "[취소하는 중…]",
+        "ERROR: ": "오류: ",
         # tool labels
         "Backup Database": "데이터베이스 백업",
         "Clear Pack Cache": "팩 캐시 비우기",
@@ -114,6 +133,26 @@ _TABLES = {
             "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다.",
     },
     "ja": {
+        # static UI chrome (client-side, app.js / index.html)
+        "elichika · Database Admin": "elichika · データベース管理",
+        "Pick a tool on the left.": "左からツールを選んでください。",
+        "Running…": "実行中…",
+        "running…": "実行中…",
+        "Cancel": "キャンセル",
+        "Run": "実行",
+        "Failed to load tools: ": "ツールの読み込みに失敗しました: ",
+        "Please fill in: ": "次の項目を入力してください: ",
+        "— (press ↻ to load) —": "— (↻を押して読み込み) —",
+        "Load options": "オプションを読み込み",
+        "loading…": "読み込み中…",
+        "— none —": "— なし —",
+        "done ✓": "完了 ✓",
+        "cancelled": "キャンセル済み",
+        "error ✗": "エラー ✗",
+        "Job": "ジョブ",
+        "[cancelling…]": "[キャンセル中…]",
+        "ERROR: ": "エラー: ",
+        # tool labels
         "Backup Database": "データベースのバックアップ",
         "Clear Pack Cache": "パックキャッシュを消去",
         "Delete downloaded game packs (Download/sukusta/packs) to free storage. Missing packs re-download when you play.":

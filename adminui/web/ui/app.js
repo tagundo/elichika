@@ -2,6 +2,22 @@
 
 const state = { tools: [], currentTool: null, es: null, jobId: null };
 const $ = (s) => document.querySelector(s);
+
+// ------------------------------------------------------------------ i18n
+// The server picks the language from SIFAS_LANG (set by the app). We fetch the
+// {English source -> translation} table and translate both the static markup
+// (data-i18n) and the strings this script generates. English is the fallback.
+let I18N = {};
+function T(s) { return (I18N && I18N[s]) || s; }
+async function loadI18n() {
+  try {
+    const data = await (await fetch("/api/i18n")).json();
+    I18N = data.strings || {};
+  } catch (e) { I18N = {}; }
+}
+function applyStaticI18n() {
+  document.querySelectorAll("[data-i18n]").forEach((n) => { n.textContent = T(n.dataset.i18n); });
+}
 const el = (tag, attrs = {}, children = []) => {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -17,12 +33,14 @@ const el = (tag, attrs = {}, children = []) => {
 async function init() {
   $("#cancel-btn").addEventListener("click", cancelRun);
   $("#console-close").addEventListener("click", () => $("#console").classList.add("hidden"));
+  await loadI18n();
+  applyStaticI18n();
   try {
     const data = await (await fetch("/api/tools")).json();
     state.tools = data.tools || [];
     renderToolList();
   } catch (e) {
-    $("#tool-panel").innerHTML = "<p class='hint'>Failed to load tools: " + e + "</p>";
+    $("#tool-panel").innerHTML = "<p class='hint'>" + T("Failed to load tools: ") + e + "</p>";
   }
 }
 
@@ -53,7 +71,7 @@ function renderForm() {
 
   const form = el("form", { id: "tool-form", onsubmit: (e) => { e.preventDefault(); runTool(); } });
   for (const field of tool.fields) form.appendChild(renderField(field));
-  form.appendChild(el("button", { class: "run-btn", type: "submit", text: "Run" }));
+  form.appendChild(el("button", { class: "run-btn", type: "submit", text: T("Run") }));
   panel.appendChild(form);
 
   // auto-load dynamic selects that don't depend on another field
@@ -88,8 +106,8 @@ function renderField(field) {
     wrap.appendChild(el("label", { for: id, text: field.label }));
     const sel = el("select", { id });
     sel.dataset.name = field.name; sel.dataset.ftype = "dynamic_select";
-    sel.appendChild(el("option", { value: "", text: "— (press ↻ to load) —" }));
-    const refresh = el("button", { type: "button", title: "Load options", text: "↻",
+    sel.appendChild(el("option", { value: "", text: T("— (press ↻ to load) —") }));
+    const refresh = el("button", { type: "button", title: T("Load options"), text: "↻",
       onclick: () => loadOptions(field) });
     wrap.appendChild(el("div", { class: "dyn-row" }, [sel, refresh]));
   } else {
@@ -107,12 +125,12 @@ async function loadOptions(field) {
   if (!sel) return;
   const params = collectParams();
   const qs = field.depends_on ? "?" + encodeURIComponent(field.depends_on) + "=" + encodeURIComponent(params[field.depends_on] || "") : "";
-  sel.innerHTML = "<option value=''>loading…</option>";
+  sel.innerHTML = "<option value=''>" + T("loading…") + "</option>";
   try {
     const data = await (await fetch("/api/options/" + state.currentTool.id + qs)).json();
     sel.innerHTML = "";
     const opts = data.options || [];
-    if (!opts.length) sel.appendChild(el("option", { value: "", text: "— none —" }));
+    if (!opts.length) sel.appendChild(el("option", { value: "", text: T("— none —") }));
     for (const o of opts) sel.appendChild(el("option", { value: o.value, text: o.label }));
     if (data.error) sel.appendChild(el("option", { value: "", text: "(error: " + data.error + ")" }));
   } catch (e) {
@@ -135,7 +153,7 @@ async function runTool() {
   for (const f of tool.fields) {
     if (f.required && !String(params[f.name] ?? "").trim()) missing.push(f.label);
   }
-  if (missing.length) return alert("Please fill in: " + missing.join(", "));
+  if (missing.length) return alert(T("Please fill in: ") + missing.join(", "));
 
   openConsole(tool.label);
   let resp;
@@ -143,8 +161,8 @@ async function runTool() {
     resp = await (await fetch("/api/run/" + tool.id, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params),
     })).json();
-  } catch (e) { appendLog("ERROR: " + e); finishConsole("error"); return; }
-  if (resp.error) { appendLog("ERROR: " + resp.error); finishConsole("error"); return; }
+  } catch (e) { appendLog(T("ERROR: ") + e); finishConsole("error"); return; }
+  if (resp.error) { appendLog(T("ERROR: ") + resp.error); finishConsole("error"); return; }
   streamJob(resp.job_id);
 }
 
@@ -166,18 +184,18 @@ function streamJob(jobId) {
 
 async function cancelRun() {
   if (!state.jobId) return;
-  appendLog("[cancelling…]");
+  appendLog(T("[cancelling…]"));
   try { await fetch("/api/jobs/" + state.jobId + "/cancel", { method: "POST" }); } catch {}
 }
 
 function openConsole(title) {
   $("#console").classList.remove("hidden");
-  $("#console-title").textContent = title + " — running…";
+  $("#console-title").textContent = title + " — " + T("running…");
   $("#log").textContent = ""; $("#cancel-btn").disabled = false; setProgress(0, 1);
 }
 function finishConsole(status) {
-  const label = status === "done" ? "done ✓" : status === "cancelled" ? "cancelled" : "error ✗";
-  $("#console-title").textContent = (state.currentTool ? state.currentTool.label : "Job") + " — " + label;
+  const label = status === "done" ? T("done ✓") : status === "cancelled" ? T("cancelled") : T("error ✗");
+  $("#console-title").textContent = (state.currentTool ? state.currentTool.label : T("Job")) + " — " + label;
   $("#cancel-btn").disabled = true;
 }
 function appendLog(line) { const l = $("#log"); l.textContent += line + "\n"; l.scrollTop = l.scrollHeight; }

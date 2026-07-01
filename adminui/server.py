@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from adminui import i18n
 from adminui.jobs import MANAGER
 from adminui.tools import registry
 
@@ -65,6 +66,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._serve_static(path[len("/ui/"):])
             if path == "/api/tools":
                 return self._send_json({"tools": registry.public_tools(self._lang())})
+            if path == "/api/i18n":
+                lang = self._lang()
+                return self._send_json({"lang": lang, "strings": i18n.all_strings(lang)})
             if path.startswith("/api/options/"):
                 return self._api_options(path[len("/api/options/"):])
             if path.startswith("/api/jobs/") and path.endswith("/events"):
