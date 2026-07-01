@@ -32,14 +32,33 @@ android {
         }
     }
 
+    signingConfigs {
+        // A fixed, committed keystore so EVERY CI build is signed with the same
+        // certificate. The default debug signing uses an auto-generated
+        // ~/.android/debug.keystore, which differs on each fresh CI runner — so
+        // successive APKs had mismatched signatures and Android refused to update
+        // over the installed app (you had to uninstall first). This is a debug
+        // keystore with well-known credentials (not a secret); it only makes
+        // sideloaded updates install cleanly, it is not a release key.
+        create("stable") {
+            storeFile = file("elichika-debug.keystore")
+            storePassword = "android"
+            keyAlias = "elichika"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("stable")
         }
         getByName("release") {
             isMinifyEnabled = false
-            // CI ships a debug-signed build by default. To produce a release-signed
-            // APK, add a signingConfig here that reads a keystore from CI secrets.
+            // Also signed with the stable keystore so release APKs install over
+            // debug ones and each other. Swap in a real release key (from CI
+            // secrets) if you ever publish.
+            signingConfig = signingConfigs.getByName("stable")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
