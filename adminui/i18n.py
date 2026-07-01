@@ -50,6 +50,9 @@ _TABLES = {
     "ko": {
         # tool labels
         "Backup Database": "데이터베이스 백업",
+        "Clear Pack Cache": "팩 캐시 비우기",
+        "Delete downloaded game packs (Download/sukusta/packs) to free storage. Missing packs re-download when you play.":
+            "받아둔 게임 팩(Download/sukusta/packs)을 삭제해 저장공간을 확보합니다. 부족한 팩은 플레이 시 다시 받습니다.",
         "Restore Database": "데이터베이스 복원",
         "Costume Clone": "코스튬 복제",
         "Extract / Decrypt Assets": "에셋 추출 / 복호화",
@@ -112,6 +115,9 @@ _TABLES = {
     },
     "ja": {
         "Backup Database": "データベースのバックアップ",
+        "Clear Pack Cache": "パックキャッシュを消去",
+        "Delete downloaded game packs (Download/sukusta/packs) to free storage. Missing packs re-download when you play.":
+            "ダウンロード済みのゲームパック（Download/sukusta/packs）を削除して空き容量を確保します。不足分はプレイ時に再取得されます。",
         "Restore Database": "データベースの復元",
         "Costume Clone": "衣装クローン",
         "Extract / Decrypt Assets": "アセット抽出 / 復号",

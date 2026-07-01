@@ -13,6 +13,7 @@ from adminui.tools.assets_extract import character_choices as extract_characters
 from adminui.tools.assets_extract import costume_options as extract_costume_options
 from adminui.tools.assets_extract import run_extract
 from adminui.tools.backup import run_backup
+from adminui.tools.reset import run_clear_packs
 from adminui.tools.costume_clone import character_choices, costume_options, run_costume_clone
 from adminui.tools.installers import (
     options_for, run_camera, run_card, run_costume, run_db, run_dictionary, run_live, run_tower,
@@ -61,6 +62,14 @@ def _char_field(name, label, help_text=None, choices=None):
 # -----------------------------------------------------------------------------
 
 TOOLS = [
+    {
+        "id": "clear_packs",
+        "label": "Clear Pack Cache",
+        "description": ("Delete downloaded game packs (Download/sukusta/packs) to free storage. "
+                        "Missing packs re-download when you play."),
+        "run": run_clear_packs,
+        "fields": [_STOP],
+    },
     {
         "id": "backup",
         "label": "Backup Database",
