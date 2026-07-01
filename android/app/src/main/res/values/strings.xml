@@ -39,4 +39,55 @@
     <string name="act_about">About ℹ</string>
     <string name="cdn_on">CDN cache: ON ✓ (tap to turn off)</string>
     <string name="cdn_off">CDN cache: OFF (tap to turn on)</string>
+
+    <!-- server state -->
+    <string name="status_starting">◌ starting…</string>
+
+    <!-- confirmations -->
+    <string name="confirm_title">Please confirm</string>
+    <string name="confirm_continue">Continue</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm_download_archive">This downloads the full game data set (several GB) from archive.org. Wi-Fi is strongly recommended.</string>
+    <string name="confirm_download_packs">This downloads missing game packs from the CDN (size varies, can be large). Wi-Fi is recommended.</string>
+    <string name="confirm_stops_server">The running server will be stopped first.</string>
+
+    <!-- first-run guide -->
+    <string name="act_guide">Guide ❓</string>
+    <string name="guide_title">Getting started</string>
+    <string name="guide_body">1. Grant storage permission (for the shared Download/sukusta folder).\n2. Download game files: “Download all game files” (full, via archive.org) or “Download missing” (from the CDN).\n3. Tap “Start server”.\n4. Point the game app at 127.0.0.1:8080 (see the LL-hax guide).\n\nTabs: “Server” / “Account” = server web UI · “Server content” = dev tools · “Asset editing” = modding tools.</string>
+
+    <!-- console controls -->
+    <string name="btn_share_log">Share log</string>
+    <string name="btn_clear_log">Clear</string>
+    <string name="toast_import_ok">Imported. Install it from the “Server content” tab.</string>
+
+    <!-- console action groups -->
+    <string name="grp_downloads">Game data</string>
+    <string name="grp_general">General</string>
+    <string name="grp_pages">Mod pages</string>
+
+    <!-- server offline overlay (web tabs) -->
+    <string name="offline_msg">The server is not running. Start it to use this page.</string>
+
+    <!-- localized console log lines -->
+    <string name="log_server_exited">[server] exited (code %1$d)</string>
+    <string name="log_server_starting">[server] starting…</string>
+    <string name="log_action_stop_first">[action] stopping the server first…</string>
+    <string name="log_action_run">[action] run: %1$s</string>
+    <string name="log_action_done">[action] done (code %1$d). Restart the server.</string>
+    <string name="log_error_missing_binary">[error] libelichika.so not found: %1$s</string>
+    <string name="log_error_exec_failed">[error] launch failed: %1$s</string>
+    <string name="log_import_ok">[import] %1$s — install it from the “Server content” tab.</string>
+    <string name="log_import_failed">[import] failed: %1$s</string>
+    <string name="log_actions_load_failed">[action] failed to load actions.json: %1$s</string>
+    <string name="log_pyservers_started">[pyservers] dev/mod tool web UIs started (:8772 / :8770)</string>
+    <string name="log_pyservers_failed">[pyservers] failed to start Python tools: %1$s</string>
+    <string name="log_settings_lang">[settings] language → %1$s. %2$s</string>
+    <string name="log_setup_no_payload">[setup] no bundled payload (not a CI build). Skipping server file extraction.</string>
+    <string name="log_setup_preparing">[setup] preparing server files… (version %1$s, refresh static=%2$s)</string>
+    <string name="log_setup_ready">[setup] ready.</string>
+    <string name="log_setup_downloads_link">[setup] ~/storage/downloads → %1$s</string>
+    <string name="log_setup_link_failed">[setup] failed to link shared folder (may need permission): %1$s</string>
+    <string name="log_setup_cdn_dir">[setup] CDN cache folder → %1$s</string>
+    <string name="log_setup_config_created">[setup] config.json created, CDN cache ON, folder → %1$s</string>
 </resources>

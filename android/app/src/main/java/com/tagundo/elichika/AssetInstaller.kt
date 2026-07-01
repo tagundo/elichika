@@ -38,7 +38,7 @@ object AssetInstaller {
         val am = ctx.assets
         val payloadExists = runCatching { am.list(PAYLOAD)?.isNotEmpty() == true }.getOrDefault(false)
         if (!payloadExists) {
-            log("[setup] 번들 페이로드가 없습니다 (CI 빌드가 아님). 서버 파일 추출을 건너뜁니다.")
+            log(ctx.getString(R.string.log_setup_no_payload))
             return root
         }
 
@@ -46,14 +46,14 @@ object AssetInstaller {
         val currentVersion = appVersion(ctx)
         val refreshStatic = installedVersion != currentVersion
 
-        log("[setup] 서버 파일 준비 중… (버전 $currentVersion, 정적자산 갱신=$refreshStatic)")
+        log(ctx.getString(R.string.log_setup_preparing, currentVersion, refreshStatic.toString()))
         copyDir(ctx, PAYLOAD, root, refreshStatic, log)
 
-        ensureSharedLinks(root, log)
+        ensureSharedLinks(ctx, root, log)
         ensureCacheDir(ctx, root, log)
         ensureLanguage(ctx, root, log)
         File(root, MARKER).writeText(currentVersion)
-        log("[setup] 준비 완료.")
+        log(ctx.getString(R.string.log_setup_ready))
         return root
     }
 
@@ -76,7 +76,7 @@ object AssetInstaller {
      * files dir, so a symlink files/storage/downloads -> /sdcard/Download does it.
      * Also pre-creates the unified addon drop folder.
      */
-    private fun ensureSharedLinks(root: File, log: (String) -> Unit) {
+    private fun ensureSharedLinks(ctx: Context, root: File, log: (String) -> Unit) {
         try {
             val download = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             runCatching { File(download, "sukusta/addons").mkdirs() }
@@ -84,10 +84,10 @@ object AssetInstaller {
             val link = File(storageDir, "downloads")
             if (!link.exists()) {
                 android.system.Os.symlink(download.absolutePath, link.absolutePath)
-                log("[setup] ~/storage/downloads → ${download.absolutePath}")
+                log(ctx.getString(R.string.log_setup_downloads_link, download.absolutePath))
             }
         } catch (e: Exception) {
-            log("[setup] 공유 폴더 링크 실패(권한 필요할 수 있음): ${e.message}")
+            log(ctx.getString(R.string.log_setup_link_failed, e.message ?: ""))
         }
     }
 
@@ -118,7 +118,7 @@ object AssetInstaller {
                 .replace("\"cdn_cache_dir\":\"$oldAppPath\"", "\"cdn_cache_dir\":\"$path\"")
             if (after != before) {
                 cfg.writeText(after)
-                log("[setup] CDN 캐시 폴더 → $path")
+                log(ctx.getString(R.string.log_setup_cdn_dir, path))
             }
         } else {
             // server fills the remaining fields with defaults on first Load().
@@ -127,7 +127,7 @@ object AssetInstaller {
             // (this branch only runs when there is no config.json yet, so it never
             // overrides a choice the user made later).
             cfg.writeText("{\"cdn_cache\":true,\"cdn_cache_dir\":\"$path\"}")
-            log("[setup] config.json created, CDN cache ON, folder → $path")
+            log(ctx.getString(R.string.log_setup_config_created, path))
         }
     }
 

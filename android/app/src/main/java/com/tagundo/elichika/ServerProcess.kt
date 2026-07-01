@@ -36,7 +36,7 @@ class ServerProcess(private val ctx: Context) {
     private fun start(args: List<String>, workDir: File, onExit: (Int) -> Unit): Boolean {
         val bin = binary()
         if (!bin.exists()) {
-            Bus.log("[error] libelichika.so 가 없습니다: ${bin.absolutePath}")
+            Bus.log(ctx.getString(R.string.log_error_missing_binary, bin.absolutePath))
             return false
         }
         val cmd = mutableListOf(bin.absolutePath).apply { addAll(args) }
@@ -51,7 +51,7 @@ class ServerProcess(private val ctx: Context) {
         val p = try {
             pb.start()
         } catch (e: Exception) {
-            Bus.log("[error] 실행 실패: ${e.message}")
+            Bus.log(ctx.getString(R.string.log_error_exec_failed, e.message ?: ""))
             return false
         }
         proc = p

@@ -68,7 +68,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"tools": registry.public_tools(self._lang())})
             if path == "/api/i18n":
                 lang = self._lang()
-                return self._send_json({"lang": lang, "strings": i18n.all_strings(lang)})
+                return self._send_json({
+                    "lang": lang,
+                    "strings": i18n.all_strings(lang),
+                    "languages": i18n.language_options(),
+                })
             if path.startswith("/api/options/"):
                 return self._api_options(path[len("/api/options/"):])
             if path.startswith("/api/jobs/") and path.endswith("/events"):

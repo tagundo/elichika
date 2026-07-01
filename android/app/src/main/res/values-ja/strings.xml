@@ -38,4 +38,55 @@
     <string name="act_about">情報 ℹ</string>
     <string name="cdn_on">CDNキャッシュ: オン ✓ (タップで停止)</string>
     <string name="cdn_off">CDNキャッシュ: オフ (タップで有効化)</string>
+
+    <!-- server state -->
+    <string name="status_starting">◌ 開始中…</string>
+
+    <!-- confirmations -->
+    <string name="confirm_title">確認</string>
+    <string name="confirm_continue">続行</string>
+    <string name="cancel">キャンセル</string>
+    <string name="confirm_download_archive">archive.org から全ゲームデータ（数GB）をダウンロードします。Wi-Fi の使用を強く推奨します。</string>
+    <string name="confirm_download_packs">ゲームCDNから不足パックをダウンロードします（サイズは可変、大きい場合あり）。Wi-Fi を推奨します。</string>
+    <string name="confirm_stops_server">実行中のサーバーが先に停止されます。</string>
+
+    <!-- first-run guide -->
+    <string name="act_guide">ガイド ❓</string>
+    <string name="guide_title">はじめに</string>
+    <string name="guide_body">1. ストレージ権限を許可してください（共有 Download/sukusta フォルダ用）。\n2. ゲームファイルを取得: 「全ゲームファイルをダウンロード」（archive.org 全体）または「不足分のみ取得」（CDN）。\n3. 「サーバー開始」をタップ。\n4. ゲームアプリを 127.0.0.1:8080 に接続（LL-hax ガイド参照）。\n\nタブ: 「サーバー設定」/「アカウント」= サーバーWeb UI ・「サーバーコンテンツ」= 開発ツール ・「アセット編集」= MODツール。</string>
+
+    <!-- console controls -->
+    <string name="btn_share_log">ログを共有</string>
+    <string name="btn_clear_log">消去</string>
+    <string name="toast_import_ok">取り込みました。「サーバーコンテンツ」タブでインストールしてください。</string>
+
+    <!-- console action groups -->
+    <string name="grp_downloads">ゲームデータ</string>
+    <string name="grp_general">一般</string>
+    <string name="grp_pages">MODページ</string>
+
+    <!-- server offline overlay (web tabs) -->
+    <string name="offline_msg">サーバーが実行されていません。このページを使うにはサーバーを開始してください。</string>
+
+    <!-- localized console log lines -->
+    <string name="log_server_exited">[server] 終了 (コード %1$d)</string>
+    <string name="log_server_starting">[server] 開始中…</string>
+    <string name="log_action_stop_first">[action] 先にサーバーを停止します…</string>
+    <string name="log_action_run">[action] 実行: %1$s</string>
+    <string name="log_action_done">[action] 完了 (コード %1$d)。サーバーを再起動してください。</string>
+    <string name="log_error_missing_binary">[error] libelichika.so がありません: %1$s</string>
+    <string name="log_error_exec_failed">[error] 実行失敗: %1$s</string>
+    <string name="log_import_ok">[取り込み] %1$s —「サーバーコンテンツ」タブでインストールしてください。</string>
+    <string name="log_import_failed">[取り込み] 失敗: %1$s</string>
+    <string name="log_actions_load_failed">[action] actions.json 読み込み失敗: %1$s</string>
+    <string name="log_pyservers_started">[pyservers] 開発/MODツールWeb UI 開始 (:8772 / :8770)</string>
+    <string name="log_pyservers_failed">[pyservers] Pythonツール開始失敗: %1$s</string>
+    <string name="log_settings_lang">[settings] 言語 → %1$s. %2$s</string>
+    <string name="log_setup_no_payload">[setup] バンドルペイロードがありません（CIビルドではない）。サーバーファイル展開をスキップします。</string>
+    <string name="log_setup_preparing">[setup] サーバーファイル準備中… (バージョン %1$s, 静的アセット更新=%2$s)</string>
+    <string name="log_setup_ready">[setup] 準備完了。</string>
+    <string name="log_setup_downloads_link">[setup] ~/storage/downloads → %1$s</string>
+    <string name="log_setup_link_failed">[setup] 共有フォルダのリンク失敗（権限が必要な場合あり）: %1$s</string>
+    <string name="log_setup_cdn_dir">[setup] CDNキャッシュフォルダ → %1$s</string>
+    <string name="log_setup_config_created">[setup] config.json 作成、CDNキャッシュ オン、フォルダ → %1$s</string>
 </resources>

@@ -1,10 +1,11 @@
 {
-  "_comment": "Declarative mirror of the elichika_utility.sh menu. label_id names a string resource (localized); label is the fallback. type=binary runs libelichika.so with args (server stopped first); type=url opens a browser; type=import_zip opens the file picker; type=settings/about open dialogs.",
+  "_comment": "Declarative mirror of the elichika_utility.sh menu. label_id names a string resource (localized); label is the fallback. group names a string resource used as a caption before the group's buttons. type=binary runs libelichika.so with args (server stopped first); type=url opens a browser; type=import_zip opens the file picker; type=settings/about/guide open dialogs.",
   "actions": [
     {
       "id": "download_archive",
       "label_id": "act_download_archive",
       "label": "Download all game files (archive.org)",
+      "group": "grp_downloads",
       "type": "binary",
       "args": ["download_archive", "both"],
       "stop_server": true
@@ -13,6 +14,7 @@
       "id": "download_packs",
       "label_id": "act_download_packs",
       "label": "Download missing (game CDN)",
+      "group": "grp_downloads",
       "type": "binary",
       "args": ["download_packs", "4"],
       "stop_server": true
@@ -21,21 +23,47 @@
       "id": "cdn_cache_toggle",
       "label_id": "act_cdn_cache",
       "label": "CDN cache on/off",
+      "group": "grp_downloads",
       "type": "binary",
       "args": ["cdn_cache", "toggle"],
       "stop_server": true
     },
     {
+      "id": "guide",
+      "label_id": "act_guide",
+      "label": "Guide",
+      "group": "grp_general",
+      "type": "guide"
+    },
+    {
       "id": "settings",
       "label_id": "act_settings",
       "label": "Settings",
+      "group": "grp_general",
       "type": "settings"
     },
     {
       "id": "about",
       "label_id": "act_about",
       "label": "About",
+      "group": "grp_general",
       "type": "about"
+    },
+    {
+      "id": "gamebanana",
+      "label_id": "act_gamebanana",
+      "label": "GameBanana mod page",
+      "group": "grp_pages",
+      "type": "url",
+      "url": "https://gamebanana.com/games/20519"
+    },
+    {
+      "id": "ayakamods",
+      "label_id": "act_ayakamods",
+      "label": "AyakaMods mod page",
+      "group": "grp_pages",
+      "type": "url",
+      "url": "https://ayakamods.cc/games/love-live-school-idol-festival-all-stars.217/"
     },
     {
       "id": "rebuild_assets",
@@ -54,20 +82,6 @@
       "args": ["fix_training_trees"],
       "stop_server": true,
       "advanced": true
-    },
-    {
-      "id": "gamebanana",
-      "label_id": "act_gamebanana",
-      "label": "GameBanana mod page",
-      "type": "url",
-      "url": "https://gamebanana.com/games/20519"
-    },
-    {
-      "id": "ayakamods",
-      "label_id": "act_ayakamods",
-      "label": "AyakaMods mod page",
-      "type": "url",
-      "url": "https://ayakamods.cc/games/love-live-school-idol-festival-all-stars.217/"
     }
   ]
 }

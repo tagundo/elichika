@@ -30,6 +30,9 @@ object Bus {
 
     fun snapshot(): String = synchronized(buffer) { buffer.toString() }
 
+    /** Clear the in-memory console buffer (the on-disk log file is left intact). */
+    fun clear() = synchronized(buffer) { buffer.setLength(0) }
+
     /** Start mirroring log lines to [file] (e.g. Download/sukusta/logs/elichika.log). */
     fun attachLogFile(file: File) {
         synchronized(fileLock) {

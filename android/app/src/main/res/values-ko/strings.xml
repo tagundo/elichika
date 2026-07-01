@@ -38,4 +38,55 @@
     <string name="act_about">정보 ℹ</string>
     <string name="cdn_on">CDN 캐시: 켜짐 ✓ (눌러서 끄기)</string>
     <string name="cdn_off">CDN 캐시: 꺼짐 (눌러서 켜기)</string>
+
+    <!-- server state -->
+    <string name="status_starting">◌ 시작 중…</string>
+
+    <!-- confirmations -->
+    <string name="confirm_title">확인</string>
+    <string name="confirm_continue">계속</string>
+    <string name="cancel">취소</string>
+    <string name="confirm_download_archive">archive.org 에서 전체 게임 데이터(수 GB)를 받습니다. Wi-Fi 사용을 강력히 권장합니다.</string>
+    <string name="confirm_download_packs">게임 CDN에서 누락된 팩을 받습니다(크기 가변, 클 수 있음). Wi-Fi 사용을 권장합니다.</string>
+    <string name="confirm_stops_server">실행 중인 서버가 먼저 중지됩니다.</string>
+
+    <!-- first-run guide -->
+    <string name="act_guide">가이드 ❓</string>
+    <string name="guide_title">시작하기</string>
+    <string name="guide_body">1. 저장소 권한을 허용하세요(공유 Download/sukusta 폴더용).\n2. 게임 파일을 받으세요: “전체 게임파일 다운로드”(archive.org 전체) 또는 “누락분만 받기”(CDN).\n3. “서버 시작”을 누르세요.\n4. 게임 앱을 127.0.0.1:8080 으로 연결하세요(LL-hax 가이드 참고).\n\n탭: “서버 설정” / “유저 관리” = 서버 웹 UI · “서버 콘텐츠” = 개발 도구 · “에셋 편집” = 모딩 도구.</string>
+
+    <!-- console controls -->
+    <string name="btn_share_log">로그 공유</string>
+    <string name="btn_clear_log">지우기</string>
+    <string name="toast_import_ok">가져왔습니다. “서버 콘텐츠” 탭에서 설치하세요.</string>
+
+    <!-- console action groups -->
+    <string name="grp_downloads">게임 데이터</string>
+    <string name="grp_general">일반</string>
+    <string name="grp_pages">모드 페이지</string>
+
+    <!-- server offline overlay (web tabs) -->
+    <string name="offline_msg">서버가 실행 중이 아닙니다. 이 페이지를 사용하려면 서버를 시작하세요.</string>
+
+    <!-- localized console log lines -->
+    <string name="log_server_exited">[server] 종료됨 (코드 %1$d)</string>
+    <string name="log_server_starting">[server] 시작 중…</string>
+    <string name="log_action_stop_first">[action] 서버를 먼저 중지합니다…</string>
+    <string name="log_action_run">[action] 실행: %1$s</string>
+    <string name="log_action_done">[action] 완료 (코드 %1$d). 서버를 다시 시작하세요.</string>
+    <string name="log_error_missing_binary">[error] libelichika.so 가 없습니다: %1$s</string>
+    <string name="log_error_exec_failed">[error] 실행 실패: %1$s</string>
+    <string name="log_import_ok">[가져오기] %1$s — “서버 콘텐츠” 탭에서 설치하세요.</string>
+    <string name="log_import_failed">[가져오기] 실패: %1$s</string>
+    <string name="log_actions_load_failed">[action] actions.json 로드 실패: %1$s</string>
+    <string name="log_pyservers_started">[pyservers] 개발/모드 도구 웹 UI 시작 (:8772 / :8770)</string>
+    <string name="log_pyservers_failed">[pyservers] 파이썬 도구 시작 실패: %1$s</string>
+    <string name="log_settings_lang">[settings] 언어 → %1$s. %2$s</string>
+    <string name="log_setup_no_payload">[setup] 번들 페이로드가 없습니다 (CI 빌드가 아님). 서버 파일 추출을 건너뜁니다.</string>
+    <string name="log_setup_preparing">[setup] 서버 파일 준비 중… (버전 %1$s, 정적자산 갱신=%2$s)</string>
+    <string name="log_setup_ready">[setup] 준비 완료.</string>
+    <string name="log_setup_downloads_link">[setup] ~/storage/downloads → %1$s</string>
+    <string name="log_setup_link_failed">[setup] 공유 폴더 링크 실패(권한 필요할 수 있음): %1$s</string>
+    <string name="log_setup_cdn_dir">[setup] CDN 캐시 폴더 → %1$s</string>
+    <string name="log_setup_config_created">[setup] config.json 생성됨, CDN 캐시 켜짐, 폴더 → %1$s</string>
 </resources>

@@ -1,7 +1,14 @@
 "use strict";
 
-const state = { tools: [], currentTool: null, es: null, jobId: null };
+const state = { tools: [], currentTool: null, es: null, jobId: null, lang: null, languages: [] };
 const $ = (s) => document.querySelector(s);
+
+// append ?lang=/&lang= to a URL when a language is explicitly chosen (else the
+// server falls back to SIFAS_LANG / English).
+function withLang(url) {
+  if (!state.lang) return url;
+  return url + (url.includes("?") ? "&" : "?") + "lang=" + encodeURIComponent(state.lang);
+}
 
 // ------------------------------------------------------------------ i18n
 // The server picks the language from SIFAS_LANG (set by the app). We fetch the
@@ -11,8 +18,10 @@ let I18N = {};
 function T(s) { return (I18N && I18N[s]) || s; }
 async function loadI18n() {
   try {
-    const data = await (await fetch("/api/i18n")).json();
+    const data = await (await fetch(withLang("/api/i18n"))).json();
     I18N = data.strings || {};
+    state.languages = data.languages || [];
+    if (data.lang) state.lang = data.lang;
   } catch (e) { I18N = {}; }
 }
 function applyStaticI18n() {
@@ -33,15 +42,48 @@ const el = (tag, attrs = {}, children = []) => {
 async function init() {
   $("#cancel-btn").addEventListener("click", cancelRun);
   $("#console-close").addEventListener("click", () => $("#console").classList.add("hidden"));
+  const saved = localStorage.getItem("sifas_lang");
+  if (saved) state.lang = saved;
   await loadI18n();
   applyStaticI18n();
+  buildLangSelect();
+  await loadTools();
+}
+
+async function loadTools() {
   try {
-    const data = await (await fetch("/api/tools")).json();
+    const data = await (await fetch(withLang("/api/tools"))).json();
     state.tools = data.tools || [];
     renderToolList();
   } catch (e) {
     $("#tool-panel").innerHTML = "<p class='hint'>" + T("Failed to load tools: ") + e + "</p>";
   }
+}
+
+function buildLangSelect() {
+  const sel = $("#lang-select");
+  if (!sel) return;
+  sel.innerHTML = "";
+  const langs = state.languages.length ? state.languages : [["en", "English"]];
+  for (const [code, name] of langs) {
+    const o = el("option", { value: code, text: name });
+    if (code === state.lang) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.onchange = () => changeLang(sel.value);
+}
+
+async function changeLang(code) {
+  state.lang = code;
+  localStorage.setItem("sifas_lang", code);
+  await loadI18n();
+  applyStaticI18n();
+  buildLangSelect();
+  // re-fetch the tool list so translated labels/descriptions update live, then
+  // preserve the current selection and re-render its form.
+  const openId = state.currentTool ? state.currentTool.id : null;
+  await loadTools();
+  if (openId) selectTool(openId);
 }
 
 function renderToolList() {
@@ -117,6 +159,23 @@ function renderField(field) {
     wrap.appendChild(input);
   }
   if (field.help) wrap.appendChild(el("div", { class: "help", text: field.help }));
+
+  // If another field depends on this one, auto-load those dependent dynamic
+  // selects whenever this (parent) field's value changes. The ↻ buttons still
+  // work as a manual fallback.
+  const dependents = (state.currentTool && state.currentTool.fields || [])
+    .filter((f) => f.type === "dynamic_select" && f.depends_on === field.name);
+  if (dependents.length) {
+    const parentInput = wrap.querySelector(`[data-name="${field.name}"]`);
+    if (parentInput) {
+      parentInput.addEventListener("change", () => {
+        for (const dep of dependents) {
+          // guard: only load if the dependent select is actually in the DOM
+          if (document.querySelector(`#tool-form [data-name="${dep.name}"]`)) loadOptions(dep);
+        }
+      });
+    }
+  }
   return wrap;
 }
 
@@ -127,7 +186,7 @@ async function loadOptions(field) {
   const qs = field.depends_on ? "?" + encodeURIComponent(field.depends_on) + "=" + encodeURIComponent(params[field.depends_on] || "") : "";
   sel.innerHTML = "<option value=''>" + T("loading…") + "</option>";
   try {
-    const data = await (await fetch("/api/options/" + state.currentTool.id + qs)).json();
+    const data = await (await fetch(withLang("/api/options/" + state.currentTool.id + qs))).json();
     sel.innerHTML = "";
     const opts = data.options || [];
     if (!opts.length) sel.appendChild(el("option", { value: "", text: T("— none —") }));

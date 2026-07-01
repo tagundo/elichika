@@ -49,14 +49,14 @@ class ServerService : Service() {
         // Tool web UIs come up alongside the server.
         PyServers.ensureStarted(this, workDir)
         val ok = server.startServer(workDir) { code ->
-            Bus.log("[server] 종료됨 (코드 $code)")
+            Bus.log(getString(R.string.log_server_exited, code))
             Bus.setRunning(false)
             stopForegroundCompat()
             releaseWakeLock()
             stopSelf()
         }
         if (ok) {
-            Bus.log("[server] 시작 중…")
+            Bus.log(getString(R.string.log_server_starting))
             Bus.setRunning(true)
         } else {
             Bus.setRunning(server.isAlive())
@@ -77,13 +77,13 @@ class ServerService : Service() {
         startForeground(NOTIF_ID, buildNotification())
         acquireWakeLock()
         if (stopFirst && server.isAlive()) {
-            Bus.log("[action] 서버를 먼저 중지합니다…")
+            Bus.log(getString(R.string.log_action_stop_first))
             server.stop()
             Bus.setRunning(false)
         }
-        Bus.log("[action] 실행: ${args.joinToString(" ")}")
+        Bus.log(getString(R.string.log_action_run, args.joinToString(" ")))
         val started = server.runOnce(args, workDir) { code ->
-            Bus.log("[action] 완료 (코드 $code). 서버를 다시 시작하세요.")
+            Bus.log(getString(R.string.log_action_done, code))
             releaseWakeLock()
             stopForegroundCompat()
             stopSelf()

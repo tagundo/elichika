@@ -40,9 +40,9 @@ object PyServers {
                     .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath,
                         Lang.effective(ctx), astcenc)
                 started = true
-                Bus.log("[pyservers] 개발/모드 도구 웹 UI 시작 (:8772 / :8770)")
+                Bus.log(ctx.getString(R.string.log_pyservers_started))
             } catch (e: Throwable) {
-                Bus.log("[pyservers] 파이썬 도구 시작 실패: ${e.message}")
+                Bus.log(ctx.getString(R.string.log_pyservers_failed, e.message ?: ""))
             }
         }
     }
