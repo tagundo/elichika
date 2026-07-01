@@ -53,7 +53,7 @@
     <!-- first-run guide -->
     <string name="act_guide">가이드 ❓</string>
     <string name="guide_title">시작하기</string>
-    <string name="guide_body">1. 저장소 권한을 허용하세요(공유 Download/sukusta 폴더용).\n2. 게임 파일을 받으세요: “전체 게임파일 다운로드”(archive.org 전체) 또는 “누락분만 받기”(CDN).\n3. “서버 시작”을 누르세요.\n4. 게임 앱을 127.0.0.1:8080 으로 연결하세요(LL-hax 가이드 참고).\n\n탭: “서버 설정” / “유저 관리” = 서버 웹 UI · “서버 콘텐츠” = 개발 도구 · “에셋 편집” = 모딩 도구.\n\n폴더 (Download/sukusta): extracted = 복호화된 모델(편집 입력) · modded = 편집된 번들(편집 출력) · suit / live / card / livetimeline = 애드온 드롭 폴더 · sql = DB 패치 · packs = 게임 팩 캐시 · backup = DB 백업 · logs = elichika.log.</string>
+    <string name="guide_body">1. 저장소 권한을 허용하세요(공유 Download/sukusta 폴더용).\n2. “서버 시작”을 누르세요.\n3. 게임 앱을 127.0.0.1:8080 으로 연결하세요(LL-hax 가이드 참고).\n4. (선택) 게임 파일 미리 받기 — “전체 게임파일 다운로드”(archive.org 전체) 또는 “누락분만 받기”(CDN). 권장이지 필수는 아닙니다.\n\nCDN 캐시: 켜져 있으면 없는 팩을 플레이 중 필요할 때 자동으로 받아 packs/ 에 저장하므로 미리 받지 않아도 됩니다. 이 방식으로 packs/ 를 채울 때는 게임 화면보다 elichika를 앞(포그라운드)에 띄워 두어야 다운로드가 끊기지 않고 끝납니다.\n\n탭: “서버 설정” / “유저 관리” = 서버 웹 UI · “서버 콘텐츠” = 개발 도구 · “에셋 편집” = 모딩 도구.\n\n폴더 (Download/sukusta): extracted = 복호화된 모델(편집 입력) · modded = 편집된 번들(편집 출력) · suit / live / card / livetimeline = 애드온 드롭 폴더 · sql = DB 패치 · packs = 게임 팩 캐시 · backup = DB 백업 · logs = elichika.log.</string>
 
     <!-- console controls -->
     <string name="btn_share_log">로그 공유</string>
