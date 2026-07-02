@@ -1,3 +1,4 @@
+import glob
 import os
 import shutil
 from datetime import datetime
@@ -20,11 +21,26 @@ LOCAL_BACKUP_ROOT = "backup_db"
 
 
 def get_backup_root():
-    """현재 환경에서 새 백업을 만들 루트 폴더."""
+    """현재 환경에서 새 백업을 만들 루트 폴더.
+
+    SUKUSTA_BACKUP_ROOT 환경변수가 있으면 그 위치를 사용한다(안드로이드 APK 가
+    공유 Download/sukusta/backup 로 지정). Termux/PC 동작은 그대로 유지."""
+    env = os.environ.get("SUKUSTA_BACKUP_ROOT")
+    if env:
+        return os.path.expanduser(env)
     return TERMUX_BACKUP_ROOT if is_termux() else LOCAL_BACKUP_ROOT
 
 
-# List of files to back up
+# Asset-DB masters live under these two folders; we glob every *.db so that new
+# dictionaries / languages (e.g. dictionary_th_k.db) are captured automatically
+# instead of drifting out of a hand-maintained list. serverdata.db is derived
+# from the asset DBs and userdata.db holds player state — all three must move as
+# one coupled set so a restore stays internally consistent (a costume added to
+# both the asset DB and userdata must be restored together).
+ASSET_DB_GLOBS = ("assets/db/gl/*.db", "assets/db/jp/*.db")
+EXTRA_BACKUP_FILES = ("serverdata.db", "userdata.db")
+
+# Kept for backwards compatibility / documentation of the previous fixed set.
 BACKUP_FILES = [
     "assets/db/gl/asset_a_en.db",
     "assets/db/gl/asset_i_en.db",
@@ -43,6 +59,64 @@ BACKUP_FILES = [
     "serverdata.db",
     "userdata.db",
 ]
+
+
+def backup_targets():
+    """The full set of files a backup copies: every asset-DB master (globbed) plus
+    the derived server DB and the user DB. Non-existent entries are filtered by the
+    caller. Order is stable (sorted globs, then the extras)."""
+    targets = []
+    for pattern in ASSET_DB_GLOBS:
+        targets.extend(sorted(glob.glob(pattern)))
+    for extra in EXTRA_BACKUP_FILES:
+        if extra not in targets:
+            targets.append(extra)
+    return targets
+
+
+def _lz4():
+    """Return the lz4.frame module when available, else None.
+
+    lz4 is bundled with the Android app, so backups there are compressed
+    transparently; on Termux/PC without lz4 we fall back to plain copies. Restore
+    handles both, so old (uncompressed) backups keep working either way."""
+    try:
+        import lz4.frame as frame
+        return frame
+    except Exception:
+        return None
+
+
+def backup_files_to(folder, files=None, log=print):
+    """Copy each existing path in *files* into *folder*, preserving its relative
+    layout. When lz4 is available every file is written frame-compressed as
+    "<rel>.lz4"; otherwise it is copied verbatim as "<rel>". Returns
+    (backed_up, missing)."""
+    if files is None:
+        files = backup_targets()
+    frame = _lz4()
+    os.makedirs(folder, exist_ok=True)
+    backed_up, missing = [], []
+    for file_path in files:
+        if not os.path.exists(file_path):
+            missing.append(file_path)
+            continue
+        rel_path = os.path.relpath(file_path, start=".")
+        dest_path = os.path.join(folder, rel_path)
+        os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+        try:
+            if frame is not None:
+                with open(file_path, "rb") as src, \
+                        frame.open(dest_path + ".lz4", "wb") as dst:
+                    shutil.copyfileobj(src, dst, 1024 * 1024)
+            else:
+                shutil.copy2(file_path, dest_path)
+            backed_up.append(file_path)
+        except Exception as exc:
+            missing.append(file_path)
+            if log:
+                log(f"⚠ Failed to back up {file_path}: {exc}")
+    return backed_up, missing
 
 
 def backup_database_files():
@@ -65,27 +139,14 @@ def backup_database_files():
         # Create backup folder
         os.makedirs(backup_folder, exist_ok=True)
         print(f"Backup folder created: {backup_folder}")
+        print(f"Compression: {'lz4' if _lz4() is not None else 'off (stored)'}")
 
-        # Copy each file into the backup folder
-        backed_up_files = []
-        missing_files = []
-
-        for file_path in BACKUP_FILES:
-            if os.path.exists(file_path):
-                # Preserve relative directory structure
-                rel_path = os.path.relpath(file_path, start=".")
-                dest_path = os.path.join(backup_folder, rel_path)
-
-                # Create directories as needed
-                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-
-                # Copy file
-                shutil.copy2(file_path, dest_path)
-                backed_up_files.append(file_path)
-                print(f"✓ Backed up: {file_path}")
-            else:
-                missing_files.append(file_path)
-                print(f"⚠ Missing file: {file_path}")
+        # Copy the whole coupled DB set (compressed when lz4 is available)
+        backed_up_files, missing_files = backup_files_to(backup_folder)
+        for file_path in backed_up_files:
+            print(f"✓ Backed up: {file_path}")
+        for file_path in missing_files:
+            print(f"⚠ Missing file: {file_path}")
 
         # 백업 결과 보고
         print(f"\n=== Backup Complete ===")

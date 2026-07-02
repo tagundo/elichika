@@ -1,3 +1,7 @@
 [submodule "assets"]
 	path = assets
 	url = https://github.com/tagundo/harasho.git
+[submodule "modtools"]
+	path = modtools
+	url = https://github.com/tagundo/SIFAS-MODDING-HELPING-TOOLS.git
+	branch = claude/elichika-apk-build-wwkuu3

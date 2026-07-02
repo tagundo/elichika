@@ -1,4 +1,7 @@
-elichika
+# the built server binary at the repo root (anchored so it does not also match
+# the `elichika` directory in the Android app's Java package path)
+/elichika
+elichika_host
 
 static/
 
@@ -17,3 +20,6 @@ local_git_server/
 *.sql
 *.dll
 template.go
+
+__pycache__/
+*.pyc

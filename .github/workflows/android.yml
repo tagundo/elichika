@@ -1,0 +1,238 @@
+# Builds the standalone elichika Android server app (see android/README.md).
+#
+# This is the "update = rebuild" path: it pulls the latest server (this repo) and
+# the latest modding tools (SIFAS-MODDING-HELPING-TOOLS), assembles everything the
+# app bundles, and produces an installable debug-signed APK as an artifact. No
+# local Android toolchain needed.
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    # No paths filter: the APK bundles the whole Go server, so any source change
+    # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
+    # previously skipped a clientdb/ fix and shipped a stale APK.
+    branches: [claude/elichika-apk-build-wwkuu3, main]
+    # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
+    # to a GitHub Release. See android/README.md for the one-time secret setup.
+    tags: ['v*']
+
+permissions:
+  contents: write   # needed to create a GitHub Release on tag builds
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: "26.3.11579264"
+    steps:
+      - name: Checkout elichika (with harasho + modtools submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Update modtools submodule to latest
+        run: |
+          # Ship the latest modding tools: fetch the tracked branch in the submodule
+          # and check out its tip. (`git submodule update --remote` needs that ref
+          # fetched, which the shallow recursive checkout doesn't provide.)
+          BR="claude/elichika-apk-build-wwkuu3"
+          git -C modtools fetch --depth 1 origin "$BR"
+          git -C modtools checkout -q FETCH_HEAD
+          git -C modtools log -1 --oneline
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install platform / build-tools / NDK
+        run: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
+
+      - name: Build master data (serverdata.db) on the host
+        run: |
+          # Pure-Go host build, then rebuild_assets turns the harasho submodule
+          # (assets/db/{jp,gl}) into serverdata.db and writes a default config.json.
+          CGO_ENABLED=0 go build -o elichika_host .
+          ./elichika_host rebuild_assets || echo "::warning::rebuild_assets failed; APK will need an on-device rebuild"
+
+      - name: Assemble bundled payload
+        run: |
+          set -eux
+          PAY=android/app/src/main/assets/payload
+          rm -rf "$PAY"; mkdir -p "$PAY"
+          cp -r "server init jsons" "$PAY/"
+          cp -r webui "$PAY/webui"
+          find "$PAY/webui" -name '*.go' -delete
+          cp privatekey.pem publickey.pem "$PAY/"
+          [ -f serverdata.db ] && cp serverdata.db "$PAY/" || echo "no serverdata.db"
+          [ -f config.json ] && cp config.json "$PAY/" || echo "no config.json"
+          # The server reads the whole harasho master-data tree at startup (assets/db,
+          # assets/sql, assets/event, assets/dictionary.json, …) via clientdb.init —
+          # without it the server panics ("open assets/db/gl/masterdata_a_en: no such
+          # file"). Bundle assets/ (minus any submodule .git). static/ is NOT bundled:
+          # the server rekeys it from assets/ on first start, like the Termux install.
+          cp -r assets "$PAY/assets"
+          find "$PAY/assets" -name '.git' -print0 | xargs -0 -r rm -rf
+          echo "payload sizes (static/ measured for info, not bundled):"
+          du -sh "$PAY/assets" "$PAY/serverdata.db" "$PAY" static 2>/dev/null || true
+
+      - name: Sync Python sources (both repos)
+        run: |
+          set -eux
+          PY=android/app/src/main/python
+          # keep the committed launcher, drop any previous sync
+          find "$PY" -mindepth 1 -not -name 'elichika_launch.py' -delete 2>/dev/null || true
+          mkdir -p "$PY"
+          # elichika dev tools: adminui package + the installer/util scripts it calls
+          cp -r adminui "$PY/adminui"
+          cp ./*.py "$PY/" 2>/dev/null || true
+          # modding tools from the modtools/ submodule: webtools package + the mod
+          # scripts (copied last so the tools-repo version wins for any duplicate
+          # module name — though elichika no longer vendors its own copies)
+          cp -r modtools/webtools "$PY/webtools"
+          cp modtools/*.py "$PY/" 2>/dev/null || true
+          [ -d modtools/live_timeline ] && cp -r modtools/live_timeline "$PY/" || true
+          # drop the host build artifact if it landed in python/
+          rm -f "$PY/elichika_host"
+          # Vendor UnityPy so the bundle-editing tools import it instantly instead
+          # of trying a runtime `pip install` (which cannot build on-device and
+          # just hangs/fails). --no-deps skips its native texture/audio decoders
+          # (texture2ddecoder/etcpak/astc/fmod), which are only lazy-imported for
+          # texture/audio ops — importing UnityPy and editing bones/mesh/physics
+          # does NOT need them (verified). Its import-time deps (lz4/brotli/attrs/
+          # fsspec) come from Chaquopy pip (see android/app/build.gradle.kts).
+          python3 -m pip install --no-deps --no-compile --target "$PY" "UnityPy==1.25.0"
+          # CRITICAL: the wheel bundles an x86 UnityPyBoost accelerator .so that
+          # would crash on arm64. Delete it — UnityPy falls back to its pure-Python
+          # path (guarded try/except -> None) which runs fine on-device (slower).
+          rm -f "$PY"/UnityPy/UnityPyBoost*.so
+          find "$PY/UnityPy" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+          # trim bulky metadata / console-script shim that would only bloat the APK
+          rm -rf "$PY"/UnityPy-*.dist-info "$PY"/bin 2>/dev/null || true
+          test -f "$PY/UnityPy/__init__.py"  # fail loudly if the vendor step didn't land
+          # Make UnityPy import without the native texture/audio codecs so that
+          # UNCOMPRESSED texture import (RGBA32, pure PIL) works on-device; the
+          # codecs are only needed for compressed formats (gated in the tool).
+          python3 android/ci/patch_unitypy.py "$PY"
+
+      - name: Cross-compile libelichika.so (android/arm64, cgo)
+        run: |
+          set -eux
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}"
+          TC="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          CC="$TC/aarch64-linux-android24-clang" \
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
+          go build -buildmode=pie -trimpath -ldflags "-s -w" \
+            -o android/app/src/main/jniLibs/arm64-v8a/libelichika.so .
+          file android/app/src/main/jniLibs/arm64-v8a/libelichika.so
+
+      - name: Build astcenc (android/arm64) for in-app ASTC texture encoding
+        run: |
+          set -eux
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}"
+          git clone --depth 1 --branch 4.8.0 https://github.com/ARM-software/astc-encoder /tmp/astcenc
+          cmake -S /tmp/astcenc -B /tmp/astcenc/build \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release -DASTCENC_ISA_NEON=ON -DASTCENC_CLI=ON
+          cmake --build /tmp/astcenc/build -j"$(nproc)"
+          # the NEON build produces astcenc-neon; ship it as an executable native lib
+          BIN=$(find /tmp/astcenc/build -type f -name 'astcenc-*' ! -name '*.o' | head -1)
+          test -n "$BIN"
+          cp "$BIN" android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
+          file android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
+
+      # CalVer: a tag vYYYY.MM.DD[.N] sets versionName "YYYY.MM.DD[.N]" and a strictly
+      # increasing versionCode YYYYMMDD*100(+N). Non-tag builds get a dated dev version.
+      - name: Derive app version (CalVer)
+        id: ver
+        run: |
+          set -eu
+          REF="${GITHUB_REF#refs/tags/}"
+          if [[ "$REF" =~ ^v([0-9]{4})\.([0-9]{2})\.([0-9]{2})(\.([0-9]+))?$ ]]; then
+            Y=${BASH_REMATCH[1]}; M=${BASH_REMATCH[2]}; D=${BASH_REMATCH[3]}; N=${BASH_REMATCH[5]:-0}
+            NAME="${Y}.${M}.${D}${BASH_REMATCH[4]}"
+            YMD=$(( 10#$Y * 10000 + 10#$M * 100 + 10#$D ))
+            CODE=$(( YMD * 100 + 10#$N ))
+          else
+            NAME="$(date -u +%Y.%m.%d)-dev"
+            CODE=$(( $(date -u +%Y%m%d) * 100 ))
+          fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "elichika version: $NAME (code $CODE)"
+
+      - name: Build debug APK
+        working-directory: android
+        run: >-
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          -PappVersionName="${{ steps.ver.outputs.name }}"
+          -PappVersionCode="${{ steps.ver.outputs.code }}"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      # --- Release-signed build (for public GitHub Release distribution) --------
+      # Requires four repo secrets (one-time setup, see android/README.md):
+      #   RELEASE_KEYSTORE_BASE64  - base64 of your private .keystore (NEVER committed)
+      #   RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD
+      # Without them, the release build falls back to the committed debug key.
+      - name: Decode release keystore
+        id: relkey
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          set -eu
+          if [ -n "${RELEASE_KEYSTORE_BASE64:-}" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+            echo "have_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_key=false" >> "$GITHUB_OUTPUT"
+            echo "No RELEASE_KEYSTORE_BASE64 secret; release APK will use the debug key."
+          fi
+
+      - name: Build release APK
+        working-directory: android
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: >-
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          -PappVersionName="${{ steps.ver.outputs.name }}"
+          -PappVersionCode="${{ steps.ver.outputs.code }}"
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      # On a CalVer tag (vYYYY.MM.DD), publish the release-signed APK to a GitHub Release.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true

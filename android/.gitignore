@@ -1,0 +1,19 @@
+# Gradle / Android build outputs
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+
+# CI-assembled, not committed (see android/README.md and the android.yml workflow)
+app/src/main/jniLibs/
+app/src/main/assets/payload/
+
+# CI-synced Python sources — keep only the committed launcher
+/app/src/main/python/*
+!/app/src/main/python/elichika_launch.py
+
+# Re-include files the repo-root .gitignore would otherwise drop (*.json, *.bat).
+!/app/src/main/assets/actions.json
+!gradlew.bat

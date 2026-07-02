@@ -155,47 +155,119 @@ ensure_aria2() {
     command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1
 }
 
-# Download one region's archive tar and extract it into the cache dir.
-# args: <region: gl|jp> <version hash> <cache_dir> <parent_dir>
-archive_one() {
-    a_region="$1"; a_ver="$2"; a_cache="$3"; a_parent="$4"
-    a_url="https://archive.org/download/ll-sifas-cdn-data/sifas-${a_region}-cdn-assets-${a_ver}.tar"
-    a_tar="$a_parent/.cdn-data-download.tar"
-    echo ""
-    echo "=== $a_region: $a_url ==="
-    a_rc=1
-    if ensure_aria2; then
+# The archive.org item with the bulk static assets, split as multiple COMPLETE
+# uncompressed tar parts per region (packs_GL.tar.000.., packs_JP.tar.000..).
+# Each part is an independent archive (split on file boundaries), so parts are
+# downloaded + extracted one at a time — temp disk use stays ~1 part (~2GB).
+# All entries are "packs/<basename>": --strip-components=1 lands flat basenames.
+ARCHIVE_ITEM_URL="https://archive.org/download/llsifas-elichika-static-data"
+
+# Parallel-connection step-down list, seeded from config.json's archive_connections
+# (default 8, clamped 1-32) so it matches the in-app Go downloader: "N N/2 ... 1".
+archive_conns_list() {
+    acl_n=$(grep -oE '"archive_connections"[[:space:]]*:[[:space:]]*[0-9]+' config.json 2>/dev/null \
+            | grep -oE '[0-9]+' | tail -1)
+    case "$acl_n" in ''|*[!0-9]*) acl_n=8 ;; esac
+    [ "$acl_n" -lt 1 ] && acl_n=1
+    [ "$acl_n" -gt 32 ] && acl_n=32
+    acl_list=""; acl_c=$acl_n
+    while [ "$acl_c" -gt 1 ]; do acl_list="$acl_list $acl_c"; acl_c=$((acl_c / 2)); done
+    echo "$acl_list 1"
+}
+
+# ensure_aria2 can trigger pkg install/upgrade, so with up to 17 parts per run
+# check it once and remember the answer.
+aria2_ready() {
+    if [ -z "${ARIA2_CHECKED:-}" ]; then
+        if ensure_aria2; then ARIA2_STATUS=0; else ARIA2_STATUS=1; fi
+        ARIA2_CHECKED=1
+    fi
+    return "$ARIA2_STATUS"
+}
+
+# Download one tar part and extract it into the cache dir.
+# args: <part file name> <cache_dir> <parent_dir>
+archive_part() {
+    p_part="$1"; p_cache="$2"; p_parent="$3"
+    p_url="$ARCHIVE_ITEM_URL/$p_part"
+    # per-part temp name: a failed part left behind can only ever resume as the
+    # SAME part — never mixed into the next part's download.
+    p_tar="$p_parent/.cdn-dl.$p_part"
+    p_rc=1
+    if aria2_ready; then
         # archive.org can throttle parallel connections, so step the count down on failure
-        # (resuming with -c) before giving up.
-        for a_conns in 16 8 4 2 1; do
-            echo "Downloading with aria2c ($a_conns connection(s))..."
-            aria2c -c -x"$a_conns" -s"$a_conns" -k1M --file-allocation=none \
-                   -d "$a_parent" -o ".cdn-data-download.tar" "$a_url"
-            a_rc=$?
-            [ "$a_rc" -eq 0 ] && break
-            echo "Failed (rc=$a_rc), retrying with fewer connections..."
+        # (resuming with -c) before giving up. Top count from config (archive_connections).
+        for p_conns in $(archive_conns_list); do
+            echo "Downloading $p_part with aria2c ($p_conns connection(s))..."
+            aria2c -c -x"$p_conns" -s"$p_conns" -k1M --file-allocation=none \
+                   -d "$p_parent" -o ".cdn-dl.$p_part" "$p_url"
+            p_rc=$?
+            [ "$p_rc" -eq 0 ] && break
+            echo "Failed (rc=$p_rc), retrying with fewer connections..."
         done
     fi
-    if [ "$a_rc" -ne 0 ]; then
+    if [ "$p_rc" -ne 0 ]; then
         echo "aria2 unavailable - falling back to curl (single connection, resumable, slow)."
-        curl -L -C - -o "$a_tar" "$a_url"
-        a_rc=$?
+        # an aria2c partial has unwritten holes, so curl must NOT append to it -
+        # drop it (and its control file) and let curl own the file from byte 0.
+        rm -f "$p_tar" "$p_tar.aria2"
+        curl -fL -C - -o "$p_tar" "$p_url"
+        p_rc=$?
     fi
-    if [ "$a_rc" -ne 0 ] || [ ! -s "$a_tar" ]; then
-        echo "$a_region download failed (rc=$a_rc). Check the version and your connection."
+    if [ "$p_rc" -ne 0 ] || [ ! -s "$p_tar" ]; then
+        echo "$p_part download failed (rc=$p_rc). Check your connection and rerun to resume."
         return 1
     fi
-    echo "Extracting $a_region into $a_cache ..."
-    mkdir -p "$a_cache"
-    # --strip-components=1 drops the "sifas-..-<hash>/" wrapper; --skip-old-files keeps files you
+    echo "Extracting $p_part into $p_cache ..."
+    mkdir -p "$p_cache"
+    # --strip-components=1 drops the "packs/" wrapper; --skip-old-files keeps files you
     # already have (fast incremental, no manual move needed).
-    if tar -xf "$a_tar" -C "$a_cache" --strip-components=1 --skip-old-files; then
-        rm -f "$a_tar"
-        echo "$a_region done."
+    if tar -xf "$p_tar" -C "$p_cache" --strip-components=1 --skip-old-files; then
+        rm -f "$p_tar" "$p_tar.aria2"
+        # part-level resume marker (dot-prefixed: the server's pack index skips it)
+        touch "$p_cache/.archive_done_$p_part"
+        echo "$p_part done."
     else
+        # a tar that fails to parse is corrupt - remove it so the rerun redownloads fresh
+        rm -f "$p_tar" "$p_tar.aria2"
         echo "Extract failed. If your tar lacks --skip-old-files (busybox), run: pkg install tar"
         return 1
     fi
+}
+
+# Download one region's tar parts (from its parts.txt list) and extract them.
+# args: <region: gl|jp> <cache_dir> <parent_dir>
+archive_one() {
+    a_region="$1"; a_cache="$2"; a_parent="$3"
+    case "$a_region" in
+        jp) a_tag="JP" ;;
+        *)  a_tag="GL" ;;
+    esac
+    echo ""
+    echo "=== $a_region: $ARCHIVE_ITEM_URL/packs_${a_tag}.tar.* ==="
+    a_parts=$(curl -fsSL "$ARCHIVE_ITEM_URL/packs_${a_tag}.parts.txt" | tr -d '\r')
+    if [ -z "$a_parts" ]; then
+        echo "$a_region: could not fetch the parts list (packs_${a_tag}.parts.txt). Check your connection."
+        return 1
+    fi
+    a_total=$(printf '%s\n' "$a_parts" | grep -c .)
+    a_i=0; a_fail=0
+    for a_part in $a_parts; do
+        a_i=$((a_i + 1))
+        case "$a_part" in */*|*\\*) echo "skipping suspicious part name: $a_part"; a_fail=$((a_fail + 1)); continue ;; esac
+        if [ -e "$a_cache/.archive_done_$a_part" ]; then
+            echo "[$a_i/$a_total] $a_part already extracted, skipping."
+            continue
+        fi
+        echo "[$a_i/$a_total] $a_part"
+        # parts are independent, so keep going on failure - a rerun redoes only the failed ones
+        archive_part "$a_part" "$a_cache" "$a_parent" || a_fail=$((a_fail + 1))
+    done
+    if [ "$a_fail" -gt 0 ]; then
+        echo "$a_region finished with $a_fail failed part(s) - run this again to retry just those."
+        return 1
+    fi
+    echo "$a_region done."
 }
 
 # Download ALL game files as big archives from archive.org (gl, jp, or both). This does NOT touch
@@ -231,13 +303,18 @@ download_all_archive() {
         *)  dl_regions="gl jp" ;;
     esac
     wake_lock   # keep going with the screen off
+    dl_failed=0
     for r in $dl_regions; do
-        if [ "$r" = "jp" ]; then rv="b66ec2295e9a00aa"; else rv="2d61e7b4e89961c7"; fi
-        archive_one "$r" "$rv" "$cache_dir" "$dl_parent"
+        archive_one "$r" "$cache_dir" "$dl_parent" || dl_failed=$((dl_failed + 1))
     done
     wake_unlock
     echo ""
-    echo "All done. Restart the server (option 1) so it indexes the new files."
+    if [ "$dl_failed" -gt 0 ]; then
+        echo "Finished with failures in $dl_failed region(s) - run this again to retry just the failed parts."
+    else
+        echo "All done."
+    fi
+    echo "Restart the server (option 1) so it indexes the new files."
     read -p "Press Enter to continue..." _dummy_dlall
 }
 
@@ -494,25 +571,25 @@ while true; do
                     2)
                         clear
                         stop_server
-                        python3 unity_costumemod_packer.py
+                        python3 modtools/unity_costumemod_packer.py
                         read -p "Press Enter to continue..." _dummy0123
                         ;;
                     3)
                         clear
                         stop_server
-                        python3 sifas_breast_tuner.py
+                        python3 modtools/sifas_breast_tuner.py
                         read -p "Press Enter to continue..." _dummy01234
                         ;;
                     4)
                         clear
                         stop_server
-                        python3 skirt_length_changer.py
+                        python3 modtools/skirt_length_changer.py
                         read -p "Press Enter to continue..." _dummy01235
                         ;;
                     5)
                         clear
                         stop_server
-                        python3 sifas_mesh_baker.py
+                        python3 modtools/sifas_mesh_baker.py
                         read -p "Press Enter to continue..." _dummy012356
                         ;;
                     0)

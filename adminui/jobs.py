@@ -4,6 +4,7 @@ Events are buffered in a list so a client connecting slightly late still replays
 everything. (Copied from the SIFAS webtools panel - identical framework.)
 """
 import threading
+import time
 import traceback
 import uuid
 
@@ -17,6 +18,7 @@ class Job:
         self._events = []
         self._cond = threading.Condition()
         self._done = False
+        self._t0 = time.monotonic()       # for the [+s] elapsed stamp on log lines
 
     def emit(self, event: dict):
         with self._cond:
@@ -25,8 +27,13 @@ class Job:
                 self._done = True
             self._cond.notify_all()
 
+    def elapsed(self):
+        return time.monotonic() - self._t0
+
     def log(self, line):
-        self.emit({"type": "log", "line": str(line)})
+        # stamp each line with the time since the job started, so a slow stage is
+        # obvious from the gap between consecutive log lines.
+        self.emit({"type": "log", "line": f"[+{self.elapsed():5.1f}s] {line}"})
 
     def progress(self, done, total):
         try:
@@ -84,6 +91,8 @@ class JobManager:
             job.status = "running"
             try:
                 summary = fn(job) or ""
+                took = f"(took {job.elapsed():.1f}s)"
+                summary = f"{summary} {took}".strip() if summary else took
                 if job.cancel_event.is_set():
                     job.status = "cancelled"
                     job.emit({"type": "done", "status": "cancelled", "summary": summary})

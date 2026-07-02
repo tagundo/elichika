@@ -6,10 +6,12 @@ endpoint backs the dynamic dropdowns (backup list, costume list).
 """
 import json
 import mimetypes
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from adminui import i18n
 from adminui.jobs import MANAGER
 from adminui.tools import registry
 
@@ -40,6 +42,11 @@ class Handler(BaseHTTPRequestHandler):
     def _query(self):
         return {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
 
+    def _lang(self):
+        """UI language: ?lang= override, else SIFAS_LANG (set by the app to the
+        user's chosen language), else English."""
+        return self._query().get("lang") or os.environ.get("SIFAS_LANG") or "en"
+
     def _read_json_body(self):
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
@@ -58,7 +65,14 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/ui/"):
                 return self._serve_static(path[len("/ui/"):])
             if path == "/api/tools":
-                return self._send_json({"tools": registry.public_tools()})
+                return self._send_json({"tools": registry.public_tools(self._lang())})
+            if path == "/api/i18n":
+                lang = self._lang()
+                return self._send_json({
+                    "lang": lang,
+                    "strings": i18n.all_strings(lang),
+                    "languages": i18n.language_options(),
+                })
             if path.startswith("/api/options/"):
                 return self._api_options(path[len("/api/options/"):])
             if path.startswith("/api/jobs/") and path.endswith("/events"):
@@ -121,12 +135,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")  # disable any proxy buffering
         self.send_header("Connection", "close")
         self.end_headers()
+        # Prime the pipe with padding so Android WebViews that buffer a streamed
+        # response deliver events live instead of all at once when the job ends.
+        self.wfile.write(b":" + b" " * 2048 + b"\n\n")
+        self.wfile.flush()
         index = 0
         try:
             while True:
-                event = job.event_at(index, timeout=10.0)
+                event = job.event_at(index, timeout=2.0)
                 if event is None:
                     if job.is_done and index >= job.event_count:
                         break

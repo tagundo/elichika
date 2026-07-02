@@ -15,6 +15,18 @@ def _module():
     return costume_clone
 
 
+def character_choices():
+    """[{value, label}] of every character (ID — name) for the picker, so a
+    beginner never has to know the numeric IDs. Falls back to [] if the names
+    table can't be imported (the fields then degrade to plain text input)."""
+    try:
+        names = _module().CHARACTER_NAMES
+    except Exception:
+        return []
+    return [{"value": str(cid), "label": f"{cid} — {name}"}
+            for cid, name in sorted(names.items())]
+
+
 def costume_options(params):
     src_id = (params.get("src_id") or "").strip()
     if not src_id.isdigit():

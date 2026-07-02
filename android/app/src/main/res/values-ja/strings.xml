@@ -1,0 +1,95 @@
+<resources>
+    <string name="start_server">サーバー開始</string>
+    <string name="stop_server">サーバー停止</string>
+    <string name="status_running">● 127.0.0.1:8080</string>
+    <string name="status_stopped">○ 停止中</string>
+    <string name="tab_console">コンソール</string>
+    <string name="tab_webui">サーバー設定</string>
+    <string name="tab_user">アカウント</string>
+    <string name="tab_dev">サーバーコンテンツ</string>
+    <string name="tab_mod">アセット編集</string>
+    <string name="notif_channel">elichika サーバー</string>
+    <string name="notif_running">elichika サーバー実行中</string>
+    <string name="notif_text">ゲームを 127.0.0.1:8080 に接続してください。タップでアプリを開きます。</string>
+    <string name="first_run_setup">初回設定: サーバーファイルを準備中…</string>
+    <string name="perm_title">ストレージ権限が必要</string>
+    <string name="perm_msg">ゲームファイルを共有の Download/sukusta フォルダに保存するには「すべてのファイルへのアクセス」権限が必要です。設定でこのアプリを許可してください。</string>
+    <string name="perm_open">設定を開く</string>
+    <string name="perm_later">後で</string>
+    <string name="advanced">詳細 ▾</string>
+
+    <string name="settings_title">設定</string>
+    <string name="about_title">情報</string>
+    <string name="language">言語</string>
+    <string name="lang_auto">自動 (システムに従う)</string>
+    <string name="close">閉じる</string>
+    <string name="restart_hint">適用しました。Web UI に反映するにはサーバーを再起動してください。</string>
+    <string name="about_body">elichika は SIFAS（ラブライブ！スクールアイドルフェスティバル ALL STARS）用の私設サーバーです。このアプリはサーバー・WebUI・開発/MODツールを端末上で動かします — ゲームを 127.0.0.1:8080 に接続してください。\n\nサーバー・開発ツール: elichika プロジェクト（YumeMichi / arina999999997 / tatara_hisoka フォーク）。MODツール: SIFAS-MODDING-HELPING-TOOLS。</string>
+
+    <string name="act_download_archive">全ゲームファイルをダウンロード (archive.org)</string>
+    <string name="act_download_packs">不足分のみ取得 (ゲームCDN)</string>
+    <string name="act_cdn_cache">CDNキャッシュ オン/オフ</string>
+    <string name="act_import_addon">アドオンzipを取り込む</string>
+    <string name="act_rebuild_assets">マスターデータ再構築</string>
+    <string name="act_fix_training">トレーニングツリー修復</string>
+    <string name="act_gamebanana">GameBanana MODページ</string>
+    <string name="act_ayakamods">AyakaMods MODページ</string>
+    <string name="act_settings">設定 ⚙</string>
+    <string name="act_about">情報 ℹ</string>
+    <string name="cdn_on">CDNキャッシュ: オン ✓ (タップで停止)</string>
+    <string name="cdn_off">CDNキャッシュ: オフ (タップで有効化)</string>
+
+    <!-- server state -->
+    <string name="status_starting">◌ 開始中…</string>
+
+    <!-- confirmations -->
+    <string name="confirm_title">確認</string>
+    <string name="confirm_continue">続行</string>
+    <string name="cancel">キャンセル</string>
+    <string name="confirm_download_archive">archive.org から全ゲームデータ（数GB）をダウンロードします。Wi-Fi の使用を強く推奨します。地域を選択してください:</string>
+    <string name="region_gl">GL (グローバル — EN / KO / ZH)</string>
+    <string name="region_jp">JP (日本)</string>
+    <string name="region_both">両方 (GL + JP)</string>
+    <string name="confirm_download_packs">ゲームCDNから不足パックをダウンロードします（サイズは可変、大きい場合あり）。Wi-Fi を推奨します。</string>
+    <string name="confirm_stops_server">実行中のサーバーが先に停止されます。</string>
+
+    <!-- first-run guide -->
+    <string name="act_guide">ガイド ❓</string>
+    <string name="guide_title">はじめに</string>
+    <string name="guide_body">1. ストレージ権限を許可してください（共有 Download/sukusta フォルダ用）。\n2. 「サーバー開始」をタップ。\n3. ゲームアプリを 127.0.0.1:8080 に接続（LL-hax ガイド参照）。\n4. （任意）ゲームファイルを事前ダウンロード —「全ゲームファイルをダウンロード」（archive.org 全体）または「不足分のみ取得」（CDN）。推奨ですが必須ではありません。\n\nCDNキャッシュ: オンのとき、不足パックはプレイ中に必要に応じてダウンロードされ packs/ に保存されるので、事前ダウンロードは任意です。これで packs/ を埋める場合は、ゲーム画面よりも elichika を前面（フォアグラウンド）にしておくと、ダウンロードが途切れず完了します。\n\nタブ: 「サーバー設定」/「アカウント」= サーバーWeb UI ・「サーバーコンテンツ」= 開発ツール ・「アセット編集」= MODツール。\n\nフォルダ (Download/sukusta): extracted = 復号済みモデル（編集の入力） ・ modded = 編集済みバンドル（編集の出力） ・ suit / live / card / livetimeline = アドオンのドロップ先 ・ sql = DBパッチ ・ packs = ゲームパックのキャッシュ ・ backup = DBバックアップ ・ logs = elichika.log。</string>
+
+    <!-- console controls -->
+    <string name="btn_share_log">ログを共有</string>
+    <string name="btn_clear_log">消去</string>
+    <string name="toast_import_ok">取り込みました。「サーバーコンテンツ」タブでインストールしてください。</string>
+
+    <!-- console action groups -->
+    <string name="grp_downloads">ゲームデータ</string>
+    <string name="grp_general">一般</string>
+    <string name="grp_pages">MODページ</string>
+
+    <!-- server offline overlay (web tabs) -->
+    <string name="offline_msg">サーバーが実行されていません。このページを使うにはサーバーを開始してください。</string>
+
+    <!-- localized console log lines -->
+    <string name="log_server_exited">[server] 終了 (コード %1$d)</string>
+    <string name="log_server_starting">[server] 開始中…</string>
+    <string name="log_action_stop_first">[action] 先にサーバーを停止します…</string>
+    <string name="log_action_run">[action] 実行: %1$s</string>
+    <string name="log_action_done">[action] 完了 (コード %1$d)。サーバーを再起動してください。</string>
+    <string name="log_error_missing_binary">[error] libelichika.so がありません: %1$s</string>
+    <string name="log_error_exec_failed">[error] 実行失敗: %1$s</string>
+    <string name="log_import_ok">[取り込み] %1$s —「サーバーコンテンツ」タブでインストールしてください。</string>
+    <string name="log_import_failed">[取り込み] 失敗: %1$s</string>
+    <string name="log_actions_load_failed">[action] actions.json 読み込み失敗: %1$s</string>
+    <string name="log_pyservers_started">[pyservers] 開発/MODツールWeb UI 開始 (:8772 / :8770)</string>
+    <string name="log_pyservers_failed">[pyservers] Pythonツール開始失敗: %1$s</string>
+    <string name="log_settings_lang">[settings] 言語 → %1$s. %2$s</string>
+    <string name="log_setup_no_payload">[setup] バンドルペイロードがありません（CIビルドではない）。サーバーファイル展開をスキップします。</string>
+    <string name="log_setup_preparing">[setup] サーバーファイル準備中… (バージョン %1$s, 静的アセット更新=%2$s)</string>
+    <string name="log_setup_ready">[setup] 準備完了。</string>
+    <string name="log_setup_downloads_link">[setup] ~/storage/downloads → %1$s</string>
+    <string name="log_setup_link_failed">[setup] 共有フォルダのリンク失敗（権限が必要な場合あり）: %1$s</string>
+    <string name="log_setup_cdn_dir">[setup] CDNキャッシュフォルダ → %1$s</string>
+    <string name="log_setup_config_created">[setup] config.json 作成、CDNキャッシュ オン、フォルダ → %1$s</string>
+</resources>

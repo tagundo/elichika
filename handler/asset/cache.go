@@ -43,6 +43,32 @@ var httpClient = &http.Client{
 	},
 }
 
+// cdnGet fetches url, retrying transient failures (connection errors and 5xx) a
+// few times with a short backoff. A flaky mobile CDN connection often fails the
+// first attempt; without this the failure surfaces to the game as a "Download
+// error" prompt. A 4xx (e.g. 404) is returned immediately so callers can fall
+// back to another source.
+func cdnGet(url string) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+		}
+		res, err := httpClient.Get(url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if res.StatusCode >= 500 {
+			res.Body.Close()
+			lastErr = fmt.Errorf("status %d for %s", res.StatusCode, url)
+			continue
+		}
+		return res, nil
+	}
+	return nil, lastErr
+}
+
 // one lock per pack name so concurrent requests for the same pack download it only once
 var cacheLocks sync.Map // string -> *sync.Mutex
 
@@ -257,7 +283,7 @@ func downloadFromURL(url, dest string) error {
 // downloadFromURLProgress is downloadFromURL but, when progress != nil, adds bytes to it as they
 // arrive so a caller can show live progress.
 func downloadFromURLProgress(url, dest string, progress *int64) error {
-	res, err := httpClient.Get(url)
+	res, err := cdnGet(url)
 	if err != nil {
 		return err
 	}

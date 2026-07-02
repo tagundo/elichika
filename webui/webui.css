@@ -5,6 +5,9 @@
    overflowing the viewport. */
 
 :root {
+  /* declare both schemes so the WebView/browser follows the system setting and
+     does NOT algorithmically force-dark this page */
+  color-scheme: light dark;
   --bg: #f5f6f8;
   --card: #ffffff;
   --line: #d8dce3;
@@ -12,6 +15,19 @@
   --muted: #6b7280;
   --accent: #3b6fd4;
   --accent-press: #2c569f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161b;
+    --card: #1d212a;
+    --line: #333a47;
+    --text: #e6e9ef;
+    --muted: #98a0ad;
+    --accent: #6ea8fe;
+    --accent-press: #4b7bd6;
+  }
+  th { background: #252b36; }
 }
 
 * { box-sizing: border-box; }
