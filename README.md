@@ -15,8 +15,25 @@ Note that this part concern only this server implementation, and it only provide
 
 You should check out checkout the [LL hax wiki](https://carette.codeberg.page/ll-hax-docs/sifas/) for clarification and general knowledge, as it explain things better (or it can lead you to places where you can ask questions).
 
-### Android
-To install the server, first install termux, you can get it from [f-droid](https://f-droid.org/en/packages/com.termux/) or [github](https://github.com/termux/termux-app#github). Note that the google play store version will most likely NOT WORK.
+### Android — standalone app (APK, easiest)
+A single installable app runs the server **and** its dev/modding tools on your phone,
+replacing the whole Termux setup. Grab the latest `elichika-*.apk` from the
+[**Releases**](https://github.com/tagundo/elichika/releases) page.
+
+1. Install it (allow "Install unknown apps" for your browser/file manager when asked).
+2. Open **elichika**, grant storage permission, tap **Start** — the server runs at
+   `127.0.0.1:8080` as a foreground service. The in-app **Guide (❓)** explains the rest.
+3. Point the SIFAS client at `127.0.0.1:8080` — that step is outside this app; see the
+   [LL-hax wiki](https://carette.codeberg.page/ll-hax-docs/sifas/).
+
+Three WebView tabs expose the server Web UI, the dev tools and the SIFAS modding tools.
+All community builds share one signing key, so a newer APK installs over an older one.
+The APK is built by GitHub Actions (see `.github/workflows/android.yml`, `android/README.md`).
+
+> Fan-made, not affiliated with Bushiroad / KLab; for personal, educational use.
+
+### Android — Termux (manual)
+To install the server manually, first install termux, you can get it from [f-droid](https://f-droid.org/en/packages/com.termux/) or [github](https://github.com/termux/termux-app#github). Note that the google play store version will most likely NOT WORK.
 
 Then run the install script inside termux, this will take care of everything:
 ```
