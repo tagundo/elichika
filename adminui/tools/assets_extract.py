@@ -47,11 +47,13 @@ _DICT_BY_LANG = {
 }
 
 
-def _dictionary_conn(x, base="."):
-    """Open the dictionary DB matching the app language (SIFAS_LANG), so costume
-    names show in the user's language; fall back to the extractor's English-first
-    find_dictionary()."""
-    lang = (os.environ.get("SIFAS_LANG") or "en").strip().lower().split("-")[0].split("_")[0]
+def _dictionary_conn(x, base=".", lang=None):
+    """Open the dictionary DB matching the request language, so costume names show
+    in the user's language; fall back to the extractor's English-first
+    find_dictionary(). `lang` is the per-request UI language (?lang=, same as the
+    rest of the WebUI); we fall back to SIFAS_LANG only when it isn't given, so a
+    live language switch is honoured instead of the value fixed at server launch."""
+    lang = (lang or os.environ.get("SIFAS_LANG") or "en").strip().lower().split("-")[0].split("_")[0]
     want = _DICT_BY_LANG.get(lang)
     if want:
         for loc in ("gl", "jp"):
@@ -96,7 +98,7 @@ def character_choices():
             for cid, name in sorted(chars.items())]
 
 
-def _costume_meta(x, model_path):
+def _costume_meta(x, model_path, lang=None):
     """(display_name, code) for a costume model, for the output filename: the
     localized costume name plus its canonical chNNNN_coNNNN code (or id<n>
     fallback). Empty strings when the costume can't be found."""
@@ -114,7 +116,7 @@ def _costume_meta(x, model_path):
         md.close()
     rname = ""
     if row:
-        dc = _dictionary_conn(x)
+        dc = _dictionary_conn(x, lang=lang)
         try:
             rname = x.real_costume_name(dc, row[0]) or ""
         finally:
@@ -153,7 +155,7 @@ def costume_options(params):
         md.close()
     nm = _names()
     full = nm.CHARACTERS if nm else {}
-    dc = _dictionary_conn(x)
+    dc = _dictionary_conn(x, lang=params.get("lang"))
     try:
         q = search.lower()
         out = []
@@ -174,7 +176,7 @@ def costume_options(params):
             dc.close()
 
 
-def _resolve_cid_and_label(x, base, model, cid):
+def _resolve_cid_and_label(x, base, model, cid, lang=None):
     """(cid, filename label) for a model. Recovers the character id from
     masterdata when it wasn't given (e.g. a search pick spanning characters)."""
     if not cid.isdigit():
@@ -195,7 +197,7 @@ def _resolve_cid_and_label(x, base, model, cid):
         cname = cid
     # Useful, complete filename: character · canonical chNNNN_coNNNN code · costume
     # name — not the cryptic internal model path (which stays in the manifest).
-    rname, code = _costume_meta(x, model)
+    rname, code = _costume_meta(x, model, lang=lang)
     return cid, x.sanitize("_".join(p for p in (str(cname), code, rname) if p))
 
 
@@ -244,7 +246,7 @@ def run_extract(job, params):
                     print(f"skip: {model} not in member_model in {os.path.basename(asset_db)}")
                     continue
                 pack_name, head, size, key1, key2 = mm
-                _cid, label = _resolve_cid_and_label(x, base, model, cid0)
+                _cid, label = _resolve_cid_and_label(x, base, model, cid0, lang=params.get("lang"))
                 used, manifest = set(), []
                 ok = x.extract_one(resolver, out_dir, "member_model", model,
                                    pack_name, head, size, key1, key2, used, manifest,
