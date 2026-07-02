@@ -41,12 +41,15 @@ Usage
 """
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -230,12 +233,14 @@ def _is_bucket_dir(name):
     return n.startswith("pak") or n.startswith("pkg")
 
 
-def _index_dir(d, index):
+def _index_dir(d, index, prog=None):
     """Index files directly inside d as basename->path (one level, no reads)."""
     try:
         for entry in os.scandir(d):
             if entry.is_file():
                 index.setdefault(entry.name, entry.path)
+                if prog is not None:
+                    prog.file()
     except (FileNotFoundError, NotADirectoryError, PermissionError):
         pass
 
@@ -244,7 +249,7 @@ def _index_dir(d, index):
 _WRAPPER_DIRS = {"files", "static"}
 
 
-def _index_buckets_under(d, index, depth=0):
+def _index_buckets_under(d, index, dirs=None, prog=None, depth=0):
     """Index files directly in d, plus files inside d's pak*/pkg* buckets.
     Descends one more level into 'files'/'static' wrapper folders, so all of
     these are handled:
@@ -253,8 +258,18 @@ def _index_buckets_under(d, index, depth=0):
         <d>/static/pak9/...     ('static' wrapper)
         <d>/files/files/pak9/.. (nested, up to a small depth)
     Only descends into wrapper- or bucket-named dirs, so it never walks
-    unrelated trees (e.g. assets/db). Lists names only — no file reads."""
-    _index_dir(d, index)                          # flat files at this level
+    unrelated trees (e.g. assets/db). Lists names only — no file reads.
+
+    When `dirs` is given it collects {scanned_dir: mtime} for every directory we
+    touch, which the on-disk cache stores as its staleness signature: adding or
+    removing a file/folder bumps its parent dir's mtime, so a changed mtime on any
+    stored dir (root, a bucket, or a wrapper) means the cache must be rebuilt."""
+    _index_dir(d, index, prog)                    # flat files at this level
+    if dirs is not None:
+        try:
+            dirs[os.path.abspath(d)] = os.stat(d).st_mtime
+        except OSError:
+            pass
     try:
         entries = list(os.scandir(d))
     except (FileNotFoundError, NotADirectoryError, PermissionError):
@@ -264,20 +279,181 @@ def _index_buckets_under(d, index, depth=0):
             continue
         name = entry.name.lower()
         if _is_bucket_dir(name):
-            _index_dir(entry.path, index)         # files inside a bucket
+            _index_dir(entry.path, index, prog)   # files inside a bucket
+            if dirs is not None:
+                try:
+                    dirs[os.path.abspath(entry.path)] = os.stat(entry.path).st_mtime
+                except OSError:
+                    pass
         elif name in _WRAPPER_DIRS and depth < 3:
-            _index_buckets_under(entry.path, index, depth + 1)
+            _index_buckets_under(entry.path, index, dirs, prog, depth + 1)
+
+
+# ---- on-disk pack index cache -----------------------------------------------
+# The first time a big packs/ folder is indexed, os.scandir over thousands of
+# files on Android's FUSE-backed shared storage can take ~30s (cold). We persist
+# the resulting {basename: path} map to a small JSON so later runs — even after
+# the app is restarted — skip the cold scan and load in a few ms. Staleness is
+# caught by re-stat'ing the dirs we scanned (see _index_buckets_under): any add /
+# remove bumps a stored dir's mtime, which invalidates the cache and forces a
+# rebuild. The cache lives OUTSIDE the indexed roots so writing it never changes
+# a root's mtime (which would otherwise invalidate the cache we just wrote).
+_INDEX_CACHE_VERSION = 1
+
+
+def _index_cache_enabled():
+    return os.environ.get("LLAS_NO_INDEX_CACHE", "").strip().lower() not in (
+        "1", "true", "yes", "on")
+
+
+def _index_cache_dir():
+    """Writable, persistent location for the index cache. Override with
+    LLAS_INDEX_CACHE_DIR (the app can point this at a guaranteed-writable path);
+    defaults to ~/.cache/llas_extractor (Termux home / the app's HOME)."""
+    override = os.environ.get("LLAS_INDEX_CACHE_DIR")
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
+    return os.path.join(os.path.expanduser("~"), ".cache", "llas_extractor")
+
+
+def _index_cache_path(root):
+    h = hashlib.sha1(os.path.abspath(root).encode("utf-8", "surrogatepass")).hexdigest()[:16]
+    return os.path.join(_index_cache_dir(), h + ".json")
+
+
+def _load_disk_index(root):
+    """Return the cached {basename: path} for root if a fresh cache exists, else
+    None. 'Fresh' = every directory recorded at build time still has the same
+    mtime (cheap: a handful of stat calls, not a full re-scan)."""
+    if not _index_cache_enabled():
+        return None
+    root = os.path.abspath(root)
+    try:
+        with open(_index_cache_path(root), "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if (not isinstance(data, dict) or data.get("version") != _INDEX_CACHE_VERSION
+            or data.get("root") != root):
+        return None
+    dirs, index = data.get("dirs"), data.get("index")
+    if not isinstance(dirs, dict) or not isinstance(index, dict):
+        return None
+    for d, mtime in dirs.items():
+        try:
+            if os.stat(d).st_mtime != mtime:
+                return None                       # something changed -> rebuild
+        except OSError:
+            return None                           # a scanned dir vanished -> rebuild
+    return index
+
+
+def _save_disk_index(root, index, dirs):
+    """Persist the index atomically. Silently skips (in-memory cache still works)
+    if the cache location isn't writable."""
+    if not _index_cache_enabled() or not dirs:
+        return
+    path = _index_cache_path(root)
+    tmp = path + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"version": _INDEX_CACHE_VERSION,
+                       "root": os.path.abspath(root),
+                       "dirs": dirs, "index": index}, f)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+def _invalidate_disk_index(root):
+    """Drop the on-disk cache for root (called when we add a pack to it)."""
+    try:
+        os.remove(_index_cache_path(root))
+    except OSError:
+        pass
+
+
+def _clear_disk_index_cache():
+    """Remove all cached indexes (used by --refresh-index)."""
+    d = _index_cache_dir()
+    try:
+        for fn in os.listdir(d):
+            if fn.endswith(".json") or fn.endswith(".json.tmp"):
+                try:
+                    os.remove(os.path.join(d, fn))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+class _ScanProgress:
+    """Heartbeat for the one-time cold pack-folder scan, so a slow first index
+    doesn't look like a hang. Stays quiet for quick scans (< ~0.7s) and prints a
+    running file count roughly every 1.5s while a long scan is in progress.
+    Writes via print(), which the web adapter captures into the job log."""
+
+    def __init__(self, root, log=print):
+        self.root = root
+        self.log = log
+        self.files = 0
+        self._t0 = time.monotonic()
+        self._last = self._t0
+        self._announced = False
+
+    def file(self):
+        self.files += 1
+        if self.files & 0x3FF == 0:               # check the clock every 1024 files
+            self._tick()
+
+    def _tick(self):
+        now = time.monotonic()
+        if not self._announced and now - self._t0 > 0.7:
+            self.log(f"Indexing packs under {self.root} … "
+                     f"(first run on shared storage can take a while)")
+            self._announced = True
+            self._last = now
+        elif self._announced and now - self._last > 1.5:
+            self.log(f"  … {self.files:,} pack files indexed so far")
+            self._last = now
+
+    def done(self):
+        el = time.monotonic() - self._t0
+        if self._announced or el > 0.7:
+            self.log(f"Pack index ready: {self.files:,} files in {el:.1f}s "
+                     f"(cached — the next run will be instant)")
+
+
+def _scan_pack_index(root):
+    """Full cold scan of root -> ({basename: path}, {scanned_dir: mtime})."""
+    index, dirs = {}, {}
+    prog = _ScanProgress(root)
+    _index_buckets_under(root, index, dirs, prog)
+    prog.done()
+    return index, dirs
 
 
 def build_pack_index(root):
-    """Index pack files under root (cached), so packs can be found by name even
-    when bucket names (pak1, pak9 ...) don't encode the pack name.
-    Handles buckets directly under root and under a 'files'/'static' wrapper."""
+    """Index pack files under root, so packs can be found by name even when bucket
+    names (pak1, pak9 ...) don't encode the pack name. Handles buckets directly
+    under root and under a 'files'/'static' wrapper.
+
+    Three tiers, fastest first: this process's in-memory cache, the on-disk cache
+    (survives restarts), then a full cold scan (which is then persisted)."""
     root = os.path.abspath(root)
     if root in _pack_index_cache:
         return _pack_index_cache[root]
-    index = {}
-    _index_buckets_under(root, index)
+    index = _load_disk_index(root)
+    if index is not None:
+        if len(index) >= 200:                     # note the fast path on big folders
+            print(f"Pack index loaded from cache: {len(index):,} packs ({root})")
+    else:
+        index, dirs = _scan_pack_index(root)
+        _save_disk_index(root, index, dirs)
     _pack_index_cache[root] = index
     return index
 
@@ -413,11 +589,21 @@ class PackResolver:
     def _dest(self, pack_name):
         return os.path.join(self.packs_dir, pack_name)
 
+    def _register_pack(self, dest, pack_name):
+        """A new pack now lives in packs_dir. Update the in-memory index in place
+        (so a bulk download doesn't rescan the whole folder for every pack) and
+        drop the stale on-disk cache — it's rebuilt fresh on the next cold start
+        (packs_dir's mtime changed anyway, so it would be invalidated regardless)."""
+        idx = _pack_index_cache.get(os.path.abspath(self.packs_dir))
+        if idx is not None:
+            idx[pack_name] = dest
+        _invalidate_disk_index(self.packs_dir)
+
     def _finalize(self, tmp, pack_name):
         os.makedirs(self.packs_dir, exist_ok=True)
         dest = self._dest(pack_name)
         os.replace(tmp, dest)
-        _pack_index_cache.pop(self.packs_dir, None)   # cached index is now stale
+        self._register_pack(dest, pack_name)
         return dest
 
     def _copy_in(self, src, pack_name):
@@ -425,7 +611,7 @@ class PackResolver:
         dest = self._dest(pack_name)
         if os.path.abspath(src) != os.path.abspath(dest):
             shutil.copy2(src, dest)
-            _pack_index_cache.pop(self.packs_dir, None)
+            self._register_pack(dest, pack_name)
         return dest
 
     # ---- CDN ----
@@ -974,7 +1160,16 @@ def main():
                          f"(<cdn><pack_name>). Default: {DEFAULT_CDN_BASE}")
     ap.add_argument("--no-cdn", action="store_true",
                     help="never touch the network; only use local packs/static/files")
+    ap.add_argument("--no-index-cache", action="store_true",
+                    help="don't read/write the on-disk pack index cache (always rescan)")
+    ap.add_argument("--refresh-index", action="store_true",
+                    help="delete cached pack indexes and rebuild them this run")
     args = ap.parse_args()
+
+    if args.no_index_cache:
+        os.environ["LLAS_NO_INDEX_CACHE"] = "1"
+    if args.refresh_index:
+        _clear_disk_index_cache()
 
     base_dir = os.path.abspath(os.path.expanduser(args.base))
 
