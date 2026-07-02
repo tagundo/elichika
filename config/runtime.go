@@ -16,8 +16,9 @@ type RuntimeConfig struct {
 	ServerAddress            *string `json:"server_address" of_label:"Server's address"`
 	CdnServer                *string `json:"cdn_server" of_label:"CDN server's address"`
 	CdnPartialFileCapability *string `json:"cdn_partial_file_capability" of_type:"select" of_options:"Has static partial file\nstatic_file\nHas partial file mapping\nmapped_file\nHas range API\nhas_range_api\nNothing\nnothing" of_label:"CDN server's partial file capability" `
-	CdnCache                 *bool   `json:"cdn_cache" of_label:"Cache CDN packs locally and serve them"`                                               // when true, elichika serves packs itself, downloading missing ones from cdn_server (the upstream) into the cache directory
+	CdnCache                 *bool   `json:"cdn_cache" of_label:"Cache CDN packs locally and serve them"`                                                                                        // when true, elichika serves packs itself, downloading missing ones from cdn_server (the upstream) into the cache directory
 	CdnCacheDir              *string `json:"cdn_cache_dir" of_label:"CDN cache directory (empty = the local static/ folder, the PC default; e.g. ~/storage/downloads/sukusta/packs on Android)"` // where cached packs are stored/shared; empty (the PC default) means the local static/ folder
+	ArchiveConnections       *int32  `json:"archive_connections" of_label:"Parallel connections for the archive.org bulk download (1-32)" of_attrs:"min=\"1\" max=\"32\""`                       // starting connection count for the multi-part IA download; steps down on throttling
 	AdminPassword            *string `json:"admin_password" of_label:"Admin password" of_type:"password""`
 	TapBondGain              *int32  `json:"tap_bond_gain" of_label:"Partner tap bond reward" of_attrs:"min=\"0\" max=\"20000000\"`
 	AutoJudgeType            *int32  `json:"auto_judge_type" of_type:"select" of_options:"None\n1\nMiss\n10\nBad\n12\nGood\n14\nGreat\n20\nPerfect\n30" of_label:"Autoplay judge type"`
@@ -65,6 +66,7 @@ func defaultConfigs() *RuntimeConfig {
 		CdnPartialFileCapability: new(string),
 		CdnCache:                 new(bool),
 		CdnCacheDir:              new(string),
+		ArchiveConnections:       new(int32),
 		AdminPassword:            new(string),
 		TapBondGain:              new(int32),
 		AutoJudgeType:            new(int32),
@@ -84,6 +86,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.CdnPartialFileCapability = "nothing"
 	*configs.CdnCache = false
 	*configs.CdnCacheDir = defaultCdnCacheDir()
+	*configs.ArchiveConnections = 8
 	*configs.AdminPassword = ""
 	*configs.TapBondGain = 20
 	*configs.AutoJudgeType = enum.JudgeTypePerfect

@@ -162,6 +162,19 @@ ensure_aria2() {
 # All entries are "packs/<basename>": --strip-components=1 lands flat basenames.
 ARCHIVE_ITEM_URL="https://archive.org/download/llsifas-elichika-static-data"
 
+# Parallel-connection step-down list, seeded from config.json's archive_connections
+# (default 8, clamped 1-32) so it matches the in-app Go downloader: "N N/2 ... 1".
+archive_conns_list() {
+    acl_n=$(grep -oE '"archive_connections"[[:space:]]*:[[:space:]]*[0-9]+' config.json 2>/dev/null \
+            | grep -oE '[0-9]+' | tail -1)
+    case "$acl_n" in ''|*[!0-9]*) acl_n=8 ;; esac
+    [ "$acl_n" -lt 1 ] && acl_n=1
+    [ "$acl_n" -gt 32 ] && acl_n=32
+    acl_list=""; acl_c=$acl_n
+    while [ "$acl_c" -gt 1 ]; do acl_list="$acl_list $acl_c"; acl_c=$((acl_c / 2)); done
+    echo "$acl_list 1"
+}
+
 # ensure_aria2 can trigger pkg install/upgrade, so with up to 17 parts per run
 # check it once and remember the answer.
 aria2_ready() {
@@ -183,8 +196,8 @@ archive_part() {
     p_rc=1
     if aria2_ready; then
         # archive.org can throttle parallel connections, so step the count down on failure
-        # (resuming with -c) before giving up.
-        for p_conns in 16 8 4 2 1; do
+        # (resuming with -c) before giving up. Top count from config (archive_connections).
+        for p_conns in $(archive_conns_list); do
             echo "Downloading $p_part with aria2c ($p_conns connection(s))..."
             aria2c -c -x"$p_conns" -s"$p_conns" -k1M --file-allocation=none \
                    -d "$p_parent" -o ".cdn-dl.$p_part" "$p_url"

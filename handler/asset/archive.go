@@ -3,6 +3,7 @@ package asset
 import (
 	"archive/tar"
 	"bufio"
+	"elichika/config"
 	"elichika/log"
 
 	"fmt"
@@ -17,9 +18,26 @@ import (
 )
 
 // archiveConnPlan is the connection counts tried per part, high to low (like the
-// Termux aria2c flow). archive.org tolerates a handful of parallel range
-// requests; if it throttles, the part retries with fewer, then a single stream.
-var archiveConnPlan = []int{8, 4, 2, 1}
+// Termux aria2c flow): start at the configured max (archive_connections, default
+// 8, clamped 1-32) and halve on throttling down to a single stream. archive.org
+// tolerates a handful of parallel range requests; too many risk 503/rate-limits.
+func archiveConnPlan() []int {
+	n := 8
+	if config.Conf != nil && config.Conf.ArchiveConnections != nil {
+		n = int(*config.Conf.ArchiveConnections)
+	}
+	if n < 1 {
+		n = 1
+	}
+	if n > 32 {
+		n = 32
+	}
+	plan := []int{}
+	for c := n; c > 1; c /= 2 {
+		plan = append(plan, c)
+	}
+	return append(plan, 1)
+}
 
 // The archive.org item holding the bulk static assets, re-split as multiple
 // COMPLETE uncompressed tar parts per region (packs_GL.tar.000.., packs_JP.tar.000..).
@@ -175,7 +193,7 @@ func downloadAndExtractTar(url, destDir string) error {
 // step-down. Each attempt starts the file fresh, so no cross-attempt corruption.
 func downloadPart(url, dest string) error {
 	size, ranges := probeSize(url)
-	plan := archiveConnPlan
+	plan := archiveConnPlan()
 	if size <= 0 || !ranges {
 		plan = []int{1} // server won't range/size — single stream is the only option
 	}
