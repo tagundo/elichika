@@ -14,7 +14,7 @@ on:
     # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
     # previously skipped a clientdb/ fix and shipped a stale APK.
     branches: [claude/elichika-apk-build-wwkuu3, main]
-    # Pushing a version tag (v1.2.3) builds a release-signed APK and publishes it
+    # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
     # to a GitHub Release. See android/README.md for the one-time secret setup.
     tags: ['v*']
 
@@ -155,9 +155,32 @@ jobs:
           cp "$BIN" android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
           file android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
 
+      # CalVer: a tag vYYYY.MM.DD[.N] sets versionName "YYYY.MM.DD[.N]" and a strictly
+      # increasing versionCode YYYYMMDD*100(+N). Non-tag builds get a dated dev version.
+      - name: Derive app version (CalVer)
+        id: ver
+        run: |
+          set -eu
+          REF="${GITHUB_REF#refs/tags/}"
+          if [[ "$REF" =~ ^v([0-9]{4})\.([0-9]{2})\.([0-9]{2})(\.([0-9]+))?$ ]]; then
+            Y=${BASH_REMATCH[1]}; M=${BASH_REMATCH[2]}; D=${BASH_REMATCH[3]}; N=${BASH_REMATCH[5]:-0}
+            NAME="${Y}.${M}.${D}${BASH_REMATCH[4]}"
+            YMD=$(( 10#$Y * 10000 + 10#$M * 100 + 10#$D ))
+            CODE=$(( YMD * 100 + 10#$N ))
+          else
+            NAME="$(date -u +%Y.%m.%d)-dev"
+            CODE=$(( $(date -u +%Y%m%d) * 100 ))
+          fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "elichika version: $NAME (code $CODE)"
+
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: >-
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          -PappVersionName="${{ steps.ver.outputs.name }}"
+          -PappVersionCode="${{ steps.ver.outputs.code }}"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -193,7 +216,10 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+        run: >-
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          -PappVersionName="${{ steps.ver.outputs.name }}"
+          -PappVersionCode="${{ steps.ver.outputs.code }}"
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
@@ -202,7 +228,7 @@ jobs:
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      # On a version tag (v1.2.3), publish the release-signed APK to a GitHub Release.
+      # On a CalVer tag (vYYYY.MM.DD), publish the release-signed APK to a GitHub Release.
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
