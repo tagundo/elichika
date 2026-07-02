@@ -226,7 +226,7 @@ async function runTool() {
   openConsole(tool.label);
   let resp;
   try {
-    resp = await (await fetch("/api/run/" + tool.id, {
+    resp = await (await fetch(withLang("/api/run/" + tool.id), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params),
     })).json();
   } catch (e) { appendLog(T("ERROR: ") + e); finishConsole("error"); return; }

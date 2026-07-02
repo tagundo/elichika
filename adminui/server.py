@@ -123,6 +123,10 @@ class Handler(BaseHTTPRequestHandler):
         if not tool:
             return self._send_json({"error": f"unknown tool: {tool_id}"}, status=404)
         params = self._read_json_body()
+        # Make the request UI language available to tools (e.g. localized costume
+        # names / output filenames), matching how options requests carry ?lang=.
+        # A form field named "lang" (none today) would take precedence.
+        params.setdefault("lang", self._lang())
         job = MANAGER.create(tool_id)
         run_fn = tool["run"]
         MANAGER.run_async(job, lambda j: run_fn(j, params))
