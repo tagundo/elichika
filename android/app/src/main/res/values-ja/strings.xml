@@ -46,7 +46,10 @@
     <string name="confirm_title">確認</string>
     <string name="confirm_continue">続行</string>
     <string name="cancel">キャンセル</string>
-    <string name="confirm_download_archive">archive.org から全ゲームデータ（数GB）をダウンロードします。Wi-Fi の使用を強く推奨します。</string>
+    <string name="confirm_download_archive">archive.org から全ゲームデータ（数GB）をダウンロードします。Wi-Fi の使用を強く推奨します。地域を選択してください:</string>
+    <string name="region_gl">GL (グローバル — EN / KO / ZH)</string>
+    <string name="region_jp">JP (日本)</string>
+    <string name="region_both">両方 (GL + JP)</string>
     <string name="confirm_download_packs">ゲームCDNから不足パックをダウンロードします（サイズは可変、大きい場合あり）。Wi-Fi を推奨します。</string>
     <string name="confirm_stops_server">実行中のサーバーが先に停止されます。</string>
 

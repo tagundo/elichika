@@ -47,7 +47,10 @@
     <string name="confirm_title">Please confirm</string>
     <string name="confirm_continue">Continue</string>
     <string name="cancel">Cancel</string>
-    <string name="confirm_download_archive">This downloads the full game data set (several GB) from archive.org. Wi-Fi is strongly recommended.</string>
+    <string name="confirm_download_archive">This downloads the full game data set (several GB) from archive.org. Wi-Fi is strongly recommended. Pick a region:</string>
+    <string name="region_gl">GL (Global — EN / KO / ZH)</string>
+    <string name="region_jp">JP (Japan)</string>
+    <string name="region_both">Both (GL + JP)</string>
     <string name="confirm_download_packs">This downloads missing game packs from the CDN (size varies, can be large). Wi-Fi is recommended.</string>
     <string name="confirm_stops_server">The running server will be stopped first.</string>
 

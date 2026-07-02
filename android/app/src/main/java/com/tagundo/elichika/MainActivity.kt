@@ -445,8 +445,10 @@ class MainActivity : AppCompatActivity() {
      *  server) before launching; run others straight away. */
     private fun confirmAndRunBinary(a: JSONObject) {
         val id = a.optString("id")
+        // The full archive download lets you pick a region (GL / JP / Both).
+        if (id == "download_archive") { confirmDownloadArchive(a); return }
         val stops = a.optBoolean("stop_server", true)
-        val isBigDownload = id == "download_archive" || id == "download_packs"
+        val isBigDownload = id == "download_packs"
         if (!isBigDownload && !(stops && Bus.serverRunning)) { runBinary(a); return }
         val msg = buildString {
             when (id) {
@@ -470,6 +472,25 @@ class MainActivity : AppCompatActivity() {
         val argsArr = a.optJSONArray("args") ?: return
         val args = (0 until argsArr.length()).map { argsArr.getString(it) }
         ServerService.runAction(this, args, a.optBoolean("stop_server", true))
+    }
+
+    /** Full archive download: pick a region, then run download_archive with it. */
+    private fun confirmDownloadArchive(a: JSONObject) {
+        val labels = arrayOf(
+            getString(R.string.region_gl),
+            getString(R.string.region_jp),
+            getString(R.string.region_both),
+        )
+        val regions = arrayOf("gl", "jp", "both")
+        AlertDialog.Builder(this)
+            .setTitle(R.string.confirm_download_archive) // Wi-Fi recommendation
+            .setItems(labels) { _, which ->
+                ServerService.runAction(
+                    this, listOf("download_archive", regions[which]),
+                    a.optBoolean("stop_server", true))
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun loadActions(): List<JSONObject> {

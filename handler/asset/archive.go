@@ -11,7 +11,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
+
+// archiveConnPlan is the connection counts tried per part, high to low (like the
+// Termux aria2c flow). archive.org tolerates a handful of parallel range
+// requests; if it throttles, the part retries with fewer, then a single stream.
+var archiveConnPlan = []int{8, 4, 2, 1}
 
 // The archive.org item holding the bulk static assets, re-split as multiple
 // COMPLETE uncompressed tar parts per region (packs_GL.tar.000.., packs_JP.tar.000..).
@@ -144,13 +152,158 @@ func archiveParts(tag string) ([]string, error) {
 	return parts, nil
 }
 
-// downloadAndExtractTar streams a tar from url and extracts it into destDir,
-// dropping the leading path component (the "packs/" wrapper, like tar
-// --strip-components=1) and skipping files that already exist (--skip-old-files).
-// Each file is written via a dot-prefixed temp + rename, so an interrupted run
-// never leaves a truncated pack under its real name (which the skip-existing
-// check — and the pack index — would otherwise trust forever).
+// downloadAndExtractTar downloads one tar part into destDir (parallel ranged
+// connections when the server supports it, so it isn't limited to one slow
+// stream) and extracts it, dropping the "packs/" wrapper (--strip-components=1)
+// and keeping files that already exist (--skip-old-files). The part is fetched
+// to a dot-prefixed temp file first (invisible to the pack index) so extraction
+// only ever runs on a fully, correctly-sized download.
 func downloadAndExtractTar(url, destDir string) error {
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
+	tmp := filepath.Join(destDir, ".dl-"+urlBase(url))
+	defer os.Remove(tmp)
+	if err := downloadPart(url, tmp); err != nil {
+		return err
+	}
+	return extractTarFile(tmp, destDir)
+}
+
+// downloadPart downloads url to dest, retrying with progressively fewer parallel
+// connections (then a single stream) on failure — mirroring the Termux aria2c
+// step-down. Each attempt starts the file fresh, so no cross-attempt corruption.
+func downloadPart(url, dest string) error {
+	size, ranges := probeSize(url)
+	plan := archiveConnPlan
+	if size <= 0 || !ranges {
+		plan = []int{1} // server won't range/size — single stream is the only option
+	}
+	var lastErr error
+	for _, conns := range plan {
+		if conns > 1 {
+			log.Printf("download_archive: downloading with %d connections (%.0f MB)...\n",
+				conns, float64(size)/(1024*1024))
+		} else {
+			log.Printf("download_archive: downloading (single connection)...\n")
+		}
+		err := downloadPartOnce(url, dest, size, conns)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		log.Printf("download_archive: failed (%v), retrying with fewer connections...\n", err)
+		time.Sleep(2 * time.Second)
+	}
+	return lastErr
+}
+
+func downloadPartOnce(url, dest string, size int64, conns int) error {
+	f, err := os.Create(dest) // truncates any prior attempt
+	if err != nil {
+		return err
+	}
+	pr := newDownloadProgress(size)
+	var runErr error
+	if conns > 1 && size > 0 {
+		if err := f.Truncate(size); err != nil {
+			f.Close()
+			pr.stop()
+			return err
+		}
+		runErr = downloadSegments(url, f, size, conns, pr)
+	} else {
+		runErr = streamInto(url, f, pr)
+	}
+	pr.stop()
+	cerr := f.Close()
+	if runErr != nil {
+		return runErr
+	}
+	if cerr != nil {
+		return cerr
+	}
+	got := pr.total()
+	if size > 0 && got != size {
+		return fmt.Errorf("incomplete body: got %d of %d bytes", got, size)
+	}
+	if got == 0 {
+		return fmt.Errorf("empty response")
+	}
+	return nil
+}
+
+// downloadSegments splits [0,size) into conns ranges downloaded concurrently,
+// each written at its absolute offset via WriteAt (safe for disjoint writes).
+func downloadSegments(url string, f *os.File, size int64, conns int, pr *downloadProgress) error {
+	segSize := (size + int64(conns) - 1) / int64(conns)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	for i := 0; i < conns; i++ {
+		start := int64(i) * segSize
+		if start >= size {
+			break
+		}
+		end := start + segSize - 1
+		if end >= size {
+			end = size - 1
+		}
+		wg.Add(1)
+		go func(start, end int64) {
+			defer wg.Done()
+			if err := downloadRangeInto(url, f, start, end, pr); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+			}
+		}(start, end)
+	}
+	wg.Wait()
+	return firstErr
+}
+
+func downloadRangeInto(url string, f *os.File, start, end int64, pr *downloadProgress) error {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent {
+		return fmt.Errorf("range %d-%d: http status %d", start, end, resp.StatusCode)
+	}
+	buf := make([]byte, 256*1024)
+	off := start
+	for {
+		n, rerr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := f.WriteAt(buf[:n], off); werr != nil {
+				return werr
+			}
+			off += int64(n)
+			pr.add(int64(n))
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
+	if off-1 != end {
+		return fmt.Errorf("range %d-%d short: got %d bytes", start, end, off-start)
+	}
+	return nil
+}
+
+func streamInto(url string, f *os.File, pr *downloadProgress) error {
 	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
@@ -159,9 +312,48 @@ func downloadAndExtractTar(url, destDir string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("http status %d", resp.StatusCode)
 	}
+	buf := make([]byte, 256*1024)
+	for {
+		n, rerr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			pr.add(int64(n))
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
+	return nil
+}
 
-	counted := &progressReader{r: resp.Body, total: resp.ContentLength}
-	tr := tar.NewReader(counted)
+// probeSize HEADs url for its size and whether it supports byte ranges.
+func probeSize(url string) (int64, bool) {
+	resp, err := httpClient.Head(url)
+	if err != nil {
+		return -1, false
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return -1, false
+	}
+	return resp.ContentLength, strings.EqualFold(resp.Header.Get("Accept-Ranges"), "bytes")
+}
+
+// extractTarFile extracts a local tar into destDir: strip the "packs/" wrapper,
+// skip existing files, guard against tar-slip, and write each file via a
+// dot-prefixed temp + rename so an interrupted extract leaves no truncated pack.
+func extractTarFile(tarPath, destDir string) error {
+	f, err := os.Open(tarPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	tr := tar.NewReader(f)
 	extracted, skipped := 0, 0
 	for {
 		hdr, err := tr.Next()
@@ -176,7 +368,6 @@ func downloadAndExtractTar(url, destDir string) error {
 			continue
 		}
 		target := filepath.Join(destDir, filepath.FromSlash(name))
-		// tar-slip guard: never let ".."/absolute entry names escape destDir.
 		if !pathWithin(destDir, target) {
 			return fmt.Errorf("tar entry escapes destination: %q", hdr.Name)
 		}
@@ -193,19 +384,17 @@ func downloadAndExtractTar(url, destDir string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
 			}
-			// temp in the same dir (dot prefix: invisible to the pack index), then
-			// rename — a mid-copy failure never leaves a truncated real file.
 			tmp := filepath.Join(filepath.Dir(target), ".extract-"+filepath.Base(target))
-			f, err := os.Create(tmp)
+			out, err := os.Create(tmp)
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
 				os.Remove(tmp)
 				return err
 			}
-			if err := f.Close(); err != nil {
+			if err := out.Close(); err != nil {
 				os.Remove(tmp)
 				return err
 			}
@@ -214,21 +403,15 @@ func downloadAndExtractTar(url, destDir string) error {
 				return err
 			}
 			extracted++
-			if extracted%500 == 0 {
-				log.Printf("download_archive: %d extracted, %d skipped, %s\n",
-					extracted, skipped, counted.human())
+			if extracted%1000 == 0 {
+				log.Printf("download_archive: extracted %d, skipped %d\n", extracted, skipped)
 			}
 		}
-	}
-	// completeness: an empty 200 (or a body truncated exactly on a tar block
-	// boundary) yields a clean EOF — don't let that mark the part as done.
-	if counted.total > 0 && counted.n != counted.total {
-		return fmt.Errorf("incomplete body: got %d of %d bytes", counted.n, counted.total)
 	}
 	if extracted+skipped == 0 {
 		return fmt.Errorf("archive contained no files (empty or truncated response)")
 	}
-	log.Printf("download_archive: extracted %d, skipped %d (%s)\n", extracted, skipped, counted.human())
+	log.Printf("download_archive: extracted %d, skipped %d\n", extracted, skipped)
 	return nil
 }
 
@@ -250,23 +433,77 @@ func stripFirstComponent(p string) string {
 	return p[i+1:]
 }
 
-// progressReader counts bytes read so the long archive download isn't silent.
-type progressReader struct {
-	r     io.Reader
-	n     int64
-	total int64
-}
-
-func (p *progressReader) Read(b []byte) (int, error) {
-	n, err := p.r.Read(b)
-	p.n += int64(n)
-	return n, err
-}
-
-func (p *progressReader) human() string {
-	mb := float64(p.n) / (1024 * 1024)
-	if p.total > 0 {
-		return fmt.Sprintf("%.0f/%.0f MB", mb, float64(p.total)/(1024*1024))
+// urlBase returns the last path segment of a URL (for naming the temp file).
+func urlBase(url string) string {
+	if i := strings.LastIndexByte(url, '/'); i >= 0 {
+		url = url[i+1:]
 	}
-	return fmt.Sprintf("%.0f MB", mb)
+	if i := strings.IndexAny(url, "?#"); i >= 0 {
+		url = url[:i]
+	}
+	if url == "" {
+		return "part.tar"
+	}
+	return url
+}
+
+// downloadProgress logs live download speed + size every few seconds so the long
+// multi-GB download isn't silent, then a final average-speed line.
+type downloadProgress struct {
+	size   int64
+	n      int64 // atomic
+	start  time.Time
+	stopCh chan struct{}
+	done   chan struct{}
+}
+
+func newDownloadProgress(size int64) *downloadProgress {
+	p := &downloadProgress{size: size, start: time.Now(),
+		stopCh: make(chan struct{}), done: make(chan struct{})}
+	go p.loop()
+	return p
+}
+
+func (p *downloadProgress) add(n int64)  { atomic.AddInt64(&p.n, n) }
+func (p *downloadProgress) total() int64 { return atomic.LoadInt64(&p.n) }
+
+func (p *downloadProgress) loop() {
+	defer close(p.done)
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+	lastN, lastT := int64(0), p.start
+	for {
+		select {
+		case <-p.stopCh:
+			return
+		case now := <-t.C:
+			cur := p.total()
+			dt := now.Sub(lastT).Seconds()
+			spd := 0.0
+			if dt > 0 {
+				spd = float64(cur-lastN) / dt / (1024 * 1024)
+			}
+			lastN, lastT = cur, now
+			mb := float64(cur) / (1024 * 1024)
+			if p.size > 0 {
+				log.Printf("download_archive: %.0f/%.0f MB (%.1f MB/s)\n",
+					mb, float64(p.size)/(1024*1024), spd)
+			} else {
+				log.Printf("download_archive: %.0f MB (%.1f MB/s)\n", mb, spd)
+			}
+		}
+	}
+}
+
+func (p *downloadProgress) stop() {
+	close(p.stopCh)
+	<-p.done
+	cur := p.total()
+	el := time.Since(p.start).Seconds()
+	avg := 0.0
+	if el > 0 {
+		avg = float64(cur) / el / (1024 * 1024)
+	}
+	log.Printf("download_archive: downloaded %.0f MB in %.0fs (avg %.1f MB/s)\n",
+		float64(cur)/(1024*1024), el, avg)
 }
