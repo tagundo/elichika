@@ -131,11 +131,6 @@ TOOLS = [
              "search matches) instead of just the one picked."},
             {"name": "cdn", "label": "Download missing packs from CDN", "type": "checkbox",
              "default": True, "help": "Off = only use packs already downloaded locally."},
-            {"name": "recolour_variant", "label": "Apply colour variant (irochi)", "type": "checkbox",
-             "default": True, "help": "When a picked costume is a colour variant (its name ends "
-             "with a [X] tag, e.g. 'Lovely Police[P]'), composite its recolour textures onto the "
-             "base costume's model so you get a usable recoloured model in one step. Off = extract "
-             "the raw variant (textures only)."},
         ],
     },
     {
