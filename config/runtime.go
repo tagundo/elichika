@@ -32,7 +32,7 @@ type RuntimeConfig struct {
 	MaintenanceUrl           *string `json:"maintenance_url" of_label:"Maintenance Url"`
 	LocalTrustLoopback       *bool   `json:"local_trust_loopback" of_label:"Trust loopback (127.0.0.1) without login - single-user local/APK use only"`                                     // when true, WebUI requests from a loopback peer skip session-key auth (judged by the real TCP peer, not headers)
 	WebUILanguage            *string `json:"webui_language" of_type:"select" of_options:"English\nen\n한국어\nko\n日本語\nja" of_label:"WebUI language (default; override per-request with ?l=)"` // default interface language for the admin/user WebUI; game data localisation is separate
-	Locales                  *string `json:"locales" of_label:"Game-data languages to load at startup (comma-separated: ja,en,zh,ko). Loading fewer speeds up server start; keep the region(s) your client uses."`                                                                       // which game-data locales locale.init() builds; empty/invalid falls back to all four
+	Locales                  *string `json:"locales" of_type:"select" of_options:"All languages (ja, en, zh, ko)\nja,en,zh,ko\nJapanese only\nja\nEnglish only\nen\nKorean only\nko\nChinese only\nzh" of_label:"Game-data language(s) to load at startup (fewer = faster server start)"` // which game-data locales locale.init() builds; empty/invalid falls back to all four
 }
 
 // DefaultCdnCacheDir is the cdn_cache directory used on Android (Termux and the embedded APK build):

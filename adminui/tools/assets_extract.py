@@ -139,15 +139,19 @@ def costume_options(params):
     cid = (params.get("character") or "").strip()
     md = sqlite3.connect(md_path)
     try:
+        # display_order is a monotonic release index (lower = older), so DESC lists
+        # the newest costumes first; the (name LIKE '%_cloned') key floats cloned
+        # costumes to the top of the list so they are easy to find.
         if search:
             rows = md.execute(
                 "SELECT member_m_id, name, model_asset_path FROM m_suit "
-                "WHERE name NOT LIKE '%_cloned' AND model_asset_path IS NOT NULL "
-                "AND model_asset_path <> '' ORDER BY member_m_id, display_order").fetchall()
+                "WHERE model_asset_path IS NOT NULL AND model_asset_path <> '' "
+                "ORDER BY (name LIKE '%_cloned') DESC, display_order DESC").fetchall()
         elif cid.isdigit():
             rows = md.execute(
                 "SELECT member_m_id, name, model_asset_path FROM m_suit "
-                "WHERE member_m_id = ? AND name NOT LIKE '%_cloned' ORDER BY display_order",
+                "WHERE member_m_id = ? "
+                "ORDER BY (name LIKE '%_cloned') DESC, display_order DESC",
                 (int(cid),)).fetchall()
         else:
             return []

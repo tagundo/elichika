@@ -77,8 +77,10 @@ def list_costumes(md_conn, dict_conn, chara_id):
     cur = md_conn.cursor()
     dcur = dict_conn.cursor()
     where = " AND ".join("name NOT LIKE ?" for _ in _CLONE_SUFFIXES)
+    # display_order is a monotonic release index (lower = older), so DESC lists the
+    # newest costumes first.
     cur.execute(
-        "SELECT id, name FROM m_suit WHERE member_m_id = ? AND " + where + " ORDER BY display_order",
+        "SELECT id, name FROM m_suit WHERE member_m_id = ? AND " + where + " ORDER BY display_order DESC",
         (int(chara_id), *(f"%{s}" for s in _CLONE_SUFFIXES)),
     )
     return [(cid, key, get_real_costume_name(dcur, key)) for cid, key in cur.fetchall()]
