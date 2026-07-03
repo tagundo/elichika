@@ -21,6 +21,13 @@
     <string name="settings_title">설정</string>
     <string name="about_title">정보</string>
     <string name="language">언어</string>
+    <string name="settings_ui_language">인터페이스 언어</string>
+    <string name="settings_gamedata_language">게임 데이터 언어 (서버 시작 속도)</string>
+    <string name="gamedata_all">모든 언어 (ja, en, zh, ko)</string>
+    <string name="gamedata_ja">일본어만 (ja)</string>
+    <string name="gamedata_en">영어만 (en)</string>
+    <string name="gamedata_ko">한국어만 (ko)</string>
+    <string name="gamedata_zh">중국어만 (zh)</string>
     <string name="lang_auto">자동 (시스템 따라가기)</string>
     <string name="close">닫기</string>
     <string name="restart_hint">적용됨. 웹 UI에 반영하려면 서버를 다시 시작하세요.</string>
@@ -85,6 +92,7 @@
     <string name="log_pyservers_started">[pyservers] 개발/모드 도구 웹 UI 시작 (:8772 / :8770)</string>
     <string name="log_pyservers_failed">[pyservers] 파이썬 도구 시작 실패: %1$s</string>
     <string name="log_settings_lang">[settings] 언어 → %1$s. %2$s</string>
+    <string name="log_settings_gamedata">[settings] 게임 데이터 언어 → %1$s. %2$s</string>
     <string name="log_setup_no_payload">[setup] 번들 페이로드가 없습니다 (CI 빌드가 아님). 서버 파일 추출을 건너뜁니다.</string>
     <string name="log_setup_preparing">[setup] 서버 파일 준비 중… (버전 %1$s, 정적자산 갱신=%2$s)</string>
     <string name="log_setup_ready">[setup] 준비 완료.</string>

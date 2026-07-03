@@ -349,10 +349,15 @@ def run_extract(job, params):
         if not models:
             raise ValueError("No costumes matched — pick a character or type a search first.")
     else:
-        model = (params.get("costume") or "").strip()
-        if not model:
+        chosen = params.get("costume")
+        if isinstance(chosen, (list, tuple)):
+            models = [str(m).strip() for m in chosen if str(m).strip()]
+        elif chosen and str(chosen).strip():
+            models = [str(chosen).strip()]
+        else:
+            models = []
+        if not models:
             raise ValueError("Pick a costume to extract (or turn on 'Extract all matches').")
-        models = [model]
 
     cid0 = (params.get("character") or "").strip()
     out_dir = _extracted_dir()

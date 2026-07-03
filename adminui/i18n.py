@@ -79,6 +79,9 @@ _TABLES = {
             "캐릭터 코스튬 모델을 게임 팩에서 복호화해 공유 extracted/ 폴더로 추출합니다(에셋 편집 도구에서 바로 사용). 누락된 팩은 CDN이 켜져 있으면 자동으로 받아옵니다.",
         "Character": "캐릭터",
         "Costume to extract": "추출할 코스튬",
+        "Costumes to extract": "추출할 코스튬 (여러 개 선택)",
+        "Hold Ctrl/Cmd (or drag) to pick several costumes to extract at once.":
+            "Ctrl/Cmd를 누른 채(또는 드래그) 여러 코스튬을 한 번에 추출하도록 선택합니다.",
         "Download missing packs from CDN": "누락 팩을 CDN에서 받기",
         "Also output colour variants (irochi)": "색상 변형(이로치)도 함께 출력",
         "When a costume has an irochi (alternate-colour) version, decrypt its recolour textures and composite them onto the model automatically, so a ready-to-use recoloured model comes out alongside the base.":
@@ -178,6 +181,9 @@ _TABLES = {
             "キャラの衣装モデルをゲームパックから復号し、共有のextracted/フォルダへ抽出します（アセット編集ツールでそのまま使用可）。不足パックはCDN有効時に自動取得します。",
         "Character": "キャラ",
         "Costume to extract": "抽出する衣装",
+        "Costumes to extract": "抽出する衣装（複数選択）",
+        "Hold Ctrl/Cmd (or drag) to pick several costumes to extract at once.":
+            "Ctrl/Cmdを押しながら（またはドラッグで）複数の衣装を一度に抽出できます。",
         "Download missing packs from CDN": "不足パックをCDNから取得",
         "Also output colour variants (irochi)": "色違い（色変え）も一緒に出力",
         "When a costume has an irochi (alternate-colour) version, decrypt its recolour textures and composite them onto the model automatically, so a ready-to-use recoloured model comes out alongside the base.":

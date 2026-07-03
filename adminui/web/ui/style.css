@@ -47,6 +47,10 @@ main { padding: 14px; display: grid; grid-template-columns: 220px 1fr; gap: 14px
   border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 15px; }
 .dyn-row { display: flex; gap: 8px; }
 .dyn-row select { flex: 1; }
+/* multi-select file/costume pickers: many rows at once, so use a smaller, tighter
+   row than the single-line 15px selects above. */
+.field select[multiple] { font-size: 13px; padding: 4px 6px; }
+.field select[multiple] option { padding: 3px 4px; font-size: 13px; }
 .dyn-row button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
   border-radius: 8px; padding: 0 14px; cursor: pointer; font-size: 16px; }
 .field.checkbox label { display: flex; align-items: center; gap: 8px; cursor: pointer; }

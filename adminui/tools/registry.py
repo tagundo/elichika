@@ -131,8 +131,9 @@ TOOLS = [
                         choices=_EXTRACT_CHARACTERS, required=False),
             {"name": "search", "label": "Or search costumes", "type": "text",
              "help": "Type part of a costume or character name to search across everyone."},
-            {"name": "costume", "label": "Costume to extract", "type": "dynamic_select",
-             "source": "costume", "depends_on": ["character", "search"]},
+            {"name": "costume", "label": "Costumes to extract", "type": "dynamic_select",
+             "source": "costume", "depends_on": ["character", "search"], "multi": True,
+             "help": "Hold Ctrl/Cmd (or drag) to pick several costumes to extract at once."},
             {"name": "batch", "label": "Extract all matches", "type": "checkbox", "default": False,
              "help": "Extract every costume in the list above (the character's costumes, or all "
              "search matches) instead of just the one picked."},
