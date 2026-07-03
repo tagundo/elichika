@@ -81,6 +81,8 @@ _TABLES = {
         "Costume to extract": "추출할 코스튬",
         "Download missing packs from CDN": "누락 팩을 CDN에서 받기",
         "Apply colour variant (irochi)": "색상 변형(이로치) 적용",
+        "When a picked costume is a colour variant (its name ends with a [X] tag, e.g. 'Lovely Police[P]'), composite its recolour textures onto the base costume's model so you get a usable recoloured model in one step. Off = extract the raw variant (textures only).":
+            "선택한 의상이 색상 변형(이름이 [X] 태그로 끝남, 예: 'Lovely Police[P]')이면, 그 리컬러 텍스처를 기본 의상 모델에 합성해 한 번에 쓸 수 있는 재색 모델을 만듭니다. 끄면 원본 변형(텍스처만)을 추출합니다.",
         "Off = only use packs already downloaded locally.": "끄면 이미 받아둔 로컬 팩만 사용합니다.",
         "Install Costume (zip)": "코스튬 설치 (zip)",
         "Install Live / Song (zip)": "라이브 / 곡 설치 (zip)",
@@ -175,6 +177,8 @@ _TABLES = {
         "Costume to extract": "抽出する衣装",
         "Download missing packs from CDN": "不足パックをCDNから取得",
         "Apply colour variant (irochi)": "色変え（色違い）を適用",
+        "When a picked costume is a colour variant (its name ends with a [X] tag, e.g. 'Lovely Police[P]'), composite its recolour textures onto the base costume's model so you get a usable recoloured model in one step. Off = extract the raw variant (textures only).":
+            "選んだ衣装が色違い（名前が[X]タグで終わる、例: 'Lovely Police[P]'）の場合、その色変えテクスチャをベース衣装のモデルに合成し、そのまま使える色変えモデルを一度に作ります。オフ = 生のバリアント（テクスチャのみ）を抽出。",
         "Off = only use packs already downloaded locally.": "オフ=ローカルに取得済みのパックのみ使用。",
         "Install Costume (zip)": "衣装をインストール (zip)",
         "Install Live / Song (zip)": "ライブ / 楽曲をインストール (zip)",
