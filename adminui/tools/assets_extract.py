@@ -10,6 +10,7 @@ one costume at a time. Output goes to the shared sukusta/extracted folder, which
 is exactly the Asset-editing tools' input root.
 """
 import os
+import re
 import sqlite3
 
 from adminui.tools.common import capture_stdout, ensure_repo_on_path
@@ -201,6 +202,150 @@ def _resolve_cid_and_label(x, base, model, cid, lang=None):
     return cid, x.sanitize("_".join(p for p in (str(cname), code, rname) if p))
 
 
+# --------------------------------------------- irochi (colour variant) recolour
+# A colour variant ("irochi") is a SEPARATE m_suit row whose display name is the
+# base costume's name plus a bracketed colour tag, e.g. "Lovely Police[P]" for
+# base "Lovely Police". Its asset is a texture-only bundle (chXXXX_coYYYY_body_c1
+# …); the mesh lives in the base costume's model bundle. Picking the variant thus
+# gives textures with no model. When recolour is on we detect the [X] tag, find
+# the base costume (same character, name without the tag), extract both, and
+# composite the _cN textures onto the base model → a usable recoloured model.
+_VARIANT_RE = re.compile(r"^(?P<base>.+?)\s*\[[^\]]+\]\s*$")
+
+
+def _is_variant(display_name):
+    return bool(display_name) and bool(_VARIANT_RE.match(display_name))
+
+
+def _ensure_modtools_on_path():
+    """Put <elichika>/modtools on sys.path so the texture-import stack
+    (texture_importer, webtools.*) imports in-process (mirrors selftest.py)."""
+    ensure_repo_on_path()
+    import sys
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    mt = os.path.join(repo, "modtools")
+    if os.path.isdir(mt) and mt not in sys.path:
+        sys.path.insert(0, mt)
+
+
+def _base_model_for_variant(x, base, variant_model_path, variant_name, lang):
+    """model_asset_path of the BASE costume for an irochi variant, or None: same
+    character, resolved display name == the variant's name without the [X] tag."""
+    m = _VARIANT_RE.match(variant_name or "")
+    if not m:
+        return None
+    base_name = m.group("base").strip()
+    md_path = x.find_masterdata(base)
+    if not md_path:
+        return None
+    md = sqlite3.connect(md_path)
+    try:
+        row = md.execute("SELECT member_m_id FROM m_suit WHERE model_asset_path = ? "
+                         "LIMIT 1", (variant_model_path,)).fetchone()
+        if not row:
+            return None
+        rows = md.execute("SELECT name, model_asset_path FROM m_suit "
+                          "WHERE member_m_id = ? AND name NOT LIKE '%_cloned'",
+                          (row[0],)).fetchall()
+    finally:
+        md.close()
+    dc = _dictionary_conn(x, base, lang=lang)
+    try:
+        for name_key, mp in rows:
+            if not mp or mp == variant_model_path:
+                continue
+            if (x.real_costume_name(dc, name_key) or "") == base_name:
+                return mp
+    finally:
+        if dc:
+            dc.close()
+    return None
+
+
+def _extract_one_to(x, resolver, staging, model_path, mm_row, label):
+    """Decrypt one member_model asset into `staging`; return its written path."""
+    pack_name, head, size, key1, key2 = mm_row
+    used, man = set(), []
+    ok = x.extract_one(resolver, staging, "member_model", model_path, pack_name,
+                       head, size, key1, key2, used, man, file_label=label)
+    if ok and man and man[-1][8] == "OK":
+        return os.path.join(staging, man[-1][7])
+    return None
+
+
+def _composite_recolour(base_bundle, variant_bundle, out_path):
+    """Import the variant bundle's _cN textures onto the base model bundle,
+    keeping each base texture's format. Returns the count imported. Prints (which
+    the caller captures into the job log)."""
+    _ensure_modtools_on_path()
+    from webtools.tools.texture import ensure_astc_cli
+    from webtools.core.tkstub import ensure_tk_stub
+    ensure_astc_cli()          # ASTC decode/encode on-device
+    ensure_tk_stub()           # texture_importer imports tkinter at top
+    import tempfile
+    import shutil
+    import UnityPy
+    import texture_importer as ti
+    cn = re.compile(r"_c\d+$", re.IGNORECASE)
+    env = UnityPy.load(variant_bundle)
+    tmp = tempfile.mkdtemp(prefix="irochi_tex_")
+    mapping = {}
+    try:
+        for obj in env.objects:
+            if obj.type.name != "Texture2D":
+                continue
+            data = obj.read()
+            nm = getattr(data, "m_Name", "") or ""
+            png = os.path.join(tmp, cn.sub("", nm) + ".png")
+            try:
+                data.image.save(png)
+                mapping[cn.sub("", nm)] = png
+            except Exception as exc:  # noqa: BLE001
+                print(f"  ! variant texture {nm}: {exc}")
+        if not mapping:
+            return 0
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        imported, _skipped, _errors = ti.process_bundle(
+            base_bundle, out_path, lambda n: mapping.get(n), "Keep Original", print)
+        return imported
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _extract_recoloured(x, asset, resolver, out_dir, base_model_path,
+                        variant_model_path, label, all_manifest):
+    """Extract the base model + variant textures to a staging dir and composite
+    them into out_dir/3d_model/<label>.unity. Returns the output path or None."""
+    import tempfile
+    import shutil
+
+    def _mm(path):
+        return asset.execute("SELECT pack_name, head, size, key1, key2 "
+                             "FROM member_model WHERE asset_path = ?", (path,)).fetchone()
+
+    b, v = _mm(base_model_path), _mm(variant_model_path)
+    if not b or not v:
+        return None
+    staging = tempfile.mkdtemp(prefix="irochi_ext_")
+    try:
+        base_bundle = _extract_one_to(x, resolver, staging, base_model_path, b, "base")
+        var_bundle = _extract_one_to(x, resolver, staging, variant_model_path, v, "variant")
+        if not base_bundle or not var_bundle:
+            return None
+        out_path = os.path.join(out_dir, x.category_dir("member_model"),
+                                x.sanitize(label) + ".unity")
+        if _composite_recolour(base_bundle, var_bundle, out_path) <= 0:
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            return None
+        all_manifest.append(("member_model", variant_model_path, v[0], v[1], v[2],
+                             v[3], v[4], os.path.relpath(out_path, out_dir),
+                             "OK_RECOLOURED"))
+        return out_path
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def run_extract(job, params):
     x = _mod()
     base = "."
@@ -247,6 +392,25 @@ def run_extract(job, params):
                     continue
                 pack_name, head, size, key1, key2 = mm
                 _cid, label = _resolve_cid_and_label(x, base, model, cid0, lang=params.get("lang"))
+
+                # Colour variant (irochi): if the picked costume's name carries a
+                # [X] tag, composite its _cN textures onto the base costume's model
+                # so one pick yields a usable recoloured model (not textures alone).
+                if params.get("recolour_variant", True):
+                    vname = _costume_meta(x, model, lang=params.get("lang"))[0]
+                    if _is_variant(vname):
+                        base_model = _base_model_for_variant(x, base, model, vname,
+                                                             params.get("lang"))
+                        if base_model and _extract_recoloured(
+                                x, asset, resolver, out_dir, base_model, model,
+                                label, all_manifest):
+                            done_ok += 1
+                            print(f"✓ {label}  (recoloured onto base model)")
+                            continue
+                        print(f"  ! {label}: couldn't recolour "
+                              f"({'no base costume found' if not base_model else 'composite failed'})"
+                              f" — extracting the raw variant instead")
+
                 used, manifest = set(), []
                 ok = x.extract_one(resolver, out_dir, "member_model", model,
                                    pack_name, head, size, key1, key2, used, manifest,
