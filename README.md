@@ -248,19 +248,44 @@ Detailed explanations of some config options:
     - Default to a generous amount, but you can set it to 0 to have a more true experience.
     - Note that you have to obtain the item in game first before you are given the "default item count" amount of that item.
 
+- Game-data language(s) to load at startup (`locales`):
+
+    - Which language(s) of game data the server builds into memory on start: Japanese / English / Korean / Chinese, or all of them (comma-separated, e.g. `ja` or `ja,en,zh,ko`).
+    - Loading fewer languages makes the server start noticeably faster — pick the region(s) your client actually uses. Default is all four; an empty or invalid value safely falls back to all four.
+    - On the Android app you can set this from **Settings → Game-data language** without opening the WebUI.
+
 
 ### User
 The user WebUI has features to help you with playing the game:
 
 - Doing things quickly in your account, or setting up a maxed account.
 - Adding resources to skip the grind.
-- Import export data.
+- Import / export data.
+- Reset progress (per aspect: main / side / member / linkage / event story, DLP), or — in the **Danger zone** at the bottom of the Reset Progress page — **reset the whole account to a fresh new-account state while keeping your login**. Your saved login (authentication) is preserved, so the game client keeps talking to the server; only the account data is wiped. This cannot be undone, so export a backup first if you might want it back.
 
 It can be located at: `<server_address>/webui/user`, which default to http://127.0.0.1:8080/webui/user
 
 Check out the user [docs](webui/user/README.md) for more details.
 
 Note that the user WebUI is not an account data editor, something like that might be developed later on.
+
+### Dev & modding tools (the app's other two tabs)
+Besides the server Web UI, the Android app bundles two tool panels (also reachable in a browser at `:8772` and `:8770`) so the whole Termux/command-line workflow is available on-device:
+
+**Dev tools (`:8772`)** — database & content helpers:
+
+- Extract / decrypt costume models out of the game packs into the shared `extracted/` folder (pick several costumes at once; an irochi colour variant comes out as a ready-to-use recoloured model). A disk index cache makes repeat extractions fast.
+- Install costume / live / card / tower / camera-timeline / DB add-on zips (multi-select for costume & camera-timeline).
+- Clone a costume onto another character.
+- Back up and restore all databases, clear the downloaded pack cache, and reset the server.
+
+**Modding tools (`:8770`)** — edit the extracted 3D costume bundles on-device:
+
+- Costume transplant (wear one character's costume on another, with thigh and skin-tone matching), part transplant, and costume recolour (irochi, single or folder-batch).
+- Mesh / skeleton tweaks: breast size & jiggle, skirt length, hip size, thigh, node scaling, swing collider.
+- Texture import (ASTC on-device via a bundled encoder) and costume packer.
+
+Edited bundles are written where the game and the other tools can find them and open in AssetStudio.
 
 ## More docs
 Checkout the [docs](https://github.com/arina999999997/elichika/tree/master/docs) for more details on the server and how to do more advanced stuffs.
