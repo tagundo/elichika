@@ -11,6 +11,7 @@ import (
 	"elichika/utils"
 
 	"fmt"
+	"strings"
 	"time"
 
 	"xorm.io/xorm"
@@ -76,15 +77,60 @@ func addLocale(path, language, masterVersion, startUpKey string) {
 	Locales[language] = &locale
 }
 
+// localeCandidate is one game-data locale the server can build. init() registers
+// only the ones selected in config (config.json "locales"), so a single-region
+// user can skip the others and start much faster.
+type localeCandidate struct {
+	path, language, masterVersion, startupKey string
+}
+
+// wantedLocales parses the comma-separated config value into a lower-cased set.
+// An empty set means "load everything" (the default / safety fallback).
+func wantedLocales() map[string]bool {
+	want := map[string]bool{}
+	if config.Conf == nil || config.Conf.Locales == nil {
+		return want
+	}
+	for _, part := range strings.Split(*config.Conf.Locales, ",") {
+		if l := strings.ToLower(strings.TrimSpace(part)); l != "" {
+			want[l] = true
+		}
+	}
+	return want
+}
+
 func init() {
 	start := time.Now()
 	gamedata.GenerateLoadOrder()
 	Locales = make(map[string](*Locale))
 	syncChannel := make(chan struct{})
-	addLocale(config.JpMasterdataPath, "ja", config.MasterVersionJp, config.JpStartupKey)
-	addLocale(config.GlMasterdataPath, "en", config.MasterVersionGl, config.GlStartupKey)
-	addLocale(config.GlMasterdataPath, "zh", config.MasterVersionGl, config.GlStartupKey)
-	addLocale(config.GlMasterdataPath, "ko", config.MasterVersionGl, config.GlStartupKey)
+
+	candidates := []localeCandidate{
+		{config.JpMasterdataPath, "ja", config.MasterVersionJp, config.JpStartupKey},
+		{config.GlMasterdataPath, "en", config.MasterVersionGl, config.GlStartupKey},
+		{config.GlMasterdataPath, "zh", config.MasterVersionGl, config.GlStartupKey},
+		{config.GlMasterdataPath, "ko", config.MasterVersionGl, config.GlStartupKey},
+	}
+	want := wantedLocales()
+	for _, c := range candidates {
+		if len(want) == 0 || want[c.language] {
+			addLocale(c.path, c.language, c.masterVersion, c.startupKey)
+		}
+	}
+	// A misconfigured "locales" (blank, or none of the values match a real locale)
+	// must not leave the server with zero game data - fall back to all four.
+	if len(Locales) == 0 {
+		for _, c := range candidates {
+			addLocale(c.path, c.language, c.masterVersion, c.startupKey)
+		}
+	}
+	if len(Locales) < len(candidates) {
+		loaded := make([]string, 0, len(Locales))
+		for lang := range Locales {
+			loaded = append(loaded, lang)
+		}
+		log.Println("Loading game-data locales (config 'locales'): ", strings.Join(loaded, ", "))
+	}
 
 	for _, locale := range Locales {
 		go locale.LoadGamedata(syncChannel)
