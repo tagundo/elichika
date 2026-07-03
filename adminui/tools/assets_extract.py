@@ -201,6 +201,135 @@ def _resolve_cid_and_label(x, base, model, cid, lang=None):
     return cid, x.sanitize("_".join(p for p in (str(cname), code, rname) if p))
 
 
+# ---------------------------------------------- one-step irochi recolour
+# An irochi (colour variant) costume shares its base costume's model_asset_path,
+# so picking it only yields the base-colour model. But the recolour texture bundle
+# IS reachable: it is the base model's costume-SPECIFIC member_model dependency —
+# the one no other model depends on. Verified against the asset DB: every
+# shared-model (irochi) costume has exactly one such dependency; plain costumes
+# have none. So when a picked costume has one, we decrypt it and composite its _cN
+# textures onto the just-extracted base model -> a ready-to-use recoloured model.
+
+
+def _ensure_modtools_on_path():
+    """Put the texture-import stack (texture_importer, webtools.*) on sys.path.
+    The APK layout already has it on the app root via ensure_repo_on_path; the
+    local dev layout needs <elichika>/modtools added (mirrors selftest.py)."""
+    ensure_repo_on_path()
+    import sys
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    mt = os.path.join(repo, "modtools")
+    if os.path.isdir(mt) and mt not in sys.path:
+        sys.path.insert(0, mt)
+
+
+def _recolour_dep_paths(asset, base_model_path):
+    """member_model dependencies of the base model that are costume-specific — a
+    recolour (irochi) bundle is depended on by exactly one model. Usually one."""
+    out = []
+    try:
+        deps = [r[0] for r in asset.execute(
+            "SELECT dependency FROM member_model_dependency WHERE asset_path = ?",
+            (base_model_path,))]
+    except sqlite3.Error:
+        return out
+    for dep in deps:
+        if not asset.execute("SELECT 1 FROM member_model WHERE asset_path = ? LIMIT 1",
+                             (dep,)).fetchone():
+            continue
+        rev = asset.execute("SELECT COUNT(*) FROM member_model_dependency "
+                            "WHERE dependency = ?", (dep,)).fetchone()[0]
+        if rev == 1:
+            out.append(dep)
+    return out
+
+
+def _extract_one_to(x, resolver, staging, model_path, mm_row, label):
+    """Decrypt one member_model asset into `staging`; return its written path."""
+    pack_name, head, size, key1, key2 = mm_row
+    used, man = set(), []
+    ok = x.extract_one(resolver, staging, "member_model", model_path, pack_name,
+                       head, size, key1, key2, used, man, file_label=label)
+    if ok and man and man[-1][8] == "OK":
+        return os.path.join(staging, man[-1][7])
+    return None
+
+
+def _composite_recolour(base_bundle, variant_bundle, out_path):
+    """Import the variant bundle's _cN textures onto the base model (keeping each
+    base texture's format). Returns the count imported. Prints (captured)."""
+    _ensure_modtools_on_path()
+    from webtools.tools.texture import ensure_astc_cli
+    from webtools.core.tkstub import ensure_tk_stub
+    ensure_astc_cli()
+    ensure_tk_stub()
+    import re
+    import tempfile
+    import shutil
+    import UnityPy
+    import texture_importer as ti
+    cn = re.compile(r"_c\d+$", re.IGNORECASE)
+    env = UnityPy.load(variant_bundle)
+    tmp = tempfile.mkdtemp(prefix="irochi_tex_")
+    mapping = {}
+    try:
+        for obj in env.objects:
+            if obj.type.name != "Texture2D":
+                continue
+            data = obj.read()
+            nm = getattr(data, "m_Name", "") or ""
+            png = os.path.join(tmp, cn.sub("", nm) + ".png")
+            try:
+                data.image.save(png)
+                mapping[cn.sub("", nm)] = png
+            except Exception as exc:  # noqa: BLE001
+                print(f"  ! variant texture {nm}: {exc}")
+        if not mapping:
+            return 0
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        imported, _skipped, _errors = ti.process_bundle(
+            base_bundle, out_path, lambda n: mapping.get(n), "Keep Original", print)
+        return imported
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _extract_recolours(x, asset, resolver, out_dir, base_model_path, base_bundle,
+                       label, all_manifest):
+    """Decrypt each of the costume's recolour dependencies and composite it onto
+    the just-extracted base model -> recoloured model(s). Returns how many made."""
+    import tempfile
+    import shutil
+    deps = _recolour_dep_paths(asset, base_model_path)
+    if not deps or not base_bundle or not os.path.isfile(base_bundle):
+        return 0
+    made = 0
+    for i, dep in enumerate(deps):
+        drow = asset.execute("SELECT pack_name, head, size, key1, key2 "
+                             "FROM member_model WHERE asset_path = ?", (dep,)).fetchone()
+        if not drow:
+            continue
+        staging = tempfile.mkdtemp(prefix="irochi_dep_")
+        try:
+            var_bundle = _extract_one_to(x, resolver, staging, dep, drow, "variant")
+            if not var_bundle:
+                continue
+            tag = "_recolour" if len(deps) == 1 else f"_c{i + 1}"
+            out_path = os.path.join(out_dir, x.category_dir("member_model"),
+                                    x.sanitize(label) + tag + ".unity")
+            if _composite_recolour(base_bundle, var_bundle, out_path) > 0:
+                made += 1
+                print(f"  ✓ {label}{tag}  (recoloured onto base model)")
+                all_manifest.append(("member_model", dep, drow[0], drow[1], drow[2],
+                                     drow[3], drow[4],
+                                     os.path.relpath(out_path, out_dir), "OK_RECOLOURED"))
+            elif os.path.exists(out_path):
+                os.remove(out_path)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+    return made
+
+
 def run_extract(job, params):
     x = _mod()
     base = "."
@@ -256,6 +385,17 @@ def run_extract(job, params):
                 if ok:
                     done_ok += 1
                     print(f"✓ {label}")
+                    # If this costume has an irochi (colour-variant) recolour bundle,
+                    # decrypt it too and composite it onto the base model we just
+                    # wrote, so the picker's variant comes out ready-to-use.
+                    if params.get("recolour_variant", True) and manifest \
+                            and manifest[-1][8] == "OK" and manifest[-1][7]:
+                        base_bundle = os.path.join(out_dir, manifest[-1][7])
+                        try:
+                            _extract_recolours(x, asset, resolver, out_dir, model,
+                                               base_bundle, label, all_manifest)
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"  ! colour variant skipped: {exc}")
             if all_manifest:
                 x.write_manifest(out_dir, all_manifest)
             x.print_resolver_stats(resolver)

@@ -129,6 +129,11 @@ TOOLS = [
             {"name": "batch", "label": "Extract all matches", "type": "checkbox", "default": False,
              "help": "Extract every costume in the list above (the character's costumes, or all "
              "search matches) instead of just the one picked."},
+            {"name": "recolour_variant", "label": "Also output colour variants (irochi)",
+             "type": "checkbox", "default": True,
+             "help": "When a costume has an irochi (alternate-colour) version, decrypt its "
+             "recolour textures and composite them onto the model automatically, so a ready-to-use "
+             "recoloured model comes out alongside the base."},
             {"name": "cdn", "label": "Download missing packs from CDN", "type": "checkbox",
              "default": True, "help": "Off = only use packs already downloaded locally."},
         ],
