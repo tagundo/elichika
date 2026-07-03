@@ -116,6 +116,7 @@ _TABLES = {
             "JP 클라이언트의 텍스트를 다른 언어 사전으로 교체합니다. 되돌리려면 다시 ja로 바꾸세요.",
         # field labels
         "File to install": "설치할 파일",
+        "Files to install": "설치할 파일 (여러 개 선택)",
         "Back up the database first": "DB 먼저 백업",
         "Stop the elichika server first": "먼저 elichika 서버 중지",
         "Backup to restore": "복원할 백업",
@@ -142,6 +143,8 @@ _TABLES = {
             "권장: 복제 전에 전체 DB 백업이 수행됩니다.",
         "Files in Download/sukusta/{folder} and …/addons appear here.":
             "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다.",
+        "Files in Download/sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
+            "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다. Ctrl/Cmd를 누른 채(또는 드래그) 여러 개를 선택하면 차례로 설치됩니다.",
     },
     "ja": {
         # static UI chrome (client-side, app.js / index.html)
@@ -210,6 +213,7 @@ _TABLES = {
         "Swap the JP client's text for another language's dictionary. To revert, swap back to ja.":
             "JPクライアントのテキストを別言語の辞書に置き換えます。戻すにはjaに置換し直してください。",
         "File to install": "インストールするファイル",
+        "Files to install": "インストールするファイル（複数選択）",
         "Back up the database first": "先にDBをバックアップ",
         "Stop the elichika server first": "先にelichikaサーバーを停止",
         "Backup to restore": "復元するバックアップ",
@@ -235,5 +239,7 @@ _TABLES = {
             "推奨: クローン前に完全なDBバックアップが取られます。",
         "Files in Download/sukusta/{folder} and …/addons appear here.":
             "Download/sukusta/{folder} と …/addons のファイルがここに表示されます。",
+        "Files in Download/sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
+            "Download/sukusta/{folder} と …/addons のファイルがここに表示されます。Ctrl/Cmdを押しながら（またはドラッグで）複数選択すると順番にインストールされます。",
     },
 }

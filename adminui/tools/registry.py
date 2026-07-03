@@ -30,15 +30,22 @@ _CHARACTERS = character_choices()
 _EXTRACT_CHARACTERS = extract_characters()
 
 
-def _addon(folder):
+def _addon(folder, multi=False):
     """Per-installer file picker. `folder` is the original per-type drop folder
     (suit / live / ...); the dropdown lists that folder plus the shared addons/.
     The help text is kept as a {folder} template so it can be translated before
-    the folder name is substituted (see _translate_field)."""
-    return {"name": "addon", "label": "File to install", "type": "dynamic_select",
-            "source": "addon", "required": True,
-            "help": "Files in Download/sukusta/{folder} and …/addons appear here.",
-            "help_folder": folder}
+    the folder name is substituted (see _translate_field). When `multi` is set the
+    picker becomes a multi-select so several files can be installed in one run."""
+    f = {"name": "addon", "label": "File to install", "type": "dynamic_select",
+         "source": "addon", "required": True,
+         "help": "Files in Download/sukusta/{folder} and …/addons appear here.",
+         "help_folder": folder}
+    if multi:
+        f["multi"] = True
+        f["label"] = "Files to install"
+        f["help"] = ("Files in Download/sukusta/{folder} and …/addons appear here. "
+                     "Hold Ctrl/Cmd (or drag) to select several — they install one after another.")
+    return f
 
 
 def _char_field(name, label, help_text=None, choices=None, required=True):
@@ -145,7 +152,7 @@ TOOLS = [
                         "Download/sukusta/suit (or use the file picker), then pick it."),
         "run": run_costume,
         "options": options_for("costume"),
-        "fields": [_addon("suit"), _BACKUP, _STOP],
+        "fields": [_addon("suit", multi=True), _BACKUP, _STOP],
     },
     {
         "id": "install_live",
@@ -180,7 +187,7 @@ TOOLS = [
                         "Download/sukusta/livetimeline."),
         "run": run_camera,
         "options": options_for("camera"),
-        "fields": [_addon("livetimeline"), _BACKUP, _STOP],
+        "fields": [_addon("livetimeline", multi=True), _BACKUP, _STOP],
     },
     {
         "id": "install_db",
