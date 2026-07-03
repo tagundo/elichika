@@ -210,6 +210,12 @@ def _run_installer(job, key, params):
         raise ValueError(f"Select a file first (drop it into Download/sukusta/{folder} or …/addons).")
     ensure_repo_on_path()
 
+    # Don't stop the server for a batch where nothing can be found (a no-op install
+    # shouldn't take the server down as a side effect).
+    if not any(_locate(key, c) for c in chosen_list):
+        raise FileNotFoundError(
+            f"{chosen_list[0]} not found in Download/sukusta/{folder} or …/addons.")
+
     # Stop the server once for the whole batch, not per file.
     if params.get("stop_server", True):
         stop_server(job.log)

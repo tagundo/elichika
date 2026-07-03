@@ -144,6 +144,41 @@ func init() {
 	}
 	finish := time.Now()
 	log.Println("Finished loading databases in: ", finish.Sub(start))
+
+	// If the user chose to load only some locales, every UNSELECTED locale key must
+	// still resolve to a loaded one: much of the codebase hard-codes Locales["ja"] /
+	// Locales["en"] / Locales[<request language>] with no nil guard, so a missing key
+	// would panic on a game request. Alias each missing locale to a loaded one (one
+	// that shares the same masterdata if possible), so e.g. "Japanese only" makes the
+	// whole server serve JP data everywhere instead of crashing.
+	if len(Locales) < len(candidates) {
+		realLoaded := make(map[string]*Locale, len(Locales))
+		for lang, lc := range Locales {
+			realLoaded[lang] = lc
+		}
+		var anyLoaded *Locale
+		for _, c := range candidates {
+			if lc, ok := realLoaded[c.language]; ok {
+				anyLoaded = lc
+				break
+			}
+		}
+		for _, c := range candidates {
+			if _, ok := realLoaded[c.language]; ok {
+				continue
+			}
+			fallback := anyLoaded
+			for _, c2 := range candidates { // prefer a loaded locale with the same masterdata (GL/JP)
+				if lc, ok := realLoaded[c2.language]; ok && c2.path == c.path {
+					fallback = lc
+					break
+				}
+			}
+			Locales[c.language] = fallback
+			log.Println("Locale", c.language, "not loaded; serving", fallback.Language, "data as fallback")
+		}
+	}
+
 	for language, locale := range Locales {
 		gamedata.GamedataByLocale[language] = locale.Gamedata
 		// because the order of has map is random, this instance is guaranteed to not
