@@ -125,6 +125,23 @@ def _costume_meta(x, model_path, lang=None):
     return rname, code
 
 
+def _newest_first_dir(md):
+    """'ASC' or 'DESC': which way display_order must be sorted so the NEWEST
+    costumes come first in THIS masterdata. Different data sources disagree on
+    the meaning of display_order (harasho: lower = newer; other builds: higher =
+    newer), so probe instead of assuming: the launch base suit (id 100011001,
+    the oldest costume, present in every SIFAS masterdata) sits at the OLD end
+    of the range — if it is at the high end, low = new, so newest-first is ASC."""
+    try:
+        row = md.execute("SELECT display_order FROM m_suit WHERE id = 100011001").fetchone()
+        mn, mx = md.execute("SELECT MIN(display_order), MAX(display_order) FROM m_suit").fetchone()
+        if row and mn is not None and mx is not None and mx > mn:
+            return "ASC" if (row[0] - mn) > (mx - row[0]) else "DESC"
+    except sqlite3.Error:
+        pass
+    return "DESC"
+
+
 def costume_options(params):
     """Costumes for the dynamic dropdown. Two modes:
       - a non-empty `search` string matches costume/character names across ALL
@@ -139,19 +156,19 @@ def costume_options(params):
     cid = (params.get("character") or "").strip()
     md = sqlite3.connect(md_path)
     try:
-        # display_order is a monotonic release index (lower = older), so DESC lists
-        # the newest costumes first; the (name LIKE '%_cloned') key floats cloned
-        # costumes to the top of the list so they are easy to find.
+        # newest costumes first (direction probed per-DB, see _newest_first_dir);
+        # the (name LIKE '%_cloned') key floats cloned costumes to the top.
+        direction = _newest_first_dir(md)
         if search:
             rows = md.execute(
                 "SELECT member_m_id, name, model_asset_path FROM m_suit "
                 "WHERE model_asset_path IS NOT NULL AND model_asset_path <> '' "
-                "ORDER BY (name LIKE '%_cloned') DESC, display_order DESC").fetchall()
+                f"ORDER BY (name LIKE '%_cloned') DESC, display_order {direction}").fetchall()
         elif cid.isdigit():
             rows = md.execute(
                 "SELECT member_m_id, name, model_asset_path FROM m_suit "
                 "WHERE member_m_id = ? "
-                "ORDER BY (name LIKE '%_cloned') DESC, display_order DESC",
+                f"ORDER BY (name LIKE '%_cloned') DESC, display_order {direction}",
                 (int(cid),)).fetchall()
         else:
             return []

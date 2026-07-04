@@ -71,16 +71,33 @@ def get_real_costume_name(dict_cursor, name_key):
     return res[0] if res else name_key
 
 
+def _newest_first_dir(md_conn):
+    """'ASC' or 'DESC': which way display_order must be sorted so the NEWEST
+    costumes come first in THIS masterdata. Data sources disagree on what
+    display_order means (harasho: lower = newer; other builds: higher = newer),
+    so probe: the launch base suit (id 100011001, the oldest costume) sits at
+    the OLD end — if it is at the high end of the range, low = new (ASC)."""
+    try:
+        cur = md_conn.cursor()
+        row = cur.execute("SELECT display_order FROM m_suit WHERE id = 100011001").fetchone()
+        mn, mx = cur.execute("SELECT MIN(display_order), MAX(display_order) FROM m_suit").fetchone()
+        if row and mn is not None and mx is not None and mx > mn:
+            return "ASC" if (row[0] - mn) > (mx - row[0]) else "DESC"
+    except sqlite3.Error:
+        pass
+    return "DESC"
+
+
 def list_costumes(md_conn, dict_conn, chara_id):
     """Return [(costume_id, name_key, real_name), ...] for a character,
-    excluding already-cloned suits. Read-only; no printing."""
+    excluding already-cloned suits, newest costume first. Read-only; no printing."""
     cur = md_conn.cursor()
     dcur = dict_conn.cursor()
     where = " AND ".join("name NOT LIKE ?" for _ in _CLONE_SUFFIXES)
-    # display_order is a monotonic release index (lower = older), so DESC lists the
-    # newest costumes first.
+    direction = _newest_first_dir(md_conn)
     cur.execute(
-        "SELECT id, name FROM m_suit WHERE member_m_id = ? AND " + where + " ORDER BY display_order DESC",
+        "SELECT id, name FROM m_suit WHERE member_m_id = ? AND " + where
+        + f" ORDER BY display_order {direction}",
         (int(chara_id), *(f"%{s}" for s in _CLONE_SUFFIXES)),
     )
     return [(cid, key, get_real_costume_name(dcur, key)) for cid, key in cur.fetchall()]
