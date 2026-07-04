@@ -74,17 +74,17 @@ jobs:
 
       - name: Fix in-game outfit order (orient m_suit newest-first)
         run: |
-          # harasho's m_suit stores lower display_order for newer suits, but the game
-          # client sorts the closet DESC, sinking new suits to the bottom. The script
-          # inverts it in place and is a no-op once the data is oriented correctly, so
-          # an upstream-fixed harasho passes through untouched.
+          # The game client sorts the Change Outfit closet by display_order ASCENDING
+          # (verified on-device), so newest-first needs newer suits at LOWER values —
+          # the launch suit at the MAX. The script inverts official-oriented data in
+          # place and is a no-op on data already oriented newest-first.
           #
           # MUST run AFTER "Build master data": databaseInit's isNotChanged() gates the
           # assets/sql migrations on `git diff` of each db file, so inverting first
           # makes masterdata.db dirty and silently skips 001.masterdata.db.sql (missing
           # lives/beatmap patches — the v2026.07.04.1 regression). Running after, the
-          # migrations apply to pristine data first; if the inversion then acts, the
-          # payload manifest is stale, which is fine — the device recomputes the client
+          # migrations apply to pristine data first; the inversion then leaves the
+          # payload manifest stale, which is fine — the device recomputes the client
           # db version at first boot (the "Difference detected" path) and clients
           # re-download.
           python3 bin/fix_outfit_order.py

@@ -1,18 +1,24 @@
 """Orient m_suit display_order so the in-game closet shows newest suits first.
 
-The game client sorts the Change Outfit list by display_order DESC, but the
-harasho master data stores LOWER values for NEWER suits (the launch/uniform
-suits sit at the MAX), so the closet showed the oldest suits first and the
-newest at the bottom.
+The game client sorts the Change Outfit list by display_order ASCENDING
+(verified empirically: the on-device closet order tracks the lowest-first
+reading of whatever masterdata the client last downloaded). The official
+data put the launch/uniform suits at the MINIMUM and newer suits at ever
+higher values, which is why the official closet listed the uniform first
+and the newest costume last.
 
-This inverts every m_suit.display_order in place (new = MIN + MAX - old),
+To show the NEWEST suits at the top instead, newer suits must get LOWER
+display_order values — the launch suit belongs at the MAXIMUM. This script
+inverts every m_suit.display_order in place (new = MIN + MAX - old) whenever
+the launch suit (100011001) sits at the MINIMUM (official orientation),
 which exactly mirrors the relative order while keeping the value range and
-ties intact. It only acts when the data is still in the old orientation
-(launch suit 100011001 at the MAX), so already-fixed data passes through
-untouched and running it twice is safe.
+ties intact. Data already oriented newest-first passes through untouched,
+so running it twice is safe.
 
-Used by the Android CI build right after the harasho submodule checkout;
-Termux/desktop installs can run it manually from the elichika directory:
+Used by the Android CI build after the master data build (order matters:
+running before it would dirty masterdata.db and skip the assets/sql
+migrations); Termux/desktop installs can run it manually from the elichika
+directory:
 
     python3 bin/fix_outfit_order.py
 """
@@ -28,12 +34,12 @@ def fix(path):
             "SELECT MIN(display_order), MAX(display_order) FROM m_suit").fetchone()
         launch = cur.execute(
             "SELECT display_order FROM m_suit WHERE id = ?", (LAUNCH_SUIT,)).fetchone()
-        if launch and lo is not None and lo != hi and launch[0] == hi:
+        if launch and lo is not None and lo != hi and launch[0] == lo:
             cur.execute("UPDATE m_suit SET display_order = ? - display_order", (lo + hi,))
             con.commit()
-            print(f"{path}: inverted m_suit display_order (launch suit {hi} -> {lo})")
+            print(f"{path}: inverted m_suit display_order (launch suit {lo} -> {hi}, newest suits now first in-game)")
         else:
-            print(f"{path}: outfit order already correct, left untouched")
+            print(f"{path}: outfit order already newest-first, left untouched")
     finally:
         con.close()
 
