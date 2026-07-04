@@ -504,6 +504,7 @@ class MainActivity : AppCompatActivity() {
             "settings" -> showSettings()
             "about" -> showAbout()
             "guide" -> showGuide()
+            "reset_server" -> confirmResetServer()
             else -> Bus.log("[action] unknown action type: ${a.optString("id")}")
         }
     }
@@ -531,6 +532,29 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.confirm_title)
             .setMessage(msg)
             .setPositiveButton(R.string.confirm_continue) { _, _ -> runBinary(a) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * "Reset server": removes every installed mod by restoring the bundled vanilla
+     * game data, and resets all accounts (logins kept). Destructive and cannot be
+     * undone, so it takes a two-step confirmation before anything runs.
+     */
+    private fun confirmResetServer() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.reset_server_title)
+            .setMessage(R.string.reset_server_msg)
+            .setPositiveButton(R.string.confirm_continue) { _, _ ->
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.reset_server_title)
+                    .setMessage(R.string.reset_server_msg2)
+                    .setPositiveButton(R.string.reset_server_go) { _, _ ->
+                        ServerService.resetServer(this)
+                    }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+            }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }

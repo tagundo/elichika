@@ -82,6 +82,13 @@
       "args": ["fix_training_trees"],
       "stop_server": true,
       "advanced": true
+    },
+    {
+      "id": "reset_server",
+      "label_id": "act_reset_server",
+      "label": "Reset server (remove installed mods)",
+      "type": "reset_server",
+      "advanced": true
     }
   ]
 }

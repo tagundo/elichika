@@ -39,6 +39,7 @@
     <string name="act_import_addon">애드온 zip 가져오기</string>
     <string name="act_rebuild_assets">마스터 데이터 재빌드</string>
     <string name="act_fix_training">트레이닝 트리 복구</string>
+    <string name="act_reset_server">서버 초기화 (모드 제거) ⚠</string>
     <string name="act_gamebanana">GameBanana 모드페이지</string>
     <string name="act_ayakamods">AyakaMods 모드페이지</string>
     <string name="act_settings">설정 ⚙</string>
@@ -59,6 +60,10 @@
     <string name="region_both">둘 다 (GL + JP)</string>
     <string name="confirm_download_packs">게임 CDN에서 누락된 팩을 받습니다(크기 가변, 클 수 있음). Wi-Fi 사용을 권장합니다.</string>
     <string name="confirm_stops_server">실행 중인 서버가 먼저 중지됩니다.</string>
+    <string name="reset_server_title">서버 초기화</string>
+    <string name="reset_server_msg">원본(바닐라) 게임 데이터를 복원하여 설치·클론된 모든 모드 의상 / 라이브 / 카드를 제거합니다. 또한 모든 계정을 새 계정 상태로 초기화합니다.\n\n로그인 정보는 유지되므로 게임 클라이언트는 계속 접속됩니다 — 서버만 초기 상태로 돌아갑니다.\n\n유지되는 것: 설정(config), 다운로드한 게임 팩, Download/sukusta 안의 파일(모드 zip, 추출/수정 번들, 백업).\n\n되돌릴 수 없습니다. 데이터가 필요할 수 있다면 먼저 DB 백업(서버 콘텐츠 탭)과 계정 내보내기(유저 관리 탭)를 해두세요.</string>
+    <string name="reset_server_msg2">정말 서버와 모든 계정을 지금 초기화할까요? 되돌릴 수 없습니다.</string>
+    <string name="reset_server_go">전부 초기화</string>
 
     <!-- first-run guide -->
     <string name="act_guide">가이드 ❓</string>
@@ -100,4 +105,9 @@
     <string name="log_setup_link_failed">[setup] 공유 폴더 링크 실패(권한 필요할 수 있음): %1$s</string>
     <string name="log_setup_cdn_dir">[setup] CDN 캐시 폴더 → %1$s</string>
     <string name="log_setup_config_created">[setup] config.json 생성됨, CDN 캐시 켜짐, 폴더 → %1$s</string>
+    <string name="log_reset_removing">[reset] %1$s 삭제 중…</string>
+    <string name="log_reset_restore">[reset] 내장된 원본 게임 데이터 복원 중…</string>
+    <string name="log_reset_accounts">[reset] 계정 초기화 중… (로그인은 유지)</string>
+    <string name="log_reset_done">[reset] 완료 (코드 %1$d). 서버를 시작하면 초기화된 데이터가 적용됩니다.</string>
+    <string name="log_reset_failed">[reset] 실패: %1$s</string>
 </resources>

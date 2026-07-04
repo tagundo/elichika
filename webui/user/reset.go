@@ -29,9 +29,10 @@ type ResetRequest struct {
 // This is deliberately a SEPARATE button (not mixed with the checkboxes above) and carries
 // a strong confirm dialog because it wipes the whole account and cannot be undone.
 const resetAccountSection = `<hr>
-<div><label><b>Danger zone &mdash; reset the whole account:</b></label></div>
-<div><label>This resets your ENTIRE account back to a brand-new-account state. ALL progress, cards, items, decks, costumes and story unlocks will be wiped and this CANNOT be undone. Your login (authentication) is preserved, so the game will keep talking to the server &mdash; it will just look like a fresh account. If you might want your data back, export a backup from "Import / Export account" first.</label></div>
-<div><button type="button" onclick="if (confirm('WARNING: This PERMANENTLY resets your ENTIRE account to a fresh new-account state.\n\nALL progress, cards, items, decks, costumes and story unlocks will be lost and this CANNOT be undone.\n\nYour login is kept, so the game will keep working, but everything will be back to a new account.\n\nAre you absolutely sure?')) submit_form(null, 'reset_account')">Reset account to initial state (keep login)</button></div>
+<div><label><b>Danger zone &mdash; reset this ACCOUNT:</b></label></div>
+<div><label>This is an ACCOUNT reset: it resets your ENTIRE account back to a brand-new-account state. ALL progress, cards, items, decks, costumes and story unlocks will be wiped and this CANNOT be undone. Your login (authentication) is preserved, so the game will keep talking to the server &mdash; it will just look like a fresh account. If you might want your data back, export a backup from "Import / Export account" first.</label></div>
+<div><label>Note: installed mod costumes are SERVER data, not account data, so they are NOT removed by this. To remove installed mods and restore the original game data, use "Reset server" in the app console instead.</label></div>
+<div><button type="button" onclick="if (confirm('WARNING: This PERMANENTLY resets your ENTIRE account to a fresh new-account state.\n\nALL progress, cards, items, decks, costumes and story unlocks will be lost and this CANNOT be undone.\n\nYour login is kept, so the game will keep working, but everything will be back to a new account.\n\n(Installed mod costumes are server data and are NOT removed - use the app console\'s Reset server for that.)\n\nAre you absolutely sure?')) submit_form(null, 'reset_account')">Reset account to initial state (keep login)</button></div>
 `
 
 func resetForm(ctx *gin.Context) {

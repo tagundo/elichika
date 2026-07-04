@@ -57,6 +57,37 @@ object AssetInstaller {
         return root
     }
 
+    /**
+     * "Reset server": delete every server-owned tree (the ALWAYS set: webui,
+     * "server init jsons", *.pem, assets, static, serverdata.db) and re-extract the
+     * bundled vanilla payload. Installed/cloned mod costumes live in exactly those
+     * files, so this removes them all and puts the game data back to the state the
+     * APK shipped with. User-owned files (config.json, userdata.db) are kept — the
+     * account wipe runs separately (reset_accounts CLI verb) so logins survive.
+     * Must be called with the server stopped.
+     */
+    fun resetServerData(ctx: Context, log: (String) -> Unit): File {
+        val root = ctx.filesDir
+        // Never delete anything unless the bundled payload is actually there to
+        // restore from (it is absent in non-CI local builds).
+        val payloadExists = runCatching { ctx.assets.list(PAYLOAD)?.isNotEmpty() == true }.getOrDefault(false)
+        if (!payloadExists) {
+            log(ctx.getString(R.string.log_setup_no_payload))
+            return root
+        }
+        for (name in ALWAYS) {
+            val f = File(root, name)
+            if (f.exists()) {
+                log(ctx.getString(R.string.log_reset_removing, name))
+                f.deleteRecursively()
+            }
+        }
+        // Dropping the marker forces install() to treat this as a fresh version and
+        // re-copy the whole ALWAYS set from the bundled payload.
+        File(root, MARKER).delete()
+        return install(ctx, log)
+    }
+
     // Termux default that the server injects into config.json on Android.
     private const val SUKUSTA_DEFAULT = "~/storage/downloads/sukusta/packs"
 
