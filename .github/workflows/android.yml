@@ -65,6 +65,15 @@ jobs:
         run: |
           sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
 
+      - name: Fix in-game outfit order (orient m_suit newest-first)
+        run: |
+          # harasho's m_suit stores lower display_order for newer suits, but the game
+          # client sorts the closet DESC, sinking new suits to the bottom. The script
+          # inverts it in place and is a no-op once the data is oriented correctly, so
+          # an upstream-fixed harasho passes through untouched. Runs before the
+          # serverdata build and payload assembly so the APK ships the fixed data.
+          python3 bin/fix_outfit_order.py
+
       - name: Build master data (serverdata.db) on the host
         run: |
           # Pure-Go host build, then rebuild_assets turns the harasho submodule
