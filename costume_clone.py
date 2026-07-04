@@ -80,9 +80,13 @@ def _newest_first_dir(md_conn):
     try:
         cur = md_conn.cursor()
         row = cur.execute("SELECT display_order FROM m_suit WHERE id = 100011001").fetchone()
-        mn, mx = cur.execute("SELECT MIN(display_order), MAX(display_order) FROM m_suit").fetchone()
-        if row and mn is not None and mx is not None and mx > mn:
-            return "ASC" if (row[0] - mn) > (mx - row[0]) else "DESC"
+        # compare against the MEDIAN, not the range midpoint: add-on installs from the
+        # other convention leave outlier values at one end, which would skew a
+        # midpoint but barely move the median.
+        med = cur.execute("SELECT display_order FROM m_suit ORDER BY display_order "
+                          "LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m_suit)").fetchone()
+        if row and med and row[0] != med[0]:
+            return "ASC" if row[0] > med[0] else "DESC"
     except sqlite3.Error:
         pass
     return "DESC"
@@ -158,13 +162,19 @@ def _validate_char_id(label, value):
 
 
 def _safe_display_order(md_conn, member_id):
-    """display_order to place a new suit at the front of a character's list.
-    MIN(display_order) is NULL when the character has no suits yet, so guard
-    against `None - 1` (which would crash mid-clone)."""
+    """display_order that makes a new suit the character's NEWEST. The direction
+    depends on the data source (_newest_first_dir): where lower = newer take the
+    member MIN-1, where higher = newer take the member MAX+1. NULL aggregates
+    (character with no suits yet) are guarded so a clone can't crash mid-way."""
+    if _newest_first_dir(md_conn) == "ASC":     # lower = newer
+        row = md_conn.execute(
+            "SELECT MIN(display_order) FROM m_suit WHERE member_m_id = ?", (member_id,)).fetchone()
+        base = row[0] if row else None
+        return (base - 1) if base is not None else 0
     row = md_conn.execute(
-        "SELECT MIN(display_order) FROM m_suit WHERE member_m_id = ?", (member_id,)).fetchone()
+        "SELECT MAX(display_order) FROM m_suit WHERE member_m_id = ?", (member_id,)).fetchone()
     base = row[0] if row else None
-    return (base - 1) if base is not None else 0
+    return (base + 1) if base is not None else 0
 
 
 def _members_sharing_model(md_conn, model_asset_path, exclude_member):

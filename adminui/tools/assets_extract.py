@@ -134,9 +134,13 @@ def _newest_first_dir(md):
     of the range — if it is at the high end, low = new, so newest-first is ASC."""
     try:
         row = md.execute("SELECT display_order FROM m_suit WHERE id = 100011001").fetchone()
-        mn, mx = md.execute("SELECT MIN(display_order), MAX(display_order) FROM m_suit").fetchone()
-        if row and mn is not None and mx is not None and mx > mn:
-            return "ASC" if (row[0] - mn) > (mx - row[0]) else "DESC"
+        # compare against the MEDIAN, not the range midpoint: add-on installs from the
+        # other convention leave outlier values at one end, which would skew a
+        # midpoint but barely move the median.
+        med = md.execute("SELECT display_order FROM m_suit ORDER BY display_order "
+                         "LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m_suit)").fetchone()
+        if row and med and row[0] != med[0]:
+            return "ASC" if row[0] > med[0] else "DESC"
     except sqlite3.Error:
         pass
     return "DESC"
