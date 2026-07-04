@@ -79,10 +79,13 @@ _TABLES = {
             "캐릭터 코스튬 모델을 게임 팩에서 복호화해 공유 extracted/ 폴더로 추출합니다(에셋 편집 도구에서 바로 사용). 누락된 팩은 CDN이 켜져 있으면 자동으로 받아옵니다.",
         "Character": "캐릭터",
         "Costume to extract": "추출할 코스튬",
+        "Costumes to extract": "추출할 코스튬 (여러 개 선택)",
+        "Hold Ctrl/Cmd (or drag) to pick several costumes to extract at once.":
+            "Ctrl/Cmd를 누른 채(또는 드래그) 여러 코스튬을 한 번에 추출하도록 선택합니다.",
         "Download missing packs from CDN": "누락 팩을 CDN에서 받기",
-        "Apply colour variant (irochi)": "색상 변형(이로치) 적용",
-        "When a picked costume is a colour variant (its name ends with a [X] tag, e.g. 'Lovely Police[P]'), composite its recolour textures onto the base costume's model so you get a usable recoloured model in one step. Off = extract the raw variant (textures only).":
-            "선택한 의상이 색상 변형(이름이 [X] 태그로 끝남, 예: 'Lovely Police[P]')이면, 그 리컬러 텍스처를 기본 의상 모델에 합성해 한 번에 쓸 수 있는 재색 모델을 만듭니다. 끄면 원본 변형(텍스처만)을 추출합니다.",
+        "Also output colour variants (irochi)": "색상 변형(이로치)도 함께 출력",
+        "When a costume has an irochi (alternate-colour) version, decrypt its recolour textures and composite them onto the model automatically, so a ready-to-use recoloured model comes out alongside the base.":
+            "의상에 이로치(다른 색상) 버전이 있으면, 그 리컬러 텍스처를 자동으로 복호화해 모델에 합성합니다. 기본 모델과 함께 바로 쓸 수 있는 재색 모델이 나옵니다.",
         "Off = only use packs already downloaded locally.": "끄면 이미 받아둔 로컬 팩만 사용합니다.",
         "Install Costume (zip)": "코스튬 설치 (zip)",
         "Install Live / Song (zip)": "라이브 / 곡 설치 (zip)",
@@ -116,6 +119,7 @@ _TABLES = {
             "JP 클라이언트의 텍스트를 다른 언어 사전으로 교체합니다. 되돌리려면 다시 ja로 바꾸세요.",
         # field labels
         "File to install": "설치할 파일",
+        "Files to install": "설치할 파일 (여러 개 선택)",
         "Back up the database first": "DB 먼저 백업",
         "Stop the elichika server first": "먼저 elichika 서버 중지",
         "Backup to restore": "복원할 백업",
@@ -142,6 +146,8 @@ _TABLES = {
             "권장: 복제 전에 전체 DB 백업이 수행됩니다.",
         "Files in Download/sukusta/{folder} and …/addons appear here.":
             "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다.",
+        "Files in Download/sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
+            "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다. Ctrl/Cmd를 누른 채(또는 드래그) 여러 개를 선택하면 차례로 설치됩니다.",
     },
     "ja": {
         # static UI chrome (client-side, app.js / index.html)
@@ -175,10 +181,13 @@ _TABLES = {
             "キャラの衣装モデルをゲームパックから復号し、共有のextracted/フォルダへ抽出します（アセット編集ツールでそのまま使用可）。不足パックはCDN有効時に自動取得します。",
         "Character": "キャラ",
         "Costume to extract": "抽出する衣装",
+        "Costumes to extract": "抽出する衣装（複数選択）",
+        "Hold Ctrl/Cmd (or drag) to pick several costumes to extract at once.":
+            "Ctrl/Cmdを押しながら（またはドラッグで）複数の衣装を一度に抽出できます。",
         "Download missing packs from CDN": "不足パックをCDNから取得",
-        "Apply colour variant (irochi)": "色変え（色違い）を適用",
-        "When a picked costume is a colour variant (its name ends with a [X] tag, e.g. 'Lovely Police[P]'), composite its recolour textures onto the base costume's model so you get a usable recoloured model in one step. Off = extract the raw variant (textures only).":
-            "選んだ衣装が色違い（名前が[X]タグで終わる、例: 'Lovely Police[P]'）の場合、その色変えテクスチャをベース衣装のモデルに合成し、そのまま使える色変えモデルを一度に作ります。オフ = 生のバリアント（テクスチャのみ）を抽出。",
+        "Also output colour variants (irochi)": "色違い（色変え）も一緒に出力",
+        "When a costume has an irochi (alternate-colour) version, decrypt its recolour textures and composite them onto the model automatically, so a ready-to-use recoloured model comes out alongside the base.":
+            "衣装に色違い（別色）バージョンがある場合、その色変えテクスチャを自動で復号しモデルに合成します。ベースモデルと一緒に、そのまま使える色変えモデルが出力されます。",
         "Off = only use packs already downloaded locally.": "オフ=ローカルに取得済みのパックのみ使用。",
         "Install Costume (zip)": "衣装をインストール (zip)",
         "Install Live / Song (zip)": "ライブ / 楽曲をインストール (zip)",
@@ -210,6 +219,7 @@ _TABLES = {
         "Swap the JP client's text for another language's dictionary. To revert, swap back to ja.":
             "JPクライアントのテキストを別言語の辞書に置き換えます。戻すにはjaに置換し直してください。",
         "File to install": "インストールするファイル",
+        "Files to install": "インストールするファイル（複数選択）",
         "Back up the database first": "先にDBをバックアップ",
         "Stop the elichika server first": "先にelichikaサーバーを停止",
         "Backup to restore": "復元するバックアップ",
@@ -235,5 +245,7 @@ _TABLES = {
             "推奨: クローン前に完全なDBバックアップが取られます。",
         "Files in Download/sukusta/{folder} and …/addons appear here.":
             "Download/sukusta/{folder} と …/addons のファイルがここに表示されます。",
+        "Files in Download/sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
+            "Download/sukusta/{folder} と …/addons のファイルがここに表示されます。Ctrl/Cmdを押しながら（またはドラッグで）複数選択すると順番にインストールされます。",
     },
 }

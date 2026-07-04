@@ -30,15 +30,22 @@ _CHARACTERS = character_choices()
 _EXTRACT_CHARACTERS = extract_characters()
 
 
-def _addon(folder):
+def _addon(folder, multi=False):
     """Per-installer file picker. `folder` is the original per-type drop folder
     (suit / live / ...); the dropdown lists that folder plus the shared addons/.
     The help text is kept as a {folder} template so it can be translated before
-    the folder name is substituted (see _translate_field)."""
-    return {"name": "addon", "label": "File to install", "type": "dynamic_select",
-            "source": "addon", "required": True,
-            "help": "Files in Download/sukusta/{folder} and …/addons appear here.",
-            "help_folder": folder}
+    the folder name is substituted (see _translate_field). When `multi` is set the
+    picker becomes a multi-select so several files can be installed in one run."""
+    f = {"name": "addon", "label": "File to install", "type": "dynamic_select",
+         "source": "addon", "required": True,
+         "help": "Files in Download/sukusta/{folder} and …/addons appear here.",
+         "help_folder": folder}
+    if multi:
+        f["multi"] = True
+        f["label"] = "Files to install"
+        f["help"] = ("Files in Download/sukusta/{folder} and …/addons appear here. "
+                     "Hold Ctrl/Cmd (or drag) to select several — they install one after another.")
+    return f
 
 
 def _char_field(name, label, help_text=None, choices=None, required=True):
@@ -124,18 +131,19 @@ TOOLS = [
                         choices=_EXTRACT_CHARACTERS, required=False),
             {"name": "search", "label": "Or search costumes", "type": "text",
              "help": "Type part of a costume or character name to search across everyone."},
-            {"name": "costume", "label": "Costume to extract", "type": "dynamic_select",
-             "source": "costume", "depends_on": ["character", "search"]},
+            {"name": "costume", "label": "Costumes to extract", "type": "dynamic_select",
+             "source": "costume", "depends_on": ["character", "search"], "multi": True,
+             "help": "Hold Ctrl/Cmd (or drag) to pick several costumes to extract at once."},
             {"name": "batch", "label": "Extract all matches", "type": "checkbox", "default": False,
              "help": "Extract every costume in the list above (the character's costumes, or all "
              "search matches) instead of just the one picked."},
+            {"name": "recolour_variant", "label": "Also output colour variants (irochi)",
+             "type": "checkbox", "default": True,
+             "help": "When a costume has an irochi (alternate-colour) version, decrypt its "
+             "recolour textures and composite them onto the model automatically, so a ready-to-use "
+             "recoloured model comes out alongside the base."},
             {"name": "cdn", "label": "Download missing packs from CDN", "type": "checkbox",
              "default": True, "help": "Off = only use packs already downloaded locally."},
-            {"name": "recolour_variant", "label": "Apply colour variant (irochi)", "type": "checkbox",
-             "default": True, "help": "When a picked costume is a colour variant (its name ends "
-             "with a [X] tag, e.g. 'Lovely Police[P]'), composite its recolour textures onto the "
-             "base costume's model so you get a usable recoloured model in one step. Off = extract "
-             "the raw variant (textures only)."},
         ],
     },
     {
@@ -145,7 +153,7 @@ TOOLS = [
                         "Download/sukusta/suit (or use the file picker), then pick it."),
         "run": run_costume,
         "options": options_for("costume"),
-        "fields": [_addon("suit"), _BACKUP, _STOP],
+        "fields": [_addon("suit", multi=True), _BACKUP, _STOP],
     },
     {
         "id": "install_live",
@@ -180,7 +188,7 @@ TOOLS = [
                         "Download/sukusta/livetimeline."),
         "run": run_camera,
         "options": options_for("camera"),
-        "fields": [_addon("livetimeline"), _BACKUP, _STOP],
+        "fields": [_addon("livetimeline", multi=True), _BACKUP, _STOP],
     },
     {
         "id": "install_db",

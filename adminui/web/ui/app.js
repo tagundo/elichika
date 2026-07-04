@@ -148,7 +148,13 @@ function renderField(field) {
     wrap.appendChild(el("label", { for: id, text: field.label }));
     const sel = el("select", { id });
     sel.dataset.name = field.name; sel.dataset.ftype = "dynamic_select";
-    sel.appendChild(el("option", { value: "", text: T("— (press ↻ to load) —") }));
+    if (field.multi) {
+      // multi-select: pick several files to install in one run
+      sel.multiple = true;
+      sel.size = 6;
+    } else {
+      sel.appendChild(el("option", { value: "", text: T("— (press ↻ to load) —") }));
+    }
     const refresh = el("button", { type: "button", title: T("Load options"), text: "↻",
       onclick: () => loadOptions(field) });
     wrap.appendChild(el("div", { class: "dyn-row" }, [sel, refresh]));
@@ -209,7 +215,9 @@ async function loadOptions(field) {
 function collectParams() {
   const params = {};
   document.querySelectorAll("#tool-form [data-name]").forEach((inp) => {
-    params[inp.dataset.name] = inp.dataset.ftype === "checkbox" ? inp.checked : inp.value;
+    if (inp.dataset.ftype === "checkbox") params[inp.dataset.name] = inp.checked;
+    else if (inp.multiple) params[inp.dataset.name] = Array.from(inp.selectedOptions).map((o) => o.value);
+    else params[inp.dataset.name] = inp.value;
   });
   return params;
 }

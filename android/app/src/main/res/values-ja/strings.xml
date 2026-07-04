@@ -21,6 +21,13 @@
     <string name="settings_title">設定</string>
     <string name="about_title">情報</string>
     <string name="language">言語</string>
+    <string name="settings_ui_language">UI言語</string>
+    <string name="settings_gamedata_language">ゲームデータ言語（サーバー起動速度）</string>
+    <string name="gamedata_all">全言語 (ja, en, zh, ko)</string>
+    <string name="gamedata_ja">日本語のみ (ja)</string>
+    <string name="gamedata_en">英語のみ (en)</string>
+    <string name="gamedata_ko">韓国語のみ (ko)</string>
+    <string name="gamedata_zh">中国語のみ (zh)</string>
     <string name="lang_auto">自動 (システムに従う)</string>
     <string name="close">閉じる</string>
     <string name="restart_hint">適用しました。Web UI に反映するにはサーバーを再起動してください。</string>
@@ -85,6 +92,7 @@
     <string name="log_pyservers_started">[pyservers] 開発/MODツールWeb UI 開始 (:8772 / :8770)</string>
     <string name="log_pyservers_failed">[pyservers] Pythonツール開始失敗: %1$s</string>
     <string name="log_settings_lang">[settings] 言語 → %1$s. %2$s</string>
+    <string name="log_settings_gamedata">[settings] ゲームデータ言語 → %1$s. %2$s</string>
     <string name="log_setup_no_payload">[setup] バンドルペイロードがありません（CIビルドではない）。サーバーファイル展開をスキップします。</string>
     <string name="log_setup_preparing">[setup] サーバーファイル準備中… (バージョン %1$s, 静的アセット更新=%2$s)</string>
     <string name="log_setup_ready">[setup] 準備完了。</string>

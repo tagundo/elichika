@@ -10,7 +10,6 @@ one costume at a time. Output goes to the shared sukusta/extracted folder, which
 is exactly the Asset-editing tools' input root.
 """
 import os
-import re
 import sqlite3
 
 from adminui.tools.common import capture_stdout, ensure_repo_on_path
@@ -140,15 +139,19 @@ def costume_options(params):
     cid = (params.get("character") or "").strip()
     md = sqlite3.connect(md_path)
     try:
+        # display_order is a monotonic release index (lower = older), so DESC lists
+        # the newest costumes first; the (name LIKE '%_cloned') key floats cloned
+        # costumes to the top of the list so they are easy to find.
         if search:
             rows = md.execute(
                 "SELECT member_m_id, name, model_asset_path FROM m_suit "
-                "WHERE name NOT LIKE '%_cloned' AND model_asset_path IS NOT NULL "
-                "AND model_asset_path <> '' ORDER BY member_m_id, display_order").fetchall()
+                "WHERE model_asset_path IS NOT NULL AND model_asset_path <> '' "
+                "ORDER BY (name LIKE '%_cloned') DESC, display_order DESC").fetchall()
         elif cid.isdigit():
             rows = md.execute(
                 "SELECT member_m_id, name, model_asset_path FROM m_suit "
-                "WHERE member_m_id = ? AND name NOT LIKE '%_cloned' ORDER BY display_order",
+                "WHERE member_m_id = ? "
+                "ORDER BY (name LIKE '%_cloned') DESC, display_order DESC",
                 (int(cid),)).fetchall()
         else:
             return []
@@ -202,24 +205,20 @@ def _resolve_cid_and_label(x, base, model, cid, lang=None):
     return cid, x.sanitize("_".join(p for p in (str(cname), code, rname) if p))
 
 
-# --------------------------------------------- irochi (colour variant) recolour
-# A colour variant ("irochi") is a SEPARATE m_suit row whose display name is the
-# base costume's name plus a bracketed colour tag, e.g. "Lovely Police[P]" for
-# base "Lovely Police". Its asset is a texture-only bundle (chXXXX_coYYYY_body_c1
-# …); the mesh lives in the base costume's model bundle. Picking the variant thus
-# gives textures with no model. When recolour is on we detect the [X] tag, find
-# the base costume (same character, name without the tag), extract both, and
-# composite the _cN textures onto the base model → a usable recoloured model.
-_VARIANT_RE = re.compile(r"^(?P<base>.+?)\s*\[[^\]]+\]\s*$")
-
-
-def _is_variant(display_name):
-    return bool(display_name) and bool(_VARIANT_RE.match(display_name))
+# ---------------------------------------------- one-step irochi recolour
+# An irochi (colour variant) costume shares its base costume's model_asset_path,
+# so picking it only yields the base-colour model. But the recolour texture bundle
+# IS reachable: it is the base model's costume-SPECIFIC member_model dependency —
+# the one no other model depends on. Verified against the asset DB: every
+# shared-model (irochi) costume has exactly one such dependency; plain costumes
+# have none. So when a picked costume has one, we decrypt it and composite its _cN
+# textures onto the just-extracted base model -> a ready-to-use recoloured model.
 
 
 def _ensure_modtools_on_path():
-    """Put <elichika>/modtools on sys.path so the texture-import stack
-    (texture_importer, webtools.*) imports in-process (mirrors selftest.py)."""
+    """Put the texture-import stack (texture_importer, webtools.*) on sys.path.
+    The APK layout already has it on the app root via ensure_repo_on_path; the
+    local dev layout needs <elichika>/modtools added (mirrors selftest.py)."""
     ensure_repo_on_path()
     import sys
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -228,38 +227,25 @@ def _ensure_modtools_on_path():
         sys.path.insert(0, mt)
 
 
-def _base_model_for_variant(x, base, variant_model_path, variant_name, lang):
-    """model_asset_path of the BASE costume for an irochi variant, or None: same
-    character, resolved display name == the variant's name without the [X] tag."""
-    m = _VARIANT_RE.match(variant_name or "")
-    if not m:
-        return None
-    base_name = m.group("base").strip()
-    md_path = x.find_masterdata(base)
-    if not md_path:
-        return None
-    md = sqlite3.connect(md_path)
+def _recolour_dep_paths(asset, base_model_path):
+    """member_model dependencies of the base model that are costume-specific — a
+    recolour (irochi) bundle is depended on by exactly one model. Usually one."""
+    out = []
     try:
-        row = md.execute("SELECT member_m_id FROM m_suit WHERE model_asset_path = ? "
-                         "LIMIT 1", (variant_model_path,)).fetchone()
-        if not row:
-            return None
-        rows = md.execute("SELECT name, model_asset_path FROM m_suit "
-                          "WHERE member_m_id = ? AND name NOT LIKE '%_cloned'",
-                          (row[0],)).fetchall()
-    finally:
-        md.close()
-    dc = _dictionary_conn(x, base, lang=lang)
-    try:
-        for name_key, mp in rows:
-            if not mp or mp == variant_model_path:
-                continue
-            if (x.real_costume_name(dc, name_key) or "") == base_name:
-                return mp
-    finally:
-        if dc:
-            dc.close()
-    return None
+        deps = [r[0] for r in asset.execute(
+            "SELECT dependency FROM member_model_dependency WHERE asset_path = ?",
+            (base_model_path,))]
+    except sqlite3.Error:
+        return out
+    for dep in deps:
+        if not asset.execute("SELECT 1 FROM member_model WHERE asset_path = ? LIMIT 1",
+                             (dep,)).fetchone():
+            continue
+        rev = asset.execute("SELECT COUNT(*) FROM member_model_dependency "
+                            "WHERE dependency = ?", (dep,)).fetchone()[0]
+        if rev == 1:
+            out.append(dep)
+    return out
 
 
 def _extract_one_to(x, resolver, staging, model_path, mm_row, label):
@@ -274,14 +260,14 @@ def _extract_one_to(x, resolver, staging, model_path, mm_row, label):
 
 
 def _composite_recolour(base_bundle, variant_bundle, out_path):
-    """Import the variant bundle's _cN textures onto the base model bundle,
-    keeping each base texture's format. Returns the count imported. Prints (which
-    the caller captures into the job log)."""
+    """Import the variant bundle's _cN textures onto the base model (keeping each
+    base texture's format). Returns the count imported. Prints (captured)."""
     _ensure_modtools_on_path()
     from webtools.tools.texture import ensure_astc_cli
     from webtools.core.tkstub import ensure_tk_stub
-    ensure_astc_cli()          # ASTC decode/encode on-device
-    ensure_tk_stub()           # texture_importer imports tkinter at top
+    ensure_astc_cli()
+    ensure_tk_stub()
+    import re
     import tempfile
     import shutil
     import UnityPy
@@ -304,7 +290,7 @@ def _composite_recolour(base_bundle, variant_bundle, out_path):
                 print(f"  ! variant texture {nm}: {exc}")
         if not mapping:
             return 0
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
         imported, _skipped, _errors = ti.process_bundle(
             base_bundle, out_path, lambda n: mapping.get(n), "Keep Original", print)
         return imported
@@ -312,38 +298,65 @@ def _composite_recolour(base_bundle, variant_bundle, out_path):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _extract_recoloured(x, asset, resolver, out_dir, base_model_path,
-                        variant_model_path, label, all_manifest):
-    """Extract the base model + variant textures to a staging dir and composite
-    them into out_dir/3d_model/<label>.unity. Returns the output path or None."""
+def _extract_recolours(x, asset, resolver, out_dir, base_model_path, base_bundle,
+                       label, all_manifest):
+    """Decrypt each of the costume's recolour dependencies and composite it onto
+    the just-extracted base model -> recoloured model(s). Returns how many made."""
     import tempfile
     import shutil
-
-    def _mm(path):
-        return asset.execute("SELECT pack_name, head, size, key1, key2 "
-                             "FROM member_model WHERE asset_path = ?", (path,)).fetchone()
-
-    b, v = _mm(base_model_path), _mm(variant_model_path)
-    if not b or not v:
-        return None
-    staging = tempfile.mkdtemp(prefix="irochi_ext_")
-    try:
-        base_bundle = _extract_one_to(x, resolver, staging, base_model_path, b, "base")
-        var_bundle = _extract_one_to(x, resolver, staging, variant_model_path, v, "variant")
-        if not base_bundle or not var_bundle:
-            return None
-        out_path = os.path.join(out_dir, x.category_dir("member_model"),
-                                x.sanitize(label) + ".unity")
-        if _composite_recolour(base_bundle, var_bundle, out_path) <= 0:
-            if os.path.exists(out_path):
+    deps = _recolour_dep_paths(asset, base_model_path)
+    if not deps or not base_bundle or not os.path.isfile(base_bundle):
+        return 0
+    made = 0
+    for i, dep in enumerate(deps):
+        drow = asset.execute("SELECT pack_name, head, size, key1, key2 "
+                             "FROM member_model WHERE asset_path = ?", (dep,)).fetchone()
+        if not drow:
+            continue
+        staging = tempfile.mkdtemp(prefix="irochi_dep_")
+        try:
+            var_bundle = _extract_one_to(x, resolver, staging, dep, drow, "variant")
+            if not var_bundle:
+                continue
+            tag = "_recolour" if len(deps) == 1 else f"_c{i + 1}"
+            out_path = os.path.join(out_dir, x.category_dir("member_model"),
+                                    x.sanitize(label) + tag + ".unity")
+            if _composite_recolour(base_bundle, var_bundle, out_path) > 0:
+                made += 1
+                print(f"  ✓ {label}{tag}  (recoloured onto base model)")
+                all_manifest.append(("member_model", dep, drow[0], drow[1], drow[2],
+                                     drow[3], drow[4],
+                                     os.path.relpath(out_path, out_dir), "OK_RECOLOURED"))
+            elif os.path.exists(out_path):
                 os.remove(out_path)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+    return made
+
+
+def _rina_unmask_model(x, base, model_path):
+    """Rina (member 209) wears a masked board by default; every one of her suits has a
+    SEPARATE no-mask model in m_suit_view (view_status=2) at a different asset path than
+    m_suit.model_asset_path. Return that no-mask path (or None if this isn't a Rina suit
+    or there's no distinct no-mask model), so both versions can be extracted."""
+    md_path = x.find_masterdata(base)
+    if not md_path:
+        return None
+    md = sqlite3.connect(md_path)
+    try:
+        r = md.execute("SELECT id, member_m_id FROM m_suit WHERE model_asset_path = ? "
+                       "LIMIT 1", (model_path,)).fetchone()
+        if not r or r[1] != 209:
             return None
-        all_manifest.append(("member_model", variant_model_path, v[0], v[1], v[2],
-                             v[3], v[4], os.path.relpath(out_path, out_dir),
-                             "OK_RECOLOURED"))
-        return out_path
+        v = md.execute("SELECT model_asset_path FROM m_suit_view "
+                       "WHERE suit_master_id = ? AND view_status = 2", (r[0],)).fetchone()
+        if v and v[0] and v[0] != model_path:
+            return v[0]
+    except sqlite3.Error:
+        return None
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        md.close()
+    return None
 
 
 def run_extract(job, params):
@@ -361,10 +374,15 @@ def run_extract(job, params):
         if not models:
             raise ValueError("No costumes matched — pick a character or type a search first.")
     else:
-        model = (params.get("costume") or "").strip()
-        if not model:
+        chosen = params.get("costume")
+        if isinstance(chosen, (list, tuple)):
+            models = [str(m).strip() for m in chosen if str(m).strip()]
+        elif chosen and str(chosen).strip():
+            models = [str(chosen).strip()]
+        else:
+            models = []
+        if not models:
             raise ValueError("Pick a costume to extract (or turn on 'Extract all matches').")
-        models = [model]
 
     cid0 = (params.get("character") or "").strip()
     out_dir = _extracted_dir()
@@ -392,25 +410,6 @@ def run_extract(job, params):
                     continue
                 pack_name, head, size, key1, key2 = mm
                 _cid, label = _resolve_cid_and_label(x, base, model, cid0, lang=params.get("lang"))
-
-                # Colour variant (irochi): if the picked costume's name carries a
-                # [X] tag, composite its _cN textures onto the base costume's model
-                # so one pick yields a usable recoloured model (not textures alone).
-                if params.get("recolour_variant", True):
-                    vname = _costume_meta(x, model, lang=params.get("lang"))[0]
-                    if _is_variant(vname):
-                        base_model = _base_model_for_variant(x, base, model, vname,
-                                                             params.get("lang"))
-                        if base_model and _extract_recoloured(
-                                x, asset, resolver, out_dir, base_model, model,
-                                label, all_manifest):
-                            done_ok += 1
-                            print(f"✓ {label}  (recoloured onto base model)")
-                            continue
-                        print(f"  ! {label}: couldn't recolour "
-                              f"({'no base costume found' if not base_model else 'composite failed'})"
-                              f" — extracting the raw variant instead")
-
                 used, manifest = set(), []
                 ok = x.extract_one(resolver, out_dir, "member_model", model,
                                    pack_name, head, size, key1, key2, used, manifest,
@@ -420,6 +419,36 @@ def run_extract(job, params):
                 if ok:
                     done_ok += 1
                     print(f"✓ {label}")
+                    # If this costume has an irochi (colour-variant) recolour bundle,
+                    # decrypt it too and composite it onto the base model we just
+                    # wrote, so the picker's variant comes out ready-to-use.
+                    if params.get("recolour_variant", True) and manifest \
+                            and manifest[-1][8] == "OK" and manifest[-1][7]:
+                        base_bundle = os.path.join(out_dir, manifest[-1][7])
+                        try:
+                            _extract_recolours(x, asset, resolver, out_dir, model,
+                                               base_bundle, label, all_manifest)
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"  ! colour variant skipped: {exc}")
+                    # Rina (209): also extract the no-mask model (m_suit_view
+                    # view_status=2), which lives at a different asset path, so both the
+                    # masked and unmasked versions come out.
+                    unmask = _rina_unmask_model(x, base, model)
+                    if unmask:
+                        umm = asset.execute(
+                            "SELECT pack_name, head, size, key1, key2 FROM member_model "
+                            "WHERE asset_path = ?", (unmask,)).fetchone()
+                        if umm:
+                            used_u, man_u = set(), []
+                            oku = x.extract_one(resolver, out_dir, "member_model", unmask,
+                                                umm[0], umm[1], umm[2], umm[3], umm[4],
+                                                used_u, man_u, file_label=label + "_nomask")
+                            if man_u:
+                                all_manifest.extend(man_u)
+                            if oku:
+                                print(f"✓ {label}_nomask")
+                        else:
+                            print(f"  ! Rina no-mask model {unmask} not in member_model — skipped")
             if all_manifest:
                 x.write_manifest(out_dir, all_manifest)
             x.print_resolver_stats(resolver)

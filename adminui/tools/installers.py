@@ -161,18 +161,23 @@ def _force_termux_mode():
     return restore
 
 
-def _run_installer(job, key, params):
-    spec = INSTALLERS[key]
-    chosen = (params.get("addon") or "").strip()
-    folder = spec.get("folder", "addons")
-    if not chosen:
-        raise ValueError(f"Select a file first (drop it into Download/sukusta/{folder} or …/addons).")
-    ensure_repo_on_path()
+def _addon_list(raw):
+    """Normalise the 'addon' param into a list of filenames. Accepts a single
+    filename (single-select installers) or a list (multi-select ones)."""
+    if isinstance(raw, (list, tuple)):
+        return [str(c).strip() for c in raw if str(c).strip()]
+    if raw and str(raw).strip():
+        return [str(raw).strip()]
+    return []
+
+
+def _install_one(job, key, spec, chosen, do_backup):
+    """Install a single addon file. Returns True on success, False if the file
+    couldn't be located (logged and skipped so a batch keeps going)."""
     src = _locate(key, chosen)
     if not src:
-        raise FileNotFoundError(
-            f"{chosen} not found in Download/sukusta/{folder} or …/addons.")
-
+        job.log(f"[{key}] SKIP {chosen}: not found in the drop folders")
+        return False
     scans = _dirs(spec)
     for d in scans:
         os.makedirs(d, exist_ok=True)
@@ -180,14 +185,11 @@ def _run_installer(job, key, params):
         if os.path.abspath(src) != os.path.abspath(dst):
             shutil.copy2(src, dst)
 
-    if params.get("stop_server", True):
-        stop_server(job.log)
-
     job.log(f"[{key}] installing {chosen}")
     restore_listing = _patched_listing(scans, chosen)
     restore_env = _force_termux_mode()
     real_input = builtins.input
-    builtins.input = _Answers(bool(params.get("backup", True)))
+    builtins.input = _Answers(do_backup)
     try:
         with capture_stdout(job):
             _reload(spec["module"])
@@ -197,6 +199,42 @@ def _run_installer(job, key, params):
         builtins.input = real_input
         restore_listing()
         restore_env()
+    return True
+
+
+def _run_installer(job, key, params):
+    spec = INSTALLERS[key]
+    folder = spec.get("folder", "addons")
+    chosen_list = _addon_list(params.get("addon"))
+    if not chosen_list:
+        raise ValueError(f"Select a file first (drop it into Download/sukusta/{folder} or …/addons).")
+    ensure_repo_on_path()
+
+    # Don't stop the server for a batch where nothing can be found (a no-op install
+    # shouldn't take the server down as a side effect).
+    if not any(_locate(key, c) for c in chosen_list):
+        raise FileNotFoundError(
+            f"{chosen_list[0]} not found in Download/sukusta/{folder} or …/addons.")
+
+    # Stop the server once for the whole batch, not per file.
+    if params.get("stop_server", True):
+        stop_server(job.log)
+
+    want_backup = bool(params.get("backup", True))
+    total = len(chosen_list)
+    done = 0
+    job.progress(0, total)
+    for i, chosen in enumerate(chosen_list):
+        # Back up only before the first install — one snapshot covers the batch.
+        if _install_one(job, key, spec, chosen, do_backup=(want_backup and i == 0)):
+            done += 1
+        job.progress(i + 1, total)
+
+    if total > 1:
+        return f"{key}: installed {done}/{total} file(s) — restart the server to apply."
+    if not done:
+        raise FileNotFoundError(
+            f"{chosen_list[0]} not found in Download/sukusta/{folder} or …/addons.")
     return f"{key} install complete — restart the server to apply it."
 
 

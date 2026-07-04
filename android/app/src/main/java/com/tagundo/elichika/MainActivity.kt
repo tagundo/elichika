@@ -262,11 +262,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettings() {
+        val items = arrayOf(
+            getString(R.string.settings_ui_language),
+            getString(R.string.settings_gamedata_language)
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_title)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> showUiLanguageSetting()
+                    1 -> showGamedataLanguageSetting()
+                }
+            }
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    private fun showUiLanguageSetting() {
         val codes = listOf("auto") + Lang.SUPPORTED
         val labels = arrayOf(getString(R.string.lang_auto), "English", "한국어", "日本語")
         val current = codes.indexOf(Lang.pref(this)).coerceAtLeast(0)
         AlertDialog.Builder(this)
-            .setTitle("${getString(R.string.settings_title)} · ${getString(R.string.language)}")
+            .setTitle("${getString(R.string.settings_title)} · ${getString(R.string.settings_ui_language)}")
             .setSingleChoiceItems(labels, current) { dialog, which ->
                 Lang.setPref(this, codes[which])
                 Lang.writeWebuiLanguage(this, filesDir)
@@ -276,6 +293,56 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.close, null)
             .show()
+    }
+
+    // Which game-data languages the server loads at startup (config.json "locales").
+    // Loading one region instead of all four cuts server start time; the value is the
+    // same comma string locale.init() parses.
+    private val gamedataLocaleValues = listOf("ja,en,zh,ko", "ja", "en", "ko", "zh")
+
+    private fun showGamedataLanguageSetting() {
+        val labels = arrayOf(
+            getString(R.string.gamedata_all),
+            getString(R.string.gamedata_ja),
+            getString(R.string.gamedata_en),
+            getString(R.string.gamedata_ko),
+            getString(R.string.gamedata_zh)
+        )
+        val current = gamedataLocaleValues.indexOf(readLocales()).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("${getString(R.string.settings_title)} · ${getString(R.string.settings_gamedata_language)}")
+            .setSingleChoiceItems(labels, current) { dialog, which ->
+                writeLocales(gamedataLocaleValues[which])
+                dialog.dismiss()
+                Bus.log(getString(R.string.log_settings_gamedata, labels[which], getString(R.string.restart_hint)))
+            }
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    /** Read config.json's "locales" value (default = all four). */
+    private fun readLocales(): String = try {
+        val txt = File(filesDir, "config.json").readText()
+        Regex("\"locales\"\\s*:\\s*\"([^\"]*)\"").find(txt)?.groupValues?.get(1) ?: "ja,en,zh,ko"
+    } catch (e: Exception) {
+        "ja,en,zh,ko"
+    }
+
+    /** Write config.json's "locales" value, replacing it or inserting it if absent. */
+    private fun writeLocales(value: String) {
+        try {
+            val cfg = File(filesDir, "config.json")
+            if (!cfg.exists()) return
+            val txt = cfg.readText()
+            val re = Regex("\"locales\"\\s*:\\s*\"[^\"]*\"")
+            val patched = when {
+                re.containsMatchIn(txt) -> re.replace(txt, "\"locales\":\"$value\"")
+                txt.contains("\"") -> txt.replaceFirst("{", "{\"locales\":\"$value\",")
+                else -> "{\"locales\":\"$value\"}"
+            }
+            if (patched != txt) cfg.writeText(patched)
+        } catch (_: Exception) {
+        }
     }
 
     private fun showAbout() {

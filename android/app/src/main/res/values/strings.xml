@@ -22,6 +22,13 @@
     <string name="settings_title">Settings</string>
     <string name="about_title">About</string>
     <string name="language">Language</string>
+    <string name="settings_ui_language">UI language</string>
+    <string name="settings_gamedata_language">Game-data language (server start speed)</string>
+    <string name="gamedata_all">All languages (ja, en, zh, ko)</string>
+    <string name="gamedata_ja">Japanese only (ja)</string>
+    <string name="gamedata_en">English only (en)</string>
+    <string name="gamedata_ko">Korean only (ko)</string>
+    <string name="gamedata_zh">Chinese only (zh)</string>
     <string name="lang_auto">Auto (follow system)</string>
     <string name="close">Close</string>
     <string name="restart_hint">Applied. Restart the server to update the web UIs.</string>
@@ -86,6 +93,7 @@
     <string name="log_pyservers_started">[pyservers] dev/mod tool web UIs started (:8772 / :8770)</string>
     <string name="log_pyservers_failed">[pyservers] failed to start Python tools: %1$s</string>
     <string name="log_settings_lang">[settings] language → %1$s. %2$s</string>
+    <string name="log_settings_gamedata">[settings] game-data language → %1$s. %2$s</string>
     <string name="log_setup_no_payload">[setup] no bundled payload (not a CI build). Skipping server file extraction.</string>
     <string name="log_setup_preparing">[setup] preparing server files… (version %1$s, refresh static=%2$s)</string>
     <string name="log_setup_ready">[setup] ready.</string>
