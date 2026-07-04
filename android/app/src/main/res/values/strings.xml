@@ -40,6 +40,7 @@
     <string name="act_import_addon">Import addon zip</string>
     <string name="act_rebuild_assets">Rebuild master data</string>
     <string name="act_fix_training">Fix training trees</string>
+    <string name="act_reset_server">Reset server (remove mods) ⚠</string>
     <string name="act_gamebanana">GameBanana mod page</string>
     <string name="act_ayakamods">AyakaMods mod page</string>
     <string name="act_settings">Settings ⚙</string>
@@ -60,6 +61,10 @@
     <string name="region_both">Both (GL + JP)</string>
     <string name="confirm_download_packs">This downloads missing game packs from the CDN (size varies, can be large). Wi-Fi is recommended.</string>
     <string name="confirm_stops_server">The running server will be stopped first.</string>
+    <string name="reset_server_title">Reset server</string>
+    <string name="reset_server_msg">This restores the ORIGINAL (vanilla) game data and removes EVERY installed or cloned mod costume / live / card. It ALSO resets ALL accounts back to a new-account state.\n\nLogins are kept, so the game client keeps working — it will just see a fresh server.\n\nKept: settings (config), downloaded game packs, and your files in Download/sukusta (mod zips, extracted/modded bundles, backups).\n\nThis CANNOT be undone. If you might want your data back, make a DB backup (Server content tab) and export your account (Account tab) first.</string>
+    <string name="reset_server_msg2">Really reset the server AND all accounts now? This CANNOT be undone.</string>
+    <string name="reset_server_go">Reset everything</string>
 
     <!-- first-run guide -->
     <string name="act_guide">Guide ❓</string>
@@ -101,4 +106,9 @@
     <string name="log_setup_link_failed">[setup] failed to link shared folder (may need permission): %1$s</string>
     <string name="log_setup_cdn_dir">[setup] CDN cache folder → %1$s</string>
     <string name="log_setup_config_created">[setup] config.json created, CDN cache ON, folder → %1$s</string>
+    <string name="log_reset_removing">[reset] removing %1$s…</string>
+    <string name="log_reset_restore">[reset] restoring the bundled original game data…</string>
+    <string name="log_reset_accounts">[reset] resetting accounts (logins are kept)…</string>
+    <string name="log_reset_done">[reset] finished (code %1$d). Start the server to use the fresh data.</string>
+    <string name="log_reset_failed">[reset] failed: %1$s</string>
 </resources>

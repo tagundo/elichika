@@ -39,6 +39,7 @@
     <string name="act_import_addon">アドオンzipを取り込む</string>
     <string name="act_rebuild_assets">マスターデータ再構築</string>
     <string name="act_fix_training">トレーニングツリー修復</string>
+    <string name="act_reset_server">サーバー初期化（モッド削除）⚠</string>
     <string name="act_gamebanana">GameBanana MODページ</string>
     <string name="act_ayakamods">AyakaMods MODページ</string>
     <string name="act_settings">設定 ⚙</string>
@@ -59,6 +60,10 @@
     <string name="region_both">両方 (GL + JP)</string>
     <string name="confirm_download_packs">ゲームCDNから不足パックをダウンロードします（サイズは可変、大きい場合あり）。Wi-Fi を推奨します。</string>
     <string name="confirm_stops_server">実行中のサーバーが先に停止されます。</string>
+    <string name="reset_server_title">サーバー初期化</string>
+    <string name="reset_server_msg">オリジナル（バニラ）のゲームデータを復元し、インストール・クローンされたすべてのMOD衣装／ライブ／カードを削除します。さらに、すべてのアカウントを新規アカウント状態にリセットします。\n\nログイン情報は保持されるため、ゲームクライアントはそのまま接続できます — サーバーだけが初期状態に戻ります。\n\n保持されるもの：設定（config）、ダウンロード済みゲームパック、Download/sukusta 内のファイル（MOD zip、抽出・編集済みバンドル、バックアップ）。\n\n元に戻せません。データが必要になる可能性があるなら、先に DB バックアップ（サーバーコンテンツタブ）とアカウントのエクスポート（アカウントタブ）を行ってください。</string>
+    <string name="reset_server_msg2">本当にサーバーとすべてのアカウントを今すぐ初期化しますか？ 元に戻せません。</string>
+    <string name="reset_server_go">すべて初期化</string>
 
     <!-- first-run guide -->
     <string name="act_guide">ガイド ❓</string>
@@ -100,4 +105,9 @@
     <string name="log_setup_link_failed">[setup] 共有フォルダのリンク失敗（権限が必要な場合あり）: %1$s</string>
     <string name="log_setup_cdn_dir">[setup] CDNキャッシュフォルダ → %1$s</string>
     <string name="log_setup_config_created">[setup] config.json 作成、CDNキャッシュ オン、フォルダ → %1$s</string>
+    <string name="log_reset_removing">[reset] %1$s を削除中…</string>
+    <string name="log_reset_restore">[reset] 内蔵のオリジナルゲームデータを復元中…</string>
+    <string name="log_reset_accounts">[reset] アカウントをリセット中…（ログインは保持）</string>
+    <string name="log_reset_done">[reset] 完了（コード %1$d）。サーバーを起動すると初期化後のデータが使われます。</string>
+    <string name="log_reset_failed">[reset] 失敗: %1$s</string>
 </resources>

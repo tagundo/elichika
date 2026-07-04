@@ -56,6 +56,12 @@ func checkCli() bool {
 		}
 		asset.DownloadArchive(regions)
 	}
+	if os.Args[1] == "reset_accounts" {
+		// wipe ALL accounts back to a new-account state while keeping their logins
+		// (u_authentication). Used by the app's "Reset server" console action right
+		// after the vanilla game data has been restored.
+		resetAllAccounts()
+	}
 	if os.Args[1] == "cdn_cache" {
 		// toggle (or set on/off) the CDN cache flag in config.json, so the app can
 		// expose it as a console button. os.Args[2]: on | off | toggle (default toggle).

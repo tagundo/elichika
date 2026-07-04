@@ -261,7 +261,7 @@ The user WebUI has features to help you with playing the game:
 - Doing things quickly in your account, or setting up a maxed account.
 - Adding resources to skip the grind.
 - Import / export data.
-- Reset progress (per aspect: main / side / member / linkage / event story, DLP), or — in the **Danger zone** at the bottom of the Reset Progress page — **reset the whole account to a fresh new-account state while keeping your login**. Your saved login (authentication) is preserved, so the game client keeps talking to the server; only the account data is wiped. This cannot be undone, so export a backup first if you might want it back.
+- Reset progress (per aspect: main / side / member / linkage / event story, DLP), or — in the **Danger zone** at the bottom of the Reset Progress page — **reset the whole account to a fresh new-account state while keeping your login** (an *account* reset). Your saved login (authentication) is preserved, so the game client keeps talking to the server; only the account data is wiped. Installed mod costumes are server data and are NOT removed by this — use the app console's **Reset server** for that. This cannot be undone, so export a backup first if you might want it back.
 
 It can be located at: `<server_address>/webui/user`, which default to http://127.0.0.1:8080/webui/user
 
@@ -277,7 +277,9 @@ Besides the server Web UI, the Android app bundles two tool panels (also reachab
 - Extract / decrypt costume models out of the game packs into the shared `extracted/` folder (pick several costumes at once; an irochi colour variant comes out as a ready-to-use recoloured model). A disk index cache makes repeat extractions fast.
 - Install costume / live / card / tower / camera-timeline / DB add-on zips (multi-select for costume & camera-timeline).
 - Clone a costume onto another character.
-- Back up and restore all databases, clear the downloaded pack cache, and reset the server.
+- Back up and restore all databases, and clear the downloaded pack cache.
+
+**Console (advanced)** — **Reset server (remove mods)**: restores the original (vanilla) game data bundled with the APK, removing every installed or cloned mod costume / live / card, and resets all accounts to a new-account state. Logins are kept, so the game client keeps working against the freshly reset server. Settings, downloaded game packs and your files under `Download/sukusta` are untouched. This cannot be undone — make a DB backup and export your account first if unsure.
 
 **Modding tools (`:8770`)** — edit the extracted 3D costume bundles on-device:
 
