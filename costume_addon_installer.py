@@ -864,6 +864,28 @@ def encrypt_to_static(src_path, dest_path, label):
         print(f"{label} already encrypted")
 
 
+def display_order_for_new_suit(cursor, chara_id):
+    """새로 설치하는 의상이 그 캐릭터의 '최신' 자리에 오도록 display_order를 정한다.
+    데이터 소스마다 display_order의 방향이 다르다(harasho: 낮을수록 최신, 다른
+    빌드: 높을수록 최신). 런칭 의상(id 100011001, 가장 오래된 의상)이 중앙값보다
+    높은 쪽에 있으면 '낮음=최신'이므로 멤버 MIN-1, 아니면 멤버 MAX+1을 쓴다."""
+    cursor.execute("SELECT display_order FROM main.m_suit WHERE id = 100011001;")
+    launch = cursor.fetchone()
+    cursor.execute("SELECT display_order FROM main.m_suit ORDER BY display_order "
+                   "LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM main.m_suit);")
+    median = cursor.fetchone()
+    lower_is_newer = bool(launch and median and launch[0] > median[0])
+    if lower_is_newer:
+        cursor.execute("SELECT MIN(display_order) FROM main.m_suit WHERE member_m_id = ?;",
+                       (chara_id,))
+        result = cursor.fetchone()
+        return (result[0] if result[0] is not None else 1) - 1
+    cursor.execute("SELECT MAX(display_order) FROM main.m_suit WHERE member_m_id = ?;",
+                   (chara_id,))
+    result = cursor.fetchone()
+    return (result[0] if result[0] is not None else 0) + 1
+
+
 def insert_dependencies(cursor, chara, costume_path, facedynamic_path, rina_path, has_facedynamic):
     """캐릭터별 member_model 의존성을 DEPENDENCIES 테이블에 따라 삽입한다."""
     entries = DEPENDENCIES.get(chara)
@@ -1368,9 +1390,7 @@ for mass_addon in batch_proccess_list:
         costume_dictionary_masterdata = "k." + costume_dictionary
         donot_insert = None
 
-        cursor.execute("SELECT MAX(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
-        result = cursor.fetchone()
-        display_order_new_ja = (result[0] if result[0] is not None else 0) + 1
+        display_order_new_ja = display_order_for_new_suit(cursor, chara_id)
 
         # 썸네일이 없으면 캐릭터 기본 썸네일 사용
         if thumbnail_file == "" and chara_id in DEFAULT_THUMBNAILS:
@@ -1386,9 +1406,7 @@ for mass_addon in batch_proccess_list:
     with sqlite3.connect('assets/db/gl/masterdata.db') as conn:
         cursor = conn.cursor()
 
-        cursor.execute("SELECT MAX(display_order) FROM main.m_suit WHERE member_m_id = ?;", (chara_id,))
-        result = cursor.fetchone()
-        display_order_new_gl = (result[0] if result[0] is not None else 0) + 1
+        display_order_new_gl = display_order_for_new_suit(cursor, chara_id)
 
         cursor.execute("INSERT INTO main.m_suit (id, member_m_id, name, thumbnail_image_asset_path, suit_release_route, suit_release_value, model_asset_path, display_order) VALUES (?, ?, ?, ?, '2', '0', ?, ?);",
                        (costume_id_masterdata, chara_id_suit, costume_dictionary_masterdata, thumbnail_costume_path, costume_path, display_order_new_gl))

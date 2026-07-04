@@ -71,16 +71,37 @@ def get_real_costume_name(dict_cursor, name_key):
     return res[0] if res else name_key
 
 
+def _newest_first_dir(md_conn):
+    """'ASC' or 'DESC': which way display_order must be sorted so the NEWEST
+    costumes come first in THIS masterdata. Data sources disagree on what
+    display_order means (harasho: lower = newer; other builds: higher = newer),
+    so probe: the launch base suit (id 100011001, the oldest costume) sits at
+    the OLD end — if it is at the high end of the range, low = new (ASC)."""
+    try:
+        cur = md_conn.cursor()
+        row = cur.execute("SELECT display_order FROM m_suit WHERE id = 100011001").fetchone()
+        # compare against the MEDIAN, not the range midpoint: add-on installs from the
+        # other convention leave outlier values at one end, which would skew a
+        # midpoint but barely move the median.
+        med = cur.execute("SELECT display_order FROM m_suit ORDER BY display_order "
+                          "LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m_suit)").fetchone()
+        if row and med and row[0] != med[0]:
+            return "ASC" if row[0] > med[0] else "DESC"
+    except sqlite3.Error:
+        pass
+    return "DESC"
+
+
 def list_costumes(md_conn, dict_conn, chara_id):
     """Return [(costume_id, name_key, real_name), ...] for a character,
-    excluding already-cloned suits. Read-only; no printing."""
+    excluding already-cloned suits, newest costume first. Read-only; no printing."""
     cur = md_conn.cursor()
     dcur = dict_conn.cursor()
     where = " AND ".join("name NOT LIKE ?" for _ in _CLONE_SUFFIXES)
-    # display_order is a monotonic release index (lower = older), so DESC lists the
-    # newest costumes first.
+    direction = _newest_first_dir(md_conn)
     cur.execute(
-        "SELECT id, name FROM m_suit WHERE member_m_id = ? AND " + where + " ORDER BY display_order DESC",
+        "SELECT id, name FROM m_suit WHERE member_m_id = ? AND " + where
+        + f" ORDER BY display_order {direction}",
         (int(chara_id), *(f"%{s}" for s in _CLONE_SUFFIXES)),
     )
     return [(cid, key, get_real_costume_name(dcur, key)) for cid, key in cur.fetchall()]
@@ -141,13 +162,19 @@ def _validate_char_id(label, value):
 
 
 def _safe_display_order(md_conn, member_id):
-    """display_order to place a new suit at the front of a character's list.
-    MIN(display_order) is NULL when the character has no suits yet, so guard
-    against `None - 1` (which would crash mid-clone)."""
+    """display_order that makes a new suit the character's NEWEST. The direction
+    depends on the data source (_newest_first_dir): where lower = newer take the
+    member MIN-1, where higher = newer take the member MAX+1. NULL aggregates
+    (character with no suits yet) are guarded so a clone can't crash mid-way."""
+    if _newest_first_dir(md_conn) == "ASC":     # lower = newer
+        row = md_conn.execute(
+            "SELECT MIN(display_order) FROM m_suit WHERE member_m_id = ?", (member_id,)).fetchone()
+        base = row[0] if row else None
+        return (base - 1) if base is not None else 0
     row = md_conn.execute(
-        "SELECT MIN(display_order) FROM m_suit WHERE member_m_id = ?", (member_id,)).fetchone()
+        "SELECT MAX(display_order) FROM m_suit WHERE member_m_id = ?", (member_id,)).fetchone()
     base = row[0] if row else None
-    return (base - 1) if base is not None else 0
+    return (base + 1) if base is not None else 0
 
 
 def _members_sharing_model(md_conn, model_asset_path, exclude_member):
