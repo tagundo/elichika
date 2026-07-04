@@ -334,6 +334,31 @@ def _extract_recolours(x, asset, resolver, out_dir, base_model_path, base_bundle
     return made
 
 
+def _rina_unmask_model(x, base, model_path):
+    """Rina (member 209) wears a masked board by default; every one of her suits has a
+    SEPARATE no-mask model in m_suit_view (view_status=2) at a different asset path than
+    m_suit.model_asset_path. Return that no-mask path (or None if this isn't a Rina suit
+    or there's no distinct no-mask model), so both versions can be extracted."""
+    md_path = x.find_masterdata(base)
+    if not md_path:
+        return None
+    md = sqlite3.connect(md_path)
+    try:
+        r = md.execute("SELECT id, member_m_id FROM m_suit WHERE model_asset_path = ? "
+                       "LIMIT 1", (model_path,)).fetchone()
+        if not r or r[1] != 209:
+            return None
+        v = md.execute("SELECT model_asset_path FROM m_suit_view "
+                       "WHERE suit_master_id = ? AND view_status = 2", (r[0],)).fetchone()
+        if v and v[0] and v[0] != model_path:
+            return v[0]
+    except sqlite3.Error:
+        return None
+    finally:
+        md.close()
+    return None
+
+
 def run_extract(job, params):
     x = _mod()
     base = "."
@@ -405,6 +430,25 @@ def run_extract(job, params):
                                                base_bundle, label, all_manifest)
                         except Exception as exc:  # noqa: BLE001
                             print(f"  ! colour variant skipped: {exc}")
+                    # Rina (209): also extract the no-mask model (m_suit_view
+                    # view_status=2), which lives at a different asset path, so both the
+                    # masked and unmasked versions come out.
+                    unmask = _rina_unmask_model(x, base, model)
+                    if unmask:
+                        umm = asset.execute(
+                            "SELECT pack_name, head, size, key1, key2 FROM member_model "
+                            "WHERE asset_path = ?", (unmask,)).fetchone()
+                        if umm:
+                            used_u, man_u = set(), []
+                            oku = x.extract_one(resolver, out_dir, "member_model", unmask,
+                                                umm[0], umm[1], umm[2], umm[3], umm[4],
+                                                used_u, man_u, file_label=label + "_nomask")
+                            if man_u:
+                                all_manifest.extend(man_u)
+                            if oku:
+                                print(f"✓ {label}_nomask")
+                        else:
+                            print(f"  ! Rina no-mask model {unmask} not in member_model — skipped")
             if all_manifest:
                 x.write_manifest(out_dir, all_manifest)
             x.print_resolver_stats(resolver)
