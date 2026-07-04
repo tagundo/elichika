@@ -65,21 +65,29 @@ jobs:
         run: |
           sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
 
-      - name: Fix in-game outfit order (orient m_suit newest-first)
-        run: |
-          # harasho's m_suit stores lower display_order for newer suits, but the game
-          # client sorts the closet DESC, sinking new suits to the bottom. The script
-          # inverts it in place and is a no-op once the data is oriented correctly, so
-          # an upstream-fixed harasho passes through untouched. Runs before the
-          # serverdata build and payload assembly so the APK ships the fixed data.
-          python3 bin/fix_outfit_order.py
-
       - name: Build master data (serverdata.db) on the host
         run: |
           # Pure-Go host build, then rebuild_assets turns the harasho submodule
           # (assets/db/{jp,gl}) into serverdata.db and writes a default config.json.
           CGO_ENABLED=0 go build -o elichika_host .
           ./elichika_host rebuild_assets || echo "::warning::rebuild_assets failed; APK will need an on-device rebuild"
+
+      - name: Fix in-game outfit order (orient m_suit newest-first)
+        run: |
+          # harasho's m_suit stores lower display_order for newer suits, but the game
+          # client sorts the closet DESC, sinking new suits to the bottom. The script
+          # inverts it in place and is a no-op once the data is oriented correctly, so
+          # an upstream-fixed harasho passes through untouched.
+          #
+          # MUST run AFTER "Build master data": databaseInit's isNotChanged() gates the
+          # assets/sql migrations on `git diff` of each db file, so inverting first
+          # makes masterdata.db dirty and silently skips 001.masterdata.db.sql (missing
+          # lives/beatmap patches — the v2026.07.04.1 regression). Running after, the
+          # migrations apply to pristine data first; if the inversion then acts, the
+          # payload manifest is stale, which is fine — the device recomputes the client
+          # db version at first boot (the "Difference detected" path) and clients
+          # re-download.
+          python3 bin/fix_outfit_order.py
 
       - name: Assemble bundled payload
         run: |
