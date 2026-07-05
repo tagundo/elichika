@@ -105,6 +105,7 @@
     <string name="log_setup_link_failed">[setup] 공유 폴더 링크 실패(권한 필요할 수 있음): %1$s</string>
     <string name="log_setup_cdn_dir">[setup] CDN 캐시 폴더 → %1$s</string>
     <string name="log_setup_config_created">[setup] config.json 생성됨, CDN 캐시 켜짐, 폴더 → %1$s</string>
+    <string name="log_setup_cdn_on">[setup] 이전 기본값 때문에 꺼져 있던 CDN 캐시를 켰습니다 (끄려면 콘솔 버튼 사용).</string>
     <string name="log_reset_removing">[reset] %1$s 삭제 중…</string>
     <string name="log_reset_restore">[reset] 내장된 원본 게임 데이터 복원 중…</string>
     <string name="log_reset_accounts">[reset] 계정 초기화 중… (로그인은 유지)</string>

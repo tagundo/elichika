@@ -99,7 +99,12 @@ jobs:
           find "$PAY/webui" -name '*.go' -delete
           cp privatekey.pem publickey.pem "$PAY/"
           [ -f serverdata.db ] && cp serverdata.db "$PAY/" || echo "no serverdata.db"
-          [ -f config.json ] && cp config.json "$PAY/" || echo "no config.json"
+          # config.json is deliberately NOT bundled: rebuild_assets writes one with the
+          # server-wide defaults (cdn_cache=false), and shipping it stopped
+          # AssetInstaller's create-if-missing branch from ever running — fresh installs
+          # ended up with the CDN cache OFF. Without it, the app creates config.json with
+          # cdn_cache=true + the shared packs dir, and the server fills in the rest of
+          # the defaults on first Load().
           # The server reads the whole harasho master-data tree at startup (assets/db,
           # assets/sql, assets/event, assets/dictionary.json, …) via clientdb.init —
           # without it the server panics ("open assets/db/gl/masterdata_a_en: no such

@@ -105,6 +105,7 @@
     <string name="log_setup_link_failed">[setup] 共有フォルダのリンク失敗（権限が必要な場合あり）: %1$s</string>
     <string name="log_setup_cdn_dir">[setup] CDNキャッシュフォルダ → %1$s</string>
     <string name="log_setup_config_created">[setup] config.json 作成、CDNキャッシュ オン、フォルダ → %1$s</string>
+    <string name="log_setup_cdn_on">[setup] 旧デフォルトでオフだったCDNキャッシュをオンにしました（オフにするにはコンソールのボタンを使用）。</string>
     <string name="log_reset_removing">[reset] %1$s を削除中…</string>
     <string name="log_reset_restore">[reset] 内蔵のオリジナルゲームデータを復元中…</string>
     <string name="log_reset_accounts">[reset] アカウントをリセット中…（ログインは保持）</string>

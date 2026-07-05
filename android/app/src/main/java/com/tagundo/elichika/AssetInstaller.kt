@@ -51,6 +51,7 @@ object AssetInstaller {
 
         ensureSharedLinks(ctx, root, log)
         ensureCacheDir(ctx, root, log)
+        ensureCdnDefaultOn(ctx, root, log)
         ensureLanguage(ctx, root, log)
         File(root, MARKER).writeText(currentVersion)
         log(ctx.getString(R.string.log_setup_ready))
@@ -159,6 +160,30 @@ object AssetInstaller {
             // overrides a choice the user made later).
             cfg.writeText("{\"cdn_cache\":true,\"cdn_cache_dir\":\"$path\"}")
             log(ctx.getString(R.string.log_setup_config_created, path))
+        }
+    }
+
+    /**
+     * One-time default fix: earlier builds bundled a config.json generated with the
+     * server-wide defaults, which carried cdn_cache=false and silently overrode the
+     * app's intended ON default. Flip it to true once per install; the marker makes
+     * sure a user who later turns it OFF with the console toggle stays OFF.
+     */
+    private fun ensureCdnDefaultOn(ctx: Context, root: File, log: (String) -> Unit) {
+        val marker = File(root, "cdn_default_on_applied")
+        if (marker.exists()) return
+        try {
+            val cfg = File(root, "config.json")
+            if (cfg.exists()) {
+                val before = cfg.readText()
+                val after = Regex("\"cdn_cache\"\\s*:\\s*false").replace(before, "\"cdn_cache\":true")
+                if (after != before) {
+                    cfg.writeText(after)
+                    log(ctx.getString(R.string.log_setup_cdn_on))
+                }
+            }
+            marker.writeText("1")
+        } catch (_: Exception) {
         }
     }
 
