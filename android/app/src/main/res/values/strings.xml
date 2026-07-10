@@ -106,6 +106,7 @@
     <string name="log_setup_link_failed">[setup] failed to link shared folder (may need permission): %1$s</string>
     <string name="log_setup_cdn_dir">[setup] CDN cache folder → %1$s</string>
     <string name="log_setup_config_created">[setup] config.json created, CDN cache ON, folder → %1$s</string>
+    <string name="log_setup_cdn_on">[setup] CDN cache was OFF from an old default — turned ON (use the console button to turn it off).</string>
     <string name="log_reset_removing">[reset] removing %1$s…</string>
     <string name="log_reset_restore">[reset] restoring the bundled original game data…</string>
     <string name="log_reset_accounts">[reset] resetting accounts (logins are kept)…</string>

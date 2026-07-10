@@ -14,6 +14,10 @@ on:
         description: "CalVer tag to publish a GitHub Release as (e.g. v2026.07.02.1). The tag is created on the run's commit — no local git needed. Leave blank to only build APK artifacts."
         required: false
         default: ""
+      release_notes:
+        description: "Optional text shown at the TOP of the release notes (above the auto-generated changelog). Use for user-facing highlights, e.g. changed defaults."
+        required: false
+        default: ""
   push:
     # No paths filter: the APK bundles the whole Go server, so any source change
     # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
@@ -99,7 +103,12 @@ jobs:
           find "$PAY/webui" -name '*.go' -delete
           cp privatekey.pem publickey.pem "$PAY/"
           [ -f serverdata.db ] && cp serverdata.db "$PAY/" || echo "no serverdata.db"
-          [ -f config.json ] && cp config.json "$PAY/" || echo "no config.json"
+          # config.json is deliberately NOT bundled: rebuild_assets writes one with the
+          # server-wide defaults (cdn_cache=false), and shipping it stopped
+          # AssetInstaller's create-if-missing branch from ever running — fresh installs
+          # ended up with the CDN cache OFF. Without it, the app creates config.json with
+          # cdn_cache=true + the shared packs dir, and the server fills in the rest of
+          # the defaults on first Load().
           # The server reads the whole harasho master-data tree at startup (assets/db,
           # assets/sql, assets/event, assets/dictionary.json, …) via clientdb.init —
           # without it the server panics ("open assets/db/gl/masterdata_a_en: no such
@@ -279,5 +288,8 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
           files: android/app/build/outputs/apk/release/*.apk
+          # release_notes (if given) appears at the top; with
+          # generate_release_notes the changelog is appended below it.
+          body: ${{ github.event.inputs.release_notes }}
           generate_release_notes: true
           fail_on_unmatched_files: true
