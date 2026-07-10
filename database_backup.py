@@ -74,14 +74,38 @@ def backup_targets():
     return targets
 
 
+_lz4_install_tried = False
+
+
 def _lz4():
     """Return the lz4.frame module when available, else None.
 
     lz4 is bundled with the Android app, so backups there are compressed
-    transparently; on Termux/PC without lz4 we fall back to plain copies. Restore
-    handles both, so old (uncompressed) backups keep working either way."""
+    transparently. On PC/Mac/Termux without lz4 we first try to pip-install it
+    once (a phone-made backup is lz4-compressed, so restoring it elsewhere NEEDS
+    the module — without this, only the uncompressed entries would restore).
+    If that fails (e.g. offline), backups fall back to plain copies and restore
+    reports which entries it could not decompress."""
+    global _lz4_install_tried
     try:
         import lz4.frame as frame
+        return frame
+    except Exception:
+        pass
+    # Chaquopy (the Android app) bundles lz4 and has no usable pip at runtime.
+    import sys
+    if hasattr(sys, "getandroidapilevel") or _lz4_install_tried:
+        return None
+    _lz4_install_tried = True
+    try:
+        import subprocess
+        print("lz4 module not found — installing (pip install lz4)...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "lz4"],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        import importlib
+        importlib.invalidate_caches()
+        import lz4.frame as frame
+        print("lz4 installed.")
         return frame
     except Exception:
         return None

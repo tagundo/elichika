@@ -150,8 +150,10 @@ def restore_from_backup(backup_path):
                     # Can't hash-compare a compressed blob against the target;
                     # always decompress (this is the intended restore state).
                     if not _restore_lz4(backup_file_path, target_path):
-                        failed_files.append(f"{target_rel} (lz4 unavailable)")
-                        print(f"❌ lz4 unavailable, cannot restore: {target_rel}")
+                        failed_files.append(f"{target_rel} (lz4 module missing)")
+                        print(f"❌ lz4 module missing, cannot restore: {target_rel}")
+                        print("   This backup was made with compression (e.g. on the phone).")
+                        print("   Install lz4 and run the restore again:  python3 -m pip install lz4")
                         continue
                     restored_files.append(target_rel)
                     print(f"✓ Restored: {target_rel}")
