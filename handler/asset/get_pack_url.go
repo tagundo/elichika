@@ -100,10 +100,10 @@ func getPackUrl(ctx *gin.Context) {
 				downloadData.File, downloadData.Start, downloadData.Size))
 		} else if partialCapability == "nothing" {
 			// the cdn server can't deal with partial files, so it's up to elichika to help it
-			// TODO(extra): this assume the server is http or it can auto upgrade to https if necessary
-			// i.e. this address will be served correctly
-			virtualHost := "http://" + ctx.Request.Host + "/static"
-			resp.UrlList.Append(fmt.Sprintf("%s_virtual/%s", virtualHost, pack))
+			// (the /static_virtual endpoint range-reads the metapack from the upstream). Use
+			// selfHost so this address honours X-Forwarded-Host/Proto like every other
+			// self-served URL here — otherwise it breaks behind a reverse proxy / HTTPS front end.
+			resp.UrlList.Append(fmt.Sprintf("%s_virtual/%s", selfHost, pack))
 		} else {
 			log.Panic("wrong cdn_partial_file_capability")
 		}
