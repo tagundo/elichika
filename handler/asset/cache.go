@@ -69,6 +69,35 @@ func cdnGet(url string) (*http.Response, error) {
 	return nil, lastErr
 }
 
+// cdnGetRange fetches the byte range [start,end] of url with a Range header, retrying transient
+// failures (connection errors and 5xx) like cdnGet, using the shared timeout-bounded httpClient.
+// The caller must verify the response is http.StatusPartialContent.
+func cdnGetRange(url string, start, end int) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+		}
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+		res, err := httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if res.StatusCode >= 500 {
+			res.Body.Close()
+			lastErr = fmt.Errorf("status %d for %s", res.StatusCode, url)
+			continue
+		}
+		return res, nil
+	}
+	return nil, lastErr
+}
+
 // one lock per pack name so concurrent requests for the same pack download it only once
 var cacheLocks sync.Map // string -> *sync.Mutex
 

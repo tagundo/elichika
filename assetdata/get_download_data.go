@@ -2,12 +2,6 @@
 
 package assetdata
 
-import (
-	"elichika/log"
-
-	"fmt"
-)
-
 type DownloadData struct {
 	Locale       string
 	File         string
@@ -27,7 +21,15 @@ func GetDownloadData(packname string) DownloadData {
 	}
 	pack, exist := Pack[packname]
 	if !exist {
-		log.Panic(fmt.Sprint("package doesn't exist: ", packname))
+		// Unknown pack (client/server version skew, or a pack we simply don't have).
+		// Treat it as a whole file so the caller serves/redirects it like any other
+		// whole file (getPackUrl falls back to the upstream CDN when it isn't local)
+		// instead of panicking the request. Mirrors the //go:build dev variant.
+		return DownloadData{
+			Locale:       NameToLocale[packname],
+			File:         packname,
+			IsEntireFile: true,
+		}
 	}
 	if pack.Metapack == nil {
 		return DownloadData{

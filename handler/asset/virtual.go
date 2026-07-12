@@ -8,7 +8,6 @@ import (
 	"elichika/config"
 	"elichika/log"
 	"elichika/router"
-	"elichika/utils"
 
 	"fmt"
 	"io"
@@ -21,7 +20,12 @@ func staticVirtual(ctx *gin.Context) {
 	file := ctx.Param("fileName")
 	downloadData := assetdata.GetDownloadData(file)
 	if downloadData.IsEntireFile {
-		log.Panic("downloading whole file through the virtual endpoint")
+		// The virtual endpoint only serves partial packs. A whole-file request here means a
+		// stale/unknown pack name; don't panic the request (the client can re-fetch it via the
+		// normal whole-file path) - just refuse this one.
+		log.Println("static_virtual: unexpected whole-file request:", file)
+		ctx.Status(http.StatusBadRequest)
+		return
 	}
 
 	host := *config.Conf.CdnServer
@@ -30,22 +34,29 @@ func staticVirtual(ctx *gin.Context) {
 	} else if host == "elichika_tls" {
 		host = "https://" + ctx.Request.Host + "/static"
 	}
-	client := &http.Client{}
-	request, err := http.NewRequest("GET", fmt.Sprintf("%s/%s", host, downloadData.File), nil)
-	utils.CheckErr(err)
-	request.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", downloadData.Start, downloadData.Start+downloadData.Size-1))
-	response, err := client.Do(request)
-	utils.CheckErr(err)
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusPartialContent { // http.StatusPartialContent
-		log.Panic("wrong status received")
+	// Reuse the package's timeout-bounded httpClient with retry/backoff (cdnGetRange) instead of a
+	// fresh, unbounded http.Client{} - a stalled upstream now fails fast and a transient hiccup is
+	// retried, matching the whole-file path. On failure we return a gateway error instead of
+	// panicking (which gin.Recovery would turn into a 500).
+	start := downloadData.Start
+	end := downloadData.Start + downloadData.Size - 1
+	response, err := cdnGetRange(fmt.Sprintf("%s/%s", host, downloadData.File), start, end)
+	if err != nil {
+		log.Printf("static_virtual: upstream fetch failed for %s: %v\n", downloadData.File, err)
+		ctx.Status(http.StatusBadGateway)
+		return
 	}
-	body, err := io.ReadAll(response.Body)
-	utils.CheckErr(err)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusPartialContent {
+		log.Printf("static_virtual: upstream returned %d for %s\n", response.StatusCode, downloadData.File)
+		ctx.Status(http.StatusBadGateway)
+		return
+	}
 
 	ctx.Header("Content-Length", fmt.Sprint(downloadData.Size))
 	ctx.Header("Content-Type", "application/octet-stream")
-	ctx.Writer.Write(body)
+	// Stream straight to the client instead of buffering the whole range in memory.
+	io.Copy(ctx.Writer, response.Body)
 }
 
 func init() {
