@@ -19,8 +19,8 @@ type RuntimeConfig struct {
 	CdnCache                 *bool   `json:"cdn_cache" of_label:"Cache CDN packs locally and serve them"`                                                                                        // when true, elichika serves packs itself, downloading missing ones from cdn_server (the upstream) into the cache directory
 	CdnCacheDir              *string `json:"cdn_cache_dir" of_label:"CDN cache directory (empty = the local static/ folder, the PC default; e.g. ~/storage/downloads/sukusta/packs on Android)"` // where cached packs are stored/shared; empty (the PC default) means the local static/ folder
 	ArchiveConnections       *int32  `json:"archive_connections" of_label:"Parallel connections for the archive.org bulk download (1-32)" of_attrs:"min=\"1\" max=\"32\""`                       // starting connection count for the multi-part IA download; steps down on throttling
-	AdminPassword            *string `json:"admin_password" of_label:"Admin password" of_type:"password""`
-	TapBondGain              *int32  `json:"tap_bond_gain" of_label:"Partner tap bond reward" of_attrs:"min=\"0\" max=\"20000000\"`
+	AdminPassword            *string `json:"admin_password" of_label:"Admin password" of_type:"password"`
+	TapBondGain              *int32  `json:"tap_bond_gain" of_label:"Partner tap bond reward" of_attrs:"min=\"0\" max=\"20000000\""`
 	AutoJudgeType            *int32  `json:"auto_judge_type" of_type:"select" of_options:"None\n1\nMiss\n10\nBad\n12\nGood\n14\nGreat\n20\nPerfect\n30" of_label:"Autoplay judge type"`
 	Tutorial                 *bool   `json:"tutorial" of_label:"Enable tutorial"`                                                          // whether to turn on tutorial when starting a new account
 	LoginBonusSecond         *int32  `json:"login_bonus_second" of_type:"time" of_label:"Login bonus reset time"`                          // the second from mid-night till login bonus
@@ -148,6 +148,20 @@ func Load(p string) *RuntimeConfig {
 		*c.CdnCacheDir = ""
 		changed = true
 	}
+	// Validate the enum-like settings at startup so a typo falls back to a sane default here,
+	// with a clear log line, instead of surfacing later as a per-request panic (getPackUrl's
+	// "wrong cdn_partial_file_capability") or a nil dereference (ResourceConfig() indexing an
+	// unknown key returns nil, which the handlers then deref). Valid values are unchanged.
+	if !oneOf(*c.CdnPartialFileCapability, "static_file", "mapped_file", "has_range_api", "nothing") {
+		log.Println("Invalid cdn_partial_file_capability", *c.CdnPartialFileCapability, "- falling back to", *d.CdnPartialFileCapability)
+		*c.CdnPartialFileCapability = *d.CdnPartialFileCapability
+		changed = true
+	}
+	if _, ok := resourceConfigs[*c.ResourceConfigType]; !ok {
+		log.Println("Invalid resource_config_type", *c.ResourceConfigType, "- falling back to", *d.ResourceConfigType)
+		*c.ResourceConfigType = *d.ResourceConfigType
+		changed = true
+	}
 	if changed {
 		// persist any newly-added fields (e.g. cdn_cache) back to config.json so the file always
 		// reflects the current schema. without this, options added in an update never appear in an
@@ -177,4 +191,14 @@ func UpdateConfig(newConfig *RuntimeConfig) {
 
 func (r RuntimeConfig) ResourceConfig() *ResourceConfig {
 	return resourceConfigs[*r.ResourceConfigType]
+}
+
+// oneOf reports whether v equals one of the allowed values.
+func oneOf(v string, allowed ...string) bool {
+	for _, a := range allowed {
+		if v == a {
+			return true
+		}
+	}
+	return false
 }
