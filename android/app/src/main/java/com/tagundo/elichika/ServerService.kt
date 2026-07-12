@@ -27,8 +27,16 @@ class ServerService : Service() {
     override fun onCreate() {
         super.onCreate()
         server = ServerProcess(this)
-        workDir = AssetInstaller.install(this) { Bus.log(it) }
         createChannel()
+        // Enter the foreground BEFORE the (potentially slow) first-install payload extraction.
+        // The service is launched with startForegroundService(), whose contract requires a
+        // startForeground() call within ~5s or the system throws
+        // ForegroundServiceDidNotStartInTimeException and kills the app. Extracting the bundled
+        // payload (assets/, serverdata.db, …) in onCreate could blow that budget on a fresh
+        // install, so claim the foreground first, then extract. The per-action handlers call
+        // startForeground again (idempotent) on warm starts.
+        startForeground(NOTIF_ID, buildNotification())
+        workDir = AssetInstaller.install(this) { Bus.log(it) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
