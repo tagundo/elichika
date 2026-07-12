@@ -38,32 +38,30 @@ type Card struct {
 	CardGradeUpItem map[int32](map[int32]client.Content) `xorm:"-"`
 }
 
-type CardGradeUpItem struct {
+// cardGradeUpRow is m_card_grade_up_item as read in one bulk query (the per-card
+// grade-up items, plus the owning card_id so we can group them in memory).
+type cardGradeUpRow struct {
+	CardId   int32          `xorm:"'card_id'"`
 	Grade    int32          `xorm:"'grade'"`
 	Resource client.Content `xorm:"extends"`
 }
 
-func (card *Card) populate(gamedata *Gamedata) {
+// populate fills the derived fields of a card. gradeUps is the card's own
+// m_card_grade_up_item rows, pre-grouped by loadCard (see there).
+func (card *Card) populate(gamedata *Gamedata, gradeUps []cardGradeUpRow) {
 	card.Member = gamedata.Member[*card.MemberMasterId]
 	card.MemberMasterId = &card.Member.Id
 	card.TrainingTree = gamedata.TrainingTree[*card.TrainingTreeMasterId]
 	card.TrainingTreeMasterId = &card.TrainingTree.Id
 	card.Rarity = gamedata.CardRarity[card.CardRarityType]
-	{
-		card.CardGradeUpItem = make(map[int32](map[int32]client.Content))
-		gradeUps := []CardGradeUpItem{}
-		var err error
-		gamedata.MasterdataDb.Do(func(session *xorm.Session) {
-			err = session.Table("m_card_grade_up_item").Where("card_id = ?", card.Id).Find(&gradeUps)
-		})
-		utils.CheckErr(err)
-		for _, gradeUp := range gradeUps {
-			_, exist := card.CardGradeUpItem[gradeUp.Grade]
-			if !exist {
-				card.CardGradeUpItem[gradeUp.Grade] = make(map[int32]client.Content)
-			}
-			card.CardGradeUpItem[gradeUp.Grade][gradeUp.Resource.ContentId] = gradeUp.Resource
+
+	card.CardGradeUpItem = make(map[int32](map[int32]client.Content))
+	for _, gradeUp := range gradeUps {
+		_, exist := card.CardGradeUpItem[gradeUp.Grade]
+		if !exist {
+			card.CardGradeUpItem[gradeUp.Grade] = make(map[int32]client.Content)
 		}
+		card.CardGradeUpItem[gradeUp.Grade][gradeUp.Resource.ContentId] = gradeUp.Resource
 	}
 
 	gamedata.CardByMemberId[*card.MemberMasterId] = append(gamedata.CardByMemberId[*card.MemberMasterId], card)
@@ -79,8 +77,24 @@ func loadCard(gamedata *Gamedata) {
 	utils.CheckErr(err)
 	gamedata.CardByMemberId = map[int32][]*Card{}
 
+	// Read every grade-up item once and group by card_id, instead of running one
+	// "WHERE card_id = ?" query per card. m_card_grade_up_item holds ~10 rows per
+	// card, and the old per-card query was a serialized round-trip through the
+	// single-goroutine MasterdataDb for each of the ~900 cards, on every locale.
+	// Grouping preserves each card's row order, so the CardGradeUpItem maps built
+	// below are identical to the old per-card path.
+	rows := []cardGradeUpRow{}
+	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+		err = session.Table("m_card_grade_up_item").Find(&rows)
+	})
+	utils.CheckErr(err)
+	gradeUpsByCard := make(map[int32][]cardGradeUpRow)
+	for _, row := range rows {
+		gradeUpsByCard[row.CardId] = append(gradeUpsByCard[row.CardId], row)
+	}
+
 	for _, card := range gamedata.Card {
-		card.populate(gamedata)
+		card.populate(gamedata, gradeUpsByCard[card.Id])
 	}
 }
 
