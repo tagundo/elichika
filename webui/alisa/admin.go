@@ -2,6 +2,7 @@ package main
 
 import (
 	"elichika/config"
+	"elichika/log"
 	"elichika/utils"
 	"elichika/webui/webui_utils"
 

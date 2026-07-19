@@ -2,6 +2,7 @@ package main
 
 import (
 	"elichika/config"
+	"elichika/i18n"
 	"elichika/utils"
 
 	"html/template"
@@ -43,6 +44,12 @@ func main() {
 	funcs := template.FuncMap{}
 	funcs["noescape"] = func(s string) template.HTML {
 		return template.HTML(s)
+	}
+	// T localises a WebUI string, same as the main server's router (router/router.go).
+	// logged_in_admin.html is shared with the main admin WebUI and uses {{ T .lang ... }},
+	// so alisa must provide the same template funcs to load it.
+	funcs["T"] = func(lang, text string) string {
+		return i18n.T(lang, text)
 	}
 
 	router.SetFuncMap(funcs)
