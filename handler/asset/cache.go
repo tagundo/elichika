@@ -157,6 +157,15 @@ func cacheEnabled() bool {
 	return config.Conf.CdnCache != nil && *config.Conf.CdnCache
 }
 
+// selfServeStatic reports whether elichika serves every pack itself: cache mode or the explicit
+// self-host cdn_server values. This is the same condition as getPackUrl's selfServe, and it is
+// what the /static_api and /static_map guards key on - those endpoints are only handed out to
+// clients when elichika itself is the static host.
+func selfServeStatic() bool {
+	host := *config.Conf.CdnServer
+	return cacheEnabled() || host == "elichika" || host == "elichika_tls"
+}
+
 // cacheDir returns the directory (with a trailing slash) where cached packs are stored and looked up.
 // It's cdn_cache_dir, with ~ expanded; when empty (the PC default) it is the local static/ folder.
 func cacheDir() string {
