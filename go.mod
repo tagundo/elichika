@@ -3,7 +3,7 @@ module elichika
 go 1.21
 
 require (
-	github.com/arina999999997/gohwdecrypt v1.0.1
+	gitlab.com/tatara_hisoka/gohwdecrypt v1.0.1
 	github.com/gin-gonic/gin v1.9.1
 	golang.org/x/crypto v0.24.0
 	modernc.org/sqlite v1.23.1

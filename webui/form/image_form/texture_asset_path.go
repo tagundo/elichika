@@ -4,7 +4,7 @@ import (
 	"elichika/assetdata"
 	"elichika/utils"
 
-	hwdecrypt "github.com/arina999999997/gohwdecrypt"
+	hwdecrypt "gitlab.com/tatara_hisoka/gohwdecrypt"
 
 	"encoding/base64"
 	"errors"

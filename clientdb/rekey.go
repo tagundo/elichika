@@ -11,7 +11,7 @@ import (
 
 	"os"
 
-	hwdecrypt "github.com/arina999999997/gohwdecrypt"
+	hwdecrypt "gitlab.com/tatara_hisoka/gohwdecrypt"
 )
 
 func fileExist(path string) bool {
