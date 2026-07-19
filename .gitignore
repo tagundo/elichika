@@ -1,6 +1,8 @@
 # the built server binary at the repo root (anchored so it does not also match
 # the `elichika` directory in the Android app's Java package path)
 /elichika
+# the alisa maintenance-server binary (`go build ./webui/alisa/` drops it at the root)
+/alisa
 elichika_host
 
 static/
