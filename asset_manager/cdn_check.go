@@ -60,6 +60,6 @@ func performPackCheck(packs []string) string {
 		// 	}
 		// }
 	}
-	log.Printf(report)
+	log.Printf("%s", report)
 	return report
 }
