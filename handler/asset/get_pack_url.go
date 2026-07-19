@@ -44,7 +44,7 @@ func getPackUrl(ctx *gin.Context) {
 
 	// selfServe reports whether elichika should serve every pack itself: cache mode (it downloads
 	// missing ones into sukusta/packs) or the explicit self-host modes.
-	selfServe := cacheEnabled() || (host == "elichika") || (host == "elichika_tls")
+	selfServe := selfServeStatic()
 	if selfServe {
 		host = selfHost
 	}

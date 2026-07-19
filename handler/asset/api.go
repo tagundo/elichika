@@ -1,7 +1,6 @@
 package asset
 
 import (
-	"elichika/config"
 	"elichika/log"
 	"elichika/router"
 	"elichika/utils"
@@ -14,8 +13,11 @@ import (
 )
 
 func staticApi(ctx *gin.Context) {
-	if (*config.Conf.CdnServer != "elichika") && (*config.Conf.CdnServer != "elichika_tls") {
-		log.Panic("staticApi is not allowed because CDN is not elichika or elichika tls")
+	// The range API only makes sense when elichika serves static data itself (self-host or
+	// cache mode); with an external CDN nothing legitimate calls it, so keep it closed
+	// instead of answering arbitrary range probes.
+	if !selfServeStatic() {
+		log.Panic("staticApi is not allowed because elichika is not serving static data itself")
 	}
 	masterVersion, exist := ctx.GetQuery("master")
 	utils.MustExist(exist)
