@@ -3,6 +3,7 @@ package main
 import (
 	"elichika/webui/webui_utils"
 
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +11,9 @@ import (
 
 func Index(ctx *gin.Context) {
 	ctx.Header("Content-Type", "text/html")
+	// logged_in_admin.html references .lang ({{ T .lang ... }} / {{ if eq .lang ... }}),
+	// so it must always be provided or template execution fails.
+	lang := webui_utils.Lang(ctx)
 
 	body := `<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/></head>
 	`
@@ -29,6 +33,7 @@ func Index(ctx *gin.Context) {
 	// `
 	ctx.HTML(http.StatusOK, "logged_in_admin.html", gin.H{
 		"body": body,
+		"lang": lang,
 	})
 }
 
