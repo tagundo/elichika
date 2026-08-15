@@ -15,7 +15,8 @@ import (
 // provides them as 4 extra tables:
 //   - m_lesson_drop_amount        how many items a lesson menu run gives
 //   - m_lesson_skill_content      which insight skill can drop from which lesson combination
-//   - m_lesson_skill_rarity       how likely each skill rarity is, rarity 0 being no skill
+//   - m_lesson_skill_rarity       the mix of rarities, given that a skill drops
+//   - m_lesson_skill_no_drop      how often no skill drops at all
 //   - m_lesson_skill_member_chance which of the 9 deck positions receives the skill
 //
 // An asset repository that predates these tables is still usable: IsLoaded stays false,
@@ -75,11 +76,19 @@ func (skill *lessonSkillContent) canDropFrom(id1, id2, id3 int32) bool {
 	}
 }
 
+// whether the skill is exclusive to the combinations it drops from, rather than being on
+// offer to any combination that merely contains its lesson. A combination that has one of
+// these on offer drops a skill much more often: 84% against 63%.
+func (skill *lessonSkillContent) isExclusive() bool {
+	return skill.DropType == lessonSkillDropTypePure || skill.DropType == lessonSkillDropTypeMajority
+}
+
 // the tables this loader needs, all of them are provided by the asset repository
 var lessonTables = []string{
 	"m_lesson_drop_amount",
 	"m_lesson_skill_content",
 	"m_lesson_skill_rarity",
+	"m_lesson_skill_no_drop",
 	"m_lesson_skill_member_chance",
 }
 
@@ -143,7 +152,7 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 		lesson.SkillPosition.AddItem(memberChance.PositionId, memberChance.Weight)
 	}
 
-	// the weight of each skill rarity, rarity 0 is the weight of not dropping a skill
+	// the mix of rarities, given that a skill drops at all
 	type lessonSkillRarity struct {
 		Rarity int32
 		Weight int32
@@ -156,6 +165,22 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	rarityWeight := map[int32]int32{}
 	for _, skillRarity := range skillRarities {
 		rarityWeight[skillRarity.Rarity] = skillRarity.Weight
+	}
+
+	// how often no skill drops at all, which depends only on whether the combination has
+	// an exclusive skill on offer
+	type lessonSkillNoDrop struct {
+		HasExclusive int32
+		Weight       int32
+	}
+	var noDrops []lessonSkillNoDrop
+	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+		err = session.Table("m_lesson_skill_no_drop").Find(&noDrops)
+	})
+	utils.CheckErr(err)
+	noDropWeight := map[int32]int32{}
+	for _, noDrop := range noDrops {
+		noDropWeight[noDrop.HasExclusive] = noDrop.Weight
 	}
 
 	var skills []lessonSkillContent
@@ -175,21 +200,28 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	// entry. A rarity's weight is shared between all the skills of that rarity that the
 	// combination can give, so the chance of getting *some* skill of a rarity doesn't
 	// depend on how many skills of that rarity exist.
+	//
+	// The "no skill" weight is the only thing that varies between combinations: one that
+	// has an exclusive skill on offer drops a skill far more often than one that doesn't.
 	lesson.SkillDrop = map[int32]*drop.WeightedDropList[int32]{}
 	for _, id1 := range menuIds {
 		for _, id2 := range menuIds {
 			for _, id3 := range menuIds {
 				available := []*lessonSkillContent{}
 				countByRarity := map[int32]int32{}
+				hasExclusive := int32(0)
 				for i := range skills {
 					if skills[i].canDropFrom(id1, id2, id3) {
 						available = append(available, &skills[i])
 						countByRarity[skills[i].Rarity]++
+						if skills[i].isExclusive() {
+							hasExclusive = 1
+						}
 					}
 				}
 
 				dropList := &drop.WeightedDropList[int32]{}
-				dropList.AddItem(0, rarityWeight[0])
+				dropList.AddItem(0, noDropWeight[hasExclusive])
 				for _, skill := range available {
 					dropList.AddItem(skill.SkillMasterId, rarityWeight[skill.Rarity]/countByRarity[skill.Rarity])
 				}
@@ -198,8 +230,11 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 		}
 	}
 
+	_, hasCommonNoDrop := noDropWeight[0]
+	_, hasExclusiveNoDrop := noDropWeight[1]
 	return lesson.ItemAmount[enum.LessonDropTypeNormal] != nil &&
 		lesson.ItemAmount[enum.LessonDropTypeMegaphone] != nil &&
+		hasCommonNoDrop && hasExclusiveNoDrop &&
 		len(memberChances) > 0 && len(skills) > 0 && len(menuIds) > 0
 }
 
