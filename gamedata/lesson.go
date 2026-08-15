@@ -20,6 +20,11 @@ import (
 //
 // An asset repository that predates these tables is still usable: IsLoaded stays false,
 // the caller keeps its built in drop amounts and no insight skill is dropped.
+//
+// The rates themselves are data, not code: how strict or generous lessons are is decided
+// entirely by the weights in those tables. The sql file that creates them records where
+// each number came from and which ones were a judgement call rather than an observation,
+// so read that before changing any of them here.
 type Lesson struct {
 	// keyed by enum.LessonDropTypeNormal / enum.LessonDropTypeMegaphone
 	ItemAmount map[int32]*drop.WeightedDropList[int32]
