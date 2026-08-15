@@ -132,6 +132,16 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 
 	isMemberGuildRankingPeriod := user_member_guild.IsMemberGuildRankingPeriod(session)
 
+	// the drop amounts come from masterdata when the asset repository provides the lesson
+	// drop tables, the built-in lists above are the fallback for an older asset repository
+	lessonGamedata := session.Gamedata.Lesson
+	rollDropCount := dropCountList.GetRandomItem
+	rollMegaphoneCount := megaphoneDropCountList.GetRandomItem
+	if lessonGamedata.IsLoaded {
+		rollDropCount = lessonGamedata.ItemAmount[enum.LessonDropTypeNormal].GetRandomItem
+		rollMegaphoneCount = lessonGamedata.ItemAmount[enum.LessonDropTypeMegaphone].GetRandomItem
+	}
+
 	for repeat := int32(1); repeat <= repeatCount; repeat++ {
 		usedItems := []int32{}
 		for _, itemId := range req.ConsumedContentIds.Slice {
@@ -146,7 +156,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 
 		// the drop count is rolled once for the whole menu and then split evenly
 		// between the 3 lessons, it is not rolled once per lesson.
-		dropCount := dropCountList.GetRandomItem()
+		dropCount := rollDropCount()
 		lessonDropCount := int32(math.Round(float64(dropCount) / 3.0))
 
 		// use default drop, but switch to other drop if necessary
@@ -183,7 +193,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 
 			// megaphone, only drop when ranking is on
 			if isMemberGuildRankingPeriod {
-				megaphoneDrop := megaphoneDropCountList.GetRandomItem()
+				megaphoneDrop := rollMegaphoneCount()
 				for i := int32(0); i < megaphoneDrop; i++ {
 					lessonItems = append(lessonItems, client.LessonDropItem{
 						ContentType:   item.RallyMegaphone.ContentType,
@@ -234,6 +244,23 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			}
 		}
 
+		// insight skill, at most one per run of the lesson menu
+		// which skills can drop depends on the combination of the 3 lessons, the order
+		// doesn't matter so the sort below has no effect on this
+		if lessonGamedata.IsLoaded {
+			key := req.ExecuteLessonIds.Slice[0]*100 + req.ExecuteLessonIds.Slice[1]*10 + req.ExecuteLessonIds.Slice[2]
+			skillDrop, exist := lessonGamedata.SkillDrop[key]
+			if exist {
+				skillMasterId := skillDrop.GetRandomItem()
+				if skillMasterId != 0 {
+					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
+						Position:       lessonGamedata.SkillPosition.GetRandomItem(),
+						PassiveSkillId: skillMasterId,
+					})
+				}
+			}
+		}
+
 		if (repeat == 1) && (repeat < repeatCount) {
 			sort.Slice(req.ExecuteLessonIds.Slice, func(i, j int) bool {
 				return req.ExecuteLessonIds.Slice[i] < req.ExecuteLessonIds.Slice[j]
@@ -245,34 +272,6 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 		user_content.UpdateUserContent(session, *item)
 	}
 
-	// insight skills
-
-	// can only return 12 max
-	skills := []int32{
-		// 30000041, // Appeal+ (L)
-		30000482, // Appeal+ (M):Group
-		30000517, // Appeal+ (M):Same Attribute
-		30000502, // Appeal+ (M):Same School
-		30000507, // Appeal+ (M):Same Strategy
-		30000492, // Appeal+ (M):Same Year
-		30000512, // Appeal+ (M):Type
-		30000044, // Skill Activation %+ (L)
-		30000485, // Skill Activation %+ (M):Group
-		30000520, // Skill Activation %+ (M):Same Attribute
-		// 30000505, // Skill Activation %+ (M):Same School
-		30000510, // Skill Activation %+ (M):Same Strategy
-		30000495, // Skill Activation %+ (M):Same Year
-		// 30000515, // Skill Activation %+ (M):Type
-		30000045, // Type Effect+ (M)
-	}
-	for position := int32(1); position <= 9; position++ {
-		for _, skillId := range skills {
-			result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
-				Position:       position,
-				PassiveSkillId: skillId,
-			})
-		}
-	}
 	userdata.GenericDatabaseInsert(session, "u_lesson", result)
 
 	return resp

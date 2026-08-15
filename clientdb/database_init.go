@@ -8,29 +8,68 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"xorm.io/xorm"
 )
 
+// a single sql file to apply to one of the client databases
+type migration struct {
+	name string
+	path string
+	// the client database to apply it to, taken from the file name
+	dbName string
+}
+
+// list the migrations of a directory, in file name order
+// a directory that doesn't exist simply has none: an asset repository is allowed to
+// provide only the locale specific ones, or only the shared ones
+func discoverMigrations(dir string) []migration {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	migrations := []migration{}
+	for _, file := range files {
+		// the shared directory holds the locale specific directories too
+		if file.IsDir() {
+			continue
+		}
+		name := file.Name()
+		// file name has the format <order>.filename.sql
+		// order must be exactly 3 digits (technically it can be any 3 characters)
+		if len(name) <= 8 || !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+		migrations = append(migrations, migration{
+			name:   name,
+			path:   dir + name,
+			dbName: name[4 : len(name)-4],
+		})
+	}
+	return migrations
+}
+
 // note that this is subject to change, do not depend on it too much
 func initLocale(locale string) {
-
-	sqlDir := fmt.Sprint(config.AssetPath, "sql/", locale, "/")
 	dbDir := fmt.Sprint("db/", locale, "/")
-	files, err := os.ReadDir(sqlDir)
-	if err != nil {
+
+	// the migrations of this locale first, then the ones shared by every locale
+	migrations := discoverMigrations(fmt.Sprint(config.AssetPath, "sql/", locale, "/"))
+	migrations = append(migrations, discoverMigrations(fmt.Sprint(config.AssetPath, "sql/"))...)
+	if len(migrations) == 0 {
 		return
 	}
-	// file name has the format <order>.filename.sql
-	// order must be exactly 3 digits (technically it can be any 3 characters)
+
 	// for each file, if it has not changed then apply the update
 	// if an error is encountered, no change would be made to any of the file
+	var err error
 	needUpdate := map[string]bool{}
 	engines := map[string]*xorm.Engine{}
 	sessions := map[string]*xorm.Session{}
 
-	for _, file := range files {
-		dbName := file.Name()[4 : len(file.Name())-4]
+	for _, file := range migrations {
+		dbName := file.dbName
 		need, exists := needUpdate[dbName]
 		if !exists {
 			needUpdate[dbName] = isNotChanged(dbDir + dbName)
@@ -49,9 +88,9 @@ func initLocale(locale string) {
 			session = sessions[dbName]
 			session.Begin()
 		}
-		log.Println("Running SQL file: ", file.Name())
+		log.Println("Running SQL file: ", file.name)
 
-		f, err := os.Open(sqlDir + file.Name())
+		f, err := os.Open(file.path)
 		utils.CheckErr(err)
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
