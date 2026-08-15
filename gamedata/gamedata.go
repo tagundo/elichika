@@ -137,6 +137,7 @@ type Gamedata struct {
 	LiveDropContentGroup map[int32]*drop.WeightedDropList[client.Content]
 
 	LessonMenu map[int32]*LessonMenu
+	Lesson     *Lesson
 
 	TrainingTreeCellItemSet map[int32]*TrainingTreeCellItemSet
 	TrainingTreeDesign      map[int32]*TrainingTreeDesign

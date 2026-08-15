@@ -17,14 +17,17 @@ import (
 	"elichika/subsystem/user_subscription_status"
 	"elichika/userdata"
 
+	"math"
 	"reflect"
 	"sort"
 )
 
 // handle the lesson and write the result to the database
 // drop is calculated using the following process:
-// - First iterate over the lesson menu in the order sent, let's say A, B, C, and get a random drop count for each of them
-// - Then generate the items using a generic.random list.
+// - First get a random drop count for the whole menu, then split it evenly between the 3 lessons
+//   - the last lesson takes the remainder so the 3 parts add up to the rolled count
+//
+// - Then iterate over the lesson menu in the order sent, let's say A, B, C, and generate the items using a generic.random list.
 //   - We pick the list based on whether the user has the training enhancing items requested
 //
 // - Finally there is a chance to add megaphones, if it's applicable.
@@ -32,7 +35,7 @@ import (
 //   - Don't really know why this is the case
 //   - One plausible theory is that they sorted the list to use it for insight skills as the order doesn't matter
 //
-// - the amount of drop is assumed to be the following per instace of lesson (9 in total for x3), start with 15 and go up to 25
+// - the amount of drop is assumed to be the following per lesson menu run (3 in total for x3), start with 15 and go up to 26
 //   - 0.25
 //   - 0.08
 //   - 0.08
@@ -129,6 +132,16 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 
 	isMemberGuildRankingPeriod := user_member_guild.IsMemberGuildRankingPeriod(session)
 
+	// the drop amounts come from masterdata when the asset repository provides the lesson
+	// drop tables, the built-in lists above are the fallback for an older asset repository
+	lessonGamedata := session.Gamedata.Lesson
+	rollDropCount := dropCountList.GetRandomItem
+	rollMegaphoneCount := megaphoneDropCountList.GetRandomItem
+	if lessonGamedata.IsLoaded {
+		rollDropCount = lessonGamedata.ItemAmount[enum.LessonDropTypeNormal].GetRandomItem
+		rollMegaphoneCount = lessonGamedata.ItemAmount[enum.LessonDropTypeMegaphone].GetRandomItem
+	}
+
 	for repeat := int32(1); repeat <= repeatCount; repeat++ {
 		usedItems := []int32{}
 		for _, itemId := range req.ConsumedContentIds.Slice {
@@ -140,6 +153,11 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 
 		// handle skill here if we want
 		gainedItems := []client.LessonDropItem{}
+
+		// the drop count is rolled once for the whole menu and then split evenly
+		// between the 3 lessons, it is not rolled once per lesson.
+		dropCount := rollDropCount()
+		lessonDropCount := int32(math.Round(float64(dropCount) / 3.0))
 
 		// use default drop, but switch to other drop if necessary
 
@@ -153,25 +171,31 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 				}
 			}
 
-			dropCount := dropCountList.GetRandomItem()
+			// the last lesson takes the remainder so the 3 lessons add up to dropCount
+			currentDropCount := lessonDropCount
+			if lesson == 3 {
+				currentDropCount = dropCount - lessonDropCount*2
+			}
 			gainedRarity := []int32{}
+			// only the items of this lesson, the ones actually awarded below
+			lessonItems := []client.LessonDropItem{}
 
 			dropRarityList := resp.LessonDropRarityList.GetOnly(lesson)
-			for i := int32(0); i < dropCount; i++ {
+			for i := int32(0); i < currentDropCount; i++ {
 				drop := dropList.GetRandomItem()
 				if drop.DropRarity > enum.LessonDropRarityTypeRare1 {
 					gainedRarity = append(gainedRarity, enum.LessonDropRarityTypeRare2)
 				} else {
 					gainedRarity = append(gainedRarity, enum.LessonDropRarityTypeRare1)
 				}
-				gainedItems = append(gainedItems, drop)
+				lessonItems = append(lessonItems, drop)
 			}
 
 			// megaphone, only drop when ranking is on
 			if isMemberGuildRankingPeriod {
-				megaphoneDrop := megaphoneDropCountList.GetRandomItem()
+				megaphoneDrop := rollMegaphoneCount()
 				for i := int32(0); i < megaphoneDrop; i++ {
-					gainedItems = append(gainedItems, client.LessonDropItem{
+					lessonItems = append(lessonItems, client.LessonDropItem{
 						ContentType:   item.RallyMegaphone.ContentType,
 						ContentId:     item.RallyMegaphone.ContentId,
 						ContentAmount: item.RallyMegaphone.ContentAmount,
@@ -181,7 +205,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 				}
 			}
 
-			for _, content := range gainedItems {
+			for _, content := range lessonItems {
 				user_content.AddContent(session, client.Content{
 					ContentType:   content.ContentType,
 					ContentId:     content.ContentId,
@@ -196,7 +220,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 				for _, rarity := range gainedRarity {
 					dropRarityList.Append(rarity)
 				}
-				for _, content := range gainedItems {
+				for _, content := range lessonItems {
 					user_content.AddContent(session, client.Content{
 						ContentType:   content.ContentType,
 						ContentId:     content.ContentId,
@@ -204,6 +228,9 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 					})
 				}
 			}
+
+			// roll this lesson's items into the response's drop list
+			gainedItems = append(gainedItems, lessonItems...)
 		}
 
 		for _, drop := range gainedItems {
@@ -214,6 +241,23 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			for _, drop := range gainedItems {
 				drop.IsSubscription = true
 				result.DropItemList.Append(drop)
+			}
+		}
+
+		// insight skill, at most one per run of the lesson menu
+		// which skills can drop depends on the combination of the 3 lessons, the order
+		// doesn't matter so the sort below has no effect on this
+		if lessonGamedata.IsLoaded {
+			key := req.ExecuteLessonIds.Slice[0]*100 + req.ExecuteLessonIds.Slice[1]*10 + req.ExecuteLessonIds.Slice[2]
+			skillDrop, exist := lessonGamedata.SkillDrop[key]
+			if exist {
+				skillMasterId := skillDrop.GetRandomItem()
+				if skillMasterId != 0 {
+					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
+						Position:       lessonGamedata.SkillPosition.GetRandomItem(),
+						PassiveSkillId: skillMasterId,
+					})
+				}
 			}
 		}
 
@@ -228,34 +272,6 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 		user_content.UpdateUserContent(session, *item)
 	}
 
-	// insight skills
-
-	// can only return 12 max
-	skills := []int32{
-		// 30000041, // Appeal+ (L)
-		30000482, // Appeal+ (M):Group
-		30000517, // Appeal+ (M):Same Attribute
-		30000502, // Appeal+ (M):Same School
-		30000507, // Appeal+ (M):Same Strategy
-		30000492, // Appeal+ (M):Same Year
-		30000512, // Appeal+ (M):Type
-		30000044, // Skill Activation %+ (L)
-		30000485, // Skill Activation %+ (M):Group
-		30000520, // Skill Activation %+ (M):Same Attribute
-		// 30000505, // Skill Activation %+ (M):Same School
-		30000510, // Skill Activation %+ (M):Same Strategy
-		30000495, // Skill Activation %+ (M):Same Year
-		// 30000515, // Skill Activation %+ (M):Type
-		30000045, // Type Effect+ (M)
-	}
-	for position := int32(1); position <= 9; position++ {
-		for _, skillId := range skills {
-			result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
-				Position:       position,
-				PassiveSkillId: skillId,
-			})
-		}
-	}
 	userdata.GenericDatabaseInsert(session, "u_lesson", result)
 
 	return resp
