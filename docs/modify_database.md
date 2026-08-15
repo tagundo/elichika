@@ -43,3 +43,4 @@ After that, you only need to restart the server and it will automatically genera
 - If your modification is inconsistent or not synced between server and client, the server or client might not work properly.
 - Ideally, you should save the modification you made as SQL scripts, so you can repeat them whenever you want with a fresh database instance.
 - New version of elichika WILL make change to the database, so having a modification and updating will not work properly. You have to update first, then apply your modification again.
+- A server that has already run does not apply new migrations at all, because your modification is exactly what tells it they were already applied. See [updating assets](updating_assets.md) for how to pick them up, with and without losing your modification.

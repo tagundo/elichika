@@ -27,8 +27,12 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] Working gacha with one banner for each group.
     - [ ] Things like scouting tickets are not implemented as of now.
 - [x] Training
-    - [x] Training works but always return a set of commonly used insight skills.
+    - [x] Training drops insight skills the way the real server did: at most one per run,
+      out of the skills the combination of the 3 lessons can give, and more often when the
+      combination has a skill exclusive to it.
     - [x] Training drops items, and drops rally megaphone while channel live is on.
+    - [x] The rates live in the asset repository, see [updating assets](updating_assets.md)
+      if a server that already runs does not pick them up.
 - [x] Member bond
     - [x] Working member bond system.
     - [x] Fully working bond board system.
