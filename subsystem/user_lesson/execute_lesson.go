@@ -247,9 +247,9 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			}
 		}
 
-		// insight skill, at most one per run of the lesson menu
-		// which skills can drop depends on the combination of the 3 lessons, the order
-		// doesn't matter so the sort below has no effect on this
+		// insight skills: one ordinary draw per run of the lesson menu, plus one more if an
+		// insight pin was used. Which skills can drop depends on the combination of the 3
+		// lessons, the order doesn't matter so the sort below has no effect on this.
 		if lessonGamedata.IsLoaded {
 			key := req.ExecuteLessonIds.Slice[0]*100 + req.ExecuteLessonIds.Slice[1]*10 + req.ExecuteLessonIds.Slice[2]
 
@@ -263,29 +263,26 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 				}
 			}
 
-			dropped := false
+			// the ordinary draw happens either way, at its weighted position
+			if skillDrop, exist := lessonGamedata.SkillDrop[key]; exist {
+				skillMasterId := skillDrop.GetRandomItem()
+				if skillMasterId != 0 {
+					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
+						Position:       lessonGamedata.SkillPosition.GetRandomItem(),
+						PassiveSkillId: skillMasterId,
+					})
+				}
+			}
+
+			// A pin adds one on top of that rather than replacing it, so a run using one
+			// can hand back two skills. Its own is always for the leader. A combination
+			// with nothing of the required rarity simply adds nothing.
 			if guaranteedRarity > 0 {
 				if guaranteed, exist := lessonGamedata.GuaranteedSkillDrop[guaranteedRarity][key]; exist {
 					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
 						Position:       lessonLeaderPosition,
 						PassiveSkillId: guaranteed.GetRandomItem(),
 					})
-					dropped = true
-				}
-				// no skill that good on offer for this combination: fall through to the
-				// ordinary draw rather than eating the pin for nothing
-			}
-
-			if !dropped {
-				skillDrop, exist := lessonGamedata.SkillDrop[key]
-				if exist {
-					skillMasterId := skillDrop.GetRandomItem()
-					if skillMasterId != 0 {
-						result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
-							Position:       lessonGamedata.SkillPosition.GetRandomItem(),
-							PassiveSkillId: skillMasterId,
-						})
-					}
 				}
 			}
 		}
