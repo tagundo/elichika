@@ -245,8 +245,16 @@ build_and_install() {
     rm -rf "$INSTALL_NAME"
     git clone --depth 1 --branch "$BRANCH" --single-branch https://github.com/tagundo/elichika.git "$INSTALL_NAME" || return 1
     cd "$INSTALL_NAME" || return 1
-    # get the submodules (i.e. assets and other)
-    git submodule update --init assets || return 1
+    # Get every submodule, at the commit this elichika revision pins.
+    #
+    # Naming only "assets" here used to leave two things out, both of which the Android
+    # APK ships (its checkout is recursive) so only script installs were short:
+    #   - modtools, the modding tools. elichika_utility.sh calls into modtools/*.py and
+    #     adminui puts modtools/ on sys.path, so the mod menu was broken without it.
+    #   - the package/* submodules nested inside assets, which hold the suit / card / sql
+    #     add-ons that adminui/tools/installers.py scans assets/package/* for.
+    # --recursive is what covers the nested ones; it adds about 45MB.
+    git submodule update --init --recursive || return 1
     # build server, fallback to not using CGO to work on some devices
     (CGO_ENABLED=0 go build -o "$BIN" || go build -o "$BIN") || return 1
     # set the permission (no-op / not needed on Windows)

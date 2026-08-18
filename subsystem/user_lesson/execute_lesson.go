@@ -81,6 +81,9 @@ func init() {
 	megaphoneDropCountList.AddItem(3, 15)
 }
 
+// the deck position the insight pins hand their guaranteed skill to
+const lessonLeaderPosition int32 = 1
+
 func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) response.ExecuteLessonResponse {
 	resp := response.ExecuteLessonResponse{
 		UserModelDiff: &session.UserModel,
@@ -249,14 +252,40 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 		// doesn't matter so the sort below has no effect on this
 		if lessonGamedata.IsLoaded {
 			key := req.ExecuteLessonIds.Slice[0]*100 + req.ExecuteLessonIds.Slice[1]*10 + req.ExecuteLessonIds.Slice[2]
-			skillDrop, exist := lessonGamedata.SkillDrop[key]
-			if exist {
-				skillMasterId := skillDrop.GetRandomItem()
-				if skillMasterId != 0 {
+
+			// An insight pin guarantees the leader a skill of at least its target rarity.
+			// Using several at once takes the best of them.
+			guaranteedRarity := int32(0)
+			for _, itemId := range usedItems {
+				rarity, isPin := lessonGamedata.EnhancingItemSkillRarity[itemId]
+				if isPin && rarity > guaranteedRarity {
+					guaranteedRarity = rarity
+				}
+			}
+
+			dropped := false
+			if guaranteedRarity > 0 {
+				if guaranteed, exist := lessonGamedata.GuaranteedSkillDrop[guaranteedRarity][key]; exist {
 					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
-						Position:       lessonGamedata.SkillPosition.GetRandomItem(),
-						PassiveSkillId: skillMasterId,
+						Position:       lessonLeaderPosition,
+						PassiveSkillId: guaranteed.GetRandomItem(),
 					})
+					dropped = true
+				}
+				// no skill that good on offer for this combination: fall through to the
+				// ordinary draw rather than eating the pin for nothing
+			}
+
+			if !dropped {
+				skillDrop, exist := lessonGamedata.SkillDrop[key]
+				if exist {
+					skillMasterId := skillDrop.GetRandomItem()
+					if skillMasterId != 0 {
+						result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
+							Position:       lessonGamedata.SkillPosition.GetRandomItem(),
+							PassiveSkillId: skillMasterId,
+						})
+					}
 				}
 			}
 		}
