@@ -27,7 +27,7 @@ RUN export PATH=$PATH:/usr/local/go/bin && \
     go build
 
 # Not currently possible - elichika uses too much ram
-#RUN rm -rf assets/ && git clone https://github.com/arina999999997/harasho assets --depth 1
+#RUN rm -rf assets/ && git clone https://github.com/tagundo/harasho assets --depth 1
 
 #RUN ./elichika init
 
@@ -46,7 +46,18 @@ RUN apt update && apt install git -y
 
 WORKDIR /root/elichika/
 
-RUN git clone https://github.com/arina999999997/harasho assets --depth 1
+# The asset repository, which is a submodule of this repo (see .gitmodules). This used to
+# clone arina999999997/harasho, the upstream one, so a Docker build silently ran on
+# upstream's master data and got none of this fork's, including the lesson drop tables.
+#
+# It takes the tip of the default branch rather than the commit .gitmodules pins, because
+# the pin lives in the git index and the runtime stage has no checkout to read it from.
+# That is the pre-existing behaviour; keep the two in step when bumping the submodule.
+#
+# Not recursive, and modtools is not fetched: assets/package/* and modtools/ are only read
+# by the python tools (adminui, elichika_utility.sh), and this image ships neither. The
+# server itself never touches them, so pulling them would add ~45MB of dead weight.
+RUN git clone https://github.com/tagundo/harasho assets --depth 1
 
 #COPY --from=builder /elichika/assets/ /root/elichika/assets/
 
