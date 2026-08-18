@@ -37,6 +37,15 @@ type Lesson struct {
 	// which of the 9 deck positions receives the skill
 	SkillPosition *drop.WeightedDropList[int32]
 
+	// the insight pins guarantee the leader a skill of at least a given rarity, keyed by
+	// lesson enhancing item id. Empty if masterdata has no such item.
+	EnhancingItemSkillRarity map[int32]int32
+
+	// the guaranteed draws those pins use: minimum rarity, then the combination key. Only
+	// the rarities some pin actually asks for are built, and a combination is absent when
+	// it offers nothing of that rarity or better.
+	GuaranteedSkillDrop map[int32]map[int32]*drop.WeightedDropList[int32]
+
 	IsLoaded bool
 }
 
@@ -92,8 +101,8 @@ var lessonTables = []string{
 	"m_lesson_skill_member_chance",
 }
 
-// report the tables of lessonTables that the masterdata doesn't have
-func missingLessonTables(gamedata *Gamedata) []string {
+// the tables the masterdata actually has
+func existingTables(gamedata *Gamedata) map[string]bool {
 	existing := map[string]bool{}
 	var rows []map[string]string
 	var err error
@@ -104,6 +113,12 @@ func missingLessonTables(gamedata *Gamedata) []string {
 	for _, row := range rows {
 		existing[row["name"]] = true
 	}
+	return existing
+}
+
+// report the tables of lessonTables that the masterdata doesn't have
+func missingLessonTables(gamedata *Gamedata) []string {
+	existing := existingTables(gamedata)
 	missing := []string{}
 	for _, table := range lessonTables {
 		if !existing[table] {
@@ -189,6 +204,36 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	})
 	utils.CheckErr(err)
 
+	// The insight pins (m_lesson_enhancing_item 1400 / 1401) guarantee the leader a skill.
+	// This is stock masterdata rather than one of the recovered tables, but it is read
+	// optionally: without it the pins simply grant nothing extra, which is better than
+	// disabling every skill drop.
+	lesson.EnhancingItemSkillRarity = map[int32]int32{}
+	if existingTables(gamedata)["m_lesson_enhancing_item_effect_skill_drop"] {
+		type lessonEnhancingItemSkillDrop struct {
+			LessonEnhancingItemId int32
+			TargetSkillRarity     int32
+		}
+		var pins []lessonEnhancingItemSkillDrop
+		gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+			err = session.Table("m_lesson_enhancing_item_effect_skill_drop").Find(&pins)
+		})
+		utils.CheckErr(err)
+		for _, pin := range pins {
+			lesson.EnhancingItemSkillRarity[pin.LessonEnhancingItemId] = pin.TargetSkillRarity
+		}
+	}
+
+	// only build a guaranteed list for a rarity some pin actually asks for
+	guaranteedRarities := map[int32]bool{}
+	for _, rarity := range lesson.EnhancingItemSkillRarity {
+		guaranteedRarities[rarity] = true
+	}
+	lesson.GuaranteedSkillDrop = map[int32]map[int32]*drop.WeightedDropList[int32]{}
+	for rarity := range guaranteedRarities {
+		lesson.GuaranteedSkillDrop[rarity] = map[int32]*drop.WeightedDropList[int32]{}
+	}
+
 	// the lesson menu ids that actually exist, instead of assuming the usual 1 to 8
 	var menuIds []int32
 	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
@@ -225,7 +270,29 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 				for _, skill := range available {
 					dropList.AddItem(skill.SkillMasterId, rarityWeight[skill.Rarity]/countByRarity[skill.Rarity])
 				}
-				lesson.SkillDrop[id1*100+id2*10+id3] = dropList
+				combination := id1*100 + id2*10 + id3
+				lesson.SkillDrop[combination] = dropList
+
+				// A pin drops a skill of its target rarity *or better*, never nothing, so
+				// its list has no "no skill" entry and only the eligible rarities. The
+				// weights are the same ones, so the mix between those rarities is kept.
+				for rarity := range guaranteedRarities {
+					guaranteed := &drop.WeightedDropList[int32]{}
+					total := int32(0)
+					for _, skill := range available {
+						if skill.Rarity < rarity {
+							continue
+						}
+						weight := rarityWeight[skill.Rarity] / countByRarity[skill.Rarity]
+						guaranteed.AddItem(skill.SkillMasterId, weight)
+						total += weight
+					}
+					// a combination with nothing that good is left out, and the caller
+					// falls back to the ordinary draw rather than drawing from nothing
+					if total > 0 {
+						lesson.GuaranteedSkillDrop[rarity][combination] = guaranteed
+					}
+				}
 			}
 		}
 	}
