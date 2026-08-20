@@ -39,10 +39,10 @@ Allow you to export / import your account:
 
 Importing an account will overwrite your (account logged into webui's) current progress.
 
-For more details, check [import export docs](https://github.com/arina999999997/elichika/blob/master/docs/import_export.md).
+For more details, check [import export docs](https://github.com/tagundo/elichika/blob/master/docs/import_export.md).
 
 #### Other features
-*This is considered [advanced usage](https://github.com/arina999999997/elichika/blob/master/docs/advanced_usage.md)*.
+*This is considered [advanced usage](https://github.com/tagundo/elichika/blob/master/docs/advanced_usage.md)*.
 
 You have access to some other features from the user WebUI, but they required advanced understanding of the game's internal. Be prepared to figure it out with minimal help, otherwise don't touch these features as it might brick your account.
 
@@ -79,7 +79,7 @@ Detailed explanations of some config options:
 - Event frequency:
     - How fast the events cycle around.
 
-Modifying any other field is considered *[advanced usage](https://github.com/arina999999997/elichika/blob/master/docs/advanced_usage.md)*. If you know what you are doing, here's some more explanation for some other field:
+Modifying any other field is considered *[advanced usage](https://github.com/tagundo/elichika/blob/master/docs/advanced_usage.md)*. If you know what you are doing, here's some more explanation for some other field:
 
 - Server's address:
 
@@ -110,6 +110,6 @@ Schedule the next event you want to play, it will be loaded once the current eve
 
 
 ### Other features
-*This is considered [advanced usage](https://github.com/arina999999997/elichika/blob/master/docs/advanced_usage.md)*.
+*This is considered [advanced usage](https://github.com/tagundo/elichika/blob/master/docs/advanced_usage.md)*.
 
 Use at your own risk, the features might not even work properly on your install. 

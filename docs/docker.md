@@ -1,6 +1,6 @@
 # Elichika with Docker
 
-*This is considered [advanced usage](https://github.com/arina999999997/elichika/blob/master/docs/advanced_usage.md), you should know what docker is and how to use it.*
+*This is considered [advanced usage](https://github.com/tagundo/elichika/blob/master/docs/advanced_usage.md), you should know what docker is and how to use it.*
 
 The Docker container offers a lightweight and simplistic approach to deploying Elichika across different architectures and operating systems using the `golang:alpine` base image.
 

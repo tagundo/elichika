@@ -9,11 +9,11 @@ For playing the game without mods, use [[arina999999997/elichika]](https://githu
 
 ## Installing
 ### Disclaimer about the client
-The clients provided might not work on your specific devices. If it doesn't work, try using another device or an emulator. DO NOT ASK ME, ASK WHO MADE FORK OKAY?
+The clients provided might not work on your specific devices. If it doesn't work, try using another device or an emulator.
 
 Note that this part concern only this server implementation, and it only provide the easiest way to do things.
 
-You should check out checkout the [LL hax wiki](https://carette.codeberg.page/ll-hax-docs/sifas/) for clarification and general knowledge, as it explain things better (or it can lead you to places where you can ask questions).
+You should check out checkout the [LL hax docs](https://docs.sif.moe/sifas/) for clarification and general knowledge, as it explain things better (or it can lead you to places where you can ask questions).
 
 ### Android — standalone app (APK, easiest)
 A single installable app runs the server **and** its dev/modding tools on your phone,
@@ -290,7 +290,7 @@ Besides the server Web UI, the Android app bundles two tool panels (also reachab
 Edited bundles are written where the game and the other tools can find them and open in AssetStudio.
 
 ## More docs
-Checkout the [docs](https://github.com/arina999999997/elichika/tree/master/docs) for more details on the server and how to do more advanced stuffs.
+Checkout the [docs](https://github.com/tagundo/elichika/tree/master/docs) for more details on the server and how to do more advanced stuffs.
 
 Docs can also be found in relevant package in `.md` files. 
 
@@ -317,7 +317,9 @@ Even more special thanks for the specific individuals or groups (in no particula
 - Caret for the LL Hax discord.
 - Yousifrill for drawing body texture.
 - [NishikinoClinic](https://x.com/NishikinoClinic) for SIFAS Tool.
-- [AyakaMods](https://ayakamods.cc/games/love-live-school-idol-festival-all-stars.217/) for SIFAS modpage.
+- [AyakaMods](https://ayakamods.com/games/love-live-school-idol-festival-all-stars.217/) for SIFAS modpage.
+- [dark lord](https://github.com/NaufalFajri) for contribute.
+- [Ethan Wolfe](https://github.com/eman1can) for SIFAS-lesson-data.
 - And other people who more than deserve to be here.
 
 ## Disclaimer

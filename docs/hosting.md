@@ -1,5 +1,5 @@
 # Hosting your own server
-*Hosting your own server is considered [advanced usage](https://github.com/arina999999997/elichika/blob/master/docs/advanced_usage.md). It can be easy or hard to do depending on your specific setup, but it is not the bare minimum required to play the game, therefore it's on you to put in the work if you still want to host the server yourself.*
+*Hosting your own server is considered [advanced usage](https://github.com/tagundo/elichika/blob/master/docs/advanced_usage.md). It can be easy or hard to do depending on your specific setup, but it is not the bare minimum required to play the game, therefore it's on you to put in the work if you still want to host the server yourself.*
 
 
 ## Installing the server
@@ -8,7 +8,7 @@ To host the server on android, you need a shell emulator. If you have root / cus
 
 There is a server installing script you can use, the following command fetch the script and run it automatically:
 ```
-curl -L https://raw.githubusercontent.com/arina999999997/elichika/master/bin/install.sh | bash
+curl -L https://raw.githubusercontent.com/tagundo/elichika/master/bin/install.sh | bash
 ```
 
 ### PC (Windows, Linux, MacOS)
@@ -21,13 +21,13 @@ You can setup the server in a desktop machine to play on android or iOS.
 You can use the same script with android, but you have to install git and go first (and they have to be in your `%PATH%` for windows, and the equivalent places for Linux/MacOS). After that you can just use the same command (for windows, you also need some version of bash, git bash will works):
 
 ```
-curl -L https://raw.githubusercontent.com/arina999999997/elichika/master/bin/install.sh | bash
+curl -L https://raw.githubusercontent.com/tagundo/elichika/master/bin/install.sh | bash
 ```
 
 Using scripts ill leave some trashes, so you can clone the respository and build manually, look at the scripts for the necessary steps.
 
 #### Using Docker
-There is a public docker image available on docker hub: https://hub.docker.com/r/arina999999997/elichika
+There is a public docker image available on docker hub: https://hub.docker.com/r/tagundo/elichika
 
 Assuming you're familiar with docker, this can be a faster way of getting things working. Keep in mind that using docker, some of the step below will not apply, you should reference the docker docs instead.
 
@@ -56,7 +56,7 @@ It is recommended to backup at least `userdata.db` before updating. You can also
 You can update the server using a basic update logic:
 
 ```
-curl -L https://raw.githubusercontent.com/arina999999997/elichika/master/bin/basic_update.sh | bash
+curl -L https://raw.githubusercontent.com/tagundo/elichika/master/bin/basic_update.sh | bash
 ```
 
 For Android/Linux where the shortcut are setup, you can also run:
@@ -72,7 +72,7 @@ The basic update basically backup your data, reinstall, and then restore your da
 If you update the server regularly, then you can use the normal update and it should work:
 
 ```
-curl -L https://raw.githubusercontent.com/arina999999997/elichika/master/bin/update.sh | bash
+curl -L https://raw.githubusercontent.com/tagundo/elichika/master/bin/update.sh | bash
 ```
 
 If your version is new enough, then running:

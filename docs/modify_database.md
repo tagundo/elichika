@@ -1,5 +1,5 @@
 # Modifying database
-*This is considered [advanced usage](https://github.com/arina999999997/elichika/blob/master/docs/advanced_usage.md)*
+*This is considered [advanced usage](https://github.com/tagundo/elichika/blob/master/docs/advanced_usage.md)*
 
 ## Why?
 This server by default provide the databases as they were at EOS, plus the relevant modification for the features (turning DLP on and so). If you wanted to, you can modify the databases that the game and the server use.
