@@ -94,7 +94,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.AutoJudgeType = enum.JudgeTypePerfect
 	*configs.Tutorial = false
 	*configs.LoginBonusSecond = enum.HourSecondCount * 4
-	*configs.TimeZone = "Asia/Tokyo"
+	*configs.TimeZone = ""
 	*configs.DefaultContentAmount = 1073741823
 	*configs.MissionMultiplier = 1
 	*configs.ResourceConfigType = "free"
