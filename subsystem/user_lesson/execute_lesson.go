@@ -11,7 +11,6 @@ import (
 	"elichika/item"
 	"elichika/subsystem/user_content"
 	"elichika/subsystem/user_lesson_deck"
-	"elichika/subsystem/user_member_guild"
 	"elichika/subsystem/user_mission"
 	"elichika/subsystem/user_status"
 	"elichika/subsystem/user_subscription_status"
@@ -133,8 +132,6 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 		resp.LessonDropRarityList.Set(lesson%4, generic.List[int32]{})
 	}
 
-	isMemberGuildRankingPeriod := user_member_guild.IsMemberGuildRankingPeriod(session)
-
 	// the drop amounts come from masterdata when the asset repository provides the lesson
 	// drop tables, the built-in lists above are the fallback for an older asset repository
 	lessonGamedata := session.Gamedata.Lesson
@@ -194,18 +191,16 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 				lessonItems = append(lessonItems, drop)
 			}
 
-			// megaphone, only drop when ranking is on
-			if isMemberGuildRankingPeriod {
-				megaphoneDrop := rollMegaphoneCount()
-				for i := int32(0); i < megaphoneDrop; i++ {
-					lessonItems = append(lessonItems, client.LessonDropItem{
-						ContentType:   item.RallyMegaphone.ContentType,
-						ContentId:     item.RallyMegaphone.ContentId,
-						ContentAmount: item.RallyMegaphone.ContentAmount,
-						DropRarity:    4, // this field is not enum
-					})
-					gainedRarity = append(gainedRarity, enum.LessonDropRarityTypeRare2)
-				}
+			// megaphone drop
+			megaphoneDrop := rollMegaphoneCount()
+			for i := int32(0); i < megaphoneDrop; i++ {
+				lessonItems = append(lessonItems, client.LessonDropItem{
+					ContentType:   item.RallyMegaphone.ContentType,
+					ContentId:     item.RallyMegaphone.ContentId,
+					ContentAmount: item.RallyMegaphone.ContentAmount,
+					DropRarity:    4, // this field is not enum
+				})
+				gainedRarity = append(gainedRarity, enum.LessonDropRarityTypeRare2)
 			}
 
 			for _, content := range lessonItems {
