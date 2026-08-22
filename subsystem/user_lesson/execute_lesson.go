@@ -135,20 +135,18 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 	// the drop amounts come from masterdata when the asset repository provides the lesson
 	// drop tables, the built-in lists above are the fallback for an older asset repository
 	lessonGamedata := session.Gamedata.Lesson
-	markInsightSkill := func(lessonMenuId, position, skillMasterId int32) {
+	markInsightSkill := func(position, skillMasterId int32) {
 		if position < 1 || position > 9 {
 			return
 		}
 		rarity := lessonGamedata.SkillRarity[skillMasterId]
-		actions, exists := resp.LessonMenuActions.Get(lessonMenuId)
-		if !exists || actions == nil || position > int32(len(actions.Slice)) {
-			return
-		}
-		action := &actions.Slice[position-1]
-		action.IsAddedPassiveSkill = true
-		action.UpCount++
-		if rarity > 0 && (!action.MaxRarity.HasValue || rarity > action.MaxRarity.Value) {
-			action.MaxRarity = generic.NewNullable(rarity)
+		for _, actions := range resp.LessonMenuActions.Map {
+			action := &actions.Slice[position-1]
+			action.IsAddedPassiveSkill = true
+			action.UpCount++
+			if rarity > 0 && (!action.MaxRarity.HasValue || rarity > action.MaxRarity.Value) {
+				action.MaxRarity = generic.NewNullable(rarity)
+			}
 		}
 	}
 	rollDropCount := dropCountList.GetRandomItem
@@ -283,7 +281,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 						Position:       position,
 						PassiveSkillId: skillMasterId,
 					})
-					markInsightSkill(req.ExecuteLessonIds.Slice[0], position, skillMasterId)
+					markInsightSkill(position, skillMasterId)
 				}
 			}
 
@@ -297,7 +295,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 						Position:       lessonLeaderPosition,
 						PassiveSkillId: skillMasterId,
 					})
-					markInsightSkill(req.ExecuteLessonIds.Slice[0], lessonLeaderPosition, skillMasterId)
+					markInsightSkill(lessonLeaderPosition, skillMasterId)
 				}
 			}
 		}
