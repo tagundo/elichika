@@ -151,6 +151,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			}
 			action := &actions.Slice[position-1]
 			action.IsAddedPassiveSkill = true
+			action.IsAddedSpecialPassiveSkill = rarity >= enum.SkillRarityTypeSkillRankA
 			action.UpCount++
 			if rarity > 0 && (!action.MaxRarity.HasValue || rarity > action.MaxRarity.Value) {
 				action.MaxRarity = generic.NewNullable(rarity)
