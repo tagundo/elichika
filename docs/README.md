@@ -34,6 +34,7 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] The rates live in the asset repository, see [updating assets](updating_assets.md)
       if a server that already runs does not pick them up.
     - [x] Fully working Training Item such as Insight Pin & Lucky Charm
+    - [x] Insight Bulb are handled "correctly"
 - [x] Member bond
     - [x] Working member bond system.
     - [x] Fully working bond board system.
