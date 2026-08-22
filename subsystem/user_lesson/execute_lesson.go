@@ -12,6 +12,7 @@ import (
 	"elichika/subsystem/user_content"
 	"elichika/subsystem/user_lesson_deck"
 	"elichika/subsystem/user_mission"
+	"elichika/subsystem/user_member_guild"
 	"elichika/subsystem/user_status"
 	"elichika/subsystem/user_subscription_status"
 	"elichika/userdata"
@@ -215,7 +216,10 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			}
 
 			// megaphone drop
-			megaphoneDrop := rollMegaphoneCount()
+			megaphoneDrop := int32(0)
+			if session.UserStatus.MemberGuildMemberMasterId.HasValue && user_member_guild.IsMemberGuildRankingPeriod(session) {
+				megaphoneDrop = rollMegaphoneCount()
+			}
 			for i := int32(0); i < megaphoneDrop; i++ {
 				lessonItems = append(lessonItems, client.LessonDropItem{
 					ContentType:   item.RallyMegaphone.ContentType,
