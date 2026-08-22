@@ -33,6 +33,7 @@ type Lesson struct {
 	// keyed by the 3 lesson menu ids as id1 * 100 + id2 * 10 + id3, a drop of 0 means
 	// the run gives no skill at all
 	SkillDrop map[int32]*drop.WeightedDropList[int32]
+	SkillRarity map[int32]int32
 
 	// which of the 9 deck positions receives the skill
 	SkillPosition *drop.WeightedDropList[int32]
@@ -222,6 +223,11 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 		for _, pin := range pins {
 			lesson.EnhancingItemSkillRarity[pin.LessonEnhancingItemId] = pin.TargetSkillRarity
 		}
+	}
+
+	lesson.SkillRarity = map[int32]int32{}
+	for _, skill := range skills {
+		lesson.SkillRarity[skill.SkillMasterId] = skill.Rarity
 	}
 
 	// only build a guaranteed list for a rarity some pin actually asks for
