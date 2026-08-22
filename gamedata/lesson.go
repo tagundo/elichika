@@ -229,11 +229,6 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 		}
 	}
 
-	lesson.SkillRarity = map[int32]int32{}
-	for _, skill := range skills {
-		lesson.SkillRarity[skill.SkillMasterId] = skill.Rarity
-	}
-
 	// only build a guaranteed list for a rarity some pin actually asks for
 	lesson.SkillRarity = map[int32]int32{}
 	for _, skill := range skills {
