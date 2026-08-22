@@ -5,6 +5,7 @@ import (
 )
 
 type LessonMenuAction struct {
+	LessonMenuId                  int32                   `json:"lesson_menu_id"`
 	CardMasterId                  int32                   `json:"card_master_id"`
 	Position                      int32                   `json:"position"`
 	IsAddedPassiveSkill           bool                    `json:"is_added_passive_skill"`

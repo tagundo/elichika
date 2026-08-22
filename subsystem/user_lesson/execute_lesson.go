@@ -121,9 +121,14 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 
 	for lesson := int32(1); lesson <= 4; lesson++ {
 		actions := generic.List[client.LessonMenuAction]{}
+		lessonMenuId := int32(0)
+		if lesson <= 3 {
+			lessonMenuId = req.ExecuteLessonIds.Slice[lesson-1]
+		}
 		for i := 1; i <= 9; i++ {
 			cardMasterId := reflect.ValueOf(deck).Field(i + 1).Interface().(generic.Nullable[int32]).Value
 			actions.Append(client.LessonMenuAction{
+				LessonMenuId: lessonMenuId,
 				CardMasterId: cardMasterId,
 				Position:     int32(i),
 			})
@@ -135,12 +140,15 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 	// the drop amounts come from masterdata when the asset repository provides the lesson
 	// drop tables, the built-in lists above are the fallback for an older asset repository
 	lessonGamedata := session.Gamedata.Lesson
-	markInsightSkill := func(position, skillMasterId int32) {
+	markInsightSkill := func(sourceMenuId, position, skillMasterId int32) {
 		if position < 1 || position > 9 {
 			return
 		}
 		rarity := lessonGamedata.SkillRarity[skillMasterId]
 		for _, actions := range resp.LessonMenuActions.Map {
+			if actions.Size() == 0 || actions.Slice[0].LessonMenuId != sourceMenuId {
+				continue
+			}
 			action := &actions.Slice[position-1]
 			action.IsAddedPassiveSkill = true
 			action.UpCount++
@@ -277,11 +285,12 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 				skillMasterId := skillDrop.GetRandomItem()
 				if skillMasterId != 0 {
 					position := lessonGamedata.SkillPosition.GetRandomItem()
+					sourceMenuId := lessonGamedata.SkillSourceMenu[key][skillMasterId]
 					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
 						Position:       position,
 						PassiveSkillId: skillMasterId,
 					})
-					markInsightSkill(position, skillMasterId)
+					markInsightSkill(sourceMenuId, position, skillMasterId)
 				}
 			}
 
@@ -291,11 +300,12 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			if guaranteedRarity > 0 {
 				if guaranteed, exist := lessonGamedata.GuaranteedSkillDrop[guaranteedRarity][key]; exist {
 					skillMasterId := guaranteed.GetRandomItem()
+					sourceMenuId := lessonGamedata.SkillSourceMenu[key][skillMasterId]
 					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
 						Position:       lessonLeaderPosition,
 						PassiveSkillId: skillMasterId,
 					})
-					markInsightSkill(lessonLeaderPosition, skillMasterId)
+					markInsightSkill(sourceMenuId, lessonLeaderPosition, skillMasterId)
 				}
 			}
 		}
