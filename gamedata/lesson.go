@@ -32,7 +32,7 @@ type Lesson struct {
 
 	// keyed by the 3 lesson menu ids as id1 * 100 + id2 * 10 + id3, a drop of 0 means
 	// the run gives no skill at all
-	SkillDrop map[int32]*drop.WeightedDropList[int32]
+	SkillDrop   map[int32]*drop.WeightedDropList[int32]
 	SkillRarity map[int32]int32
 
 	// keyed by lesson combination, then insight skill master id; value is the menu id

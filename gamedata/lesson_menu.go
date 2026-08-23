@@ -59,19 +59,37 @@ func (lm *LessonMenu) populate(gamedata *Gamedata) {
 	})
 	utils.CheckErr(err)
 	lm.Drop = map[int32]*drop.WeightedDropList[client.LessonDropItem]{}
+	totalWeight := map[int32]int32{}
 	for _, rate := range enhancingItems {
 		if lm.Drop[rate.LessonEnhancingItemId] == nil {
 			lm.Drop[rate.LessonEnhancingItemId] = &drop.WeightedDropList[client.LessonDropItem]{}
 		}
 		for _, content := range contents {
 			if content.Rarity == rate.TargetRarity {
+				weight := content.Weight * rate.MagnificationWeight / 10000
 				lm.Drop[rate.LessonEnhancingItemId].AddItem(client.LessonDropItem{
 					ContentType:   content.ContentType,
 					ContentId:     content.ContentId,
 					ContentAmount: content.ContentAmount,
 					DropRarity:    content.Rarity,
-				}, content.Weight*rate.MagnificationWeight/10000)
+				}, weight)
+				totalWeight[rate.LessonEnhancingItemId] += weight
 			}
+		}
+	}
+
+	// A list of weight 0 cannot be drawn from: GetRandomItem asks rand.Int31n for a
+	// number below 0 and panics, taking the server down mid lesson. The stock data
+	// never builds one, because the only item here targets every rarity the menus
+	// drop, but edited masterdata can: an item that targets a rarity this menu has
+	// none of, or weights that all truncate away. Leaving those out makes the menu
+	// fall back to its default drop, which is what an item with no effect should do.
+	// ranging over lm.Drop rather than totalWeight on purpose: an item whose rarities
+	// miss this menu entirely never reaches the accumulator at all, and that is exactly
+	// the case that used to panic. Deleting during a range is defined behaviour.
+	for itemId := range lm.Drop {
+		if totalWeight[itemId] == 0 {
+			delete(lm.Drop, itemId)
 		}
 	}
 }
