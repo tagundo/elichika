@@ -11,13 +11,14 @@ import (
 	"elichika/item"
 	"elichika/subsystem/user_content"
 	"elichika/subsystem/user_lesson_deck"
-	"elichika/subsystem/user_mission"
 	"elichika/subsystem/user_member_guild"
+	"elichika/subsystem/user_mission"
 	"elichika/subsystem/user_status"
 	"elichika/subsystem/user_subscription_status"
 	"elichika/userdata"
 
 	"math"
+	"math/rand"
 	"reflect"
 	"sort"
 )
@@ -141,22 +142,46 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 	// the drop amounts come from masterdata when the asset repository provides the lesson
 	// drop tables, the built-in lists above are the fallback for an older asset repository
 	lessonGamedata := session.Gamedata.Lesson
+	// lesson is 1 to 3; lesson 4 is deliberately not reachable, see markInsightSkill
+	markLessonAction := func(lesson, position, rarity int32) bool {
+		actions := resp.LessonMenuActions.GetOnly(lesson)
+		if actions == nil || actions.Size() < int(position) {
+			return false
+		}
+		action := &actions.Slice[position-1]
+		action.IsAddedPassiveSkill = true
+		// several skills can land on the same position in one run, so this only ever
+		// turns the flag on: a later ordinary skill must not clear what a pin set.
+		action.IsAddedSpecialPassiveSkill = action.IsAddedSpecialPassiveSkill ||
+			rarity >= enum.SkillRarityTypeSkillRankA
+		action.UpCount++
+		if rarity > 0 && (!action.MaxRarity.HasValue || rarity > action.MaxRarity.Value) {
+			action.MaxRarity = generic.NewNullable(rarity)
+		}
+		return true
+	}
+	// The bulb belongs on the lesson that offered the skill, so only the 3 lessons that
+	// were actually run can carry one. A skill that any combination can give has no such
+	// lesson: m_lesson_skill_content leaves lesson_menu_id1 null for those, which reaches
+	// here as a source menu id of 0 -- the same key lesson 4's action list is stored
+	// under. Matching on that would put the bulb on lesson 4, which the player never ran,
+	// for about a fifth of all skill drops. Give those a random one of the 3 instead.
 	markInsightSkill := func(sourceMenuId, position, skillMasterId int32) {
 		if position < 1 || position > 9 {
 			return
 		}
 		rarity := lessonGamedata.SkillRarity[skillMasterId]
-		for _, actions := range resp.LessonMenuActions.Map {
-			if actions.Size() == 0 || actions.Slice[0].LessonMenuId != sourceMenuId {
+		marked := false
+		for lesson := int32(1); lesson <= 3; lesson++ {
+			actions := resp.LessonMenuActions.GetOnly(lesson)
+			if actions == nil || actions.Size() == 0 ||
+				actions.Slice[0].LessonMenuId != sourceMenuId {
 				continue
 			}
-			action := &actions.Slice[position-1]
-			action.IsAddedPassiveSkill = true
-			action.IsAddedSpecialPassiveSkill = rarity >= enum.SkillRarityTypeSkillRankA
-			action.UpCount++
-			if rarity > 0 && (!action.MaxRarity.HasValue || rarity > action.MaxRarity.Value) {
-				action.MaxRarity = generic.NewNullable(rarity)
-			}
+			marked = markLessonAction(lesson, position, rarity) || marked
+		}
+		if !marked {
+			markLessonAction(rand.Int31n(3)+1, position, rarity)
 		}
 	}
 	rollDropCount := dropCountList.GetRandomItem
