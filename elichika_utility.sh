@@ -512,7 +512,7 @@ while true; do
                     9)
                         clear
                         stop_server
-                        open_url "https://ayakamods.cc/games/love-live-school-idol-festival-all-stars.217/"
+                        open_url "https://ayakamods.com/games/love-live-school-idol-festival-all-stars.217/"
                         ;;
                     10)
                         clear

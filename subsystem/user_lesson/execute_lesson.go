@@ -11,8 +11,8 @@ import (
 	"elichika/item"
 	"elichika/subsystem/user_content"
 	"elichika/subsystem/user_lesson_deck"
-	"elichika/subsystem/user_member_guild"
 	"elichika/subsystem/user_mission"
+	"elichika/subsystem/user_member_guild"
 	"elichika/subsystem/user_status"
 	"elichika/subsystem/user_subscription_status"
 	"elichika/userdata"
@@ -122,9 +122,14 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 
 	for lesson := int32(1); lesson <= 4; lesson++ {
 		actions := generic.List[client.LessonMenuAction]{}
+		lessonMenuId := int32(0)
+		if lesson <= 3 {
+			lessonMenuId = req.ExecuteLessonIds.Slice[lesson-1]
+		}
 		for i := 1; i <= 9; i++ {
 			cardMasterId := reflect.ValueOf(deck).Field(i + 1).Interface().(generic.Nullable[int32]).Value
 			actions.Append(client.LessonMenuAction{
+				LessonMenuId: lessonMenuId,
 				CardMasterId: cardMasterId,
 				Position:     int32(i),
 			})
@@ -133,11 +138,27 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 		resp.LessonDropRarityList.Set(lesson%4, generic.List[int32]{})
 	}
 
-	isMemberGuildRankingPeriod := user_member_guild.IsMemberGuildRankingPeriod(session)
-
 	// the drop amounts come from masterdata when the asset repository provides the lesson
 	// drop tables, the built-in lists above are the fallback for an older asset repository
 	lessonGamedata := session.Gamedata.Lesson
+	markInsightSkill := func(sourceMenuId, position, skillMasterId int32) {
+		if position < 1 || position > 9 {
+			return
+		}
+		rarity := lessonGamedata.SkillRarity[skillMasterId]
+		for _, actions := range resp.LessonMenuActions.Map {
+			if actions.Size() == 0 || actions.Slice[0].LessonMenuId != sourceMenuId {
+				continue
+			}
+			action := &actions.Slice[position-1]
+			action.IsAddedPassiveSkill = true
+			action.IsAddedSpecialPassiveSkill = rarity >= enum.SkillRarityTypeSkillRankA
+			action.UpCount++
+			if rarity > 0 && (!action.MaxRarity.HasValue || rarity > action.MaxRarity.Value) {
+				action.MaxRarity = generic.NewNullable(rarity)
+			}
+		}
+	}
 	rollDropCount := dropCountList.GetRandomItem
 	rollMegaphoneCount := megaphoneDropCountList.GetRandomItem
 	if lessonGamedata.IsLoaded {
@@ -194,18 +215,19 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 				lessonItems = append(lessonItems, drop)
 			}
 
-			// megaphone, only drop when ranking is on
-			if isMemberGuildRankingPeriod {
-				megaphoneDrop := rollMegaphoneCount()
-				for i := int32(0); i < megaphoneDrop; i++ {
-					lessonItems = append(lessonItems, client.LessonDropItem{
-						ContentType:   item.RallyMegaphone.ContentType,
-						ContentId:     item.RallyMegaphone.ContentId,
-						ContentAmount: item.RallyMegaphone.ContentAmount,
-						DropRarity:    4, // this field is not enum
-					})
-					gainedRarity = append(gainedRarity, enum.LessonDropRarityTypeRare2)
-				}
+			// megaphone drop
+			megaphoneDrop := int32(0)
+			if session.UserStatus.MemberGuildMemberMasterId.HasValue && user_member_guild.IsMemberGuildRankingPeriod(session) {
+				megaphoneDrop = rollMegaphoneCount()
+			}
+			for i := int32(0); i < megaphoneDrop; i++ {
+				lessonItems = append(lessonItems, client.LessonDropItem{
+					ContentType:   item.RallyMegaphone.ContentType,
+					ContentId:     item.RallyMegaphone.ContentId,
+					ContentAmount: item.RallyMegaphone.ContentAmount,
+					DropRarity:    4, // this field is not enum
+				})
+				gainedRarity = append(gainedRarity, enum.LessonDropRarityTypeRare2)
 			}
 
 			for _, content := range lessonItems {
@@ -267,10 +289,13 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			if skillDrop, exist := lessonGamedata.SkillDrop[key]; exist {
 				skillMasterId := skillDrop.GetRandomItem()
 				if skillMasterId != 0 {
+					position := lessonGamedata.SkillPosition.GetRandomItem()
+					sourceMenuId := lessonGamedata.SkillSourceMenu[key][skillMasterId]
 					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
-						Position:       lessonGamedata.SkillPosition.GetRandomItem(),
+						Position:       position,
 						PassiveSkillId: skillMasterId,
 					})
+					markInsightSkill(sourceMenuId, position, skillMasterId)
 				}
 			}
 
@@ -279,10 +304,13 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 			// with nothing of the required rarity simply adds nothing.
 			if guaranteedRarity > 0 {
 				if guaranteed, exist := lessonGamedata.GuaranteedSkillDrop[guaranteedRarity][key]; exist {
+					skillMasterId := guaranteed.GetRandomItem()
+					sourceMenuId := lessonGamedata.SkillSourceMenu[key][skillMasterId]
 					result.DropSkillList.Append(client.LessonResultDropPassiveSkill{
 						Position:       lessonLeaderPosition,
-						PassiveSkillId: guaranteed.GetRandomItem(),
+						PassiveSkillId: skillMasterId,
 					})
+					markInsightSkill(sourceMenuId, lessonLeaderPosition, skillMasterId)
 				}
 			}
 		}

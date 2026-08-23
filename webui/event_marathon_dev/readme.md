@@ -1,5 +1,5 @@
 # Event marathon dev
-*This tool is considered [advanced usage](https://github.com/arina999999997/elichika/blob/master/docs/advanced_usage.md). You will have to setup a lot of resources file for it to work properly.*
+*This tool is considered [advanced usage](https://github.com/tagundo/elichika/blob/master/docs/advanced_usage.md). You will have to setup a lot of resources file for it to work properly.*
 
 Event mining maker to remake old events.
 ## Idea

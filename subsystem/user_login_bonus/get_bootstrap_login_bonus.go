@@ -2,6 +2,7 @@ package user_login_bonus
 
 import (
 	"elichika/client"
+	"elichika/config"
 	"elichika/enum"
 	"elichika/userdata"
 )
@@ -11,7 +12,7 @@ func GetBootstrapLoginBonus(session *userdata.Session) client.BootstrapLoginBonu
 		NextLoginBonsReceiveAt: nextLoginBonusTime(session.Time).Unix(),
 	}
 
-	if session.UserStatus.TutorialPhase == enum.TutorialPhaseTutorialEnd {
+	if session.UserStatus.TutorialPhase == enum.TutorialPhaseTutorialEnd && *config.Conf.TimeZone != "" {
 		// users in tutorial mode shouldn't get login bonus
 		for _, loginBonus := range session.Gamedata.LoginBonus {
 			handler[loginBonus.LoginBonusHandler](loginBonus.LoginBonusHandlerConfig, session, loginBonus, &res)

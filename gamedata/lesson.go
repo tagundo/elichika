@@ -33,6 +33,11 @@ type Lesson struct {
 	// keyed by the 3 lesson menu ids as id1 * 100 + id2 * 10 + id3, a drop of 0 means
 	// the run gives no skill at all
 	SkillDrop map[int32]*drop.WeightedDropList[int32]
+	SkillRarity map[int32]int32
+
+	// keyed by lesson combination, then insight skill master id; value is the menu id
+	// that caused the skill to be available
+	SkillSourceMenu map[int32]map[int32]int32
 
 	// which of the 9 deck positions receives the skill
 	SkillPosition *drop.WeightedDropList[int32]
@@ -225,6 +230,11 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	}
 
 	// only build a guaranteed list for a rarity some pin actually asks for
+	lesson.SkillRarity = map[int32]int32{}
+	for _, skill := range skills {
+		lesson.SkillRarity[skill.SkillMasterId] = skill.Rarity
+	}
+
 	guaranteedRarities := map[int32]bool{}
 	for _, rarity := range lesson.EnhancingItemSkillRarity {
 		guaranteedRarities[rarity] = true
@@ -249,6 +259,7 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	// The "no skill" weight is the only thing that varies between combinations: one that
 	// has an exclusive skill on offer drops a skill far more often than one that doesn't.
 	lesson.SkillDrop = map[int32]*drop.WeightedDropList[int32]{}
+	lesson.SkillSourceMenu = map[int32]map[int32]int32{}
 	for _, id1 := range menuIds {
 		for _, id2 := range menuIds {
 			for _, id3 := range menuIds {
@@ -272,6 +283,10 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 				}
 				combination := id1*100 + id2*10 + id3
 				lesson.SkillDrop[combination] = dropList
+				lesson.SkillSourceMenu[combination] = map[int32]int32{}
+				for _, skill := range available {
+					lesson.SkillSourceMenu[combination][skill.SkillMasterId] = skill.LessonMenuId1
+				}
 
 				// A pin drops a skill of its target rarity *or better*, never nothing, so
 				// its list has no "no skill" entry and only the eligible rarities. The

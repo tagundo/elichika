@@ -2,7 +2,7 @@
 Check out the specific documentations on how the server work and on how to do certain things.
 
 ## Server implement progress
-Quick summary of what works and what doesn't. If you want to see it in a more technical sense, checkout the [endpoints](https://github.com/arina999999997/elichika/blob/master/router/endpoints.md) listing.
+Quick summary of what works and what doesn't. If you want to see it in a more technical sense, checkout the [endpoints](https://github.com/tagundo/elichika/blob/master/router/endpoints.md) listing.
 
 TODO(docs): Add specific docs for specific contents if necessary.
 
@@ -33,6 +33,8 @@ TODO(docs): Add specific docs for specific contents if necessary.
     - [x] Training drops items, and drops rally megaphone while channel live is on.
     - [x] The rates live in the asset repository, see [updating assets](updating_assets.md)
       if a server that already runs does not pick them up.
+    - [x] Fully working Training Item such as Insight Pin & Lucky Charm
+    - [x] Insight Bulb are handled "correctly"
 - [x] Member bond
     - [x] Working member bond system.
     - [x] Fully working bond board system.

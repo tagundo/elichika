@@ -19,7 +19,7 @@ You can import account from the login json or export account to json. This help 
 
 The server also generate a backup exported data everytime you login. You can find the backup in `elichika/backup` on the server machine.
 
-This can also be used to recover data from captured network data (pcap), you can check out this [guide](https://github.com/arina999999997/elichika/blob/master/docs/extracting_pcap.md) on how to do that.
+This can also be used to recover data from captured network data (pcap), you can check out this [guide](https://github.com/tagundo/elichika/blob/master/docs/extracting_pcap.md) on how to do that.
 
 ### How it work
 
