@@ -66,9 +66,15 @@ const (
 type lessonSkillContent struct {
 	SkillMasterId int32
 	Rarity        int32
+	ShootingStar  int32
 	DropType      int32
 	LessonMenuId1 int32
 	LessonMenuId2 int32
+}
+
+// 0 = normal insight skill, 1 = shooting star skill.
+func (skill *lessonSkillContent) isShootingStar() bool {
+	return skill.ShootingStar == 1
 }
 
 // whether the skill can drop from the given lesson menu combination
@@ -285,7 +291,11 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 				lesson.SkillDrop[combination] = dropList
 				lesson.SkillSourceMenu[combination] = map[int32]int32{}
 				for _, skill := range available {
-					lesson.SkillSourceMenu[combination][skill.SkillMasterId] = skill.LessonMenuId1
+					sourceMenuId := skill.LessonMenuId1
+					if skill.ShootingStar == 1 {
+						sourceMenuId = 0
+					}
+					lesson.SkillSourceMenu[combination][skill.SkillMasterId] = sourceMenuId
 				}
 
 				// A pin drops a skill of its target rarity *or better*, never nothing, so
