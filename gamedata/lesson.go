@@ -39,6 +39,9 @@ type Lesson struct {
 	// that caused the skill to be available
 	SkillSourceMenu map[int32]map[int32]int32
 
+	// keyed by lesson menu id, then insight skill master id
+	ShootingStarSkills map[int32]map[int32]bool
+
 	// which of the 9 deck positions receives the skill
 	SkillPosition *drop.WeightedDropList[int32]
 
@@ -66,15 +69,9 @@ const (
 type lessonSkillContent struct {
 	SkillMasterId int32
 	Rarity        int32
-	ShootingStar  int32
 	DropType      int32
 	LessonMenuId1 int32
 	LessonMenuId2 int32
-}
-
-// 0 = normal insight skill, 1 = shooting star skill.
-func (skill *lessonSkillContent) isShootingStar() bool {
-	return skill.ShootingStar == 1
 }
 
 // whether the skill can drop from the given lesson menu combination
@@ -107,6 +104,7 @@ func (skill *lessonSkillContent) isExclusive() bool {
 var lessonTables = []string{
 	"m_lesson_drop_amount",
 	"m_lesson_skill_content",
+	"m_lesson_skill_shooting_star",
 	"m_lesson_skill_rarity",
 	"m_lesson_skill_no_drop",
 	"m_lesson_skill_member_chance",
@@ -215,6 +213,23 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	})
 	utils.CheckErr(err)
 
+	type lessonSkillShootingStar struct {
+		SkillMasterId int32
+		LessonMenuId  int32
+	}
+	var shootingStarRows []lessonSkillShootingStar
+	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+		err = session.Table("m_lesson_skill_shooting_star").Find(&shootingStarRows)
+	})
+	utils.CheckErr(err)
+	lesson.ShootingStarSkills = map[int32]map[int32]bool{}
+	for _, row := range shootingStarRows {
+		if lesson.ShootingStarSkills[row.LessonMenuId] == nil {
+			lesson.ShootingStarSkills[row.LessonMenuId] = map[int32]bool{}
+		}
+		lesson.ShootingStarSkills[row.LessonMenuId][row.SkillMasterId] = true
+	}
+
 	// The insight pins (m_lesson_enhancing_item 1400 / 1401) guarantee the leader a skill.
 	// This is stock masterdata rather than one of the recovered tables, but it is read
 	// optionally: without it the pins simply grant nothing extra, which is better than
@@ -292,8 +307,11 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 				lesson.SkillSourceMenu[combination] = map[int32]int32{}
 				for _, skill := range available {
 					sourceMenuId := skill.LessonMenuId1
-					if skill.ShootingStar == 1 {
-						sourceMenuId = 0
+					for _, lessonMenuId := range []int32{id1, id2, id3} {
+						if lesson.ShootingStarSkills[lessonMenuId][skill.SkillMasterId] {
+							sourceMenuId = 0
+							break
+						}
 					}
 					lesson.SkillSourceMenu[combination][skill.SkillMasterId] = sourceMenuId
 				}
