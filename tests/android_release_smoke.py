@@ -251,6 +251,8 @@ class Client:
         counts = {"runs": 0, "drawn_skills": 0, "shooting_star_actions": 0,
                   "pin_runs": 0, "three_times_runs": 0}
         rank = {skill[0]: skill[1] for skill in skills}
+        pin_targets = dict(master.execute("SELECT lesson_enhancing_item_id,target_skill_rarity "
+                                          "FROM m_lesson_enhancing_item_effect_skill_drop"))
         remaining_pins = {1400: 100, 1401: 100}
         drop_amounts = [row[0] for row in master.execute(
             "SELECT count FROM m_lesson_drop_amount WHERE item_id=1 AND weight>0")]
@@ -270,8 +272,8 @@ class Client:
             actions = dict(zip(execution["lesson_menu_actions"][::2], execution["lesson_menu_actions"][1::2]))
             assert set(actions) == {0, 1, 2, 3}
             assert all(len(value) == 9 for value in actions.values())
-            # The APK's default free resource profile includes subscription
-            # rewards. The response explicitly reports that entitlement.
+            # The server reports subscription entitlement explicitly; entitled
+            # users receive a second copy of each ordinary reward.
             reward_factor = repeat * (2 if execution["is_subscription"] else 1)
             assert min(drop_amounts) * reward_factor <= len(result["drop_item_list"]) <= max(drop_amounts) * reward_factor, \
                 f"Unexpected reward count: {len(result['drop_item_list'])}, factor {reward_factor}"
@@ -290,7 +292,7 @@ class Client:
                 counts["shooting_star_actions"] += int(star)
             assert {action["position"] for action in actions[0] if action["is_added_passive_skill"]} == expected_stars
             if pins:
-                target = 3 if 1401 in pins else 2
+                target = max(pin_targets[pin] for pin in pins)
                 assert any(rank[sid] >= target for sid in available), "Pin fixture has no eligible skill"
                 assert sum(skill["position"] == 1 and rank[skill["passive_skill_id"]] >= target
                            for skill in result["drop_skill_list"]) >= repeat, "Pin guarantee missing"
