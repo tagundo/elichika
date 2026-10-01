@@ -12,7 +12,10 @@ def main():
     adb = sdk / 'platform-tools/adb'
     base = ['-avd', 'elichika16k', '-port', '5554', '-accel', 'off',
             '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot',
-            '-gpu', 'swiftshader', '-feature', '-Vulkan', '-memory', '4096',
+            '-gpu', 'swiftshader', '-feature',
+            '-Vulkan,-VirtioSndCard,-VirtioInput,-VirtioWifi,-VirtioVsockPipe,'
+            '-VirtconsoleLogcat,-BluetoothEmulation,-ModemSimulator,'
+            '-VirtioMouse,-VirtioTablet,-VirtioDualModeMouse', '-memory', '4096',
             '-cores', '4', '-skin', '480x800', '-skip-adb-auth', '-verbose',
             '-qemu', '-accel', 'tcg', '-cpu', 'max']
     report = {'status': 'PREPARING', 'target': 'official Android 35 ARM64 16KB',
@@ -25,6 +28,7 @@ def main():
     for index, binary in enumerate(binaries):
         log = evidence / f'emulator-attempt-{index}.log'
         environment = os.environ.copy()
+        environment['ANDROID_EMULATOR_LAUNCHER_DIR'] = str(sdk/'emulator')
         environment['LD_LIBRARY_PATH'] = ':'.join([str(sdk/'emulator/lib64'),
             str(sdk/'emulator/lib64/gles_swiftshader'), environment.get('LD_LIBRARY_PATH','')])
         process = subprocess.Popen([str(binary), *base], stdout=log.open('wb'),
