@@ -285,7 +285,14 @@ def extract_apk_runtime(archive, root):
     (python / "cacert.pem").write_bytes(archive.read("assets/chaquopy/cacert.pem"))
     # Dependent shared libraries can live below package-specific directories.
     # Expose them to Bionic while retaining the package paths CPython imports.
-    for path in stdlib.rglob("*.so"):
+    for path in stdlib.rglob("*"):
+        if not path.is_file():
+            continue
+        with path.open("rb") as library:
+            if library.read(4) != b"\x7fELF":
+                continue
+        # OpenBLAS also needs versioned libgfortran.so.3, which a *.so glob
+        # would omit. Inspect the actual bytes just like the APK layout gate.
         destination = native / path.name
         if destination.exists():
             assert destination.read_bytes() == path.read_bytes(), "Ambiguous native dependency name"
