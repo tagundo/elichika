@@ -105,9 +105,7 @@ def validate_payload(archive, runtime):
             "userdata_and_config_not_bundled": True}
 
 
-def binary_metadata(archive, runtime, expected_commit):
-    name = "lib/arm64-v8a/libelichika.so"
-    data = archive.read(name)
+def load_alignments(data):
     assert data[:6] == b"\x7fELF\x02\x01", "Expected little-endian ELF64"
     assert struct.unpack_from("<H", data, 18)[0] == 183, "Expected AArch64 executable"
     phoff = struct.unpack_from("<Q", data, 32)[0]
@@ -117,17 +115,35 @@ def binary_metadata(archive, runtime, expected_commit):
         offset = phoff + number * phentsize
         if struct.unpack_from("<I", data, offset)[0] == 1:
             alignments.append(struct.unpack_from("<Q", data, offset + 48)[0])
+    return alignments
+
+
+def binary_metadata(archive, runtime, expected_commit=None):
+    data = archive.read("lib/arm64-v8a/libelichika.so")
+    alignments = load_alignments(data)
     binary = runtime / "libelichika.so"
     binary.write_bytes(data)
     build = command("go", "version", "-m", str(binary))
     revision = re.search(r"vcs\.revision=([0-9a-f]{40})", build)
-    assert revision and revision[1] == expected_commit, "Native server source commit mismatch"
+    assert revision, "Native server source commit unavailable"
+    if expected_commit:
+        assert revision[1] == expected_commit, "Native server source commit mismatch"
     astc = archive.read("lib/arm64-v8a/libastcenc.so")
     assert astc[:6] == b"\x7fELF\x02\x01" and struct.unpack_from("<H", astc, 18)[0] == 183
     return {"sha256": hashlib.sha256(data).hexdigest(), "source_commit": revision[1],
             "architecture": "AArch64", "load_segment_alignments": alignments,
             "all_segments_at_least_16k": bool(alignments) and min(alignments) >= 16384,
             "astc_encoder_architecture": "AArch64"}
+
+
+def native_library_alignments(archive):
+    libraries = {}
+    for name in archive.namelist():
+        if name.startswith("lib/arm64-v8a/") and name.endswith(".so"):
+            alignments = load_alignments(archive.read(name))
+            libraries[name] = {"load_segment_alignments": alignments,
+                               "all_segments_at_least_16k": bool(alignments) and min(alignments) >= 16384}
+    return libraries
 
 
 def main():
@@ -157,10 +173,15 @@ def main():
         report["update_package_compatibility"] = "PASS"
         with tempfile.TemporaryDirectory(prefix="elichika-apk-audit-") as directory:
             runtime = Path(directory)
+            with zipfile.ZipFile(args.old) as archive:
+                report["official_native_server"] = binary_metadata(archive, runtime)
+                report["official_direct_native_libraries"] = native_library_alignments(archive)
             with zipfile.ZipFile(args.candidate) as archive:
                 assert archive.testzip() is None, "APK ZIP integrity check failed"
                 report["payload"] = validate_payload(archive, runtime)
                 report["native_server"] = binary_metadata(archive, runtime, args.expected_commit)
+                report["candidate_direct_native_libraries"] = native_library_alignments(archive)
+        report["native_alignment_changed"] = report["official_native_server"]["load_segment_alignments"] != report["native_server"]["load_segment_alignments"]
         report["formal_version"] = not candidate["version_name"].endswith("-dev")
         report["remaining_device_checks"] = ["in-place update and account/settings retention",
             "server and Python tools startup", "login, live playback, ordinary/Shooting Star lessons and KO/ZH text"]
