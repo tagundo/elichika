@@ -1,0 +1,95 @@
+name: Android 16KB ARM64 compatibility tests
+
+on:
+  push:
+    branches: [codex/release-readiness-audit]
+    paths:
+      - .github/workflows/android-16k.yml
+      - tests/android_16k_smoke.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  android-16k:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare official ARM64 16KB emulator
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          uname -a > evidence/host.txt
+          test "$(uname -m)" = arm64
+          "$ANDROID_HOME/emulator/emulator" -version > evidence/emulator-version.txt
+          "$ANDROID_HOME/emulator/emulator" -accel-check > evidence/acceleration.txt 2>&1 || true
+          python3 -c 'import os,subprocess; subprocess.run([os.environ["ANDROID_HOME"]+"/cmdline-tools/latest/bin/sdkmanager","--licenses"],input=b"y\n"*100,check=True)'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'system-images;android-35;google_apis_ps16k;arm64-v8a'
+          cp "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a/source.properties" \
+            evidence/system-image.properties
+          printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" \
+            create avd --force --name elichika16k \
+            --package 'system-images;android-35;google_apis_ps16k;arm64-v8a'
+          acceleration=off
+          if "$ANDROID_HOME/emulator/emulator" -accel-check >/dev/null 2>&1; then
+            acceleration=on
+          fi
+          echo "Selected acceleration: $acceleration" >> evidence/acceleration.txt
+          nohup "$ANDROID_HOME/emulator/emulator" -avd elichika16k \
+            -accel "$acceleration" -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader_indirect -memory 3072 -cores 4 \
+            > evidence/emulator.log 2>&1 &
+          echo $! > evidence/emulator.pid
+
+      - name: Require a booted native ARM64 Android with 16384-byte pages
+        run: |
+          set -euo pipefail
+          adb="$ANDROID_HOME/platform-tools/adb"
+          "$adb" start-server
+          ready=0
+          for attempt in $(seq 1 180); do
+            if [ "$("$adb" -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$(cat evidence/emulator.pid)" 2>/dev/null; then
+              cat evidence/emulator.log
+              exit 1
+            fi
+            sleep 4
+          done
+          test "$ready" = 1
+          "$adb" -s emulator-5554 root
+          "$adb" -s emulator-5554 wait-for-device
+          "$adb" -s emulator-5554 shell getprop > evidence/android-properties.txt
+          "$adb" -s emulator-5554 shell 'uname -a; id; getenforce; getconf PAGE_SIZE' \
+            > evidence/android-environment.txt
+          test "$("$adb" -s emulator-5554 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
+          test "$("$adb" -s emulator-5554 shell getconf PAGE_SIZE | tr -d '\r')" = 16384
+          "$adb" -s emulator-5554 exec-out screencap -p > evidence/android-boot.png
+
+      - name: Collect emulator diagnostics
+        if: always()
+        run: |
+          mkdir -p evidence
+          "$ANDROID_HOME/platform-tools/adb" devices -l > evidence/adb-devices.txt 2>&1 || true
+          "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 logcat -d > evidence/logcat.txt 2>&1 || true
+          "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dmesg > evidence/kernel.txt 2>&1 || true
+
+      - name: Upload 16KB execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-16k-smoke-evidence
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Stop disposable emulator
+        if: always()
+        run: >-
+          "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 emu kill || true
