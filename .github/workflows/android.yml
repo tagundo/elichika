@@ -64,6 +64,9 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # sdkmanager comes from cmdline-tools; the legacy tools package is gone.
+          packages: platform-tools
 
       - name: Install platform / build-tools / NDK
         run: |
