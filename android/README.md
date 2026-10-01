@@ -43,7 +43,10 @@ The Go binary, the bundled data payload and the embedded Python sources are
   from the normal (`!embedded`) build. ASTC uses the same NDK with flexible page sizes.
 - `app/native-wheels/` — a source-pinned FreeType 2.9.1 wheel rebuilt with 16 KB
   alignment. Pillow's published Chaquopy dependency still uses 4 KB alignment;
-  the local wheel preserves its ABI, SONAME and license.
+  the local wheel preserves its ABI, SONAME and license. OpenBLAS 0.3.33 is also
+  rebuilt with C LAPACK, replacing the legacy Fortran runtime whose 4 KB RELRO
+  boundary made mutable data read-only on 16 KB kernels. Both libraries retain
+  the SONAMEs expected by Pillow/NumPy and bundle their licenses.
 - `app/src/main/assets/payload/` — `server init jsons/`, `webui/` (`.go` stripped),
   `privatekey.pem`, `publickey.pem`, the Harasho master-data tree, and a prebuilt
   `serverdata.db` (built on the runner via `rebuild_assets`). Extracted to the
@@ -77,8 +80,8 @@ use it for public distribution (anyone could sign a same-identity "update").
 
 APK CI runs `android/ci/audit_native.py` on the finished release APK. It checks
 every ARM64 ELF load segment, including Python extensions and dependent libraries
-inside Chaquopy's `.imy` ZIP assets. A 4 KB-only file or incompatible segment
-mapping blocks the build. Keep legacy native-library extraction enabled: the Go
+inside Chaquopy's `.imy` ZIP assets. A 4 KB-only file, incompatible segment
+mapping, or RELRO boundary which protects adjacent mutable data blocks the build. Keep legacy native-library extraction enabled: the Go
 server and ASTC binaries execute from `nativeLibraryDir`.
 
 The same signed APK then undergoes signer/payload verification, an Android 14

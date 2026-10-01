@@ -96,6 +96,17 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     assert memory.cat("/probe") == value
     matrix = np.array([[1., 2.], [3., 5.]])
     assert np.allclose(matrix @ np.linalg.inv(matrix), np.eye(2))
+    assert np.allclose(matrix @ np.linalg.solve(matrix, np.array([2., 7.])), [2., 7.])
+    u, singular, vh = np.linalg.svd(matrix)
+    assert np.allclose((u * singular) @ vh, matrix)
+    symmetric = matrix.T @ matrix
+    eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
+    assert np.allclose(symmetric @ eigenvectors, eigenvectors * eigenvalues)
+    from numpy.linalg import lapack_lite
+    blas = ctypes.CDLL("libopenblas.so")
+    blas.openblas_get_config.restype = ctypes.c_char_p
+    blas_config = blas.openblas_get_config().decode()
+    assert "OpenBLAS 0.3.33" in blas_config, blas_config
     ctypes.CDLL("libcrypto_chaquopy.so")
     ctypes.CDLL("libsqlite3_chaquopy.so")
     ctypes.CDLL("libssl_chaquopy.so")
@@ -132,7 +143,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     assert difference < 40, "ASTC roundtrip changed image content excessively"
     return {"python": sys.version.split()[0], "ssl_and_certificates": True,
             "sqlite_unicode": True, "ctypes": True, "numpy_linear_algebra": True,
-            "compression_roundtrips": 6, "pillow_png_jpeg_freetype": True,
+            "compression_roundtrips": 6, "openblas_config": blas_config, "pillow_png_jpeg_freetype": True,
             "freetype_version": ImageFont.core.freetype2_version,
             "unitypy_binary_io": True, "fsspec_memory_io": True,
             "adminui_and_webtools_imports": True, "astc_encode_decode": True,

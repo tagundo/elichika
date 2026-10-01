@@ -57,6 +57,21 @@ class NativeGateTests(unittest.TestCase):
     def test_larger_alignment_is_supported(self):
         self.assertEqual(self.check(self.apk(65536))["status"], "PASS")
 
+    def test_64k_load_alignment_with_4k_relro_blocks_mutable_data(self):
+        data = bytearray(256)
+        data[:6] = b"\x7fELF\x02\x01"
+        struct.pack_into("<H", data, 18, 183)
+        struct.pack_into("<Q", data, 32, 64)
+        struct.pack_into("<HH", data, 54, 56, 2)
+        struct.pack_into("<IIQQQQQQ", data, 64, 1, 6, 0, 0, 0, 256, 32768, 65536)
+        struct.pack_into("<IIQQQQQQ", data, 120, 0x6474e552, 4, 0, 0, 0, 0, 4096, 1)
+        segments = audit.elf_layout(data)
+        self.assertFalse(segments[0]["compatible"])
+        self.assertTrue(segments[0]["relro_protects_writable_data"])
+        # Padding RELRO to the real page boundary keeps the following data writable.
+        struct.pack_into("<Q", data, 120 + 40, 16384)
+        self.assertTrue(audit.elf_layout(data)[0]["compatible"])
+
     def test_wrong_architecture_is_rejected(self):
         data = elf(16384)
         struct.pack_into("<H", data, 18, 62)

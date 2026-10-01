@@ -1,4 +1,4 @@
-name: Diagnose original signed APK Python on 16KB
+name: Verify original signed APK NumPy ABI on 4KB and 16KB
 on:
   push:
     branches: [codex/native-16k-diagnostic]
@@ -21,14 +21,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: elichika-release-apk
-          run-id: 36901873216
+          run-id: 36910677429
           github-token: ${{ github.token }}
           path: candidate
-      - name: Locate native fault using the exact audited candidate
+      - name: Verify all NumPy precisions using the exact audited candidate
         run: >-
-          python3 tests/native16k_debug.py
+          python3 tests/numpy_abi_checks.py
           --candidate candidate/elichika-2026.10.01-dev.apk
-          --candidate-sha256 e69ccf2de6f699f2252a2f9239e2739fc7897065696b7c7b85408bc80cb6b315
+          --candidate-sha256 23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a
           --image "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a"
           --ndk "$ANDROID_NDK_HOME"
           --work "$RUNNER_TEMP/16k-debug"
@@ -36,25 +36,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: debug-native-root
-          path: exports/debug-native-root.tar.gz
-          compression-level: 0
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: debug-python-root
-          path: exports/debug-python-root.tar.gz
-          compression-level: 0
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: debug-16k-kernel
-          path: exports/kernel-16384.gz
-          compression-level: 0
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: python-16k-fault-evidence
+          name: numpy-abi-4k-16k-evidence
           path: |
             evidence/
             exports/provenance.json
