@@ -39,6 +39,7 @@ jobs:
       - name: Checkout elichika (with harasho + modtools submodules)
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0  # SQL validators compare with the historic Harasho baseline.
           submodules: recursive
 
       - name: Update modtools submodule to latest
@@ -56,8 +57,10 @@ jobs:
         with:
           go-version: "1.22"
 
-      - name: Verify database upgrades preserve existing data
-        run: CGO_ENABLED=0 go test ./clientdb/upgrades
+      - name: Validate SQL migrations, mappings and locale text
+        run: |
+          python3 assets/tests/validate_shooting_star.py
+          python3 assets/tests/validate_localization.py
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -80,7 +83,12 @@ jobs:
           # Pure-Go host build, then rebuild_assets turns the harasho submodule
           # (assets/db/{jp,gl}) into serverdata.db and writes a default config.json.
           CGO_ENABLED=0 go build -o elichika_host .
-          ./elichika_host rebuild_assets || echo "::warning::rebuild_assets failed; APK will need an on-device rebuild"
+          ./elichika_host rebuild_assets
+          python3 tests/validate_runtime.py .
+          python3 assets/tests/validate_localization.py --runtime .
+
+      - name: Run all Go tests with the initialized payload
+        run: python3 tests/run_go_tests.py --runtime .
 
       - name: Fix in-game outfit order (orient m_suit newest-first)
         run: |
@@ -108,7 +116,7 @@ jobs:
           cp -r webui "$PAY/webui"
           find "$PAY/webui" -name '*.go' -delete
           cp privatekey.pem publickey.pem "$PAY/"
-          [ -f serverdata.db ] && cp serverdata.db "$PAY/" || echo "no serverdata.db"
+          cp serverdata.db "$PAY/"
           # config.json is deliberately NOT bundled: rebuild_assets writes one with the
           # server-wide defaults (cdn_cache=false), and shipping it stopped
           # AssetInstaller's create-if-missing branch from ever running — fresh installs

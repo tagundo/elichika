@@ -127,4 +127,17 @@ func databaseInit() {
 			log.Println("Installed Shooting Star animation metadata for ", locale)
 		}
 	}
+	// Text upgrades use known-old-value guards so restored dictionaries receive
+	// translations while owner-written messages remain intact.
+	for _, language := range []string{"en", "ko", "zh"} {
+		changed, err := upgrades.DictionaryText(
+			config.AssetPath+"db/gl/dictionary_"+language+"_k.db",
+			config.AssetPath+"upgrades/gl/dictionary_"+language+"_k.json",
+		)
+		if err != nil {
+			log.Println("WARNING: Dictionary text upgrade failed for ", language, ": ", err)
+		} else if changed != 0 {
+			log.Println("Updated dictionary text for ", language, ": ", changed, " messages")
+		}
+	}
 }

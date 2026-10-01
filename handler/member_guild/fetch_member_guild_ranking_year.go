@@ -22,7 +22,7 @@ func fetchMemberGuildRankingYear(ctx *gin.Context) {
 	session := ctx.MustGet("session").(*userdata.Session)
 
 	common.JsonResponse(ctx, response.FetchMemberGuildRankingYearResponse{
-		user_member_guild.FetchMemberGuildRankingYear(session, req.Year),
+		MemberGuildRanking: user_member_guild.FetchMemberGuildRankingYear(session, req.Year),
 	})
 }
 

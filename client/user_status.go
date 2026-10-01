@@ -35,7 +35,7 @@ type UserStatus struct {
 	FavoriteMemberId                          int32                   `xorm:"'favorite_member_id'" json:"favorite_member_id"`   // partner id
 	LastLiveDifficultyId                      int32                   `xorm:"'last_live_difficulty_id'" json:"last_live_difficulty_id"`
 	LpMagnification                           int32                   `json:"lp_magnification"`                                                                      // unused feature, always 1
-	EmblemId                                  int32                   `xorm:"'emblem_id' "json:"emblem_id"`                                                          // title
+	EmblemId                                  int32                   `xorm:"'emblem_id'" json:"emblem_id"`                                                          // title
 	DeviceToken                               string                  `json:"device_token"`                                                                          //  some sort of salted encryption?, used to prevent using multiple device
 	TutorialPhase                             int32                   `json:"tutorial_phase"`                                                                        // 99 = done
 	TutorialEndAt                             int64                   `json:"tutorial_end_at"`                                                                       // in unix second
