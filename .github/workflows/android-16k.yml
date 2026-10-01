@@ -6,7 +6,7 @@ on:
       candidate_sha256:
         type: string
         required: true
-      candidate_name:
+      version_name:
         type: string
         required: true
 
@@ -40,7 +40,7 @@ jobs:
       - name: Run original APK server, Python packages and ASTC on both kernels
         run: >-
           python3 -u tests/android_16k_native.py
-          --candidate "candidate/${{ inputs.candidate_name }}"
+          --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
           --candidate-sha256 "${{ inputs.candidate_sha256 }}"
           --image "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a"
           --ndk "$ANDROID_NDK_HOME"

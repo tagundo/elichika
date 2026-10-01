@@ -6,7 +6,7 @@ on:
       candidate_sha256:
         type: string
         required: true
-      candidate_name:
+      version_name:
         type: string
         required: true
       version_code:
@@ -80,7 +80,7 @@ jobs:
       - name: Test actual APK upgrade, accounts, services and gameplay APIs
         run: >-
           python3 -u tests/android_release_smoke.py
-          --old official.apk --candidate "candidate/${{ inputs.candidate_name }}"
+          --old official.apk --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
           --candidate-sha256 "${{ inputs.candidate_sha256 }}"
           --version-code "${{ inputs.version_code }}"
           --evidence evidence

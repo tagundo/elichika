@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       apk_sha256: ${{ steps.layout.outputs.sha256 }}
-      apk_name: elichika-${{ steps.ver.outputs.name }}.apk
+      version_name: ${{ steps.ver.outputs.name }}
       version_code: ${{ steps.ver.outputs.code }}
     env:
       NDK_VERSION: "28.2.13676358"
@@ -212,6 +212,16 @@ jobs:
           cp "$BIN" android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
           file android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
 
+      - name: Rebuild Pillow's FreeType dependency for 16KB pages
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch VER-2-9-1 https://github.com/freetype/freetype.git "$RUNNER_TEMP/freetype-source"
+          python3 android/ci/build_freetype.py \
+            --source "$RUNNER_TEMP/freetype-source" \
+            --ndk "$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}" \
+            --work "$RUNNER_TEMP/freetype-build" \
+            --wheel android/app/native-wheels/chaquopy_freetype-2.9.1-3-py3-none-android_24_arm64_v8a.whl
+
       # CalVer: a tag vYYYY.MM.DD[.N] sets versionName "YYYY.MM.DD[.N]" and a strictly
       # increasing versionCode YYYYMMDD*100(+N). Non-tag builds get a dated dev version.
       - name: Derive app version (CalVer)
@@ -347,14 +357,14 @@ jobs:
     uses: ./.github/workflows/android-16k.yml
     with:
       candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      candidate_name: ${{ needs.build.outputs.apk_name }}
+      version_name: ${{ needs.build.outputs.version_name }}
 
   android-upgrade:
     needs: build
     uses: ./.github/workflows/android-smoke.yml
     with:
       candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      candidate_name: ${{ needs.build.outputs.apk_name }}
+      version_name: ${{ needs.build.outputs.version_name }}
       version_code: ${{ needs.build.outputs.version_code }}
 
   apk-audit:
@@ -362,7 +372,7 @@ jobs:
     uses: ./.github/workflows/release-audit.yml
     with:
       candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      candidate_name: ${{ needs.build.outputs.apk_name }}
+      version_name: ${{ needs.build.outputs.version_name }}
       version_code: ${{ needs.build.outputs.version_code }}
       source_commit: ${{ github.sha }}
 

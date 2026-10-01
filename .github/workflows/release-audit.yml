@@ -6,7 +6,7 @@ on:
       candidate_sha256:
         type: string
         required: true
-      candidate_name:
+      version_name:
         type: string
         required: true
       version_code:
@@ -54,7 +54,7 @@ jobs:
         run: >-
           python3 tests/audit_apk_release.py
           --old official.apk
-          --candidate "candidate/${{ inputs.candidate_name }}"
+          --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
           --candidate-sha256 "${{ inputs.candidate_sha256 }}"
           --sdk "$ANDROID_HOME/build-tools/34.0.0"
           --old-sha256 0bdeee9f6f725fa1a8146af49b8f832a5b86f5c962fc1c1b83c2e5bd3156cf95

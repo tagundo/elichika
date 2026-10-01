@@ -103,6 +103,9 @@ chaquopy {
             // Pin the Android wheels exercised by APK layout and runtime checks.
             install("numpy==1.26.2")
             install("Pillow==11.0.0")
+            // Pillow's upstream Chaquopy wheel still contains a 4 KB FreeType.
+            // CI rebuilds the same 2.9.1 ABI and supplies this local wheel.
+            install("native-wheels/chaquopy_freetype-2.9.1-3-py3-none-android_24_arm64_v8a.whl")
             // UnityPy itself is vendored as pure-Python source by CI (pip install
             // --no-deps into src/main/python; see .github/workflows/android.yml).
             // Here we provide only its IMPORT-TIME dependencies. `import UnityPy`
