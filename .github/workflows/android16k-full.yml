@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      ANDROID_AVD_HOME: ${{ runner.temp }}/elichika-avds
+      ANDROID_AVD_HOME: /tmp/elichika-16k-avds
     steps:
       - uses: actions/checkout@v4
       - name: Install the official Linux ARM64-capable emulator and 16KB Android image
