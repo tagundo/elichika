@@ -1,11 +1,11 @@
-name: Android 16KB ARM64 compatibility tests
+name: Android 16KB native loader diagnostics
 
 on:
   push:
     branches: [codex/release-readiness-audit]
     paths:
       - .github/workflows/android-16k.yml
-      - tests/android_16k_smoke.py
+      - tests/android_16k_native.py
   workflow_dispatch:
 
 permissions:
@@ -13,95 +13,44 @@ permissions:
   actions: read
 
 jobs:
-  android-16k:
-    runs-on: macos-15
-    timeout-minutes: 30
+  native-16k:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare official ARM64 16KB emulator
+      - name: Prepare software ARM VM and official 16KB Android image
         run: |
           set -euo pipefail
           mkdir -p evidence
-          uname -a > evidence/host.txt
-          test "$(uname -m)" = arm64
-          "$ANDROID_HOME/emulator/emulator" -version > evidence/emulator-version.txt
-          "$ANDROID_HOME/emulator/emulator" -accel-check > evidence/acceleration.txt 2>&1 || true
-          python3 -c 'import os,subprocess; subprocess.run([os.environ["ANDROID_HOME"]+"/cmdline-tools/latest/bin/sdkmanager","--licenses"],input=b"y\n"*100,check=True)'
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-system-arm cpio e2fsprogs erofs-utils android-sdk-libsparse-utils
+          python3 -c 'import os,subprocess; subprocess.run([os.environ["ANDROID_HOME"]+"/cmdline-tools/latest/bin/sdkmanager","--licenses"],input=b"y\n"*100,check=True,stdout=subprocess.DEVNULL)'
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             'system-images;android-35;google_apis_ps16k;arm64-v8a'
-          cp "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a/source.properties" \
-            evidence/system-image.properties
-          printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" \
-            create avd --force --name elichika16k \
-            --package 'system-images;android-35;google_apis_ps16k;arm64-v8a'
-          # Hosted Apple Silicon cannot create nested HVF VMs, even when
-          # -accel-check reports that the framework itself is available.
-          echo 'Selected acceleration: software TCG (no nested virtualization)' >> evidence/acceleration.txt
-          nohup "$ANDROID_HOME/emulator/emulator" -avd elichika16k \
-            -accel off -no-window -no-audio -no-boot-anim \
-            -no-snapshot -gpu swiftshader_indirect -memory 3072 -cores 4 \
-            -qemu -accel tcg -cpu cortex-a57 \
-            > evidence/emulator.log 2>&1 &
-          echo $! > evidence/emulator.pid
 
-      - name: Require a booted native ARM64 Android with 16384-byte pages
-        run: |
-          set -euo pipefail
-          adb="$ANDROID_HOME/platform-tools/adb"
-          "$adb" start-server
-          ready=0
-          for attempt in $(seq 1 180); do
-            if [ "$("$adb" -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
-              ready=1
-              break
-            fi
-            if ! kill -0 "$(cat evidence/emulator.pid)" 2>/dev/null; then
-              cat evidence/emulator.log
-              exit 1
-            fi
-            sleep 4
-          done
-          test "$ready" = 1
-          "$adb" -s emulator-5554 root
-          "$adb" -s emulator-5554 wait-for-device
-          "$adb" -s emulator-5554 shell getprop > evidence/android-properties.txt
-          "$adb" -s emulator-5554 shell 'uname -a; id; getenforce; getconf PAGE_SIZE' \
-            > evidence/android-environment.txt
-          test "$("$adb" -s emulator-5554 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
-          test "$("$adb" -s emulator-5554 shell getconf PAGE_SIZE | tr -d '\r')" = 16384
-          "$adb" -s emulator-5554 exec-out screencap -p > evidence/android-boot.png
+      - name: Download the exact verified release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 36851847480
+          repository: tagundo/elichika
+          github-token: ${{ github.token }}
+          path: candidate
 
-      - name: Collect emulator diagnostics
-        if: always()
-        timeout-minutes: 2
-        run: |
-          mkdir -p evidence
-          python3 - <<'PY'
-          import os, subprocess
-          from pathlib import Path
-          adb = os.environ['ANDROID_HOME'] + '/platform-tools/adb'
-          commands = [('adb-devices.txt', ['devices', '-l']),
-                      ('logcat.txt', ['-s', 'emulator-5554', 'logcat', '-d']),
-                      ('kernel.txt', ['-s', 'emulator-5554', 'shell', 'dmesg'])]
-          for name, args in commands:
-              with Path('evidence', name).open('wb') as output:
-                  try:
-                      subprocess.run([adb, *args], stdout=output, stderr=subprocess.STDOUT, timeout=15)
-                  except subprocess.TimeoutExpired:
-                      output.write(b'\nDiagnostic command timed out; emulator did not respond.\n')
-          PY
+      - name: Run unchanged native libraries with 16KB Android loader
+        run: >-
+          python3 -u tests/android_16k_native.py
+          --candidate candidate/elichika-2026.10.01-dev.apk
+          --image "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a"
+          --ndk "$ANDROID_NDK_HOME"
+          --work "$RUNNER_TEMP/android-16k-native"
+          --evidence evidence
 
-      - name: Upload 16KB execution evidence
+      - name: Upload 16KB diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-16k-smoke-evidence
+          name: android-16k-native-evidence
           path: evidence/
           if-no-files-found: warn
-
-      - name: Stop disposable emulator
-        if: always()
-        timeout-minutes: 1
-        run: >-
-          "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 emu kill || true
