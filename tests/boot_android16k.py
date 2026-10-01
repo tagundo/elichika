@@ -12,12 +12,10 @@ def main():
     adb = sdk / 'platform-tools/adb'
     base = ['-avd', 'elichika16k', '-port', '5554', '-accel', 'off',
             '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot',
-            '-gpu', 'swiftshader', '-feature',
-            '-Vulkan,-VirtioSndCard,-VirtioInput,-VirtioWifi,-VirtioVsockPipe,'
-            '-VirtconsoleLogcat,-BluetoothEmulation,-ModemSimulator,'
-            '-VirtioMouse,-VirtioTablet,-VirtioDualModeMouse', '-memory', '4096',
+            '-gpu', 'swiftshader', '-feature', '-Vulkan', '-memory', '4096',
             '-cores', '4', '-skin', '480x800', '-skip-adb-auth', '-verbose',
-            '-qemu', '-accel', 'tcg', '-cpu', 'max']
+            '-show-kernel', '-qemu', '-machine', 'type=virt',
+            '-accel', 'tcg', '-cpu', 'max']
     report = {'status': 'PREPARING', 'target': 'official Android 35 ARM64 16KB',
               'hardware_acceleration': False, 'attempts': []}
     report_path = evidence / 'android16k-boot.json'
