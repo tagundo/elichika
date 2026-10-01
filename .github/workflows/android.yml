@@ -22,19 +22,24 @@ on:
     # No paths filter: the APK bundles the whole Go server, so any source change
     # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
     # previously skipped a clientdb/ fix and shipped a stale APK.
-    branches: [claude/elichika-apk-build-wwkuu3, main]
+    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit]
     # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
     # to a GitHub Release. See android/README.md for the one-time secret setup.
     tags: ['v*']
 
 permissions:
   contents: write   # needed to create a GitHub Release on tag builds
+  actions: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      apk_sha256: ${{ steps.layout.outputs.sha256 }}
+      version_name: ${{ steps.ver.outputs.name }}
+      version_code: ${{ steps.ver.outputs.code }}
     env:
-      NDK_VERSION: "26.3.11579264"
+      NDK_VERSION: "28.2.13676358"
     steps:
       - name: Checkout elichika (with harasho + modtools submodules)
         uses: actions/checkout@v4
@@ -67,6 +72,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Set up Python matching the embedded runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -180,7 +190,8 @@ jobs:
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           CC="$TC/aarch64-linux-android24-clang" \
           CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
-          go build -buildmode=pie -trimpath -ldflags "-s -w" \
+          go build -buildmode=pie -trimpath \
+            -ldflags "-s -w -linkmode external -extldflags '-Wl,-z,max-page-size=16384,-z,common-page-size=16384'" \
             -o android/app/src/main/jniLibs/arm64-v8a/libelichika.so .
           file android/app/src/main/jniLibs/arm64-v8a/libelichika.so
 
@@ -192,6 +203,7 @@ jobs:
           cmake -S /tmp/astcenc -B /tmp/astcenc/build \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
+            -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
             -DCMAKE_BUILD_TYPE=Release -DASTCENC_ISA_NEON=ON -DASTCENC_CLI=ON
           cmake --build /tmp/astcenc/build -j"$(nproc)"
           # the NEON build produces astcenc-neon; ship it as an executable native lib
@@ -200,8 +212,27 @@ jobs:
           cp "$BIN" android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
           file android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
 
+      - name: Rebuild Pillow's FreeType dependency for 16KB pages
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch VER-2-9-1 https://github.com/freetype/freetype.git "$RUNNER_TEMP/freetype-source"
+          python3 android/ci/build_freetype.py \
+            --source "$RUNNER_TEMP/freetype-source" \
+            --ndk "$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}" \
+            --work "$RUNNER_TEMP/freetype-build" \
+            --wheel android/app/native-wheels/chaquopy_freetype-2.9.1-3-py3-none-android_24_arm64_v8a.whl
+
       # CalVer: a tag vYYYY.MM.DD[.N] sets versionName "YYYY.MM.DD[.N]" and a strictly
       # increasing versionCode YYYYMMDD*100(+N). Non-tag builds get a dated dev version.
+      - name: Build NumPy BLAS/LAPACK without the legacy Fortran runtime
+        run: |
+          git clone --depth 1 --branch v0.3.33 https://github.com/OpenMathLib/OpenBLAS "$RUNNER_TEMP/openblas-source"
+          python3 android/ci/build_openblas.py \
+            --source "$RUNNER_TEMP/openblas-source" \
+            --ndk "$ANDROID_HOME/ndk/${NDK_VERSION}" \
+            --work "$RUNNER_TEMP/openblas-build" \
+            --wheel android/app/native-wheels/chaquopy_openblas-0.3.33-1-py3-none-android_24_arm64_v8a.whl
+
       - name: Derive app version (CalVer)
         id: ver
         env:
@@ -286,6 +317,22 @@ jobs:
           mv "$d/app-release.apk" "$d/elichika-${{ steps.ver.outputs.name }}.apk"
           ls -la "$d"
 
+      - name: Reject incompatible native files in the actual APK
+        id: layout
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
+          python3 android/ci/audit_native.py "$APK" --report android-native-layout.json
+          echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload native layout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-native-layout-evidence
+          path: android-native-layout.json
+          if-no-files-found: warn
+
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
@@ -293,15 +340,67 @@ jobs:
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      # Publish the release-signed APK to a GitHub Release, either on a pushed CalVer
-      # tag (vYYYY.MM.DD[.N]) or a manual run that supplies release_tag (the action
-      # creates that tag on this commit — no local git needed).
+      - name: Assemble Android native-package instrumentation
+        working-directory: android
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          mkdir -p app/src/androidTest/assets
+          cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
+          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
+            -PappVersionName="${{ steps.ver.outputs.name }}" \
+            -PappVersionCode="${{ steps.ver.outputs.code }}"
+
+      - name: Upload native-package instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-native-test-apk
+          path: android/app/build/outputs/apk/androidTest/release/*.apk
+          if-no-files-found: error
+
+  native-compatibility:
+    needs: build
+    uses: ./.github/workflows/android-16k.yml
+    with:
+      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
+      version_name: ${{ needs.build.outputs.version_name }}
+
+  android-upgrade:
+    needs: build
+    uses: ./.github/workflows/android-smoke.yml
+    with:
+      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
+      version_name: ${{ needs.build.outputs.version_name }}
+      version_code: ${{ needs.build.outputs.version_code }}
+
+  apk-audit:
+    needs: build
+    uses: ./.github/workflows/release-audit.yml
+    with:
+      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
+      version_name: ${{ needs.build.outputs.version_name }}
+      version_code: ${{ needs.build.outputs.version_code }}
+      source_commit: ${{ github.sha }}
+
+  publish:
+    needs: [build, native-compatibility, android-upgrade, apk-audit]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download validated release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: release
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
-          files: android/app/build/outputs/apk/release/*.apk
+          files: release/*.apk
           # release_notes (if given) appears at the top; with
           # generate_release_notes the changelog is appended below it.
           body: ${{ github.event.inputs.release_notes }}

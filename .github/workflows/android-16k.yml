@@ -1,0 +1,56 @@
+name: Android 4KB and 16KB native compatibility
+
+on:
+  workflow_call:
+    inputs:
+      candidate_sha256:
+        type: string
+        required: true
+      version_name:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  native-16k:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare software ARM VM and official 16KB Android image
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-system-arm cpio e2fsprogs erofs-utils android-sdk-libsparse-utils
+          python3 -c 'import os,subprocess; subprocess.run([os.environ["ANDROID_HOME"]+"/cmdline-tools/latest/bin/sdkmanager","--licenses"],input=b"y\n"*100,check=True,stdout=subprocess.DEVNULL)'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'system-images;android-35;google_apis_ps16k;arm64-v8a'
+
+      - name: Download this build's signed release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: candidate
+
+      - name: Run original APK server, Python packages and ASTC on both kernels
+        run: >-
+          python3 -u tests/android_16k_native.py
+          --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
+          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
+          --image "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a"
+          --ndk "$ANDROID_NDK_HOME"
+          --work "$RUNNER_TEMP/android-16k-native"
+          --evidence evidence
+
+      - name: Upload 16KB diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-16k-native-evidence
+          path: evidence/
+          if-no-files-found: warn

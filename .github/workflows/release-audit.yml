@@ -1,0 +1,71 @@
+name: Release APK compatibility audit
+
+on:
+  workflow_call:
+    inputs:
+      candidate_sha256:
+        type: string
+        required: true
+      version_name:
+        type: string
+        required: true
+      version_code:
+        type: string
+        required: true
+      source_commit:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout audit and readiness checks
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android verification tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: build-tools;34.0.0
+
+      - name: Download this build's signed release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: candidate
+
+      - name: Download the latest official APK
+        run: >-
+          curl --fail --location --retry 2
+          --output official.apk
+          https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk
+
+      - name: Verify signatures, update compatibility and actual payload
+        run: >-
+          python3 tests/audit_apk_release.py
+          --old official.apk
+          --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
+          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
+          --sdk "$ANDROID_HOME/build-tools/34.0.0"
+          --old-sha256 0bdeee9f6f725fa1a8146af49b8f832a5b86f5c962fc1c1b83c2e5bd3156cf95
+          --expected-commit "${{ inputs.source_commit }}"
+          --expected-version-code "${{ inputs.version_code }}"
+          --report release-audit-report.json
+
+      - name: Upload compact audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk-audit-evidence
+          path: release-audit-report.json
+          if-no-files-found: warn

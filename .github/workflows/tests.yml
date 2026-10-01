@@ -30,6 +30,9 @@ jobs:
       - name: Validate locale text and existing-install upgrades
         run: python3 assets/tests/validate_localization.py
 
+      - name: Check the APK native-layout release gate
+        run: python3 -m unittest discover -s tests -p test_android_native_audit.py -v
+
       - name: Run all Go tests with default vet checks
         run: python3 tests/run_go_tests.py
 
