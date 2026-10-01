@@ -16,6 +16,8 @@ jobs:
           set -euo pipefail
           mkdir -p evidence
           uname -a > evidence/host.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y libpulse0 libxcb-cursor0
           python3 -c 'import os,subprocess;subprocess.run([os.environ["ANDROID_HOME"]+"/cmdline-tools/latest/bin/sdkmanager","--licenses"],input=b"y\n"*100,check=True,stdout=subprocess.DEVNULL)'
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 emulator platform-tools 'system-images;android-35;google_apis_ps16k;arm64-v8a'
           "$ANDROID_HOME/emulator/emulator" -version > evidence/emulator-version.txt
@@ -82,3 +84,4 @@ jobs:
         timeout-minutes: 1
         run: |
           if test -f evidence/emulator.pid; then kill "$(cat evidence/emulator.pid)" || true; fi
+
