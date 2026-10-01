@@ -466,7 +466,10 @@ server_pid=$!
 echo BEGIN_PYTHON_FUNCTIONAL
 /probe/pythoncheck
 echo PYTHON_FUNCTIONAL_EXIT=$?
-/bin/busybox kill -INT "$server_pid"
+/bin/busybox kill -0 "$server_pid"
+echo SERVER_ALIVE_BEFORE_STOP=$?
+echo SERVER_STOP_SIGNAL=TERM
+/bin/busybox kill -TERM "$server_pid"
 wait "$server_pid"
 echo SERVER_EXEC_EXIT=$?
 echo BEGIN_GO_SERVER_LOG
@@ -521,7 +524,14 @@ def run(args, report):
         functional[str(page)] = json.loads(match[1])
         assert functional[str(page)]["status"] == "PASS" and functional[str(page)]["page_size"] == page
         assert "panic:" not in console and "Segmentation fault" not in console
-    assert cli["astc"]["exit_codes"] == cli["server"]["exit_codes"] == {"4096": 0, "16384": 0}
+    assert cli["astc"]["exit_codes"] == {"4096": 0, "16384": 0}
+    # Match Android Process.destroy(): the healthy long-running server is
+    # deliberately terminated after all HTTP/gameplay operations succeed.
+    for page, console in consoles.items():
+        assert "SERVER_ALIVE_BEFORE_STOP=0" in console, f"{page}: server exited before controlled stop"
+        assert "SERVER_STOP_SIGNAL=TERM" in console
+    assert cli["server"]["exit_codes"] == {"4096": 143, "16384": 143}
+    cli["server"]["controlled_sigterm_after_successful_requests"] = True
     assert functional["4096"]["python"]["astc_sha256"] == functional["16384"]["python"]["astc_sha256"], "ASTC output differs by page size"
     report.update({"diagnostic_status": "COMPLETE", "strict_native_16k_compatibility": "PASS",
                    "guest_page_size": 16384, "positive_16k_control": "PASS", "negative_4k_control": "PASS",
