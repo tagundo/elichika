@@ -53,3 +53,10 @@ The runner also validates the prepared GL English, Korean and Chinese dictionary
 databases against the localization upgrade data. Android CI checks these files
 after rebuilding, so an optional text upgrade failure cannot silently ship an
 uncorrected payload.
+
+PR/main CI also runs `go test -count=1 -v ./clientdb/upgrades` natively on Windows.
+This checks on-disk text/animation upgrades, rollback, concurrent writers and
+filenames with spaces, Unicode, `#` and `%`. URI parser tests cover drive-letter,
+UNC and extended paths on every host; a live remote UNC share is not required.
+The lesson loader regressions check that incompatible optional animation schemas
+and invalid rows preserve custom data and leave all recovered reward pools usable.

@@ -20,7 +20,13 @@ INSERT INTO m_lesson_skill_shooting_star VALUES (30000057, 3);
 
 func testDatabase(t *testing.T, path string) *sql.DB {
 	t.Helper()
-	uri := (&url.URL{Scheme: "file", Path: path}).String()
+	// Construct the fixture URI independently of openExisting. SQLite accepts
+	// file:C:/... without treating a Windows drive as an authority.
+	slashPath := filepath.ToSlash(path)
+	uri := "file:" + (&url.URL{Path: slashPath}).EscapedPath()
+	if strings.HasPrefix(slashPath, "//") {
+		uri = "file://localhost" + (&url.URL{Path: slashPath}).EscapedPath()
+	}
 	database, err := sql.Open("sqlite", uri)
 	if err != nil {
 		t.Fatal(err)
@@ -359,11 +365,16 @@ func TestLessonShootingStarsSerializesConcurrentUpgrades(t *testing.T) {
 
 func TestLessonShootingStarsEscapesDatabasePaths(t *testing.T) {
 	databasePath, scriptPath := newUpgradeFixture(t)
-	dir := filepath.Join(filepath.Dir(databasePath), "custom assets # ? %")
+	directory, filename := "custom assets 漢字 # ? %", "master data ?mode=ro#%.db"
+	if runtime.GOOS == "windows" {
+		// '?' is not a legal Windows filename; space, Unicode, '#' and '%' are.
+		directory, filename = "custom assets 漢字 # %", "master data #%.db"
+	}
+	dir := filepath.Join(filepath.Dir(databasePath), directory)
 	if err := os.Mkdir(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	newPath := filepath.Join(dir, "master data ?mode=ro#%.db")
+	newPath := filepath.Join(dir, filename)
 	if err := os.Rename(databasePath, newPath); err != nil {
 		t.Fatal(err)
 	}

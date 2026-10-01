@@ -5,6 +5,8 @@ import (
 	"elichika/generic/drop"
 	"elichika/log"
 	"elichika/utils"
+	"fmt"
+	"math"
 
 	"xorm.io/xorm"
 )
@@ -216,24 +218,39 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	utils.CheckErr(err)
 
 	type lessonSkillShootingStar struct {
-		SkillMasterId int32
-		LessonMenuId  int32
+		// Read SQLite integers at their full width: xorm silently truncates an
+		// overflowing int32 instead of returning a scan error.
+		SkillMasterId int64
+		LessonMenuId  int64
 	}
 	var shootingStarRows []lessonSkillShootingStar
 	// Animation metadata is optional. An older asset repository must still retain its
-	// recovered drop rates and insight skills when this newer table is absent.
+	// recovered drop rates and insight skills when this newer table is absent or a
+	// preserved custom schema cannot be read. Never use partially scanned metadata.
 	if existingTables(gamedata)["m_lesson_skill_shooting_star"] {
 		gamedata.MasterdataDb.Do(func(session *xorm.Session) {
 			err = session.Table("m_lesson_skill_shooting_star").Find(&shootingStarRows)
 		})
-		utils.CheckErr(err)
+		if err == nil {
+			for _, row := range shootingStarRows {
+				if row.SkillMasterId < math.MinInt32 || row.SkillMasterId > math.MaxInt32 || row.LessonMenuId < math.MinInt32 || row.LessonMenuId > math.MaxInt32 {
+					err = fmt.Errorf("animation IDs exceed int32 range: skill %d, menu %d", row.SkillMasterId, row.LessonMenuId)
+					break
+				}
+			}
+		}
+		if err != nil {
+			log.Println("WARNING: Shooting Star animation metadata could not be loaded; using ordinary lesson animations: ", err)
+			shootingStarRows = nil
+		}
 	}
 	shootingStarByMenu := map[int32]map[int32]bool{}
 	for _, row := range shootingStarRows {
-		if shootingStarByMenu[row.LessonMenuId] == nil {
-			shootingStarByMenu[row.LessonMenuId] = map[int32]bool{}
+		menuID, skillID := int32(row.LessonMenuId), int32(row.SkillMasterId)
+		if shootingStarByMenu[menuID] == nil {
+			shootingStarByMenu[menuID] = map[int32]bool{}
 		}
-		shootingStarByMenu[row.LessonMenuId][row.SkillMasterId] = true
+		shootingStarByMenu[menuID][skillID] = true
 	}
 
 	// The insight pins (m_lesson_enhancing_item 1400 / 1401) guarantee the leader a skill.

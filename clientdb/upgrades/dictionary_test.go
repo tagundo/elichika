@@ -263,12 +263,16 @@ func TestDictionaryTextSerializesConcurrentUpdates(t *testing.T) {
 
 func TestDictionaryTextEscapesDatabaseAndPlanPaths(t *testing.T) {
 	databasePath, planPath := newDictionaryFixture(t)
-	dir := filepath.Join(filepath.Dir(databasePath), "translated files # ? %")
+	directory, databaseName, planName := "translated files 漢字 # ? %", "dictionary ?mode=ro#%.db", "translations ? # %.json"
+	if runtime.GOOS == "windows" {
+		directory, databaseName, planName = "translated files 漢字 # %", "dictionary #%.db", "translations # %.json"
+	}
+	dir := filepath.Join(filepath.Dir(databasePath), directory)
 	if err := os.Mkdir(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	newDatabase := filepath.Join(dir, "dictionary ?mode=ro#%.db")
-	newPlan := filepath.Join(dir, "translations ? # %.json")
+	newDatabase := filepath.Join(dir, databaseName)
+	newPlan := filepath.Join(dir, planName)
 	if err := os.Rename(databasePath, newDatabase); err != nil {
 		t.Fatal(err)
 	}
