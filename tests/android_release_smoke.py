@@ -211,6 +211,7 @@ class Client:
         self.session = bytes(a ^ b ^ c for a, b, c in
                              zip(base64.b64decode(result["session_key"]), mask, EVENT_KEY))
         assert len(self.session) == 32 and result.get("user_model")
+        self.model = result["user_model"]
         return result
 
     def gameplay(self, master):
@@ -219,8 +220,16 @@ class Client:
                                "lp_magnification": 1, "is_auto_play": False})
         live = started["live"]
         assert live["live_id"] > 0 and live["live_stage"]["live_notes"]
+        # FinishLive contains a judgment for every note, including the randomized
+        # reward notes returned by StartLive. Omitting these is an invalid packet.
+        notes = []
+        for note in live["live_stage"]["live_notes"]:
+            notes.extend([note["id"], {"judge_type": 5, "is_critical": False, "voltage": 1000,
+                                      "card_master_id": 100011001, "judged_at": int(time.time() * 1000)}])
         finished = self.request("/live/finish", {"live_id": live["live_id"], "live_finish_status": 1,
-                     "live_score": {"current_score": 100000, "remaining_stamina": 1000},
+                     "live_score": {"current_score": 100000, "remaining_stamina": 1000,
+                                    "result_dict": notes, "card_stat_dict": [],
+                                    "wave_stat_dict": [], "turn_stat_dict": []},
                      "resume_finish_info": {"cached_judge_result": []}, "room_id": 0})
         assert finished["live_result"]["voltage"] == 100000
         skills = master.execute("SELECT skill_master_id,rarity,drop_type,lesson_menu_id1,lesson_menu_id2 "
