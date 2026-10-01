@@ -9,6 +9,8 @@ jobs:
   android-16k-screens:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
+    env:
+      ANDROID_AVD_HOME: ${{ runner.temp }}/elichika-avds
     steps:
       - uses: actions/checkout@v4
       - name: Install the official Linux ARM64-capable emulator and 16KB Android image
@@ -22,7 +24,18 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 emulator platform-tools 'system-images;android-35;google_apis_ps16k;arm64-v8a'
           "$ANDROID_HOME/emulator/emulator" -version > evidence/emulator-version.txt
           cp "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a/source.properties" evidence/system-image.properties
-          printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name elichika16k --package 'system-images;android-35;google_apis_ps16k;arm64-v8a'
+          mkdir -p "$ANDROID_AVD_HOME"
+          printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name elichika16k --path "$ANDROID_AVD_HOME/elichika16k.avd" --package 'system-images;android-35;google_apis_ps16k;arm64-v8a'
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root=Path(os.environ['ANDROID_AVD_HOME'])
+          assert (root/'elichika16k.avd/config.ini').is_file()
+          (root/'elichika16k.ini').write_text('avd.ini.encoding=UTF-8\npath='+str(root/'elichika16k.avd')+'\ntarget=android-35\n')
+          PY
+          cp "$ANDROID_AVD_HOME/elichika16k.avd/config.ini" evidence/avd-config.ini
+          "$ANDROID_HOME/emulator/emulator" -list-avds > evidence/registered-avds.txt
+          test "$(cat evidence/registered-avds.txt)" = elichika16k
       - name: Boot full Android with software ARM emulation and require actual 16KB pages
         run: python3 -u tests/boot_android16k.py
       - name: Record booted Android and disable page-size compatibility shortcuts
