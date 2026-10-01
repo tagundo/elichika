@@ -9,7 +9,6 @@ import argparse
 import base64
 import hashlib
 import hmac
-import itertools
 import json
 import os
 from pathlib import Path
@@ -92,6 +91,16 @@ class Android:
             self.shell("uiautomator", "dump", "/sdcard/smoke-window.xml", timeout=25)
             window = self.read("/sdcard/smoke-window.xml")
             root = ET.fromstring(window)
+            # The unmodified app shows its first-launch guide over the console.
+            # Dismiss the guide's standard Close button before looking for Start.
+            dismiss = [node for node in root.iter("node")
+                       if node.get("resource-id") == "android:id/button1"
+                       and node.get("text", "").casefold() in ("close", "닫기", "閉じる")]
+            if dismiss:
+                points = list(map(int, re.findall(r"\d+", dismiss[0].get("bounds"))))
+                self.shell("input", "tap", str((points[0] + points[2]) // 2),
+                           str((points[1] + points[3]) // 2))
+                continue
             buttons = [node for node in root.iter("node")
                        if node.get("resource-id") == f"{PACKAGE}:id/btn_toggle"]
             if buttons:
@@ -101,6 +110,9 @@ class Android:
                 break
             time.sleep(1)
         else:
+            self.evidence.joinpath(f"{label}-window.xml").write_bytes(window)
+            self.evidence.joinpath(f"{label}-failure.png").write_bytes(
+                self.adb("exec-out", "screencap", "-p", raw=True))
             raise AssertionError("Server Start button did not appear")
         started = time.monotonic()
         for port, remote in ((18080, 8080), (18770, 8770), (18772, 8772)):
@@ -237,6 +249,7 @@ def run(args, report):
                              "api": android.shell("getprop", "ro.build.version.sdk"),
                              "abi": android.shell("getprop", "ro.product.cpu.abi"),
                              "kernel": android.shell("uname", "-r"),
+                             "selinux": android.shell("getenforce"),
                              "page_size": subprocess.check_output(["getconf", "PAGESIZE"], text=True).strip(),
                              "type": "native ARM64 Redroid container; not a physical phone"}
     for apk, expected in ((args.old, OLD_SHA), (args.candidate, NEW_SHA)):
