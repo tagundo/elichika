@@ -49,12 +49,21 @@ int main(int argc, char **argv) {
 }
 '''
 PYTHON_PROBE = r'''
+#include <stdio.h>
 extern void Py_Initialize(void);
 extern int PyRun_SimpleString(const char *);
 extern int Py_FinalizeEx(void);
 int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     Py_Initialize();
-    int status = PyRun_SimpleString("exec(compile(open('/python/native_probe.py', encoding='utf-8').read(), '/python/native_probe.py', 'exec'))");
+    /* Android CPython normally sends Python stdout/stderr to logcat. This
+       minimal guest has no logd: retain all output and tracebacks on UART. */
+    int status = PyRun_SimpleString(
+        "import sys\n"
+        "sys.stdout = open(1, 'w', buffering=1, closefd=False)\n"
+        "sys.stderr = open(2, 'w', buffering=1, closefd=False)\n"
+        "__file__ = '/python/native_probe.py'\n"
+        "exec(compile(open(__file__, encoding='utf-8').read(), __file__, 'exec'))\n");
     if (Py_FinalizeEx() < 0) return 120;
     return status == 0 ? 0 : 1;
 }
@@ -420,9 +429,24 @@ def prepare(args, report):
     for directory in ("proc", "sys", "dev", "tmp"):
         (root / directory).mkdir(exist_ok=True)
     (root / "init").write_text("""#!/bin/busybox sh
+set -e
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sysfs /sys
-/bin/busybox mount -t devtmpfs devtmpfs /dev
+# Official Android kernels use ueventd instead of CONFIG_DEVTMPFS. Supply
+# the character devices needed by subprocesses, Go and standalone CPython.
+/bin/busybox mount -t tmpfs tmpfs /dev
+/bin/busybox mknod -m 666 /dev/null c 1 3
+/bin/busybox mknod -m 666 /dev/zero c 1 5
+/bin/busybox mknod -m 666 /dev/full c 1 7
+/bin/busybox mknod -m 666 /dev/random c 1 8
+/bin/busybox mknod -m 666 /dev/urandom c 1 9
+/bin/busybox mknod -m 600 /dev/console c 5 1
+/bin/busybox mknod -m 666 /dev/tty c 5 0
+/bin/busybox mkdir /dev/shm
+/bin/busybox ln -s /proc/self/fd /dev/fd
+/bin/busybox ln -s /proc/self/fd/0 /dev/stdin
+/bin/busybox ln -s /proc/self/fd/1 /dev/stdout
+/bin/busybox ln -s /proc/self/fd/2 /dev/stderr
 /bin/busybox ip link set lo up
 export LD_LIBRARY_PATH=/apex/com.android.runtime/lib64/bionic:/system/lib64:/probe:/python/native
 export PYTHONHOME=/python
@@ -430,6 +454,8 @@ export PYTHONPATH=/python/lib/python3.13:/python/lib/python3.13/lib-dynload:/pyt
 export SSL_CERT_FILE=/python/cacert.pem
 export OPENBLAS_NUM_THREADS=1
 export PATH=/bin:/system/bin
+echo GUEST_ENV_READY
+set +e
 echo BEGIN_ANDROID_16K_PROBE
 /probe/elfcheck /probe/control-16384.so /probe/control-4096.so /probe/libcrypto_chaquopy.so /probe/libsqlite3_chaquopy.so /probe/libssl_chaquopy.so
 echo ELF_PROBE_EXIT=$?
@@ -470,6 +496,7 @@ def run(args, report):
                  "-m", "4096", "-smp", "2", "-nographic", "-no-reboot", "-kernel", image,
                  "-initrd", archive, "-append", "console=ttyAMA0 rdinit=/init nokaslr selinux=0"], output, timeout=1500)
         console = output.read_text(errors="replace")
+        assert "GUEST_ENV_READY" in console, "Guest device/network initialization failed"
         assert "BEGIN_ANDROID_16K_PROBE" in console and "END_ANDROID_16K_PROBE" in console, "Guest probe did not finish"
         assert f"PAGE_SIZE={page}" in console and f"CONTROL_PAGE_SIZE={page}" in console
         assert "LOAD_OK /probe/control-16384.so" in console
