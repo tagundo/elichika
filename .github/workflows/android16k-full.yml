@@ -1,0 +1,84 @@
+name: Full Android ARM64 16KB APK screen tests
+on:
+  push:
+    branches: [codex/android-16k-screen-qa]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  android-16k-screens:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the official Linux ARM64-capable emulator and 16KB Android image
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          uname -a > evidence/host.txt
+          python3 -c 'import os,subprocess;subprocess.run([os.environ["ANDROID_HOME"]+"/cmdline-tools/latest/bin/sdkmanager","--licenses"],input=b"y\n"*100,check=True,stdout=subprocess.DEVNULL)'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 emulator platform-tools 'system-images;android-35;google_apis_ps16k;arm64-v8a'
+          "$ANDROID_HOME/emulator/emulator" -version > evidence/emulator-version.txt
+          cp "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a/source.properties" evidence/system-image.properties
+          printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name elichika16k --package 'system-images;android-35;google_apis_ps16k;arm64-v8a'
+      - name: Boot full Android with software ARM emulation and require actual 16KB pages
+        run: python3 -u tests/boot_android16k.py
+      - name: Record booted Android and disable page-size compatibility shortcuts
+        run: |
+          set -euo pipefail
+          adb root
+          adb wait-for-device
+          adb shell getprop > evidence/android-properties.txt
+          adb shell 'id; uname -a; getenforce; getconf PAGE_SIZE' > evidence/android-environment.txt
+          adb shell setprop bionic.linker.16kb.app_compat.enabled false
+          adb shell setprop pm.16kb.app_compat.disabled true
+          adb shell 'getprop bionic.linker.16kb.app_compat.enabled; getprop pm.16kb.app_compat.disabled' > evidence/compatibility-mode.txt
+          adb exec-out screencap -p > evidence/android-boot.png
+      - uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 36910677429
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Exercise original signed APK console, server and Python WebView screens
+        run: >-
+          python3 -u tests/android_full_16k_screens.py
+          --candidate candidate/elichika-2026.10.01-dev.apk
+          --sha256 23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a
+          --evidence evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: elichika-native-test-apk
+          run-id: 36910677429
+          github-token: ${{ github.token }}
+          path: instrumentation
+      - name: Exercise native Python packages through the actual Chaquopy Java bridge on 16KB Android
+        run: |
+          set -euo pipefail
+          adb -s emulator-5554 install -r instrumentation/*.apk
+          adb -s emulator-5554 shell am instrument -w -e class com.tagundo.elichika.NativePythonTest com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/native-instrumentation.txt
+          python3 -c 'from pathlib import Path;t=Path("evidence/native-instrumentation.txt").read_text();assert "OK (1 test)" in t and "FAILURES" not in t,t'
+      - name: Collect complete Android diagnostics
+        if: always()
+        timeout-minutes: 3
+        run: |
+          python3 - <<'PY'
+          import os,subprocess
+          from pathlib import Path
+          root=Path('evidence');root.mkdir(exist_ok=True)
+          adb=os.environ['ANDROID_HOME']+'/platform-tools/adb'
+          for name,args in [('adb-devices.txt',['devices','-l']),('logcat.txt',['-s','emulator-5554','logcat','-d']),('crash-buffer.txt',['-s','emulator-5554','logcat','-b','crash','-d']),('kernel.txt',['-s','emulator-5554','shell','dmesg']),('server-console.txt',['-s','emulator-5554','exec-out','cat','/sdcard/Download/sukusta/logs/elichika.log'])]:
+              with (root/name).open('wb') as output:
+                  try:subprocess.run([adb,*args],stdout=output,stderr=subprocess.STDOUT,timeout=25)
+                  except subprocess.TimeoutExpired:output.write(b'\nDiagnostic timeout\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-full-16k-screen-evidence
+          path: evidence/
+      - name: Stop disposable emulator
+        if: always()
+        timeout-minutes: 1
+        run: |
+          if test -f evidence/emulator.pid; then kill "$(cat evidence/emulator.pid)" || true; fi
