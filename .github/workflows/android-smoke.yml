@@ -32,13 +32,13 @@ jobs:
           mkdir -p evidence "$RUNNER_TEMP/android-data"
           uname -a > evidence/host.txt
           getconf PAGESIZE >> evidence/host.txt
-          docker pull --platform linux/arm64 redroid/redroid:14.0.0_64only-latest
-          docker image inspect redroid/redroid:14.0.0_64only-latest \
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker image inspect redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
             --format '{{json .RepoDigests}} {{.Architecture}}' >> evidence/host.txt
           docker run --detach --privileged --name android-release-smoke \
             --publish 127.0.0.1:5555:5555 \
             --volume "$RUNNER_TEMP/android-data:/data" \
-            redroid/redroid:14.0.0_64only-latest \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
             androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 androidboot.redroid_height=1280 \
             androidboot.redroid_fps=10 ro.secure=0
@@ -60,6 +60,26 @@ jobs:
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
           adb -s 127.0.0.1:5555 shell id >> evidence/host.txt
           adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/android-boot.png
+
+      - name: Download the exact verified release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 36851847480
+          repository: tagundo/elichika
+          github-token: ${{ github.token }}
+          path: candidate
+
+      - name: Download the latest official APK
+        run: >-
+          curl --fail --location --retry 2 --output official.apk
+          https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk
+
+      - name: Test actual APK upgrade, accounts, services and gameplay APIs
+        run: >-
+          python3 -u tests/android_release_smoke.py
+          --old official.apk --candidate candidate/elichika-2026.10.01-dev.apk
+          --evidence evidence
 
       - name: Collect Android diagnostics
         if: always()
