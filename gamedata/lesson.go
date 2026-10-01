@@ -12,7 +12,7 @@ import (
 // The lesson drop rates are not part of the game's own masterdata: the real server never
 // shipped them to the client. They were recovered by observing several million real lesson
 // results (see https://github.com/eman1can/SIFAS-Lesson-Data) and the asset repository
-// provides them as 4 extra tables:
+// provides them as 5 extra tables:
 //   - m_lesson_drop_amount        how many items a lesson menu run gives
 //   - m_lesson_skill_content      which insight skill can drop from which lesson combination
 //   - m_lesson_skill_rarity       the mix of rarities, given that a skill drops
@@ -21,6 +21,8 @@ import (
 //
 // An asset repository that predates these tables is still usable: IsLoaded stays false,
 // the caller keeps its built in drop amounts and no insight skill is dropped.
+// The optional m_lesson_skill_shooting_star table identifies special animations; its
+// absence does not affect drops from the five tables above.
 //
 // The rates themselves are data, not code: how strict or generous lessons are is decided
 // entirely by the weights in those tables. The sql file that creates them records where
@@ -39,7 +41,8 @@ type Lesson struct {
 	// that caused the skill to be available
 	SkillSourceMenu map[int32]map[int32]int32
 
-	// keyed by lesson menu id, then insight skill master id
+	// keyed by lesson combination, then insight skill master id. This is separate from
+	// SkillSourceMenu: an ordinary skill available from any menu also has source id 0.
 	ShootingStarSkills map[int32]map[int32]bool
 
 	// which of the 9 deck positions receives the skill
@@ -104,7 +107,6 @@ func (skill *lessonSkillContent) isExclusive() bool {
 var lessonTables = []string{
 	"m_lesson_drop_amount",
 	"m_lesson_skill_content",
-	"m_lesson_skill_shooting_star",
 	"m_lesson_skill_rarity",
 	"m_lesson_skill_no_drop",
 	"m_lesson_skill_member_chance",
@@ -218,16 +220,20 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 		LessonMenuId  int32
 	}
 	var shootingStarRows []lessonSkillShootingStar
-	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
-		err = session.Table("m_lesson_skill_shooting_star").Find(&shootingStarRows)
-	})
-	utils.CheckErr(err)
-	lesson.ShootingStarSkills = map[int32]map[int32]bool{}
+	// Animation metadata is optional. An older asset repository must still retain its
+	// recovered drop rates and insight skills when this newer table is absent.
+	if existingTables(gamedata)["m_lesson_skill_shooting_star"] {
+		gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+			err = session.Table("m_lesson_skill_shooting_star").Find(&shootingStarRows)
+		})
+		utils.CheckErr(err)
+	}
+	shootingStarByMenu := map[int32]map[int32]bool{}
 	for _, row := range shootingStarRows {
-		if lesson.ShootingStarSkills[row.LessonMenuId] == nil {
-			lesson.ShootingStarSkills[row.LessonMenuId] = map[int32]bool{}
+		if shootingStarByMenu[row.LessonMenuId] == nil {
+			shootingStarByMenu[row.LessonMenuId] = map[int32]bool{}
 		}
-		lesson.ShootingStarSkills[row.LessonMenuId][row.SkillMasterId] = true
+		shootingStarByMenu[row.LessonMenuId][row.SkillMasterId] = true
 	}
 
 	// The insight pins (m_lesson_enhancing_item 1400 / 1401) guarantee the leader a skill.
@@ -281,6 +287,7 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	// has an exclusive skill on offer drops a skill far more often than one that doesn't.
 	lesson.SkillDrop = map[int32]*drop.WeightedDropList[int32]{}
 	lesson.SkillSourceMenu = map[int32]map[int32]int32{}
+	lesson.ShootingStarSkills = map[int32]map[int32]bool{}
 	for _, id1 := range menuIds {
 		for _, id2 := range menuIds {
 			for _, id3 := range menuIds {
@@ -305,15 +312,15 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 				combination := id1*100 + id2*10 + id3
 				lesson.SkillDrop[combination] = dropList
 				lesson.SkillSourceMenu[combination] = map[int32]int32{}
+				lesson.ShootingStarSkills[combination] = map[int32]bool{}
 				for _, skill := range available {
-					sourceMenuId := skill.LessonMenuId1
+					lesson.SkillSourceMenu[combination][skill.SkillMasterId] = skill.LessonMenuId1
 					for _, lessonMenuId := range []int32{id1, id2, id3} {
-						if lesson.ShootingStarSkills[lessonMenuId][skill.SkillMasterId] {
-							sourceMenuId = 0
+						if shootingStarByMenu[lessonMenuId][skill.SkillMasterId] {
+							lesson.ShootingStarSkills[combination][skill.SkillMasterId] = true
 							break
 						}
 					}
-					lesson.SkillSourceMenu[combination][skill.SkillMasterId] = sourceMenuId
 				}
 
 				// A pin drops a skill of its target rarity *or better*, never nothing, so
