@@ -22,7 +22,7 @@ on:
     # No paths filter: the APK bundles the whole Go server, so any source change
     # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
     # previously skipped a clientdb/ fix and shipped a stale APK.
-    branches: [claude/elichika-apk-build-wwkuu3, main]
+    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit]
     # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
     # to a GitHub Release. See android/README.md for the one-time secret setup.
     tags: ['v*']
@@ -34,7 +34,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      NDK_VERSION: "26.3.11579264"
+      NDK_VERSION: "28.2.13676358"
     steps:
       - name: Checkout elichika (with harasho + modtools submodules)
         uses: actions/checkout@v4
@@ -67,6 +67,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Set up Python matching the embedded runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -180,7 +185,8 @@ jobs:
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           CC="$TC/aarch64-linux-android24-clang" \
           CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
-          go build -buildmode=pie -trimpath -ldflags "-s -w" \
+          go build -buildmode=pie -trimpath \
+            -ldflags "-s -w -linkmode external -extldflags '-Wl,-z,max-page-size=16384,-z,common-page-size=16384'" \
             -o android/app/src/main/jniLibs/arm64-v8a/libelichika.so .
           file android/app/src/main/jniLibs/arm64-v8a/libelichika.so
 
@@ -192,6 +198,7 @@ jobs:
           cmake -S /tmp/astcenc -B /tmp/astcenc/build \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
+            -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
             -DCMAKE_BUILD_TYPE=Release -DASTCENC_ISA_NEON=ON -DASTCENC_CLI=ON
           cmake --build /tmp/astcenc/build -j"$(nproc)"
           # the NEON build produces astcenc-neon; ship it as an executable native lib
@@ -285,6 +292,20 @@ jobs:
           d=android/app/build/outputs/apk/release
           mv "$d/app-release.apk" "$d/elichika-${{ steps.ver.outputs.name }}.apk"
           ls -la "$d"
+
+      - name: Reject incompatible native files in the actual APK
+        run: >-
+          python3 android/ci/audit_native.py
+          android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
+          --report android-native-layout.json
+
+      - name: Upload native layout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-native-layout-evidence
+          path: android-native-layout.json
+          if-no-files-found: warn
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4

@@ -93,10 +93,10 @@ android {
 
 chaquopy {
     defaultConfig {
-        // CPython version embedded in the APK. 3.8 has the widest Chaquopy
-        // prebuilt-wheel coverage (matters for UnityPy's native deps); the tool
-        // code is 3.8+ compatible with no 3.10-only syntax.
-        version = "3.8"
+        // Chaquopy 17 supports 16 KB pages. Its Python 3.13 Android wheels have
+        // the corresponding native layout; older wheels may still be 4 KB-only.
+        // APK CI inspects every ELF, including those inside Chaquopy asset ZIPs.
+        version = "3.13"
         pip {
             // numpy + Pillow are Chaquopy-provided prebuilt wheels (safe).
             install("numpy")
