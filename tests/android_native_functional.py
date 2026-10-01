@@ -103,7 +103,10 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     writer.write_int(16384)
     assert EndianBinaryReader(writer.bytes).read_int() == 16384
     image = Image.new("RGBA", (16, 16), (64, 128, 192, 255))
-    ImageDraw.Draw(image).text((0, 0), "16", font=ImageFont.load_default())
+    font = ImageFont.load_default()
+    assert isinstance(font, ImageFont.FreeTypeFont), "Pillow fell back instead of using FreeType"
+    assert ImageFont.core.freetype2_version == "2.9.1"
+    ImageDraw.Draw(image).text((0, 0), "16", font=font)
     for encoding in ("PNG", "JPEG"):
         output = io.BytesIO()
         image.convert("RGB").save(output, format=encoding)
@@ -130,6 +133,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     return {"python": sys.version.split()[0], "ssl_and_certificates": True,
             "sqlite_unicode": True, "ctypes": True, "numpy_linear_algebra": True,
             "compression_roundtrips": 6, "pillow_png_jpeg_freetype": True,
+            "freetype_version": ImageFont.core.freetype2_version,
             "unitypy_binary_io": True, "fsspec_memory_io": True,
             "adminui_and_webtools_imports": True, "astc_encode_decode": True,
             "astc_sha256": hashlib.sha256(astc_data).hexdigest(), "astc_mean_error": round(float(difference), 3)}

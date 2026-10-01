@@ -34,10 +34,11 @@ def main():
     wrapper = args.work / "wrapper"
     wrapper.mkdir()
     # Preserve Chaquopy's unversioned SONAME while retaining FreeType 2.9.1's ABI.
-    (wrapper / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.5)
+    (wrapper / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.13)
 project(elichika_freetype C)
 add_subdirectory("${FREETYPE_SOURCE}" freetype)
-set_target_properties(freetype PROPERTIES VERSION "" SOVERSION "")
+set_target_properties(freetype PROPERTIES NO_SONAME TRUE)
+target_link_options(freetype PRIVATE "-Wl,-soname,libfreetype.so")
 ''')
     build = args.work / "build"
     run("cmake", "-S", wrapper, "-B", build,
@@ -61,7 +62,7 @@ set_target_properties(freetype PROPERTIES VERSION "" SOVERSION "")
         "chaquopy/lib/libfreetype.so": data,
         DIST_INFO + "/FTL.TXT": (args.source / "docs/FTL.TXT").read_bytes(),
         DIST_INFO + "/METADATA": b"Metadata-Version: 2.1\nName: chaquopy-freetype\nVersion: 2.9.1\nSummary: FreeType 2.9.1 with Android 16KB native alignment\nLicense: FreeType License\n\n",
-        DIST_INFO + "/WHEEL": b"Wheel-Version: 1.0\nGenerator: elichika-android-ci\nRoot-Is-Purelib: false\nTag: py3-none-android_24_arm64_v8a\n\n",
+        DIST_INFO + "/WHEEL": b"Wheel-Version: 1.0\nGenerator: elichika-android-ci\nRoot-Is-Purelib: false\nBuild: 3\nTag: py3-none-android_24_arm64_v8a\n\n",
     }
     record = io.StringIO()
     writer = csv.writer(record, lineterminator="\n")
