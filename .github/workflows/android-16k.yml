@@ -75,11 +75,23 @@ jobs:
 
       - name: Collect emulator diagnostics
         if: always()
+        timeout-minutes: 2
         run: |
           mkdir -p evidence
-          "$ANDROID_HOME/platform-tools/adb" devices -l > evidence/adb-devices.txt 2>&1 || true
-          "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 logcat -d > evidence/logcat.txt 2>&1 || true
-          "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dmesg > evidence/kernel.txt 2>&1 || true
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          adb = os.environ['ANDROID_HOME'] + '/platform-tools/adb'
+          commands = [('adb-devices.txt', ['devices', '-l']),
+                      ('logcat.txt', ['-s', 'emulator-5554', 'logcat', '-d']),
+                      ('kernel.txt', ['-s', 'emulator-5554', 'shell', 'dmesg'])]
+          for name, args in commands:
+              with Path('evidence', name).open('wb') as output:
+                  try:
+                      subprocess.run([adb, *args], stdout=output, stderr=subprocess.STDOUT, timeout=15)
+                  except subprocess.TimeoutExpired:
+                      output.write(b'\nDiagnostic command timed out; emulator did not respond.\n')
+          PY
 
       - name: Upload 16KB execution evidence
         if: always()
@@ -91,5 +103,6 @@ jobs:
 
       - name: Stop disposable emulator
         if: always()
+        timeout-minutes: 1
         run: >-
           "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 emu kill || true
