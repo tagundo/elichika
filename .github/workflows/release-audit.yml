@@ -1,0 +1,62 @@
+name: Release APK compatibility audit
+
+on:
+  push:
+    branches: [codex/release-readiness-audit]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout audit and readiness checks
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android verification tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: build-tools;34.0.0
+
+      - name: Download the exact verified release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 36851847480
+          repository: tagundo/elichika
+          github-token: ${{ github.token }}
+          path: candidate
+
+      - name: Download the latest official APK
+        run: >-
+          curl --fail --location --retry 2
+          --output official.apk
+          https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk
+
+      - name: Verify signatures, update compatibility and actual payload
+        run: >-
+          python3 tests/audit_apk_release.py
+          --old official.apk
+          --candidate candidate/elichika-2026.10.01-dev.apk
+          --sdk "$ANDROID_HOME/build-tools/34.0.0"
+          --old-sha256 0bdeee9f6f725fa1a8146af49b8f832a5b86f5c962fc1c1b83c2e5bd3156cf95
+          --expected-commit 67a2382e6632b269f9d50ecbefe6d0270ff2aa7b
+          --expected-version-code 2026100100
+          --report release-audit-report.json
+
+      - name: Upload compact audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk-audit-evidence
+          path: release-audit-report.json
+          if-no-files-found: warn
