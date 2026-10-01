@@ -454,7 +454,9 @@ set -e
 /bin/busybox ln -s /proc/self/fd/0 /dev/stdin
 /bin/busybox ln -s /proc/self/fd/1 /dev/stdout
 /bin/busybox ln -s /proc/self/fd/2 /dev/stderr
+/bin/busybox ip address add 127.0.0.1/8 dev lo
 /bin/busybox ip link set lo up
+/bin/busybox ip address show dev lo
 export LD_LIBRARY_PATH=/apex/com.android.runtime/lib64/bionic:/system/lib64:/probe:/python/native
 export PYTHONHOME=/python
 export PYTHONPATH=/python/lib/python3.13:/python/lib/python3.13/lib-dynload:/python/lib/python3.13/site-packages:/python/app
