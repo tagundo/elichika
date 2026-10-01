@@ -303,13 +303,14 @@ def prepare(args, report):
     # SQLite/Python also need Android's zlib; omitting it would produce an
     # unrelated missing-dependency error instead of measuring page support.
     report["platform_dependencies"] = {}
-    for name in ("libz.so", "liblog.so"):
+    for name in ("libz.so", "liblog.so", "libc++.so"):
         choices = list(runtime.rglob(name)) + list(system.rglob(name))
         source = next(file for file in choices
                       if file.is_file() and not file.is_symlink() and "lib64" in str(file))
         shutil.copyfile(source, root / "system/lib64" / name)
         report["platform_dependencies"][name] = {"sha256": sha(source.read_bytes()),
                                                   "load_alignments": elf_alignment(source.read_bytes())}
+        assert min(report["platform_dependencies"][name]["load_alignments"]) >= 16384
     report["bionic"] = {"libc_sha256": sha(libc.read_bytes()), "linker_sha256": sha(linker.read_bytes()),
                          "libc_alignments": elf_alignment(libc.read_bytes()),
                          "linker_alignments": elf_alignment(linker.read_bytes())}
