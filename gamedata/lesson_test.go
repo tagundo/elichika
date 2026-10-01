@@ -11,6 +11,16 @@ import (
 
 func lessonFixture(t *testing.T, shootingStarTable bool, shootingStarRows bool) *Lesson {
 	t.Helper()
+	g := lessonDatabaseFixture(t, shootingStarTable, shootingStarRows)
+	loadLesson(g)
+	if !g.Lesson.IsLoaded {
+		t.Fatal("complete recovered lesson tables did not load")
+	}
+	return g.Lesson
+}
+
+func lessonDatabaseFixture(t *testing.T, shootingStarTable bool, shootingStarRows bool) *Gamedata {
+	t.Helper()
 	masterdata, err := db.NewDatabase(t.TempDir() + "/masterdata.db")
 	if err != nil {
 		t.Fatal(err)
@@ -54,11 +64,71 @@ func lessonFixture(t *testing.T, shootingStarTable bool, shootingStarRows bool) 
 	if missing := missingLessonTables(g); len(missing) != 0 {
 		t.Fatalf("missing required lesson tables: %v", missing)
 	}
-	loadLesson(g)
-	if !g.Lesson.IsLoaded {
-		t.Fatal("complete recovered lesson tables did not load")
+	return g
+}
+
+func TestLessonUnusableShootingStarMetadataPreservesDropsAndCustomData(t *testing.T) {
+	baseline := lessonFixture(t, false, false)
+	for _, tc := range []struct {
+		name string
+		sql  []string
+	}{
+		{"custom columns", []string{
+			`CREATE TABLE m_lesson_skill_shooting_star (custom_animation TEXT PRIMARY KEY)`,
+			`INSERT INTO m_lesson_skill_shooting_star VALUES ('keep owner schema and row')`,
+		}},
+		{"invalid row after valid mapping", []string{
+			`CREATE TABLE m_lesson_skill_shooting_star (skill_master_id INTEGER, lesson_menu_id INTEGER)`,
+			`INSERT INTO m_lesson_skill_shooting_star VALUES (101, 2), ('not an integer', 3)`,
+		}},
+		{"overflow after valid mapping", []string{
+			`CREATE TABLE m_lesson_skill_shooting_star (skill_master_id INTEGER, lesson_menu_id INTEGER)`,
+			`INSERT INTO m_lesson_skill_shooting_star VALUES (101, 2), (9223372036854775807, 3)`,
+		}},
+		{"overflowing menu after valid mapping", []string{
+			`CREATE TABLE m_lesson_skill_shooting_star (skill_master_id INTEGER, lesson_menu_id INTEGER)`,
+			`INSERT INTO m_lesson_skill_shooting_star VALUES (101, 2), (102, 4294967299)`,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := lessonDatabaseFixture(t, false, false)
+			var setupErr error
+			g.MasterdataDb.Do(func(session *xorm.Session) {
+				for _, statement := range tc.sql {
+					if _, setupErr = session.Exec(statement); setupErr != nil {
+						return
+					}
+				}
+			})
+			if setupErr != nil {
+				t.Fatal(setupErr)
+			}
+			readCustomData := func() [][]map[string]string {
+				var schema, rows []map[string]string
+				var err error
+				g.MasterdataDb.Do(func(session *xorm.Session) {
+					schema, err = session.QueryString(`SELECT name,sql FROM sqlite_master WHERE name='m_lesson_skill_shooting_star'`)
+					if err == nil {
+						rows, err = session.QueryString(`SELECT * FROM m_lesson_skill_shooting_star ORDER BY rowid`)
+					}
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return [][]map[string]string{schema, rows}
+			}
+			before := readCustomData()
+			loadLesson(g)
+			// Compare every reward/rarity/position/source/pin and animation map:
+			// a partial successful scan must not leave any special animations.
+			if !reflect.DeepEqual(baseline, g.Lesson) {
+				t.Fatal("unusable optional metadata changed recovered lesson behavior")
+			}
+			if !reflect.DeepEqual(before, readCustomData()) {
+				t.Fatal("loader rewrote the owner's custom schema or rows")
+			}
+		})
 	}
-	return g.Lesson
 }
 
 func TestLessonShootingStarMetadataIsOptional(t *testing.T) {
