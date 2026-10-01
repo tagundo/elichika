@@ -35,14 +35,13 @@ jobs:
           printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" \
             create avd --force --name elichika16k \
             --package 'system-images;android-35;google_apis_ps16k;arm64-v8a'
-          acceleration=off
-          if "$ANDROID_HOME/emulator/emulator" -accel-check >/dev/null 2>&1; then
-            acceleration=on
-          fi
-          echo "Selected acceleration: $acceleration" >> evidence/acceleration.txt
+          # Hosted Apple Silicon cannot create nested HVF VMs, even when
+          # -accel-check reports that the framework itself is available.
+          echo 'Selected acceleration: software TCG (no nested virtualization)' >> evidence/acceleration.txt
           nohup "$ANDROID_HOME/emulator/emulator" -avd elichika16k \
-            -accel "$acceleration" -no-window -no-audio -no-boot-anim \
+            -accel off -no-window -no-audio -no-boot-anim \
             -no-snapshot -gpu swiftshader_indirect -memory 3072 -cores 4 \
+            -qemu -accel tcg -cpu cortex-a57 \
             > evidence/emulator.log 2>&1 &
           echo $! > evidence/emulator.pid
 
