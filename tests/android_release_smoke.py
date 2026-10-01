@@ -252,6 +252,9 @@ class Client:
                   "pin_runs": 0, "three_times_runs": 0}
         rank = {skill[0]: skill[1] for skill in skills}
         remaining_pins = {1400: 100, 1401: 100}
+        drop_amounts = [row[0] for row in master.execute(
+            "SELECT count FROM m_lesson_drop_amount WHERE item_id=1 AND weight>0")]
+        assert drop_amounts, "Missing authoritative normal reward amounts"
         combinations = [(1, 1, 1), (3, 3, 3), (7, 7, 7), (8, 8, 8),
                         (1, 2, 3), (3, 2, 1), (3, 3, 7), (7, 3, 3)] * 8
         cases = [(combination, [], False) for combination in combinations]
@@ -267,7 +270,11 @@ class Client:
             actions = dict(zip(execution["lesson_menu_actions"][::2], execution["lesson_menu_actions"][1::2]))
             assert set(actions) == {0, 1, 2, 3}
             assert all(len(value) == 9 for value in actions.values())
-            assert 15 * repeat <= len(result["drop_item_list"]) <= 26 * repeat
+            # The APK's default free resource profile includes subscription
+            # rewards. The response explicitly reports that entitlement.
+            reward_factor = repeat * (2 if execution["is_subscription"] else 1)
+            assert min(drop_amounts) * reward_factor <= len(result["drop_item_list"]) <= max(drop_amounts) * reward_factor, \
+                f"Unexpected reward count: {len(result['drop_item_list'])}, factor {reward_factor}"
             available = {skill[0] for skill in skills if eligible(skill, combination)}
             expected_stars = set()
             for skill in result["drop_skill_list"]:
