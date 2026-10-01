@@ -3,14 +3,9 @@ package upgrades
 
 import (
 	"bufio"
-	"database/sql"
 	"fmt"
-	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
-
-	_ "modernc.org/sqlite"
 )
 
 const shootingStarTable = "m_lesson_skill_shooting_star"
@@ -20,23 +15,11 @@ const shootingStarTable = "m_lesson_skill_shooting_star"
 // The asset repository supplies the data; its original, non-idempotent migrations
 // must never be replayed on an already patched DB.
 func LessonShootingStars(databasePath, scriptPath string) (bool, error) {
-	absPath, err := filepath.Abs(databasePath)
-	if err != nil {
-		return false, err
-	}
-	// mode=rw prevents a missing DB from silently becoming an empty SQLite file.
-	// Immediate transactions serialize competing upgrades before the second guard.
-	dsn := (&url.URL{Scheme: "file", Path: absPath, RawQuery: url.Values{
-		"mode":    {"rw"},
-		"_txlock": {"immediate"},
-		"_pragma": {"busy_timeout(5000)"},
-	}.Encode()}).String()
-	database, err := sql.Open("sqlite", dsn)
+	database, err := openExisting(databasePath)
 	if err != nil {
 		return false, err
 	}
 	defer database.Close()
-	database.SetMaxOpenConns(1)
 
 	// Checking before opening a write transaction also permits read-only DBs that
 	// already have the metadata. Any named object is an explicit customization.
