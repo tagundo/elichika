@@ -14,6 +14,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -24,6 +25,7 @@ import zlib
 
 
 APK_SHA = "170865171e41976736eb7ce36836d492cfcdc75a97a14cb00d277a641452d5ed"
+FOUR_K_KERNEL_SHA = "3226eb09ec1d770c1d44e34493b95966c94d0312c0eb54f90acc893197c572a6"
 PROBE = r'''
 #include <stdio.h>
 #include <unistd.h>
@@ -56,6 +58,57 @@ def command(args, log=None, timeout=300):
     with (log.open("wb") if log else open(os.devnull, "wb")) as output:
         subprocess.run([str(arg) for arg in args], stdout=output, stderr=subprocess.STDOUT,
                        timeout=timeout, check=True)
+
+
+class PackageRanges(io.RawIOBase):
+    """Read ZIP metadata and its small kernel entry without a second SDK image."""
+    def __init__(self):
+        self.position = 0
+        self.length = 1778933980
+        self.url = "https://dl.google.com/android/repository/sys-img/google_apis/arm64-v8a-35_r09.zip"
+
+    def seekable(self):
+        return True
+
+    def readable(self):
+        return True
+
+    def tell(self):
+        return self.position
+
+    def seek(self, offset, whence=0):
+        self.position = offset if whence == 0 else self.position + offset if whence == 1 else self.length + offset
+        assert 0 <= self.position <= self.length
+        return self.position
+
+    def read(self, size=-1):
+        size = min(self.length - self.position, size if size >= 0 else self.length - self.position)
+        if not size:
+            return b""
+        assert size <= 32 * 1024 * 1024, "Only ZIP metadata and the kernel entry are needed"
+        start = self.position
+        expected = f"bytes {start}-{start + size - 1}/{self.length}"
+        request = urllib.request.Request(self.url, headers={"Range": f"bytes={start}-{start + size - 1}"})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            assert response.status == 206 and response.headers["Content-Range"] == expected
+            data = response.read(size)
+        assert len(data) == size, "Truncated kernel package range"
+        self.position += size
+        return data
+
+
+def four_k_kernel(args, report):
+    with zipfile.ZipFile(PackageRanges()) as archive:
+        data = archive.read("arm64-v8a/kernel-ranchu")
+    if data[:2] == b"\x1f\x8b":
+        data = gzip.decompress(data)
+    assert data[56:60] == b"ARMd" and (struct.unpack_from("<Q", data, 24)[0] >> 1) & 3 == 1
+    assert sha(data) == FOUR_K_KERNEL_SHA, "Official 4KB control kernel changed"
+    output = args.work / "kernel-4096"
+    output.write_bytes(data)
+    report["control_kernel"] = {"sha256": sha(data), "header_page_size": 4096,
+                                "source_package": "Google APIs ARM64 Android 35 r9"}
+    return output
 
 
 def extract_android_system(image, temporary, evidence):
@@ -247,6 +300,16 @@ def prepare(args, report):
     (root / "system/lib64").mkdir()
     for file in target_lib.iterdir():
         (root / "system/lib64" / file.name).symlink_to("/apex/com.android.runtime/lib64/bionic/" + file.name)
+    # SQLite/Python also need Android's zlib; omitting it would produce an
+    # unrelated missing-dependency error instead of measuring page support.
+    report["platform_dependencies"] = {}
+    for name in ("libz.so", "liblog.so"):
+        choices = list(runtime.rglob(name)) + list(system.rglob(name))
+        source = next(file for file in choices
+                      if file.is_file() and not file.is_symlink() and "lib64" in str(file))
+        shutil.copyfile(source, root / "system/lib64" / name)
+        report["platform_dependencies"][name] = {"sha256": sha(source.read_bytes()),
+                                                  "load_alignments": elf_alignment(source.read_bytes())}
     report["bionic"] = {"libc_sha256": sha(libc.read_bytes()), "linker_sha256": sha(linker.read_bytes()),
                          "libc_alignments": elf_alignment(libc.read_bytes()),
                          "linker_alignments": elf_alignment(linker.read_bytes())}
@@ -282,7 +345,7 @@ def prepare(args, report):
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sysfs /sys
 /bin/busybox mount -t devtmpfs devtmpfs /dev
-export LD_LIBRARY_PATH=/apex/com.android.runtime/lib64/bionic:/probe
+export LD_LIBRARY_PATH=/apex/com.android.runtime/lib64/bionic:/system/lib64:/probe
 echo BEGIN_ANDROID_16K_PROBE
 /probe/elfcheck /probe/control-16384.so /probe/control-4096.so /probe/libcrypto_chaquopy.so /probe/libsqlite3_chaquopy.so /probe/libssl_chaquopy.so
 echo ELF_PROBE_EXIT=$?
@@ -305,23 +368,38 @@ echo END_ANDROID_16K_PROBE
 
 def run(args, report):
     kernel, archive = prepare(args, report)
-    command(["qemu-system-aarch64", "-machine", "virt", "-accel", "tcg", "-cpu", "max",
-             "-m", "1536", "-smp", "2", "-nographic", "-no-reboot", "-kernel", kernel,
-             "-initrd", archive, "-append", "console=ttyAMA0 rdinit=/init nokaslr selinux=0"],
-            args.evidence / "guest-console.txt", timeout=300)
-    console = (args.evidence / "guest-console.txt").read_text(errors="replace")
-    assert "BEGIN_ANDROID_16K_PROBE" in console and "END_ANDROID_16K_PROBE" in console, "Guest probe did not finish"
-    assert "PAGE_SIZE=16384" in console, "Guest userspace does not use 16KB pages"
-    assert "LOAD_OK /probe/control-16384.so" in console and "CONTROL_PAGE_SIZE=16384" in console
-    assert "LOAD_FAIL /probe/control-4096.so" in console, "Strict Android loader did not reject 4KB control"
+    control_kernel = four_k_kernel(args, report)
+    consoles = {}
+    for page, image in ((4096, control_kernel), (16384, kernel)):
+        output = args.evidence / f"guest-console-{page}.txt"
+        command(["qemu-system-aarch64", "-machine", "virt", "-accel", "tcg", "-cpu", "max",
+                 "-m", "1536", "-smp", "2", "-nographic", "-no-reboot", "-kernel", image,
+                 "-initrd", archive, "-append", "console=ttyAMA0 rdinit=/init nokaslr selinux=0"], output, timeout=300)
+        console = output.read_text(errors="replace")
+        assert "BEGIN_ANDROID_16K_PROBE" in console and "END_ANDROID_16K_PROBE" in console, "Guest probe did not finish"
+        assert f"PAGE_SIZE={page}" in console and f"CONTROL_PAGE_SIZE={page}" in console
+        assert "LOAD_OK /probe/control-16384.so" in console
+        consoles[page] = console
+    assert "LOAD_OK /probe/control-4096.so" in consoles[4096]
+    assert "LOAD_FAIL /probe/control-4096.so" in consoles[16384], "16KB loader unexpectedly accepted the 4KB control"
     results = {}
     for library in ("libcrypto_chaquopy.so", "libsqlite3_chaquopy.so", "libssl_chaquopy.so"):
-        line = next(line for line in console.splitlines() if "LOAD_FAIL /probe/" + library in line)
-        assert "program alignment (4096) cannot be smaller than system page size (16384)" in line, line
-        results[library] = {"status": "FAIL", "reason": line}
+        assert "LOAD_OK /probe/" + library in consoles[4096], f"4KB baseline cannot load {library}; dependencies or probe setup are incomplete"
+        line = next(line for line in consoles[16384].splitlines() if "LOAD_FAIL /probe/" + library in line)
+        assert "not found" not in line, "Missing dependency is not a page compatibility result"
+        results[library] = {"status": "FAIL", "four_k": "PASS", "sixteen_k_reason": line}
+    cli = {}
+    for name in ("SERVER", "ASTC"):
+        codes = {str(page): int(re.search(name + r"_EXEC_EXIT=(\d+)", text).group(1))
+                 for page, text in consoles.items()}
+        cli[name.lower()] = {"exit_codes": codes}
+    assert cli["astc"]["exit_codes"] == {"4096": 0, "16384": 139}, "ASTC page-dependent crash did not reproduce"
+    assert cli["server"]["exit_codes"]["4096"] < 128 and cli["server"]["exit_codes"]["16384"] == 139
+    assert "panic:" in consoles[4096] or "CLI is reserved" in consoles[4096], "4KB Go execution did not reach Go code"
     report.update({"diagnostic_status": "COMPLETE", "strict_native_16k_compatibility": "FAIL",
                    "guest_page_size": 16384, "positive_16k_control": "PASS", "negative_4k_control": "PASS",
-                   "libraries": results})
+                   "four_k_baseline": "PASS", "libraries": results, "native_executables": cli,
+                   "go_4k_limit": "Isolated probe omits account/config/master data; 4KB Go reaches its initializer/CLI, not server readiness"})
     print("Completed real 16KB ARM/Bionic diagnostics: pinned APK native compatibility FAIL", flush=True)
 
 
