@@ -142,7 +142,7 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 	// the drop amounts come from masterdata when the asset repository provides the lesson
 	// drop tables, the built-in lists above are the fallback for an older asset repository
 	lessonGamedata := session.Gamedata.Lesson
-	// lesson is 1 to 3; lesson 4 is deliberately not reachable, see markInsightSkill
+	// Keys 1 to 3 are the selected lessons; key 0 is the shooting-star action list.
 	markLessonAction := func(lesson, position, rarity int32) bool {
 		actions := resp.LessonMenuActions.GetOnly(lesson)
 		if actions == nil || actions.Size() < int(position) {
@@ -164,13 +164,17 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 	// were actually run can carry one. A skill that any combination can give has no such
 	// lesson: m_lesson_skill_content leaves lesson_menu_id1 null for those, which reaches
 	// here as a source menu id of 0 -- the same key lesson 4's action list is stored
-	// under. Matching on that would put the bulb on lesson 4, which the player never ran,
-	// for about a fifth of all skill drops. Give those a random one of the 3 instead.
-	markInsightSkill := func(sourceMenuId, position, skillMasterId int32) {
+	// under. Only explicit shooting-star metadata should mark that special action list.
+	// Give an ordinary skill with no source a random one of the 3 selected lessons instead.
+	markInsightSkill := func(sourceMenuId, position, skillMasterId int32, shootingStar bool) {
 		if position < 1 || position > 9 {
 			return
 		}
 		rarity := lessonGamedata.SkillRarity[skillMasterId]
+		if shootingStar {
+			markLessonAction(0, position, rarity)
+			return
+		}
 		marked := false
 		for lesson := int32(1); lesson <= 3; lesson++ {
 			actions := resp.LessonMenuActions.GetOnly(lesson)
@@ -320,7 +324,8 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 						Position:       position,
 						PassiveSkillId: skillMasterId,
 					})
-					markInsightSkill(sourceMenuId, position, skillMasterId)
+					markInsightSkill(sourceMenuId, position, skillMasterId,
+						lessonGamedata.ShootingStarSkills[key][skillMasterId])
 				}
 			}
 
@@ -335,7 +340,8 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 						Position:       lessonLeaderPosition,
 						PassiveSkillId: skillMasterId,
 					})
-					markInsightSkill(sourceMenuId, lessonLeaderPosition, skillMasterId)
+					markInsightSkill(sourceMenuId, lessonLeaderPosition, skillMasterId,
+						lessonGamedata.ShootingStarSkills[key][skillMasterId])
 				}
 			}
 		}
