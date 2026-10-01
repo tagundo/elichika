@@ -223,12 +223,24 @@ class Client:
         # FinishLive contains a judgment for every note, including the randomized
         # reward notes returned by StartLive. Omitting these is an invalid packet.
         notes = []
-        for note in live["live_stage"]["live_notes"]:
-            notes.extend([note["id"], {"judge_type": 5, "is_critical": False, "voltage": 1000,
-                                      "card_master_id": 100011001, "judged_at": int(time.time() * 1000)}])
+        model_decks = self.model["user_live_deck_by_id"]
+        deck = dict(zip(model_decks[::2], model_decks[1::2]))[1]
+        cards = []
+        for position in range(1, 10):
+            cards.extend([position, {"card_master_id": deck[f"card_master_id_{position}"],
+                                     "got_voltage": 100000 if position == 1 else 0,
+                                     "appeal_count": 1, "skill_triggered_count": 0,
+                                     "base_parameter": {"stamina": 1000, "appeal": 1000, "technique": 1000}}])
+        stage_notes = live["live_stage"]["live_notes"]
+        note_voltage, remainder = divmod(100000, len(stage_notes))
+        for index, note in enumerate(stage_notes):
+            notes.extend([note["id"], {"judge_type": 30, "is_critical": False,
+                                      "voltage": note_voltage + int(index < remainder),
+                                      "card_master_id": deck["card_master_id_1"],
+                                      "judged_at": int(time.time() * 1000)}])
         finished = self.request("/live/finish", {"live_id": live["live_id"], "live_finish_status": 1,
                      "live_score": {"current_score": 100000, "remaining_stamina": 1000,
-                                    "result_dict": notes, "card_stat_dict": [],
+                                    "result_dict": notes, "card_stat_dict": cards,
                                     "wave_stat_dict": [], "turn_stat_dict": []},
                      "resume_finish_info": {"cached_judge_result": []}, "room_id": 0})
         assert finished["live_result"]["voltage"] == 100000
