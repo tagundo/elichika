@@ -27,7 +27,6 @@ import zipfile
 PACKAGE = "com.tagundo.elichika"
 FILES = f"/data/user/0/{PACKAGE}/files"
 OLD_SHA = "0bdeee9f6f725fa1a8146af49b8f832a5b86f5c962fc1c1b83c2e5bd3156cf95"
-NEW_SHA = "170865171e41976736eb7ce36836d492cfcdc75a97a14cb00d277a641452d5ed"
 EVENT_KEY = bytes.fromhex("4924c4421e9e3a287dc31e2ff241a8fb46389c7f30bafee791bb06c9ae3b6c82")
 
 
@@ -214,7 +213,7 @@ class Client:
         self.model = result["user_model"]
         return result
 
-    def gameplay(self, master):
+    def gameplay(self, master, repetitions=8):
         started = self.request("/live/start", {"live_difficulty_id": 10001101, "deck_id": 1,
                                "partner_user_id": 0, "partner_card_master_id": 0,
                                "lp_magnification": 1, "is_auto_play": False})
@@ -258,7 +257,7 @@ class Client:
             "SELECT count FROM m_lesson_drop_amount WHERE item_id=1 AND weight>0")]
         assert drop_amounts, "Missing authoritative normal reward amounts"
         combinations = [(1, 1, 1), (3, 3, 3), (7, 7, 7), (8, 8, 8),
-                        (1, 2, 3), (3, 2, 1), (3, 3, 7), (7, 3, 3)] * 8
+                        (1, 2, 3), (3, 2, 1), (3, 3, 7), (7, 3, 3)] * repetitions
         cases = [(combination, [], False) for combination in combinations]
         cases += [((3, 3, 3), [1400], False), ((3, 3, 3), [1401], False),
                   ((3, 3, 3), [1400, 1401], False), ((3, 3, 3), [1401], True),
@@ -319,9 +318,9 @@ def run(args, report):
                              "selinux": android.shell("getenforce"),
                              "page_size": subprocess.check_output(["getconf", "PAGESIZE"], text=True).strip(),
                              "type": "native ARM64 Redroid container; not a physical phone"}
-    for apk, expected in ((args.old, OLD_SHA), (args.candidate, NEW_SHA)):
+    for apk, expected in ((args.old, OLD_SHA), (args.candidate, args.candidate_sha256)):
         assert sha(apk.read_bytes()) == expected, "APK digest differs from audited artifact"
-    report["apk_sha256"] = {"official": OLD_SHA, "candidate": NEW_SHA}
+    report["apk_sha256"] = {"official": OLD_SHA, "candidate": args.candidate_sha256}
     with tempfile.TemporaryDirectory(prefix="android-release-smoke-") as directory:
         temporary = Path(directory)
         public = temporary / "publickey.pem"
@@ -364,7 +363,7 @@ def run(args, report):
             android.write("/sdcard/Download/sukusta/" + name, content, private=False)
         before = android.snapshot(temporary)
         report["before_update"] = before
-        report["candidate_install"] = android.install(args.candidate, 2026100100)
+        report["candidate_install"] = android.install(args.candidate, args.version_code)
         assert android.snapshot(temporary) == before, "Package update changed account database"
         assert json.loads(android.read(f"{FILES}/config.json")) == config, "Package update changed config"
         assert android.read(prefs) == prefs_content, "Package update changed application preferences"
@@ -374,7 +373,7 @@ def run(args, report):
         actual_config = json.loads(android.read(f"{FILES}/config.json"))
         assert all(actual_config[key] == config[key]
                    for key in ("cdn_cache", "cdn_cache_dir", "webui_language", "locales")), "User settings lost"
-        assert "2026100100" in android.read(f"{FILES}/installed_version").decode()
+        assert str(args.version_code) in android.read(f"{FILES}/installed_version").decode()
         assert "ko" in android.read(prefs).decode()
         for name, content in shared.items():
             assert android.read("/sdcard/Download/sukusta/" + name) == content, "Shared user file lost"
@@ -399,7 +398,7 @@ def run(args, report):
         report["restart"]["retained_accounts_can_login"] = True
         android.stop()
         android.adb("uninstall", PACKAGE)
-        report["fresh_install"] = android.install(args.candidate, 2026100100)
+        report["fresh_install"] = android.install(args.candidate, args.version_code)
         report["fresh_start"] = android.start("candidate-fresh")
         fresh = Client("ko", public)
         fresh.create()
@@ -414,6 +413,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--old", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
+    parser.add_argument("--candidate-sha256", required=True)
+    parser.add_argument("--version-code", type=int, required=True)
     parser.add_argument("--serial", default="127.0.0.1:5555")
     parser.add_argument("--evidence", type=Path, required=True)
     args = parser.parse_args()

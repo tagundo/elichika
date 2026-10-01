@@ -55,7 +55,10 @@ def inspect_archive(archive, prefix="", depth=0):
         name = prefix + entry.filename
         if magic == b"\x7fELF":
             data = archive.read(entry)
-            segments = elf_layout(data)
+            try:
+                segments = elf_layout(data)
+            except (ValueError, struct.error) as error:
+                raise ValueError(f"{name}: {error}") from error
             files[name] = {"sha256": hashlib.sha256(data).hexdigest(),
                            "load_segments": segments,
                            "compatible": all(item["compatible"] for item in segments)}
@@ -70,7 +73,7 @@ def audit(apk):
         files = inspect_archive(archive)
     if not any(name.startswith("lib/arm64-v8a/") for name in files):
         raise ValueError("APK has no ARM64 native files")
-    if not any("requirements-arm64-v8a.imy!" in name for name in files):
+    if not any("requirements-" in name and ".imy!" in name for name in files):
         raise ValueError("Chaquopy native dependencies were not inspected")
     failures = [name for name, item in files.items() if not item["compatible"]]
     return {"status": "FAIL" if failures else "PASS", "page_size": PAGE_SIZE,
@@ -85,10 +88,13 @@ def main():
     parser.add_argument("apk", type=Path)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
-    result = audit(args.apk)
+    try:
+        result = audit(args.apk)
+    except Exception as error:
+        result = {"status": "FAIL", "error": str(error)}
     args.report.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({key: value for key, value in result.items() if key != "files"}, indent=2))
-    if result["incompatible_files"]:
+    if result["status"] != "PASS":
         raise SystemExit("APK contains native files incompatible with 16 KB pages")
 
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Run actual APK ELF files against Android's loader on a 16KB ARM kernel.
+"""Run actual APK native files and game requests on 4KB and 16KB ARM kernels.
 
 Uses QEMU software CPU emulation, the official Android 15 16KB kernel and
-Bionic, and an isolated temporary initramfs. This diagnoses native loading;
-it does not boot the Android framework or install the complete APK.
-A completed diagnostic can report incompatibility. It is not a release gate.
+Bionic, and an isolated temporary initramfs. Executes the APK's Go server,
+standalone CPython and native packages, and ASTC encoder without compatibility
+mode. Does not boot the Android framework or Chaquopy's Java bridge.
 """
 
 import argparse
@@ -18,13 +18,13 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import traceback
 import urllib.request
 import zipfile
 import zlib
 
 
-APK_SHA = "170865171e41976736eb7ce36836d492cfcdc75a97a14cb00d277a641452d5ed"
 FOUR_K_KERNEL_SHA = "3226eb09ec1d770c1d44e34493b95966c94d0312c0eb54f90acc893197c572a6"
 PROBE = r'''
 #include <stdio.h>
@@ -46,6 +46,17 @@ int main(int argc, char **argv) {
         fflush(stdout);
     }
     return 0;
+}
+'''
+PYTHON_PROBE = r'''
+extern void Py_Initialize(void);
+extern int PyRun_SimpleString(const char *);
+extern int Py_FinalizeEx(void);
+int main(void) {
+    Py_Initialize();
+    int status = PyRun_SimpleString("exec(compile(open('/python/native_probe.py', encoding='utf-8').read(), '/python/native_probe.py', 'exec'))");
+    if (Py_FinalizeEx() < 0) return 120;
+    return status == 0 ? 0 : 1;
 }
 '''
 
@@ -225,12 +236,70 @@ def elf_alignment(data):
             for i in range(count) if struct.unpack_from("<I", data, offset + i * size)[0] == 1]
 
 
+def extract_apk_runtime(archive, root):
+    """Expand original payload and Python assets, preserving their bytes."""
+    python = root / "python"
+    stdlib = python / "lib/python3.13"
+    extensions = stdlib / "lib-dynload"
+    packages = stdlib / "site-packages"
+    native = python / "native"
+    for directory in (stdlib, extensions, packages, native, python / "app", root / "runtime"):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    def copy_entry(entry, prefix, destination):
+        relative = Path(entry.filename[len(prefix):])
+        assert not relative.is_absolute() and ".." not in relative.parts
+        path = destination / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open(entry) as source, path.open("wb") as target:
+            shutil.copyfileobj(source, target)
+
+    for entry in archive.infolist():
+        if entry.is_dir():
+            continue
+        if entry.filename.startswith("assets/payload/"):
+            copy_entry(entry, "assets/payload/", root / "runtime")
+        elif entry.filename.startswith("assets/chaquopy/bootstrap-native/arm64-v8a/"):
+            copy_entry(entry, "assets/chaquopy/bootstrap-native/arm64-v8a/", extensions)
+    for filename, destination in (
+            ("stdlib-common.imy", stdlib), ("stdlib-arm64-v8a.imy", extensions),
+            ("requirements-common.imy", packages), ("requirements-arm64-v8a.imy", packages),
+            ("app.imy", python / "app")):
+        with zipfile.ZipFile(io.BytesIO(archive.read("assets/chaquopy/" + filename))) as nested:
+            for entry in nested.infolist():
+                if entry.is_dir():
+                    continue
+                assert not Path(entry.filename).is_absolute() and ".." not in Path(entry.filename).parts
+                path = destination / entry.filename
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(nested.read(entry))
+    (python / "cacert.pem").write_bytes(archive.read("assets/chaquopy/cacert.pem"))
+    # Dependent shared libraries can live below package-specific directories.
+    # Expose them to Bionic while retaining the package paths CPython imports.
+    for path in stdlib.rglob("*.so"):
+        destination = native / path.name
+        if destination.exists():
+            assert destination.read_bytes() == path.read_bytes(), "Ambiguous native dependency name"
+        else:
+            shutil.copyfile(path, destination)
+    source = Path(__file__).parent
+    for filename in ("android_release_smoke.py", "validate_runtime.py"):
+        shutil.copyfile(source / filename, python / "app" / filename)
+    shutil.copyfile(source / "android_native_functional.py", python / "native_probe.py")
+    (root / "runtime/config.json").write_text(json.dumps({
+        "server_address": "127.0.0.1:18080", "locales": "ja,en,ko,zh", "cdn_cache": False}))
+
+
 def prepare(args, report):
     args.work.mkdir(parents=True, exist_ok=True)
     root = args.work / "root"
     root.mkdir()
-    assert sha(args.candidate.read_bytes()) == APK_SHA, "Not the audited signed APK"
-    report["apk_sha256"] = APK_SHA
+    assert sha(args.candidate.read_bytes()) == args.candidate_sha256, "APK digest differs from build artifact"
+    report["apk_sha256"] = args.candidate_sha256
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "android/ci"))
+    from audit_native import audit
+    report["native_layout"] = audit(args.candidate)
+    assert report["native_layout"]["status"] == "PASS", "APK has incompatible native files"
     properties = (args.image / "source.properties").read_text()
     property_values = dict(line.split("=", 1) for line in properties.splitlines() if "=" in line)
     assert property_values["AndroidVersion.ApiLevel"] == "35" and property_values["Pkg.Revision"] == "5"
@@ -329,14 +398,22 @@ def prepare(args, report):
                 (probe_dir / name).chmod(0o755)
                 libraries[name] = {"sha256": sha(data), "load_alignments": elf_alignment(data)}
         report["unchanged_native_libraries"] = libraries
+        extract_apk_runtime(archive, root)
+    python_library = probe_dir / "libpython3.13.so"
+    assert python_library.is_file(), "Expected the APK's Python 3.13 runtime"
     cc = args.ndk / "toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
     assert cc.is_file(), "Android ARM64 compiler not installed"
     (args.work / "probe.c").write_text(PROBE)
     command([cc, args.work / "probe.c", "-Wl,-z,max-page-size=16384", "-ldl", "-o", probe_dir / "elfcheck"],
             args.evidence / "probe-build.txt")
+    (args.work / "python-probe.c").write_text(PYTHON_PROBE)
+    command([cc, args.work / "python-probe.c", "-Wl,-z,max-page-size=16384",
+             "-L" + str(probe_dir), "-lpython3.13", "-o", probe_dir / "pythoncheck"],
+            args.evidence / "python-probe-build.txt")
     (args.work / "control.c").write_text("#include <unistd.h>\nlong probe_page_size(void) {return sysconf(_SC_PAGESIZE);}\n")
     for page in (4096, 16384):
         command([cc, args.work / "control.c", "-shared", "-fPIC", f"-Wl,-z,max-page-size={page}",
+                 f"-Wl,-z,common-page-size={page}",
                  "-o", probe_dir / f"control-{page}.so"], args.evidence / f"control-{page}-build.txt")
         assert min(elf_alignment((probe_dir / f"control-{page}.so").read_bytes())) == page
 
@@ -346,13 +423,29 @@ def prepare(args, report):
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sysfs /sys
 /bin/busybox mount -t devtmpfs devtmpfs /dev
-export LD_LIBRARY_PATH=/apex/com.android.runtime/lib64/bionic:/system/lib64:/probe
+/bin/busybox ip link set lo up
+export LD_LIBRARY_PATH=/apex/com.android.runtime/lib64/bionic:/system/lib64:/probe:/python/native
+export PYTHONHOME=/python
+export PYTHONPATH=/python/lib/python3.13:/python/lib/python3.13/lib-dynload:/python/lib/python3.13/site-packages:/python/app
+export SSL_CERT_FILE=/python/cacert.pem
+export OPENBLAS_NUM_THREADS=1
+export PATH=/bin:/system/bin
 echo BEGIN_ANDROID_16K_PROBE
 /probe/elfcheck /probe/control-16384.so /probe/control-4096.so /probe/libcrypto_chaquopy.so /probe/libsqlite3_chaquopy.so /probe/libssl_chaquopy.so
 echo ELF_PROBE_EXIT=$?
 echo BEGIN_SERVER_EXEC
-/probe/libelichika.so --16k-loader-probe
+cd /runtime
+/probe/libelichika.so >/tmp/go-server.log 2>&1 &
+server_pid=$!
+echo BEGIN_PYTHON_FUNCTIONAL
+/probe/pythoncheck
+echo PYTHON_FUNCTIONAL_EXIT=$?
+/bin/busybox kill -INT "$server_pid"
+wait "$server_pid"
 echo SERVER_EXEC_EXIT=$?
+echo BEGIN_GO_SERVER_LOG
+/bin/busybox cat /tmp/go-server.log
+echo END_GO_SERVER_LOG
 echo BEGIN_ASTC_EXEC
 /probe/libastcenc.so -help
 echo ASTC_EXEC_EXIT=$?
@@ -374,8 +467,8 @@ def run(args, report):
     for page, image in ((4096, control_kernel), (16384, kernel)):
         output = args.evidence / f"guest-console-{page}.txt"
         command(["qemu-system-aarch64", "-machine", "virt", "-accel", "tcg", "-cpu", "max",
-                 "-m", "1536", "-smp", "2", "-nographic", "-no-reboot", "-kernel", image,
-                 "-initrd", archive, "-append", "console=ttyAMA0 rdinit=/init nokaslr selinux=0"], output, timeout=300)
+                 "-m", "4096", "-smp", "2", "-nographic", "-no-reboot", "-kernel", image,
+                 "-initrd", archive, "-append", "console=ttyAMA0 rdinit=/init nokaslr selinux=0"], output, timeout=1500)
         console = output.read_text(errors="replace")
         assert "BEGIN_ANDROID_16K_PROBE" in console and "END_ANDROID_16K_PROBE" in console, "Guest probe did not finish"
         assert f"PAGE_SIZE={page}" in console and f"CONTROL_PAGE_SIZE={page}" in console
@@ -386,34 +479,41 @@ def run(args, report):
     results = {}
     for library in ("libcrypto_chaquopy.so", "libsqlite3_chaquopy.so", "libssl_chaquopy.so"):
         assert "LOAD_OK /probe/" + library in consoles[4096], f"4KB baseline cannot load {library}; dependencies or probe setup are incomplete"
-        line = next(line for line in consoles[16384].splitlines() if "LOAD_FAIL /probe/" + library in line)
-        assert "not found" not in line, "Missing dependency is not a page compatibility result"
-        results[library] = {"status": "FAIL", "four_k": "PASS", "sixteen_k_reason": line}
+        assert "LOAD_OK /probe/" + library in consoles[16384], f"16KB cannot load {library}"
+        results[library] = {"status": "PASS", "four_k": "PASS", "sixteen_k": "PASS"}
     cli = {}
     for name in ("SERVER", "ASTC"):
         codes = {str(page): int(re.search(name + r"_EXEC_EXIT=(\d+)", text).group(1))
                  for page, text in consoles.items()}
         cli[name.lower()] = {"exit_codes": codes}
-    assert cli["astc"]["exit_codes"] == {"4096": 0, "16384": 139}, "ASTC page-dependent crash did not reproduce"
-    assert cli["server"]["exit_codes"]["4096"] < 128 and cli["server"]["exit_codes"]["16384"] == 139
-    assert "panic:" in consoles[4096] or "CLI is reserved" in consoles[4096], "4KB Go execution did not reach Go code"
-    report.update({"diagnostic_status": "COMPLETE", "strict_native_16k_compatibility": "FAIL",
+    functional = {}
+    for page, console in consoles.items():
+        assert "PYTHON_FUNCTIONAL_EXIT=0" in console, f"{page}: Python/native/gameplay operations failed"
+        match = re.search(r"^NATIVE_FUNCTIONAL_REPORT=(.+)$", console, re.M)
+        assert match, f"{page}: no functional report"
+        functional[str(page)] = json.loads(match[1])
+        assert functional[str(page)]["status"] == "PASS" and functional[str(page)]["page_size"] == page
+        assert "panic:" not in console and "Segmentation fault" not in console
+    assert cli["astc"]["exit_codes"] == cli["server"]["exit_codes"] == {"4096": 0, "16384": 0}
+    assert functional["4096"]["python"]["astc_sha256"] == functional["16384"]["python"]["astc_sha256"], "ASTC output differs by page size"
+    report.update({"diagnostic_status": "COMPLETE", "strict_native_16k_compatibility": "PASS",
                    "guest_page_size": 16384, "positive_16k_control": "PASS", "negative_4k_control": "PASS",
                    "four_k_baseline": "PASS", "libraries": results, "native_executables": cli,
-                   "go_4k_limit": "Isolated probe omits account/config/master data; 4KB Go reaches its initializer/CLI, not server readiness"})
-    print("Completed real 16KB ARM/Bionic diagnostics: pinned APK native compatibility FAIL", flush=True)
+                   "functional": functional})
+    print("Original APK native loading and functional operations PASS on 4KB and 16KB", flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("candidate", "image", "ndk", "work", "evidence"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--candidate-sha256", required=True)
     args = parser.parse_args()
     args.evidence.mkdir(parents=True, exist_ok=True)
     report = {"diagnostic_status": "RUNNING", "limits": [
-        "Native Android linker on an official 16KB kernel; Android framework and GUI are not booted",
+        "Original APK Go/CPython/packages/ASTC on official ARM kernels; Android framework and GUI are not booted",
         "Strict loading only; Android per-app compatibility mode is not measured",
-        "No physical hardware, full APK installation, account upgrade or original game playback"]}
+        "Chaquopy Java bridge, full APK installation/upgrade and original game playback need Android/device checks"]}
     try:
         run(args, report)
     except Exception as exc:
@@ -421,7 +521,7 @@ def main():
         raise
     finally:
         (args.evidence / "android-16k-native.json").write_text(json.dumps(report, indent=2) + "\n")
-        print(json.dumps(report, indent=2), flush=True)
+        print(json.dumps({key: value for key, value in report.items() if key != "native_layout"}, indent=2), flush=True)
 
 
 if __name__ == "__main__":

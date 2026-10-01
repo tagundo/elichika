@@ -29,10 +29,15 @@ on:
 
 permissions:
   contents: write   # needed to create a GitHub Release on tag builds
+  actions: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      apk_sha256: ${{ steps.layout.outputs.sha256 }}
+      apk_name: elichika-${{ steps.ver.outputs.name }}.apk
+      version_code: ${{ steps.ver.outputs.code }}
     env:
       NDK_VERSION: "28.2.13676358"
     steps:
@@ -294,10 +299,12 @@ jobs:
           ls -la "$d"
 
       - name: Reject incompatible native files in the actual APK
-        run: >-
-          python3 android/ci/audit_native.py
-          android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
-          --report android-native-layout.json
+        id: layout
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
+          python3 android/ci/audit_native.py "$APK" --report android-native-layout.json
+          echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
       - name: Upload native layout evidence
         if: always()
@@ -314,15 +321,67 @@ jobs:
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      # Publish the release-signed APK to a GitHub Release, either on a pushed CalVer
-      # tag (vYYYY.MM.DD[.N]) or a manual run that supplies release_tag (the action
-      # creates that tag on this commit — no local git needed).
+      - name: Assemble Android native-package instrumentation
+        working-directory: android
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          mkdir -p app/src/androidTest/assets
+          cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
+          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
+            -PappVersionName="${{ steps.ver.outputs.name }}" \
+            -PappVersionCode="${{ steps.ver.outputs.code }}"
+
+      - name: Upload native-package instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-native-test-apk
+          path: android/app/build/outputs/apk/androidTest/release/*.apk
+          if-no-files-found: error
+
+  native-compatibility:
+    needs: build
+    uses: ./.github/workflows/android-16k.yml
+    with:
+      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
+      candidate_name: ${{ needs.build.outputs.apk_name }}
+
+  android-upgrade:
+    needs: build
+    uses: ./.github/workflows/android-smoke.yml
+    with:
+      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
+      candidate_name: ${{ needs.build.outputs.apk_name }}
+      version_code: ${{ needs.build.outputs.version_code }}
+
+  apk-audit:
+    needs: build
+    uses: ./.github/workflows/release-audit.yml
+    with:
+      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
+      candidate_name: ${{ needs.build.outputs.apk_name }}
+      version_code: ${{ needs.build.outputs.version_code }}
+      source_commit: ${{ github.sha }}
+
+  publish:
+    needs: [build, native-compatibility, android-upgrade, apk-audit]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download validated release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: release
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
-          files: android/app/build/outputs/apk/release/*.apk
+          files: release/*.apk
           # release_notes (if given) appears at the top; with
           # generate_release_notes the changelog is appended below it.
           body: ${{ github.event.inputs.release_notes }}

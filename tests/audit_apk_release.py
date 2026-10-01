@@ -150,6 +150,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--old", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
+    parser.add_argument("--candidate-sha256", required=True)
     parser.add_argument("--sdk", type=Path, required=True)
     parser.add_argument("--old-sha256", required=True)
     parser.add_argument("--expected-commit", required=True)
@@ -160,6 +161,7 @@ def main():
               "scope": "Actual signed APKs, native provenance and bundled SQLite data; no device install"}
     try:
         assert sha256(args.old) == args.old_sha256, "Official APK digest mismatch"
+        assert sha256(args.candidate) == args.candidate_sha256, "Candidate APK digest mismatch"
         old = apk_metadata(args.old, args.sdk)
         candidate = apk_metadata(args.candidate, args.sdk)
         report.update({"official": old, "candidate": candidate})

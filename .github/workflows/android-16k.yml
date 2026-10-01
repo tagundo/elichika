@@ -1,12 +1,14 @@
-name: Android 16KB native loader diagnostics
+name: Android 4KB and 16KB native compatibility
 
 on:
-  push:
-    branches: [codex/release-readiness-audit]
-    paths:
-      - .github/workflows/android-16k.yml
-      - tests/android_16k_native.py
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidate_sha256:
+        type: string
+        required: true
+      candidate_name:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -15,7 +17,7 @@ permissions:
 jobs:
   native-16k:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -29,19 +31,17 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             'system-images;android-35;google_apis_ps16k;arm64-v8a'
 
-      - name: Download the exact verified release artifact
+      - name: Download this build's signed release artifact
         uses: actions/download-artifact@v4
         with:
           name: elichika-release-apk
-          run-id: 36851847480
-          repository: tagundo/elichika
-          github-token: ${{ github.token }}
           path: candidate
 
-      - name: Run unchanged native libraries with 16KB Android loader
+      - name: Run original APK server, Python packages and ASTC on both kernels
         run: >-
           python3 -u tests/android_16k_native.py
-          --candidate candidate/elichika-2026.10.01-dev.apk
+          --candidate "candidate/${{ inputs.candidate_name }}"
+          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
           --image "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a"
           --ndk "$ANDROID_NDK_HOME"
           --work "$RUNNER_TEMP/android-16k-native"

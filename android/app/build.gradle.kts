@@ -16,6 +16,7 @@ android {
         applicationId = "com.tagundo.elichika"
         minSdk = 29          // first API with a dependable exec-from-nativeLibraryDir guarantee
         targetSdk = 34
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // CalVer (date-based). On a tag build the CI derives these from the git tag
         // (vYYYY.MM.DD[.N]) and passes -PappVersionName / -PappVersionCode; local and
         // non-tag builds fall back to a dev version. versionCode must strictly
@@ -27,6 +28,7 @@ android {
         // arm64 only: matches modern devices and the SIFAS client; keeps the APK small.
         ndk { abiFilters += listOf("arm64-v8a") }
     }
+    testBuildType = "release"
 
     // The elichika server binary ships as jniLibs/arm64-v8a/libelichika.so so the
     // installer unpacks it into nativeLibraryDir with the execute bit. Legacy
@@ -98,9 +100,9 @@ chaquopy {
         // APK CI inspects every ELF, including those inside Chaquopy asset ZIPs.
         version = "3.13"
         pip {
-            // numpy + Pillow are Chaquopy-provided prebuilt wheels (safe).
-            install("numpy")
-            install("Pillow")
+            // Pin the Android wheels exercised by APK layout and runtime checks.
+            install("numpy==1.26.2")
+            install("Pillow==11.0.0")
             // UnityPy itself is vendored as pure-Python source by CI (pip install
             // --no-deps into src/main/python; see .github/workflows/android.yml).
             // Here we provide only its IMPORT-TIME dependencies. `import UnityPy`
@@ -109,10 +111,10 @@ chaquopy {
             // and intentionally omitted, so texture/audio ops degrade but bundle
             // editing works. lz4/brotli are C — if Chaquopy has no arm64 wheel the
             // build will surface it and we adjust.
-            install("lz4")
-            install("brotli")
-            install("attrs")
-            install("fsspec")
+            install("lz4==4.3.3")
+            install("brotli==1.1.0")
+            install("attrs==26.1.0")
+            install("fsspec==2026.9.0")
         }
     }
     // CI syncs the Python sources (adminui/, webtools/, and the dev/mod scripts)
@@ -125,6 +127,8 @@ chaquopy {
 }
 
 dependencies {
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")

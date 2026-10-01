@@ -1,9 +1,20 @@
 name: Release APK compatibility audit
 
 on:
-  push:
-    branches: [codex/release-readiness-audit]
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidate_sha256:
+        type: string
+        required: true
+      candidate_name:
+        type: string
+        required: true
+      version_code:
+        type: string
+        required: true
+      source_commit:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -27,13 +38,10 @@ jobs:
         with:
           packages: build-tools;34.0.0
 
-      - name: Download the exact verified release artifact
+      - name: Download this build's signed release artifact
         uses: actions/download-artifact@v4
         with:
           name: elichika-release-apk
-          run-id: 36851847480
-          repository: tagundo/elichika
-          github-token: ${{ github.token }}
           path: candidate
 
       - name: Download the latest official APK
@@ -46,11 +54,12 @@ jobs:
         run: >-
           python3 tests/audit_apk_release.py
           --old official.apk
-          --candidate candidate/elichika-2026.10.01-dev.apk
+          --candidate "candidate/${{ inputs.candidate_name }}"
+          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
           --sdk "$ANDROID_HOME/build-tools/34.0.0"
           --old-sha256 0bdeee9f6f725fa1a8146af49b8f832a5b86f5c962fc1c1b83c2e5bd3156cf95
-          --expected-commit 67a2382e6632b269f9d50ecbefe6d0270ff2aa7b
-          --expected-version-code 2026100100
+          --expected-commit "${{ inputs.source_commit }}"
+          --expected-version-code "${{ inputs.version_code }}"
           --report release-audit-report.json
 
       - name: Upload compact audit evidence
