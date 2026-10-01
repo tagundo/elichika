@@ -26,18 +26,33 @@ def elf_layout(data):
     if phsize != 56 or phoff + phcount * phsize > len(data):
         raise ValueError("Invalid program header table")
     segments = []
+    relro_ranges = []
     for index in range(phcount):
         values = struct.unpack_from("<IIQQQQQQ", data, phoff + index * phsize)
         kind, flags, offset, address, _, file_size, memory_size, alignment = values
+        if kind == 0x6474e552:  # PT_GNU_RELRO
+            relro_ranges.append((address, address + memory_size))
         if kind != 1:
             continue
         if offset + file_size > len(data) or file_size > memory_size:
             raise ValueError("Invalid load segment")
         segments.append({"offset": offset, "virtual_address": address,
-                         "alignment": alignment,
+                         "alignment": alignment, "memory_size": memory_size,
+                         "writable": bool(flags & 2),
                          "compatible": alignment >= PAGE_SIZE
                          and alignment & (alignment - 1) == 0
                          and (address - offset) % PAGE_SIZE == 0})
+    for _, end in relro_ranges:
+        protected_end = (end + PAGE_SIZE - 1) // PAGE_SIZE * PAGE_SIZE
+        for segment in segments:
+            # Bionic rounds RELRO protection to the physical page size. Old
+            # GCC libraries can have 64KB LOAD alignment but a 4KB RELRO end,
+            # making adjacent mutable data read-only and crashing constructors.
+            start = segment["virtual_address"]
+            if (segment["writable"] and end < protected_end
+                    and start < protected_end and start + segment["memory_size"] > end):
+                segment["relro_protects_writable_data"] = True
+                segment["compatible"] = False
     if not segments:
         raise ValueError("ELF has no load segments")
     return segments

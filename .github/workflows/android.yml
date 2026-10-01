@@ -224,6 +224,15 @@ jobs:
 
       # CalVer: a tag vYYYY.MM.DD[.N] sets versionName "YYYY.MM.DD[.N]" and a strictly
       # increasing versionCode YYYYMMDD*100(+N). Non-tag builds get a dated dev version.
+      - name: Build NumPy BLAS/LAPACK without the legacy Fortran runtime
+        run: |
+          git clone --depth 1 --branch v0.3.33 https://github.com/OpenMathLib/OpenBLAS "$RUNNER_TEMP/openblas-source"
+          python3 android/ci/build_openblas.py \
+            --source "$RUNNER_TEMP/openblas-source" \
+            --ndk "$ANDROID_HOME/ndk/${NDK_VERSION}" \
+            --work "$RUNNER_TEMP/openblas-build" \
+            --wheel android/app/native-wheels/chaquopy_openblas-0.3.33-1-py3-none-android_24_arm64_v8a.whl
+
       - name: Derive app version (CalVer)
         id: ver
         env:

@@ -102,6 +102,8 @@ chaquopy {
         pip {
             // Pin the Android wheels exercised by APK layout and runtime checks.
             install("numpy==1.26.2")
+        // C LAPACK avoids the old libgfortran RELRO layout which crashes on 16KB.
+        install("native-wheels/chaquopy_openblas-0.3.33-1-py3-none-android_24_arm64_v8a.whl")
             install("Pillow==11.0.0")
             // Pillow's upstream Chaquopy wheel still contains a 4 KB FreeType.
             // CI rebuilds the same 2.9.1 ABI and supplies this local wheel.
