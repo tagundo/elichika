@@ -1,6 +1,7 @@
 package clientdb
 
 import (
+	"elichika/clientdb/upgrades"
 	"elichika/config"
 	"elichika/log"
 	"elichika/utils"
@@ -111,4 +112,19 @@ func initLocale(locale string) {
 func databaseInit() {
 	initLocale("gl")
 	initLocale("jp")
+	// Restored/custom DBs skip the original migrations. Add only missing lesson
+	// animation metadata, before manifests are regenerated and gamedata is loaded.
+	for _, locale := range []string{"gl", "jp"} {
+		changed, err := upgrades.LessonShootingStars(
+			config.AssetPath+"db/"+locale+"/masterdata.db",
+			config.AssetPath+"sql/upgrades/001.lesson_shooting_star.sql",
+		)
+		if err != nil {
+			// This optional animation must not disable otherwise working training.
+			// The upgrade transaction was rolled back; a later startup can retry.
+			log.Println("WARNING: Shooting Star database upgrade failed for ", locale, ": ", err)
+		} else if changed {
+			log.Println("Installed Shooting Star animation metadata for ", locale)
+		}
+	}
 }
