@@ -39,9 +39,9 @@ def main():
     base = ['-avd', 'elichika16k', '-port', '5554', '-accel', 'off',
             '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot',
             '-gpu', 'swiftshader', '-feature', '-Vulkan', '-memory', '4096',
-            '-cores', '4', '-skin', '480x800', '-skip-adb-auth', '-verbose',
+            '-cores', '1', '-skin', '480x800', '-skip-adb-auth', '-verbose',
             '-show-kernel', '-qemu', '-machine', 'type=virt',
-            '-accel', 'tcg', '-cpu', 'max']
+            '-accel', 'tcg,thread=single', '-cpu', 'max']
     report = {'status': 'PREPARING', 'target': 'official Android 35 ARM64 16KB',
               'hardware_acceleration': False, 'attempts': []}
     report_path = evidence / 'android16k-boot.json'
@@ -65,7 +65,7 @@ def main():
         attempt = {'binary': str(binary), 'pid': process.pid, 'command': [str(binary), *base]}
         report['attempts'].append(attempt)
         report_path.write_text(json.dumps(report,indent=2)+'\n')
-        deadline = started + (120 if index == 1 else 1500)
+        deadline = started + (20 if index == 1 else 1500)
         heartbeat = started
         try:
             while time.monotonic() < deadline:
