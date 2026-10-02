@@ -16,6 +16,7 @@ from android_release_smoke import Android, PACKAGE
 
 class ScreenAndroid(Android):
     def adb(self, *args, raw=False, timeout=300, input=None):
+        if args and args[0]=='install':timeout=max(timeout,900)
         return super().adb(*args,raw=raw,timeout=timeout,input=input)
 
     def tree(self, label):

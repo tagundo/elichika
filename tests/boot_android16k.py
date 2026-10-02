@@ -64,6 +64,7 @@ def main():
         started = time.monotonic()
         attempt = {'binary': str(binary), 'pid': process.pid, 'command': [str(binary), *base]}
         report['attempts'].append(attempt)
+        report_path.write_text(json.dumps(report,indent=2)+'\n')
         deadline = started + (120 if index == 1 else 1500)
         heartbeat = started
         try:

@@ -37,7 +37,52 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -list-avds > evidence/registered-avds.txt
           test "$(cat evidence/registered-avds.txt)" = elichika16k
       - name: Boot full Android with software ARM emulation and require actual 16KB pages
-        run: python3 -u tests/boot_android16k.py
+        run: |
+          nohup python3 -u tests/boot_android16k.py > evidence/boot-helper.log 2>&1 < /dev/null &
+          echo "$!" > evidence/boot-helper.pid
+      - name: Capture boot progress without waiting for the final Android framework result
+        run: |
+          python3 - <<'PY'
+          import json,os,shutil,subprocess,time
+          from pathlib import Path
+          source=Path('evidence');target=Path('boot-progress');target.mkdir(exist_ok=True)
+          deadline=time.monotonic()+180
+          while time.monotonic()<deadline:
+              report=source/'android16k-boot.json'
+              try:
+                  if json.loads(report.read_text()).get('status') in ('PASS','FAIL'):break
+              except (FileNotFoundError,json.JSONDecodeError):pass
+              time.sleep(5)
+          for item in source.iterdir():
+              if item.is_file():shutil.copy2(item,target/item.name)
+          adb=os.environ['ANDROID_HOME']+'/platform-tools/adb'
+          for name,args in [('devices.txt',['devices','-l']),('properties.txt',['-s','emulator-5554','shell','getprop']),('kernel.txt',['-s','emulator-5554','shell','dmesg']),('logcat.txt',['-s','emulator-5554','logcat','-d'])]:
+              with (target/name).open('wb') as output:
+                  try:subprocess.run([adb,*args],stdout=output,stderr=subprocess.STDOUT,timeout=15)
+                  except subprocess.TimeoutExpired:output.write(b'\nDiagnostic timeout\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-full-16k-boot-progress
+          path: boot-progress/
+      - name: Require a fully booted Android framework with genuine 16KB pages
+        run: |
+          python3 - <<'PY'
+          import json,time
+          from pathlib import Path
+          deadline=time.monotonic()+1500
+          while time.monotonic()<deadline:
+              try:report=json.loads(Path('evidence/android16k-boot.json').read_text())
+              except (FileNotFoundError,json.JSONDecodeError):time.sleep(3);continue
+              if report.get('status')=='PASS':
+                  assert report['actual_page_size']==16384
+                  print(json.dumps(report));break
+              if report.get('status')=='FAIL':
+                  print(Path('evidence/boot-helper.log').read_text(errors='replace')[-15000:])
+                  raise RuntimeError(report)
+              time.sleep(5)
+          else:raise TimeoutError('Full Android framework did not boot; see diagnostic artifact')
+          PY
       - name: Record booted Android and disable page-size compatibility shortcuts
         run: |
           set -euo pipefail
@@ -97,4 +142,3 @@ jobs:
         timeout-minutes: 1
         run: |
           if test -f evidence/emulator.pid; then kill "$(cat evidence/emulator.pid)" || true; fi
-
