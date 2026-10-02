@@ -115,7 +115,9 @@ def prepare():
             while chunk:=source.read(8*1024*1024):output.write(chunk)
     (init/'lib/modules').mkdir(parents=True,exist_ok=True)
     volume=vendor_filesystem(work/'vendor.img',work/'vendor-partition.img')
-    run('debugfs','-R','rdump /lib/modules '+str(init/'lib'),volume,stdout=subprocess.DEVNULL)
+    extracted=work/'vendor-kernel';extracted.mkdir(exist_ok=True)
+    run('debugfs','-R','rdump /lib/modules '+str(extracted),volume,stdout=subprocess.DEVNULL)
+    shutil.copytree(extracted/'modules',init/'lib/modules',dirs_exist_ok=True)
     assert (init/'lib/modules/virtio_net.ko').is_file()
     (evidence/'official-kernel-modules.json').write_text(json.dumps({'ramdisk':modules,'vendor_network_module':True},indent=2)+'\n')
     index=gzip.decompress(urllib.request.urlopen('https://ports.ubuntu.com/ubuntu-ports/dists/noble/main/binary-arm64/Packages.gz',timeout=90).read()).decode()
@@ -150,6 +152,7 @@ for pair in 'null 1 3' 'zero 1 5' 'full 1 7' 'random 1 8' 'urandom 1 9' 'console
  set -- $pair
  /bin/busybox mknod -m 666 /dev/$1 c $2 $3
 done
+exec </dev/console >/dev/console 2>&1
 /bin/busybox mkdir -p /dev/pts /dev/shm
 /bin/busybox mount -t devpts devpts /dev/pts
 for device in /sys/class/block/*/dev; do
