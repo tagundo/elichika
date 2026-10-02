@@ -12,6 +12,7 @@ import subprocess
 import time
 import urllib.request
 import zipfile
+import zlib
 
 from android_16k_native import PackageRanges, elf_alignment
 
@@ -55,6 +56,25 @@ def modules_from_ramdisk(data, destination):
     return extracted
 
 
+def vendor_filesystem(image, destination):
+    with image.open('rb') as source:
+        source.seek(512);header=bytearray(source.read(512));assert header[:8]==b'EFI PART'
+        length,checksum=struct.unpack_from('<II',header,12)
+        struct.pack_into('<I',header,16,0)
+        assert zlib.crc32(header[:length])==checksum
+        lba,count,size,checksum=struct.unpack_from('<QIII',header,72)
+        source.seek(lba*512);entries=source.read(count*size);assert zlib.crc32(entries)==checksum
+        partition=next(entries[i*size:(i+1)*size] for i in range(count)
+          if entries[i*size+56:i*size+128].decode('utf-16-le').split('\0')[0]=='vendor')
+        first,last=struct.unpack_from('<QQ',partition,32)
+        source.seek(first*512);remaining=(last-first+1)*512
+        with destination.open('wb') as output:
+            while remaining:
+                data=source.read(min(remaining,8*1024*1024));assert data
+                output.write(data);remaining-=len(data)
+    return destination
+
+
 def prepare():
     work=Path('redroid-vm');work.mkdir(exist_ok=True)
     evidence=Path('evidence');evidence.mkdir(exist_ok=True)
@@ -94,7 +114,8 @@ def prepare():
         with archive.open('arm64-v8a/vendor.img') as source,(work/'vendor.img').open('wb') as output:
             while chunk:=source.read(8*1024*1024):output.write(chunk)
     (init/'lib/modules').mkdir(parents=True,exist_ok=True)
-    run('debugfs','-R','rdump /lib/modules '+str(init/'lib'),work/'vendor.img',stdout=subprocess.DEVNULL)
+    volume=vendor_filesystem(work/'vendor.img',work/'vendor-partition.img')
+    run('debugfs','-R','rdump /lib/modules '+str(init/'lib'),volume,stdout=subprocess.DEVNULL)
     assert (init/'lib/modules/virtio_net.ko').is_file()
     (evidence/'official-kernel-modules.json').write_text(json.dumps({'ramdisk':modules,'vendor_network_module':True},indent=2)+'\n')
     index=gzip.decompress(urllib.request.urlopen('https://ports.ubuntu.com/ubuntu-ports/dists/noble/main/binary-arm64/Packages.gz',timeout=90).read()).decode()
