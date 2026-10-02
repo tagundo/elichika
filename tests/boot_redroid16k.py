@@ -1,5 +1,6 @@
 """Boot unmodified Redroid ARM64 userland on Google's actual 16KB kernel."""
 import gzip
+import ctypes
 import hashlib
 import json
 import os
@@ -17,6 +18,41 @@ from android_16k_native import PackageRanges, elf_alignment
 
 def run(*args, **kwargs):
     return subprocess.run(list(map(str,args)),check=True,**kwargs)
+
+
+def modules_from_ramdisk(data, destination):
+    if data.startswith(b'\x1f\x8b'):
+        data=gzip.decompress(data)
+    elif data.startswith(bytes.fromhex('02214c18')):
+        library=ctypes.CDLL('liblz4.so.1')
+        library.LZ4_decompress_safe.argtypes=[ctypes.c_void_p,ctypes.c_void_p,ctypes.c_int,ctypes.c_int]
+        library.LZ4_decompress_safe.restype=ctypes.c_int
+        position=4;parts=[]
+        while position+4<=len(data):
+            count=struct.unpack_from('<I',data,position)[0];position+=4
+            if count in (0,0x184c2102):continue
+            assert count<=len(data)-position
+            source=ctypes.create_string_buffer(data[position:position+count])
+            output=ctypes.create_string_buffer(8*1024*1024)
+            size=library.LZ4_decompress_safe(source,output,count,len(output));assert size>0,size
+            parts.append(output.raw[:size]);position+=count
+        data=b''.join(parts)
+    position=0;extracted=[]
+    while position+110<=len(data):
+        if data[position:position+6] not in (b'070701',b'070702'):
+            position=data.find(b'070701',position)
+            if position<0:break
+        fields=[int(data[position+6+i*8:position+14+i*8],16) for i in range(13)]
+        length,size=fields[11],fields[6]
+        name=data[position+110:position+110+length-1].decode()
+        start=(position+110+length+3)&~3
+        if name.startswith('lib/modules/') and fields[1]&0o170000==0o100000:
+            assert '..' not in Path(name).parts
+            path=destination/name;path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_bytes(data[start:start+size]);extracted.append(name)
+        position=(start+size+3)&~3
+    assert any(x.endswith('virtio_blk.ko') for x in extracted),extracted
+    return extracted
 
 
 def prepare():
@@ -53,6 +89,14 @@ def prepare():
     entry=metadata['Config']['Entrypoint'] or metadata['Config']['Cmd']
     assert entry and entry[0].startswith('/'),entry
     init=work/'initrd';init.mkdir(exist_ok=True)
+    with zipfile.ZipFile(package) as archive:
+        modules=modules_from_ramdisk(archive.read('arm64-v8a/ramdisk.img'),init)
+        with archive.open('arm64-v8a/vendor.img') as source,(work/'vendor.img').open('wb') as output:
+            while chunk:=source.read(8*1024*1024):output.write(chunk)
+    (init/'lib/modules').mkdir(parents=True,exist_ok=True)
+    run('debugfs','-R','rdump /lib/modules '+str(init/'lib'),work/'vendor.img',stdout=subprocess.DEVNULL)
+    assert (init/'lib/modules/virtio_net.ko').is_file()
+    (evidence/'official-kernel-modules.json').write_text(json.dumps({'ramdisk':modules,'vendor_network_module':True},indent=2)+'\n')
     index=gzip.decompress(urllib.request.urlopen('https://ports.ubuntu.com/ubuntu-ports/dists/noble/main/binary-arm64/Packages.gz',timeout=90).read()).decode()
     block=next(x for x in index.split('\n\n') if x.startswith('Package: busybox-static\n'))
     fields=dict(line.split(': ',1) for line in block.splitlines() if ': ' in line and not line.startswith(' '))
@@ -74,6 +118,13 @@ set -ex
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sysfs /sys
 /bin/busybox mount -t tmpfs tmpfs /dev
+for module in virtio_mmio virtio_blk failover net_failover virtio_net; do
+ if test -f /lib/modules/$module.ko; then /bin/busybox insmod /lib/modules/$module.ko; fi
+done
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+ if test -f /sys/class/block/vda/dev; then break; fi
+ /bin/busybox sleep 1
+done
 for pair in 'null 1 3' 'zero 1 5' 'full 1 7' 'random 1 8' 'urandom 1 9' 'console 5 1' 'tty 5 0'; do
  set -- $pair
  /bin/busybox mknod -m 666 /dev/$1 c $2 $3
