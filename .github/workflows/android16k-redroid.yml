@@ -1,0 +1,89 @@
+name: Full Android 16KB APK screens with current QEMU
+on:
+  push:
+    branches: [codex/android-16k-redroid-qa]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  android16k:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare full Android ARM64 on the official 16KB kernel
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-system-arm cpio e2fsprogs adb
+          mkdir -p evidence
+          qemu-system-aarch64 --version > evidence/qemu-version.txt
+          python3 -u tests/boot_redroid16k.py prepare
+      - name: Start the isolated Android 16KB virtual machine
+        run: python3 -u tests/boot_redroid16k.py start
+      - name: Capture initial guest boot evidence
+        run: |
+          python3 - <<'PY'
+          import shutil,time
+          from pathlib import Path
+          time.sleep(180)
+          root=Path('boot-progress');root.mkdir(exist_ok=True)
+          for item in Path('evidence').iterdir():
+              if item.is_file():shutil.copy2(item,root/item.name)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: redroid-android16k-boot-progress
+          path: boot-progress/
+      - name: Require Android framework boot and actual 16KB pages
+        run: |
+          python3 -u tests/boot_redroid16k.py wait
+          adb -s 127.0.0.1:15555 shell getprop > evidence/android-properties.txt
+          adb -s 127.0.0.1:15555 shell 'id; uname -a; getconf PAGE_SIZE; getenforce' > evidence/android-environment.txt
+          adb -s 127.0.0.1:15555 shell setprop bionic.linker.16kb.app_compat.enabled false
+          adb -s 127.0.0.1:15555 shell setprop pm.16kb.app_compat.disabled true
+          adb -s 127.0.0.1:15555 exec-out screencap -p > evidence/android-boot.png
+      - uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 36910677429
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Execute signed APK Console and all four WebView screens
+        run: >-
+          python3 -u tests/android_full_16k_screens.py
+          --candidate candidate/elichika-2026.10.01-dev.apk
+          --sha256 23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a
+          --serial 127.0.0.1:15555 --evidence evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: elichika-native-test-apk
+          run-id: 36910677429
+          github-token: ${{ github.token }}
+          path: instrumentation
+      - name: Test actual Chaquopy Java bridge and native packages
+        run: |
+          set -euo pipefail
+          adb -s 127.0.0.1:15555 install -r instrumentation/*.apk
+          adb -s 127.0.0.1:15555 shell am instrument -w -e class com.tagundo.elichika.NativePythonTest com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/native-instrumentation.txt
+          python3 -c 'from pathlib import Path;t=Path("evidence/native-instrumentation.txt").read_text();assert "OK (1 test)" in t and "FAILURES" not in t,t'
+      - name: Collect final Android evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+          for name,args in [('devices.txt',['devices','-l']),('logcat.txt',['-s','127.0.0.1:15555','logcat','-d']),('crash.txt',['-s','127.0.0.1:15555','logcat','-b','crash','-d'])]:
+              with Path('evidence',name).open('wb') as f:
+                  try:subprocess.run(['adb',*args],stdout=f,stderr=subprocess.STDOUT,timeout=20)
+                  except subprocess.TimeoutExpired:f.write(b'Diagnostic timeout\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-android16k-redroid-evidence
+          path: evidence/
+      - name: Stop disposable virtual machine
+        if: always()
+        run: |
+          if test -f evidence/emulator.pid; then kill "$(cat evidence/emulator.pid)" || true; fi
