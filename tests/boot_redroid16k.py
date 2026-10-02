@@ -68,7 +68,7 @@ def prepare():
       'androidboot.redroid_gpu_mode=guest','androidboot.redroid_width=480',
       'androidboot.redroid_height=800','androidboot.redroid_dpi=160',
       'androidboot.redroid_fps=10','ro.secure=0']
-    environment='\n'.join('export '+shlex.quote(value) for value in metadata['Config'].get('Env',[]) if value.split('=',1)[0] not in ['HOME','PATH'])
+    environment='\n'.join('export '+shlex.quote(value) for value in (metadata['Config'].get('Env') or []) if value.split('=',1)[0] not in ['HOME','PATH'])
     script='''#!/bin/busybox sh
 set -ex
 /bin/busybox mount -t proc proc /proc
