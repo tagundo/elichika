@@ -9,6 +9,16 @@
       "id": "diag-inspect-download-progress-2",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "diag-wait-for-download-completion",
+      "type": "capture",
+      "wait": 30
+    },
+    {
+      "id": "diag-inspect-completed-download",
+      "type": "unity_tree",
+      "wait": 0
     }
   ]
 }
