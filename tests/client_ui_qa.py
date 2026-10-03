@@ -89,7 +89,7 @@ def main():
             state['environment']={k:dev.shell(*v) for k,v in {
               'android':('getprop','ro.build.version.release'),'api':('getprop','ro.build.version.sdk'),
               'abi':('getprop','ro.product.cpu.abi'),'model':('getprop','ro.product.model'),
-              'pagesize':('getconf','PAGESIZE'),'selinux':('getenforce')}.items()}
+              'pagesize':('getconf','PAGESIZE'),'selinux':('getenforce',)}.items()}
             assert state['environment']['pagesize']=='4096'
             dev.adb('logcat','-c')
             state['server_install']=dev.install(args.server,2026100100)
