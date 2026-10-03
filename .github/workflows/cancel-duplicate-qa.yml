@@ -1,0 +1,28 @@
+name: Cancel duplicate disposable QA run
+on:
+  push:
+    branches: [codex/lesson-rank-retest-qa]
+    paths: ['.github/workflows/cancel-duplicate-qa.yml']
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify and cancel only the duplicate run created by this task
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/tagundo/elichika/actions/runs/37130558814 > duplicate.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('duplicate.json'))
+          assert r['id']==37130558814
+          assert r['head_branch']=='codex/lesson-rank-retest-qa'
+          assert r['head_sha']=='12761fa09b01c1353eb42eab4daa33c6311a488c'
+          print({'verified_owned_duplicate':r['id'],'status':r['status']})
+          PY
+          gh api --method POST repos/tagundo/elichika/actions/runs/37130558814/cancel
