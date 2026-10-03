@@ -145,6 +145,19 @@
       "id": "zh-live-song-assets-completed-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-confirm-ready-song",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/RightArea/Info/ButtonContainer/DecideButtonGameObjectSwitcher/DecideBtn"
+      },
+      "wait": 12
+    },
+    {
+      "id": "zh-live-partner-entry-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
