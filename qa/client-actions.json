@@ -111,6 +111,24 @@
       "operation": "inspect",
       "user_id": "auto",
       "wait": 1
+    },
+    {
+      "id": "apply-zero-first-A1",
+      "type": "fixture",
+      "operation": "apply",
+      "case": "zero_first",
+      "user_id": "644377383",
+      "wait": 50
+    },
+    {
+      "id": "phase-zero-first-A1",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "zero-first-A1-post-restart-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
