@@ -98,6 +98,22 @@
         "name": "ButtonPositiveM"
       },
       "wait": 3
+    },
+    {
+      "id": "select-recommended-lesson-menus",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "wait": 2
+    },
+    {
+      "id": "execute-real-ordinary-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "wait": 15
     }
   ]
 }
