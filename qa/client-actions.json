@@ -1165,6 +1165,115 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-star-apply",
+      "type": "fixture",
+      "operation": "apply",
+      "checkpoint": "postbootstrap_37139189963",
+      "wait": 5,
+      "required": true,
+      "case": "shooting_star"
+    },
+    {
+      "id": "fourth-star-title-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "ready_timeout": 45,
+      "wait": 20,
+      "required": true
+    },
+    {
+      "id": "fourth-star-enter-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "fourth-star-open-menu",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/PreparationContainer/BackgroundImage/MenuContainer/MenuList/MenuCell1/Button"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-star-menu1",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectMenuListPopup(Clone)/LessonMenuTileViewVertical/Viewport/Content/cell2/CellButton/CellContainer/LessonMenuSelectPlanObject(Clone)/BackgroundImage/TitleTextView",
+        "text": "명상"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-star-slot2",
+      "type": "unitytap",
+      "selector": {
+        "name": "SelectedLessonMenuButton2"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-star-menu2",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectMenuListPopup(Clone)/LessonMenuTileViewVertical/Viewport/Content/cell2/CellButton/CellContainer/LessonMenuSelectPlanObject(Clone)/BackgroundImage/TitleTextView",
+        "text": "명상"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-star-slot3",
+      "type": "unitytap",
+      "selector": {
+        "name": "SelectedLessonMenuButton3"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-star-menu3",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectMenuListPopup(Clone)/LessonMenuTileViewVertical/Viewport/Content/cell2/CellButton/CellContainer/LessonMenuSelectPlanObject(Clone)/BackgroundImage/TitleTextView",
+        "text": "명상"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-star-menu-confirm",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "확인"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-star-selected-recipe-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
