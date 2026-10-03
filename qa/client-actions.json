@@ -1,12 +1,7 @@
 {
-  "actions": [
-    {
-      "id": "fifth-initial-download-progress-tree",
-      "type": "unity_tree",
-      "wait": 0,
-      "required": true
-    }
-  ],
-  "scope": "Only remaining legitimate full-slot replacement, card details, native no-skip Live, master-only restore and earned-state cold. Product source and candidate APK frozen.",
-  "prior_completed_run": 37139189963
+  "actions": [],
+  "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
+  "prior_completed_run": 37139189963,
+  "prior_transport_failure_run": 37156767981,
+  "controller_sha256": "beae5666ef2b325a74fbe66419d4e099f3a6761eacc0a15b97550b4c3de07e86"
 }

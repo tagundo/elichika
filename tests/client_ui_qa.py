@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import time
 import urllib.request
+import urllib.error
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -525,7 +526,23 @@ def main():
             count=0
             blocked_captured=False
             while time.monotonic()<deadline:
-                commands=fetch_commands(args.commands_branch)
+                try:
+                    commands=fetch_commands(args.commands_branch)
+                except (TimeoutError, urllib.error.URLError) as error:
+                    # A control-plane timeout cannot justify a device input or
+                    # destroy the device needed to continue this actual UI test.
+                    # HTTP authentication/configuration errors remain fatal.
+                    if isinstance(error, urllib.error.HTTPError) and error.code not in (429, 500, 502, 503, 504):
+                        raise
+                    failures = state.setdefault('control_poll_network_failures', [])
+                    failures.append({'error_type': type(error).__name__, 'error': str(error),
+                                     'at_utc': datetime.now(timezone.utc).isoformat()})
+                    del failures[:-100]
+                    state['control_poll_pending'] = True
+                    state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n')
+                    time.sleep(5)
+                    continue
+                state.pop('control_poll_pending', None)
                 issue = control_definition_error(commands, done)
                 if issue:
                     if state.get('blocked_ui_control'):
