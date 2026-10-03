@@ -24,6 +24,22 @@
         "name": "ButtonPositiveM"
       },
       "wait": 45
+    },
+    {
+      "id": "choose-on-demand-download",
+      "type": "unitytap",
+      "selector": {
+        "name": "LightnessToggle"
+      },
+      "wait": 3
+    },
+    {
+      "id": "confirm-on-demand-download",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 45
     }
   ]
 }
