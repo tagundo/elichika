@@ -1,20 +1,6 @@
 {
   "actions": [
     {
-      "id": "fourth-schema-predecessor-must-not-back",
-      "type": "key",
-      "keycode": 4,
-      "wait": 0,
-      "qa_negative_test": true
-    },
-    {
-      "id": "fourth-schema-dependent-must-not-back",
-      "type": "key",
-      "keycode": 4,
-      "wait": 0,
-      "qa_negative_test": true
-    },
-    {
       "id": "fourth-schema-paused-readonly-tree",
       "type": "unity_tree",
       "diagnostic_while_blocked": true,
@@ -29,6 +15,24 @@
       "diagnostic_while_blocked": true,
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-schema-exact-resume-new-fixture-first",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "fourth_schema",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-schema-exact-resume-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
-  ]
+  ],
+  "resume_after_blocked_action": {
+    "id": "fourth-schema-intentional-missing-operation",
+    "action_definition_sha256": "9b5d545eb47b8f3afd40f7a53af4642abaa188b780dcbea88cc6b38be872da1e"
+  }
 }
