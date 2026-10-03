@@ -121,7 +121,13 @@ def main():
             dev.adb('logcat','-c')
             state['server_install']=dev.install(args.server,2026100100)
             state['server_start']=dev.start('server-start')
-            output=dev.adb('install','-r',str(args.client),timeout=300)
+            # Only this disposable virtual device is affected; retain the evidence of the
+            # normal Play Protect legacy-app prompt from the preceding comparison run.
+            dev.shell('settings','put','global','package_verifier_enable','0')
+            dev.shell('settings','put','global','verifier_verify_adb_installs','0')
+            state['adb_install_verification']={name:dev.shell('settings','get','global',name)
+                for name in ['package_verifier_enable','verifier_verify_adb_installs']}
+            output=dev.adb('install','-r',str(args.client),timeout=60)
             assert 'Success' in output
             state['client_install']=output
             resolved=dev.shell('cmd','package','resolve-activity','--brief',CLIENT).splitlines()[-1]
