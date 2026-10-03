@@ -671,6 +671,19 @@
       "id": "full-slots-D1-choice-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "full-slots-D1-result-advance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "full-slots-D1-select-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
