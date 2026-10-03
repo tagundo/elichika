@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import time
 import urllib.request
@@ -201,6 +202,61 @@ def main():
                             dev.shell('input','keyevent',str(action['keycode']))
                         elif action['type']=='capture':pass
                         elif action['type']=='launch':dev.shell('am','start','-W','-n',state['client_activity'])
+                        elif action['type']=='client_restart':
+                            dev.shell('am','force-stop',CLIENT)
+                            dev.shell('am','start','-W','-n',state['client_activity'])
+                        elif action['type']=='observer_phase':
+                            Path('evidence/observer/phase-request.json').write_text(json.dumps({'id':action['id']})+'\n')
+                            record['phase']=action['id']
+                        elif action['type']=='fixture':
+                            assert action['operation'] in ['inspect','apply','restore']
+                            assert action.get('case','') in ['', 'zero_first','one_first','zero_completed','one_completed','full_slots','pin_two','three_times','shooting_star']
+                            user_id=str(action.get('user_id','auto'))
+                            assert user_id=='auto' or re.fullmatch(r'[0-9]+',user_id)
+                            command=['python3','-u','tests/lesson_fixture_qa.py','--serial',dev.serial,
+                                     '--evidence','evidence/fixtures','--action',action['operation'],
+                                     '--user-id',user_id,'--disposable-device']
+                            if action.get('case'):command+=['--case',action['case']]
+                            result=subprocess.run(command,capture_output=True,text=True,timeout=240)
+                            fixture_report=dev.evidence/('fixture-'+action['id']+'.txt')
+                            fixture_report.write_text(result.stdout+'\n'+result.stderr)
+                            assert result.returncode==0,result.stdout[-2000:]+result.stderr[-2000:]
+                            record['fixture_report']=str(fixture_report)
+                            if action['operation'] in ['apply','restore']:
+                                record['server_restart']=dev.start('fixture-server-'+action['id'])
+                                dev.shell('am','start','-W','-n',state['client_activity'])
+                        elif action['type']=='unity_raycast':
+                            tree=dev.unity_tree('raycast-target-'+action['id'])
+                            matches=[n for n in tree['nodes'] if all(n.get(k)==v for k,v in action['selector'].items())]
+                            assert len(matches)==1,'Raycast selector must match one node'
+                            node=matches[0]
+                            x1,y1,x2,y2=node['bounds']
+                            x,y=str(round((x1+x2)/2)),str(round((y1+y2)/2))
+                            output=dev.evidence/('raycast-'+action['id']+'.json')
+                            result=subprocess.run(['python3','tests/unity_ui_probe.py','--output',str(output),'--raycast',x,y],capture_output=True,text=True,timeout=60)
+                            assert result.returncode==0,result.stderr[-1200:]
+                            record['raycast']=json.loads(output.read_text()).get('pointer_raycast')
+                            record['selector']=action['selector'];record['bounds']=node['bounds']
+                        elif action['type'] in ['record_start','record_end']:
+                            name=action['name']
+                            assert re.fullmatch(r'[A-Za-z0-9_-]{1,60}',name)
+                            path='/sdcard/emulator-qa-'+name+'.mp4'
+                            pid_path=path+'.pid'
+                            if action['type']=='record_start':
+                                command='nohup screenrecord --time-limit 180 --bit-rate 1000000 '+shlex.quote(path)+' > '+shlex.quote(path+'.log')+' 2>&1 < /dev/null & echo $! > '+shlex.quote(pid_path)
+                                dev.shell('sh','-c',command)
+                                record['recording_path']=path
+                            else:
+                                pid=dev.read(pid_path).decode().strip()
+                                assert pid.isdigit()
+                                try:dev.shell('kill','-2',pid)
+                                except subprocess.CalledProcessError:pass
+                                time.sleep(2)
+                                destination=dev.evidence/('recording-'+name+'.mp4')
+                                dev.adb('pull',path,str(destination),timeout=60)
+                                assert destination.stat().st_size>1000,'Screen recording is empty'
+                                record['video_bytes']=destination.stat().st_size
+                                record['video_file']=str(destination)
                         elif action['type']=='text':
                             assert re.fullmatch(r'[A-Za-z0-9 ._-]{1,40}',action['text'])
                             dev.shell('input','text',action['text'].replace(' ','%s'))

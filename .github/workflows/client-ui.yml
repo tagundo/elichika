@@ -1,4 +1,4 @@
-name: Original SIFAS client loading diagnosis
+name: Emulator release flow validation
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 jobs:
   client:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 50
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
 
@@ -131,7 +131,7 @@ jobs:
       - name: Start read-only scene and exception observer
         run: |
           mkdir -p evidence/observer
-          nohup python3 -u tests/unity_observer.py --evidence evidence/observer --duration 2850 > evidence/observer/observer-host.log 2>&1 < /dev/null &
+          nohup python3 -u tests/unity_observer.py --evidence evidence/observer --duration 5700 > evidence/observer/observer-host.log 2>&1 < /dev/null &
 
       - name: Install and launch the original client with the server
         run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk --evidence evidence/initial
@@ -152,7 +152,7 @@ jobs:
       - name: Observe and drive client UI round 1
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 1 --duration 60 --evidence evidence/round-1
+        run: python3 -u tests/client_ui_qa.py --stage control --round 1 --duration 90 --evidence evidence/round-1
 
       - name: Upload round 1 UI evidence
         if: always()
@@ -163,12 +163,14 @@ jobs:
             evidence/round-1/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 2
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 2 --duration 60 --evidence evidence/round-2
+        run: python3 -u tests/client_ui_qa.py --stage control --round 2 --duration 90 --evidence evidence/round-2
 
       - name: Upload round 2 UI evidence
         if: always()
@@ -179,12 +181,14 @@ jobs:
             evidence/round-2/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 3
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 3 --duration 60 --evidence evidence/round-3
+        run: python3 -u tests/client_ui_qa.py --stage control --round 3 --duration 90 --evidence evidence/round-3
 
       - name: Upload round 3 UI evidence
         if: always()
@@ -195,12 +199,14 @@ jobs:
             evidence/round-3/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 4
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 4 --duration 60 --evidence evidence/round-4
+        run: python3 -u tests/client_ui_qa.py --stage control --round 4 --duration 90 --evidence evidence/round-4
 
       - name: Upload round 4 UI evidence
         if: always()
@@ -211,12 +217,14 @@ jobs:
             evidence/round-4/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 5
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 5 --duration 60 --evidence evidence/round-5
+        run: python3 -u tests/client_ui_qa.py --stage control --round 5 --duration 90 --evidence evidence/round-5
 
       - name: Upload round 5 UI evidence
         if: always()
@@ -227,12 +235,14 @@ jobs:
             evidence/round-5/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 6
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 6 --duration 60 --evidence evidence/round-6
+        run: python3 -u tests/client_ui_qa.py --stage control --round 6 --duration 90 --evidence evidence/round-6
 
       - name: Upload round 6 UI evidence
         if: always()
@@ -243,12 +253,14 @@ jobs:
             evidence/round-6/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 7
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 7 --duration 60 --evidence evidence/round-7
+        run: python3 -u tests/client_ui_qa.py --stage control --round 7 --duration 90 --evidence evidence/round-7
 
       - name: Upload round 7 UI evidence
         if: always()
@@ -259,12 +271,14 @@ jobs:
             evidence/round-7/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 8
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 8 --duration 60 --evidence evidence/round-8
+        run: python3 -u tests/client_ui_qa.py --stage control --round 8 --duration 90 --evidence evidence/round-8
 
       - name: Upload round 8 UI evidence
         if: always()
@@ -275,12 +289,14 @@ jobs:
             evidence/round-8/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 9
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 9 --duration 60 --evidence evidence/round-9
+        run: python3 -u tests/client_ui_qa.py --stage control --round 9 --duration 90 --evidence evidence/round-9
 
       - name: Upload round 9 UI evidence
         if: always()
@@ -291,12 +307,14 @@ jobs:
             evidence/round-9/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 10
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 10 --duration 60 --evidence evidence/round-10
+        run: python3 -u tests/client_ui_qa.py --stage control --round 10 --duration 90 --evidence evidence/round-10
 
       - name: Upload round 10 UI evidence
         if: always()
@@ -307,12 +325,14 @@ jobs:
             evidence/round-10/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 11
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 11 --duration 60 --evidence evidence/round-11
+        run: python3 -u tests/client_ui_qa.py --stage control --round 11 --duration 90 --evidence evidence/round-11
 
       - name: Upload round 11 UI evidence
         if: always()
@@ -323,12 +343,14 @@ jobs:
             evidence/round-11/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 12
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 12 --duration 60 --evidence evidence/round-12
+        run: python3 -u tests/client_ui_qa.py --stage control --round 12 --duration 90 --evidence evidence/round-12
 
       - name: Upload round 12 UI evidence
         if: always()
@@ -339,12 +361,14 @@ jobs:
             evidence/round-12/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 13
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 13 --duration 60 --evidence evidence/round-13
+        run: python3 -u tests/client_ui_qa.py --stage control --round 13 --duration 90 --evidence evidence/round-13
 
       - name: Upload round 13 UI evidence
         if: always()
@@ -355,12 +379,14 @@ jobs:
             evidence/round-13/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 14
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 14 --duration 60 --evidence evidence/round-14
+        run: python3 -u tests/client_ui_qa.py --stage control --round 14 --duration 90 --evidence evidence/round-14
 
       - name: Upload round 14 UI evidence
         if: always()
@@ -371,12 +397,14 @@ jobs:
             evidence/round-14/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 15
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 15 --duration 60 --evidence evidence/round-15
+        run: python3 -u tests/client_ui_qa.py --stage control --round 15 --duration 90 --evidence evidence/round-15
 
       - name: Upload round 15 UI evidence
         if: always()
@@ -387,12 +415,14 @@ jobs:
             evidence/round-15/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 16
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 16 --duration 60 --evidence evidence/round-16
+        run: python3 -u tests/client_ui_qa.py --stage control --round 16 --duration 90 --evidence evidence/round-16
 
       - name: Upload round 16 UI evidence
         if: always()
@@ -403,12 +433,14 @@ jobs:
             evidence/round-16/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 17
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 17 --duration 60 --evidence evidence/round-17
+        run: python3 -u tests/client_ui_qa.py --stage control --round 17 --duration 90 --evidence evidence/round-17
 
       - name: Upload round 17 UI evidence
         if: always()
@@ -419,12 +451,14 @@ jobs:
             evidence/round-17/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 18
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 18 --duration 60 --evidence evidence/round-18
+        run: python3 -u tests/client_ui_qa.py --stage control --round 18 --duration 90 --evidence evidence/round-18
 
       - name: Upload round 18 UI evidence
         if: always()
@@ -435,12 +469,14 @@ jobs:
             evidence/round-18/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 19
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 19 --duration 60 --evidence evidence/round-19
+        run: python3 -u tests/client_ui_qa.py --stage control --round 19 --duration 90 --evidence evidence/round-19
 
       - name: Upload round 19 UI evidence
         if: always()
@@ -451,12 +487,14 @@ jobs:
             evidence/round-19/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 20
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 20 --duration 60 --evidence evidence/round-20
+        run: python3 -u tests/client_ui_qa.py --stage control --round 20 --duration 90 --evidence evidence/round-20
 
       - name: Upload round 20 UI evidence
         if: always()
@@ -467,12 +505,14 @@ jobs:
             evidence/round-20/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 21
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 21 --duration 60 --evidence evidence/round-21
+        run: python3 -u tests/client_ui_qa.py --stage control --round 21 --duration 90 --evidence evidence/round-21
 
       - name: Upload round 21 UI evidence
         if: always()
@@ -483,12 +523,14 @@ jobs:
             evidence/round-21/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 22
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 22 --duration 60 --evidence evidence/round-22
+        run: python3 -u tests/client_ui_qa.py --stage control --round 22 --duration 90 --evidence evidence/round-22
 
       - name: Upload round 22 UI evidence
         if: always()
@@ -499,12 +541,14 @@ jobs:
             evidence/round-22/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 23
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 23 --duration 60 --evidence evidence/round-23
+        run: python3 -u tests/client_ui_qa.py --stage control --round 23 --duration 90 --evidence evidence/round-23
 
       - name: Upload round 23 UI evidence
         if: always()
@@ -515,12 +559,14 @@ jobs:
             evidence/round-23/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 24
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 24 --duration 60 --evidence evidence/round-24
+        run: python3 -u tests/client_ui_qa.py --stage control --round 24 --duration 90 --evidence evidence/round-24
 
       - name: Upload round 24 UI evidence
         if: always()
@@ -531,12 +577,14 @@ jobs:
             evidence/round-24/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 25
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 25 --duration 60 --evidence evidence/round-25
+        run: python3 -u tests/client_ui_qa.py --stage control --round 25 --duration 90 --evidence evidence/round-25
 
       - name: Upload round 25 UI evidence
         if: always()
@@ -547,12 +595,14 @@ jobs:
             evidence/round-25/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 26
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 26 --duration 60 --evidence evidence/round-26
+        run: python3 -u tests/client_ui_qa.py --stage control --round 26 --duration 90 --evidence evidence/round-26
 
       - name: Upload round 26 UI evidence
         if: always()
@@ -563,12 +613,14 @@ jobs:
             evidence/round-26/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 27
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 27 --duration 60 --evidence evidence/round-27
+        run: python3 -u tests/client_ui_qa.py --stage control --round 27 --duration 90 --evidence evidence/round-27
 
       - name: Upload round 27 UI evidence
         if: always()
@@ -579,12 +631,14 @@ jobs:
             evidence/round-27/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 28
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 28 --duration 60 --evidence evidence/round-28
+        run: python3 -u tests/client_ui_qa.py --stage control --round 28 --duration 90 --evidence evidence/round-28
 
       - name: Upload round 28 UI evidence
         if: always()
@@ -595,12 +649,14 @@ jobs:
             evidence/round-28/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 29
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 29 --duration 60 --evidence evidence/round-29
+        run: python3 -u tests/client_ui_qa.py --stage control --round 29 --duration 90 --evidence evidence/round-29
 
       - name: Upload round 29 UI evidence
         if: always()
@@ -611,12 +667,14 @@ jobs:
             evidence/round-29/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 30
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 30 --duration 60 --evidence evidence/round-30
+        run: python3 -u tests/client_ui_qa.py --stage control --round 30 --duration 90 --evidence evidence/round-30
 
       - name: Upload round 30 UI evidence
         if: always()
@@ -627,12 +685,14 @@ jobs:
             evidence/round-30/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 31
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 31 --duration 60 --evidence evidence/round-31
+        run: python3 -u tests/client_ui_qa.py --stage control --round 31 --duration 90 --evidence evidence/round-31
 
       - name: Upload round 31 UI evidence
         if: always()
@@ -643,12 +703,14 @@ jobs:
             evidence/round-31/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 32
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 32 --duration 60 --evidence evidence/round-32
+        run: python3 -u tests/client_ui_qa.py --stage control --round 32 --duration 90 --evidence evidence/round-32
 
       - name: Upload round 32 UI evidence
         if: always()
@@ -659,6 +721,152 @@ jobs:
             evidence/round-32/
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 33
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 33 --duration 90 --evidence evidence/round-33
+
+      - name: Upload round 33 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-33
+          path: |
+            evidence/round-33/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 34
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 34 --duration 90 --evidence evidence/round-34
+
+      - name: Upload round 34 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-34
+          path: |
+            evidence/round-34/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 35
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 35 --duration 90 --evidence evidence/round-35
+
+      - name: Upload round 35 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-35
+          path: |
+            evidence/round-35/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 36
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 36 --duration 90 --evidence evidence/round-36
+
+      - name: Upload round 36 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-36
+          path: |
+            evidence/round-36/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 37
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 37 --duration 90 --evidence evidence/round-37
+
+      - name: Upload round 37 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-37
+          path: |
+            evidence/round-37/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 38
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 38 --duration 90 --evidence evidence/round-38
+
+      - name: Upload round 38 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-38
+          path: |
+            evidence/round-38/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 39
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 39 --duration 90 --evidence evidence/round-39
+
+      - name: Upload round 39 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-39
+          path: |
+            evidence/round-39/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 40
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 40 --duration 90 --evidence evidence/round-40
+
+      - name: Upload round 40 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-40
+          path: |
+            evidence/round-40/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
           if-no-files-found: warn
 
       - name: Collect final diagnostics
@@ -678,6 +886,8 @@ jobs:
           path: |
             evidence/client-ui-state.json
             evidence/observer/
+            evidence/fixtures/**/*.json
+            evidence/fixtures/**/*.txt
             evidence/final-logcat.txt
             evidence/final-game-meminfo.txt
             evidence/container.log
@@ -689,3 +899,73 @@ jobs:
       - name: Stop disposable device
         if: always()
         run: docker rm -f original-client-qa || true
+
+  server-app:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare native ARM64 Android virtual device
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          mkdir -p evidence "$RUNNER_TEMP/android-data"
+          uname -a > evidence/host.txt
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker run --detach --privileged --name original-client-qa \
+            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=1280 androidboot.redroid_height=720 androidboot.redroid_fps=15 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
+
+      - name: Download exact previously signed server APK
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: candidate
+          run-id: 36910677429
+          github-token: ${{ github.token }}
+
+      - name: Verify and install without automatic permission grants
+        run: |
+          set -euo pipefail
+          echo '23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a  candidate/elichika-2026.10.01-dev.apk' | sha256sum --check
+          adb -s 127.0.0.1:5555 install -r candidate/elichika-2026.10.01-dev.apk
+
+      - name: Execute actual permissions screens lifecycle and embedded backup
+        run: python3 -u tests/server_app_ui_qa.py --serial 127.0.0.1:5555 --evidence evidence/server-app --disposable-device --background-seconds 45 --backup-fixture
+
+      - name: Collect server app diagnostics
+        if: always()
+        run: |
+          mkdir -p evidence
+          docker logs original-client-qa > evidence/server-app-container.log 2>&1 || true
+          adb -s 127.0.0.1:5555 logcat -d > evidence/server-app-final-logcat.txt 2>&1 || true
+          adb -s 127.0.0.1:5555 shell dumpsys package com.tagundo.elichika > evidence/server-app-package.txt 2>&1 || true
+
+      - name: Upload server app evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-server-app-ui
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Remove disposable server Android
+        if: always()
+        run: docker rm --force original-client-qa || true

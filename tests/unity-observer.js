@@ -3,15 +3,16 @@
 const listeners = [], inventory = [];
 const methodCounts = new Map();
 let eventCount = 0;
+let phase = 'bootstrap';
 function className(c) {
     if (c.declaringClass) return className(c.declaringClass) + '.' + c.name;
     return c.namespace + '.' + c.name;
 }
 function observedClass(name) {
-    return /^(LLAS|Jigbox)\./.test(name) && /LoadingManager|CommonSceneManager|StackableSceneManager|TutorialGuideScene|TutorialGuideRulePopupMarker|TutorialGuideButtonMarker|TutorialGuideLessonFinishMarker|LessonResultScene|LessonMenuSelectScene|CardDetailScene|PopupRuleDescription|LLAS\.SceneManager|LLAS\.SceneGroupController|LLAS\.SceneTransitionWorker|LLAS\.DM\.LessonResultDM|LLAS\.DM\.TutorialDM|LLAS\.PopupManager|LLAS\.CallbackToCoroutine/.test(name);
+    return /^(LLAS|Jigbox)\./.test(name) && /LoadingManager|CommonSceneManager|StackableSceneManager|TutorialGuideScene|TutorialGuideRulePopupMarker|TutorialGuideButtonMarker|TutorialGuideLessonFinishMarker|LessonResultScene|LessonMenuSelectScene|LessonBackgroundScene|LessonPerformanceAmbient|LessonPerformanceTimeline|LessonPerformanceMemberSpace|LessonPerformanceDeckSpace|CardDetailScene|PopupRuleDescription|LLAS\.SceneManager|LLAS\.SceneGroupController|LLAS\.SceneTransitionWorker|LLAS\.DM\.LessonResultDM|LLAS\.DM\.TutorialDM|LLAS\.PopupManager|LLAS\.CallbackToCoroutine/.test(name);
 }
 function emit(event) {
-    if (eventCount++ < 12000) send({time_utc: new Date().toISOString(), ...event});
+    if (eventCount++ < 60000) send({time_utc: new Date().toISOString(), phase, ...event});
 }
 function objectSummary(object, depth = 0) {
     if (!object || object.isNull()) return null;
@@ -72,9 +73,10 @@ const ready = Il2Cpp.perform(() => {
                 entry.methods.push({name: m.name, static: m.isStatic, parameters: m.parameters.map(p => p.type.name), address: m.virtualAddress.toString()});
                 const exceptionHook = unityLogging && /CallLogCallback|Internal_LogException/.test(m.name);
                 const buttonHook = button && /PointerClick|PointerDown|PointerUp/.test(m.name);
-                if (!exceptionHook && !buttonHook && (!relevant || /^get_|^set_|^Get|^Is|^Can|^Has|^\.ctor$|Update$|LateUpdate$|FixedUpdate$|Equals|GetHashCode/.test(m.name))) continue;
+                const nightHook = fullName === 'LLAS.Scene.LessonPerformance.LessonPerformanceTimeline' && m.name === 'get_isToNight';
+                if (!exceptionHook && !buttonHook && !nightHook && (!relevant || /^get_|^set_|^Get|^Is|^Can|^Has|^\.ctor$|Update$|LateUpdate$|FixedUpdate$|Equals|GetHashCode/.test(m.name))) continue;
                 const address = m.virtualAddress;
-                if (address.isNull() || hooked.has(address.toString()) || hooked.size >= 700) continue;
+                if (address.isNull() || hooked.has(address.toString()) || hooked.size >= 1000) continue;
                 hooked.add(address.toString());
                 try {
                     listeners.push(Interceptor.attach(address, {onEnter(args) {
@@ -101,7 +103,8 @@ const ready = Il2Cpp.perform(() => {
                             for (let i = 0; i < Math.min(m.parameters.length, 4); i++) {
                                 const p = m.parameters[i], value = args[offset + i];
                                 try {
-                                    if (['System.Boolean', 'System.Int32'].includes(p.type.name) || p.type.class.isEnum) parameters[p.name] = value.toInt32();
+                                    if (p.type.name === 'System.String') parameters[p.name] = value.isNull() ? null : new Il2Cpp.String(value).content;
+                                    else if (['System.Boolean', 'System.Int32'].includes(p.type.name) || p.type.class.isEnum) parameters[p.name] = value.toInt32();
                                     else if (!p.type.class.isValueType && !value.isNull()) parameters[p.name] = objectSummary(new Il2Cpp.Object(value));
                                 } catch (_) {}
                             }
@@ -122,6 +125,14 @@ const ready = Il2Cpp.perform(() => {
     emit({kind: 'observer_ready', unity: Il2Cpp.unityVersion, hook_count: hooked.size, classes: inventory});
 }, 'main');
 rpc.exports = {
+    phase: async function (label) {
+        await ready;
+        phase = String(label).slice(0, 100);
+        eventCount = 0;
+        methodCounts.clear();
+        emit({kind: 'observer_phase_reset', label: phase});
+        return {phase, event_limit: 60000, method_limit: 80};
+    },
     ready: async function () { await ready; return {hook_count: listeners.length, classes: inventory.map(x => x.class)}; },
     snapshot: async function () {
         let output;
