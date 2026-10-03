@@ -218,6 +218,77 @@
       "id": "zero-first-A1-after-result-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zero-first-A1-close-prep-help-two",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 3
+    },
+    {
+      "id": "phase-zero-first-A1-execute-valid",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "zero-first-A1-recommend-valid",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zero-first-A1-execute-valid",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "wait": 25
+    },
+    {
+      "id": "zero-first-A1-pending-inspect-valid",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "zero-first-A1-performance-next-valid",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "zero-first-A1-items-next-valid",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "phase-zero-first-A1-final-result-valid",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "zero-first-A1-result-touch-valid",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapScreenTextView",
+        "text": "화면을 터치하세요"
+      },
+      "wait": 20
+    },
+    {
+      "id": "zero-first-A1-after-result-tree-valid",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
