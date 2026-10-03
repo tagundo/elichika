@@ -1,5 +1,12 @@
 {
-  "actions": [],
+  "actions": [
+    {
+      "id": "sixth-initial-download-progress-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    }
+  ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
   "prior_completed_run": 37139189963,
   "prior_transport_failure_run": 37156767981,
