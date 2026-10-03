@@ -123,6 +123,14 @@
         "name": "ScreenButton"
       },
       "wait": 10
+    },
+    {
+      "id": "diag-open-insight-skill-result",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
     }
   ]
 }
