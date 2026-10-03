@@ -584,6 +584,28 @@
       "restart": false,
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-earned-both-package-cold-preflight",
+      "type": "upgrade_preflight",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-stock-four-table-master-only-restore",
+      "type": "fixture",
+      "operation": "restore_master",
+      "checkpoint": "postbootstrap_37157358249",
+      "user_id": 21246312,
+      "restart": false,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-master-restored-actual-offline-prelaunch-snapshot",
+      "type": "upgrade_preflight",
+      "wait": 0,
+      "required": true
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
