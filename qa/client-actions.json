@@ -158,6 +158,24 @@
         "text": "다음"
       },
       "wait": 4
+    },
+    {
+      "id": "diag-close-insight-tutorial",
+      "type": "unitytap",
+      "selector": {
+        "name": "TextView",
+        "text": "닫기"
+      },
+      "wait": 5
+    },
+    {
+      "id": "diag-confirm-acquired-insight-skill",
+      "type": "unitytap",
+      "selector": {
+        "name": "TextView",
+        "text": "확인"
+      },
+      "wait": 10
     }
   ]
 }
