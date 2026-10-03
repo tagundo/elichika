@@ -895,7 +895,7 @@
       "required": true
     },
     {
-      "id": "fourth-pin-confirm-use",
+      "id": "fourth-pin-confirm-use-observed-v2",
       "type": "unitytap",
       "selector": {
         "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectItemConfirmPopup(Clone)/Footer/ButtonGroup/ButtonPositiveM/TextView",
@@ -906,7 +906,7 @@
       "required": true
     },
     {
-      "id": "fourth-pin-consumed-two-result-inspect",
+      "id": "fourth-pin-consumed-two-result-inspect-v2",
       "type": "fixture",
       "operation": "inspect",
       "checkpoint": "postbootstrap_37139189963",
@@ -914,14 +914,14 @@
       "required": true
     },
     {
-      "id": "fourth-pin-result-stage-tree",
+      "id": "fourth-pin-result-stage-tree-v2",
       "type": "unity_tree",
       "wait": 0,
       "required": true
     }
   ],
   "resume_after_blocked_action": {
-    "id": "fourth-schema-intentional-missing-operation",
-    "action_definition_sha256": "9b5d545eb47b8f3afd40f7a53af4642abaa188b780dcbea88cc6b38be872da1e"
+    "id": "fourth-pin-confirm-use",
+    "action_definition_sha256": "37dd0572b28fa32ab0654b13c173baefc04c97097f000ea53149b6f1e49ce4f8"
   }
 }
