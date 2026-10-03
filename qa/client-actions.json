@@ -4,6 +4,11 @@
       "id": "bootstrap-progress-r2",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "bootstrap-progress-r3",
+      "type": "unity_tree",
+      "wait": 0
     }
   ]
 }
