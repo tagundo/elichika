@@ -654,6 +654,12 @@
       "type": "upgrade_preflight",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-explicit-completed-native-ui-and-qualified-evidence-stop",
+      "type": "stop",
+      "wait": 0,
+      "required": true
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
