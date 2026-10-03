@@ -22,6 +22,8 @@ remote = frida.get_device_manager().add_remote_device('127.0.0.1:27042')
 source = Path('qa-runtime/node_modules/frida-il2cpp-bridge/dist/index.js').read_text() + '\n' + Path('tests/unity-observer.js').read_text()
 generation = 0
 last_phase = None
+stable_pid = None
+first_seen = 0
 while time.monotonic() < deadline:
     session = None
     try:
@@ -30,6 +32,12 @@ while time.monotonic() < deadline:
             time.sleep(2)
             continue
         pid = int(process.stdout.split()[0])
+        if pid != stable_pid:
+            stable_pid = pid
+            first_seen = time.monotonic()
+        if time.monotonic() - first_seen < 20:
+            time.sleep(2)
+            continue
         subprocess.run(['adb', '-s', '127.0.0.1:5555', 'forward', 'tcp:27042', 'tcp:27042'], check=True, capture_output=True, timeout=15)
         session = remote.attach(pid)
         generation += 1

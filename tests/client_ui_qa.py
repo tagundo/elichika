@@ -3,6 +3,7 @@ import argparse
 from datetime import datetime, timezone
 import gzip
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -160,9 +161,23 @@ def main():
                     time.sleep(8)
                 except AssertionError:
                     pass
-            time.sleep(10)
+            time.sleep(25)
             dev.capture('initial-game')
             state['client_pid']=dev.shell('pidof',CLIENT)
+            # A native screenshot is collected before any Frida client attachment.
+            # A blank startup frame is not safe evidence of a usable Unity main loop.
+            from PIL import Image
+            deadline=time.monotonic()+120
+            while time.monotonic()<deadline:
+                frame=dev.adb('exec-out','screencap','-p',raw=True)
+                pixels=list(Image.open(io.BytesIO(frame)).convert('RGB').resize((128,72)).getdata())
+                visible=sum(max(pixel)>20 for pixel in pixels)/len(pixels)
+                state['pre_frida_visible_frame_fraction']=visible
+                if visible>0.02:break
+                time.sleep(5)
+            else:
+                raise AssertionError('Client remained blank before any Frida client attachment')
+            dev.evidence.joinpath('pre-frida-visible-client.png').write_bytes(frame)
             state['status']='CLIENT_LAUNCHED_AWAITING_UI_VALIDATION'
             try:state['initial_unity_node_count']=len(dev.unity_tree('initial-game')['nodes'])
             except Exception as e:state['unity_probe_error']=str(e)
@@ -208,6 +223,19 @@ def main():
                         elif action['type']=='observer_phase':
                             Path('evidence/observer/phase-request.json').write_text(json.dumps({'id':action['id']})+'\n')
                             record['phase']=action['id']
+                        elif action['type']=='observer_start':
+                            folder=Path('evidence/observer');folder.mkdir(exist_ok=True)
+                            pidfile=folder/'observer-host.pid'
+                            if pidfile.exists():
+                                previous=int(pidfile.read_text())
+                                if Path('/proc/'+str(previous)).exists():
+                                    raise AssertionError('Observer process is already running')
+                            with (folder/'observer-host.log').open('ab') as logfile:
+                                process=subprocess.Popen(['python3','-u','tests/unity_observer.py',
+                                    '--evidence',str(folder),'--duration','5700'],stdin=subprocess.DEVNULL,
+                                    stdout=logfile,stderr=subprocess.STDOUT,start_new_session=True)
+                            pidfile.write_text(str(process.pid)+'\n')
+                            record['observer_host_pid']=process.pid
                         elif action['type']=='fixture':
                             assert action['operation'] in ['inspect','apply','restore']
                             assert action.get('case','') in ['', 'zero_first','one_first','zero_completed','one_completed','full_slots','pin_two','three_times','shooting_star']

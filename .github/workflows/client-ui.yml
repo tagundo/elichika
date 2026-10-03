@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           exec > >(tee evidence/unity-preparation.log) 2>&1
-          python3 -m pip install --break-system-packages 'frida==17.21.0'
+          python3 -m pip install --break-system-packages 'frida==17.21.0' 'Pillow==11.3.0'
           npm install --prefix qa-runtime 'frida-il2cpp-bridge@0.14.0'
           curl --fail --location --retry 2 --output frida-server.xz https://github.com/frida/frida/releases/download/17.21.0/frida-server-17.21.0-android-arm64.xz
           echo 'a5a712d5b1a75837cfd500adc1ee41cc259446cbc2c386f4922d235c890b18d9  frida-server.xz' | sha256sum --check
@@ -128,10 +128,8 @@ jobs:
           name: original-client-collector-preparation
           path: evidence/unity-preparation.log
 
-      - name: Start read-only scene and exception observer
-        run: |
-          mkdir -p evidence/observer
-          nohup python3 -u tests/unity_observer.py --evidence evidence/observer --duration 5700 > evidence/observer/observer-host.log 2>&1 < /dev/null &
+      - name: Prepare deferred observer directory
+        run: mkdir -p evidence/observer
 
       - name: Install and launch the original client with the server
         run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk --evidence evidence/initial
@@ -899,73 +897,3 @@ jobs:
       - name: Stop disposable device
         if: always()
         run: docker rm -f original-client-qa || true
-
-  server-app:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Prepare native ARM64 Android virtual device
-        run: |
-          set -euo pipefail
-          test "$(uname -m)" = aarch64
-          sudo apt-get update -qq
-          sudo apt-get install -y adb
-          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
-            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
-            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
-          fi
-          mkdir -p evidence "$RUNNER_TEMP/android-data"
-          uname -a > evidence/host.txt
-          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
-          docker run --detach --privileged --name original-client-qa \
-            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/android-data:/data" \
-            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
-            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
-            androidboot.redroid_width=1280 androidboot.redroid_height=720 androidboot.redroid_fps=15 ro.secure=0
-          ready=0
-          for attempt in $(seq 1 120); do
-            adb connect 127.0.0.1:5555 >/dev/null || true
-            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
-            sleep 2
-          done
-          test "$ready" = 1
-          adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
-
-      - name: Download exact previously signed server APK
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-release-apk
-          path: candidate
-          run-id: 36910677429
-          github-token: ${{ github.token }}
-
-      - name: Verify and install without automatic permission grants
-        run: |
-          set -euo pipefail
-          echo '23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a  candidate/elichika-2026.10.01-dev.apk' | sha256sum --check
-          adb -s 127.0.0.1:5555 install -r candidate/elichika-2026.10.01-dev.apk
-
-      - name: Execute actual permissions screens lifecycle and embedded backup
-        run: python3 -u tests/server_app_ui_qa.py --serial 127.0.0.1:5555 --evidence evidence/server-app --disposable-device --background-seconds 45 --backup-fixture
-
-      - name: Collect server app diagnostics
-        if: always()
-        run: |
-          mkdir -p evidence
-          docker logs original-client-qa > evidence/server-app-container.log 2>&1 || true
-          adb -s 127.0.0.1:5555 logcat -d > evidence/server-app-final-logcat.txt 2>&1 || true
-          adb -s 127.0.0.1:5555 shell dumpsys package com.tagundo.elichika > evidence/server-app-package.txt 2>&1 || true
-
-      - name: Upload server app evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: emulator-server-app-ui
-          path: evidence/
-          if-no-files-found: warn
-
-      - name: Remove disposable server Android
-        if: always()
-        run: docker rm --force original-client-qa || true

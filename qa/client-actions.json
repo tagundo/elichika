@@ -1,13 +1,3 @@
 {
-  "actions": [
-    {
-      "id": "recover-collector-inspect-01",
-      "type": "unity_tree",
-      "wait": 0
-    },
-    {
-      "id": "stop-early-observer-run",
-      "type": "stop"
-    }
-  ]
+  "actions": []
 }
