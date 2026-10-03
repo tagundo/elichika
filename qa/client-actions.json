@@ -17,6 +17,22 @@
       "keycode": 4,
       "wait": 0,
       "qa_negative_test": true
+    },
+    {
+      "id": "third-qa-paused-readonly-tree",
+      "type": "unity_tree",
+      "diagnostic_while_blocked": true,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "third-qa-paused-readonly-account",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "pause_smoke",
+      "diagnostic_while_blocked": true,
+      "wait": 0,
+      "required": false
     }
   ]
 }
