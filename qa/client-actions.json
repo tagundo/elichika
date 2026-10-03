@@ -400,6 +400,44 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "third-patched-legacy-cold-client-restart",
+      "type": "client_restart",
+      "wait": 15,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-cold-title-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "ready_timeout": 60,
+      "wait": 15,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-cold-preserved-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "legacy",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-cold-home-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "third-postupgrade-stock-gameplay-checkpoint",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postupgrade_37136202289",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
