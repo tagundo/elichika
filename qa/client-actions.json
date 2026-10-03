@@ -1312,6 +1312,22 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-star-items-next",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/ScreenButton"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-star-one-skill-reward-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
