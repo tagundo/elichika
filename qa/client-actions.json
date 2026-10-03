@@ -1,1 +1,13 @@
-{"actions": []}
+{
+  "actions": [
+    {
+      "id": "title-with-visible-held-touch",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "hold_ms": 250,
+      "wait": 20
+    }
+  ]
+}
