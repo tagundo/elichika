@@ -82,6 +82,22 @@
         "name": "LessonNameImage"
       },
       "wait": 6
+    },
+    {
+      "id": "lesson-introduction-next",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 2
+    },
+    {
+      "id": "lesson-introduction-close",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 3
     }
   ]
 }
