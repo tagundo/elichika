@@ -1359,6 +1359,25 @@
       "id": "shooting-star-G1-complete-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "release-qa-restore-synthetic-checkpoint",
+      "type": "fixture",
+      "operation": "restore",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "release-qa-restored-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "release-qa-device-finish",
+      "type": "stop",
+      "wait": 1
     }
   ]
 }
