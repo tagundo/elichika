@@ -1,1 +1,9 @@
-{"actions": []}
+{
+  "actions": [
+    {
+      "id": "bootstrap-progress-r2",
+      "type": "unity_tree",
+      "wait": 0
+    }
+  ]
+}
