@@ -146,7 +146,7 @@ jobs:
       - name: Observe and drive client UI round 1
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 1 --duration 75 --evidence evidence/round-1
+        run: python3 -u tests/client_ui_qa.py --stage control --round 1 --duration 60 --evidence evidence/round-1
 
       - name: Upload round 1 UI evidence
         if: always()
@@ -161,7 +161,7 @@ jobs:
       - name: Observe and drive client UI round 2
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 2 --duration 75 --evidence evidence/round-2
+        run: python3 -u tests/client_ui_qa.py --stage control --round 2 --duration 60 --evidence evidence/round-2
 
       - name: Upload round 2 UI evidence
         if: always()
@@ -176,7 +176,7 @@ jobs:
       - name: Observe and drive client UI round 3
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 3 --duration 75 --evidence evidence/round-3
+        run: python3 -u tests/client_ui_qa.py --stage control --round 3 --duration 60 --evidence evidence/round-3
 
       - name: Upload round 3 UI evidence
         if: always()
@@ -191,7 +191,7 @@ jobs:
       - name: Observe and drive client UI round 4
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 4 --duration 75 --evidence evidence/round-4
+        run: python3 -u tests/client_ui_qa.py --stage control --round 4 --duration 60 --evidence evidence/round-4
 
       - name: Upload round 4 UI evidence
         if: always()
@@ -206,7 +206,7 @@ jobs:
       - name: Observe and drive client UI round 5
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 5 --duration 75 --evidence evidence/round-5
+        run: python3 -u tests/client_ui_qa.py --stage control --round 5 --duration 60 --evidence evidence/round-5
 
       - name: Upload round 5 UI evidence
         if: always()
@@ -221,7 +221,7 @@ jobs:
       - name: Observe and drive client UI round 6
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 6 --duration 75 --evidence evidence/round-6
+        run: python3 -u tests/client_ui_qa.py --stage control --round 6 --duration 60 --evidence evidence/round-6
 
       - name: Upload round 6 UI evidence
         if: always()
@@ -236,7 +236,7 @@ jobs:
       - name: Observe and drive client UI round 7
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 7 --duration 75 --evidence evidence/round-7
+        run: python3 -u tests/client_ui_qa.py --stage control --round 7 --duration 60 --evidence evidence/round-7
 
       - name: Upload round 7 UI evidence
         if: always()
@@ -251,7 +251,7 @@ jobs:
       - name: Observe and drive client UI round 8
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 8 --duration 75 --evidence evidence/round-8
+        run: python3 -u tests/client_ui_qa.py --stage control --round 8 --duration 60 --evidence evidence/round-8
 
       - name: Upload round 8 UI evidence
         if: always()
@@ -266,7 +266,7 @@ jobs:
       - name: Observe and drive client UI round 9
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 9 --duration 75 --evidence evidence/round-9
+        run: python3 -u tests/client_ui_qa.py --stage control --round 9 --duration 60 --evidence evidence/round-9
 
       - name: Upload round 9 UI evidence
         if: always()
@@ -281,7 +281,7 @@ jobs:
       - name: Observe and drive client UI round 10
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 10 --duration 75 --evidence evidence/round-10
+        run: python3 -u tests/client_ui_qa.py --stage control --round 10 --duration 60 --evidence evidence/round-10
 
       - name: Upload round 10 UI evidence
         if: always()
@@ -296,7 +296,7 @@ jobs:
       - name: Observe and drive client UI round 11
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 11 --duration 75 --evidence evidence/round-11
+        run: python3 -u tests/client_ui_qa.py --stage control --round 11 --duration 60 --evidence evidence/round-11
 
       - name: Upload round 11 UI evidence
         if: always()
@@ -311,7 +311,7 @@ jobs:
       - name: Observe and drive client UI round 12
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 12 --duration 75 --evidence evidence/round-12
+        run: python3 -u tests/client_ui_qa.py --stage control --round 12 --duration 60 --evidence evidence/round-12
 
       - name: Upload round 12 UI evidence
         if: always()
@@ -326,7 +326,7 @@ jobs:
       - name: Observe and drive client UI round 13
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 13 --duration 75 --evidence evidence/round-13
+        run: python3 -u tests/client_ui_qa.py --stage control --round 13 --duration 60 --evidence evidence/round-13
 
       - name: Upload round 13 UI evidence
         if: always()
@@ -341,7 +341,7 @@ jobs:
       - name: Observe and drive client UI round 14
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 14 --duration 75 --evidence evidence/round-14
+        run: python3 -u tests/client_ui_qa.py --stage control --round 14 --duration 60 --evidence evidence/round-14
 
       - name: Upload round 14 UI evidence
         if: always()
@@ -356,7 +356,7 @@ jobs:
       - name: Observe and drive client UI round 15
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 15 --duration 75 --evidence evidence/round-15
+        run: python3 -u tests/client_ui_qa.py --stage control --round 15 --duration 60 --evidence evidence/round-15
 
       - name: Upload round 15 UI evidence
         if: always()
@@ -371,7 +371,7 @@ jobs:
       - name: Observe and drive client UI round 16
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 16 --duration 75 --evidence evidence/round-16
+        run: python3 -u tests/client_ui_qa.py --stage control --round 16 --duration 60 --evidence evidence/round-16
 
       - name: Upload round 16 UI evidence
         if: always()
@@ -386,7 +386,7 @@ jobs:
       - name: Observe and drive client UI round 17
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 17 --duration 75 --evidence evidence/round-17
+        run: python3 -u tests/client_ui_qa.py --stage control --round 17 --duration 60 --evidence evidence/round-17
 
       - name: Upload round 17 UI evidence
         if: always()
@@ -401,7 +401,7 @@ jobs:
       - name: Observe and drive client UI round 18
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 18 --duration 75 --evidence evidence/round-18
+        run: python3 -u tests/client_ui_qa.py --stage control --round 18 --duration 60 --evidence evidence/round-18
 
       - name: Upload round 18 UI evidence
         if: always()
@@ -416,7 +416,7 @@ jobs:
       - name: Observe and drive client UI round 19
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 19 --duration 75 --evidence evidence/round-19
+        run: python3 -u tests/client_ui_qa.py --stage control --round 19 --duration 60 --evidence evidence/round-19
 
       - name: Upload round 19 UI evidence
         if: always()
@@ -431,7 +431,7 @@ jobs:
       - name: Observe and drive client UI round 20
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 20 --duration 75 --evidence evidence/round-20
+        run: python3 -u tests/client_ui_qa.py --stage control --round 20 --duration 60 --evidence evidence/round-20
 
       - name: Upload round 20 UI evidence
         if: always()
@@ -440,6 +440,186 @@ jobs:
           name: original-client-round-20
           path: |
             evidence/round-20/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 21
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 21 --duration 60 --evidence evidence/round-21
+
+      - name: Upload round 21 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-21
+          path: |
+            evidence/round-21/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 22
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 22 --duration 60 --evidence evidence/round-22
+
+      - name: Upload round 22 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-22
+          path: |
+            evidence/round-22/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 23
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 23 --duration 60 --evidence evidence/round-23
+
+      - name: Upload round 23 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-23
+          path: |
+            evidence/round-23/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 24
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 24 --duration 60 --evidence evidence/round-24
+
+      - name: Upload round 24 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-24
+          path: |
+            evidence/round-24/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 25
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 25 --duration 60 --evidence evidence/round-25
+
+      - name: Upload round 25 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-25
+          path: |
+            evidence/round-25/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 26
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 26 --duration 60 --evidence evidence/round-26
+
+      - name: Upload round 26 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-26
+          path: |
+            evidence/round-26/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 27
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 27 --duration 60 --evidence evidence/round-27
+
+      - name: Upload round 27 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-27
+          path: |
+            evidence/round-27/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 28
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 28 --duration 60 --evidence evidence/round-28
+
+      - name: Upload round 28 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-28
+          path: |
+            evidence/round-28/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 29
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 29 --duration 60 --evidence evidence/round-29
+
+      - name: Upload round 29 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-29
+          path: |
+            evidence/round-29/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 30
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 30 --duration 60 --evidence evidence/round-30
+
+      - name: Upload round 30 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-30
+          path: |
+            evidence/round-30/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 31
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 31 --duration 60 --evidence evidence/round-31
+
+      - name: Upload round 31 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-31
+          path: |
+            evidence/round-31/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 32
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 32 --duration 60 --evidence evidence/round-32
+
+      - name: Upload round 32 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-32
+          path: |
+            evidence/round-32/
             evidence/client-ui-state.json
           if-no-files-found: warn
 

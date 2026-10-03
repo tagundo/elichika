@@ -155,12 +155,17 @@ def main():
             state['bootstrap_actions']=[]
             for step in [{'id':'select-korean','selector':{'name':'KoreanButton'},'wait':5},
                          {'id':'confirm-korean','selector':{'name':'ButtonPositiveM'},'wait':10},
-                         {'id':'title-default-tap','selector':{'name':'ScreenButton'},'wait':30}]:
+                         {'id':'title-start-prompt','selector':{'name':'TapTextView'},'wait':30},
+                         {'id':'accept-terms','selector':{'name':'ButtonPositiveM'},'wait':8},
+                         {'id':'choose-light-download','selector':{'path':'EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle/DownloadTypeTextView'},'wait':3},
+                         {'id':'confirm-light-download','selector':{'name':'ButtonPositiveM'},'wait':30}]:
                 try:
                     record=dev.tap_unity_node(step)
                     time.sleep(step['wait'])
                     dev.capture('bootstrap-'+step['id'])
-                    dev.unity_tree('bootstrap-'+step['id'])
+                    current_tree=dev.unity_tree('bootstrap-'+step['id'])
+                    if step['id']=='choose-light-download':
+                        assert any('/LightnessToggle/ToggleOn' in n['path'] for n in current_tree['nodes']), 'Light download was not selected; refusing full download'
                     state['bootstrap_actions'].append({'id':step['id'],**record})
                 except Exception as e:
                     state['bootstrap_error']=str(e);break
