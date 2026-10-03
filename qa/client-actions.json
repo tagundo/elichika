@@ -205,6 +205,25 @@
       "id": "zh-live-ready-autoplay-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-record-start-1",
+      "type": "record_start",
+      "name": "zh-ordinary-live-1",
+      "wait": 1
+    },
+    {
+      "id": "zh-live-start-ordinary-playback",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/FooterButtons/LiveStartButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-live-started-or-preflight-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
