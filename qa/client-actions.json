@@ -1,1 +1,9 @@
-{"actions": []}
+{
+  "actions": [
+    {
+      "id": "inspect-download-complete-popup",
+      "type": "unity_tree",
+      "wait": 0
+    }
+  ]
+}
