@@ -949,6 +949,56 @@
       "id": "full-slots-D1R2-complete-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "apply-pin-two-E1",
+      "type": "fixture",
+      "operation": "apply",
+      "case": "pin_two",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "pin-two-E1-launch",
+      "type": "launch",
+      "wait": 45
+    },
+    {
+      "id": "pin-two-E1-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "wait": 25
+    },
+    {
+      "id": "pin-two-E1-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "pin-two-E1-recommend",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "pin-two-E1-open-pin",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/PreparationContainer/BackgroundImage/ItemContainer/ItemList/ItemButton1/SelectButton"
+      },
+      "wait": 5
+    },
+    {
+      "id": "pin-two-E1-pin-list-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
