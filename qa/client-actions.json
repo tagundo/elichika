@@ -114,6 +114,14 @@
         "name": "ExecuteButton"
       },
       "wait": 15
+    },
+    {
+      "id": "advance-rendered-lesson-to-results",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 5
     }
   ]
 }
