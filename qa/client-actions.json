@@ -299,6 +299,27 @@
       "id": "zh-live-complete-menu-tree-retry",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-afterlive-open-global-menu",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/FrontSafeArea/BottomBaseSize/MenuButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-natural-open-first-lesson",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Lesson/LessonButton/LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-natural-first-lesson-prep-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
