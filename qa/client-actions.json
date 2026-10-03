@@ -563,6 +563,18 @@
       "id": "zh-cold-profile-preserved-live-counts-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-final-preserved-critical-state-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "auto",
+      "wait": 1
+    },
+    {
+      "id": "zh-complete-stop-disposable-controller",
+      "type": "stop",
+      "wait": 1
     }
   ]
 }
