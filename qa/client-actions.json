@@ -498,11 +498,26 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-full-song-no-input-further-sixty-seconds",
+      "type": "capture",
+      "wait": 60,
+      "required": true
+    },
+    {
+      "id": "sixth-full-song-readonly-post-wait-native-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": false
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
   "prior_completed_run": 37139189963,
   "prior_transport_failure_run": 37156767981,
   "controller_sha256": "beae5666ef2b325a74fbe66419d4e099f3a6761eacc0a15b97550b4c3de07e86",
-  "resume_after_blocked_action": null
+  "resume_after_blocked_action": {
+    "id": "sixth-native-live-after-first-minute-tree",
+    "action_definition_sha256": "32fb7fef574e6e520d6bbea81f6008aeecd15e5d1255150567dcf8f131a50daa"
+  }
 }
