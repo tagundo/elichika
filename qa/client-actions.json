@@ -60,6 +60,14 @@
         "name": "LessonNameImage"
       },
       "wait": 8
+    },
+    {
+      "id": "follow-channel-tutorial-highlight",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "wait": 5
     }
   ]
 }
