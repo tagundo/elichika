@@ -30,6 +30,45 @@ def parse_package_app_id(package_dump):
     return ids.pop()
 
 
+def definition_sha256(value):
+    canonical = json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def resume_blocked_ui_control(state, commands):
+    blocked = state.get('blocked_ui_control')
+    if not blocked:
+        return True
+    marker = {'id': blocked['id'], 'action_definition_sha256': blocked['action_definition_sha256']}
+    if commands.get('resume_after_blocked_action') != marker:
+        blocked['resume_refusal'] = 'Explicit blocked-action id and definition SHA do not match'
+        return False
+    present = {action['id'] for action in commands.get('actions', [])}
+    stale = sorted(present.intersection(blocked['dependent_action_ids']))
+    if stale:
+        blocked['resume_refusal'] = 'Cancelled dependent actions remain in the revised batch: ' + str(stale)
+        return False
+    done = {action['id'] for action in state['actions']}.union(state.get('cancelled_action_ids', []))
+    pending = [action for action in commands.get('actions', []) if action['id'] not in done]
+    if not pending:
+        blocked['resume_refusal'] = 'Revised batch has no new action ids'
+        return False
+    first = pending[0]
+    failed = blocked['action_definition']
+    if first['type'] == failed['type'] and first.get('selector') == failed.get('selector'):
+        blocked['resume_refusal'] = 'First revised action repeats the refused UI target'
+        return False
+    state.setdefault('ui_control_resume_history', []).append({
+        'blocked_action_id': blocked['id'], 'blocked_action_definition_sha256': blocked['action_definition_sha256'],
+        'cancelled_dependent_action_ids': blocked['dependent_action_ids'],
+        'revised_controls_sha256': definition_sha256(commands), 'next_action_ids': [action['id'] for action in pending],
+        'resumed_at_utc': datetime.now(timezone.utc).isoformat()})
+    state['cancelled_action_ids'] = sorted(set(state.get('cancelled_action_ids', [])).union(blocked['dependent_action_ids']))
+    state.pop('blocked_ui_control')
+    state['status'] = 'UI_CONTROL_RESUMED'
+    return True
+
+
 class Device(Android):
     def wait_unity(self, action):
         """Poll real hierarchy only; never invoke game callbacks to finish a scene."""
@@ -392,12 +431,30 @@ def main():
                     state['bootstrap_error']=str(e);break
         else:
             if state.get('control_stopped'):return
-            done={a['id'] for a in state['actions']}
+            done={a['id'] for a in state['actions']}.union(state.get('cancelled_action_ids', []))
             deadline=time.monotonic()+args.duration
             count=0
+            blocked_captured=False
             while time.monotonic()<deadline:
                 commands=fetch_commands(args.commands_branch)
-                for action in commands.get('actions',[]):
+                if not resume_blocked_ui_control(state, commands):
+                    if not blocked_captured:
+                        dev.capture('blocked-round-' + str(args.round))
+                        blocked_captured=True
+                    execution_actions = [action for action in commands.get('actions', [])
+                        if action.get('diagnostic_while_blocked') is True and
+                        action['id'] not in done and
+                        action['id'] not in state['blocked_ui_control']['dependent_action_ids'] and
+                        (action['type'] in ('capture', 'unity_tree', 'unity_raycast') or
+                         (action['type'] == 'fixture' and action.get('operation') == 'inspect'))]
+                    if not execution_actions:
+                        state_path.write_text(json.dumps(state,indent=2)+'\n')
+                        time.sleep(10)
+                        continue
+                else:
+                    done.update(state.get('cancelled_action_ids', []))
+                    execution_actions = commands.get('actions', [])
+                for action in execution_actions:
                     if action['id'] in done:continue
                     record={'id':action['id'],'type':action['type'],'started_at_utc':datetime.now(timezone.utc).isoformat()}
                     try:
@@ -511,6 +568,20 @@ def main():
                     state['actions'].append(record);done.add(action['id'])
                     state_path.write_text(json.dumps(state,indent=2)+'\n')
                     if record['result']=='FAILED' and action.get('required',False):
+                        if action['type'] in ('unitytap', 'unitywait', 'unity_raycast', 'unity_tree', 'tap'):
+                            if state.get('blocked_ui_control'):
+                                state.setdefault('blocked_ui_diagnostic_failures', []).append(record)
+                                state_path.write_text(json.dumps(state,indent=2)+'\n')
+                                return
+                            index = next(i for i, entry in enumerate(commands['actions']) if entry['id'] == action['id'])
+                            state['blocked_ui_control'] = {
+                                'id': action['id'], 'type': action['type'], 'action_definition': action,
+                                'action_definition_sha256': definition_sha256(action), 'error': record['error'],
+                                'dependent_action_ids': [entry['id'] for entry in commands['actions'][index+1:] if entry['id'] not in done],
+                                'evidence_label': 'action-' + action['id'], 'blocked_at_utc': record['finished_at_utc']}
+                            state['status'] = 'REQUIRED_UI_CONTROL_BLOCKED'
+                            state_path.write_text(json.dumps(state,indent=2)+'\n')
+                            return
                         raise AssertionError('Required QA action failed; stopping dependent flow: ' + action['id'] + ': ' + record['error'])
                 if count%20==0:dev.capture('round-'+str(args.round)+'-'+str(count))
                 count+=1;time.sleep(2)

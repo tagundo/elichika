@@ -1749,6 +1749,17 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+      - name: Require explicit completed control stop
+        if: always()
+        run: |
+          python3 - <<'PYCOMPLETE'
+          import json
+          from pathlib import Path
+          state = json.loads(Path('evidence/client-ui-state.json').read_text())
+          assert state.get('control_stopped') is True and state.get('status') == 'CONTROL_COMPLETED', 'QA did not explicitly finish: ' + str(state.get('status'))
+          assert not state.get('blocked_ui_control'), 'QA finished with an unresolved required UI target'
+          PYCOMPLETE
+
       - name: Collect final diagnostics
         if: always()
         run: |
