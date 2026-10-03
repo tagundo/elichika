@@ -93,6 +93,19 @@
       "id": "zh-live-menu-entry-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-select-ordinary-mode",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/LiveToolTip/Basic/BasicLiveButton"
+      },
+      "wait": 15
+    },
+    {
+      "id": "zh-live-song-selection-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
