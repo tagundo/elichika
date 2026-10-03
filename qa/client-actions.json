@@ -325,6 +325,41 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-completed-zero-apply",
+      "type": "fixture",
+      "operation": "apply",
+      "checkpoint": "postbootstrap_37139189963",
+      "wait": 5,
+      "required": true,
+      "case": "no_drop_completed"
+    },
+    {
+      "id": "fourth-completed-zero-title-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "ready_timeout": 45,
+      "wait": 20,
+      "required": true
+    },
+    {
+      "id": "fourth-completed-zero-enter-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "fourth-completed-zero-preparation-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
