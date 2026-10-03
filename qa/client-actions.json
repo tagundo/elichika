@@ -29,6 +29,26 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-schema-predecessor-must-not-back",
+      "type": "key",
+      "keycode": 4,
+      "wait": 0,
+      "qa_negative_test": true
+    },
+    {
+      "id": "fourth-schema-dependent-must-not-back",
+      "type": "key",
+      "keycode": 4,
+      "wait": 0,
+      "qa_negative_test": true
+    },
+    {
+      "id": "fourth-schema-cancelled-reentry-proof-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
