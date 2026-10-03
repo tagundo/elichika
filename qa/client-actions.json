@@ -558,6 +558,32 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-advance-actual-live-bond-complete-page",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Buttons/TapScreen/TapButton"
+      },
+      "ready_timeout": 45,
+      "wait": 6,
+      "required": true
+    },
+    {
+      "id": "sixth-earned-live-normal-song-menu-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-earned-before-cold-owned-raw-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postbootstrap_37157358249",
+      "user_id": 21246312,
+      "restart": false,
+      "wait": 0,
+      "required": true
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
