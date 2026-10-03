@@ -898,8 +898,8 @@
       "id": "fourth-pin-confirm-use",
       "type": "unitytap",
       "selector": {
-        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
-        "text": "확인"
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectItemConfirmPopup(Clone)/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "합숙 시작"
       },
       "ready_timeout": 45,
       "wait": 45,
