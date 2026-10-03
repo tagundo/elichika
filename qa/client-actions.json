@@ -814,6 +814,141 @@
       "id": "full-slots-D2-choice-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "full-slots-D2-decision",
+      "type": "unitytap",
+      "selector": {
+        "name": "DecisionButton"
+      },
+      "wait": 4
+    },
+    {
+      "id": "full-slots-D2-confirm-preview",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 4
+    },
+    {
+      "id": "full-slots-D2-confirm-final",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 8
+    },
+    {
+      "id": "full-slots-D2-complete-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "phase-full-slots-D1R2-execute",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "full-slots-D1R2-recommend",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "full-slots-D1R2-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "wait": 20
+    },
+    {
+      "id": "full-slots-D1R2-pending",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "full-slots-D1R2-performance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "full-slots-D1R2-items",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 12
+    },
+    {
+      "id": "full-slots-D1R2-result-advance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "full-slots-D1R2-unselect-old",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/AnimationRoot/SkillSelect/SkillContainer/BackgroundImage/ScrollSelectViewHorizontal/Viewport/Content/cell0/EquipSkillsContainer/SkillsContainer/SkillToggleButton1"
+      },
+      "wait": 2
+    },
+    {
+      "id": "full-slots-D1R2-select-new",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/AnimationRoot/SkillSelect/SkillContainer/BackgroundImage/ScrollSelectViewHorizontal/Viewport/Content/cell0/DropSkillsContainer/SkillsContainer/Viewport/Content/SkillToggleButton1"
+      },
+      "wait": 2
+    },
+    {
+      "id": "full-slots-D1R2-decision",
+      "type": "unitytap",
+      "selector": {
+        "name": "DecisionButton"
+      },
+      "wait": 4
+    },
+    {
+      "id": "full-slots-D1R2-confirm-preview",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 4
+    },
+    {
+      "id": "full-slots-D1R2-confirm-final",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 8
+    },
+    {
+      "id": "full-slots-D1R2-complete-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "full-slots-D1R2-complete-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
