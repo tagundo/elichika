@@ -16,6 +16,14 @@
         "name": "TapTextView"
       },
       "wait": 30
+    },
+    {
+      "id": "accept-local-test-game-terms",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 45
     }
   ]
 }
