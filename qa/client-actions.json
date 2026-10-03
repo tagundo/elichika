@@ -390,6 +390,35 @@
       "id": "zh-natural-firstskill-help-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-natural-skill-help-page1-next",
+      "type": "unitytap",
+      "selector": {
+        "text": "下一頁"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-natural-skill-help-page2-next",
+      "type": "unitytap",
+      "selector": {
+        "text": "下一頁"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-natural-skill-help-page3-close",
+      "type": "unitytap",
+      "selector": {
+        "text": "關閉"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-natural-skill-selection-after-help-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
