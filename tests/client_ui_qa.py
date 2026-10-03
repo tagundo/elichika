@@ -1,5 +1,7 @@
 """Drive an unchanged SIFAS client on disposable Android; capture real UI evidence."""
 import argparse
+from datetime import datetime, timezone
+import gzip
 import hashlib
 import json
 import os
@@ -36,22 +38,33 @@ class Device(Android):
         matches=[n for n in tree['nodes'] if all(n.get(k)==v for k,v in selector.items())]
         assert len(matches)==1, 'Unity target must match exactly one node, got '+str(len(matches))
         node=matches[0]
+        assert node.get('effective_alpha',1)>0.05, 'Target is hidden by CanvasGroup alpha'
+        assert node.get('inherited_interactable',True), 'Target inherits a non-interactable CanvasGroup'
         x1,y1,x2,y2=node['bounds']
         assert 0<=x1<x2<=tree['width'] and 0<=y1<y2<=tree['height']
         x,y=str(round((x1+x2)/2)),str(round((y1+y2)/2))
+        raycast_path=self.evidence/('raycast-'+action['id']+'.json')
+        raycast_process=subprocess.run(['python3','tests/unity_ui_probe.py','--output',str(raycast_path),
+                                       '--raycast',x,y],capture_output=True,text=True,timeout=60)
+        raycast_data=json.loads(raycast_path.read_text()) if raycast_process.returncode==0 else {}
+        raycast=raycast_data.get('pointer_raycast',{'supported':False,'reason':raycast_process.stderr[-600:]})
+        if raycast.get('supported') and raycast.get('hits'):
+            first=raycast['hits'][0]['path']
+            assert not ('LoadingUICanvas' in first and 'LoadingUICanvas' not in node['path']), 'Loading canvas receives the touch: '+first
         hold=action.get('hold_ms',0)
         assert hold==0 or 50<=hold<=350
         if hold:self.shell('input','swipe',x,y,x,y,str(hold))
         else:self.shell('input','tap',x,y)
-        return {'source':tree['source'],'selector':selector,'path':node['path'],'bounds':node['bounds'],'hold_ms':hold}
+        return {'source':tree['source'],'selector':selector,'path':node['path'],'bounds':node['bounds'],'hold_ms':hold,'pointer_raycast':raycast}
 
     def capture(self, label):
         for name,args in [('screen.png',('exec-out','screencap','-p')),
-                          ('logcat.txt',('logcat','-d')),
+                          ('logcat.txt.gz',('logcat','-d')),
                           ('crash.txt',('logcat','-b','crash','-d')),
                           ('activity.txt',('shell','dumpsys','activity','activities'))]:
             try:
-                self.evidence.joinpath(label+'-'+name).write_bytes(self.adb(*args,raw=True))
+                data=self.adb(*args,raw=True)
+                self.evidence.joinpath(label+'-'+name).write_bytes(gzip.compress(data) if name.endswith('.gz') else data)
             except Exception as e:
                 self.evidence.joinpath(label+'-'+name+'.error').write_text(str(e))
         try:
@@ -178,7 +191,7 @@ def main():
                 commands=fetch_commands()
                 for action in commands.get('actions',[]):
                     if action['id'] in done:continue
-                    record={'id':action['id'],'type':action['type']}
+                    record={'id':action['id'],'type':action['type'],'started_at_utc':datetime.now(timezone.utc).isoformat()}
                     try:
                         if action['type']=='tap':record.update(dev.tap_node(action))
                         elif action['type']=='unity_tree':record['nodes']=len(dev.unity_tree('action-'+action['id'])['nodes'])
@@ -202,6 +215,7 @@ def main():
                     if action['type']=='unitytap':
                         try:dev.unity_tree('action-'+action['id'])
                         except Exception as e:record['post_action_tree_error']=str(e)
+                    record['finished_at_utc']=datetime.now(timezone.utc).isoformat()
                     state['actions'].append(record);done.add(action['id'])
                     state_path.write_text(json.dumps(state,indent=2)+'\n')
                 if count%20==0:dev.capture('round-'+str(args.round)+'-'+str(count))

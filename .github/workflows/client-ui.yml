@@ -1,4 +1,4 @@
-name: Original SIFAS client Android UI QA
+name: Original SIFAS client loading diagnosis
 
 on:
   push:
@@ -128,6 +128,11 @@ jobs:
           name: original-client-collector-preparation
           path: evidence/unity-preparation.log
 
+      - name: Start read-only scene and exception observer
+        run: |
+          mkdir -p evidence/observer
+          nohup python3 -u tests/unity_observer.py --evidence evidence/observer --duration 2850 > evidence/observer/observer-host.log 2>&1 < /dev/null &
+
       - name: Install and launch the original client with the server
         run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk --evidence evidence/initial
 
@@ -139,6 +144,7 @@ jobs:
           path: |
             evidence/initial/
             evidence/client-ui-state.json
+            evidence/observer/
             evidence/android-properties.txt
             evidence/host.txt
           if-no-files-found: warn
@@ -156,6 +162,7 @@ jobs:
           path: |
             evidence/round-1/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 2
@@ -171,6 +178,7 @@ jobs:
           path: |
             evidence/round-2/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 3
@@ -186,6 +194,7 @@ jobs:
           path: |
             evidence/round-3/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 4
@@ -201,6 +210,7 @@ jobs:
           path: |
             evidence/round-4/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 5
@@ -216,6 +226,7 @@ jobs:
           path: |
             evidence/round-5/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 6
@@ -231,6 +242,7 @@ jobs:
           path: |
             evidence/round-6/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 7
@@ -246,6 +258,7 @@ jobs:
           path: |
             evidence/round-7/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 8
@@ -261,6 +274,7 @@ jobs:
           path: |
             evidence/round-8/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 9
@@ -276,6 +290,7 @@ jobs:
           path: |
             evidence/round-9/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 10
@@ -291,6 +306,7 @@ jobs:
           path: |
             evidence/round-10/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 11
@@ -306,6 +322,7 @@ jobs:
           path: |
             evidence/round-11/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 12
@@ -321,6 +338,7 @@ jobs:
           path: |
             evidence/round-12/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 13
@@ -336,6 +354,7 @@ jobs:
           path: |
             evidence/round-13/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 14
@@ -351,6 +370,7 @@ jobs:
           path: |
             evidence/round-14/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 15
@@ -366,6 +386,7 @@ jobs:
           path: |
             evidence/round-15/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 16
@@ -381,6 +402,7 @@ jobs:
           path: |
             evidence/round-16/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 17
@@ -396,6 +418,7 @@ jobs:
           path: |
             evidence/round-17/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 18
@@ -411,6 +434,7 @@ jobs:
           path: |
             evidence/round-18/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 19
@@ -426,6 +450,7 @@ jobs:
           path: |
             evidence/round-19/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 20
@@ -441,6 +466,7 @@ jobs:
           path: |
             evidence/round-20/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 21
@@ -456,6 +482,7 @@ jobs:
           path: |
             evidence/round-21/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 22
@@ -471,6 +498,7 @@ jobs:
           path: |
             evidence/round-22/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 23
@@ -486,6 +514,7 @@ jobs:
           path: |
             evidence/round-23/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 24
@@ -501,6 +530,7 @@ jobs:
           path: |
             evidence/round-24/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 25
@@ -516,6 +546,7 @@ jobs:
           path: |
             evidence/round-25/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 26
@@ -531,6 +562,7 @@ jobs:
           path: |
             evidence/round-26/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 27
@@ -546,6 +578,7 @@ jobs:
           path: |
             evidence/round-27/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 28
@@ -561,6 +594,7 @@ jobs:
           path: |
             evidence/round-28/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 29
@@ -576,6 +610,7 @@ jobs:
           path: |
             evidence/round-29/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 30
@@ -591,6 +626,7 @@ jobs:
           path: |
             evidence/round-30/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 31
@@ -606,6 +642,7 @@ jobs:
           path: |
             evidence/round-31/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 32
@@ -621,6 +658,7 @@ jobs:
           path: |
             evidence/round-32/
             evidence/client-ui-state.json
+            evidence/observer/
           if-no-files-found: warn
 
       - name: Collect final diagnostics
@@ -630,6 +668,7 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/local/tmp/frida-server.log > evidence/frida-server.log 2>&1 || true
           docker logs original-client-qa > evidence/container.log 2>&1 || true
           adb -s 127.0.0.1:5555 logcat -d > evidence/final-logcat.txt 2>&1 || true
+          adb -s 127.0.0.1:5555 shell dumpsys meminfo com.klab.lovelive.allstars.global > evidence/final-game-meminfo.txt 2>&1 || true
 
       - name: Upload final evidence
         if: always()
@@ -638,7 +677,9 @@ jobs:
           name: original-client-final
           path: |
             evidence/client-ui-state.json
+            evidence/observer/
             evidence/final-logcat.txt
+            evidence/final-game-meminfo.txt
             evidence/container.log
             evidence/frida-server.log
             evidence/host.txt
