@@ -4,6 +4,14 @@
       "id": "inspect-download-complete-popup",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "close-download-completion",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 30
     }
   ]
 }
