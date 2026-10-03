@@ -53,6 +53,7 @@ class Device(Android):
         if raycast.get('supported') and raycast.get('hits'):
             first=raycast['hits'][0]['path']
             assert not ('LoadingUICanvas' in first and 'LoadingUICanvas' not in node['path']), 'Loading canvas receives the touch: '+first
+            assert not ('/PopupView/' in first and '/PopupView/' not in node['path']), 'A modal popup receives the touch: '+first
         hold=action.get('hold_ms',0)
         assert hold==0 or 50<=hold<=350
         if hold:self.shell('input','swipe',x,y,x,y,str(hold))
@@ -101,7 +102,7 @@ class Device(Android):
 
 
 def fetch_commands():
-    url='https://api.github.com/repos/tagundo/elichika/contents/qa/client-actions.json?ref=codex/original-client-ui-qa'
+    url='https://api.github.com/repos/tagundo/elichika/contents/qa/client-actions.json?ref=codex/original-client-zh-qa'
     req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],
                                           'Accept':'application/vnd.github.raw+json'})
     with urllib.request.urlopen(req,timeout=20) as response:
@@ -124,6 +125,10 @@ def main():
         'limits':['Disposable rooted Android virtual device; not a physical phone',
                   '4KB results do not establish full Android16KB compatibility',
                   'Unity accessibility may not expose individual game controls']}
+    if args.stage == 'control':
+        installed_sha = state.get('server_install', {}).get('native_sha256')
+        assert installed_sha and re.fullmatch(r'[0-9a-f]{64}', installed_sha), 'Missing initial native executable hash'
+        dev.native_sha = installed_sha
     try:
         if args.stage=='initial':
             assert hashlib.sha256(args.server.read_bytes()).hexdigest()==SERVER_SHA
@@ -182,8 +187,8 @@ def main():
             try:state['initial_unity_node_count']=len(dev.unity_tree('initial-game')['nodes'])
             except Exception as e:state['unity_probe_error']=str(e)
             state['bootstrap_actions']=[]
-            for step in [{'id':'select-korean','selector':{'name':'KoreanButton'},'wait':5},
-                         {'id':'confirm-korean','selector':{'name':'ButtonPositiveM'},'wait':10},
+            for step in [{'id':'select-chinese','selector':{'name':'ChineseButton'},'wait':5},
+                         {'id':'confirm-chinese','selector':{'name':'ButtonPositiveM'},'wait':10},
                          {'id':'title-start-prompt','selector':{'name':'TapTextView'},'wait':30},
                          {'id':'accept-terms','selector':{'name':'ButtonPositiveM'},'wait':8},
                          {'id':'choose-light-download','selector':{'path':'EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle/DownloadTypeTextView'},'wait':3},
