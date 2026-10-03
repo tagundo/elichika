@@ -4,6 +4,16 @@
       "id": "asset-progress-01",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "asset-settle-02",
+      "type": "capture",
+      "wait": 60
+    },
+    {
+      "id": "asset-progress-02",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
