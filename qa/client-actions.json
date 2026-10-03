@@ -999,6 +999,94 @@
       "id": "pin-two-E1-pin-list-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "pin-two-E1-select-1400",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectItemListPopup(Clone)/CategorizeTileViewVertical/Viewport/Content/cell0/LessonMenuSelectLessonItem/ContentAmountTextView"
+      },
+      "wait": 2
+    },
+    {
+      "id": "pin-two-E1-commit-pin",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 4
+    },
+    {
+      "id": "phase-pin-two-E1-execute",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "pin-two-E1-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "wait": 4
+    },
+    {
+      "id": "pin-two-E1-confirm-use",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 25
+    },
+    {
+      "id": "pin-two-E1-pending",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "pin-two-E1-performance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "pin-two-E1-items",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 12
+    },
+    {
+      "id": "pin-two-E1-result-advance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "pin-two-E1-confirm-final",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 8
+    },
+    {
+      "id": "pin-two-E1-complete-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "pin-two-E1-complete-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
