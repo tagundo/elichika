@@ -44,6 +44,22 @@
         "name": "LessonNameImage"
       },
       "wait": 10
+    },
+    {
+      "id": "close-home-channel-introduction",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 3
+    },
+    {
+      "id": "enter-lesson-after-home-introduction",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
     }
   ]
 }
