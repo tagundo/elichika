@@ -71,6 +71,62 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "third-old-home-reference-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "third-old-home-reference-back",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "third-old-home-channel-intro-close",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true,
+      "no_loading": false
+    },
+    {
+      "id": "third-old-home-channel-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "third-old-home-channel-back",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "third-old-home-guides-complete-tree",
+      "type": "unity_tree",
+      "wait": 0
     }
   ],
   "resume_after_blocked_action": {
