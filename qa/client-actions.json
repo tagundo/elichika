@@ -8,6 +8,14 @@
       },
       "hold_ms": 250,
       "wait": 20
+    },
+    {
+      "id": "start-at-rendered-touch-prompt",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "wait": 30
     }
   ]
 }
