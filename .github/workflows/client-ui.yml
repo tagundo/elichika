@@ -8,13 +8,18 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 jobs:
   client:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 50
     steps:
+      - name: Cancel stalled previous QA helper session
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST repos/tagundo/elichika/actions/runs/37101858410/cancel >/dev/null || true
+
       - uses: actions/checkout@v4
 
       - name: Prepare native ARM64 Android virtual device
@@ -59,7 +64,10 @@ jobs:
           echo '23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a  candidate/elichika-2026.10.01-dev.apk' | sha256sum --check
 
       - name: Prepare read-only Unity UI hierarchy collector
+        timeout-minutes: 5
         run: |
+          set -euo pipefail
+          exec > >(tee evidence/unity-preparation.log) 2>&1
           python3 -m pip install --break-system-packages 'frida==17.21.0'
           npm install --prefix qa-runtime 'frida-il2cpp-bridge@0.14.0'
           curl --fail --location --retry 2 --output frida-server.xz https://github.com/frida/frida/releases/download/17.21.0/frida-server-17.21.0-android-arm64.xz
@@ -67,7 +75,20 @@ jobs:
           xz --decompress frida-server.xz
           adb -s 127.0.0.1:5555 push frida-server /data/local/tmp/frida-server
           adb -s 127.0.0.1:5555 shell chmod 755 /data/local/tmp/frida-server
-          adb -s 127.0.0.1:5555 shell /data/local/tmp/frida-server -D -l 127.0.0.1:27042
+
+      - name: Start bounded Unity UI collector service
+        timeout-minutes: 1
+        run: |
+          adb -s 127.0.0.1:5555 shell 'nohup /data/local/tmp/frida-server -l 127.0.0.1:27042 > /data/local/tmp/frida-server.log 2>&1 < /dev/null &'
+          adb -s 127.0.0.1:5555 forward tcp:27042 tcp:27042
+          python3 -c 'import frida; d=frida.get_device_manager().add_remote_device("127.0.0.1:27042"); print("Frida processes:", len(d.enumerate_processes()))'
+
+      - name: Upload collector preparation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-collector-preparation
+          path: evidence/unity-preparation.log
 
       - name: Install and launch the original client with the server
         run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk --evidence evidence/initial
@@ -388,6 +409,7 @@ jobs:
         if: always()
         run: |
           mkdir -p evidence
+          adb -s 127.0.0.1:5555 exec-out cat /data/local/tmp/frida-server.log > evidence/frida-server.log 2>&1 || true
           docker logs original-client-qa > evidence/container.log 2>&1 || true
           adb -s 127.0.0.1:5555 logcat -d > evidence/final-logcat.txt 2>&1 || true
 
@@ -400,6 +422,7 @@ jobs:
             evidence/client-ui-state.json
             evidence/final-logcat.txt
             evidence/container.log
+            evidence/frida-server.log
             evidence/host.txt
             evidence/android-properties.txt
           if-no-files-found: warn
