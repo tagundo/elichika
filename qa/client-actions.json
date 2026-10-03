@@ -193,6 +193,65 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-fullslots-confirm-visible-before-after",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "확인"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-final-decision-popup-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-final-confirm-save-523",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "확인"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-saved-owned-state-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postbootstrap_37157358249",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-saved-normal-menu-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-saved-eli-native-detail-threshold-press",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/DeckContainer/Body/DeckLessonEditDeck/DeckThumbnailParts/MemberSimpleIcon2/CardThumbnailUser/EffectRoot/Button"
+      },
+      "hold_ms": 350,
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "sixth-saved-eli-actual-card-details-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
