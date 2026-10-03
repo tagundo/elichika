@@ -1087,6 +1087,107 @@
       "id": "pin-two-E1-complete-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "apply-three-times-F1",
+      "type": "fixture",
+      "operation": "apply",
+      "case": "three_times",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "three-times-F1-launch",
+      "type": "launch",
+      "wait": 45
+    },
+    {
+      "id": "three-times-F1-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "wait": 25
+    },
+    {
+      "id": "three-times-F1-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "phase-three-times-F1-execute",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "three-times-F1-recommend",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "three-times-F1-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteThreeTimesButton"
+      },
+      "wait": 35
+    },
+    {
+      "id": "three-times-F1-pending",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "three-times-F1-performance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "three-times-F1-items",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 12
+    },
+    {
+      "id": "three-times-F1-result-advance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "three-times-F1-confirm-final",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 8
+    },
+    {
+      "id": "three-times-F1-complete-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "three-times-F1-complete-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
