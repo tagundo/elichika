@@ -1,4 +1,4 @@
-"""Drive an unchanged SIFAS client on disposable Android; capture real UI evidence."""
+"""Recheck a corrected signed server APK with unchanged SIFAS client and real UI evidence."""
 import argparse
 from datetime import datetime, timezone
 import gzip
