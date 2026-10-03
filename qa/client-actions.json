@@ -1,1 +1,12 @@
-{"actions": []}
+{
+  "actions": [
+    {
+      "id": "choose-korean",
+      "type": "unitytap",
+      "selector": {
+        "name": "KoreanButton"
+      },
+      "wait": 20
+    }
+  ]
+}
