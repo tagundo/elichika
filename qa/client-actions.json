@@ -68,6 +68,20 @@
         "name": "GuideFocus"
       },
       "wait": 5
+    },
+    {
+      "id": "return-from-channel-guide",
+      "type": "key",
+      "keycode": 4,
+      "wait": 3
+    },
+    {
+      "id": "enter-lesson-after-channel-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 6
     }
   ]
 }
