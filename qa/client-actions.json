@@ -320,6 +320,35 @@
       "id": "zh-natural-first-lesson-prep-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-natural-close-prep-help-1",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-natural-close-prep-help-2",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-natural-recommend-real-menus",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/PreparationContainer/BackgroundImage/MenuContainer/Header/Buttons/RecommendButton"
+      },
+      "wait": 5
+    },
+    {
+      "id": "zh-natural-ready-before-execute-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
