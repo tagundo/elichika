@@ -12,6 +12,14 @@
         "name": "ButtonPositiveM"
       },
       "wait": 30
+    },
+    {
+      "id": "open-lesson-from-visible-label",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 20
     }
   ]
 }
