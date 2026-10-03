@@ -224,6 +224,17 @@
       "id": "zh-live-started-or-preflight-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-record-end-1",
+      "type": "record_end",
+      "name": "zh-ordinary-live-1",
+      "wait": 1
+    },
+    {
+      "id": "zh-live-first-result-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
