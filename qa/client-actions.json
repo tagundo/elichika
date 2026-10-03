@@ -155,6 +155,69 @@
       "id": "zero-first-A1-menu-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "phase-zero-first-A1-execute",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "zero-first-A1-recommend",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zero-first-A1-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "wait": 30
+    },
+    {
+      "id": "zero-first-A1-pending-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "zero-first-A1-performance-next",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zero-first-A1-items-next",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "phase-zero-first-A1-final-result",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "zero-first-A1-result-touch",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapScreenTextView",
+        "text": "화면을 터치하세요"
+      },
+      "wait": 20
+    },
+    {
+      "id": "zero-first-A1-after-result-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
