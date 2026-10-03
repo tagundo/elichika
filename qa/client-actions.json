@@ -349,6 +349,26 @@
       "id": "zh-natural-ready-before-execute-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-natural-first-lesson-single-execute",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/ExecuteButton"
+      },
+      "wait": 12
+    },
+    {
+      "id": "zh-natural-first-lesson-after-execute-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "auto",
+      "wait": 1
+    },
+    {
+      "id": "zh-natural-first-lesson-performance-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
