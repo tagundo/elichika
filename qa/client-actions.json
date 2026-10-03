@@ -1,1 +1,14 @@
-{"actions":[]}
+{
+  "actions": [
+    {
+      "id": "zh-download-progress-capture",
+      "type": "capture",
+      "wait": 60
+    },
+    {
+      "id": "zh-download-progress-tree",
+      "type": "unity_tree",
+      "wait": 1
+    }
+  ]
+}
