@@ -1,0 +1,12 @@
+{
+  "artifact_id": 11277715868,
+  "run_id": 37131097762,
+  "source_commit": "38029f3f9152797a6f4e0e5ef6be6e132e99dbfa",
+  "artifact_zip_sha256": "cae6a3902dbd9bf8183f3d9579777726223b74bc549d555feaf09fe2db31a6a4",
+  "filename": "elichika-2026.10.03-dev.apk",
+  "sha256": "f2188fa978e88d3953daed1d9a2f7347e9a37bb0adf7a3589949e879de41e57a",
+  "native_sha256": "c3c725ac510064a5c3ef994438c031984b4d643e00f4e6421bdb37bc832703f6",
+  "version_code": 2026100300,
+  "official_signer_matches_baseline": true,
+  "signer_sha256": "fed020601692d2e759286831ad229f0c8e4562a8e90f9067d7472fa5fc99f930"
+}

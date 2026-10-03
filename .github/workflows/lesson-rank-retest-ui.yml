@@ -1,4 +1,4 @@
-name: Corrected server APK lesson rank and in-place upgrade QA
+name: Exact corrected APK remaining lesson and rank UI continuation QA
 
 on:
   push:
@@ -87,19 +87,10 @@ jobs:
             evidence/google-dependency-preparation.log
             evidence/*-package.txt
 
-      - name: Download exact previously signed and validated server APK
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-release-apk
-          path: candidate
-          run-id: 36910677429
-          github-token: ${{ github.token }}
-
       - name: Download user-selected unmodified game client
         run: |
           curl --fail --location --retry 2 --output client.apk https://github.com/arina999999997/elichika/releases/download/clients/LLAS_GL_LOCAL.apk
           echo '8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e  client.apk' | sha256sum --check
-          echo '23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a  candidate/elichika-2026.10.01-dev.apk' | sha256sum --check
 
       - name: Prepare read-only Unity UI hierarchy collector
         timeout-minutes: 5
@@ -133,8 +124,10 @@ jobs:
           mkdir -p evidence/observer
           echo "No persistent native observer is started in this regression run." > evidence/observer/instrumentation-scope.txt
 
-      - name: Install and launch the original client with the server
-        run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk --evidence evidence/initial
+      - name: Verify exact signed candidate artifact and launch original client
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage initial --candidate-manifest qa/continuation-candidate-manifest.json --client client.apk --evidence evidence/initial
 
       - name: Upload initial UI evidence
         if: always()

@@ -35,6 +35,85 @@ def definition_sha256(value):
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def control_definition_error(commands, done):
+    """Validate the complete pending batch before any device operation."""
+    fallback = 'invalid-control-' + definition_sha256(commands)[:16]
+    if not isinstance(commands, dict) or not isinstance(commands.get('actions'), list):
+        return fallback, {'commands': commands}, [], 'Control envelope requires an actions list'
+    actions = commands['actions']
+    ids = [action['id'] for action in actions if isinstance(action, dict) and isinstance(action.get('id'), str)
+           and re.fullmatch(r'[A-Za-z0-9_-]{1,100}', action['id'])]
+    for action in actions:
+        if not isinstance(action, dict) or not isinstance(action.get('id'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', action['id']):
+            return fallback, action, [entry for entry in ids if entry not in done], 'Every control requires a safe unique action id'
+    if len(ids) != len(set(ids)):
+        return fallback, {'actions': actions}, [entry for entry in dict.fromkeys(ids) if entry not in done], 'Duplicate action ids'
+    pending_ids = [action['id'] for action in actions if action['id'] not in done]
+    types = {'tap', 'unity_tree', 'unitytap', 'unitywait', 'server_upgrade', 'upgrade_preflight',
+             'key', 'capture', 'launch', 'client_restart', 'observer_phase', 'observer_start',
+             'fixture', 'unity_raycast', 'record_start', 'record_end', 'text', 'stop'}
+    cases = {'zero_first', 'no_drop_first', 'no_drop_completed', 'one_first', 'zero_completed',
+             'one_completed', 'full_slots', 'pin_two', 'three_times', 'shooting_star'}
+    for action in actions:
+        if action['id'] in done:
+            continue
+        error = None
+        kind = action.get('type')
+        if not isinstance(kind, str) or kind not in types:
+            error = 'Unknown or missing action type'
+        elif any(key in action and type(action[key]) is not bool for key in ('required', 'diagnostic_while_blocked', 'restart', 'no_loading')):
+            error = 'Control boolean field has an invalid type'
+        elif 'wait' in action and (type(action['wait']) not in (int, float) or not 0 <= action['wait'] <= 60):
+            error = 'Control wait must be between zero and60 seconds'
+        elif 'ready_timeout' in action and (type(action['ready_timeout']) not in (int, float) or not 1 <= action['ready_timeout'] <= 60):
+            error = 'Readiness timeout must be between1 and60 seconds'
+        elif 'forbid_path_contains' in action and (not isinstance(action['forbid_path_contains'], list) or any(not isinstance(part, str) for part in action['forbid_path_contains'])):
+            error = 'Forbidden paths require a string list'
+        elif 'hold_ms' in action and (type(action['hold_ms']) is not int or not (action['hold_ms'] == 0 or 50 <= action['hold_ms'] <= 350)):
+            error = 'Hold duration must be zero or an integer between50 and350 ms'
+        elif 'index' in action and (type(action['index']) is not int or action['index'] < 0):
+            error = 'Native selector index requires a nonnegative integer'
+        elif kind in ('unitytap', 'unitywait', 'unity_raycast', 'tap'):
+            selector = action.get('selector')
+            allowed = {'path', 'name', 'text', 'button', 'interactable'} if kind != 'tap' else {'resource-id', 'text', 'class', 'content-desc', 'clickable', 'package', 'enabled'}
+            if not isinstance(selector, dict) or not selector or not set(selector) <= allowed:
+                error = 'Missing or invalid selector'
+            elif any(type(value) is not bool if key in ('button', 'interactable') else not isinstance(value, str) for key, value in selector.items()):
+                error = 'Selector value has an invalid type'
+        elif kind == 'fixture':
+            if action.get('operation') not in ('inspect', 'apply', 'restore', 'restore_master'):
+                error = 'Fixture operation is missing or unsupported'
+            elif not isinstance(action.get('checkpoint', 'default'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,50}', action.get('checkpoint', 'default')):
+                error = 'Fixture checkpoint is invalid'
+            elif str(action.get('user_id', 'auto')) != 'auto' and not re.fullmatch(r'[0-9]+', str(action['user_id'])):
+                error = 'Fixture user id is invalid'
+            elif (action.get('case') is not None and (not isinstance(action['case'], str) or action['case'] not in cases)) or (action['operation'] == 'apply' and (not isinstance(action.get('case'), str) or action.get('case') not in cases)):
+                error = 'Fixture case is missing or unsupported'
+        elif kind in ('record_start', 'record_end') and (not isinstance(action.get('name'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,60}', action['name'])):
+            error = 'Recording name is invalid'
+        elif kind == 'key' and (type(action.get('keycode')) is not int or action.get('keycode') not in (4, 66, 82)):
+            error = 'Unsupported key code'
+        elif kind == 'text' and (not isinstance(action.get('text'), str) or not re.fullmatch(r'[A-Za-z0-9 ._-]{1,40}', action['text'])):
+            error = 'Text input is invalid'
+        if error:
+            return action['id'], action, [entry for entry in pending_ids if entry != action['id']], error
+    return None
+
+
+def pause_invalid_control_definition(state, issue):
+    action_id, definition, dependent_ids, error = issue
+    now = datetime.now(timezone.utc).isoformat()
+    record = {'id': action_id, 'type': definition.get('type', 'invalid_definition') if isinstance(definition, dict) else 'invalid_definition',
+              'result': 'FAILED', 'failure_kind': 'CONTROL_DEFINITION_INVALID', 'device_execution_started': False,
+              'error': error, 'finished_at_utc': now}
+    state['actions'].append(record)
+    state['blocked_ui_control'] = {'id': action_id, 'type': record['type'], 'action_definition': definition,
+        'action_definition_sha256': definition_sha256(definition), 'error': error,
+        'dependent_action_ids': dependent_ids, 'failure_kind': 'CONTROL_DEFINITION_INVALID',
+        'blocked_at_utc': now, 'evidence_label': 'invalid-control-definition'}
+    state['status'] = 'REQUIRED_CONTROL_DEFINITION_BLOCKED'
+
+
 def resume_blocked_ui_control(state, commands):
     blocked = state.get('blocked_ui_control')
     if not blocked:
@@ -55,7 +134,7 @@ def resume_blocked_ui_control(state, commands):
         return False
     first = pending[0]
     failed = blocked['action_definition']
-    if first['type'] == failed['type'] and first.get('selector') == failed.get('selector'):
+    if blocked.get('failure_kind') != 'CONTROL_DEFINITION_INVALID' and isinstance(failed, dict) and first['type'] in ('tap', 'unitytap', 'unitywait', 'unity_raycast') and first['type'] == failed.get('type') and first.get('selector') == failed.get('selector'):
         blocked['resume_refusal'] = 'First revised action repeats the refused UI target'
         return False
     state.setdefault('ui_control_resume_history', []).append({
@@ -352,6 +431,14 @@ def main():
         dev.native_sha = installed_sha
     try:
         if args.stage=='initial':
+            if args.candidate_manifest:
+                manifest = dev.download_candidate(json.loads(args.candidate_manifest.read_text()))
+                args.server = Path(manifest['path'])
+                args.server_sha = manifest['sha256']
+                args.server_version = manifest['version_code']
+                state['server_apk_sha256'] = args.server_sha
+                state['corrected_source_commit'] = manifest['source_commit']
+                state['initial_candidate_manifest'] = manifest
             assert hashlib.sha256(args.server.read_bytes()).hexdigest()==args.server_sha
             assert hashlib.sha256(args.client.read_bytes()).hexdigest()==CLIENT_SHA
             state['environment']={k:dev.shell(*v) for k,v in {
@@ -361,6 +448,8 @@ def main():
             assert state['environment']['pagesize']=='4096'
             dev.adb('logcat','-c')
             state['server_install']=dev.install(args.server,args.server_version)
+            if args.candidate_manifest:
+                assert state['server_install']['native_sha256'] == manifest['native_sha256'], 'Installed initial candidate native hash differs'
             state['server_start']=dev.start('server-start')
             # Only this disposable virtual device is affected; retain the evidence of the
             # normal Play Protect legacy-app prompt from the preceding comparison run.
@@ -437,6 +526,15 @@ def main():
             blocked_captured=False
             while time.monotonic()<deadline:
                 commands=fetch_commands(args.commands_branch)
+                issue = control_definition_error(commands, done)
+                if issue:
+                    if state.get('blocked_ui_control'):
+                        state.setdefault('blocked_control_definition_errors', []).append({'error': issue[3], 'definition_sha256': definition_sha256(issue[1])})
+                    else:
+                        pause_invalid_control_definition(state, issue)
+                    state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n')
+                    dev.capture('invalid-control-definition')
+                    return
                 if not resume_blocked_ui_control(state, commands):
                     if not blocked_captured:
                         dev.capture('blocked-round-' + str(args.round))
