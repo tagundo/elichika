@@ -132,6 +132,19 @@
       "id": "zh-live-song-ready-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-confirm-song-size-download",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 20
+    },
+    {
+      "id": "zh-live-song-assets-completed-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
