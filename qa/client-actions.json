@@ -1274,6 +1274,44 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-star-record-start",
+      "type": "record_start",
+      "name": "star_f218_fourth",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-star-execute-real-star",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "ready_timeout": 45,
+      "wait": 45,
+      "required": true
+    },
+    {
+      "id": "fourth-star-record-end",
+      "type": "record_end",
+      "name": "star_f218_fourth",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-star-raw-result-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postbootstrap_37139189963",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-star-result-stage-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
