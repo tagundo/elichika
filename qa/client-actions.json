@@ -1,1 +1,13 @@
-{"actions": []}
+{
+  "actions": [
+    {
+      "id": "dismiss-gms",
+      "type": "tap",
+      "selector": {
+        "resource-id": "android:id/button1",
+        "text": "OK"
+      },
+      "wait": 45
+    }
+  ]
+}
