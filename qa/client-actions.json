@@ -130,6 +130,41 @@
         "name": "ScreenButton"
       },
       "wait": 3
+    },
+    {
+      "id": "skill-help-page-one",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 2
+    },
+    {
+      "id": "skill-help-page-two",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 2
+    },
+    {
+      "id": "skill-help-page-three",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 2
+    },
+    {
+      "id": "return-from-skill-detail",
+      "type": "key",
+      "keycode": 4,
+      "wait": 5
+    },
+    {
+      "id": "inspect-after-skill-detail",
+      "type": "unity_tree",
+      "wait": 0
     }
   ]
 }
