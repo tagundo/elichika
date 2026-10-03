@@ -272,10 +272,25 @@ def mutation(args, root, manifest, apply):
                     card = next((r[0] for r in candidates if r[0] in owned), None)
                     require(card, "Three-times fixture needs an owned card with at least 3 real skill slots")
                     user.execute(f"UPDATE u_lesson_deck SET {q('card_master_id_'+str(args.position))}=? WHERE user_id=? AND user_lesson_deck_id=?", (str(card),uid,args.deck_id))
-            # Isolate an existing legal skill. Keep all client skill definitions intact.
-            master.execute("DELETE FROM m_lesson_skill_content WHERE skill_master_id != ?", (args.skill_id,))
-            master.execute("UPDATE m_lesson_skill_no_drop SET weight=?", (1 if args.drop == "zero" else 0,))
-            master.execute("UPDATE m_lesson_skill_rarity SET weight=CASE WHEN rarity=? THEN ? ELSE 0 END", (skill["rarity"], 1 if args.drop == "one" else 0))
+            # First-help recovery needs legitimate positive-weight candidates. Keep
+            # original contents and rarity weights for the dominant no-drop case.
+            # This is a probable raw-zero draw, not a deterministic RNG hook.
+            if args.drop == "dominant_zero":
+                rarities = {r[0]: r[1] for r in master.execute("SELECT rarity,weight FROM m_lesson_skill_rarity")}
+                original_skills = [dict(zip(skillcols, r)) for r in master.execute("SELECT * FROM m_lesson_skill_content")]
+                available = [s for s in original_skills if skill_can_drop(s, args.menus)]
+                counts = {rarity: sum(s['rarity'] == rarity for s in available) for rarity in rarities}
+                weighted = [(s['skill_master_id'], rarities.get(s['rarity'],0) // counts[s['rarity']]) for s in available]
+                total = sum(w for _,w in weighted)
+                require(0 < total < 2**31 - 1000000000, 'Original skill weights missing/overflowing dominant no-drop draw')
+                star_ids = {r[0] for r in master.execute('SELECT skill_master_id FROM m_lesson_skill_shooting_star')}
+                require(any(w > 0 and sid not in star_ids for sid,w in weighted), 'No legitimate non-ShootingStar positive candidate')
+                master.execute("UPDATE m_lesson_skill_no_drop SET weight=1000000000")
+            else:
+                # Isolate an existing legal skill. Keep all client skill definitions intact.
+                master.execute("DELETE FROM m_lesson_skill_content WHERE skill_master_id != ?", (args.skill_id,))
+                master.execute("UPDATE m_lesson_skill_no_drop SET weight=?", (1 if args.drop == "zero" else 0,))
+                master.execute("UPDATE m_lesson_skill_rarity SET weight=CASE WHEN rarity=? THEN ? ELSE 0 END", (skill["rarity"], 1 if args.drop == "one" else 0))
             master.execute("UPDATE m_lesson_skill_member_chance SET weight=CASE WHEN position_id=? THEN 1 ELSE 0 END", (args.position,))
             require(master.execute("SELECT SUM(weight) FROM m_lesson_skill_member_chance").fetchone()[0] == 1, "Requested position absent from weights table")
             if args.tips != "preserve":
@@ -303,13 +318,20 @@ def mutation(args, root, manifest, apply):
                         "menus": args.menus, "deck_id": args.deck_id, "times": args.times, "slots": args.slots,
                         "existing_skill_id": args.existing_skill_id if args.slots == "full" else None,
                         "pin_id": args.pin_id, "pin_inventory_before": args.times if args.pin_id else None,
-                        "ordinary_skills_expected": args.times if args.drop == "one" else 0,
+                        "ordinary_skills_expected": args.times if args.drop == "one" else (None if args.drop == 'dominant_zero' else 0),
                         "pin_skills_expected_if_selected_in_ui": args.times if args.pin_id else 0,
                         "pin_position": 1 if args.pin_id else None,
                         "valid_fixture_combinations": "all combinations" if skill["drop_type"]==3 else "only combinations originally eligible for the isolated skill; execute expected menus exactly",
                         "must_select_in_original_ui": {"lesson_menu_ids": args.menus,
                                                        "is_three_times": args.times == 3,
                                                        "consumed_pin_id": args.pin_id}}
+            if args.drop == 'dominant_zero':
+                expected['raw_zero_is_deterministic'] = False
+                expected['positive_skill_total_weight'] = total
+                expected['no_drop_weight'] = 1000000000
+                expected['raw_zero_probability'] = 1000000000 / (1000000000 + total)
+                expected['master_content_and_rarity_original'] = True
+                expected['requires_actual_zero_or_explicit_repair_log'] = True
         require(fingerprint(cons["userdata"], uid=uid, other=True) == other_before, "Another user's data changed; rolling back")
         require(fingerprint(cons["master"], MASTER_TABLES) == manifest["master_other_tables_sha256"], "Non-fixture master table changed; rolling back")
         for con in cons.values():
@@ -338,7 +360,7 @@ def inspect(root, manifest):
         selected_cards = ["user_id", "card_master_id", "max_free_passive_skill", *SLOTS]
         carddata = [dict(zip(selected_cards, row)) for row in user.execute(
             f"SELECT {','.join(map(q, selected_cards))} FROM u_card WHERE user_id=? ORDER BY card_master_id", (uid,))]
-        statuscols = [c for c in ("user_id", "tutorial_phase", "activity_point_count", "lesson_resume_status") if c in columns(user, "u_status")]
+        statuscols = [c for c in ("user_id", "rank", "exp", "tutorial_phase", "activity_point_count", "lesson_resume_status") if c in columns(user, "u_status")]
         statuses = [dict(zip(statuscols, r)) for r in user.execute(
             f"SELECT {','.join(map(q,statuscols))} FROM u_status WHERE user_id=?", (uid,))]
         result = {"synthetic_user_id": uid, "active_fixture": manifest.get("active_fixture"), "status": statuses,
@@ -352,6 +374,9 @@ def inspect(root, manifest):
                   "restart_required": manifest["restart_required"]}
         if "u_lesson" in tables(user):
             result["pending_lesson_results"] = [dict(zip(columns(user,"u_lesson"),r)) for r in rows(user,"u_lesson",uid)]
+        if "u_live_difficulty" in tables(user):
+            result['live_difficulty_state'] = [dict(zip(columns(user,'u_live_difficulty'),r)) for r in rows(user,'u_live_difficulty',uid)]
+        result['rank320_master'] = [dict(zip(columns(master,'m_user_rank'),r)) for r in master.execute('SELECT * FROM m_user_rank WHERE rank=320')]
         return result
     finally:
         for con in cons.values():
@@ -428,7 +453,7 @@ class Device:
 def device_action(args, root):
     require(args.disposable_device, "--disposable-device is required; never use this on a personal/production device")
     dev = Device(args.serial)
-    if args.action in ("apply","restore"):
+    if args.action in ("apply","restore","restore_master"):
         dev.stop()
     inputs = root / "device-db";inputs.mkdir(parents=True,exist_ok=True)
     device_paths = {"master":dev.FILES+"/assets/db/gl/masterdata.db", "userdata":dev.FILES+"/userdata.db"}
@@ -457,6 +482,8 @@ def device_action(args, root):
         initialize(init,root);manifest=load(root)
     cases = {
         "zero_first":("zero","incomplete","empty",None,1),
+        "no_drop_first":("dominant_zero","incomplete","empty",None,1),
+        "no_drop_completed":("dominant_zero","complete","empty",None,1),
         "one_first":("one","incomplete","empty",None,1),
         "zero_completed":("zero","complete","empty",None,1),
         "one_completed":("one","complete","empty",None,1),
@@ -481,12 +508,36 @@ def device_action(args, root):
         result = mutation(apply,root,manifest,True)
         manifest=load(root);manifest["active_fixture"]["canonical_case"]=args.case;save(root,manifest)
         result["active_fixture"]["canonical_case"]=args.case
+    elif args.action=="restore_master":
+        # Preserve an old APK's real pending zero result and all gameplay while
+        # restoring only the four mutable master rowsets for an upgrade replay.
+        before_user_sha = sha(paths['userdata'])
+        original = connect(baseline_paths(root,manifest)['master'], True)
+        master = connect(paths['master'])
+        try:
+            require(sha(baseline_paths(root,manifest)['master']) == manifest['databases']['master']['baseline_sha256'], 'Immutable master baseline changed')
+            require(fingerprint(master,MASTER_TABLES) == manifest['master_other_tables_sha256'], 'Non-fixture master changed')
+            master.execute('BEGIN IMMEDIATE')
+            for table in MASTER_TABLES:
+                restore_rows(master,original,table)
+            master.commit()
+            for table in MASTER_TABLES:
+                require(rows(master,table) == rows(original,table), 'Master-only restoration differs: '+table)
+        finally:
+            original.close(); master.close()
+        require(sha(paths['userdata']) == before_user_sha, 'Master-only restoration changed userdata bytes')
+        manifest.setdefault('history',[]).append({'operation':'restore_master','at_utc':datetime.now(timezone.utc).isoformat(),'userdata_exact_sha256_preserved':before_user_sha})
+        if manifest.get('active_fixture'):
+            manifest['active_fixture']['master_fixture_restored_only'] = True
+        save(root,manifest)
+        result=inspect(root,manifest)
+        result['master_only_restore']={'userdata_exact_sha256_preserved':before_user_sha,'all_four_master_rowsets_restored':True,'gameplay_restored':False}
     elif args.action=="restore":
         result = mutation(SimpleNamespace(server_stopped=True),root,manifest,False)
         verify(root,load(root))
     else:
         result = inspect(root,manifest)
-    if args.action in ("apply","restore"):
+    if args.action in ("apply","restore","restore_master"):
         result["device_database_files"] = {k:dev.push_preserving_owner(paths[k],device_paths[k]) for k in paths}
         result["apps_left_stopped"] = True
     stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -503,8 +554,8 @@ def main():
     p.add_argument("--output", type=Path, help="Optional sanitized evidence JSON")
     p.add_argument("--serial",default="127.0.0.1:5555")
     p.add_argument("--evidence",type=Path)
-    p.add_argument("--action",choices=("inspect","apply","restore"))
-    p.add_argument("--case",choices=("zero_first","one_first","zero_completed","one_completed","full_slots","pin_two","three_times","shooting_star"))
+    p.add_argument("--action",choices=("inspect","apply","restore","restore_master"))
+    p.add_argument("--case",choices=("zero_first","no_drop_first","no_drop_completed","one_first","zero_completed","one_completed","full_slots","pin_two","three_times","shooting_star"))
     p.add_argument("--user-id",dest="device_user_id",default="auto")
     p.add_argument("--disposable-device",action="store_true")
     sub = p.add_subparsers(dest="command")
@@ -515,7 +566,7 @@ def main():
     init.add_argument("--server-stopped",action="store_true");init.add_argument("--disposable-synthetic",action="store_true")
     apply = sub.add_parser("apply")
     apply.add_argument("--server-stopped",action="store_true")
-    apply.add_argument("--drop",choices=("zero","one"),required=True)
+    apply.add_argument("--drop",choices=("zero","one","dominant_zero"),required=True)
     apply.add_argument("--tips",choices=("preserve","incomplete","complete"),required=True)
     apply.add_argument("--slots",choices=("preserve","empty","full"),default="empty")
     apply.add_argument("--skill-id",type=int,default=DEFAULT_SKILL)

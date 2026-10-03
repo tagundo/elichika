@@ -1,0 +1,1781 @@
+name: Corrected server APK lesson rank and in-place upgrade QA
+
+on:
+  push:
+    branches: [codex/lesson-rank-retest-qa]
+    paths: ['.github/workflows/lesson-rank-retest-ui.yml', 'tests/client_ui_qa.py']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  client:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 140
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare native ARM64 Android virtual device
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          mkdir -p evidence "$RUNNER_TEMP/android-data"
+          uname -a > evidence/host.txt
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker run --detach --privileged --name original-client-qa \
+            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=1280 androidboot.redroid_height=720 androidboot.redroid_fps=15 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
+
+      - name: Install genuine Google dependencies in disposable Android
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          exec > >(tee evidence/google-dependency-preparation.log) 2>&1
+          curl --fail --location --retry 2 --max-time 90 --output gapps.zip https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip
+          echo '6e1c3616862ce5b33e2b96074f86ae846eb1351a26a980e1ed140f8a7e7a4fd6  gapps.zip' | sha256sum --check
+          python3 - <<'PYZIP'
+          import zipfile
+          selected=('system/product/priv-app/GmsCore/','system/product/priv-app/Phonesky/',
+                    'system/system_ext/priv-app/GoogleServicesFramework/',
+                    'system/product/etc/permissions/','system/product/etc/sysconfig/',
+                    'system/system_ext/etc/permissions/')
+          with zipfile.ZipFile('gapps.zip') as z:
+              for name in z.namelist():
+                  if name.startswith(selected):z.extract(name,'gapps')
+          PYZIP
+          adb -s 127.0.0.1:5555 push gapps/system/product/. /product/
+          adb -s 127.0.0.1:5555 push gapps/system/system_ext/. /system_ext/
+          adb -s 127.0.0.1:5555 shell chmod 644 /product/priv-app/GmsCore/GmsCore.apk /product/priv-app/Phonesky/Phonesky.apk /system_ext/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk
+          docker restart original-client-qa
+          adb disconnect 127.0.0.1:5555 || true
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          for package in com.google.android.gms com.android.vending com.google.android.gsf; do
+            adb -s 127.0.0.1:5555 shell pm path "$package"
+            adb -s 127.0.0.1:5555 shell dumpsys package "$package" > "evidence/$package-package.txt"
+          done
+
+      - name: Upload Google dependency diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-google-dependencies
+          path: |
+            evidence/google-dependency-preparation.log
+            evidence/*-package.txt
+
+      - name: Download exact previously signed and validated server APK
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: candidate
+          run-id: 36910677429
+          github-token: ${{ github.token }}
+
+      - name: Download user-selected unmodified game client
+        run: |
+          curl --fail --location --retry 2 --output client.apk https://github.com/arina999999997/elichika/releases/download/clients/LLAS_GL_LOCAL.apk
+          echo '8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e  client.apk' | sha256sum --check
+          echo '23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a  candidate/elichika-2026.10.01-dev.apk' | sha256sum --check
+
+      - name: Prepare read-only Unity UI hierarchy collector
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          exec > >(tee evidence/unity-preparation.log) 2>&1
+          python3 -m pip install --break-system-packages 'frida==17.21.0' 'Pillow==11.3.0'
+          npm install --prefix qa-runtime 'frida-il2cpp-bridge@0.14.0'
+          curl --fail --location --retry 2 --output frida-server.xz https://github.com/frida/frida/releases/download/17.21.0/frida-server-17.21.0-android-arm64.xz
+          echo 'a5a712d5b1a75837cfd500adc1ee41cc259446cbc2c386f4922d235c890b18d9  frida-server.xz' | sha256sum --check
+          xz --decompress frida-server.xz
+          adb -s 127.0.0.1:5555 push frida-server /data/local/tmp/frida-server
+          adb -s 127.0.0.1:5555 shell chmod 755 /data/local/tmp/frida-server
+
+      - name: Start bounded Unity UI collector service
+        timeout-minutes: 1
+        run: |
+          adb -s 127.0.0.1:5555 shell 'nohup /data/local/tmp/frida-server -l 127.0.0.1:27042 > /data/local/tmp/frida-server.log 2>&1 < /dev/null &'
+          adb -s 127.0.0.1:5555 forward tcp:27042 tcp:27042
+          python3 -c 'import frida; d=frida.get_device_manager().add_remote_device("127.0.0.1:27042"); print("Frida processes:", len(d.enumerate_processes()))'
+
+      - name: Upload collector preparation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-collector-preparation
+          path: evidence/unity-preparation.log
+
+      - name: Document transient-only UI instrumentation
+        run: |
+          mkdir -p evidence/observer
+          echo "No persistent native observer is started in this regression run." > evidence/observer/instrumentation-scope.txt
+
+      - name: Install and launch the original client with the server
+        run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk --evidence evidence/initial
+
+      - name: Upload initial UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-initial
+          path: |
+            evidence/initial/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/android-properties.txt
+            evidence/host.txt
+          if-no-files-found: warn
+
+      - name: Observe and drive corrected APK UI round 1
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 1 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-1
+
+      - name: Upload round 1 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '1')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-1
+          path: |
+            evidence/round-1/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 2
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 2 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-2
+
+      - name: Upload round 2 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '2')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-2
+          path: |
+            evidence/round-2/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 3
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 3 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-3
+
+      - name: Upload round 3 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '3')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-3
+          path: |
+            evidence/round-3/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 4
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 4 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-4
+
+      - name: Upload round 4 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '4')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-4
+          path: |
+            evidence/round-4/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 5
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 5 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-5
+
+      - name: Upload round 5 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '5')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-5
+          path: |
+            evidence/round-5/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 6
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 6 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-6
+
+      - name: Upload round 6 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '6')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-6
+          path: |
+            evidence/round-6/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 7
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 7 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-7
+
+      - name: Upload round 7 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '7')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-7
+          path: |
+            evidence/round-7/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 8
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 8 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-8
+
+      - name: Upload round 8 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '8')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-8
+          path: |
+            evidence/round-8/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 9
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 9 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-9
+
+      - name: Upload round 9 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '9')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-9
+          path: |
+            evidence/round-9/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 10
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 10 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-10
+
+      - name: Upload round 10 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '10')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-10
+          path: |
+            evidence/round-10/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 11
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 11 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-11
+
+      - name: Upload round 11 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '11')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-11
+          path: |
+            evidence/round-11/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 12
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 12 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-12
+
+      - name: Upload round 12 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '12')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-12
+          path: |
+            evidence/round-12/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 13
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 13 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-13
+
+      - name: Upload round 13 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '13')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-13
+          path: |
+            evidence/round-13/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 14
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 14 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-14
+
+      - name: Upload round 14 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '14')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-14
+          path: |
+            evidence/round-14/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 15
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 15 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-15
+
+      - name: Upload round 15 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '15')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-15
+          path: |
+            evidence/round-15/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 16
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 16 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-16
+
+      - name: Upload round 16 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '16')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-16
+          path: |
+            evidence/round-16/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 17
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 17 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-17
+
+      - name: Upload round 17 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '17')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-17
+          path: |
+            evidence/round-17/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 18
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 18 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-18
+
+      - name: Upload round 18 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '18')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-18
+          path: |
+            evidence/round-18/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 19
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 19 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-19
+
+      - name: Upload round 19 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '19')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-19
+          path: |
+            evidence/round-19/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 20
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 20 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-20
+
+      - name: Upload round 20 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '20')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-20
+          path: |
+            evidence/round-20/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 21
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 21 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-21
+
+      - name: Upload round 21 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '21')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-21
+          path: |
+            evidence/round-21/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 22
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 22 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-22
+
+      - name: Upload round 22 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '22')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-22
+          path: |
+            evidence/round-22/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 23
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 23 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-23
+
+      - name: Upload round 23 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '23')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-23
+          path: |
+            evidence/round-23/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 24
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 24 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-24
+
+      - name: Upload round 24 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '24')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-24
+          path: |
+            evidence/round-24/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 25
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 25 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-25
+
+      - name: Upload round 25 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '25')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-25
+          path: |
+            evidence/round-25/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 26
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 26 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-26
+
+      - name: Upload round 26 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '26')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-26
+          path: |
+            evidence/round-26/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 27
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 27 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-27
+
+      - name: Upload round 27 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '27')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-27
+          path: |
+            evidence/round-27/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 28
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 28 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-28
+
+      - name: Upload round 28 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '28')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-28
+          path: |
+            evidence/round-28/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 29
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 29 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-29
+
+      - name: Upload round 29 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '29')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-29
+          path: |
+            evidence/round-29/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 30
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 30 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-30
+
+      - name: Upload round 30 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '30')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-30
+          path: |
+            evidence/round-30/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 31
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 31 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-31
+
+      - name: Upload round 31 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '31')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-31
+          path: |
+            evidence/round-31/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 32
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 32 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-32
+
+      - name: Upload round 32 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '32')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-32
+          path: |
+            evidence/round-32/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 33
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 33 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-33
+
+      - name: Upload round 33 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '33')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-33
+          path: |
+            evidence/round-33/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 34
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 34 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-34
+
+      - name: Upload round 34 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '34')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-34
+          path: |
+            evidence/round-34/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 35
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 35 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-35
+
+      - name: Upload round 35 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '35')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-35
+          path: |
+            evidence/round-35/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 36
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 36 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-36
+
+      - name: Upload round 36 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '36')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-36
+          path: |
+            evidence/round-36/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 37
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 37 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-37
+
+      - name: Upload round 37 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '37')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-37
+          path: |
+            evidence/round-37/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 38
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 38 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-38
+
+      - name: Upload round 38 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '38')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-38
+          path: |
+            evidence/round-38/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 39
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 39 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-39
+
+      - name: Upload round 39 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '39')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-39
+          path: |
+            evidence/round-39/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 40
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 40 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-40
+
+      - name: Upload round 40 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '40')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-40
+          path: |
+            evidence/round-40/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 41
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 41 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-41
+
+      - name: Upload round 41 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '41')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-41
+          path: |
+            evidence/round-41/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 42
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 42 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-42
+
+      - name: Upload round 42 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '42')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-42
+          path: |
+            evidence/round-42/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 43
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 43 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-43
+
+      - name: Upload round 43 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '43')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-43
+          path: |
+            evidence/round-43/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 44
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 44 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-44
+
+      - name: Upload round 44 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '44')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-44
+          path: |
+            evidence/round-44/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 45
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 45 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-45
+
+      - name: Upload round 45 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '45')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-45
+          path: |
+            evidence/round-45/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 46
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 46 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-46
+
+      - name: Upload round 46 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '46')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-46
+          path: |
+            evidence/round-46/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 47
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 47 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-47
+
+      - name: Upload round 47 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '47')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-47
+          path: |
+            evidence/round-47/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 48
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 48 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-48
+
+      - name: Upload round 48 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '48')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-48
+          path: |
+            evidence/round-48/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 49
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 49 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-49
+
+      - name: Upload round 49 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '49')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-49
+          path: |
+            evidence/round-49/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 50
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 50 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-50
+
+      - name: Upload round 50 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '50')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-50
+          path: |
+            evidence/round-50/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 51
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 51 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-51
+
+      - name: Upload round 51 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '51')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-51
+          path: |
+            evidence/round-51/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 52
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 52 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-52
+
+      - name: Upload round 52 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '52')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-52
+          path: |
+            evidence/round-52/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 53
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 53 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-53
+
+      - name: Upload round 53 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '53')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-53
+          path: |
+            evidence/round-53/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 54
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 54 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-54
+
+      - name: Upload round 54 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '54')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-54
+          path: |
+            evidence/round-54/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 55
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 55 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-55
+
+      - name: Upload round 55 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '55')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-55
+          path: |
+            evidence/round-55/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 56
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 56 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-56
+
+      - name: Upload round 56 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '56')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-56
+          path: |
+            evidence/round-56/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 57
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 57 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-57
+
+      - name: Upload round 57 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '57')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-57
+          path: |
+            evidence/round-57/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 58
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 58 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-58
+
+      - name: Upload round 58 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '58')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-58
+          path: |
+            evidence/round-58/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 59
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 59 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-59
+
+      - name: Upload round 59 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '59')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-59
+          path: |
+            evidence/round-59/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 60
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 60 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-60
+
+      - name: Upload round 60 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '60')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-60
+          path: |
+            evidence/round-60/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 61
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 61 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-61
+
+      - name: Upload round 61 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '61')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-61
+          path: |
+            evidence/round-61/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 62
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 62 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-62
+
+      - name: Upload round 62 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '62')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-62
+          path: |
+            evidence/round-62/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 63
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 63 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-63
+
+      - name: Upload round 63 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '63')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-63
+          path: |
+            evidence/round-63/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 64
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 64 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-64
+
+      - name: Upload round 64 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '64')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-64
+          path: |
+            evidence/round-64/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 65
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 65 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-65
+
+      - name: Upload round 65 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '65')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-65
+          path: |
+            evidence/round-65/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 66
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 66 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-66
+
+      - name: Upload round 66 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '66')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-66
+          path: |
+            evidence/round-66/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 67
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 67 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-67
+
+      - name: Upload round 67 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '67')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-67
+          path: |
+            evidence/round-67/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 68
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 68 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-68
+
+      - name: Upload round 68 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '68')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-68
+          path: |
+            evidence/round-68/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 69
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 69 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-69
+
+      - name: Upload round 69 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '69')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-69
+          path: |
+            evidence/round-69/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 70
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 70 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-70
+
+      - name: Upload round 70 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '70')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-70
+          path: |
+            evidence/round-70/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 71
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 71 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-71
+
+      - name: Upload round 71 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '71')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-71
+          path: |
+            evidence/round-71/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 72
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 72 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-72
+
+      - name: Upload round 72 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '72')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-72
+          path: |
+            evidence/round-72/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 73
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 73 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-73
+
+      - name: Upload round 73 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '73')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-73
+          path: |
+            evidence/round-73/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 74
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 74 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-74
+
+      - name: Upload round 74 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '74')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-74
+          path: |
+            evidence/round-74/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 75
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 75 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-75
+
+      - name: Upload round 75 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '75')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-75
+          path: |
+            evidence/round-75/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 76
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 76 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-76
+
+      - name: Upload round 76 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '76')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-76
+          path: |
+            evidence/round-76/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 77
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 77 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-77
+
+      - name: Upload round 77 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '77')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-77
+          path: |
+            evidence/round-77/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 78
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 78 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-78
+
+      - name: Upload round 78 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '78')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-78
+          path: |
+            evidence/round-78/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 79
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 79 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-79
+
+      - name: Upload round 79 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '79')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-79
+          path: |
+            evidence/round-79/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Observe and drive corrected APK UI round 80
+        if: env.QA_CONTROL_COMPLETE != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 80 --duration 60 --commands-branch codex/lesson-rank-retest-qa --evidence evidence/round-80
+
+      - name: Upload round 80 UI evidence
+        if: always() && (env.QA_CONTROL_COMPLETE != 'true' || env.QA_STOP_ROUND == '80')
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-80
+          path: |
+            evidence/round-80/
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Collect final diagnostics
+        if: always()
+        run: |
+          mkdir -p evidence
+          adb -s 127.0.0.1:5555 exec-out cat /data/local/tmp/frida-server.log > evidence/frida-server.log 2>&1 || true
+          docker logs original-client-qa > evidence/container.log 2>&1 || true
+          adb -s 127.0.0.1:5555 logcat -d > evidence/final-logcat.txt 2>&1 || true
+          adb -s 127.0.0.1:5555 shell dumpsys meminfo com.klab.lovelive.allstars.global > evidence/final-game-meminfo.txt 2>&1 || true
+
+      - name: Upload final evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-final
+          path: |
+            evidence/client-ui-state.json
+            evidence/observer/
+            evidence/fixtures-*/**/*.json
+            evidence/fixtures-*/**/*.txt
+            evidence/final-logcat.txt
+            evidence/final-game-meminfo.txt
+            evidence/container.log
+            evidence/frida-server.log
+            evidence/host.txt
+            evidence/android-properties.txt
+          if-no-files-found: warn
+
+      - name: Stop disposable device
+        if: always()
+        run: docker rm -f original-client-qa || true
