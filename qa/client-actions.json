@@ -585,6 +585,44 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-first-positive-record-start",
+      "type": "record_start",
+      "name": "first_positive_f218_fourth",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-first-positive-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "ready_timeout": 45,
+      "wait": 45,
+      "required": true
+    },
+    {
+      "id": "fourth-first-positive-record-end",
+      "type": "record_end",
+      "name": "first_positive_f218_fourth",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-first-positive-raw-result-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postbootstrap_37139189963",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-first-positive-result-stage-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
