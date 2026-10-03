@@ -4,6 +4,11 @@
       "id": "diag-inspect-download-progress",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "diag-inspect-download-progress-2",
+      "type": "unity_tree",
+      "wait": 0
     }
   ]
 }
