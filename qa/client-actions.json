@@ -341,6 +341,23 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "third-patched-legacy-guide-next-two",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "다음"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-guide-page-three-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
