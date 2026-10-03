@@ -80,6 +80,19 @@
       "id": "zh-home-after-guides-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-home-open-live",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Live/LiveButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-live-menu-entry-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
