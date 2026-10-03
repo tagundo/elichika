@@ -369,6 +369,27 @@
       "id": "zh-natural-first-lesson-performance-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-natural-performance-next",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 10
+    },
+    {
+      "id": "zh-natural-item-results-next",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-natural-firstskill-help-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
