@@ -40,6 +40,19 @@
       "checkpoint": "pause_smoke",
       "wait": 0,
       "required": false
+    },
+    {
+      "id": "third-qa-pause-smoke-must-not-back",
+      "type": "key",
+      "keycode": 4,
+      "wait": 0,
+      "qa_negative_test": true
+    },
+    {
+      "id": "third-qa-cancelled-reentry-proof-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
