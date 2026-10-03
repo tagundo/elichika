@@ -1,3 +1,9 @@
 {
-  "actions": []
+  "actions": [
+    {
+      "id": "asset-progress-01",
+      "type": "unity_tree",
+      "wait": 1
+    }
+  ]
 }
