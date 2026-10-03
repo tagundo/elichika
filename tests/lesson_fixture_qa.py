@@ -451,6 +451,7 @@ class Device:
 
 
 def device_action(args, root):
+    require(not args.cold_diagnostic or args.action == "inspect", "Cold diagnostics are read-only inspect only")
     require(args.disposable_device, "--disposable-device is required; never use this on a personal/production device")
     dev = Device(args.serial)
     if args.action in ("apply","restore","restore_master"):
@@ -540,6 +541,9 @@ def device_action(args, root):
     if args.action in ("apply","restore","restore_master"):
         result["device_database_files"] = {k:dev.push_preserving_owner(paths[k],device_paths[k]) for k in paths}
         result["apps_left_stopped"] = True
+    if args.cold_diagnostic:
+        from cold_diagnostics import diagnostic_device
+        result["cold_diagnostics"] = diagnostic_device(dev, paths["userdata"], uid, root, args.cold_diagnostic)
     stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     report=root/(stamp+"-"+args.action+"-"+(args.case or "state")+".json")
     report.write_text(json.dumps(result,indent=2,ensure_ascii=False)+"\n")
@@ -554,6 +558,7 @@ def main():
     p.add_argument("--output", type=Path, help="Optional sanitized evidence JSON")
     p.add_argument("--serial",default="127.0.0.1:5555")
     p.add_argument("--evidence",type=Path)
+    p.add_argument("--cold-diagnostic", choices=("before", "after"))
     p.add_argument("--action",choices=("inspect","apply","restore","restore_master"))
     p.add_argument("--case",choices=("zero_first","no_drop_first","no_drop_completed","one_first","zero_completed","one_completed","full_slots","pin_two","three_times","shooting_star"))
     p.add_argument("--user-id",dest="device_user_id",default="auto")
@@ -578,6 +583,7 @@ def main():
     restore = sub.add_parser("restore");restore.add_argument("--server-stopped",action="store_true")
     sub.add_parser("inspect");sub.add_parser("verify")
     args = p.parse_args()
+    require(not args.cold_diagnostic or (args.action == "inspect" and args.command is None), "Cold diagnostics require read-only device inspect")
     require(bool(args.command) != bool(args.action),"Use either an offline subcommand or --action")
     selected_root=args.root or args.evidence
     require(selected_root,"Supply --root (offline) or --evidence (device)")

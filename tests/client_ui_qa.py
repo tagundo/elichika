@@ -62,6 +62,8 @@ def control_definition_error(commands, done):
         kind = action.get('type')
         if not isinstance(kind, str) or kind not in types:
             error = 'Unknown or missing action type'
+        elif 'cold_diagnostic' in action and kind != 'fixture':
+            error = 'Cold diagnostics require a fixture inspect action'
         elif any(key in action and type(action[key]) is not bool for key in ('required', 'diagnostic_while_blocked', 'restart', 'no_loading')):
             error = 'Control boolean field has an invalid type'
         elif 'wait' in action and (type(action['wait']) not in (int, float) or not 0 <= action['wait'] <= 60):
@@ -88,6 +90,8 @@ def control_definition_error(commands, done):
                 error = 'Fixture checkpoint is invalid'
             elif str(action.get('user_id', 'auto')) != 'auto' and not re.fullmatch(r'[0-9]+', str(action['user_id'])):
                 error = 'Fixture user id is invalid'
+            elif 'cold_diagnostic' in action and (action.get('cold_diagnostic') not in ('before', 'after') or action['operation'] != 'inspect'):
+                error = 'Cold diagnostics require read-only inspect and a declared before/after phase'
             elif (action.get('case') is not None and (not isinstance(action['case'], str) or action['case'] not in cases)) or (action['operation'] == 'apply' and (not isinstance(action.get('case'), str) or action.get('case') not in cases)):
                 error = 'Fixture case is missing or unsupported'
         elif kind in ('record_start', 'record_end') and (not isinstance(action.get('name'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,60}', action['name'])):
@@ -619,6 +623,7 @@ def main():
                                      '--evidence','evidence/fixtures-'+fixture_root,'--action',action['operation'],
                                      '--user-id',user_id,'--disposable-device']
                             if action.get('case'):command+=['--case',action['case']]
+                            if action.get('cold_diagnostic'):command+=['--cold-diagnostic',action['cold_diagnostic']]
                             result=subprocess.run(command,capture_output=True,text=True,timeout=240)
                             fixture_report=dev.evidence/('fixture-'+action['id']+'.txt')
                             fixture_report.write_text(result.stdout+'\n'+result.stderr)

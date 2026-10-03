@@ -1,4 +1,4 @@
-name: Exact corrected APK final slot Live and cold UI QA
+name: Exact corrected APK complete cold-state diagnostics
 
 on:
   push:
@@ -16,6 +16,9 @@ jobs:
     timeout-minutes: 140
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify complete cold diagnostics fail closed
+        run: python3 tests/test_cold_diagnostics.py
 
       - name: Prepare native ARM64 Android virtual device
         run: |
@@ -1783,3 +1786,4 @@ jobs:
       - name: Stop disposable device
         if: always()
         run: docker rm -f original-client-qa || true
+
