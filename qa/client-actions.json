@@ -173,6 +173,15 @@
         "name": "TapScreenTextView"
       },
       "wait": 3
+    },
+    {
+      "id": "capture-persistent-post-lesson-loading",
+      "type": "unity_tree",
+      "wait": 0
+    },
+    {
+      "id": "finish-original-client-validation",
+      "type": "stop"
     }
   ]
 }
