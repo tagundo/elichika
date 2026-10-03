@@ -267,6 +267,31 @@
       "id": "third-patched-legacy-after-login-tree",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "third-patched-legacy-resume-confirm",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "예"
+      },
+      "ready_timeout": 60,
+      "no_loading": false,
+      "wait": 15,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-resumed-pending-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "legacy",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-resumed-result-tree",
+      "type": "unity_tree",
+      "wait": 0
     }
   ],
   "resume_after_blocked_action": {
