@@ -446,6 +446,30 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-completed-zero-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "ready_timeout": 45,
+      "wait": 45,
+      "required": true
+    },
+    {
+      "id": "fourth-completed-zero-raw-result-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postbootstrap_37139189963",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-completed-zero-result-stage-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
