@@ -80,6 +80,90 @@
       "id": "old-home-guides-complete-tree",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "old-legacy-zero-apply",
+      "type": "fixture",
+      "operation": "apply",
+      "case": "no_drop_first",
+      "checkpoint": "legacy",
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "old-legacy-zero-title-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "ready_timeout": 45,
+      "wait": 15,
+      "required": true
+    },
+    {
+      "id": "old-legacy-zero-enter-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "old-legacy-zero-preparation-help-one",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "ready_timeout": 30,
+      "no_loading": false,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "old-legacy-zero-preparation-help-two",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "ready_timeout": 30,
+      "no_loading": false,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "old-legacy-zero-recommend",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "ready_timeout": 30,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "old-legacy-zero-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "ready_timeout": 30,
+      "wait": 45,
+      "required": true
+    },
+    {
+      "id": "old-legacy-zero-pending-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "legacy",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "old-legacy-zero-pending-tree",
+      "type": "unity_tree",
+      "wait": 0
     }
   ]
 }
