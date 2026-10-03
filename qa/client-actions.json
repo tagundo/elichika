@@ -493,6 +493,49 @@
       "id": "third-fresh-preparation-help-page2-tree",
       "type": "unity_tree",
       "required": true
+    },
+    {
+      "id": "third-fresh-preparation-help-close",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "닫기"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "third-fresh-recommend-after-preparation-help",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "third-fresh-execute-after-preparation-help",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "ready_timeout": 45,
+      "wait": 45,
+      "required": true
+    },
+    {
+      "id": "third-fresh-repaired-result-inspect",
+      "type": "fixture",
+      "fixture_action": "inspect",
+      "checkpoint": "postupgrade_37136202289",
+      "required": true
+    },
+    {
+      "id": "third-fresh-repaired-item-result-tree",
+      "type": "unity_tree",
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
