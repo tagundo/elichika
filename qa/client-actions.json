@@ -486,6 +486,57 @@
       "id": "zh-full-card-detail-scene-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-full-card-detail-skill-page",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Root/DetailContainer/Carousel/RightArrowButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-full-card-detail-skill-page-tree",
+      "type": "unity_tree",
+      "wait": 1
+    },
+    {
+      "id": "zh-cold-client-restart",
+      "type": "client_restart",
+      "wait": 45
+    },
+    {
+      "id": "zh-cold-title-start-same-account",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "wait": 20
+    },
+    {
+      "id": "zh-cold-returned-chinese-home-tree",
+      "type": "unity_tree",
+      "wait": 1
+    },
+    {
+      "id": "zh-cold-preserved-lesson-state-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "auto",
+      "wait": 1
+    },
+    {
+      "id": "zh-cold-open-home-profile-menu",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/SubMenu/MenuListButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-cold-home-profile-menu-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
