@@ -141,14 +141,14 @@ rpc.exports = {
                 }
                 const eventSystem = klass('UnityEngine.EventSystems.EventSystem').method('get_current', 0).invoke();
                 if (eventSystem.isNull()) { result = {supported: false, reason: 'No Unity EventSystem'}; return; }
-                const data = Il2Cpp.Object.new(klass('UnityEngine.EventSystems.PointerEventData'));
+                const data = klass('UnityEngine.EventSystems.PointerEventData').alloc();
                 data.method('.ctor', 1).invoke(eventSystem);
                 const memory = Memory.alloc(8);
                 memory.writeFloat(x); memory.add(4).writeFloat(klass('UnityEngine.Screen').method('get_height', 0).invoke() - y);
                 const position = new Il2Cpp.ValueType(memory, klass('UnityEngine.Vector2').type);
                 data.method('set_position', 1).invoke(position);
                 const listClass = klass('System.Collections.Generic.List`1').inflate(klass('UnityEngine.EventSystems.RaycastResult'));
-                const hits = Il2Cpp.Object.new(listClass); hits.method('.ctor', 0).invoke();
+                const hits = listClass.alloc(); hits.method('.ctor', 0).invoke();
                 eventSystem.method('RaycastAll', 2).invoke(data, hits);
                 const entries = [];
                 for (let i = 0; i < hits.method('get_Count', 0).invoke() && i < 15; i++) {
@@ -161,7 +161,7 @@ rpc.exports = {
                     entries.push(entry);
                 }
                 result = {supported: true, x, y, hits: entries};
-            } catch (e) { result = {supported: false, reason: String(e)}; }
+            } catch (e) { result = {supported: false, reason: String(e), stack: e.stack || null}; }
         }, 'main');
         return result;
     }
