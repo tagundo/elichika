@@ -42,6 +42,13 @@ def bounds(node):
     return values
 
 
+def notification_deny(node):
+    # Android changes the button ID after an earlier denial, even though the
+    # visible label remains "DON'T ALLOW". Match either concrete native ID.
+    return node.get("resource-id", "").rsplit(":id/", 1)[-1] in (
+        "permission_deny_button", "permission_deny_and_dont_ask_again_button")
+
+
 class Device:
     def __init__(self, serial, evidence, report):
         self.serial, self.evidence, self.report = serial, evidence, report
@@ -230,7 +237,7 @@ def initial_permission_denial(dev):
     for index in range(9):
         tree = dev.capture("permission-initial-" + str(index))
         nodes = list(tree.iter("node"))
-        deny = [n for n in nodes if n.get("resource-id", "").endswith(":id/permission_deny_button")]
+        deny = [n for n in nodes if notification_deny(n)]
         close = [n for n in nodes if n.get("resource-id") == "android:id/button1" and n.get("text", "").casefold() in ("close", "닫기", "閉じる")]
         later = [n for n in nodes if n.get("resource-id") == "android:id/button2" and n.get("text", "").casefold() in ("later", "나중에", "後で")]
         if deny:
@@ -262,7 +269,7 @@ def grant_permissions_ui(dev):
     # Dismiss that real prompt before opening the storage settings dialog below.
     for _ in range(4):
         tree, _ = dev.ui("permission-grant-entry")
-        deny = [n for n in tree.iter("node") if n.get("resource-id", "").endswith(":id/permission_deny_button")]
+        deny = [n for n in tree.iter("node") if notification_deny(n)]
         if not deny:
             break
         dev.tap(deny[0], "deny-repeat-notification-before-storage-grant")
