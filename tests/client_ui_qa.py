@@ -18,6 +18,29 @@ CLIENT_SHA = '8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e'
 
 
 class Device(Android):
+    def unity_tree(self, label):
+        destination=self.evidence/(label+'-unity-ui.json')
+        result=subprocess.run(['python3','tests/unity_ui_probe.py','--output',str(destination)],
+                              capture_output=True,text=True,timeout=60)
+        self.evidence.joinpath(label+'-unity-probe.txt').write_text(result.stdout+'\n'+result.stderr)
+        assert result.returncode==0,result.stderr[-1500:]
+        data=json.loads(destination.read_text())
+        assert data.get('nodes'), 'Unity hierarchy has no visible UI nodes: '+str(data.get('errors'))
+        print('UNITY_UI '+result.stdout.strip(),flush=True)
+        return data
+
+    def tap_unity_node(self, action):
+        tree=self.unity_tree('target-'+action['id'])
+        selector=action.get('selector',{})
+        assert selector and set(selector)<= {'path','name','text','button','interactable'}
+        matches=[n for n in tree['nodes'] if all(n.get(k)==v for k,v in selector.items())]
+        assert len(matches)==1, 'Unity target must match exactly one node, got '+str(len(matches))
+        node=matches[0]
+        x1,y1,x2,y2=node['bounds']
+        assert 0<=x1<x2<=tree['width'] and 0<=y1<y2<=tree['height']
+        self.shell('input','tap',str(round((x1+x2)/2)),str(round((y1+y2)/2)))
+        return {'source':tree['source'],'selector':selector,'path':node['path'],'bounds':node['bounds']}
+
     def capture(self, label):
         for name,args in [('screen.png',('exec-out','screencap','-p')),
                           ('logcat.txt',('logcat','-d')),
@@ -74,9 +97,9 @@ def main():
     p.add_argument('--server',type=Path)
     p.add_argument('--client',type=Path)
     p.add_argument('--evidence',type=Path,default=Path('evidence'))
-    args=p.parse_args();args.evidence.mkdir(exist_ok=True)
+    args=p.parse_args();args.evidence.mkdir(parents=True,exist_ok=True)
     dev=Device('127.0.0.1:5555',args.evidence)
-    state_path=args.evidence/'client-ui-state.json'
+    state_path=Path('evidence/client-ui-state.json')
     state=json.loads(state_path.read_text()) if state_path.exists() else {'status':'RUNNING','actions':[],
         'server_apk_sha256':SERVER_SHA,'client_apk_sha256':CLIENT_SHA,
         'limits':['Disposable rooted Android virtual device; not a physical phone',
@@ -101,12 +124,26 @@ def main():
             assert '/' in resolved,resolved
             state['client_activity']=resolved
             state['client_launch']=dev.shell('am','start','-W','-n',resolved)
-            for seconds in [5,20,45]:
+            for seconds in [5]:
                 time.sleep(seconds)
                 dev.capture('initial-'+str(seconds))
+            # Both targets were previously observed in Android's real UI tree.
+            for selector in [{'resource-id':'android:id/button1','text':'OK'},
+                             {'resource-id':'android:id/ok','text':'GOT IT'}]:
+                try:
+                    target=dev.tap_node({'selector':selector})
+                    state['native_setup_actions']=state.get('native_setup_actions',[])+[target]
+                    time.sleep(8)
+                except AssertionError:
+                    pass
+            time.sleep(10)
+            dev.capture('initial-game')
             state['client_pid']=dev.shell('pidof',CLIENT)
             state['status']='CLIENT_LAUNCHED_AWAITING_UI_VALIDATION'
+            try:state['initial_unity_node_count']=len(dev.unity_tree('initial-game')['nodes'])
+            except Exception as e:state['unity_probe_error']=str(e)
         else:
+            if state.get('control_stopped'):return
             done={a['id'] for a in state['actions']}
             deadline=time.monotonic()+args.duration
             count=0
@@ -117,6 +154,8 @@ def main():
                     record={'id':action['id'],'type':action['type']}
                     try:
                         if action['type']=='tap':record.update(dev.tap_node(action))
+                        elif action['type']=='unity_tree':record['nodes']=len(dev.unity_tree('action-'+action['id'])['nodes'])
+                        elif action['type']=='unitytap':record.update(dev.tap_unity_node(action))
                         elif action['type']=='key':
                             assert action['keycode'] in [4,66,82]
                             dev.shell('input','keyevent',str(action['keycode']))
@@ -126,16 +165,20 @@ def main():
                             assert re.fullmatch(r'[A-Za-z0-9 ._-]{1,40}',action['text'])
                             dev.shell('input','text',action['text'].replace(' ','%s'))
                         elif action['type']=='stop':
-                            state['status']='CONTROL_COMPLETED';state_path.write_text(json.dumps(state,indent=2)+'\n');return
+                            state['status']='CONTROL_COMPLETED';state['control_stopped']=True
+                            state_path.write_text(json.dumps(state,indent=2)+'\n');return
                         else:raise ValueError('Unsupported action: '+action['type'])
                         time.sleep(min(action.get('wait',10),60))
                         record['result']='EXECUTED'
                     except Exception as e:record.update(result='FAILED',error=str(e))
                     dev.capture('action-'+action['id'])
+                    if action['type']=='unitytap':
+                        try:dev.unity_tree('action-'+action['id'])
+                        except Exception as e:record['post_action_tree_error']=str(e)
                     state['actions'].append(record);done.add(action['id'])
                     state_path.write_text(json.dumps(state,indent=2)+'\n')
-                if count%6==0:dev.capture('round-'+str(args.round)+'-'+str(count))
-                count+=1;time.sleep(10)
+                if count%20==0:dev.capture('round-'+str(args.round)+'-'+str(count))
+                count+=1;time.sleep(2)
             dev.capture('round-'+str(args.round)+'-final')
     except Exception as e:
         state.update(status='SETUP_OR_EXECUTION_FAILED',error=str(e))

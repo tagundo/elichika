@@ -58,93 +58,330 @@ jobs:
           echo '8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e  client.apk' | sha256sum --check
           echo '23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a  candidate/elichika-2026.10.01-dev.apk' | sha256sum --check
 
+      - name: Prepare read-only Unity UI hierarchy collector
+        run: |
+          python3 -m pip install --break-system-packages 'frida==17.21.0'
+          npm install --prefix qa-runtime 'frida-il2cpp-bridge@0.14.0'
+          curl --fail --location --retry 2 --output frida-server.xz https://github.com/frida/frida/releases/download/17.21.0/frida-server-17.21.0-android-arm64.xz
+          echo 'a5a712d5b1a75837cfd500adc1ee41cc259446cbc2c386f4922d235c890b18d9  frida-server.xz' | sha256sum --check
+          xz --decompress frida-server.xz
+          adb -s 127.0.0.1:5555 push frida-server /data/local/tmp/frida-server
+          adb -s 127.0.0.1:5555 shell chmod 755 /data/local/tmp/frida-server
+          adb -s 127.0.0.1:5555 shell /data/local/tmp/frida-server -D -l 127.0.0.1:27042
+
       - name: Install and launch the original client with the server
-        run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk
+        run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk --evidence evidence/initial
 
       - name: Upload initial UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-client-initial
-          path: evidence/
+          path: |
+            evidence/initial/
+            evidence/client-ui-state.json
+            evidence/android-properties.txt
+            evidence/host.txt
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 1
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 1 --duration 240
+        run: python3 -u tests/client_ui_qa.py --stage control --round 1 --duration 75 --evidence evidence/round-1
 
       - name: Upload round 1 UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-client-round-1
-          path: evidence/
+          path: |
+            evidence/round-1/
+            evidence/client-ui-state.json
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 2
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 2 --duration 240
+        run: python3 -u tests/client_ui_qa.py --stage control --round 2 --duration 75 --evidence evidence/round-2
 
       - name: Upload round 2 UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-client-round-2
-          path: evidence/
+          path: |
+            evidence/round-2/
+            evidence/client-ui-state.json
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 3
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 3 --duration 240
+        run: python3 -u tests/client_ui_qa.py --stage control --round 3 --duration 75 --evidence evidence/round-3
 
       - name: Upload round 3 UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-client-round-3
-          path: evidence/
+          path: |
+            evidence/round-3/
+            evidence/client-ui-state.json
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 4
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 4 --duration 240
+        run: python3 -u tests/client_ui_qa.py --stage control --round 4 --duration 75 --evidence evidence/round-4
 
       - name: Upload round 4 UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-client-round-4
-          path: evidence/
+          path: |
+            evidence/round-4/
+            evidence/client-ui-state.json
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 5
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 5 --duration 240
+        run: python3 -u tests/client_ui_qa.py --stage control --round 5 --duration 75 --evidence evidence/round-5
 
       - name: Upload round 5 UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-client-round-5
-          path: evidence/
+          path: |
+            evidence/round-5/
+            evidence/client-ui-state.json
           if-no-files-found: warn
 
       - name: Observe and drive client UI round 6
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u tests/client_ui_qa.py --stage control --round 6 --duration 240
+        run: python3 -u tests/client_ui_qa.py --stage control --round 6 --duration 75 --evidence evidence/round-6
 
       - name: Upload round 6 UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-client-round-6
-          path: evidence/
+          path: |
+            evidence/round-6/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 7 --duration 75 --evidence evidence/round-7
+
+      - name: Upload round 7 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-7
+          path: |
+            evidence/round-7/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 8
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 8 --duration 75 --evidence evidence/round-8
+
+      - name: Upload round 8 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-8
+          path: |
+            evidence/round-8/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 9
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 9 --duration 75 --evidence evidence/round-9
+
+      - name: Upload round 9 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-9
+          path: |
+            evidence/round-9/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 10 --duration 75 --evidence evidence/round-10
+
+      - name: Upload round 10 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-10
+          path: |
+            evidence/round-10/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 11
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 11 --duration 75 --evidence evidence/round-11
+
+      - name: Upload round 11 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-11
+          path: |
+            evidence/round-11/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 12 --duration 75 --evidence evidence/round-12
+
+      - name: Upload round 12 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-12
+          path: |
+            evidence/round-12/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 13
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 13 --duration 75 --evidence evidence/round-13
+
+      - name: Upload round 13 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-13
+          path: |
+            evidence/round-13/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 14
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 14 --duration 75 --evidence evidence/round-14
+
+      - name: Upload round 14 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-14
+          path: |
+            evidence/round-14/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 15
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 15 --duration 75 --evidence evidence/round-15
+
+      - name: Upload round 15 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-15
+          path: |
+            evidence/round-15/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 16
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 16 --duration 75 --evidence evidence/round-16
+
+      - name: Upload round 16 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-16
+          path: |
+            evidence/round-16/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 17
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 17 --duration 75 --evidence evidence/round-17
+
+      - name: Upload round 17 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-17
+          path: |
+            evidence/round-17/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 18
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 18 --duration 75 --evidence evidence/round-18
+
+      - name: Upload round 18 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-18
+          path: |
+            evidence/round-18/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 19
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 19 --duration 75 --evidence evidence/round-19
+
+      - name: Upload round 19 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-19
+          path: |
+            evidence/round-19/
+            evidence/client-ui-state.json
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 20 --duration 75 --evidence evidence/round-20
+
+      - name: Upload round 20 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-20
+          path: |
+            evidence/round-20/
+            evidence/client-ui-state.json
           if-no-files-found: warn
 
       - name: Collect final diagnostics
@@ -159,7 +396,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: original-client-final
-          path: evidence/
+          path: |
+            evidence/client-ui-state.json
+            evidence/final-logcat.txt
+            evidence/container.log
+            evidence/host.txt
+            evidence/android-properties.txt
           if-no-files-found: warn
 
       - name: Stop disposable device
