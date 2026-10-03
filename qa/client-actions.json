@@ -387,6 +387,84 @@
       "operation": "inspect",
       "user_id": "644377383",
       "wait": 1
+    },
+    {
+      "id": "one-first-B1-performance-next",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "phase-one-first-B1-final-result",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "one-first-B1-items-next",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "one-first-B1-result-touch",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapScreenTextView",
+        "text": "화면을 터치하세요"
+      },
+      "wait": 4
+    },
+    {
+      "id": "one-first-B1-insight-next-one",
+      "type": "unitytap",
+      "selector": {
+        "name": "TextView",
+        "text": "다음"
+      },
+      "wait": 3
+    },
+    {
+      "id": "one-first-B1-insight-next-two",
+      "type": "unitytap",
+      "selector": {
+        "name": "TextView",
+        "text": "다음"
+      },
+      "wait": 3
+    },
+    {
+      "id": "one-first-B1-insight-close",
+      "type": "unitytap",
+      "selector": {
+        "name": "TextView",
+        "text": "닫기"
+      },
+      "wait": 3
+    },
+    {
+      "id": "one-first-B1-skill-confirm",
+      "type": "unitytap",
+      "selector": {
+        "name": "TextView",
+        "text": "확인"
+      },
+      "wait": 12
+    },
+    {
+      "id": "one-first-B1-complete-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "one-first-B1-complete-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
