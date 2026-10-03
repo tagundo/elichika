@@ -240,6 +240,19 @@
       "id": "zh-live-current-result-small-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-result-record-next",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Buttons/TapScreen/TapButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-live-after-record-next-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
