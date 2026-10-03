@@ -35,6 +35,38 @@
         "name": "GuideFocus"
       },
       "wait": 8
+    },
+    {
+      "id": "diag-return-from-reference-book",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "diag-open-lesson-after-reference-book",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "diag-confirm-home-introduction",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 5
+    },
+    {
+      "id": "diag-follow-second-home-tutorial",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "wait": 8
     }
   ]
 }
