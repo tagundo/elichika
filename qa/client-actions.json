@@ -131,6 +131,15 @@
         "name": "ScreenButton"
       },
       "wait": 8
+    },
+    {
+      "id": "diag-advance-via-visible-result-prompt",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapScreenTextView",
+        "text": "화면을 터치하세요"
+      },
+      "wait": 10
     }
   ]
 }
