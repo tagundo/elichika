@@ -22,6 +22,7 @@ func (session *Session) ImportLoginData(ctx *gin.Context, loginData *response.Lo
 	}
 	session.UserModel = *loginData.UserModel
 	session.UserStatus = &session.UserModel.UserStatus
+	NormalizeUserRankExp(session.UserStatus, session.Gamedata)
 	session.MemberLovePanels = loginData.MemberLovePanels.Slice
 }
 

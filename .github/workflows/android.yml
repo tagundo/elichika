@@ -22,7 +22,7 @@ on:
     # No paths filter: the APK bundles the whole Go server, so any source change
     # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
     # previously skipped a clientdb/ fix and shipped a stale APK.
-    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit]
+    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit, codex/first-lesson-rank-compat]
     # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
     # to a GitHub Release. See android/README.md for the one-time secret setup.
     tags: ['v*']
