@@ -1,4 +1,9 @@
 {
-  "purpose": "Controlled original-client release verification on disposable Android; same unchanged APKs",
-  "actions": []
+  "actions": [
+    {
+      "id": "recover-collector-inspect-01",
+      "type": "unity_tree",
+      "wait": 0
+    }
+  ]
 }
