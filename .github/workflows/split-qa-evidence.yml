@@ -11,17 +11,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Download and verify original Star artifact
+      - name: Download and verify original Live artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/tagundo/elichika/actions/artifacts/11273728579/zip > source.zip
+          gh api repos/tagundo/elichika/actions/artifacts/11274851149/zip > source.zip
           python3 - <<'PY'
           import hashlib,json,pathlib
           p=pathlib.Path("source.zip"); d=p.read_bytes()
-          assert hashlib.sha256(d).hexdigest()=="aea6bb55129ba81e384c0adb9b78ef9ab5351d9765315669f2d09a7ef3f43044"
+          assert hashlib.sha256(d).hexdigest()=="2403f58ded529873a095204b46dec5646463dccc025bf76dd8e386fd7d99c097"
           out=pathlib.Path("parts");out.mkdir()
-          manifest={"source_artifact_id":11273728579,"source_bytes":len(d),"source_sha256":hashlib.sha256(d).hexdigest(),"parts":[]}
+          manifest={"source_artifact_id":11274851149,"source_bytes":len(d),"source_sha256":hashlib.sha256(d).hexdigest(),"parts":[]}
           for i, offset in enumerate(range(0,len(d),16*1024*1024),1):
            b=d[offset:offset+16*1024*1024]; f=out/("part-%02d.bin"%i); f.write_bytes(b)
            manifest["parts"].append({"name":f.name,"bytes":len(b),"sha256":hashlib.sha256(b).hexdigest()})
@@ -30,21 +30,21 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: star-source-zip-part-01
+          name: live-source-zip-part-01
           path: parts/part-01.bin
           retention-days: 90
       - uses: actions/upload-artifact@v4
         with:
-          name: star-source-zip-part-02
+          name: live-source-zip-part-02
           path: parts/part-02.bin
           retention-days: 90
       - uses: actions/upload-artifact@v4
         with:
-          name: star-source-zip-part-03
+          name: live-source-zip-part-03
           path: parts/part-03.bin
           retention-days: 90
       - uses: actions/upload-artifact@v4
         with:
-          name: star-source-manifest
+          name: live-source-manifest
           path: parts/manifest.json
           retention-days: 90
