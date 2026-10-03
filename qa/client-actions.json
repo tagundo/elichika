@@ -252,6 +252,38 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-saved-eli-visible-full-skill-page",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Root/DetailContainer/Carousel/RightArrowButton"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-saved-eli-visible-learned-skill-page-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-saved-eli-back-to-lesson-menu",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "sixth-before-live-normal-menu-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
