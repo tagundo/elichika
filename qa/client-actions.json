@@ -15,6 +15,14 @@
         "name": "ButtonPositiveM"
       },
       "wait": 30
+    },
+    {
+      "id": "start-from-title",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 45
     }
   ]
 }
