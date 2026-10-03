@@ -419,6 +419,47 @@
       "id": "zh-natural-skill-selection-after-help-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-natural-confirm-first-skill-save",
+      "type": "unitytap",
+      "selector": {
+        "text": "OK"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-natural-after-save-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "auto",
+      "wait": 1
+    },
+    {
+      "id": "zh-natural-menu-after-save-tree",
+      "type": "unity_tree",
+      "wait": 1
+    },
+    {
+      "id": "zh-card-open-global-menu",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/FrontSafeArea/BottomBaseSize/MenuButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-card-open-normal-card-tooltip",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-card-tooltip-current-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
