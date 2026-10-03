@@ -1,1 +1,9 @@
-{"actions": []}
+{
+  "actions": [
+    {
+      "id": "diag-inspect-download-progress",
+      "type": "unity_tree",
+      "wait": 0
+    }
+  ]
+}
