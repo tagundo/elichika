@@ -67,6 +67,46 @@
         "name": "GuideFocus"
       },
       "wait": 8
+    },
+    {
+      "id": "diag-return-from-channel-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "diag-enter-lesson-menu",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "diag-lesson-help-page-one",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 4
+    },
+    {
+      "id": "diag-lesson-help-page-two",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 4
+    },
+    {
+      "id": "diag-recommend-lesson-menus",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "wait": 6
     }
   ]
 }
