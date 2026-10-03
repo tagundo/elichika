@@ -8,19 +8,27 @@
       "qa_negative_test": true
     },
     {
-      "id": "fourth-schema-intentional-missing-operation",
-      "type": "fixture",
-      "fixture_action": "inspect",
-      "checkpoint": "fourth_schema",
-      "required": true,
-      "qa_negative_test": true
-    },
-    {
       "id": "fourth-schema-dependent-must-not-back",
       "type": "key",
       "keycode": 4,
       "wait": 0,
       "qa_negative_test": true
+    },
+    {
+      "id": "fourth-schema-paused-readonly-tree",
+      "type": "unity_tree",
+      "diagnostic_while_blocked": true,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-schema-paused-readonly-account",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "fourth_schema",
+      "diagnostic_while_blocked": true,
+      "wait": 0,
+      "required": true
     }
   ]
 }
