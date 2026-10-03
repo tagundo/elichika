@@ -157,6 +157,42 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-fullslots-unselect-existing-524",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/AnimationRoot/SkillSelect/SkillContainer/BackgroundImage/ScrollSelectViewHorizontal/Viewport/Content/cell0/EquipSkillsContainer/SkillsContainer/SkillToggleButton1"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-select-new-523",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/AnimationRoot/SkillSelect/SkillContainer/BackgroundImage/ScrollSelectViewHorizontal/Viewport/Content/cell0/DropSkillsContainer/SkillsContainer/Viewport/Content/SkillToggleButton1"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-real-decision",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/AnimationRoot/CommonObject/SkillSelectButtons/DecisionButton"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-replacement-confirm-preview-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
