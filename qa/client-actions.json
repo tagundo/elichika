@@ -550,6 +550,19 @@
       "id": "zh-cold-profile-current-tabs-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-cold-profile-open-live-play-history",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/GroupSelect/RadioButtonToggle/PlayHistory"
+      },
+      "wait": 5
+    },
+    {
+      "id": "zh-cold-profile-preserved-live-counts-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
