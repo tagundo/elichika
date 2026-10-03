@@ -104,8 +104,19 @@ class Device:
         for attempt in range(attempts):
             tree, _ = self.ui("find-" + label)
             matches = [n for n in tree.iter("node") if predicate(n) and n.get("enabled", "true") == "true"]
-            matches = [n for n in matches if len(re.findall(r"\d+", n.get("bounds", ""))) == 4]
-            matches = [n for n in matches if bounds(n)[2] > bounds(n)[0] and bounds(n)[3] > bounds(n)[1]]
+            safe_matches = []
+            nav = [n for n in tree.iter("node") if n.get("resource-id") == "android:id/navigationBarBackground"]
+            nav_top = min((bounds(n)[1] for n in nav), default=10**9)
+            for node in matches:
+                try:
+                    x1, y1, x2, y2 = bounds(node)
+                except ValueError:
+                    continue
+                # Compose can expose a partly off-screen row behind system nav.
+                # A tap there would hit Android's navigation, not the target.
+                if (y1+y2)//2 < nav_top:
+                    safe_matches.append(node)
+            matches = safe_matches
             if matches:
                 # WebViews may expose both an enclosing link and its text child.
                 matches.sort(key=lambda n: (n.get("clickable") != "true", (bounds(n)[2]-bounds(n)[0])*(bounds(n)[3]-bounds(n)[1])))
@@ -127,6 +138,10 @@ class Device:
 
     def swipe_node(self, node, horizontal, label, reverse=False):
         x1, y1, x2, y2 = bounds(node)
+        tree, _ = self.ui("safe-swipe-" + label)
+        nav = [n for n in tree.iter("node") if n.get("resource-id") == "android:id/navigationBarBackground"]
+        y2 = min(y2, min((bounds(n)[1] for n in nav), default=y2))
+        assert y2 > y1, "Scrollable content is covered by system navigation"
         if horizontal:
             a, b = (int(x1+(x2-x1)*.8), (y1+y2)//2), (int(x1+(x2-x1)*.2), (y1+y2)//2)
         else:
@@ -276,16 +291,20 @@ def grant_permissions_ui(dev):
     dev.tap_text(["Open settings", "설정 열기", "設定を開く"], "open-all-files-settings")
     dev.capture("all-files-access-before-grant")
     node = dev.find(lambda n: (n.get("class") in ("android.widget.Switch", "android.widget.SwitchCompat")
-                              or n.get("resource-id", "").endswith(":id/switch_widget")) and n.get("checked") == "false",
-                    "all-files-switch")
+                              or n.get("resource-id", "").endswith(":id/switch_widget")
+                              or (n.get("checkable") == "true" and any(child.get("text") == "Allow access to manage all files"
+                                  for child in n.iter("node")))) and n.get("checked") == "false",
+                    "all-files-switch", scroll=True)
     dev.tap(node, "grant-all-files-via-settings")
     dev.capture("all-files-access-after-grant")
     assert "allow" in dev.permissions()["all_files_appop"], "All files grant did not reach app op"
     dev.shell("input", "keyevent", "4")
     dev.shell("am", "start", "-W", "-a", "android.settings.APP_NOTIFICATION_SETTINGS", "--es", "android.provider.extra.APP_PACKAGE", PACKAGE)
     dev.capture("notification-settings-before-grant")
-    node = dev.find(lambda n: (n.get("class") == "android.widget.Switch" or n.get("resource-id", "").endswith(":id/switch_widget"))
-                    and n.get("checked") == "false", "notification-switch")
+    node = dev.find(lambda n: (n.get("class") == "android.widget.Switch" or n.get("resource-id", "").endswith(":id/switch_widget")
+                    or (n.get("checkable") == "true" and any(child.get("text", "").casefold() in
+                        ("allow notifications", "all elichika notifications") for child in n.iter("node"))))
+                    and n.get("checked") == "false", "notification-switch", scroll=True)
     dev.tap(node, "grant-notifications-via-settings")
     dev.capture("notification-settings-after-grant")
     assert dev.permissions()["post_notifications_granted"] is True, "UI notification grant failed"
