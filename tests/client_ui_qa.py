@@ -24,6 +24,12 @@ BASELINE_VERSION = 2026100100
 COMMAND_BRANCH = 'codex/lesson-rank-retest-qa'
 
 
+def parse_package_app_id(package_dump):
+    ids = {int(value) for value in re.findall(r'^\s*(?:appId|userId)=(\d+)\s*$', package_dump, re.MULTILINE)}
+    assert len(ids) == 1, 'Expected one appId/userId in package dump: ' + str(sorted(ids))
+    return ids.pop()
+
+
 class Device(Android):
     def wait_unity(self, action):
         """Poll real hierarchy only; never invoke game callbacks to finish a scene."""
@@ -81,20 +87,35 @@ class Device(Android):
         for suffix in ('-wal', '-journal'):
             result = self.shell('sh', '-c', 'if [ -f ' + shlex.quote(files + '/userdata.db' + suffix) + ' ]; then stat -c %s ' + shlex.quote(files + '/userdata.db' + suffix) + '; else echo 0; fi')
             assert result == '0', 'Database is not offline: ' + suffix
-        package = self.shell('dumpsys', 'package', PACKAGE)
-        self.evidence.joinpath(label + '-package.txt').write_text(package + '\n')
-        uid = re.search(r'\buserId=(\d+)', package)
-        assert uid, 'Server app UID missing'
-        game_package = self.shell('dumpsys', 'package', CLIENT)
-        self.evidence.joinpath(label + '-game-package.txt').write_text(game_package + '\n')
-        game_uid = re.search(r'\buserId=(\d+)', game_package)
-        assert game_uid, 'Game app UID missing'
-        permission = re.search(r'android\.permission\.POST_NOTIFICATIONS: granted=(true|false)', package)
+        packages = {}
+        for target, suffix in [(PACKAGE, 'package'), (CLIENT, 'game-package')]:
+            dump = self.shell('dumpsys', 'package', target)
+            pm_list = self.shell('cmd', 'package', 'list', 'packages', '-U', '--user', '0', target)
+            data_owner = self.shell('stat', '-c', '%u:%g', '/data/user/0/' + target)
+            self.evidence.joinpath(label + '-' + suffix + '.txt').write_text(dump + '\n')
+            self.evidence.joinpath(label + '-' + suffix + '-uid.txt').write_text(pm_list + '\ndata_root_owner=' + data_owner + '\n')
+            packages[target] = {'dump': dump, 'pm_list': pm_list, 'data_owner': data_owner}
+        current_user = self.shell('am', 'get-current-user')
+        self.evidence.joinpath(label + '-current-user.txt').write_text(current_user + '\n')
         op = self.shell('appops', 'get', PACKAGE, 'MANAGE_EXTERNAL_STORAGE')
         self.evidence.joinpath(label + '-storage-appop.txt').write_text(op + '\n')
+        assert current_user == '0', 'QA snapshot is scoped to Android user0'
+        uids = {}
+        for target, metadata in packages.items():
+            app_id = parse_package_app_id(metadata['dump'])
+            matches = re.findall(r'^package:' + re.escape(target) + r' uid:(\d+)\s*$', metadata['pm_list'], re.MULTILINE)
+            assert len(matches) == 1, 'Package manager did not return one exact package UID: ' + target
+            uid = int(matches[0])
+            owner = tuple(map(int, metadata['data_owner'].split(':')))
+            assert uid == app_id and owner == (uid, uid), 'Package/PM/data-root ownership disagree: ' + target
+            uids[target] = uid
+        for path, metadata in hashes.items():
+            target = PACKAGE if path.startswith('/data/user/0/' + PACKAGE + '/') else CLIENT
+            assert tuple(map(int, metadata['uid_gid_mode'].split(':')[:2])) == (uids[target], uids[target]), 'Owned file ownership differs from app UID: ' + path
+        permission = re.search(r'android\.permission\.POST_NOTIFICATIONS: granted=(true|false)', packages[PACKAGE]['dump'])
         mode = re.search(r'MANAGE_EXTERNAL_STORAGE:\s*(\w+)', op)
         assert permission and mode, 'Runtime permission/AppOp baseline missing'
-        result = {'state_files': hashes, 'app_uid': int(uid.group(1)), 'game_uid': int(game_uid.group(1)),
+        result = {'state_files': hashes, 'app_uid': uids[PACKAGE], 'game_uid': uids[CLIENT],
                   'notification_granted': permission.group(1) == 'true', 'storage_appop': mode.group(1)}
         self.evidence.joinpath(label + '-snapshot.json').write_text(json.dumps(result, indent=2) + '\n')
         return result
@@ -311,6 +332,11 @@ def main():
             output=dev.adb('install','-r',str(args.client),timeout=60)
             assert 'Success' in output
             state['client_install']=output
+            # Exercise the complete update snapshot on this actual Android version
+            # before the large game asset download, so QA parser failures are early.
+            state['initial_upgrade_preflight_stopped'] = dev.stop_targets()
+            state['initial_upgrade_preflight'] = dev.upgrade_snapshot('initial-upgrade-preflight')
+            state['initial_upgrade_preflight_restart'] = dev.start('initial-preflight-server')
             resolved=dev.shell('cmd','package','resolve-activity','--brief',CLIENT).splitlines()[-1]
             assert '/' in resolved,resolved
             state['client_activity']=resolved
@@ -382,6 +408,10 @@ def main():
                             record.update(dev.tap_unity_node(action))
                         elif action['type']=='unitywait':record.update(dev.wait_unity(action))
                         elif action['type']=='server_upgrade':record.update(dev.upgrade_server(action,args.candidate_manifest,state))
+                        elif action['type']=='upgrade_preflight':
+                            record['stopped_processes'] = dev.stop_targets()
+                            record['snapshot'] = dev.upgrade_snapshot('pending-upgrade-preflight-' + action['id'])
+                            record['apps_left_stopped'] = True
                         elif action['type']=='key':
                             assert action['keycode'] in [4,66,82]
                             dev.shell('input','keyevent',str(action['keycode']))
