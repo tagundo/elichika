@@ -1188,6 +1188,48 @@
       "id": "three-times-F1-complete-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "apply-shooting-star-G1",
+      "type": "fixture",
+      "operation": "apply",
+      "case": "shooting_star",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-launch",
+      "type": "launch",
+      "wait": 45
+    },
+    {
+      "id": "shooting-star-G1-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "wait": 25
+    },
+    {
+      "id": "shooting-star-G1-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "shooting-star-G1-open-menu",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/PreparationContainer/BackgroundImage/MenuContainer/MenuList/MenuCell1/Button"
+      },
+      "wait": 5
+    },
+    {
+      "id": "shooting-star-G1-menu-list-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
