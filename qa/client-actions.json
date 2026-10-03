@@ -713,6 +713,107 @@
       "id": "full-slots-D1-confirm-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "full-slots-D1-confirm-save",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 8
+    },
+    {
+      "id": "full-slots-D1-complete-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "apply-full-slots-D2-discard",
+      "type": "fixture",
+      "operation": "apply",
+      "case": "full_slots",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "full-slots-D2-launch",
+      "type": "launch",
+      "wait": 45
+    },
+    {
+      "id": "full-slots-D2-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "wait": 25
+    },
+    {
+      "id": "full-slots-D2-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "phase-full-slots-D2-execute",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "full-slots-D2-recommend",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "wait": 3
+    },
+    {
+      "id": "full-slots-D2-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "wait": 20
+    },
+    {
+      "id": "full-slots-D2-pending",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "full-slots-D2-performance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "full-slots-D2-items",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 12
+    },
+    {
+      "id": "full-slots-D2-result-advance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "full-slots-D2-choice-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
