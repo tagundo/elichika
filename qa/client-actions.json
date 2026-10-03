@@ -21,14 +21,115 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-open-menu",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/PreparationContainer/BackgroundImage/MenuContainer/MenuList/MenuCell1/Button"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-menu1",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectMenuListPopup(Clone)/LessonMenuTileViewVertical/Viewport/Content/cell0/CellButton/CellContainer/LessonMenuSelectPlanObject(Clone)/BackgroundImage/TitleTextView",
+        "text": "달리기"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-slot2",
+      "type": "unitytap",
+      "selector": {
+        "name": "SelectedLessonMenuButton2"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-menu2",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectMenuListPopup(Clone)/LessonMenuTileViewVertical/Viewport/Content/cell1/CellButton/CellContainer/LessonMenuSelectPlanObject(Clone)/BackgroundImage/TitleTextView",
+        "text": "전단 돌리기"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-slot3",
+      "type": "unitytap",
+      "selector": {
+        "name": "SelectedLessonMenuButton3"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-menu3",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/LessonMenuSelectMenuListPopup(Clone)/LessonMenuTileViewVertical/Viewport/Content/cell2/CellButton/CellContainer/LessonMenuSelectPlanObject(Clone)/BackgroundImage/TitleTextView",
+        "text": "명상"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-menu-confirm",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "확인"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-selected-recipe-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-execute-distinct-new-skill",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "ready_timeout": 45,
+      "wait": 45,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-raw-pending-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postbootstrap_37157358249",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "sixth-fullslots-set123-result-stage-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
   "prior_completed_run": 37139189963,
   "prior_transport_failure_run": 37156767981,
   "controller_sha256": "beae5666ef2b325a74fbe66419d4e099f3a6761eacc0a15b97550b4c3de07e86",
-  "resume_after_blocked_action": {
-    "id": "sixth-fullslots-open-menu",
-    "action_definition_sha256": "0dfc05b94e859e93d31b661c3bd20b7e6d06dba874cf2e54719c0865a34ea9fe"
-  }
+  "resume_after_blocked_action": null
 }
