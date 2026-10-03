@@ -1283,6 +1283,82 @@
       "id": "shooting-star-G1-333-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "phase-shooting-star-G1-execute",
+      "type": "observer_phase",
+      "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-record-start",
+      "type": "record_start",
+      "name": "shooting-star-G1",
+      "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "wait": 60
+    },
+    {
+      "id": "shooting-star-G1-record-end",
+      "type": "record_end",
+      "name": "shooting-star-G1",
+      "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-pending",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-performance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 6
+    },
+    {
+      "id": "shooting-star-G1-items",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 12
+    },
+    {
+      "id": "shooting-star-G1-result-advance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "shooting-star-G1-confirm-final",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 8
+    },
+    {
+      "id": "shooting-star-G1-complete-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-complete-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
