@@ -8,18 +8,13 @@ on:
 
 permissions:
   contents: read
-  actions: write
+  actions: read
 
 jobs:
   client:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 50
     steps:
-      - name: Cancel stalled previous QA helper session
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api --method POST repos/tagundo/elichika/actions/runs/37101858410/cancel >/dev/null || true
-
       - uses: actions/checkout@v4
 
       - name: Prepare native ARM64 Android virtual device
@@ -48,6 +43,49 @@ jobs:
           done
           test "$ready" = 1
           adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
+
+      - name: Install genuine Google dependencies in disposable Android
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          exec > >(tee evidence/google-dependency-preparation.log) 2>&1
+          curl --fail --location --retry 2 --max-time 90 --output gapps.zip https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip
+          echo '6e1c3616862ce5b33e2b96074f86ae846eb1351a26a980e1ed140f8a7e7a4fd6  gapps.zip' | sha256sum --check
+          python3 - <<'PYZIP'
+          import zipfile
+          selected=('system/product/priv-app/GmsCore/','system/product/priv-app/Phonesky/',
+                    'system/system_ext/priv-app/GoogleServicesFramework/',
+                    'system/product/etc/permissions/','system/product/etc/sysconfig/',
+                    'system/system_ext/etc/permissions/')
+          with zipfile.ZipFile('gapps.zip') as z:
+              for name in z.namelist():
+                  if name.startswith(selected):z.extract(name,'gapps')
+          PYZIP
+          adb -s 127.0.0.1:5555 push gapps/system/product/. /product/
+          adb -s 127.0.0.1:5555 push gapps/system/system_ext/. /system_ext/
+          adb -s 127.0.0.1:5555 shell chmod 644 /product/priv-app/GmsCore/GmsCore.apk /product/priv-app/Phonesky/Phonesky.apk /system_ext/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk
+          docker restart original-client-qa
+          adb disconnect 127.0.0.1:5555 || true
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          for package in com.google.android.gms com.android.vending com.google.android.gsf; do
+            adb -s 127.0.0.1:5555 shell pm path "$package"
+            adb -s 127.0.0.1:5555 shell dumpsys package "$package" > "evidence/$package-package.txt"
+          done
+
+      - name: Upload Google dependency diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-google-dependencies
+          path: |
+            evidence/google-dependency-preparation.log
+            evidence/*-package.txt
 
       - name: Download exact previously signed and validated server APK
         uses: actions/download-artifact@v4

@@ -67,9 +67,35 @@ rpc.exports = {
                     if (mono) {
                         const scripts = go.method('GetComponents', 1).overload('System.Type').invoke(mono.type.object);
                         node.components = [];
+                        node.component_details = {};
                         for (let j = 0; j < scripts.length; j++) {
                             const s = scripts.get(j);
-                            if (!s.isNull()) node.components.push(s.class.namespace + '.' + s.class.name);
+                            if (s.isNull()) continue;
+                            const type = s.class.namespace + '.' + s.class.name;
+                            node.components.push(type);
+                            if (/Button|Raycast|TextView/.test(type)) {
+                                const detail = {getters: s.class.methods.filter(m => m.name.startsWith('get_')).map(m => m.name), fields: {}};
+                                for (const getter of ['get_enabled','get_isActiveAndEnabled','get_interactable','get_Interactable']) {
+                                    try { const m = s.tryMethod(getter, 0); if (m) detail[getter] = m.invoke(); } catch (_) {}
+                                }
+                                for (const field of s.class.fields) {
+                                    if (field.isStatic) continue;
+                                    if (!['System.Boolean','System.Int32','System.Single','System.String'].includes(field.type.name)) continue;
+                                    try {
+                                        const value = s.field(field.name).value;
+                                        detail.fields[field.name] = field.type.name === 'System.String' ? value.content : value;
+                                    } catch (_) {}
+                                }
+                                if (!node.text && /TextView/.test(type)) {
+                                    for (const name of ['get_text','get_Text','get_RawText']) {
+                                        try {
+                                            const method=s.tryMethod(name,0);
+                                            if (method) { const value=method.invoke(); if (value.content) node.text=value.content; }
+                                        } catch (_) {}
+                                    }
+                                }
+                                node.component_details[type]=detail;
+                            }
                         }
                     }
                     nodes.push(node);

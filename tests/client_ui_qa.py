@@ -38,8 +38,12 @@ class Device(Android):
         node=matches[0]
         x1,y1,x2,y2=node['bounds']
         assert 0<=x1<x2<=tree['width'] and 0<=y1<y2<=tree['height']
-        self.shell('input','tap',str(round((x1+x2)/2)),str(round((y1+y2)/2)))
-        return {'source':tree['source'],'selector':selector,'path':node['path'],'bounds':node['bounds']}
+        x,y=str(round((x1+x2)/2)),str(round((y1+y2)/2))
+        hold=action.get('hold_ms',0)
+        assert hold==0 or 50<=hold<=350
+        if hold:self.shell('input','swipe',x,y,x,y,str(hold))
+        else:self.shell('input','tap',x,y)
+        return {'source':tree['source'],'selector':selector,'path':node['path'],'bounds':node['bounds'],'hold_ms':hold}
 
     def capture(self, label):
         for name,args in [('screen.png',('exec-out','screencap','-p')),
@@ -142,6 +146,18 @@ def main():
             state['status']='CLIENT_LAUNCHED_AWAITING_UI_VALIDATION'
             try:state['initial_unity_node_count']=len(dev.unity_tree('initial-game')['nodes'])
             except Exception as e:state['unity_probe_error']=str(e)
+            state['bootstrap_actions']=[]
+            for step in [{'id':'select-korean','selector':{'name':'KoreanButton'},'wait':5},
+                         {'id':'confirm-korean','selector':{'name':'ButtonPositiveM'},'wait':10},
+                         {'id':'title-default-tap','selector':{'name':'ScreenButton'},'wait':30}]:
+                try:
+                    record=dev.tap_unity_node(step)
+                    time.sleep(step['wait'])
+                    dev.capture('bootstrap-'+step['id'])
+                    dev.unity_tree('bootstrap-'+step['id'])
+                    state['bootstrap_actions'].append({'id':step['id'],**record})
+                except Exception as e:
+                    state['bootstrap_error']=str(e);break
         else:
             if state.get('control_stopped'):return
             done={a['id'] for a in state['actions']}
