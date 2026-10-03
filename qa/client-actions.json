@@ -164,6 +164,15 @@
       "id": "old-legacy-zero-pending-tree",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "old-legacy-zero-restore-master-only",
+      "type": "fixture",
+      "operation": "restore_master",
+      "checkpoint": "legacy",
+      "restart": false,
+      "wait": 0,
+      "required": true
     }
   ]
 }
