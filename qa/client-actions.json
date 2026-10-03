@@ -19,6 +19,67 @@
       "id": "zh-download-readiness-tree-2",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-home-close-download",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 35
+    },
+    {
+      "id": "zh-home-reference-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-home-return-reference",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-home-open-lesson-intro",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-home-confirm-intro",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 5
+    },
+    {
+      "id": "zh-home-channel-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-home-return-channel",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-home-after-guides-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
