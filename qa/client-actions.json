@@ -1,1 +1,22 @@
-{"actions":[]}
+{
+  "actions": [
+    {
+      "id": "third-qa-pause-smoke-missing-target",
+      "type": "unitytap",
+      "selector": {
+        "name": "__QA_INTENTIONAL_MISSING_TARGET__"
+      },
+      "ready_timeout": 1,
+      "required": true,
+      "wait": 0,
+      "qa_negative_test": true
+    },
+    {
+      "id": "third-qa-pause-smoke-must-not-back",
+      "type": "key",
+      "keycode": 4,
+      "wait": 0,
+      "qa_negative_test": true
+    }
+  ]
+}
