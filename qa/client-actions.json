@@ -176,6 +176,16 @@
         "text": "확인"
       },
       "wait": 10
+    },
+    {
+      "id": "diag-inspect-returned-lesson-menu",
+      "type": "unity_tree",
+      "wait": 0
+    },
+    {
+      "id": "diag-stop-after-positive-control",
+      "type": "stop",
+      "wait": 0
     }
   ]
 }
