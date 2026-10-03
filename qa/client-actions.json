@@ -107,6 +107,22 @@
         "name": "RecommendButton"
       },
       "wait": 6
+    },
+    {
+      "id": "diag-execute-real-first-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "wait": 25
+    },
+    {
+      "id": "diag-advance-lesson-performance",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 10
     }
   ]
 }
