@@ -9,6 +9,7 @@ import (
 	"elichika/generic"
 	"elichika/generic/drop"
 	"elichika/item"
+	"elichika/log"
 	"elichika/subsystem/user_content"
 	"elichika/subsystem/user_lesson_deck"
 	"elichika/subsystem/user_member_guild"
@@ -351,6 +352,23 @@ func ExecuteLesson(session *userdata.Session, req request.ExecuteLessonRequest) 
 				return req.ExecuteLessonIds.Slice[i] < req.ExecuteLessonIds.Slice[j]
 			})
 		}
+	}
+
+	// With no skills, the original client automatically starts leaving LessonResult
+	// before its first skill guide closes. The loading guard then blocks the guide's
+	// close button. Keep that guide visible and actionable by adding exactly one
+	// ordinary eligible skill only when the complete result would otherwise be empty.
+	if result.DropSkillList.Size() == 0 && lessonSkillGuideIncomplete(session) {
+		key := req.ExecuteLessonIds.Slice[0]*100 + req.ExecuteLessonIds.Slice[1]*10 + req.ExecuteLessonIds.Slice[2]
+		var pool *drop.WeightedDropList[int32]
+		if lessonGamedata != nil {
+			pool = lessonGamedata.FirstSkillDrop[key]
+		}
+		skill := firstLessonCompatibilitySkill(session, deck, pool)
+		result.DropSkillList.Append(skill)
+		markInsightSkill(lessonGamedata.SkillSourceMenu[key][skill.PassiveSkillId], skill.Position, skill.PassiveSkillId, false)
+		log.Printf("INFO: first lesson skill guide compatibility: fresh result user=%d recipe=%d skill=%d position=%d",
+			session.UserId, key, skill.PassiveSkillId, skill.Position)
 	}
 
 	for _, item := range enhancingItems {

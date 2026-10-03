@@ -26,8 +26,11 @@ import (
 // The optional m_lesson_skill_shooting_star table identifies special animations; its
 // absence does not affect drops from the five tables above.
 //
-// The rates themselves are data, not code: how strict or generous lessons are is decided
-// entirely by the weights in those tables. The sql file that creates them records where
+// The ordinary rates themselves are data: how strict or generous lessons are is decided
+// by the weights in those tables. The caller makes a narrow compatibility exception for
+// an empty result while the original client's first skill guide is incomplete; this is
+// a private-server compatibility policy, not a claim about the original service's rates.
+// The sql file that creates the tables records where
 // each number came from and which ones were a judgement call rather than an observation,
 // so read that before changing any of them here.
 type Lesson struct {
@@ -38,6 +41,14 @@ type Lesson struct {
 	// the run gives no skill at all
 	SkillDrop   map[int32]*drop.WeightedDropList[int32]
 	SkillRarity map[int32]int32
+
+	// Compatibility draws for the original client's first insight-skill guide. These
+	// keep the ordinary positive weights, but omit no-drop and shooting-star entries.
+	FirstSkillDrop map[int32]*drop.WeightedDropList[int32]
+	// Old pending results do not store their recipe. Only an any-combination skill
+	// with no shooting-star mapping anywhere is safe to add to such a result.
+	FirstSkillLegacyDrop *drop.WeightedDropList[int32]
+	SkillPositionWeight  map[int32]int32
 
 	// keyed by lesson combination, then insight skill master id; value is the menu id
 	// that caused the skill to be available
@@ -176,8 +187,12 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	})
 	utils.CheckErr(err)
 	lesson.SkillPosition = &drop.WeightedDropList[int32]{}
+	lesson.SkillPositionWeight = map[int32]int32{}
 	for _, memberChance := range memberChances {
 		lesson.SkillPosition.AddItem(memberChance.PositionId, memberChance.Weight)
+		if memberChance.PositionId >= 1 && memberChance.PositionId <= 9 && memberChance.Weight > 0 {
+			lesson.SkillPositionWeight[memberChance.PositionId] = memberChance.Weight
+		}
 	}
 
 	// the mix of rarities, given that a skill drops at all
@@ -190,6 +205,21 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 		err = session.Table("m_lesson_skill_rarity").Find(&skillRarities)
 	})
 	utils.CheckErr(err)
+
+	// A recovered reward row alone does not prove that the original client knows its
+	// ID. Missing stock metadata leaves compatibility pools unavailable, rather than
+	// fabricating a skill when an owner's custom tables cannot support the guide.
+	knownSkills := map[int32]bool{}
+	if existingTables(gamedata)["m_passive_skill"] {
+		var skillIds []int32
+		gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+			err = session.Table("m_passive_skill").Cols("id").Find(&skillIds)
+		})
+		utils.CheckErr(err)
+		for _, skillId := range skillIds {
+			knownSkills[skillId] = true
+		}
+	}
 	rarityWeight := map[int32]int32{}
 	for _, skillRarity := range skillRarities {
 		rarityWeight[skillRarity.Rarity] = skillRarity.Weight
@@ -252,6 +282,10 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 		}
 		shootingStarByMenu[menuID][skillID] = true
 	}
+	shootingStarAnyMenu := map[int32]bool{}
+	for _, row := range shootingStarRows {
+		shootingStarAnyMenu[int32(row.SkillMasterId)] = true
+	}
 
 	// The insight pins (m_lesson_enhancing_item 1400 / 1401) guarantee the leader a skill.
 	// This is stock masterdata rather than one of the recovered tables, but it is read
@@ -303,6 +337,7 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 	// The "no skill" weight is the only thing that varies between combinations: one that
 	// has an exclusive skill on offer drops a skill far more often than one that doesn't.
 	lesson.SkillDrop = map[int32]*drop.WeightedDropList[int32]{}
+	lesson.FirstSkillDrop = map[int32]*drop.WeightedDropList[int32]{}
 	lesson.SkillSourceMenu = map[int32]map[int32]int32{}
 	lesson.ShootingStarSkills = map[int32]map[int32]bool{}
 	for _, id1 := range menuIds {
@@ -322,10 +357,20 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 				}
 
 				dropList := &drop.WeightedDropList[int32]{}
+				totalDropWeight := int64(noDropWeight[hasExclusive])
+				if totalDropWeight < 0 {
+					log.Panic("lesson skill no-drop weight must not be negative")
+				}
 				dropList.AddItem(0, noDropWeight[hasExclusive])
 				for _, skill := range available {
-					dropList.AddItem(skill.SkillMasterId, rarityWeight[skill.Rarity]/countByRarity[skill.Rarity])
+					weight := rarityWeight[skill.Rarity] / countByRarity[skill.Rarity]
+					totalDropWeight += int64(weight)
+					if weight < 0 || totalDropWeight > math.MaxInt32 {
+						log.Panic("lesson skill weights must be nonnegative and total at most MaxInt32")
+					}
+					dropList.AddItem(skill.SkillMasterId, weight)
 				}
+
 				combination := id1*100 + id2*10 + id3
 				lesson.SkillDrop[combination] = dropList
 				lesson.SkillSourceMenu[combination] = map[int32]int32{}
@@ -340,6 +385,26 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 					}
 				}
 
+				ordinary := &drop.WeightedDropList[int32]{}
+				ordinaryWeight := int64(0)
+				for _, skill := range available {
+					weight := rarityWeight[skill.Rarity] / countByRarity[skill.Rarity]
+					sourceValid := skill.LessonMenuId1 == 0 || skill.LessonMenuId1 == id1 ||
+						skill.LessonMenuId1 == id2 || skill.LessonMenuId1 == id3
+					if weight <= 0 || !knownSkills[skill.SkillMasterId] || skill.SkillMasterId <= 0 ||
+						skill.Rarity < enum.SkillRarityTypeSkillRankD || skill.Rarity > enum.SkillRarityTypeSkillRankS ||
+						!sourceValid || lesson.ShootingStarSkills[combination][skill.SkillMasterId] {
+						continue
+					}
+					ordinaryWeight += int64(weight)
+					if ordinaryWeight > math.MaxInt32 {
+						log.Panic("first lesson skill guide has overflowing skill weights")
+					}
+					ordinary.AddItem(skill.SkillMasterId, weight)
+				}
+				if ordinaryWeight > 0 {
+					lesson.FirstSkillDrop[combination] = ordinary
+				}
 				// A pin drops a skill of its target rarity *or better*, never nothing, so
 				// its list has no "no skill" entry and only the eligible rarities. The
 				// weights are the same ones, so the mix between those rarities is kept.
@@ -362,6 +427,39 @@ func (lesson *Lesson) populate(gamedata *Gamedata) bool {
 				}
 			}
 		}
+	}
+
+	// For a resumed result, the recipe and its rarity denominators are unknown. Use
+	// only skills eligible for every recipe, sharing each positive rarity weight
+	// between its universally eligible ordinary skills.
+	legacyCountByRarity := map[int32]int32{}
+	for _, skill := range skills {
+		if skill.DropType == lessonSkillDropTypeAny && skill.LessonMenuId1 == 0 && skill.LessonMenuId2 == 0 &&
+			skill.SkillMasterId > 0 && knownSkills[skill.SkillMasterId] &&
+			skill.Rarity >= enum.SkillRarityTypeSkillRankD && skill.Rarity <= enum.SkillRarityTypeSkillRankS &&
+			!shootingStarAnyMenu[skill.SkillMasterId] && rarityWeight[skill.Rarity] > 0 {
+			legacyCountByRarity[skill.Rarity]++
+		}
+	}
+	legacy := &drop.WeightedDropList[int32]{}
+	legacyWeight := int64(0)
+	for _, skill := range skills {
+		count := legacyCountByRarity[skill.Rarity]
+		if count == 0 || skill.DropType != lessonSkillDropTypeAny || skill.SkillMasterId <= 0 ||
+			skill.LessonMenuId1 != 0 || skill.LessonMenuId2 != 0 || !knownSkills[skill.SkillMasterId] || shootingStarAnyMenu[skill.SkillMasterId] {
+			continue
+		}
+		weight := rarityWeight[skill.Rarity] / count
+		if weight > 0 {
+			legacyWeight += int64(weight)
+			if legacyWeight > math.MaxInt32 {
+				log.Panic("first lesson skill guide has overflowing legacy skill weights")
+			}
+			legacy.AddItem(skill.SkillMasterId, weight)
+		}
+	}
+	if legacyWeight > 0 {
+		lesson.FirstSkillLegacyDrop = legacy
 	}
 
 	_, hasCommonNoDrop := noDropWeight[0]
