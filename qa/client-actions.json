@@ -28,6 +28,22 @@
         "name": "GuideFocus"
       },
       "wait": 10
+    },
+    {
+      "id": "return-home-from-reference-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "wait": 5
+    },
+    {
+      "id": "enter-lesson-after-reference-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 10
     }
   ]
 }
