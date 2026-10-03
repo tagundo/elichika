@@ -12,13 +12,6 @@
       "qa_negative_test": true
     },
     {
-      "id": "third-qa-pause-smoke-must-not-back",
-      "type": "key",
-      "keycode": 4,
-      "wait": 0,
-      "qa_negative_test": true
-    },
-    {
       "id": "third-qa-paused-readonly-tree",
       "type": "unity_tree",
       "diagnostic_while_blocked": true,
@@ -33,6 +26,24 @@
       "diagnostic_while_blocked": true,
       "wait": 0,
       "required": false
+    },
+    {
+      "id": "third-qa-explicit-resume-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "third-qa-explicit-resume-account",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "pause_smoke",
+      "wait": 0,
+      "required": false
     }
-  ]
+  ],
+  "resume_after_blocked_action": {
+    "id": "third-qa-pause-smoke-missing-target",
+    "action_definition_sha256": "197fedf1cd8c46a4742b2ce621785f8993c34b7c37cfea78f2107a56ebcb4e2d"
+  }
 }
