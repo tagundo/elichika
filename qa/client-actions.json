@@ -684,6 +684,35 @@
       "id": "full-slots-D1-select-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "full-slots-D1-unselect-old",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/AnimationRoot/SkillSelect/SkillContainer/BackgroundImage/ScrollSelectViewHorizontal/Viewport/Content/cell0/EquipSkillsContainer/SkillsContainer/SkillToggleButton1"
+      },
+      "wait": 2
+    },
+    {
+      "id": "full-slots-D1-select-new",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/AnimationRoot/SkillSelect/SkillContainer/BackgroundImage/ScrollSelectViewHorizontal/Viewport/Content/cell0/DropSkillsContainer/SkillsContainer/Viewport/Content/SkillToggleButton1"
+      },
+      "wait": 2
+    },
+    {
+      "id": "full-slots-D1-decision",
+      "type": "unitytap",
+      "selector": {
+        "name": "DecisionButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "full-slots-D1-confirm-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
