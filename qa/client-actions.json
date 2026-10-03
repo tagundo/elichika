@@ -40,6 +40,17 @@
         "name": "ButtonPositiveM"
       },
       "wait": 45
+    },
+    {
+      "id": "back-from-full-download",
+      "type": "key",
+      "keycode": 4,
+      "wait": 5
+    },
+    {
+      "id": "inspect-download-cancel-dialog",
+      "type": "unity_tree",
+      "wait": 0
     }
   ]
 }
