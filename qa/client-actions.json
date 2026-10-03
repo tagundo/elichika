@@ -129,6 +129,32 @@
       "id": "zero-first-A1-post-restart-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "recover-zero-first-A1-launch",
+      "type": "launch",
+      "wait": 50
+    },
+    {
+      "id": "zero-first-A1-title-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "wait": 25
+    },
+    {
+      "id": "zero-first-A1-enter-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zero-first-A1-menu-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
