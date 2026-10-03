@@ -32,6 +32,10 @@
         "class": "android.view.View"
       },
       "wait": 30
+    },
+    {
+      "id": "end-no-gms-comparison",
+      "type": "stop"
     }
   ]
 }
