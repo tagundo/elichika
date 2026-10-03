@@ -20,6 +20,14 @@
         "name": "LessonNameImage"
       },
       "wait": 20
+    },
+    {
+      "id": "follow-tutorial-guide-focus",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "wait": 10
     }
   ]
 }
