@@ -465,6 +465,39 @@
       "id": "one-first-B1-complete-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "one-first-B1-preservation-restart",
+      "type": "client_restart",
+      "wait": 45
+    },
+    {
+      "id": "one-first-B1-preservation-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "wait": 25
+    },
+    {
+      "id": "one-first-B1-preservation-enter",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "wait": 8
+    },
+    {
+      "id": "one-first-B1-preservation-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "user_id": "644377383",
+      "wait": 1
+    },
+    {
+      "id": "one-first-B1-preservation-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
