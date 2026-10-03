@@ -158,6 +158,19 @@
       "id": "zh-live-partner-entry-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-choose-no-guest",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Fader/LivePartnerSelect/RightContainer/NoFriendButton"
+      },
+      "wait": 15
+    },
+    {
+      "id": "zh-live-deck-entry-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
