@@ -140,6 +140,24 @@
         "text": "화면을 터치하세요"
       },
       "wait": 10
+    },
+    {
+      "id": "diag-insight-help-next-one",
+      "type": "unitytap",
+      "selector": {
+        "name": "TextView",
+        "text": "다음"
+      },
+      "wait": 4
+    },
+    {
+      "id": "diag-insight-help-next-two",
+      "type": "unitytap",
+      "selector": {
+        "name": "TextView",
+        "text": "다음"
+      },
+      "wait": 4
     }
   ]
 }
