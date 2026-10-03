@@ -1230,6 +1230,59 @@
       "id": "shooting-star-G1-menu-list-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-menu1-meditation",
+      "type": "unitytap",
+      "selector": {
+        "text": "명상"
+      },
+      "wait": 2
+    },
+    {
+      "id": "shooting-star-G1-slot2",
+      "type": "unitytap",
+      "selector": {
+        "name": "SelectedLessonMenuButton2"
+      },
+      "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-menu2-meditation",
+      "type": "unitytap",
+      "selector": {
+        "text": "명상"
+      },
+      "wait": 2
+    },
+    {
+      "id": "shooting-star-G1-slot3",
+      "type": "unitytap",
+      "selector": {
+        "name": "SelectedLessonMenuButton3"
+      },
+      "wait": 1
+    },
+    {
+      "id": "shooting-star-G1-menu3-meditation",
+      "type": "unitytap",
+      "selector": {
+        "text": "명상"
+      },
+      "wait": 2
+    },
+    {
+      "id": "shooting-star-G1-menu-confirm",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 5
+    },
+    {
+      "id": "shooting-star-G1-333-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
