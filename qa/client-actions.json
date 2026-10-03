@@ -51,6 +51,16 @@
       "id": "inspect-download-cancel-dialog",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "wait-for-original-assets-1",
+      "type": "capture",
+      "wait": 60
+    },
+    {
+      "id": "wait-for-original-assets-2",
+      "type": "capture",
+      "wait": 60
     }
   ]
 }
