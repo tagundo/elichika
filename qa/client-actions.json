@@ -292,6 +292,22 @@
       "id": "third-patched-legacy-resumed-result-tree",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "third-patched-legacy-items-next",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/ScreenButton"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-after-items-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
