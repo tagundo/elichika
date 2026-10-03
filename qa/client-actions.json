@@ -23,6 +23,15 @@
         "name": "ScreenButton"
       },
       "wait": 45
+    },
+    {
+      "id": "start-title-with-native-input",
+      "type": "tap",
+      "selector": {
+        "content-desc": "Game view",
+        "class": "android.view.View"
+      },
+      "wait": 30
     }
   ]
 }
