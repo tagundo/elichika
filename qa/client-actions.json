@@ -184,6 +184,27 @@
       "id": "zh-live-recommended-deck-popup-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-save-recommended-deck",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-live-enable-autoplay",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/FooterButtons/CheckBoxContainer"
+      },
+      "wait": 3
+    },
+    {
+      "id": "zh-live-ready-autoplay-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
