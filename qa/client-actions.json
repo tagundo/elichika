@@ -470,6 +470,30 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-completed-zero-items-next",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/ScreenButton"
+      },
+      "ready_timeout": 45,
+      "wait": 4,
+      "required": true
+    },
+    {
+      "id": "fourth-completed-zero-auto-saved-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postbootstrap_37139189963",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-completed-zero-auto-return-menu-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
