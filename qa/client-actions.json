@@ -473,6 +473,19 @@
       "id": "zh-full-card-current-plain-list-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-full-card-open-first-visible-card",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Fader/CardList/CategorizeTileViewVertical/Viewport/Content/cell0/CardThumbnailContainer/CardThumbnailUser(Clone)/EffectRoot/Button"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-full-card-detail-scene-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
