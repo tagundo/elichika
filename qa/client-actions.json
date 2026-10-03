@@ -273,6 +273,19 @@
       "operation": "inspect",
       "user_id": "auto",
       "wait": 1
+    },
+    {
+      "id": "zh-live-love-points-next",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Buttons/TapScreen/TapButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-live-complete-menu-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
