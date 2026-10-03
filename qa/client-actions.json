@@ -460,6 +460,19 @@
       "id": "zh-card-tooltip-current-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-full-card-open-plain-list",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/CardList/CardListButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-full-card-current-plain-list-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
