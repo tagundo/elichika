@@ -24,6 +24,62 @@
       "id": "bootstrap-home-first-guide-tree",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "old-home-reference-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "ready_timeout": 30,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "old-home-reference-back",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "ready_timeout": 30,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "old-home-channel-intro-close",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "ready_timeout": 30,
+      "no_loading": false,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "old-home-channel-guide",
+      "type": "unitytap",
+      "selector": {
+        "name": "GuideFocus"
+      },
+      "ready_timeout": 30,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "old-home-channel-back",
+      "type": "unitytap",
+      "selector": {
+        "name": "BackButton"
+      },
+      "ready_timeout": 30,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "old-home-guides-complete-tree",
+      "type": "unity_tree",
+      "wait": 0
     }
   ]
 }
