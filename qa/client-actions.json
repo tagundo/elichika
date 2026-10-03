@@ -375,6 +375,31 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "third-patched-legacy-confirm-skill-save",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "확인"
+      },
+      "ready_timeout": 45,
+      "wait": 10,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-saved-state-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "legacy",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "third-patched-legacy-saved-menu-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
