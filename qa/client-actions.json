@@ -934,6 +934,22 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-pin-skill-reward-next",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/ScreenButton"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "fourth-pin-two-card-save-preview-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
