@@ -171,6 +171,19 @@
       "id": "zh-live-deck-entry-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-live-open-recommended-deck",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Fader/LiveDeckInformation/Body/Header/RecommendedLiveEditButton"
+      },
+      "wait": 8
+    },
+    {
+      "id": "zh-live-recommended-deck-popup-tree",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
