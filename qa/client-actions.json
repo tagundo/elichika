@@ -9,6 +9,16 @@
       "id": "zh-download-progress-tree",
       "type": "unity_tree",
       "wait": 1
+    },
+    {
+      "id": "zh-download-readiness-capture-2",
+      "type": "capture",
+      "wait": 60
+    },
+    {
+      "id": "zh-download-readiness-tree-2",
+      "type": "unity_tree",
+      "wait": 1
     }
   ]
 }
