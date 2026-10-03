@@ -132,6 +132,91 @@
       "checkpoint": "postbootstrap_37139189963",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "fourth-fresh-raw-zero-apply",
+      "type": "fixture",
+      "operation": "apply",
+      "checkpoint": "postbootstrap_37139189963",
+      "wait": 5,
+      "required": true,
+      "case": "no_drop_first"
+    },
+    {
+      "id": "fourth-fresh-title-login",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapTextView"
+      },
+      "ready_timeout": 45,
+      "wait": 20,
+      "required": true
+    },
+    {
+      "id": "fourth-fresh-enter-lesson",
+      "type": "unitytap",
+      "selector": {
+        "name": "LessonNameImage"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "fourth-fresh-preparation-help-next",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "다음"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-fresh-preparation-help-close",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "닫기"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-fresh-recommend",
+      "type": "unitytap",
+      "selector": {
+        "name": "RecommendButton"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "fourth-fresh-execute",
+      "type": "unitytap",
+      "selector": {
+        "name": "ExecuteButton"
+      },
+      "ready_timeout": 45,
+      "wait": 45,
+      "required": true
+    },
+    {
+      "id": "fourth-fresh-repaired-result-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "postbootstrap_37139189963",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "fourth-fresh-repaired-item-result-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "resume_after_blocked_action": {
