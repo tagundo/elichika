@@ -122,6 +122,14 @@
         "name": "ScreenButton"
       },
       "wait": 5
+    },
+    {
+      "id": "advance-lesson-skill-summary",
+      "type": "unitytap",
+      "selector": {
+        "name": "ScreenButton"
+      },
+      "wait": 3
     }
   ]
 }
