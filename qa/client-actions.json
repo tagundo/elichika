@@ -8,6 +8,15 @@
         "text": "OK"
       },
       "wait": 45
+    },
+    {
+      "id": "dismiss-fullscreen-guide",
+      "type": "tap",
+      "selector": {
+        "resource-id": "android:id/ok",
+        "text": "GOT IT"
+      },
+      "wait": 10
     }
   ]
 }
