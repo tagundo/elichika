@@ -165,6 +165,14 @@
       "id": "inspect-after-skill-detail",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "advance-lesson-via-visible-touch-prompt",
+      "type": "unitytap",
+      "selector": {
+        "name": "TapScreenTextView"
+      },
+      "wait": 3
     }
   ]
 }
