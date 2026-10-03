@@ -241,6 +241,54 @@
       "id": "successor-patched-legacy-resumed-result-tree",
       "type": "unity_tree",
       "wait": 0
+    },
+    {
+      "id": "successor-patched-legacy-items-next",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/ScreenButton"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "successor-patched-legacy-guide-next-one",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "다음"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "successor-patched-legacy-guide-next-two",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "다음"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "successor-patched-legacy-guide-close",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "닫기"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "successor-patched-legacy-after-guide-tree",
+      "type": "unity_tree",
+      "wait": 0
     }
   ]
 }
