@@ -1,1 +1,9 @@
-{"actions":[]}
+{
+  "actions": [
+    {
+      "id": "successor-download-progress-initial",
+      "type": "unity_tree",
+      "wait": 0
+    }
+  ]
+}
