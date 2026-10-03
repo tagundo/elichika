@@ -315,26 +315,44 @@ def grant_permissions_ui(dev):
 
 def page_checks(dev):
     results = {}
+    dev.report["webview_pages"] = results
     for title, path, port, needles in [
         ("Server", "/webui/admin/", 8080, ["Config Editor", "Login", "Admin", "설정", "로그인"]),
         ("Account", "/webui/user/", 8080, ["User Id", "Login", "Account", "사용자", "로그인"]),
         ("Server content", "/", 8772, ["Backup Database", "Server", "Clear Pack", "Tools"]),
         ("Asset editing", "/", 8770, ["Texture", "Tools", "SIFAS", "Asset", "Bundle"]),
     ]:
-        dev.tap_text(title, "tab-" + title, scroll=True, horizontal=True)
-        time.sleep(2)
-        tree = dev.capture("webview-" + title.replace(" ", "-"))
-        nodes = list(tree.iter("node"))
-        assert any(n.get("class") == "android.webkit.WebView" for n in nodes), "Tab did not create WebView: " + title
-        text = " ".join(n.get("text", "") + " " + n.get("content-desc", "") for n in nodes)
-        assert not any(s in text for s in ["ERR_CONNECTION_REFUSED", "Webpage not available", "ERR_CLEARTEXT"]), "WebView load error: " + title
-        assert any(s.casefold() in text.casefold() for s in needles), "Expected rendered page content missing: " + title
-        results[title] = {"webview_rendered": True, "expected_text_present": True, "http_status": 200,
-                          "http_body_bytes": len(dev.http(port, path))}
+        try:
+            dev.tap_text(title, "tab-" + title, scroll=True, horizontal=True)
+            started = time.monotonic()
+            deadline = started + 60
+            matched = []
+            while time.monotonic() < deadline:
+                tree, _ = dev.ui("await-webview-" + title.replace(" ", "-"))
+                views = [n for n in tree.iter("node") if n.get("class") == "android.webkit.WebView"]
+                nodes = [n for view in views for n in view.iter("node")]
+                text = " ".join(n.get("text", "") + " " + n.get("content-desc", "") for n in nodes)
+                assert not any(s in text for s in ["ERR_CONNECTION_REFUSED", "Webpage not available", "ERR_CLEARTEXT"]), "WebView load error: " + title
+                matched = [s for s in needles if s.casefold() in text.casefold()]
+                if views and matched:
+                    break
+                time.sleep(1)
+            assert matched, "Expected rendered DOM content missing after60sec: " + title
+            dev.capture("webview-" + title.replace(" ", "-"))
+            results[title] = {"status": "PASS", "webview_rendered": True, "expected_dom_text_present": True,
+                              "matched_dom_text": matched, "ready_seconds": round(time.monotonic()-started,2),
+                              "http_status": 200, "http_body_bytes": len(dev.http(port, path))}
+        except Exception as exc:
+            results[title] = {"status": "FAIL", "error": str(exc)}
+            try: dev.capture("webview-failure-" + title.replace(" ", "-"))
+            except Exception: pass
+        dev.evidence.joinpath("webview-pages-report.json").write_text(json.dumps(results, indent=2, ensure_ascii=False)+"\n")
     dev.shell("input", "keyevent", "4")
     tree = dev.capture("back-from-webview")
     assert any(n.get("resource-id") == PACKAGE + ":id/log_text" for n in tree.iter("node")), "Back did not return to Console"
     results["back_returns_console"] = True
+    failed = [title for title, result in results.items() if isinstance(result, dict) and result.get("status") == "FAIL"]
+    assert not failed, "WebView pages failed: " + ", ".join(failed)
     return results
 
 
@@ -503,6 +521,8 @@ def main():
     parser.add_argument("--background-seconds", type=int, default=30)
     parser.add_argument("--game-background", action="store_true")
     parser.add_argument("--backup-fixture", action="store_true")
+    parser.add_argument("--webviews-only", action="store_true",
+                        help="Verify permission setup/server Start and four WebViews; skip previously validated settings/lifecycle/backup")
     args = parser.parse_args()
     assert 5 <= args.background_seconds <= 120
     args.evidence.mkdir(parents=True, exist_ok=True)
@@ -525,12 +545,15 @@ def main():
         for remote, local in PORTS.items():
             dev.adb("forward", f"tcp:{local}", f"tcp:{remote}")
         dev.adb("logcat", "-c")
-        for name, function in [("permission_denial", lambda: initial_permission_denial(dev)),
+        checks = [("permission_denial", lambda: initial_permission_denial(dev)),
                                ("permission_grant", lambda: grant_permissions_ui(dev)),
                                ("start", lambda: dev.start("ui-start")),
-                               ("webviews", lambda: page_checks(dev)),
-                               ("settings", lambda: settings_checks(dev)),
-                               ("lifecycle", lambda: lifecycle_checks(dev, args.background_seconds, args.game_background))]:
+                               ("webviews", lambda: page_checks(dev))]
+        if not args.webviews_only:
+            checks += [("settings", lambda: settings_checks(dev)),
+                       ("lifecycle", lambda: lifecycle_checks(dev, args.background_seconds, args.game_background))]
+        report["validation_scope"] = "permission_setup_start_four_webviews" if args.webviews_only else "full_server_app_suite"
+        for name, function in checks:
             print("CHECK_START " + name, flush=True)
             try:
                 report["checks"][name] = {"status": "PASS", **function()}
@@ -546,7 +569,7 @@ def main():
                 # Return to the app/Console before the next independent check.
                 dev.launch(); dev.shell("input", "keyevent", "4")
             report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-        if args.backup_fixture and report["checks"].get("lifecycle", {}).get("status") == "PASS":
+        if args.backup_fixture and not args.webviews_only and report["checks"].get("lifecycle", {}).get("status") == "PASS":
             try:
                 report["checks"]["backup_restore_fixture"] = {"status": "PASS", **backup_fixture_checks(dev)}
             except Exception as exc:

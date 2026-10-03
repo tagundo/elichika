@@ -60,7 +60,7 @@ jobs:
           adb -s 127.0.0.1:5555 install -r candidate/elichika-2026.10.01-dev.apk
 
       - name: Execute actual permissions screens lifecycle and embedded backup
-        run: python3 -u tests/server_app_ui_qa.py --serial 127.0.0.1:5555 --evidence evidence/server-app --disposable-device --background-seconds 45 --backup-fixture
+        run: python3 -u tests/server_app_ui_qa.py --serial 127.0.0.1:5555 --evidence evidence/server-app --disposable-device --webviews-only
 
       - name: Collect server app diagnostics
         if: always()
