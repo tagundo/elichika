@@ -284,6 +284,42 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "sixth-open-observed-global-menu-for-live",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/FrontSafeArea/BottomBaseSize/MenuButton"
+      },
+      "ready_timeout": 45,
+      "wait": 3,
+      "required": true
+    },
+    {
+      "id": "sixth-open-normal-live-tooltip",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Live/LiveButton"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "sixth-enter-ordinary-basic-live",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/LiveToolTip/Basic/BasicLiveButton"
+      },
+      "ready_timeout": 45,
+      "wait": 10,
+      "required": true
+    },
+    {
+      "id": "sixth-actual-basic-song-menu-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ],
   "scope": "Remaining legitimate full-slot replacement/card details/native no-skip Live/both-package earned-state cold/master-only restore/explicit stop. No replay of completed lesson cases.",
