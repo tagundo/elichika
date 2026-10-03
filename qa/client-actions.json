@@ -7,6 +7,14 @@
         "name": "KoreanButton"
       },
       "wait": 20
+    },
+    {
+      "id": "confirm-korean",
+      "type": "unitytap",
+      "selector": {
+        "name": "ButtonPositiveM"
+      },
+      "wait": 30
     }
   ]
 }
