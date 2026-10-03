@@ -1,0 +1,167 @@
+name: Original SIFAS client Android UI QA
+
+on:
+  push:
+    branches: [codex/original-client-ui-qa]
+    paths: ['.github/workflows/client-ui.yml', 'tests/client_ui_qa.py']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  client:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare native ARM64 Android virtual device
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          mkdir -p evidence "$RUNNER_TEMP/android-data"
+          uname -a > evidence/host.txt
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker run --detach --privileged --name original-client-qa \
+            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=1280 androidboot.redroid_height=720 androidboot.redroid_fps=15 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
+
+      - name: Download exact previously signed and validated server APK
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: candidate
+          run-id: 36910677429
+          github-token: ${{ github.token }}
+
+      - name: Download user-selected unmodified game client
+        run: |
+          curl --fail --location --retry 2 --output client.apk https://github.com/arina999999997/elichika/releases/download/clients/LLAS_GL_LOCAL.apk
+          echo '8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e  client.apk' | sha256sum --check
+          echo '23df494e132db7f3537851b11424bbe2903082e756e0798a7bf7ea022ba1ba2a  candidate/elichika-2026.10.01-dev.apk' | sha256sum --check
+
+      - name: Install and launch the original client with the server
+        run: python3 -u tests/client_ui_qa.py --stage initial --server candidate/elichika-2026.10.01-dev.apk --client client.apk
+
+      - name: Upload initial UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-initial
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 1 --duration 240
+
+      - name: Upload round 1 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-1
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 2 --duration 240
+
+      - name: Upload round 2 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-2
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 3 --duration 240
+
+      - name: Upload round 3 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-3
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 4 --duration 240
+
+      - name: Upload round 4 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-4
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 5 --duration 240
+
+      - name: Upload round 5 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-5
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Observe and drive client UI round 6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tests/client_ui_qa.py --stage control --round 6 --duration 240
+
+      - name: Upload round 6 UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-round-6
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Collect final diagnostics
+        if: always()
+        run: |
+          mkdir -p evidence
+          docker logs original-client-qa > evidence/container.log 2>&1 || true
+          adb -s 127.0.0.1:5555 logcat -d > evidence/final-logcat.txt 2>&1 || true
+
+      - name: Upload final evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-client-final
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Stop disposable device
+        if: always()
+        run: docker rm -f original-client-qa || true
