@@ -528,9 +528,10 @@
     {
       "id": "third-fresh-repaired-result-inspect",
       "type": "fixture",
-      "fixture_action": "inspect",
       "checkpoint": "postupgrade_37136202289",
-      "required": true
+      "required": true,
+      "operation": "inspect",
+      "wait": 0
     },
     {
       "id": "third-fresh-repaired-item-result-tree",
