@@ -2,8 +2,8 @@
   "scope": "QA-only complete cold-state diagnostics after one genuinely earned no-skip native Live. No lesson replay or gameplay reset. All raw DB/XML private RUNNER_TEMP only; expected login timestamp localized by exact normalized whole fingerprint; each changed preference key requires separate concrete evidence.",
   "prior_actual_earned_cold_run": 37157358249,
   "resume_after_blocked_action": {
-    "id": "seventh-native-live-after-first-minute-tree",
-    "action_definition_sha256": "26322c234b6fa0df379beed7a6745609c87116c32f8fa9597f581e30636e5644"
+    "id": "seventh-advance-actual-live-bond-complete-page",
+    "action_definition_sha256": "7070f0bf72bad7a1ffef10063db0a05b14f13bbd08652121a46194464d93d045"
   },
   "actions": [
     {
@@ -399,18 +399,24 @@
       "required": true
     },
     {
-      "id": "seventh-earned-live-normal-song-menu-tree",
-      "type": "unity_tree",
-      "wait": 0,
-      "required": true
-    },
-    {
-      "id": "seventh-earned-before-current-day-login-raw-inspect",
+      "id": "seventh-earned-bond-result-before-current-day-login-inspect",
       "type": "fixture",
       "operation": "inspect",
       "checkpoint": "cold_37161748421",
       "user_id": 645083,
       "restart": false,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-native-client-current-day-login-setup-restart",
+      "type": "client_restart",
+      "wait": 20,
+      "required": true
+    },
+    {
+      "id": "seventh-native-current-day-title-before-real-login-tree",
+      "type": "unity_tree",
       "wait": 0,
       "required": true
     }
