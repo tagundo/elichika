@@ -478,6 +478,76 @@
       "type": "upgrade_preflight",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-stock-master-idempotent-measured-both-package-restart",
+      "type": "fixture",
+      "operation": "restore_master",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": true,
+      "wait": 20,
+      "required": true
+    },
+    {
+      "id": "seventh-real-measured-both-package-cold-title-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-real-measured-cold-same-account-title-login",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/TapToScreen/TapTextView"
+      },
+      "ready_timeout": 45,
+      "wait": 20,
+      "required": true
+    },
+    {
+      "id": "seventh-measured-cold-genuine-home-rank320-ready",
+      "type": "unitywait",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/UserStatus/Rank/RankTextView",
+        "text": "320"
+      },
+      "ready_timeout": 45,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-real-measured-cold-earned-home-proof-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-post-measured-cold-login-earned-owned-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-measured-cold-final-stop-both-before-protected-after",
+      "type": "upgrade_preflight",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-protected-full-earned-after-cold-diagnostic",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "cold_diagnostic": "after",
+      "wait": 0,
+      "required": true
     }
   ]
 }
