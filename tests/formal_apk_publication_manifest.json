@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "release_tag": "v2026.10.04",
+  "APK_file": "elichika-2026.10.04.apk",
+  "APK_sha256": "0e6ee50294e22f93f86f9b9172852de3adf5ae161f833ee55d12c05a45ef824b",
+  "APK_bytes": 283890435,
+  "APK_version_name": "2026.10.04",
+  "APK_version_code": 2026100400,
+  "signer_certificate_sha256": "fed020601692d2e759286831ad229f0c8e4562a8e90f9067d7472fa5fc99f930",
+  "build_source": "afd213adb1819becb6085b44f5d638ed117a4399",
+  "reviewed_product_source": "38029f3f9152797a6f4e0e5ef6be6e132e99dbfa",
+  "merged_main": "f658407bf203ea4cb0d4caba07b0d8e9f0220211",
+  "modtools_pin": "b35da68006c682ca600b2dfb90f29bcffe70454c",
+  "run_id": 37166419738,
+  "artifact_id": 11289479816,
+  "final_report_sha256": "955b81b07ce3c66112fdd7498e1a05032b79d3add0dd60be73329fe30bdfb579",
+  "original_build_run_conclusion": "failure",
+  "supplemental_run_id": 37167561113,
+  "supplemental_run_conclusion": "success",
+  "remaining_unverified_scope": [
+    "Full16KB Android framework, Chaquopy Java bridge and original-game screens",
+    "Physical phone operation",
+    "Separately uploaded FOVMOD client",
+    "Original-mode AP-cost original-game GUI",
+    "Customized master-data backup/restore"
+  ],
+  "repository": "tagundo/elichika",
+  "APK_package": "com.tagundo.elichika",
+  "APK_min_sdk": 29,
+  "APK_target_sdk": 34,
+  "APK_ABIs": [
+    "arm64-v8a"
+  ],
+  "native_server_sha256": "572b6f287e7d67065262614732288c670e39d016fb6f323051b76e7a99d78eae",
+  "merged_main_product_tree": "89d63319f479614c68b6ef71458cb73eba356450",
+  "artifact_zip_bytes": 268074958,
+  "artifact_zip_sha256": "48967da56bf7de72d992cec27ce5140f36bce5e029bdd2b3ca111480daf7ad19",
+  "formal_proof_index_sha256": "633da22a18b23130ac7a603d64e39a366574d8e966eca5e55aefc570c37d994a",
+  "independent_final_aggregate_review_sha256": "5fc71cf4b1635fd3aae1ea613ca457a26c95adc8179f401f6ef215c6dadd6d4e",
+  "formal_apk_identity_sha256": "21913c3609ab4ce9651d862ffa5f7597b6ce8327dad068e9d5138b0252b8c424",
+  "previous_official_APK_url": "https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk",
+  "previous_official_APK_sha256": "0bdeee9f6f725fa1a8146af49b8f832a5b86f5c962fc1c1b83c2e5bd3156cf95",
+  "release_notes": "This release adds Shooting Star training support, updates existing installations to the current bundled DB, fixes KO/ZH dictionary entries with consistent EN references, and corrects tutorial/lesson transitions. Native server, ASTC and bundled Python libraries have been updated for 16KB page layouts.\n\nDownload `elichika-2026.10.04.apk` (ARM64, Android 10 or newer). Its version code is 2026100400 and it uses the same signing certificate as the previous official APK. Back up your local data before updating.\n\nThis is the exact signed APK validated before publication. It was retrieved from build run [37166419738](https://github.com/tagundo/elichika/actions/runs/37166419738), artifact 11289479816; no rebuild, repackaging or re-signing was performed for publication. SHA-256: `0e6ee50294e22f93f86f9b9172852de3adf5ae161f833ee55d12c05a45ef824b`.\n\nThe release tag points to the actual APK build source `afd213adb1819becb6085b44f5d638ed117a4399`. Reviewed product source `38029f3f9152797a6f4e0e5ef6be6e132e99dbfa` is now merged into main at `f658407bf203ea4cb0d4caba07b0d8e9f0220211` through [PR #39](https://github.com/tagundo/elichika/pull/39) and [PR #40](https://github.com/tagundo/elichika/pull/40), with an identical product tree. Formal-build changes concern version and verification configuration.\n\nVerification covered official-APK signature and update compatibility; all 55 bundled SQLite databases; the complete 9,441-file APK payload; all 100 native ELF files; installation/update and synthetic account/settings retention on ARM64 Android 14 with 4KB pages; and native server/Python/ASTC functionality on actual 4KB and 16KB kernels. These runtime checks included 380 lesson API scenarios across the Android and kernel tests. Original-game screen regression checks were performed against the reviewed development APK; the formal APK has equivalent executable code and typed DB data.\n\nThe original build run conclusion remains failure: its strict byte comparison rejected physical DB layout and Chaquopy cache metadata changes. Independent metadata/code/data analysis and supplemental run [37167561113](https://github.com/tagundo/elichika/actions/runs/37167561113) resolved those differences. The original failed check is retained; this is not a claim that every job in that run passed.\n\nRemaining unverified scope: full 16KB Android framework, Chaquopy Java bridge and original-game screens; physical phones; the separately uploaded FOVMOD client; Original-mode AP-cost original-game GUI; and customized master-data backup/restore. The original game client has its own static native-layout concerns, so this release does not certify every game client on 16KB Android.\n\nThe attached publication manifest and SHA256SUMS record the fixed artifact, source, signature, prior audit provenance and remaining scope. Publication rechecks the signed APK and native layout, then verifies uploaded draft bytes before publishing and public download bytes afterward.\n",
+  "supporting_artifacts": [
+    {
+      "id": 11290083183,
+      "name": "android-16k-native-evidence",
+      "run_id": 37166419738,
+      "source_commit": "afd213adb1819becb6085b44f5d638ed117a4399",
+      "zip_bytes": 72782,
+      "zip_sha256": "33f450c38fef58e850e1931cb893d560dacb79aaba2e40d5d48a25298b2c7192",
+      "checked_members": [
+        {
+          "member": "android-16k-native.json",
+          "bytes": 97913,
+          "sha256": "cae04ad0835f3a6520c010f4b5c1be383424c5b0fc294b7e491050f8236c78e4"
+        },
+        {
+          "member": "system-image-layout.json",
+          "bytes": 862,
+          "sha256": "a6e8fe386045942ddbcefb726dbaf3041c97d62e80529185d5004a5514448177"
+        }
+      ]
+    },
+    {
+      "id": 11290350882,
+      "name": "android-arm64-smoke-evidence",
+      "run_id": 37166419738,
+      "source_commit": "afd213adb1819becb6085b44f5d638ed117a4399",
+      "zip_bytes": 2330923,
+      "zip_sha256": "917a9e1d0074a73345513f5ef7b3028d376d9187d50ca607b2414e2ce7d4f411",
+      "checked_members": [
+        {
+          "member": "android-release-smoke.json",
+          "bytes": 4685,
+          "sha256": "f336224246688b36b4cee8b4ad85a210f4254c5fa95eb0a96d8ff9b3f1920204"
+        }
+      ]
+    },
+    {
+      "id": 11289639422,
+      "name": "formal-apk-payload-comparison",
+      "run_id": 37166419738,
+      "source_commit": "afd213adb1819becb6085b44f5d638ed117a4399",
+      "zip_bytes": 1312089,
+      "zip_sha256": "3ca2747f165ca419cebecd74f9794d7c4fb6966876bb62b7a681da93a5d52970",
+      "checked_members": [
+        {
+          "member": "formal-members.json",
+          "bytes": 2329609,
+          "sha256": "c7b860f8f6e9b6b5a0295257e995fdc9a6a2227609a2d4ca900e97c966e2213a"
+        },
+        {
+          "member": "baseline-members.json",
+          "bytes": 2329613,
+          "sha256": "2508d63461f4be0b9c35036864f923d6923b7db3f313d664673b6b905f5d1bbb"
+        },
+        {
+          "member": "payload-comparison.json",
+          "bytes": 1592561,
+          "sha256": "280c687306c0afe792a31131f7c767289ffe2ba74716bf371bcb96d27cbc69e1"
+        }
+      ]
+    },
+    {
+      "id": 11290171586,
+      "name": "formal-apk-exact-pair-analysis",
+      "run_id": 37167561113,
+      "source_commit": "d14644cf799528a2e0d62d11817f1a7e732272b4",
+      "zip_bytes": 238271,
+      "zip_sha256": "911d99756b8fd5b7a1bd2bcef9c8288704072fe78701c3fad0bf6369651c51e0",
+      "checked_members": [
+        {
+          "member": "actual-input-binding.json",
+          "bytes": 4551,
+          "sha256": "e7d45a138d6d63cb88e2028e050b713c8e5c06d4db5fe8fdc86c30e230e1f69d"
+        },
+        {
+          "member": "binary-metadata-comparison.json",
+          "bytes": 102380,
+          "sha256": "f974576f160ce746bea85558f19cf34a82e5c88b75b57e6edd0c96c44bb37326"
+        },
+        {
+          "member": "chaquopy-build-json-proof.json",
+          "bytes": 84762,
+          "sha256": "0415b9ac010372872adf7f70b6a4885df1f532e33c67670cf6a0dfdd2911a8e1"
+        },
+        {
+          "member": "go-build-id-content-verification.json",
+          "bytes": 3714,
+          "sha256": "5d56481b5b7d2b88ad18546bcc696803678abfcc944ecf4b4a7c3f43cd156974"
+        },
+        {
+          "member": "serverdata-full-sqlite.json",
+          "bytes": 694596,
+          "sha256": "9bd5c14ef97d7ed7c523a8512625d3d16ea5e8ab31689df77d87865eb2951a71"
+        },
+        {
+          "member": "serverdata-product-consumers.json",
+          "bytes": 1574680,
+          "sha256": "06741f37f001d5a12ca92f88c4292dd089df25dbbed0cca46c98624cd0931715"
+        },
+        {
+          "member": "serverdata-source-bound-equivalence.json",
+          "bytes": 5336,
+          "sha256": "92c84a2c0abacc255df8fafa2f3f7e33f18ea2629da59d25f3805796bab8b0cb"
+        }
+      ]
+    }
+  ]
+}

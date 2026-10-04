@@ -1,0 +1,147 @@
+name: Publish verified formal APK
+
+on:
+  push:
+    branches: [codex/publish-20261004]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-formal-apk-20261004
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check publication source and negative tests
+        run: |
+          python3 tests/test_publish_verified_apk.py
+          python3 - <<'PY'
+          import json, os, sys
+          sys.path.insert(0, 'tests')
+          import publish_verified_apk as p
+          p.validate_environment(os.environ, 'codex/publish-20261004', 'Publish verified formal APK')
+          p.validate_checkout(os.environ)
+          p.validate_manifest(json.load(open('tests/formal_apk_publication_manifest.json')))
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache: false
+
+      - name: Install APK inspection tools
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;34.0.0'
+
+      - name: Retrieve exact original APK and bound verification artifacts
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, shutil, subprocess, zipfile
+          manifest = json.load(open('tests/formal_apk_publication_manifest.json'))
+          root = pathlib.Path('publication')
+          root.mkdir()
+          candidate = pathlib.Path('candidate')
+          candidate.mkdir()
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for block in iter(lambda: f.read(1024 * 1024), b''): h.update(block)
+              return h.hexdigest()
+          def acquire(spec):
+              endpoint = 'repos/tagundo/elichika/actions/artifacts/' + str(spec['id'])
+              meta = json.loads(subprocess.check_output(['gh', 'api', endpoint], text=True))
+              assert meta['id'] == spec['id'] and meta['name'] == spec['name']
+              assert meta['expired'] is False and meta['size_in_bytes'] == spec['zip_bytes']
+              assert meta['digest'] == 'sha256:' + spec['zip_sha256']
+              assert meta['workflow_run']['id'] == spec['run_id']
+              assert meta['workflow_run']['head_sha'] == spec['source_commit']
+              archive_path = pathlib.Path(__import__('os').environ['RUNNER_TEMP']) / (str(spec['id']) + '.zip')
+              with archive_path.open('wb') as f:
+                  subprocess.run(['gh', 'api', endpoint + '/zip'], stdout=f, check=True)
+              assert archive_path.stat().st_size == spec['zip_bytes']
+              assert digest(archive_path) == spec['zip_sha256']
+              with zipfile.ZipFile(archive_path) as archive:
+                  assert archive.testzip() is None
+                  names = archive.namelist()
+                  assert len(names) == len(set(names))
+                  for name in names:
+                      parts = pathlib.PurePosixPath(name).parts
+                      assert not name.startswith('/') and '..' not in parts and '\\' not in name
+                  if spec['id'] == manifest['artifact_id']:
+                      assert names == [manifest['APK_file']]
+                      target = candidate / manifest['APK_file']
+                      with archive.open(names[0]) as src, target.open('wb') as out: shutil.copyfileobj(src, out)
+                      assert target.stat().st_size == manifest['APK_bytes']
+                      assert digest(target) == manifest['APK_sha256']
+                  else:
+                      target = root / spec['name']
+                      target.mkdir()
+                      for member in spec['checked_members']:
+                          raw = archive.read(member['member'])
+                          assert len(raw) == member['bytes'] and hashlib.sha256(raw).hexdigest() == member['sha256']
+                          json.loads(raw)
+                          (target / member['member']).write_bytes(raw)
+              archive_path.unlink()
+              return {'id': spec['id'], 'metadata': meta, 'ZIP_digest_check': 'PASS', 'ZIP_CRC_check': 'PASS', 'checked_JSON_members': spec.get('checked_members', [])}
+          apk_spec = {'id': manifest['artifact_id'], 'name': 'elichika-release-apk', 'run_id': manifest['run_id'], 'source_commit': manifest['build_source'], 'zip_bytes': manifest['artifact_zip_bytes'], 'zip_sha256': manifest['artifact_zip_sha256']}
+          records = [acquire(apk_spec)] + [acquire(spec) for spec in manifest['supporting_artifacts']]
+          (root / 'original-artifact-integrity.json').write_text(json.dumps({'status': 'PASS_FIXED_APK_AND_BOUND_ORIGINAL_PROOFS', 'APK_sha256': manifest['APK_sha256'], 'artifacts': records}, indent=2) + '\n')
+          PY
+
+      - name: Download previous official APK for signature and update audit
+        run: |
+          curl --fail --location --retry 3 --output official.apk https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk
+
+      - name: Recheck signatures, version, provenance and bundled databases
+        run: |
+          python3 tests/audit_apk_release.py \
+            --old official.apk \
+            --candidate candidate/elichika-2026.10.04.apk \
+            --candidate-sha256 0e6ee50294e22f93f86f9b9172852de3adf5ae161f833ee55d12c05a45ef824b \
+            --old-sha256 0bdeee9f6f725fa1a8146af49b8f832a5b86f5c962fc1c1b83c2e5bd3156cf95 \
+            --sdk "$ANDROID_HOME/build-tools/34.0.0" \
+            --expected-commit afd213adb1819becb6085b44f5d638ed117a4399 \
+            --expected-version-code 2026100400 \
+            --report publication/release-audit-report.json
+
+      - name: Recheck all native ELF layouts
+        run: |
+          python3 android/ci/audit_native.py candidate/elichika-2026.10.04.apk --report publication/android-native-layout.json
+
+      - name: Publish exact signed APK and verify draft and public download bytes
+        run: |
+          python3 tests/publish_verified_apk.py \
+            --apk candidate/elichika-2026.10.04.apk \
+            --manifest tests/formal_apk_publication_manifest.json \
+            --audit-report publication/release-audit-report.json \
+            --native-report publication/android-native-layout.json \
+            --work-dir publication \
+            --report publication/publication-report.json
+
+      - name: Save publication verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-apk-publication-evidence
+          path: publication/
+          retention-days: 90
+          if-no-files-found: warn
