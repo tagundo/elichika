@@ -17,3 +17,4 @@ app/src/main/assets/payload/
 # Re-include files the repo-root .gitignore would otherwise drop (*.json, *.bat).
 !/app/src/main/assets/actions.json
 !gradlew.bat
+app/native-wheels/
