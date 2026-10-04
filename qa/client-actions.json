@@ -272,6 +272,32 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-enable-current-native-false-autoplay",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/FooterButtons/CheckBoxContainer"
+      },
+      "ready_timeout": 45,
+      "wait": 2,
+      "required": true
+    },
+    {
+      "id": "seventh-native-autoplay-true-no-skip-preflight-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-immediate-autoplay-before-live-owned-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "wait": 0,
+      "required": true
     }
   ]
 }
