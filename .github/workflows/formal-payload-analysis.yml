@@ -1,0 +1,128 @@
+name: Verify immutable formal APK payload differences
+
+on:
+  push:
+    branches: [codex/formal-payload-analysis-20261004]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  actual-pair-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASELINE_SHA: f2188fa978e88d3953daed1d9a2f7347e9a37bb0adf7a3589949e879de41e57a
+      CANDIDATE_SHA: 0e6ee50294e22f93f86f9b9172852de3adf5ae161f833ee55d12c05a45ef824b
+    steps:
+      - name: Checkout analysis-only source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up the product Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Download immutable tested development APK
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 37131097762
+          github-token: ${{ github.token }}
+          path: baseline
+
+      - name: Download immutable signed formal APK
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 37166419738
+          github-token: ${{ github.token }}
+          path: candidate
+
+      - name: Download the preserved full APK byte comparison
+        uses: actions/download-artifact@v4
+        with:
+          name: formal-apk-payload-comparison
+          run-id: 37166419738
+          github-token: ${{ github.token }}
+          path: original-byte-comparison
+
+      - name: Bind actual APKs, complete manifests and source inputs
+        run: |
+          set -euo pipefail
+          mkdir -p evidence baseline-db candidate-db
+          python3 tests/formal_payload/bind_actual_inputs.py
+
+      - name: Run adversarial comparator tests
+        env:
+          ELICHIKA_GO: go
+          ELICHIKA_SOURCE_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s tests/formal_payload/sqlite -p 'test_*.py' -v
+          python3 -B -m unittest discover -s tests/formal_payload/binary -p 'test_*.py' -v
+          python3 -B -m unittest discover -s tests/formal_payload/chaquopy -p 'test_*.py' -v
+
+      - name: Compare every SQLite row and hidden rowid without normalization
+        run: |
+          set -euo pipefail
+          set +e
+          python3 tests/formal_payload/sqlite/compare_sqlite.py baseline-db/serverdata.db candidate-db/serverdata.db --output evidence/serverdata-full-sqlite.json
+          result=$?
+          set -e
+          python3 - "$result" <<'PY'
+          import json,sys
+          report=json.load(open('evidence/serverdata-full-sqlite.json'))
+          expected={'PASS_STRICT_OBSERVABLE_EQUIVALENCE':0,'REQUIRES_SOURCE_BOUND_ROWID_REVIEW':1}
+          assert report['status'] in expected, report['status']
+          assert int(sys.argv[1]) == expected[report['status']]
+          PY
+
+      - name: Execute the actual product SQLite consumer queries
+        run: |
+          set -euo pipefail
+          go run tests/formal_payload/sqlite/compare_serverdata_consumers.go baseline-db/serverdata.db candidate-db/serverdata.db evidence/serverdata-product-consumers.json
+          python3 tests/formal_payload/sqlite/evaluate_source_bound_serverdata.py --full-report evidence/serverdata-full-sqlite.json --consumers-report evidence/serverdata-product-consumers.json --source-root "$GITHUB_WORKSPACE" --expected-left-sha256 7b203d4c355187b332b2e5f472062eeb1253c01aff5ae6282d225fd9f1112e07 --expected-right-sha256 deb1161637cbfa565bac4c579ce1cbade927c2902146dc11667c8bdcef0c33e3 --contract tests/formal_payload/sqlite/source-contract.json --output evidence/serverdata-source-bound-equivalence.json
+
+      - name: Decode actual Android manifest and compare all native code bytes
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          set +e
+          python3 tests/formal_payload/binary/compare_binary_metadata.py --baseline baseline/elichika-2026.10.03-dev.apk --candidate candidate/elichika-2026.10.04.apk --baseline-sha256 "$BASELINE_SHA" --candidate-sha256 "$CANDIDATE_SHA" --before-source 38029f3f9152797a6f4e0e5ef6be6e132e99dbfa --after-source afd213adb1819becb6085b44f5d638ed117a4399 --before-vcs-time 2026-10-03T14:50:54Z --after-vcs-time 2026-10-04T00:55:09Z --output-dir evidence
+          result=$?
+          set -e
+          python3 - "$result" <<'PY'
+          import json,sys
+          report=json.load(open('evidence/binary-metadata-comparison.json'))
+          expected={'PASS_SUPPORTED_EXACT_VERSION_VCS_DELTAS':0,'INDEPENDENT_METADATA_REVIEW_REQUIRED':2}
+          assert report['status'] in expected, report['status']
+          assert int(sys.argv[1]) == expected[report['status']]
+          PY
+
+      - name: Independently recompute native Go build content IDs
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          python3 tests/formal_payload/binary/verify_go_build_id_content.py --baseline baseline/elichika-2026.10.03-dev.apk --candidate candidate/elichika-2026.10.04.apk --baseline-sha256 "$BASELINE_SHA" --candidate-sha256 "$CANDIDATE_SHA" --baseline-native-sha256 c3c725ac510064a5c3ef994438c031984b4d643e00f4e6421bdb37bc832703f6 --candidate-native-sha256 572b6f287e7d67065262614732288c670e39d016fb6f323051b76e7a99d78eae --output evidence/go-build-id-content-verification.json
+
+      - name: Verify every Chaquopy asset reference and changed archive
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          python3 tests/formal_payload/chaquopy/verify_chaquopy_build_json.py --baseline baseline/elichika-2026.10.03-dev.apk --candidate candidate/elichika-2026.10.04.apk --baseline-sha256 "$BASELINE_SHA" --candidate-sha256 "$CANDIDATE_SHA" --baseline-members original-byte-comparison/baseline-members.json --formal-members original-byte-comparison/formal-members.json --report evidence/chaquopy-build-json-proof.json
+
+      - name: Upload complete original supplemental evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-apk-exact-pair-analysis
+          path: |
+            evidence/*.json
+            evidence/*.txt
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,39 @@
+{
+  "expected_nondeterministic_creation": "serverdata.InitTables iterates table registry map; schema rootpage/sqlite_schema implicit rowid may vary while exact schema SQL remains identical",
+  "expected_nondeterministic_rows": {
+    "s_daily_theater_member": "InitializeDailyTheater iterates deduplicated member map; loadDailyTheater queries complete members using composite PK; exact consumed sequences/plans must be compared under product driver",
+    "s_dictionary_*": "initDictionary iterates id/language maps; initEventMarathon may run before/after dictionary initializer; dictionaries are consumed as exact key/text Go maps"
+  },
+  "generic_rowid_allowance": false,
+  "known_product_sqlite_driver": "modernc.org/sqlite v1.23.1",
+  "product_source_commit": "38029f3f9152797a6f4e0e5ef6be6e132e99dbfa",
+  "requires_all_unreviewed_hidden_rowids_equal": true,
+  "requires_complete_schema_typed_rows_all_tables_equal": true,
+  "requires_current_pair_actual_product_driver_consumers_equal": true,
+  "reviewed_implicit_rowid_tables": [
+    "s_dictionary_ja",
+    "s_dictionary_en",
+    "s_dictionary_ko",
+    "s_dictionary_zh",
+    "s_daily_theater_member"
+  ],
+  "source_files": {
+    "dictionary/dictionary.go": "4ed6ffe39cd4222e01d6946de3512e35209e29501cca4a0c4c703410b0e8a5f1",
+    "gamedata/daily_theater.go": "3149715dc1a8fccbc5dad2d1faed4ff2fcf6c1add5b7ebf36239179e3e716ec3",
+    "go.mod": "47758a01de6a7d1a701dffd79ad60354f2842169ba9f9cd45e52c780e86a8853",
+    "go.sum": "67023ce0de35bb65dedb196431c18767d07224409b1e04459f4fac86f0230ec4",
+    "serverdata/daily_theater.go": "afc2a547b671c084d51810f6051db62b4c9e897ef563e1ca8e80ae6aadf86bd6",
+    "serverdata/dictionary.go": "aea462550b82a0a625b550a77d7f59152048da7a130257b8959430a910e3250e",
+    "serverdata/event_available.go": "aefd8cc02870f4c117868ef73d343986f7e6189931d17227cb975d9cd96c920a",
+    "serverdata/event_common.go": "88ae92de45118b7c591335d319a40233a24e237f937d341ecbff7cd2ea146364",
+    "serverdata/event_marathon.go": "ec3545bd4cf662938cf3e6fb78ec7bdecf234beffc7a1a05c36d248d93ffa317",
+    "serverdata/event_mining.go": "0bab5e01960041f71f2221fbd9cf29b7f49b810f51e40e9128a595a8f260a35c",
+    "serverdata/gacha.go": "600de05de61aceca512daa0561cb6cc994cd3c58fcc4dba92ef2aabab08bbf2f",
+    "serverdata/login_bonus.go": "82498876da40a7ed47363771a39c4da10d1fc12f29a90d0addc5d986a45d3f3f",
+    "serverdata/ng_word.go": "da5adcbcf6acad3959836cefbb0e1357aeb67194d6d92e2808c75d9cb8203a74",
+    "serverdata/serverdata.go": "862b04299a2588b5fa9b21b04a6c23eb3e7166e5f82b882fdf16e97f7ab7895d",
+    "serverdata/trade.go": "ae2c00b4b4ffcdbd9979c2518596bd22004a9f06894c28ce1f09f25d1419dbb0",
+    "serverdata/zinit.go": "9b3d59a823a746a79c567889e13c073a11c15995681b9e24dbf110efd0ddb350",
+    "subsystem/user_daily_theater/fetch_daily_theater_archive.go": "88b99b1116c6800d02937c04cb784890cde6fb53883f5e7ae9bb0b07e61f97be"
+  }
+}
