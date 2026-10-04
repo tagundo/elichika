@@ -462,6 +462,22 @@
       "cold_diagnostic": "before",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-stock-four-table-master-only-restore-offline",
+      "type": "fixture",
+      "operation": "restore_master",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-master-restored-actual-offline-prelaunch-snapshot",
+      "type": "upgrade_preflight",
+      "wait": 0,
+      "required": true
     }
   ]
 }
