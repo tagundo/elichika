@@ -419,6 +419,32 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-real-current-day-same-account-title-login",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/TapToScreen/TapTextView"
+      },
+      "ready_timeout": 45,
+      "wait": 20,
+      "required": true
+    },
+    {
+      "id": "seventh-current-day-earned-home-before-private-baseline-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-current-day-earned-owned-inspect-before-cold-baseline",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "wait": 0,
+      "required": true
     }
   ]
 }
