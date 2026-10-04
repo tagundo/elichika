@@ -298,6 +298,50 @@
       "restart": false,
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-native-full-song-live-start-no-skip-once",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/FooterButtons/LiveStartButton"
+      },
+      "ready_timeout": 45,
+      "wait": 60,
+      "required": true
+    },
+    {
+      "id": "seventh-native-live-after-first-minute-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-full-song-no-input-further-sixty-seconds",
+      "type": "capture",
+      "wait": 60,
+      "required": true
+    },
+    {
+      "id": "seventh-full-song-readonly-post-wait-native-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-immediate-real-full-live-finished-raw-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-live-native-rank320-max-reward-proof-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ]
 }
