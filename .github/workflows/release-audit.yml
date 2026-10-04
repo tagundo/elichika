@@ -62,10 +62,50 @@ jobs:
           --expected-version-code "${{ inputs.version_code }}"
           --report release-audit-report.json
 
+      - name: Download immutable tested development APK baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 37131097762
+          github-token: ${{ github.token }}
+          path: baseline
+
+      - name: Require exact formal identity and compare all APK contents
+        env:
+          EXPECTED_VERSION_NAME: ${{ inputs.version_name }}
+          EXPECTED_VERSION_CODE: ${{ inputs.version_code }}
+          EXPECTED_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
+        run: |
+          python3 - <<'PY_AUDIT'
+          import json, os
+          report = json.load(open("release-audit-report.json"))
+          assert report["status"] == "PASS"
+          assert report["formal_version"] is True
+          assert os.environ["EXPECTED_VERSION_NAME"] == "2026.10.04"
+          assert report["candidate"]["version_name"] == os.environ["EXPECTED_VERSION_NAME"]
+          assert int(os.environ["EXPECTED_VERSION_CODE"]) == 2026100400
+          assert report["candidate"]["version_code"] == 2026100400
+          PY_AUDIT
+          python3 -m unittest discover -s tests -p test_compare_apk_payloads.py -v
+          python3 tests/compare_apk_payloads.py \
+            --baseline baseline/elichika-2026.10.03-dev.apk \
+            --expected-baseline-sha256 f2188fa978e88d3953daed1d9a2f7347e9a37bb0adf7a3589949e879de41e57a \
+            --candidate "candidate/elichika-${EXPECTED_VERSION_NAME}.apk" \
+            --expected-candidate-sha256 "$EXPECTED_CANDIDATE_SHA256" \
+            --output-dir formal-payload
+
       - name: Upload compact audit evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-audit-evidence
           path: release-audit-report.json
+          if-no-files-found: warn
+
+      - name: Upload complete development-to-formal payload comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-apk-payload-comparison
+          path: formal-payload/*.json
           if-no-files-found: warn

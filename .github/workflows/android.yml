@@ -1,34 +1,18 @@
 # Builds the standalone elichika Android server app (see android/README.md).
 #
-# This is the "update = rebuild" path: it pulls the latest server (this repo) and
-# the latest modding tools (SIFAS-MODDING-HELPING-TOOLS), assembles everything the
-# app bundles, and produces an installable debug-signed APK as an artifact. No
-# local Android toolchain needed.
+# Artifact-only formal APK verification based on the reviewed product source.
+# Modtools and the CalVer identity are fixed for this build. All existing signed
+# APK gates run against the resulting artifact; publication is disabled.
 
-name: Build Android APK
+name: Verify formal Android APK 2026.10.04
 
 on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "CalVer tag to publish a GitHub Release as (e.g. v2026.07.02.1). The tag is created on the run's commit — no local git needed. Leave blank to only build APK artifacts."
-        required: false
-        default: ""
-      release_notes:
-        description: "Optional text shown at the TOP of the release notes (above the auto-generated changelog). Use for user-facing highlights, e.g. changed defaults."
-        required: false
-        default: ""
   push:
-    # No paths filter: the APK bundles the whole Go server, so any source change
-    # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
-    # previously skipped a clientdb/ fix and shipped a stale APK.
-    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit, codex/first-lesson-rank-compat]
-    # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
-    # to a GitHub Release. See android/README.md for the one-time secret setup.
-    tags: ['v*']
+    branches: [codex/formal-apk-20261004]
 
 permissions:
-  contents: write   # needed to create a GitHub Release on tag builds
+  contents: read    # Artifact-only formal verification; no release writes.
   actions: read
 
 jobs:
@@ -47,14 +31,13 @@ jobs:
           fetch-depth: 0  # SQL validators compare with the historic Harasho baseline.
           submodules: recursive
 
-      - name: Update modtools submodule to latest
+      - name: Use fixed modtools input
         run: |
-          # Ship the latest modding tools: fetch the tracked branch in the submodule
-          # and check out its tip. (`git submodule update --remote` needs that ref
-          # fetched, which the shallow recursive checkout doesn't provide.)
-          BR="claude/elichika-apk-build-wwkuu3"
-          git -C modtools fetch --depth 1 origin "$BR"
-          git -C modtools checkout -q FETCH_HEAD
+          set -euo pipefail
+          PIN=b35da68006c682ca600b2dfb90f29bcffe70454c
+          git -C modtools fetch --depth 1 origin "$PIN"
+          git -C modtools checkout -q --detach "$PIN"
+          test "$(git -C modtools rev-parse HEAD)" = "$PIN"
           git -C modtools log -1 --oneline
 
       - name: Set up Go
@@ -236,11 +219,11 @@ jobs:
       - name: Derive app version (CalVer)
         id: ver
         env:
-          REL_TAG: ${{ github.event.inputs.release_tag }}
+          REL_TAG: "v2026.10.04"
         run: |
           set -eu
-          # A workflow_dispatch may pass the CalVer tag directly (no tag push needed);
-          # otherwise fall back to the pushed tag ref.
+          # This isolated artifact-only run uses a fixed reviewed CalVer identity.
+          # Publication is unconditionally disabled and there is no tag trigger.
           REF="${REL_TAG:-}"
           [ -z "$REF" ] && REF="${GITHUB_REF#refs/tags/}"
           if [[ "$REF" =~ ^v([0-9]{4})\.([0-9]{2})\.([0-9]{2})(\.([0-9]+))?$ ]]; then
@@ -252,6 +235,8 @@ jobs:
             NAME="$(date -u +%Y.%m.%d)-dev"
             CODE=$(( $(date -u +%Y%m%d) * 100 ))
           fi
+          test "$NAME" = "2026.10.04"
+          test "$CODE" = "2026100400"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "elichika version: $NAME (code $CODE)"
@@ -387,7 +372,7 @@ jobs:
 
   publish:
     needs: [build, native-compatibility, android-upgrade, apk-audit]
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - name: Download validated release APK
