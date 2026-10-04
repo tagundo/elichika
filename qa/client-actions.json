@@ -2,8 +2,8 @@
   "scope": "QA-only complete cold-state diagnostics after one genuinely earned no-skip native Live. No lesson replay or gameplay reset. All raw DB/XML private RUNNER_TEMP only; expected login timestamp localized by exact normalized whole fingerprint; each changed preference key requires separate concrete evidence.",
   "prior_actual_earned_cold_run": 37157358249,
   "resume_after_blocked_action": {
-    "id": "seventh-home-channel-intro-close",
-    "action_definition_sha256": "ccd5ebb6f42875a04a22e97770399dd9e4daf89424a34dcb06c631fb5051a11c"
+    "id": "seventh-native-live-after-first-minute-tree",
+    "action_definition_sha256": "26322c234b6fa0df379beed7a6745609c87116c32f8fa9597f581e30636e5644"
   },
   "actions": [
     {
@@ -316,34 +316,6 @@
       "required": true
     },
     {
-      "id": "seventh-full-song-no-input-further-sixty-seconds",
-      "type": "capture",
-      "wait": 60,
-      "required": true
-    },
-    {
-      "id": "seventh-full-song-readonly-post-wait-native-tree",
-      "type": "unity_tree",
-      "wait": 0,
-      "required": true
-    },
-    {
-      "id": "seventh-immediate-real-full-live-finished-raw-inspect",
-      "type": "fixture",
-      "operation": "inspect",
-      "checkpoint": "cold_37161748421",
-      "user_id": 645083,
-      "restart": false,
-      "wait": 0,
-      "required": true
-    },
-    {
-      "id": "seventh-live-native-rank320-max-reward-proof-tree",
-      "type": "unity_tree",
-      "wait": 0,
-      "required": true
-    },
-    {
       "id": "seventh-live-readonly-wait-observe-after-zero-node-pause",
       "type": "capture",
       "wait": 30,
@@ -367,6 +339,38 @@
       "wait": 0,
       "required": true,
       "diagnostic_while_blocked": true
+    },
+    {
+      "id": "seventh-live-recovered-finished-owned-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-live-recovered-rank320-max-reward-proof-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-advance-actual-live-earned-reward-page",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Buttons/TapScreen/TapButton"
+      },
+      "ready_timeout": 45,
+      "wait": 4,
+      "required": true
+    },
+    {
+      "id": "seventh-native-live-next-result-page-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ]
 }
