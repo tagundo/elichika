@@ -255,6 +255,23 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-confirm-observed-recommended-native-deck",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+        "text": "결정"
+      },
+      "ready_timeout": 45,
+      "wait": 5,
+      "required": true
+    },
+    {
+      "id": "seventh-native-deck-current-auto-skip-preparation-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
     }
   ]
 }
