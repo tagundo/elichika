@@ -31,6 +31,8 @@ func lessonDatabaseFixture(t *testing.T, shootingStarTable bool, shootingStarRow
 		`INSERT INTO m_lesson_drop_amount VALUES (1, 15, 1), (2, 0, 1)`,
 		`CREATE TABLE m_lesson_skill_content (skill_master_id INTEGER, rarity INTEGER, drop_type INTEGER, lesson_menu_id1 INTEGER, lesson_menu_id2 INTEGER)`,
 		`INSERT INTO m_lesson_skill_content VALUES (101, 4, 2, 1, NULL), (102, 5, 3, NULL, NULL), (103, 3, 1, 2, NULL), (104, 5, 4, 2, 1)`,
+		`CREATE TABLE m_passive_skill (id INTEGER PRIMARY KEY)`,
+		`INSERT INTO m_passive_skill VALUES (101),(102),(103),(104)`,
 		`CREATE TABLE m_lesson_skill_rarity (rarity INTEGER, weight INTEGER)`,
 		`INSERT INTO m_lesson_skill_rarity VALUES (3, 120000), (4, 120000), (5, 120000)`,
 		`CREATE TABLE m_lesson_skill_no_drop (has_exclusive INTEGER, weight INTEGER)`,

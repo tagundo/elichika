@@ -24,7 +24,7 @@ func singleLessonDrop(value int32) *drop.WeightedDropList[int32] {
 }
 
 func executeLessonFixture(t *testing.T, ordinarySkill, pinSkill, sourceMenu, position int32,
-	stars map[int32]bool, threeTimes bool) (response.ExecuteLessonResponse, response.LessonResultResponse) {
+	stars map[int32]bool, threeTimes bool, configure ...func(*userdata.Session, *request.ExecuteLessonRequest)) (response.ExecuteLessonResponse, response.LessonResultResponse) {
 	t.Helper()
 	engine, err := xorm.NewEngine("sqlite", t.TempDir()+"/userdata.db")
 	if err != nil {
@@ -34,6 +34,8 @@ func executeLessonFixture(t *testing.T, ordinarySkill, pinSkill, sourceMenu, pos
 	for _, statement := range []string{
 		`CREATE TABLE u_beginner_challenge_cell (user_id INTEGER, cell_id INTEGER, is_reward_received INTEGER, progress INTEGER)`,
 		`CREATE TABLE u_lesson (user_id INTEGER PRIMARY KEY, selected_deck_id INTEGER, drop_item_list TEXT, drop_skill_list TEXT)`,
+		`CREATE TABLE u_scene_tips (user_id INTEGER, scene_tips_type INTEGER)`,
+		`CREATE TABLE u_card (user_id INTEGER, card_master_id INTEGER, max_free_passive_skill INTEGER)`,
 	} {
 		if _, err := engine.Exec(statement); err != nil {
 			t.Fatal(err)
@@ -50,10 +52,11 @@ func executeLessonFixture(t *testing.T, ordinarySkill, pinSkill, sourceMenu, pos
 			enum.LessonDropTypeNormal:    singleLessonDrop(0),
 			enum.LessonDropTypeMegaphone: singleLessonDrop(0),
 		},
-		SkillDrop:       map[int32]*drop.WeightedDropList[int32]{312: singleLessonDrop(ordinarySkill), 123: singleLessonDrop(ordinarySkill)},
-		SkillPosition:   singleLessonDrop(position),
-		SkillRarity:     map[int32]int32{101: enum.SkillRarityTypeSkillRankB, 102: enum.SkillRarityTypeSkillRankS},
-		SkillSourceMenu: map[int32]map[int32]int32{312: {101: sourceMenu, 102: sourceMenu}, 123: {101: sourceMenu, 102: sourceMenu}},
+		SkillDrop:           map[int32]*drop.WeightedDropList[int32]{312: singleLessonDrop(ordinarySkill), 123: singleLessonDrop(ordinarySkill)},
+		SkillPosition:       singleLessonDrop(position),
+		SkillPositionWeight: map[int32]int32{position: 1},
+		SkillRarity:         map[int32]int32{101: enum.SkillRarityTypeSkillRankB, 102: enum.SkillRarityTypeSkillRankS},
+		SkillSourceMenu:     map[int32]map[int32]int32{312: {101: sourceMenu, 102: sourceMenu}, 123: {101: sourceMenu, 102: sourceMenu}},
 		ShootingStarSkills: map[int32]map[int32]bool{
 			312: stars,
 			123: stars,
@@ -65,6 +68,7 @@ func executeLessonFixture(t *testing.T, ordinarySkill, pinSkill, sourceMenu, pos
 		UserStatus: &client.UserStatus{},
 		Gamedata: &gamedata.Gamedata{
 			Lesson: lesson,
+			Card:   map[int32]*gamedata.Card{},
 			LessonMenu: map[int32]*gamedata.LessonMenu{
 				1: {Id: 1}, 2: {Id: 2}, 3: {Id: 3},
 			},
@@ -73,7 +77,12 @@ func executeLessonFixture(t *testing.T, ordinarySkill, pinSkill, sourceMenu, pos
 	}
 	deck := client.UserLessonDeck{UserLessonDeckId: 1}
 	for i := 2; i < reflect.ValueOf(&deck).Elem().NumField(); i++ {
-		reflect.ValueOf(&deck).Elem().Field(i).Set(reflect.ValueOf(generic.NewNullable(int32(1000 + i))))
+		cardId := int32(1000 + i)
+		reflect.ValueOf(&deck).Elem().Field(i).Set(reflect.ValueOf(generic.NewNullable(cardId)))
+		session.Gamedata.Card[cardId] = &gamedata.Card{Id: cardId, MaxPassiveSkillSlot: 1}
+		if _, err := dbSession.Exec(`INSERT INTO u_card VALUES (1, ?, 1)`, cardId); err != nil {
+			t.Fatal(err)
+		}
 	}
 	session.UserModel.UserLessonDeckById.Set(1, deck)
 	req := request.ExecuteLessonRequest{
@@ -97,6 +106,9 @@ func executeLessonFixture(t *testing.T, ordinarySkill, pinSkill, sourceMenu, pos
 	configCopy.ResourceConfigType = &resourceType
 	config.Conf = &configCopy
 	t.Cleanup(func() { config.Conf = oldConfig })
+	for _, setup := range configure {
+		setup(session, &req)
+	}
 	execute := ExecuteLesson(session, req)
 	result := ResultLesson(session)
 	// Exercise the exact wire dictionary (including special key 0) as well as its

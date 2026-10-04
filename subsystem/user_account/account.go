@@ -8,15 +8,15 @@ import (
 	"elichika/gamedata"
 	"elichika/generic"
 	"elichika/subsystem/user_authentication"
-	"elichika/subsystem/user_reference_book"
 	"elichika/subsystem/user_card"
+	"elichika/subsystem/user_content"
 	"elichika/subsystem/user_lesson_deck"
 	"elichika/subsystem/user_live_deck"
 	"elichika/subsystem/user_live_party"
 	"elichika/subsystem/user_member"
+	"elichika/subsystem/user_reference_book"
 	"elichika/subsystem/user_suit"
 	"elichika/subsystem/user_unlock_scene"
-	"elichika/subsystem/user_content"
 	"elichika/userdata"
 	"elichika/utils"
 
@@ -86,6 +86,7 @@ func CreateNewAccount(ctx *gin.Context, userId int32, passWord string) int32 {
 		status.Name.DotUnderText = "Newcomer"
 		status.Nickname.DotUnderText = "Newcomer"
 		status.Message.DotUnderText = "Hello!"
+		userdata.NormalizeUserRankExp(&status, gamedata)
 		// insert into the db
 		wrapper := generic.UserIdWrapper[client.UserStatus]{
 			UserId: userId,
