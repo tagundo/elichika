@@ -548,6 +548,12 @@
       "cold_diagnostic": "after",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-explicit-stop-after-complete-protected-cold-captures",
+      "type": "stop",
+      "wait": 0,
+      "required": true
     }
   ]
 }
