@@ -371,6 +371,48 @@
       "type": "unity_tree",
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-advance-actual-live-achievement-page",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Buttons/TapScreen/TapButton"
+      },
+      "ready_timeout": 45,
+      "wait": 4,
+      "required": true
+    },
+    {
+      "id": "seventh-native-live-bond-or-menu-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-advance-actual-live-bond-complete-page",
+      "type": "unitytap",
+      "selector": {
+        "path": "EntryPoint/Canvas/SafeArea/Buttons/TapScreen/TapButton"
+      },
+      "ready_timeout": 45,
+      "wait": 6,
+      "required": true
+    },
+    {
+      "id": "seventh-earned-live-normal-song-menu-tree",
+      "type": "unity_tree",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-earned-before-current-day-login-raw-inspect",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "wait": 0,
+      "required": true
     }
   ]
 }
