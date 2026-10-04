@@ -445,6 +445,23 @@
       "restart": false,
       "wait": 0,
       "required": true
+    },
+    {
+      "id": "seventh-earned-home-stop-both-before-protected-baseline",
+      "type": "upgrade_preflight",
+      "wait": 0,
+      "required": true
+    },
+    {
+      "id": "seventh-protected-full-earned-before-cold-diagnostic",
+      "type": "fixture",
+      "operation": "inspect",
+      "checkpoint": "cold_37161748421",
+      "user_id": 645083,
+      "restart": false,
+      "cold_diagnostic": "before",
+      "wait": 0,
+      "required": true
     }
   ]
 }
