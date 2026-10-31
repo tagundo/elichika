@@ -11,7 +11,7 @@ import java.nio.file.StandardCopyOption
 object ServerConfig {
     private val lock = Any()
     private const val PREFS = "elichika"
-    private const val GAME_DATA_LOCALES = "gamedata_locales"
+    private const val PENDING_GAME_DATA_LOCALES = "gamedata_locales"
     private const val ALL_LOCALES = "ja,en,zh,ko"
     private val localeChoices = setOf(ALL_LOCALES, "ja", "en", "ko", "zh")
 
@@ -45,7 +45,7 @@ object ServerConfig {
     }
 
     fun gameDataLocales(ctx: Context, root: File = ctx.filesDir): String = synchronized(lock) {
-        val saved = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(GAME_DATA_LOCALES, null)
+        val saved = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(PENDING_GAME_DATA_LOCALES, null)
         saved ?: read(root).optString("locales", ALL_LOCALES)
     }
 
@@ -53,13 +53,26 @@ object ServerConfig {
         require(value in localeChoices)
         // Save even before first preparation creates config.json. Concurrent
         // settings windows and setup share the same short transaction lock.
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(GAME_DATA_LOCALES, value).apply()
-        update(root, create = false) { it.put("locales", value) }
+        val preferences = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        preferences.edit().putString(PENDING_GAME_DATA_LOCALES, value).apply()
+        var applied = false
+        update(root, create = false) {
+            it.put("locales", value)
+            applied = true
+        }
+        // A successful no-op (the file already contains this value) also counts
+        // as applied. Missing files or failed writes retain the pending choice.
+        if (applied) preferences.edit().remove(PENDING_GAME_DATA_LOCALES).apply()
     }
 
     fun applyGameDataLocales(ctx: Context, root: File) = synchronized(lock) {
-        val saved = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(GAME_DATA_LOCALES, null)
-        if (saved != null) update(root) { it.put("locales", saved) }
+        val preferences = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val saved = preferences.getString(PENDING_GAME_DATA_LOCALES, null)
+        if (saved != null) {
+            update(root) { it.put("locales", saved) }
+            // config.json is authoritative once the pending choice is applied;
+            // later Server WebUI changes must survive the next preparation.
+            preferences.edit().remove(PENDING_GAME_DATA_LOCALES).apply()
+        }
     }
 }

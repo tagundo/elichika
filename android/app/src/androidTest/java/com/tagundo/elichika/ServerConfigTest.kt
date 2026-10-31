@@ -63,6 +63,24 @@ class ServerConfigTest {
     }
 
     @Test
+    fun laterServerWebUiLocaleChangeSurvivesPreparation() = withConfig { context ->
+        AssetInstaller.install(context) {}
+        ServerConfig.setGameDataLocales(context, "ko")
+        assertEquals("ko", ServerConfig.gameDataLocales(context))
+
+        // The server WebUI writes config.json independently of native settings.
+        val file = File(context.filesDir, "config.json")
+        val external = JSONObject(file.readText()).put("locales", "en")
+        file.writeText(external.toString())
+        assertEquals("en", ServerConfig.gameDataLocales(context))
+
+        AssetInstaller.install(context) {}
+        assertEquals("en", ServerConfig.gameDataLocales(context))
+        assertEquals("en", JSONObject(file.readText()).getString("locales"))
+        assertEquals("bundled default", JSONObject(file.readText()).getString("preserved"))
+    }
+
+    @Test
     fun concurrentSetupAndSettingsPreserveFieldsAndPublishCompleteJson() = withConfig { context ->
         AssetInstaller.install(context) {}
         val start = CountDownLatch(1)

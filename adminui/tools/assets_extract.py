@@ -340,7 +340,7 @@ def _composite_recolour(base_bundle, variant_bundle, out_path):
 
 
 def _extract_recolours(x, asset, resolver, out_dir, base_model_path, base_bundle,
-                       label, all_manifest):
+                       label, all_manifest, used_names=None):
     """Decrypt each of the costume's recolour dependencies and composite it onto
     the just-extracted base model -> recoloured model(s). Returns how many made."""
     import tempfile
@@ -360,8 +360,15 @@ def _extract_recolours(x, asset, resolver, out_dir, base_model_path, base_bundle
             if not var_bundle:
                 continue
             tag = "_recolour" if len(deps) == 1 else f"_c{i + 1}"
-            out_path = os.path.join(out_dir, x.category_dir("member_model"),
-                                    x.sanitize(label) + tag + ".unity")
+            stem = x.sanitize(label) + tag
+            relative = os.path.join(x.category_dir("member_model"), stem + ".unity")
+            if used_names is not None:
+                n = 1
+                while relative in used_names:
+                    relative = os.path.join(x.category_dir("member_model"), f"{stem}_{n}.unity")
+                    n += 1
+                used_names.add(relative)
+            out_path = os.path.join(out_dir, relative)
             if _composite_recolour(base_bundle, var_bundle, out_path) > 0:
                 made += 1
                 print(f"  ✓ {label}{tag}  (recoloured onto base model)")
@@ -440,6 +447,9 @@ def run_extract(job, params):
     total = len(work)
     done_ok = 0
     all_manifest = []
+    # Suit IDs are distinct even when repeated clones have identical labels.
+    # Preserve every selected suit and its companion files within this job.
+    used = set()
     job.progress(0, total)
     with capture_stdout(job):
         asset = sqlite3.connect(asset_db)
@@ -454,7 +464,7 @@ def run_extract(job, params):
                     print(f"skip: {model} not in member_model in {os.path.basename(asset_db)}")
                     continue
                 pack_name, head, size, key1, key2 = mm
-                used, manifest = set(), []
+                manifest = []
                 ok = x.extract_one(resolver, out_dir, "member_model", model,
                                    pack_name, head, size, key1, key2, used, manifest,
                                    file_label=label)
@@ -463,6 +473,9 @@ def run_extract(job, params):
                 if ok:
                     done_ok += 1
                     print(f"✓ {label}")
+                    # Keep companion names associated with the actual base
+                    # output after extract_one has disambiguated a collision.
+                    output_label = os.path.splitext(os.path.basename(manifest[-1][7]))[0]
                     # If this costume has an irochi (colour-variant) recolour bundle,
                     # decrypt it too and composite it onto the base model we just
                     # wrote, so the picker's variant comes out ready-to-use.
@@ -471,7 +484,7 @@ def run_extract(job, params):
                         base_bundle = os.path.join(out_dir, manifest[-1][7])
                         try:
                             _extract_recolours(x, asset, resolver, out_dir, model,
-                                               base_bundle, label, all_manifest)
+                                               base_bundle, output_label, all_manifest, used)
                         except Exception as exc:  # noqa: BLE001
                             print(f"  ! colour variant skipped: {exc}")
                     # Rina (209): also extract the no-mask model (m_suit_view
@@ -483,10 +496,10 @@ def run_extract(job, params):
                             "SELECT pack_name, head, size, key1, key2 FROM member_model "
                             "WHERE asset_path = ?", (unmask,)).fetchone()
                         if umm:
-                            used_u, man_u = set(), []
+                            man_u = []
                             oku = x.extract_one(resolver, out_dir, "member_model", unmask,
                                                 umm[0], umm[1], umm[2], umm[3], umm[4],
-                                                used_u, man_u, file_label=label + "_nomask")
+                                                used, man_u, file_label=output_label + "_nomask")
                             if man_u:
                                 all_manifest.extend(man_u)
                             if oku:

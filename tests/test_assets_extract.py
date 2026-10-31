@@ -167,6 +167,87 @@ class CostumeOwnerTests(unittest.TestCase):
         self.assertIn("3/3", result)
         self.assertTrue(all(p.read_bytes() == self.payload for p in files))
 
+    def test_identical_named_clones_keep_two_files_and_distinct_manifest_paths(self):
+        self.add_shared_model_clone()
+        with sqlite3.connect("assets/db/gl/masterdata.db") as md:
+            md.execute("INSERT INTO m_suit VALUES (1001,101,'k.suit_102_cloned',"
+                       "'model/ch0102_co0001','model/ch0102_co0001',1001)")
+        result = extract.run_extract(Job("identical-clones", "extract_assets"), {
+            "character": "107", "costume": ["suit:999", "suit:1001"],
+            "cdn": False, "recolour_variant": False,
+        })
+        output = self.root / "sukusta/extracted"
+        files = list((output / "3d_model").iterdir())
+        self.assertIn("2/2", result)
+        self.assertEqual({p.name for p in files}, {
+            "Chika_ch0102_co0001_Shared Song clone.unity",
+            "Chika_ch0102_co0001_Shared Song clone_0.unity",
+        })
+        self.assertTrue(all(p.read_bytes() == self.payload for p in files))
+        with (output / "_extract_manifest.csv").open(newline="") as stream:
+            manifest = list(csv.DictReader(stream))
+        self.assertEqual(len(manifest), 2)
+        self.assertEqual(len({row["output_file"] for row in manifest}), 2)
+        self.assertTrue(all(row["status"] == "OK" for row in manifest))
+
+    def test_identical_named_clones_keep_distinct_no_mask_companions(self):
+        self.add_shared_model_clone()
+        model = "model/ch0102_co0001"
+        unmask = "model/ch0107_co0001"
+        with sqlite3.connect("assets/db/gl/masterdata.db") as md:
+            md.execute("UPDATE m_suit SET member_m_id = 209 WHERE model_asset_path = ?", (model,))
+            md.execute("CREATE TABLE m_suit_view (suit_master_id INTEGER, view_status INTEGER, model_asset_path TEXT)")
+            md.execute("INSERT INTO m_suit_view VALUES (102,2,?)", (unmask,))
+            md.execute("INSERT INTO m_suit VALUES (1001,209,'k.suit_102_cloned',?,?,1001)", (model, model))
+        result = extract.run_extract(Job("identical-mask-clones", "extract_assets"), {
+            "costume": ["suit:999", "suit:1001"], "cdn": False, "recolour_variant": False,
+        })
+        files = list((self.root / "sukusta/extracted/3d_model").iterdir())
+        self.assertIn("2/2", result)
+        self.assertEqual({p.name for p in files}, {
+            "Rina_ch0102_co0001_Shared Song clone.unity",
+            "Rina_ch0102_co0001_Shared Song clone_nomask.unity",
+            "Rina_ch0102_co0001_Shared Song clone_0.unity",
+            "Rina_ch0102_co0001_Shared Song clone_0_nomask.unity",
+        })
+        self.assertTrue(all(p.read_bytes() == self.payload for p in files))
+
+    def test_identical_named_clones_keep_distinct_recolour_companions(self):
+        self.add_shared_model_clone()
+        with sqlite3.connect("assets/db/gl/masterdata.db") as md:
+            md.execute("INSERT INTO m_suit VALUES (1001,101,'k.suit_102_cloned',"
+                       "'model/ch0102_co0001','model/ch0102_co0001',1001)")
+        with sqlite3.connect("assets/db/gl/asset_a_en.db") as asset:
+            asset.execute("CREATE TABLE member_model_dependency (asset_path TEXT, dependency TEXT)")
+            asset.execute("INSERT INTO member_model_dependency VALUES "
+                          "('model/ch0102_co0001','model/ch0107_co0001')")
+        # The filename regression exercises real pack lookup/decryption and
+        # companion generation; texture compositing itself is outside its scope.
+        def composite(base, variant, output):
+            self.assertEqual(Path(base).read_bytes(), self.payload)
+            self.assertEqual(Path(variant).read_bytes(), self.payload)
+            Path(output).write_bytes(self.payload + b"recoloured")
+            return 1
+        with patch.object(extract, "_composite_recolour", side_effect=composite):
+            result = extract.run_extract(Job("identical-recolour-clones", "extract_assets"), {
+                "costume": ["suit:999", "suit:1001"], "cdn": False,
+            })
+        output = self.root / "sukusta/extracted"
+        files = list((output / "3d_model").iterdir())
+        self.assertIn("2/2", result)
+        self.assertEqual({p.name for p in files}, {
+            "Chika_ch0102_co0001_Shared Song clone.unity",
+            "Chika_ch0102_co0001_Shared Song clone_recolour.unity",
+            "Chika_ch0102_co0001_Shared Song clone_0.unity",
+            "Chika_ch0102_co0001_Shared Song clone_0_recolour.unity",
+        })
+        for file in files:
+            self.assertEqual(file.read_bytes(), self.payload + (b"recoloured" if "recolour" in file.name else b""))
+        with (output / "_extract_manifest.csv").open(newline="") as stream:
+            manifest = list(csv.DictReader(stream))
+        self.assertEqual(len(manifest), 4)
+        self.assertEqual(len({row["output_file"] for row in manifest}), 4)
+
     def test_stale_invalid_and_model_less_suit_selections_fail_before_output(self):
         with sqlite3.connect("assets/db/gl/masterdata.db") as md:
             md.execute("INSERT INTO m_suit VALUES (1000,101,'k.empty',NULL,NULL,1000)")
