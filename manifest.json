@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "python": "3.13",
+  "abi": "arm64-v8a",
+  "ndk": "28.2.13676358",
+  "files": [
+    {
+      "filename": "Brotli-1.1.0-0-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "1a11232a4f6caecb9508b7aaf998e8edcb3e866ff45db74a824aff8a6332f02f",
+      "bytes": 397766
+    },
+    {
+      "filename": "attrs-26.1.0-py3-none-any.whl",
+      "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+      "bytes": 67548
+    },
+    {
+      "filename": "chaquopy_libcxx-190000-0-py3-none-android_24_arm64_v8a.whl",
+      "sha256": "115ffb339717a75bee96c070ade6af381d62344ba2fc6ef0f43a7e3b7fb78002",
+      "bytes": 404185
+    },
+    {
+      "filename": "chaquopy_libjpeg-1.5.3-2-py3-none-android_24_arm64_v8a.whl",
+      "sha256": "09b2dc33f2af6ab605829b3782677e8bee3ddc6317827c3cadedce0f0896de02",
+      "bytes": 138535
+    },
+    {
+      "filename": "fsspec-2026.9.0-py3-none-any.whl",
+      "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f",
+      "bytes": 221738
+    },
+    {
+      "filename": "lz4-4.3.3-0-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "6b3f87c1f996d39b926a181d3508e251a79df35d70619b3160511fb09b04b9e2",
+      "bytes": 175907
+    },
+    {
+      "filename": "numpy-1.26.2-0-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "6819c275ec4889fd1a3d1a471720cc5478ed30b102af91e439f6bd2bd88dca8e",
+      "bytes": 5089547
+    },
+    {
+      "filename": "pillow-11.0.0-0-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "461c25eefad72fbaedbdc00a3070f0f6f5e211a1c14136a94b6dfba741be8b3c",
+      "bytes": 531167
+    }
+  ],
+  "scope": "Pinned Android pip inputs. FreeType 2.9.1 and OpenBLAS 0.3.33 are rebuilt from pinned source by the consuming workflow.",
+  "license_note": "License files and wheel metadata remain bundled unmodified in each wheel."
+}

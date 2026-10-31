@@ -1,0 +1,137 @@
+{
+  "official_builder_repository": "https://github.com/chaquo/chaquopy",
+  "official_builder_commit": "d5e07055a21db921a5da32b4c990372dab13239f",
+  "source_archives": [
+    {
+      "package": "numpy",
+      "version": "1.26.2",
+      "archive": "/workspace/.android-native-build/chaquopy/server/pypi/packages/numpy/build/1.26.2/numpy-1.26.2.tar.gz",
+      "sha256": "f65738447676ab5777f11e6bbbdb8ce11b785e105f690bc45966574816b6d3ea",
+      "bytes": 15664248
+    },
+    {
+      "package": "pillow",
+      "version": "11.0.0",
+      "archive": "/workspace/.android-native-build/chaquopy/server/pypi/packages/pillow/build/11.0.0/pillow-11.0.0.tar.gz",
+      "sha256": "72bacbaf24ac003fea9bff9837d1eedb6088758d41e100c1552930151f677739",
+      "bytes": 46737780
+    },
+    {
+      "package": "chaquopy-libjpeg",
+      "version": "1.5.3",
+      "archive": "/workspace/.android-native-build/chaquopy/server/pypi/packages/chaquopy-libjpeg/build/1.5.3/libjpeg-turbo-1.5.3.tar.gz",
+      "sha256": "b24890e2bb46e12e72a79f7e965f409f4e16466d00e1dd15d93d73ee6b592523",
+      "bytes": 1658672
+    }
+  ],
+  "python_build_host": "3.13.18 (main, Oct 26 2026, 14:08:20) [Clang 23.1.3 ]",
+  "python_target": "3.13.9-0 (Chaquopy17.0.0 official MavenCentral)",
+  "ndk": "28.2.13676358",
+  "network_during_build": false,
+  "forbidden_host_used": false,
+  "build_commands": [
+    "/workspace/android-downloads/build-pinned-wheel.sh arm64-v8a chaquopy-libjpeg",
+    "/workspace/android-downloads/build-pinned-wheel.sh arm64-v8a pillow",
+    "/workspace/android-downloads/build-pinned-wheel.sh arm64-v8a numpy",
+    "/workspace/android-downloads/build-pinned-wheel.sh arm64-v8a chaquopy-libcxx",
+    "/workspace/android-downloads/build-pinned-wheel.sh x86_64 chaquopy-libjpeg",
+    "/workspace/android-downloads/build-pinned-wheel.sh x86_64 pillow",
+    "/workspace/android-downloads/build-pinned-wheel.sh x86_64 numpy",
+    "/workspace/android-downloads/build-pinned-wheel.sh x86_64 chaquopy-libcxx"
+  ],
+  "local_builder_diff": "diff --git a/server/pypi/packages/chaquopy-libcxx/meta.yaml b/server/pypi/packages/chaquopy-libcxx/meta.yaml\nindex ce9b592..8653679 100644\n--- a/server/pypi/packages/chaquopy-libcxx/meta.yaml\n+++ b/server/pypi/packages/chaquopy-libcxx/meta.yaml\n@@ -4,6 +4,6 @@\n \n package:\n   name: chaquopy-libcxx\n-  version: \"180000\"  # See version.sh.\n+  version: \"190000\"  # See version.sh.\n \n source: null\ndiff --git a/server/pypi/packages/numpy/meta.yaml b/server/pypi/packages/numpy/meta.yaml\nindex 5d5eb1c..2f023e5 100644\n--- a/server/pypi/packages/numpy/meta.yaml\n+++ b/server/pypi/packages/numpy/meta.yaml\n@@ -13,4 +13,4 @@ requirements:\n     # still works with this version, plus a couple of patches.\n     - setuptools 69.0.2\n   host:\n-    - chaquopy-openblas 0.2.20\n+    - chaquopy-openblas 0.3.33\ndiff --git a/target/android-env.sh b/target/android-env.sh\nindex 3da8493..1ad35ac 100644\n--- a/target/android-env.sh\n+++ b/target/android-env.sh\n@@ -24,7 +24,7 @@ fail() {\n # * https://android.googlesource.com/platform/ndk/+/ndk-rXX-release/docs/BuildSystemMaintainers.md\n #   where XX is the NDK version. Do a diff against the version you're upgrading from, e.g.:\n #   https://android.googlesource.com/platform/ndk/+/ndk-r25-release..ndk-r26-release/docs/BuildSystemMaintainers.md\n-ndk_version=27.3.13750724\n+ndk_version=28.2.13676358\n \n ndk=$ANDROID_HOME/ndk/$ndk_version\n if ! [ -e $ndk ]; then\n@@ -93,5 +93,5 @@ export CXXFLAGS=$CFLAGS\n if [ $(uname) = \"Darwin\" ]; then\n     export CPU_COUNT=$(sysctl -n hw.ncpu)\n else\n-    export CPU_COUNT=$(nproc)\n+    export CPU_COUNT=${CHAQUOPY_BUILD_JOBS:-4}\n fi\n",
+  "wheels": [
+    {
+      "filename": "Brotli-1.1.0-0-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "1a11232a4f6caecb9508b7aaf998e8edcb3e866ff45db74a824aff8a6332f02f",
+      "bytes": 397766
+    },
+    {
+      "filename": "Brotli-1.1.0-0-cp313-cp313-android_24_x86_64.whl",
+      "sha256": "d96d763b8c17697355164b99ff77d1c1f4607e6e9e7008e83a1e4ff6647a5376",
+      "bytes": 415597
+    },
+    {
+      "filename": "attrs-26.1.0-py3-none-any.whl",
+      "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+      "bytes": 67548
+    },
+    {
+      "filename": "chaquopy_freetype-2.9.1-3-py3-none-android_24_arm64_v8a.whl",
+      "sha256": "041c6ee01e1cc05870d77c6bea267eaf0fa4ba50dd44bcac2fee2f2dee6c0f4a",
+      "bytes": 360829
+    },
+    {
+      "filename": "chaquopy_freetype-2.9.1-3-py3-none-android_24_x86_64.whl",
+      "sha256": "d67e4ee9236097add67757f3b419abdcbe08cb5ee189570ec84008a35e4b1f70",
+      "bytes": 378731
+    },
+    {
+      "filename": "chaquopy_libcxx-190000-0-py3-none-android_24_arm64_v8a.whl",
+      "sha256": "115ffb339717a75bee96c070ade6af381d62344ba2fc6ef0f43a7e3b7fb78002",
+      "bytes": 404185
+    },
+    {
+      "filename": "chaquopy_libcxx-190000-0-py3-none-android_24_x86_64.whl",
+      "sha256": "b4a5f8209b7303f71202e3f19f0227c584b3c143896237cf32958dc0440863f2",
+      "bytes": 420081
+    },
+    {
+      "filename": "chaquopy_libjpeg-1.5.3-2-py3-none-android_24_arm64_v8a.whl",
+      "sha256": "09b2dc33f2af6ab605829b3782677e8bee3ddc6317827c3cadedce0f0896de02",
+      "bytes": 138535
+    },
+    {
+      "filename": "chaquopy_libjpeg-1.5.3-2-py3-none-android_24_x86_64.whl",
+      "sha256": "24952bbcd6b421f58c8092cb7895673b1e4b0a7f1a5242056bc62114fc8c5bb0",
+      "bytes": 137730
+    },
+    {
+      "filename": "chaquopy_openblas-0.3.33-1-py3-none-android_24_arm64_v8a.whl",
+      "sha256": "d02df32e10092d611e759d9f73a2354e8e6f417aa26ffae83b262b4970b69599",
+      "bytes": 3964721
+    },
+    {
+      "filename": "chaquopy_openblas-0.3.33-1-py3-none-android_24_x86_64.whl",
+      "sha256": "0be532ba865407348cae631be8173a00de7332afec00293f8ede7dbd5981bf7a",
+      "bytes": 4600384
+    },
+    {
+      "filename": "fsspec-2026.9.0-py3-none-any.whl",
+      "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f",
+      "bytes": 221738
+    },
+    {
+      "filename": "lz4-4.3.3-0-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "6b3f87c1f996d39b926a181d3508e251a79df35d70619b3160511fb09b04b9e2",
+      "bytes": 175907
+    },
+    {
+      "filename": "lz4-4.3.3-0-cp313-cp313-android_24_x86_64.whl",
+      "sha256": "730074e6768b2ea376cfc36a5b43e89c5fcf31b1e7f521ca589fbb89924c7c52",
+      "bytes": 211787
+    },
+    {
+      "filename": "numpy-1.26.2-0-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "6819c275ec4889fd1a3d1a471720cc5478ed30b102af91e439f6bd2bd88dca8e",
+      "bytes": 5089547
+    },
+    {
+      "filename": "numpy-1.26.2-0-cp313-cp313-android_24_x86_64.whl",
+      "sha256": "f2adc092800290002cae4e24271e6f7a01aaee8c7edcfd29c20b7ac92907f14b",
+      "bytes": 6386914
+    },
+    {
+      "filename": "pillow-11.0.0-0-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "461c25eefad72fbaedbdc00a3070f0f6f5e211a1c14136a94b6dfba741be8b3c",
+      "bytes": 531167
+    },
+    {
+      "filename": "pillow-11.0.0-0-cp313-cp313-android_24_x86_64.whl",
+      "sha256": "6f4852fc5c2097ce35f6f20b2431a3b10d9136ae2580b9771c052e7df73784aa",
+      "bytes": 533748
+    }
+  ],
+  "audit_report": "/workspace/android-downloads/all-wheels-audit.json",
+  "audit_scope": "ELF architecture,16KB LOAD+RELRO,package version requirements,DT_NEEDED closure. Runtime imports are root emulator tests."
+}

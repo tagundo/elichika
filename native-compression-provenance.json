@@ -1,0 +1,60 @@
+{
+  "builder": "official chaquo/chaquopy server/pypi/build-wheel.py",
+  "builder_git_commit": "d5e07055a21db921a5da32b4c990372dab13239f",
+  "ndk": "28.2.13676358",
+  "python_target": "com.chaquo.python:target:3.13.9-0",
+  "network_during_build": false,
+  "host_build_environment": "/workspace/.android-toolchains/wheel-build-env",
+  "layout_audit": "/workspace/android-downloads/native-compression-audit.json",
+  "runtime_test": "pending root emulator execution",
+  "packages": [
+    {
+      "project": "lz4",
+      "version": "4.3.3",
+      "source_url": "https://files.pythonhosted.org/packages/a4/31/ec1259ca8ad11568abaf090a7da719616ca96b60d097ccc5799cd0ff599c/lz4-4.3.3.tar.gz",
+      "source_sha256": "01fe674ef2889dbb9899d8a67361e0c4a2c833af5aeb37dd505727cf5d2a131e",
+      "recipe": "/workspace/.android-native-build/chaquopy/server/pypi/packages/lz4/meta.yaml",
+      "host_build_pins": [
+        "setuptools==69.1.1",
+        "wheel==0.48.0"
+      ],
+      "source_patches": [],
+      "wheels": [
+        {
+          "file": "/workspace/android-wheelhouse/lz4-4.3.3-0-cp313-cp313-android_24_arm64_v8a.whl",
+          "sha256": "6b3f87c1f996d39b926a181d3508e251a79df35d70619b3160511fb09b04b9e2",
+          "build_log": "/workspace/android-downloads/build-lz4-arm64.log"
+        },
+        {
+          "file": "/workspace/android-wheelhouse/lz4-4.3.3-0-cp313-cp313-android_24_x86_64.whl",
+          "sha256": "730074e6768b2ea376cfc36a5b43e89c5fcf31b1e7f521ca589fbb89924c7c52",
+          "build_log": "/workspace/android-downloads/build-lz4-x86_64.log"
+        }
+      ]
+    },
+    {
+      "project": "Brotli",
+      "version": "1.1.0",
+      "source_url": "https://files.pythonhosted.org/packages/2f/c2/f9e977608bdf958650638c3f1e28f85a1b075f075ebbe77db8555463787b/Brotli-1.1.0.tar.gz",
+      "source_sha256": "81de08ac11bcb85841e440c13611c00b67d3bf82698314928d0b676362546724",
+      "recipe": "/workspace/.android-native-build/chaquopy/server/pypi/packages/brotli/meta.yaml",
+      "host_build_pins": [
+        "setuptools==69.1.1",
+        "wheel==0.48.0"
+      ],
+      "source_patches": [],
+      "wheels": [
+        {
+          "file": "/workspace/android-wheelhouse/Brotli-1.1.0-0-cp313-cp313-android_24_arm64_v8a.whl",
+          "sha256": "1a11232a4f6caecb9508b7aaf998e8edcb3e866ff45db74a824aff8a6332f02f",
+          "build_log": "/workspace/android-downloads/build-brotli-arm64.log"
+        },
+        {
+          "file": "/workspace/android-wheelhouse/Brotli-1.1.0-0-cp313-cp313-android_24_x86_64.whl",
+          "sha256": "d96d763b8c17697355164b99ff77d1c1f4607e6e9e7008e83a1e4ff6647a5376",
+          "build_log": "/workspace/android-downloads/build-brotli-x86_64.log"
+        }
+      ]
+    }
+  ]
+}
