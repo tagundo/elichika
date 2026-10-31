@@ -20,6 +20,11 @@ The UI (`MainActivity`) is a thin shell: a Start/Stop button, a Console tab with
 buttons generated from `assets/actions.json`, and three WebView tabs for the
 server WebUI and the two tool web UIs.
 
+The Console groups full-width action buttons in a vertically scrolling menu.
+Advanced actions and diagnostic logs start collapsed; expand them when needed.
+Expanded logs have their own bounded scroll area, with Share and Clear controls,
+and incoming log lines do not move the action menu.
+
 ## Maintainability: how to add features without touching Kotlin
 
 - **New dev/mod tool** → add an entry to `adminui/tools/registry.py` (this repo)
@@ -32,6 +37,18 @@ server WebUI and the two tool web UIs.
 
 The Kotlin layer only knows how to: run the binary, host WebViews, and dispatch
 `actions.json`. It contains no server or tool logic.
+
+The running-server notification includes a Stop action. Settings also offers an
+automatic stop timer in minutes (0 disables it); the service owns the timer, so
+resizing the app or entering split screen does not reset it. Changing the timer
+while running starts a new countdown.
+
+Split screen keeps the selected tab and WebView form state while the window
+resizes. Developer and modding tools remain available during a costume install
+while the game server is stopped. In Install Costume, enable automatic restart
+to stop the server before the batch and restart it after successful completion.
+An initially stopped server stays stopped. A failed installation or a manual
+Stop leaves it stopped so you can inspect the log before continuing.
 
 ## What CI assembles before `gradle assembleDebug`
 
@@ -55,8 +72,12 @@ The Go binary, the bundled data payload and the embedded Python sources are
 - `app/src/main/python/` — `adminui/` and the dev installer scripts (this repo),
   plus `webtools/` and the modding scripts from the **`modtools/` git submodule**
   (SIFAS-MODDING-HELPING-TOOLS), alongside the committed `elichika_launch.py`. CI
-  updates the submodule's tracked `claude/elichika-apk-build-wwkuu3` branch before building, so the app
-  ships the newest tools; elichika no longer vendors its own (stale) copies.
+  updates the submodule's tracked `claude/elichika-apk-build-wwkuu3` branch for
+  ordinary development builds. The `codex/console-tools-release` preflight branch,
+  tag builds and runs with `release_tag` keep the exact submodule commit recorded
+  in the server repository. Before publishing, commit
+  and push the modding-tool changes, then commit the updated `modtools` gitlink
+  in elichika so the release contains the reviewed tools.
 
 ## Building locally
 
@@ -69,6 +90,38 @@ CI does (see the workflow), then:
 cd android
 ./gradlew :app:assembleDebug
 ```
+
+To build from locally prepared Android wheels without contacting any Python
+package index, pass `-PchaquopyWheelhouse=/absolute/path/to/wheels`. The wheelhouse
+must contain each pinned dependency and its transitive Android dependencies.
+`-PbuildPython=/path/to/python3.13` selects the matching host interpreter.
+The default APK targets ARM64; `-PappAbi=x86_64` builds a native emulator variant
+when the corresponding Go/ASTC binaries and local native wheels are prepared.
+
+APK CI fetches the immutable dependency commit
+`39b2279db6cf111e2c353cd4880c58e3607837da` from this repository (published on
+`build/android-python-wheels`) and extracts its manifest and eight wheels into
+the runner's temporary directory. `android/ci/verify_python_wheelhouse.py` checks
+the manifest schema, Python/NDK/ABI, complete file set, sizes, SHA-256 hashes,
+wheel tags and native ELF architecture before Gradle runs. All APK and
+instrumentation builds use that verified wheelhouse with `--no-index`, so pip
+does not contact Python package indexes. FreeType and OpenBLAS continue to be
+rebuilt from their pinned sources by the consuming workflow.
+
+For x86_64 QA, the pinned `modernc.org/libc` Linux implementation uses legacy
+filesystem syscalls rejected by Android's app seccomp policy. Build its Go
+binary with the scoped overlay helper before selecting `-PappAbi=x86_64`:
+
+```sh
+python3 android/ci/build_go_x86_qa.py --ndk "$ANDROID_NDK_ROOT" \
+  --work /tmp/elichika-x86-qa \
+  --output android/app/src/main/jniLibs/x86_64/libelichika.so
+```
+
+Run this command from the repository root with Go on `PATH`. It preserves the
+dependency pins and module cache, replaces the relevant amd64 filesystem calls
+with their equivalent `*at` calls for this build, and records the patch, hashes
+and command in the work directory. The normal ARM64 build does not use it.
 
 The debug-signed APK at `app/build/outputs/apk/debug/app-debug.apk` is installable
 for personal sideloading. Every build shares one committed debug key

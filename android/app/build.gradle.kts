@@ -8,6 +8,12 @@ plugins {
     id("com.chaquo.python")
 }
 
+// The phone build remains ARM64. A native x86_64 build lets an x86 emulator
+// exercise the same server subprocess and Python tools without ARM translation.
+val appAbi = providers.gradleProperty("appAbi").orElse("arm64-v8a").get()
+require(appAbi in listOf("arm64-v8a", "x86_64")) { "Unsupported appAbi: $appAbi" }
+val wheelAbi = appAbi.replace('-', '_')
+
 android {
     namespace = "com.tagundo.elichika"
     compileSdk = 34
@@ -25,8 +31,8 @@ android {
         versionName = ((project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() })
             ?: "0.0.0-dev"
 
-        // arm64 only: matches modern devices and the SIFAS client; keeps the APK small.
-        ndk { abiFilters += listOf("arm64-v8a") }
+        // ARM64 by default; appAbi selects a native x86_64 emulator build for QA.
+        ndk { abiFilters += listOf(appAbi) }
     }
     testBuildType = "release"
 
@@ -99,15 +105,21 @@ chaquopy {
         // the corresponding native layout; older wheels may still be 4 KB-only.
         // APK CI inspects every ELF, including those inside Chaquopy asset ZIPs.
         version = "3.13"
+        providers.gradleProperty("buildPython").orNull?.let { buildPython(it) }
         pip {
+            // An explicit local wheelhouse keeps offline builds away from all
+            // package indexes, including Chaquopy's default extra index.
+            providers.gradleProperty("chaquopyWheelhouse").orNull?.let {
+                options("--no-index", "--find-links", file(it).absolutePath)
+            }
             // Pin the Android wheels exercised by APK layout and runtime checks.
             install("numpy==1.26.2")
         // C LAPACK avoids the old libgfortran RELRO layout which crashes on 16KB.
-        install("native-wheels/chaquopy_openblas-0.3.33-1-py3-none-android_24_arm64_v8a.whl")
+        install("native-wheels/chaquopy_openblas-0.3.33-1-py3-none-android_24_${wheelAbi}.whl")
             install("Pillow==11.0.0")
             // Pillow's upstream Chaquopy wheel still contains a 4 KB FreeType.
             // CI rebuilds the same 2.9.1 ABI and supplies this local wheel.
-            install("native-wheels/chaquopy_freetype-2.9.1-3-py3-none-android_24_arm64_v8a.whl")
+            install("native-wheels/chaquopy_freetype-2.9.1-3-py3-none-android_24_${wheelAbi}.whl")
             // UnityPy itself is vendored as pure-Python source by CI (pip install
             // --no-deps into src/main/python; see .github/workflows/android.yml).
             // Here we provide only its IMPORT-TIME dependencies. `import UnityPy`

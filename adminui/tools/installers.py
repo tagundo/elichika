@@ -23,7 +23,7 @@ import os
 import shutil
 import sys
 
-from adminui.serverctl import stop_server
+from adminui.serverctl import installation_server, stop_server
 from adminui.tools.common import capture_stdout, ensure_repo_on_path
 
 # Shared, user-visible drop folder (the in-app file picker copies imports here).
@@ -139,7 +139,7 @@ def _patched_listing(scan_dirs, only):
 
 def _reload(module_name):
     sys.modules.pop(module_name, None)
-    importlib.import_module(module_name)
+    return importlib.import_module(module_name)
 
 
 def _force_termux_mode():
@@ -190,15 +190,29 @@ def _install_one(job, key, spec, chosen, do_backup):
     restore_env = _force_termux_mode()
     real_input = builtins.input
     builtins.input = _Answers(do_backup)
+    module = None
     try:
         with capture_stdout(job):
-            _reload(spec["module"])
+            module = _reload(spec["module"])
     except SystemExit as exc:
-        job.log(f"(installer exited: {exc})")
+        if exc.code not in (None, 0):
+            raise RuntimeError(f"{key} installer failed for {chosen} (exit {exc.code})") from exc
+        job.log("(installer exited successfully)")
     finally:
         builtins.input = real_input
         restore_listing()
         restore_env()
+    if key == "costume":
+        # This legacy script catches some invalid archives and skips failed
+        # nested addons without raising. Its completion counters are the source
+        # of truth; a normal import alone does not prove installation succeeded.
+        if not getattr(module, "mod_installed", False):
+            raise RuntimeError(f"costume installer did not install {chosen}; check the log")
+        planned = len(getattr(module, "batch_proccess_list", []))
+        installed = getattr(module, "installed_count", planned)
+        if installed < planned:
+            raise RuntimeError(f"costume installer only installed {installed}/{planned} addons "
+                               f"from {chosen}; check the log")
     return True
 
 
@@ -216,26 +230,43 @@ def _run_installer(job, key, params):
         raise FileNotFoundError(
             f"{chosen_list[0]} not found in Download/sukusta/{folder} or …/addons.")
 
-    # Stop the server once for the whole batch, not per file.
-    if params.get("stop_server", True):
-        stop_server(job.log)
-
     want_backup = bool(params.get("backup", True))
+    want_restart = key == "costume" and bool(params.get("restart_server", False))
     total = len(chosen_list)
     done = 0
-    job.progress(0, total)
-    for i, chosen in enumerate(chosen_list):
-        # Back up only before the first install — one snapshot covers the batch.
-        if _install_one(job, key, spec, chosen, do_backup=(want_backup and i == 0)):
-            done += 1
-        job.progress(i + 1, total)
+    missing = []
+    cancelled = False
+    # Hold process control around the entire batch. The Android service confirms
+    # exit before DB writes and restarts only after every installer succeeds.
+    with installation_server(job.log, stop=params.get("stop_server", True),
+                             restart=want_restart) as server:
+        job.progress(0, total)
+        for i, chosen in enumerate(chosen_list):
+            if job.should_stop():
+                cancelled = True
+                break
+            # Back up before the first actual install — missing selections do
+            # not consume the batch's single backup.
+            if _install_one(job, key, spec, chosen, do_backup=(want_backup and done == 0)):
+                done += 1
+            else:
+                missing.append(chosen)
+            job.progress(i + 1, total)
+        cancelled = cancelled or job.should_stop()
+        server.restart_allowed = not cancelled
+        if missing and not cancelled:
+            raise FileNotFoundError(
+                f"{key}: installed {done}/{total} file(s); selected files not found in "
+                f"Download/sukusta/{folder} or …/addons: {', '.join(missing)}")
 
-    if total > 1:
-        return f"{key}: installed {done}/{total} file(s) — restart the server to apply."
-    if not done:
-        raise FileNotFoundError(
-            f"{chosen_list[0]} not found in Download/sukusta/{folder} or …/addons.")
-    return f"{key} install complete — restart the server to apply it."
+    if cancelled:
+        state = "; server kept stopped" if want_restart or params.get("stop_server", True) else ""
+        return f"{key}: cancelled after {done}/{total} file(s){state}."
+    if want_restart:
+        tail = "server restarted." if server.restarted else "server remains stopped."
+    else:
+        tail = "restart the server to apply."
+    return f"{key}: installed {done}/{total} file(s) — {tail}"
 
 
 def run_costume(job, params):

@@ -1063,6 +1063,7 @@ if not os.path.exists(encrypted_folder):
 batch_proccess_list = []
 is_nested = False
 mod_installed = False
+installed_count = 0  # import callers can distinguish a partially skipped nested zip
 
 # ---- 작업 폴더 초기화 ----
 temp_directory = "assets/package/.cache/"
@@ -1445,6 +1446,7 @@ for mass_addon in batch_proccess_list:
     print("deleting temp folder")
     shutil.rmtree(temp_directory, ignore_errors=True)
     mod_installed = True
+    installed_count += 1
 
 # ---- 마무리: CDN 주소 보정 및 임시 폴더 정리 ----
 if mod_installed:

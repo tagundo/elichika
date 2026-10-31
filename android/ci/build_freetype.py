@@ -26,13 +26,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("source", "ndk", "work", "wheel"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--abi", choices=("arm64-v8a", "x86_64"), default="arm64-v8a")
     args = parser.parse_args()
     revision = subprocess.check_output(["git", "-C", str(args.source), "rev-parse", "HEAD"], text=True).strip()
     assert revision == SOURCE_COMMIT, "FreeType source revision changed"
     subprocess.run(["git", "-C", str(args.source), "diff", "--quiet", "HEAD"], check=True)
     args.work.mkdir(parents=True, exist_ok=True)
     wrapper = args.work / "wrapper"
-    wrapper.mkdir()
+    wrapper.mkdir(exist_ok=True)
     # Preserve Chaquopy's unversioned SONAME while retaining FreeType 2.9.1's ABI.
     (wrapper / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.13)
 project(elichika_freetype C)
@@ -44,7 +45,7 @@ target_link_options(freetype PRIVATE "-Wl,-soname,libfreetype.so")
     run("cmake", "-S", wrapper, "-B", build,
         "-DFREETYPE_SOURCE=" + str(args.source.resolve()),
         "-DCMAKE_TOOLCHAIN_FILE=" + str(args.ndk.resolve() / "build/cmake/android.toolchain.cmake"),
-        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5", "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-24",
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5", "-DANDROID_ABI=" + args.abi, "-DANDROID_PLATFORM=android-24",
         "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=ON", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
         "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384,-z,common-page-size=16384",
         "-DFT_WITH_ZLIB=ON", "-DCMAKE_DISABLE_FIND_PACKAGE_BZip2=TRUE",
@@ -56,13 +57,15 @@ target_link_options(freetype PRIVATE "-Wl,-soname,libfreetype.so")
     dynamic = subprocess.check_output([str(toolchain / "llvm-readelf"), "-d", str(library)], text=True)
     assert "[libfreetype.so]" in dynamic, "FreeType SONAME differs from Pillow's dependency"
     data = library.read_bytes()
-    segments = elf_layout(data)
+    segments = elf_layout(data, expected_machine=183 if args.abi == "arm64-v8a" else 62)
     assert all(segment["compatible"] for segment in segments), "Rebuilt FreeType is not 16KB-compatible"
     files = {
         "chaquopy/lib/libfreetype.so": data,
         DIST_INFO + "/FTL.TXT": (args.source / "docs/FTL.TXT").read_bytes(),
         DIST_INFO + "/METADATA": b"Metadata-Version: 2.1\nName: chaquopy-freetype\nVersion: 2.9.1\nSummary: FreeType 2.9.1 with Android 16KB native alignment\nLicense: FreeType License\n\n",
-        DIST_INFO + "/WHEEL": b"Wheel-Version: 1.0\nGenerator: elichika-android-ci\nRoot-Is-Purelib: false\nBuild: 3\nTag: py3-none-android_24_arm64_v8a\n\n",
+        DIST_INFO + "/WHEEL": ("Wheel-Version: 1.0\nGenerator: elichika-android-ci\n"
+                              "Root-Is-Purelib: false\nBuild: 3\n"
+                              "Tag: py3-none-android_24_" + args.abi.replace("-", "_") + "\n\n").encode(),
     }
     record = io.StringIO()
     writer = csv.writer(record, lineterminator="\n")
@@ -78,7 +81,7 @@ target_link_options(freetype PRIVATE "-Wl,-soname,libfreetype.so")
             entry.compress_type = zipfile.ZIP_DEFLATED
             entry.external_attr = 0o644 << 16
             archive.writestr(entry, value)
-    print(json.dumps({"source_commit": revision, "version": "2.9.1", "wheel_build": 3,
+    print(json.dumps({"source_commit": revision, "version": "2.9.1", "wheel_build": 3, "abi": args.abi,
                       "native_sha256": hashlib.sha256(data).hexdigest(), "load_segments": segments}, indent=2))
 
 

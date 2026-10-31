@@ -22,7 +22,7 @@ on:
     # No paths filter: the APK bundles the whole Go server, so any source change
     # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
     # previously skipped a clientdb/ fix and shipped a stale APK.
-    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit, codex/first-lesson-rank-compat]
+    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit, codex/first-lesson-rank-compat, codex/console-tools-release]
     # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
     # to a GitHub Release. See android/README.md for the one-time secret setup.
     tags: ['v*']
@@ -47,11 +47,11 @@ jobs:
           fetch-depth: 0  # SQL validators compare with the historic Harasho baseline.
           submodules: recursive
 
-      - name: Update modtools submodule to latest
+      - name: Update modtools submodule to latest for development builds
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/codex/console-tools-release' && (github.event_name != 'workflow_dispatch' || github.event.inputs.release_tag == '') }}
         run: |
-          # Ship the latest modding tools: fetch the tracked branch in the submodule
-          # and check out its tip. (`git submodule update --remote` needs that ref
-          # fetched, which the shallow recursive checkout doesn't provide.)
+          # Ordinary development builds follow the tracked branch. Release-candidate
+          # branch, tag and release_tag builds retain the reviewed gitlink.
           BR="claude/elichika-apk-build-wwkuu3"
           git -C modtools fetch --depth 1 origin "$BR"
           git -C modtools checkout -q FETCH_HEAD
@@ -77,6 +77,20 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      - name: Prepare pinned offline Android Python wheels
+        id: python_wheels
+        env:
+          WHEELHOUSE_COMMIT: "39b2279db6cf111e2c353cd4880c58e3607837da"
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth 1 origin "$WHEELHOUSE_COMMIT"
+          test "$(git rev-parse FETCH_HEAD)" = "$WHEELHOUSE_COMMIT"
+          PREPARED="$RUNNER_TEMP/android-python-wheels"
+          mkdir -p "$PREPARED"
+          git archive "$WHEELHOUSE_COMMIT" manifest.json wheelhouse | tar -x -C "$PREPARED"
+          python3 android/ci/verify_python_wheelhouse.py "$PREPARED"
+          echo "path=$PREPARED/wheelhouse" >> "$GITHUB_OUTPUT"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -260,6 +274,7 @@ jobs:
         working-directory: android
         run: >-
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}"
           -PappVersionName="${{ steps.ver.outputs.name }}"
           -PappVersionCode="${{ steps.ver.outputs.code }}"
 
@@ -305,6 +320,7 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: >-
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}"
           -PappVersionName="${{ steps.ver.outputs.name }}"
           -PappVersionCode="${{ steps.ver.outputs.code }}"
 
@@ -351,6 +367,7 @@ jobs:
           mkdir -p app/src/androidTest/assets
           cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
           ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
+            -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
             -PappVersionName="${{ steps.ver.outputs.name }}" \
             -PappVersionCode="${{ steps.ver.outputs.code }}"
 

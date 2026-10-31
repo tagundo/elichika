@@ -10,6 +10,7 @@ one costume at a time. Output goes to the shared sukusta/extracted folder, which
 is exactly the Asset-editing tools' input root.
 """
 import os
+import re
 import sqlite3
 
 from adminui.tools.common import capture_stdout, ensure_repo_on_path
@@ -98,33 +99,6 @@ def character_choices():
             for cid, name in sorted(chars.items())]
 
 
-def _costume_meta(x, model_path, lang=None):
-    """(display_name, code) for a costume model, for the output filename: the
-    localized costume name plus its canonical chNNNN_coNNNN code (or id<n>
-    fallback). Empty strings when the costume can't be found."""
-    if not model_path:
-        return "", ""
-    md_path = x.find_masterdata(".")
-    if not md_path:
-        return "", ""
-    md = sqlite3.connect(md_path)
-    try:
-        row = md.execute("SELECT name FROM m_suit WHERE model_asset_path = ? LIMIT 1",
-                         (model_path,)).fetchone()
-        code = x.costume_code(md, model_path)
-    finally:
-        md.close()
-    rname = ""
-    if row:
-        dc = _dictionary_conn(x, lang=lang)
-        try:
-            rname = x.real_costume_name(dc, row[0]) or ""
-        finally:
-            if dc:
-                dc.close()
-    return rname, code
-
-
 def _newest_first_dir(md):
     """'ASC' or 'DESC': which way display_order must be sorted so the NEWEST
     costumes come first in THIS masterdata. Different data sources disagree on
@@ -165,12 +139,12 @@ def costume_options(params):
         direction = _newest_first_dir(md)
         if search:
             rows = md.execute(
-                "SELECT member_m_id, name, model_asset_path FROM m_suit "
+                "SELECT id, member_m_id, name, model_asset_path FROM m_suit "
                 "WHERE model_asset_path IS NOT NULL AND model_asset_path <> '' "
                 f"ORDER BY (name LIKE '%_cloned') DESC, display_order {direction}").fetchall()
         elif cid.isdigit():
             rows = md.execute(
-                "SELECT member_m_id, name, model_asset_path FROM m_suit "
+                "SELECT id, member_m_id, name, model_asset_path FROM m_suit "
                 "WHERE member_m_id = ? "
                 f"ORDER BY (name LIKE '%_cloned') DESC, display_order {direction}",
                 (int(cid),)).fetchall()
@@ -184,7 +158,7 @@ def costume_options(params):
     try:
         q = search.lower()
         out = []
-        for member_id, name_key, model_path in rows:
+        for suit_id, member_id, name_key, model_path in rows:
             if not model_path:
                 continue
             rname = x.real_costume_name(dc, name_key) or ""
@@ -192,29 +166,70 @@ def costume_options(params):
                 cname = full.get(member_id) or x.CHARACTERS.get(member_id, str(member_id))
                 if q not in rname.lower() and q not in cname.lower():
                     continue
-                out.append({"value": model_path, "label": f"{cname} — {rname}"})
+                label = f"{cname} — {rname}"
             else:
-                out.append({"value": model_path, "label": rname})
+                label = rname
+            # A cloned suit can share its model with another member. Keep the
+            # actual suit identity through selection and batch extraction.
+            out.append({"value": f"suit:{suit_id}", "label": label,
+                        "model_path": model_path})
         return out[:200]  # cap so a broad search stays a usable dropdown
     finally:
         if dc:
             dc.close()
 
 
-def _resolve_cid_and_label(x, base, model, cid, lang=None):
-    """(cid, filename label) for a model. Recovers the character id from
-    masterdata when it wasn't given (e.g. a search pick spanning characters)."""
-    if not cid.isdigit():
-        md_path = x.find_masterdata(base)
-        if md_path:
-            md = sqlite3.connect(md_path)
-            try:
-                r = md.execute("SELECT member_m_id FROM m_suit WHERE model_asset_path = ? "
-                               "LIMIT 1", (model,)).fetchone()
-                if r:
-                    cid = str(r[0])
-            finally:
-                md.close()
+def _resolve_pick(x, base, selection, cid, lang=None):
+    """(model, owner, filename) for a selected suit, or a legacy model path.
+
+    Suit IDs preserve cloned costumes' owner and title even when several suits
+    share one model. Raw model paths remain accepted for existing API callers;
+    only those legacy requests use the first matching suit as metadata.
+    """
+    suit_id = None
+    if selection.startswith("suit:"):
+        raw_id = selection.partition(":")[2]
+        if not raw_id.isdigit():
+            raise ValueError("Invalid costume selection; refresh the costume list.")
+        suit_id = int(raw_id)
+    md_path = x.find_masterdata(base)
+    row = None
+    if md_path:
+        md = sqlite3.connect(md_path)
+        try:
+            columns = "id, member_m_id, name, thumbnail_image_asset_path, model_asset_path"
+            if suit_id is not None:
+                row = md.execute(f"SELECT {columns} FROM m_suit WHERE id = ?",
+                                 (suit_id,)).fetchone()
+            else:
+                row = md.execute(f"SELECT {columns} FROM m_suit WHERE model_asset_path = ? "
+                                 "ORDER BY id LIMIT 1", (selection,)).fetchone()
+        finally:
+            md.close()
+    if suit_id is not None and row is None:
+        raise ValueError(f"Costume {suit_id} no longer exists; refresh the costume list.")
+    model = selection
+    rname, code = "", ""
+    if row:
+        resolved_id, owner, name_key, thumbnail, model = row
+        if not model:
+            raise ValueError(f"Costume {resolved_id} has no model asset to extract.")
+        if owner is None and suit_id is not None:
+            raise ValueError(f"Costume {resolved_id} has no owner in masterdata.")
+        if owner is not None:
+            cid = str(owner)
+        code = f"id{resolved_id}"
+        for path in (thumbnail, model):
+            match = re.search(r"ch\d+_co\d+", path or "", re.IGNORECASE)
+            if match:
+                code = match.group(0).lower()
+                break
+        dc = _dictionary_conn(x, base, lang=lang)
+        try:
+            rname = x.real_costume_name(dc, name_key) or ""
+        finally:
+            if dc:
+                dc.close()
     nm = _names()
     if cid.isdigit():
         cname = (nm.FIRST_NAMES.get(int(cid)) if nm else None) or x.CHARACTERS.get(int(cid), cid)
@@ -222,8 +237,13 @@ def _resolve_cid_and_label(x, base, model, cid, lang=None):
         cname = cid
     # Useful, complete filename: character · canonical chNNNN_coNNNN code · costume
     # name — not the cryptic internal model path (which stays in the manifest).
-    rname, code = _costume_meta(x, model, lang=lang)
-    return cid, x.sanitize("_".join(p for p in (str(cname), code, rname) if p))
+    return model, cid, x.sanitize("_".join(p for p in (str(cname), code, rname) if p))
+
+
+def _resolve_cid_and_label(x, base, model, cid, lang=None):
+    """Compatibility helper for callers resolving a raw model path."""
+    _, owner, label = _resolve_pick(x, base, model, cid, lang=lang)
+    return owner, label
 
 
 # ---------------------------------------------- one-step irochi recolour
@@ -320,7 +340,7 @@ def _composite_recolour(base_bundle, variant_bundle, out_path):
 
 
 def _extract_recolours(x, asset, resolver, out_dir, base_model_path, base_bundle,
-                       label, all_manifest):
+                       label, all_manifest, used_names=None):
     """Decrypt each of the costume's recolour dependencies and composite it onto
     the just-extracted base model -> recoloured model(s). Returns how many made."""
     import tempfile
@@ -340,8 +360,15 @@ def _extract_recolours(x, asset, resolver, out_dir, base_model_path, base_bundle
             if not var_bundle:
                 continue
             tag = "_recolour" if len(deps) == 1 else f"_c{i + 1}"
-            out_path = os.path.join(out_dir, x.category_dir("member_model"),
-                                    x.sanitize(label) + tag + ".unity")
+            stem = x.sanitize(label) + tag
+            relative = os.path.join(x.category_dir("member_model"), stem + ".unity")
+            if used_names is not None:
+                n = 1
+                while relative in used_names:
+                    relative = os.path.join(x.category_dir("member_model"), f"{stem}_{n}.unity")
+                    n += 1
+                used_names.add(relative)
+            out_path = os.path.join(out_dir, relative)
             if _composite_recolour(base_bundle, var_bundle, out_path) > 0:
                 made += 1
                 print(f"  ✓ {label}{tag}  (recoloured onto base model)")
@@ -391,21 +418,25 @@ def run_extract(job, params):
     # Work list: batch = every costume matched by the character/search filters;
     # otherwise the single chosen costume.
     if params.get("batch"):
-        models = [it["value"] for it in costume_options(params)]
-        if not models:
+        selections = [it["value"] for it in costume_options(params)]
+        if not selections:
             raise ValueError("No costumes matched — pick a character or type a search first.")
     else:
         chosen = params.get("costume")
         if isinstance(chosen, (list, tuple)):
-            models = [str(m).strip() for m in chosen if str(m).strip()]
+            selections = [str(m).strip() for m in chosen if str(m).strip()]
         elif chosen and str(chosen).strip():
-            models = [str(chosen).strip()]
+            selections = [str(chosen).strip()]
         else:
-            models = []
-        if not models:
+            selections = []
+        if not selections:
             raise ValueError("Pick a costume to extract (or turn on 'Extract all matches').")
 
     cid0 = (params.get("character") or "").strip()
+    # Resolve the complete batch before writing files. Stale selections fail
+    # clearly instead of being mistaken for asset paths or extracting a donor.
+    work = [_resolve_pick(x, base, pick, cid0, lang=params.get("lang"))
+            for pick in selections]
     out_dir = _extracted_dir()
     os.makedirs(out_dir, exist_ok=True)
     use_cdn = params.get("cdn", True)
@@ -413,15 +444,18 @@ def run_extract(job, params):
     pack_roots = x.build_pack_roots(base, None, game_found)
     cdn_base = x.DEFAULT_CDN_BASE if use_cdn else None
 
-    total = len(models)
+    total = len(work)
     done_ok = 0
     all_manifest = []
+    # Suit IDs are distinct even when repeated clones have identical labels.
+    # Preserve every selected suit and its companion files within this job.
+    used = set()
     job.progress(0, total)
     with capture_stdout(job):
         asset = sqlite3.connect(asset_db)
         resolver = x.PackResolver(pack_roots, x.COPIED_PACKS_DIR, cdn_base, asset)
         try:
-            for i, model in enumerate(models):
+            for i, (model, _cid, label) in enumerate(work):
                 job.progress(i, total)
                 mm = asset.execute(
                     "SELECT pack_name, head, size, key1, key2 FROM member_model "
@@ -430,8 +464,7 @@ def run_extract(job, params):
                     print(f"skip: {model} not in member_model in {os.path.basename(asset_db)}")
                     continue
                 pack_name, head, size, key1, key2 = mm
-                _cid, label = _resolve_cid_and_label(x, base, model, cid0, lang=params.get("lang"))
-                used, manifest = set(), []
+                manifest = []
                 ok = x.extract_one(resolver, out_dir, "member_model", model,
                                    pack_name, head, size, key1, key2, used, manifest,
                                    file_label=label)
@@ -440,6 +473,9 @@ def run_extract(job, params):
                 if ok:
                     done_ok += 1
                     print(f"✓ {label}")
+                    # Keep companion names associated with the actual base
+                    # output after extract_one has disambiguated a collision.
+                    output_label = os.path.splitext(os.path.basename(manifest[-1][7]))[0]
                     # If this costume has an irochi (colour-variant) recolour bundle,
                     # decrypt it too and composite it onto the base model we just
                     # wrote, so the picker's variant comes out ready-to-use.
@@ -448,7 +484,7 @@ def run_extract(job, params):
                         base_bundle = os.path.join(out_dir, manifest[-1][7])
                         try:
                             _extract_recolours(x, asset, resolver, out_dir, model,
-                                               base_bundle, label, all_manifest)
+                                               base_bundle, output_label, all_manifest, used)
                         except Exception as exc:  # noqa: BLE001
                             print(f"  ! colour variant skipped: {exc}")
                     # Rina (209): also extract the no-mask model (m_suit_view
@@ -460,10 +496,10 @@ def run_extract(job, params):
                             "SELECT pack_name, head, size, key1, key2 FROM member_model "
                             "WHERE asset_path = ?", (unmask,)).fetchone()
                         if umm:
-                            used_u, man_u = set(), []
+                            man_u = []
                             oku = x.extract_one(resolver, out_dir, "member_model", unmask,
                                                 umm[0], umm[1], umm[2], umm[3], umm[4],
-                                                used_u, man_u, file_label=label + "_nomask")
+                                                used, man_u, file_label=output_label + "_nomask")
                             if man_u:
                                 all_manifest.extend(man_u)
                             if oku:

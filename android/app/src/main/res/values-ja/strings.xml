@@ -111,4 +111,29 @@
     <string name="log_reset_accounts">[reset] アカウントをリセット中…（ログインは保持）</string>
     <string name="log_reset_done">[reset] 完了（コード %1$d）。サーバーを起動すると初期化後のデータが使われます。</string>
     <string name="log_reset_failed">[reset] 失敗: %1$s</string>
+
+    <!-- foreground controls and timer -->
+    <string name="save">保存</string>
+    <string name="settings_auto_stop">サーバー自動停止（分）</string>
+    <string name="auto_stop_hint">0で無効になります。1〜10080分を入力してください。サーバー起動時、または実行中に設定を変更した時から数えます。衣装のインストール中は一時停止し、再起動後に再び数えます。</string>
+    <string name="auto_stop_invalid">0〜10080の整数を入力してください。</string>
+    <string name="notif_auto_stop">サーバー起動または設定変更から%1$d分後に自動停止します。</string>
+    <string name="notif_installing">elichika コンテンツをインストール中</string>
+    <string name="notif_installing_text">ゲームサーバーは一時停止中です。停止ボタンでインストール後の自動再起動を取り消します。</string>
+    <string name="log_auto_stop">[server] 自動停止タイマーにより停止しました。</string>
+    <string name="log_install_busy">[server] 別の処理がゲームデータを変更中です。完了までお待ちください。</string>
+    <string name="log_install_restart_cancelled">[server] インストール後の自動再起動を取り消しました。</string>
+
+    <!-- compact console disclosures -->
+    <string name="show_advanced">詳細な操作を表示</string>
+    <string name="hide_advanced">詳細な操作を閉じる</string>
+    <string name="advanced_hint">サーバーデータの再構築・修復・初期化を行います。</string>
+    <string name="show_log">実行ログを表示</string>
+    <string name="hide_log">実行ログを閉じる</string>
+    <string name="log_hint">処理の結果を確認したり、問題を報告するときにログを共有できます。</string>
+
+    <!-- background preparation -->
+    <string name="notif_preparing_text">サーバーファイルとツールを準備中です。停止ボタンで待機中の起動を取り消します。</string>
+    <string name="log_setup_failed">[setup] サーバーの準備に失敗しました: %1$s</string>
+    <string name="notif_preparing">elichika サーバーを準備中</string>
 </resources>

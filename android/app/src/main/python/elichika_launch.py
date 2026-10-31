@@ -31,7 +31,7 @@ def _serve(module_name, port):
         print("[pyservers] %s crashed: %r" % (module_name, exc), flush=True)
 
 
-def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None):
+def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None, server_controller=None):
     """Start both web UIs once. server_cwd == the app files dir (also the elichika
     server's working dir, so adminui tools see the same serverdata.db/userdata.db).
     sukusta_dir is an app-writable external dir the modding tools read/write
@@ -41,6 +41,9 @@ def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None):
     shells out to for compressed (ASTC) texture import on-device."""
     global _started
     with _lock:
+        if server_controller is not None:
+            from adminui.serverctl import register_controller
+            register_controller(server_controller)
         if _started:
             return
         os.makedirs(server_cwd, exist_ok=True)

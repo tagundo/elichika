@@ -122,6 +122,9 @@ _TABLES = {
         "Files to install": "설치할 파일 (여러 개 선택)",
         "Back up the database first": "DB 먼저 백업",
         "Stop the elichika server first": "먼저 elichika 서버 중지",
+        "Automatically restart the server after installation": "설치 후 서버 자동 재시작",
+        "Android app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
+            "Android 앱: 실행 중인 서버를 먼저 중지하고 모든 파일 설치가 성공하면 다시 시작합니다. 꺼져 있던 서버는 켜지지 않습니다. 실패하거나 취소하면 중지 상태를 유지합니다.",
         "Backup to restore": "복원할 백업",
         "Source character": "원본 캐릭터",
         "Costume to clone": "복제할 코스튬",
@@ -222,6 +225,9 @@ _TABLES = {
         "Files to install": "インストールするファイル（複数選択）",
         "Back up the database first": "先にDBをバックアップ",
         "Stop the elichika server first": "先にelichikaサーバーを停止",
+        "Automatically restart the server after installation": "インストール後にサーバーを自動再起動",
+        "Android app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
+            "Androidアプリ: 実行中のサーバーを停止し、全ファイルのインストール成功後に再起動します。停止中のサーバーは起動しません。失敗やキャンセル時は停止したままにします。",
         "Backup to restore": "復元するバックアップ",
         "Source character": "元キャラ",
         "Costume to clone": "クローンする衣装",

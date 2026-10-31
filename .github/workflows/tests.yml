@@ -33,6 +33,17 @@ jobs:
       - name: Check the APK native-layout release gate
         run: python3 -m unittest discover -s tests -p test_android_native_audit.py -v
 
+      - name: Check costume extraction and installer lifecycle
+        run: |
+          python3 -m unittest discover -s tests -p test_assets_extract.py -v
+          python3 -m unittest discover -s tests -p test_admin_install_restart.py -v
+          python3 -m adminui.selftest
+
+      - name: Check model picker and mesh editing regressions
+        working-directory: modtools
+        run: |
+          python3 -m unittest discover -s tests -p test_mesh_editor.py -v
+
       - name: Run all Go tests with default vet checks
         run: python3 tests/run_go_tests.py
 

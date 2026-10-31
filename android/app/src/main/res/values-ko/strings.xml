@@ -71,13 +71,13 @@
     <string name="guide_body">1. 저장소 권한을 허용하세요(공유 Download/sukusta 폴더용).\n2. “서버 시작”을 누르세요.\n3. 게임 앱을 127.0.0.1:8080 으로 연결하세요(LL-hax 가이드 참고).\n4. (선택) 게임 파일 미리 받기 — “전체 게임파일 다운로드”(archive.org 전체) 또는 “누락분만 받기”(CDN). 권장이지 필수는 아닙니다.\n\nCDN 캐시: 켜져 있으면 없는 팩을 플레이 중 필요할 때 자동으로 받아 packs/ 에 저장하므로 미리 받지 않아도 됩니다. 이 방식으로 packs/ 를 채울 때는 게임 화면보다 elichika를 앞(포그라운드)에 띄워 두어야 다운로드가 끊기지 않고 끝납니다.\n\n탭: “서버 설정” / “유저 관리” = 서버 웹 UI · “서버 콘텐츠” = 개발 도구 · “에셋 편집” = 모딩 도구.\n\n폴더 (Download/sukusta): extracted = 복호화된 모델(편집 입력) · modded = 편집된 번들(편집 출력) · suit / live / card / livetimeline = 애드온 드롭 폴더 · sql = DB 패치 · packs = 게임 팩 캐시 · backup = DB 백업 · logs = elichika.log.</string>
 
     <!-- console controls -->
-    <string name="btn_share_log">로그 공유</string>
-    <string name="btn_clear_log">지우기</string>
+    <string name="btn_share_log">기록 공유</string>
+    <string name="btn_clear_log">기록 지우기</string>
     <string name="toast_import_ok">가져왔습니다. “서버 콘텐츠” 탭에서 설치하세요.</string>
 
     <!-- console action groups -->
     <string name="grp_downloads">게임 데이터</string>
-    <string name="grp_general">일반</string>
+    <string name="grp_general">설정 및 도움말</string>
     <string name="grp_pages">모드 페이지</string>
 
     <!-- server offline overlay (web tabs) -->
@@ -111,4 +111,29 @@
     <string name="log_reset_accounts">[reset] 계정 초기화 중… (로그인은 유지)</string>
     <string name="log_reset_done">[reset] 완료 (코드 %1$d). 서버를 시작하면 초기화된 데이터가 적용됩니다.</string>
     <string name="log_reset_failed">[reset] 실패: %1$s</string>
+
+    <!-- foreground controls and timer -->
+    <string name="save">저장</string>
+    <string name="settings_auto_stop">서버 자동 종료 (분)</string>
+    <string name="auto_stop_hint">0은 자동 종료를 끕니다. 1~10080분을 입력하세요. 서버 시작 시 또는 실행 중 이 설정을 변경한 시점부터 셉니다. 코스튬 설치 중에는 일시 중지되며 재실행 후 다시 셉니다.</string>
+    <string name="auto_stop_invalid">0~10080 사이의 정수를 입력하세요.</string>
+    <string name="notif_auto_stop">서버 시작 또는 설정 변경 후 %1$d분 뒤 자동 종료합니다.</string>
+    <string name="notif_installing">elichika 콘텐츠 설치 중</string>
+    <string name="notif_installing_text">게임 서버를 일시 중지했습니다. 중지를 누르면 설치 후 자동 재실행을 취소합니다.</string>
+    <string name="log_auto_stop">[서버] 자동 종료 시간이 되어 서버를 중지합니다.</string>
+    <string name="log_install_busy">[서버] 다른 작업이 게임 데이터를 수정 중입니다. 완료될 때까지 기다려 주세요.</string>
+    <string name="log_install_restart_cancelled">[서버] 설치 후 자동 재실행을 취소했습니다.</string>
+
+    <!-- compact console disclosures -->
+    <string name="show_advanced">고급 작업 펼치기</string>
+    <string name="hide_advanced">고급 작업 접기</string>
+    <string name="advanced_hint">서버 데이터 재빌드·복구·초기화 작업입니다.</string>
+    <string name="show_log">실행 기록 펼치기</string>
+    <string name="hide_log">실행 기록 접기</string>
+    <string name="log_hint">작업 결과를 확인하거나 문제를 제보할 때 실행 기록을 확인하고 공유할 수 있습니다.</string>
+
+    <!-- background preparation -->
+    <string name="notif_preparing_text">서버 파일과 도구를 준비 중입니다. 중지를 누르면 대기 중인 서버 시작을 취소합니다.</string>
+    <string name="log_setup_failed">[설정] 서버 준비 실패: %1$s</string>
+    <string name="notif_preparing">elichika 서버 준비 중</string>
 </resources>

@@ -16,11 +16,12 @@ import zipfile
 PAGE_SIZE = 16384
 
 
-def elf_layout(data):
+def elf_layout(data, *, expected_machine=183):
     if data[:6] != b"\x7fELF\x02\x01":
         raise ValueError("Expected little-endian ELF64")
-    if struct.unpack_from("<H", data, 18)[0] != 183:
-        raise ValueError("Expected AArch64")
+    if struct.unpack_from("<H", data, 18)[0] != expected_machine:
+        raise ValueError("Expected " + {183: "AArch64", 62: "x86-64"}.get(
+            expected_machine, f"ELF machine {expected_machine}"))
     phoff = struct.unpack_from("<Q", data, 32)[0]
     phsize, phcount = struct.unpack_from("<HH", data, 54)
     if phsize != 56 or phoff + phcount * phsize > len(data):

@@ -18,11 +18,12 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.widget.NestedScrollView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.material.tabs.TabLayout
@@ -43,16 +44,19 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var consolePanel: View
     private lateinit var logText: TextView
-    private lateinit var logScroll: ScrollView
+    private lateinit var logScroll: NestedScrollView
+    private lateinit var logPanel: View
+    private lateinit var logToggle: Button
+    private var logExpanded = false
+    private var logRefreshPending = false
+    private var advancedExpanded = false
 
     // Shown in a web tab when the server isn't running yet (instead of a raw
     // "webpage not available" browser error). Its button starts the server.
     private lateinit var offlineOverlay: View
     private var tabLayout: TabLayout? = null
     private var currentTab = 0
-    // True between "start" being tapped and the server reporting it is running, so
-    // the UI can show a "starting…" state instead of looking idle.
-    private var starting = false
+    // Bus also owns pending-start state, shared across resized/recreated windows.
 
     // Lazily-created WebViews for the three local web UIs.
     private val webViews = HashMap<String, WebView>()
@@ -60,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     // the server was up). Only those are reloaded on re-open, so re-opening a tab
     // with a running edit/extraction no longer wipes its live page state.
     private val webViewErrored = HashMap<String, Boolean>()
+    private val savedWebViews = HashMap<String, Bundle>()
 
     // File picker for addon zips: copies the chosen file into Download/sukusta/addons,
     // where the dev-tools installers pick it up.
@@ -102,8 +107,13 @@ class MainActivity : AppCompatActivity() {
         consolePanel = layoutInflater.inflate(R.layout.panel_console, content, false)
         logText = consolePanel.findViewById(R.id.log_text)
         logScroll = consolePanel.findViewById(R.id.log_scroll)
+        logPanel = consolePanel.findViewById(R.id.log_panel)
+        logToggle = consolePanel.findViewById(R.id.btn_toggle_log)
         consolePanel.findViewById<Button>(R.id.btn_share_log).setOnClickListener { shareLog() }
         consolePanel.findViewById<Button>(R.id.btn_clear_log).setOnClickListener { clearLog() }
+        logToggle.setOnClickListener { setLogExpanded(!logExpanded) }
+        setLogExpanded(savedInstanceState?.getBoolean("log_expanded", false) ?: false)
+        advancedExpanded = savedInstanceState?.getBoolean("advanced_expanded", false) ?: false
         content.addView(consolePanel)
 
         offlineOverlay = buildOfflineOverlay()
@@ -111,10 +121,12 @@ class MainActivity : AppCompatActivity() {
         offlineOverlay.visibility = View.GONE
 
         setupActions()
-        setupTabs()
+        savedInstanceState?.getBundle("web_views")?.let { states ->
+            states.keySet().forEach { url -> states.getBundle(url)?.let { savedWebViews[url] = it } }
+        }
+        setupTabs(savedInstanceState?.getInt("current_tab", 0) ?: 0)
         toggle.setOnClickListener { onToggle() }
 
-        logText.text = Bus.snapshot()
         updateRunning(Bus.serverRunning)
         requestNotifications()
         ensureStorageAccess()
@@ -187,57 +199,102 @@ class MainActivity : AppCompatActivity() {
         logText.text = ""
     }
 
-    override fun onResume() {
-        super.onResume()
-        Bus.logListener = { appendLog(it) }
-        Bus.stateListener = { updateRunning(it) }
-        logText.text = Bus.snapshot()
+    private fun setLogExpanded(expanded: Boolean) {
+        logExpanded = expanded
+        logPanel.visibility = if (expanded) View.VISIBLE else View.GONE
+        logToggle.setText(if (expanded) R.string.hide_log else R.string.show_log)
+        // Keep collecting logs in Bus while collapsed without rendering them in
+        // the menu. Opening the panel always shows the latest complete buffer.
+        logText.text = if (expanded) Bus.snapshot() else ""
+        if (expanded) logScroll.post { logScroll.scrollTo(0, logText.height) }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // A split-screen window may be paused while still visible. Keep its status
+        // and console subscribed until it is actually stopped.
+        Bus.addListener(this, { appendLog(it) }, { updateRunning(it) })
+        if (logExpanded) logText.text = Bus.snapshot()
         updateRunning(Bus.serverRunning)
         refreshCdnLabel()
     }
 
-    override fun onPause() {
-        super.onPause()
-        Bus.logListener = null
-        Bus.stateListener = null
+    override fun onStop() {
+        Bus.removeListener(this)
+        super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("current_tab", currentTab)
+        outState.putBoolean("log_expanded", logExpanded)
+        outState.putBoolean("advanced_expanded", advancedExpanded)
+        val states = Bundle()
+        savedWebViews.forEach { (url, state) -> states.putBundle(url, state) }
+        webViews.forEach { (url, webView) ->
+            states.putBundle(url, Bundle().also { webView.saveState(it) })
+        }
+        outState.putBundle("web_views", states)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onDestroy() {
+        Bus.removeListener(this)
+        webViews.values.forEach { webView ->
+            content.removeView(webView)
+            webView.destroy()
+        }
+        webViews.clear()
+        super.onDestroy()
     }
 
     private fun onToggle() {
-        if (Bus.serverRunning || starting) stopServerUi() else startServerUi()
+        if (Bus.serverRunning || Bus.serverStarting) stopServerUi() else startServerUi()
     }
 
     private fun startServerUi() {
-        if (Bus.serverRunning || starting) return
-        starting = true
+        if (Bus.serverRunning || Bus.serverStarting) return
+        Bus.setStarting(true)
         ServerService.start(this)
         updateRunning(false)  // reflect the "starting…" state immediately
     }
 
     private fun stopServerUi() {
-        starting = false
+        Bus.setStarting(false)
         ServerService.stop(this)
         updateRunning(false)
     }
 
     private fun updateRunning(running: Boolean) {
-        if (running) starting = false
-        toggle.setText(if (running || starting) R.string.stop_server else R.string.start_server)
+        toggle.setText(if (running || Bus.serverStarting) R.string.stop_server else R.string.start_server)
         statusText.text = when {
             running -> getString(R.string.status_running)
-            starting -> getString(R.string.status_starting)
+            Bus.serverStarting -> getString(R.string.status_starting)
             else -> getString(R.string.status_stopped)
         }
         // If a web tab is showing the offline overlay and the server just came up,
         // swap the overlay for the (now reachable) page.
-        if (running && tabs[currentTab].url != null && offlineOverlay.visibility == View.VISIBLE) {
+        if ((running || (currentTab >= 3 && PyServers.isStarted())) &&
+            tabs[currentTab].url != null && offlineOverlay.visibility == View.VISIBLE) {
             showTab(currentTab)
         }
     }
 
     private fun appendLog(line: String) {
-        logText.append(line)
-        if (!line.endsWith("\n")) logText.append("\n")
-        logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
+        if (logExpanded && !logRefreshPending) {
+            val follow = !logScroll.canScrollVertically(1)
+            logRefreshPending = true
+            logScroll.postOnAnimation {
+                logRefreshPending = false
+                if (logExpanded) {
+                    // Coalesce bursts and use the bounded buffer. A queued event
+                    // already included when opening the log is never duplicated.
+                    logText.text = Bus.snapshot()
+                    // scrollTo affects only the log viewport, preserving the
+                    // outer action list's position while new messages arrive.
+                    if (follow) logScroll.post { if (logExpanded) logScroll.scrollTo(0, logText.height) }
+                }
+            }
+        }
         if (line.contains("cdn_cache:")) refreshCdnLabel()
     }
 
@@ -264,7 +321,8 @@ class MainActivity : AppCompatActivity() {
     private fun showSettings() {
         val items = arrayOf(
             getString(R.string.settings_ui_language),
-            getString(R.string.settings_gamedata_language)
+            getString(R.string.settings_gamedata_language),
+            getString(R.string.settings_auto_stop)
         )
         AlertDialog.Builder(this)
             .setTitle(R.string.settings_title)
@@ -272,10 +330,38 @@ class MainActivity : AppCompatActivity() {
                 when (which) {
                     0 -> showUiLanguageSetting()
                     1 -> showGamedataLanguageSetting()
+                    2 -> showAutoStopSetting()
                 }
             }
             .setNegativeButton(R.string.close, null)
             .show()
+    }
+
+    private fun showAutoStopSetting() {
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setText(ServerSettings.autoStopMinutes(this@MainActivity).toString())
+            selectAll()
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.settings_auto_stop)
+            .setMessage(R.string.auto_stop_hint)
+            .setView(input)
+            .setPositiveButton(R.string.save, null)
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val minutes = input.text.toString().toIntOrNull()
+                if (minutes == null || minutes !in 0..ServerSettings.MAX_AUTO_STOP_MINUTES) {
+                    input.error = getString(R.string.auto_stop_invalid)
+                } else {
+                    ServerSettings.setAutoStopMinutes(this, minutes)
+                    dialog.dismiss()
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun showUiLanguageSetting() {
@@ -322,8 +408,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Read config.json's "locales" value (default = all four). */
     private fun readLocales(): String = try {
-        val txt = File(filesDir, "config.json").readText()
-        Regex("\"locales\"\\s*:\\s*\"([^\"]*)\"").find(txt)?.groupValues?.get(1) ?: "ja,en,zh,ko"
+        ServerConfig.gameDataLocales(this)
     } catch (e: Exception) {
         "ja,en,zh,ko"
     }
@@ -331,16 +416,7 @@ class MainActivity : AppCompatActivity() {
     /** Write config.json's "locales" value, replacing it or inserting it if absent. */
     private fun writeLocales(value: String) {
         try {
-            val cfg = File(filesDir, "config.json")
-            if (!cfg.exists()) return
-            val txt = cfg.readText()
-            val re = Regex("\"locales\"\\s*:\\s*\"[^\"]*\"")
-            val patched = when {
-                re.containsMatchIn(txt) -> re.replace(txt, "\"locales\":\"$value\"")
-                txt.contains("\"") -> txt.replaceFirst("{", "{\"locales\":\"$value\",")
-                else -> "{\"locales\":\"$value\"}"
-            }
-            if (patched != txt) cfg.writeText(patched)
+            ServerConfig.setGameDataLocales(this, value)
         } catch (_: Exception) {
         }
     }
@@ -358,17 +434,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun readCdnCache(): Boolean? = try {
-        val txt = File(filesDir, "config.json").readText()
-        when {
-            Regex("\"cdn_cache\"\\s*:\\s*true").containsMatchIn(txt) -> true
-            Regex("\"cdn_cache\"\\s*:\\s*false").containsMatchIn(txt) -> false
-            else -> null
-        }
+        ServerConfig.read(filesDir).opt("cdn_cache") as? Boolean
     } catch (e: Exception) {
         null
     }
 
-    private fun setupTabs() {
+    private fun setupTabs(selectedTab: Int) {
         val tl = findViewById<TabLayout>(R.id.tabs)
         tabLayout = tl
         tabs.forEach { tl.addTab(tl.newTab().setText(it.title)) }
@@ -377,7 +448,9 @@ class MainActivity : AppCompatActivity() {
             override fun onTabUnselected(tab: TabLayout.Tab) {}
             override fun onTabReselected(tab: TabLayout.Tab) {}
         })
-        showTab(0)
+        val index = selectedTab.coerceIn(tabs.indices)
+        tl.getTabAt(index)?.select()
+        showTab(index)
     }
 
     private fun showTab(index: Int) {
@@ -389,7 +462,8 @@ class MainActivity : AppCompatActivity() {
             tab.url == null -> consolePanel.visibility = View.VISIBLE
             // Server not up yet: show a friendly overlay with a Start button instead
             // of the WebView's raw "webpage not available" error page.
-            !Bus.serverRunning -> offlineOverlay.visibility = View.VISIBLE
+            !(if (index >= 3) PyServers.isStarted() else Bus.serverRunning) ->
+                offlineOverlay.visibility = View.VISIBLE
             else -> {
                 val existed = webViews.containsKey(tab.url)
                 val wv = webViewFor(tab.url)
@@ -433,7 +507,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 content.addView(this)
-                loadUrl(url)
+                val state = savedWebViews.remove(url)
+                if (state == null || restoreState(state) == null) loadUrl(url)
             }
         }
     }
@@ -445,11 +520,10 @@ class MainActivity : AppCompatActivity() {
         val advToggle = consolePanel.findViewById<Button>(R.id.btn_advanced)
         var hasAdvanced = false
         var lastGroup = ""
-        val gap = (6 * resources.displayMetrics.density).toInt()
         for (a in loadActions()) {
             val advanced = a.optBoolean("advanced", false)
-            // Insert a small caption when the (non-advanced) action group changes,
-            // so the scrolling button row reads "Game data · General · Mod pages".
+            // A short vertical section keeps actions discoverable without
+            // swiping sideways or squeezing their translated labels.
             if (!advanced) {
                 val g = a.optString("group")
                 if (g.isNotEmpty() && g != lastGroup) {
@@ -459,11 +533,15 @@ class MainActivity : AppCompatActivity() {
             }
             val b = Button(this)
             b.text = actionLabel(a)
+            b.tag = a.optString("id")
             b.isAllCaps = false
+            b.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            b.setPadding((16 * resources.displayMetrics.density).toInt(),
+                b.paddingTop, (16 * resources.displayMetrics.density).toInt(), b.paddingBottom)
             b.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = gap }
+            )
             b.setOnClickListener { runAction(a) }
             if (advanced) {
                 advRow.addView(b); hasAdvanced = true
@@ -474,9 +552,12 @@ class MainActivity : AppCompatActivity() {
         }
         refreshCdnLabel()
         if (hasAdvanced) {
-            advToggle.setOnClickListener {
-                advScroll.visibility = if (advScroll.visibility == View.GONE) View.VISIBLE else View.GONE
+            fun updateAdvanced() {
+                advScroll.visibility = if (advancedExpanded) View.VISIBLE else View.GONE
+                advToggle.setText(if (advancedExpanded) R.string.hide_advanced else R.string.show_advanced)
             }
+            updateAdvanced()
+            advToggle.setOnClickListener { advancedExpanded = !advancedExpanded; updateAdvanced() }
         } else {
             advToggle.visibility = View.GONE
         }
@@ -486,13 +567,14 @@ class MainActivity : AppCompatActivity() {
         val tv = TextView(this)
         val resId = resources.getIdentifier(resName, "string", packageName)
         tv.text = if (resId != 0) getString(resId) else resName
-        tv.textSize = 11f
-        tv.alpha = 0.6f
+        tv.textSize = 14f
+        tv.setTypeface(tv.typeface, android.graphics.Typeface.BOLD)
+        ViewCompat.setAccessibilityHeading(tv, true)
         val d = resources.displayMetrics.density
-        tv.setPadding((10 * d).toInt(), 0, (4 * d).toInt(), 0)
+        tv.setPadding((4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt(), (4 * d).toInt())
         tv.gravity = Gravity.CENTER_VERTICAL
         tv.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT)
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         return tv
     }
 

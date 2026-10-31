@@ -15,20 +15,21 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   background: var(--bg); color: var(--text); -webkit-text-size-adjust: 100%; }
 header { position: sticky; top: 0; z-index: 5; background: var(--panel);
   border-bottom: 1px solid var(--line); padding: 10px 14px;
-  display: flex; align-items: center; gap: 10px; }
-header h1 { font-size: 18px; margin: 0; }
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+header h1 { font-size: 18px; margin: 0; overflow-wrap: anywhere; }
 header #lang-select { margin-left: auto; background: var(--panel2); color: var(--text);
   border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; cursor: pointer; }
-main { padding: 14px; display: grid; grid-template-columns: 220px 1fr; gap: 14px; }
+main { padding: 14px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 14px; }
 .hint { color: var(--muted); }
 
-.tool-list { display: flex; flex-direction: column; gap: 8px; }
+.tool-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .tool-list button { text-align: left; background: var(--panel); color: var(--text);
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; font-size: 14px; }
 .tool-list button.active { border-color: var(--accent); background: var(--panel2); }
 .tool-list button small { display: block; color: var(--muted); margin-top: 3px; font-size: 12px; }
 
-.tool-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.tool-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px; min-width: 0; overflow-wrap: anywhere; }
 .tool-panel h2 { margin: 0 0 4px; font-size: 18px; }
 .tool-panel .desc { color: var(--muted); margin: 0 0 14px; }
 
@@ -46,7 +47,7 @@ main { padding: 14px; display: grid; grid-template-columns: 220px 1fr; gap: 14px
 .field input[type=text], .field select { width: 100%; padding: 9px 10px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 15px; }
 .dyn-row { display: flex; gap: 8px; }
-.dyn-row select { flex: 1; }
+.dyn-row select { flex: 1; min-width: 0; }
 /* multi-select file/costume pickers: many rows at once, so use a smaller, tighter
    row than the single-line 15px selects above. */
 .field select[multiple] { font-size: 13px; padding: 4px 6px; }
@@ -73,8 +74,7 @@ main { padding: 14px; display: grid; grid-template-columns: 220px 1fr; gap: 14px
 #log { margin: 0; padding: 10px 12px; overflow: auto; font-size: 13px; line-height: 1.45;
   white-space: pre-wrap; word-break: break-word; }
 
-@media (max-width: 720px) {
-  main { grid-template-columns: 1fr; }
-  .tool-list { flex-direction: row; overflow-x: auto; }
-  .tool-list button { min-width: 150px; }
+@media (max-width: 360px) {
+  main { padding: 8px; gap: 8px; }
+  .tool-panel { padding: 10px; }
 }
