@@ -38,7 +38,7 @@ object PyServers {
                 val py = Python.getInstance()
                 py.getModule("elichika_launch")
                     .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath,
-                        Lang.effective(ctx), astcenc)
+                        Lang.effective(ctx), astcenc, AndroidServerController(ctx.applicationContext))
                 started = true
                 Bus.log(ctx.getString(R.string.log_pyservers_started))
             } catch (e: Throwable) {
@@ -46,4 +46,6 @@ object PyServers {
             }
         }
     }
+
+    fun isStarted(): Boolean = started
 }

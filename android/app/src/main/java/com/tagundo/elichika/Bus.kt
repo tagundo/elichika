@@ -24,9 +24,21 @@ object Bus {
 
     @Volatile var serverRunning = false
         private set
+    @Volatile var serverStarting = false
+        private set
 
-    var logListener: ((String) -> Unit)? = null
-    var stateListener: ((Boolean) -> Unit)? = null
+    private data class Listener(val log: (String) -> Unit, val state: (Boolean) -> Unit)
+    private val listeners = LinkedHashMap<Any, Listener>()
+
+    // Each visible Activity owns its subscription. Pausing or closing one window
+    // must not remove another window's callbacks.
+    fun addListener(owner: Any, log: (String) -> Unit, state: (Boolean) -> Unit) {
+        listeners[owner] = Listener(log, state)
+    }
+
+    fun removeListener(owner: Any) {
+        listeners.remove(owner)
+    }
 
     fun snapshot(): String = synchronized(buffer) { buffer.toString() }
 
@@ -61,11 +73,18 @@ object Bus {
                 }
             }
         }
-        main.post { logListener?.invoke(line) }
+        main.post { listeners.values.toList().forEach { it.log(line) } }
     }
 
     fun setRunning(running: Boolean) {
         serverRunning = running
-        main.post { stateListener?.invoke(running) }
+        serverStarting = false
+        main.post { listeners.values.toList().forEach { it.state(running) } }
+    }
+
+    /** Includes queued starts while payload/Python preparation runs off-main. */
+    fun setStarting(starting: Boolean) {
+        serverStarting = starting
+        main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
     }
 }

@@ -47,13 +47,10 @@ object Lang {
 
     /** Point config.json's webui_language at the effective language. */
     fun writeWebuiLanguage(ctx: Context, configRoot: File) {
-        val cfg = File(configRoot, "config.json")
-        if (!cfg.exists()) return
         try {
-            val txt = cfg.readText()
-            val patched = Regex("\"webui_language\"\\s*:\\s*\"[a-z]{2}\"")
-                .replace(txt, "\"webui_language\":\"${effective(ctx)}\"")
-            if (patched != txt) cfg.writeText(patched)
+            ServerConfig.update(configRoot, create = false) {
+                it.put("webui_language", effective(ctx))
+            }
         } catch (_: Exception) {
         }
     }

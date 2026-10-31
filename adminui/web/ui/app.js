@@ -130,6 +130,16 @@ function renderField(field) {
     const input = el("input", { type: "checkbox", id });
     input.dataset.name = field.name; input.dataset.ftype = "checkbox";
     if (field.default) input.checked = true;
+    if (field.persist) {
+      const key = "elichika_setting_" + state.currentTool.id + "_" + field.name;
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved !== null) input.checked = saved === "true";
+      } catch {}
+      input.addEventListener("change", () => {
+        try { localStorage.setItem(key, String(input.checked)); } catch {}
+      });
+    }
     wrap.appendChild(el("label", {}, [input, document.createTextNode(" " + field.label)]));
   } else if (field.type === "select") {
     wrap.appendChild(el("label", { for: id, text: field.label }));

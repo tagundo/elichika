@@ -39,6 +39,14 @@ Options: `--host 0.0.0.0` (LAN), `--port 8772`, `--no-browser`.
   validates the ids, takes a backup first, and stages all writes so a failure
   leaves nothing committed.
 - These are **offline DB operations**: keep "Stop the elichika server first" on,
-  and restart the server afterwards.
+  and restart the server afterwards. Install Costume in the Android app also
+  offers automatic restart after a successful batch. This option stops the
+  server even if the separate stop checkbox is off, and restarts only a server
+  that was running beforehand. Failed installs and manual Stop keep it off.
+  The choice is remembered on that device; automatic restart requires the app's
+  server controller and is unavailable in the standalone PC / Termux panel.
+- Costume extraction names each model using its owner in masterdata, including
+  name-search results that span several characters. Models are saved under
+  `Download/sukusta/extracted/3d_model` for the modding tools.
 - Pure standard-library (no web framework). Same pattern as the SIFAS `webtools`
   panel.

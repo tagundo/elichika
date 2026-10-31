@@ -78,6 +78,13 @@ class NativeGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "AArch64"):
             audit.elf_layout(data)
 
+    def test_explicit_x86_64_build_check_preserves_page_validation(self):
+        data = elf(16384)
+        struct.pack_into("<H", data, 18, 62)
+        self.assertTrue(audit.elf_layout(data, expected_machine=62)[0]["compatible"])
+        struct.pack_into("<Q", data, 64 + 48, 4096)
+        self.assertFalse(audit.elf_layout(data, expected_machine=62)[0]["compatible"])
+
     def test_truncated_headers_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "program header"):
             audit.elf_layout(elf(16384)[:70])

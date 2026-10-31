@@ -33,6 +33,7 @@ object AssetInstaller {
     private val PRESERVE = listOf("config.json", "userdata.db")
 
     /** Returns the server working dir (== app files dir). */
+    @Synchronized
     fun install(ctx: Context, log: (String) -> Unit): File {
         val root = ctx.filesDir
         val am = ctx.assets
@@ -67,6 +68,7 @@ object AssetInstaller {
      * account wipe runs separately (reset_accounts CLI verb) so logins survive.
      * Must be called with the server stopped.
      */
+    @Synchronized
     fun resetServerData(ctx: Context, log: (String) -> Unit): File {
         val root = ctx.filesDir
         // Never delete anything unless the bundled payload is actually there to
@@ -98,6 +100,7 @@ object AssetInstaller {
      * source of truth, so this runs every server start.
      */
     private fun ensureLanguage(ctx: Context, root: File, log: (String) -> Unit) {
+        ServerConfig.applyGameDataLocales(ctx, root)
         Lang.writeWebuiLanguage(ctx, root)
     }
 
@@ -141,25 +144,21 @@ object AssetInstaller {
         val path = shared.absolutePath
         // the path the previous build wrote, so we can migrate it forward
         val oldAppPath = File(ctx.getExternalFilesDir(null), "packs").absolutePath
-        val cfg = File(root, "config.json")
-        if (cfg.exists()) {
-            val before = cfg.readText()
-            val after = before
-                .replace("\"cdn_cache_dir\":\"\"", "\"cdn_cache_dir\":\"$path\"")
-                .replace("\"cdn_cache_dir\":\"$SUKUSTA_DEFAULT\"", "\"cdn_cache_dir\":\"$path\"")
-                .replace("\"cdn_cache_dir\":\"$oldAppPath\"", "\"cdn_cache_dir\":\"$path\"")
-            if (after != before) {
-                cfg.writeText(after)
-                log(ctx.getString(R.string.log_setup_cdn_dir, path))
+        var created = false
+        var changed = false
+        ServerConfig.update(root) { config ->
+            created = !File(root, "config.json").exists()
+            if (created) config.put("cdn_cache", true)
+            val current = config.optString("cdn_cache_dir", "")
+            if (current.isEmpty() || current == SUKUSTA_DEFAULT || current == oldAppPath) {
+                config.put("cdn_cache_dir", path)
+                changed = current != path
             }
-        } else {
-            // server fills the remaining fields with defaults on first Load().
-            // cdn_cache defaults to true so a fresh install serves & caches packs
-            // out of the box; the console toggle can still turn it off afterwards
-            // (this branch only runs when there is no config.json yet, so it never
-            // overrides a choice the user made later).
-            cfg.writeText("{\"cdn_cache\":true,\"cdn_cache_dir\":\"$path\"}")
+        }
+        if (created) {
             log(ctx.getString(R.string.log_setup_config_created, path))
+        } else if (changed) {
+            log(ctx.getString(R.string.log_setup_cdn_dir, path))
         }
     }
 
@@ -173,15 +172,14 @@ object AssetInstaller {
         val marker = File(root, "cdn_default_on_applied")
         if (marker.exists()) return
         try {
-            val cfg = File(root, "config.json")
-            if (cfg.exists()) {
-                val before = cfg.readText()
-                val after = Regex("\"cdn_cache\"\\s*:\\s*false").replace(before, "\"cdn_cache\":true")
-                if (after != before) {
-                    cfg.writeText(after)
-                    log(ctx.getString(R.string.log_setup_cdn_on))
+            var enabled = false
+            ServerConfig.update(root, create = false) { config ->
+                if (config.opt("cdn_cache") == false) {
+                    config.put("cdn_cache", true)
+                    enabled = true
                 }
             }
+            if (enabled) log(ctx.getString(R.string.log_setup_cdn_on))
             marker.writeText("1")
         } catch (_: Exception) {
         }
@@ -206,6 +204,18 @@ object AssetInstaller {
                 copyDir(ctx, childAsset, destRoot, refreshStatic, log)
             } else {
                 val dest = File(destRoot, rel)
+                if (rel == "config.json") {
+                    // A bundled default is small, but it still participates in
+                    // the same transaction as settings changed during setup.
+                    val defaultConfig = am.open(childAsset).bufferedReader().use { it.readText() }
+                    ServerConfig.update(destRoot) { config ->
+                        if (!dest.exists()) {
+                            val bundled = org.json.JSONObject(defaultConfig)
+                            bundled.keys().forEach { key -> config.put(key, bundled.get(key)) }
+                        }
+                    }
+                    continue
+                }
                 if (shouldWrite(rel, dest, refreshStatic)) {
                     dest.parentFile?.mkdirs()
                     am.open(childAsset).use { input ->

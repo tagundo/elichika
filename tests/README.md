@@ -60,3 +60,16 @@ filenames with spaces, Unicode, `#` and `%`. URI parser tests cover drive-letter
 UNC and extended paths on every host; a live remote UNC share is not required.
 The lesson loader regressions check that incompatible optional animation schemas
 and invalid rows preserve custom data and leave all recovered reward pools usable.
+
+Costume extraction and managed-server installation regressions use disposable
+fixtures and Python's standard library:
+
+```sh
+python3 -m unittest discover -s tests -p test_assets_extract.py -v
+python3 -m unittest discover -s tests -p test_admin_install_restart.py -v
+python3 -m adminui.selftest
+```
+
+The extraction fixtures exercise real pack decryption and model filenames for
+search results spanning several owners. Installer tests cover batch stop/restart,
+an initially stopped server, failed or cancelled installs, and manual Stop.

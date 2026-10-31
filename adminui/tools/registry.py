@@ -23,6 +23,10 @@ from adminui.tools.restore import restore_options, run_restore
 _BACKUP = {"name": "backup", "label": "Back up the database first", "type": "checkbox", "default": True}
 _STOP = {"name": "stop_server", "label": "Stop the elichika server first", "type": "checkbox",
          "default": True, "help": "Recommended: these tools modify the server's database files."}
+_RESTART = {"name": "restart_server", "label": "Automatically restart the server after installation",
+            "type": "checkbox", "default": False, "persist": True,
+            "help": "Android app: stop a running server before installing and restart it after all files "
+                    "succeed. A stopped server stays off. Failed or cancelled installs stay stopped."}
 
 # Character pickers — built once from each tool's name table so a beginner can
 # choose by name instead of memorising numeric IDs.
@@ -153,7 +157,7 @@ TOOLS = [
                         "Download/sukusta/suit (or use the file picker), then pick it."),
         "run": run_costume,
         "options": options_for("costume"),
-        "fields": [_addon("suit", multi=True), _BACKUP, _STOP],
+        "fields": [_addon("suit", multi=True), _BACKUP, _STOP, _RESTART],
     },
     {
         "id": "install_live",

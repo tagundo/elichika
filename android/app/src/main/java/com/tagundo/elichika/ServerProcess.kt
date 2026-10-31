@@ -3,6 +3,7 @@ package com.tagundo.elichika
 import android.content.Context
 import java.io.BufferedReader
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * Launches the bundled elichika Go binary. It ships as jniLibs/arm64-v8a/
@@ -33,7 +34,9 @@ class ServerProcess(private val ctx: Context) {
     fun runOnce(args: List<String>, workDir: File, onExit: (Int) -> Unit): Boolean =
         start(args, workDir, onExit)
 
+    @Synchronized
     private fun start(args: List<String>, workDir: File, onExit: (Int) -> Unit): Boolean {
+        if (isAlive()) return false
         val bin = binary()
         if (!bin.exists()) {
             Bus.log(ctx.getString(R.string.log_error_missing_binary, bin.absolutePath))
@@ -61,16 +64,26 @@ class ServerProcess(private val ctx: Context) {
             } catch (_: Exception) {
             }
             val code = try { p.waitFor() } catch (_: InterruptedException) { -1 }
-            if (proc === p) proc = null
+            synchronized(this) { if (proc === p) proc = null }
             onExit(code)
         }.start()
         return true
     }
 
-    fun stop() {
-        proc?.let {
-            it.destroy()
-            proc = null
+    @Synchronized
+    fun stop(): Process? {
+        val p = proc ?: return null
+        p.destroy()
+        return p
+    }
+
+    companion object {
+        /** Call on a worker thread before writing DBs or starting a replacement. */
+        fun awaitStopped(process: Process?): Boolean {
+            if (process == null) return true
+            if (process.waitFor(10, TimeUnit.SECONDS)) return true
+            process.destroyForcibly()
+            return process.waitFor(5, TimeUnit.SECONDS)
         }
     }
 

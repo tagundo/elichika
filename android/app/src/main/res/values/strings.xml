@@ -112,4 +112,29 @@
     <string name="log_reset_accounts">[reset] resetting accounts (logins are kept)…</string>
     <string name="log_reset_done">[reset] finished (code %1$d). Start the server to use the fresh data.</string>
     <string name="log_reset_failed">[reset] failed: %1$s</string>
+
+    <!-- foreground controls and timer -->
+    <string name="save">Save</string>
+    <string name="settings_auto_stop">Automatic server stop (minutes)</string>
+    <string name="auto_stop_hint">0 disables the timer. Enter 1–10080 minutes. The countdown starts when the server starts, or when this setting changes while running. Costume installation pauses the timer; restarting starts a fresh countdown.</string>
+    <string name="auto_stop_invalid">Enter a whole number from 0 to 10080.</string>
+    <string name="notif_auto_stop">Automatically stops %1$d minutes after server start or timer change.</string>
+    <string name="notif_installing">elichika: installing content</string>
+    <string name="notif_installing_text">The game server is paused. Stop cancels automatic restart after installation.</string>
+    <string name="log_auto_stop">[server] automatic stop timer expired.</string>
+    <string name="log_install_busy">[server] another operation is modifying game data. Wait until it finishes.</string>
+    <string name="log_install_restart_cancelled">[server] automatic restart after installation cancelled.</string>
+
+    <!-- compact console disclosures -->
+    <string name="show_advanced">Show advanced actions</string>
+    <string name="hide_advanced">Hide advanced actions</string>
+    <string name="advanced_hint">Rebuild, repair, or reset server data.</string>
+    <string name="show_log">Show activity log</string>
+    <string name="hide_log">Hide activity log</string>
+    <string name="log_hint">Open or share this log when you need to check a task or report a problem.</string>
+
+    <!-- background preparation -->
+    <string name="notif_preparing_text">Preparing server files and tools. Stop cancels the pending server start.</string>
+    <string name="log_setup_failed">[setup] preparation failed: %1$s</string>
+    <string name="notif_preparing">elichika: preparing server</string>
 </resources>
