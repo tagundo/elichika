@@ -55,6 +55,8 @@ class MainActivity : AppCompatActivity() {
     // Shown in a web tab when the server isn't running yet (instead of a raw
     // "webpage not available" browser error). Its button starts the server.
     private lateinit var offlineOverlay: View
+    private lateinit var offlineMessage: TextView
+    private lateinit var offlineAction: Button
     private var tabLayout: TabLayout? = null
     private var currentTab = 0
     // Bus also owns pending-start state, shared across resized/recreated windows.
@@ -157,16 +159,40 @@ class MainActivity : AppCompatActivity() {
             val pad = (24 * resources.displayMetrics.density).toInt()
             setPadding(pad, pad, pad, pad)
         }
-        ll.addView(TextView(this).apply {
+        offlineMessage = TextView(this).apply {
             text = getString(R.string.offline_msg)
             gravity = Gravity.CENTER
-        })
-        ll.addView(Button(this).apply {
+        }
+        ll.addView(offlineMessage)
+        offlineAction = Button(this).apply {
             text = getString(R.string.start_server)
             isAllCaps = false
             setOnClickListener { startServerUi() }
-        })
+        }
+        ll.addView(offlineAction)
         return ll
+    }
+
+    private fun updateOfflineOverlay(forTools: Boolean) {
+        if (!forTools) {
+            offlineMessage.setText(R.string.offline_msg)
+            offlineAction.setText(R.string.start_server)
+            offlineAction.isEnabled = true
+            offlineAction.setOnClickListener { startServerUi() }
+            return
+        }
+        val preparing = PyServers.isPreparing()
+        val failed = PyServers.hasPreparationError()
+        offlineMessage.setText(if (failed && !preparing) R.string.tools_prepare_failed else R.string.tools_preparing)
+        offlineAction.setText(if (failed) R.string.tools_retry else R.string.tools_open)
+        offlineAction.isEnabled = !preparing
+        offlineAction.setOnClickListener { PyServers.prepareAsync(applicationContext) }
+    }
+
+    private fun updateToolsState() {
+        if (currentTab >= 3 && offlineOverlay.visibility == View.VISIBLE) {
+            if (PyServers.isStarted()) showTab(currentTab) else updateOfflineOverlay(true)
+        }
     }
 
     private fun showGuideOnce() {
@@ -214,9 +240,10 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         // A split-screen window may be paused while still visible. Keep its status
         // and console subscribed until it is actually stopped.
-        Bus.addListener(this, { appendLog(it) }, { updateRunning(it) })
+        Bus.addListener(this, { appendLog(it) }, { updateRunning(it) }, { updateToolsState() })
         if (logExpanded) logText.text = Bus.snapshot()
         updateRunning(Bus.serverRunning)
+        updateToolsState()
         refreshCdnLabel()
     }
 
@@ -461,10 +488,15 @@ class MainActivity : AppCompatActivity() {
         for (i in 0 until content.childCount) content.getChildAt(i).visibility = View.GONE
         when {
             tab.url == null -> consolePanel.visibility = View.VISIBLE
-            // Server not up yet: show a friendly overlay with a Start button instead
-            // of the WebView's raw "webpage not available" error page.
-            !(if (index >= 3) PyServers.isStarted() else Bus.serverRunning) ->
+            // The editors prepare independently. Server/account pages retain
+            // their Start server action while the local tools show preparation.
+            !(if (index >= 3) PyServers.isStarted() else Bus.serverRunning) -> {
                 offlineOverlay.visibility = View.VISIBLE
+                if (index >= 3 && !PyServers.isPreparing() && !PyServers.hasPreparationError()) {
+                    PyServers.prepareAsync(applicationContext)
+                }
+                updateOfflineOverlay(index >= 3)
+            }
             else -> {
                 val existed = webViews.containsKey(tab.url)
                 val wv = webViewFor(tab.url)

@@ -27,13 +27,18 @@ object Bus {
     @Volatile var serverStarting = false
         private set
 
-    private data class Listener(val log: (String) -> Unit, val state: (Boolean) -> Unit)
+    private data class Listener(
+        val log: (String) -> Unit,
+        val state: (Boolean) -> Unit,
+        val toolsState: () -> Unit,
+    )
     private val listeners = LinkedHashMap<Any, Listener>()
 
     // Each visible Activity owns its subscription. Pausing or closing one window
     // must not remove another window's callbacks.
-    fun addListener(owner: Any, log: (String) -> Unit, state: (Boolean) -> Unit) {
-        listeners[owner] = Listener(log, state)
+    fun addListener(owner: Any, log: (String) -> Unit, state: (Boolean) -> Unit,
+                    toolsState: () -> Unit = {}) {
+        listeners[owner] = Listener(log, state, toolsState)
     }
 
     fun removeListener(owner: Any) {
@@ -86,5 +91,10 @@ object Bus {
     fun setStarting(starting: Boolean) {
         serverStarting = starting
         main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
+    }
+
+    /** Local editing tools may become ready while the game server stays stopped. */
+    fun toolsStateChanged() {
+        main.post { listeners.values.toList().forEach { it.toolsState() } }
     }
 }

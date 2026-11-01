@@ -4,7 +4,8 @@ Called from PyServers.kt. The adminui (elichika dev tools) and webtools (SIFAS
 modding tools) packages are pure-stdlib http.server apps; CI copies them into
 this same python source dir (see .github/workflows/android.yml). We only set up
 the working directory + a couple of env vars the tools expect, then run each
-server's blocking serve() on a daemon thread.
+server's blocking loop on a daemon thread. Bind both listening sockets before
+reporting readiness so a freshly opened WebView cannot race server startup.
 
 Keeping all "what each tool does" logic in those Python packages (not in Kotlin)
 is deliberate: adding or changing a tool is a Python-only change that shows up in
@@ -13,22 +14,38 @@ the WebView with no app rebuild logic to touch. See android/README.md.
 import os
 import sys
 import threading
+import importlib
+import mimetypes
+from http.server import ThreadingHTTPServer
 
 ADMIN_PORT = 8772   # elichika dev tools  (adminui)
 MOD_PORT = 8770     # SIFAS modding tools (webtools)
 
 _started = False
 _lock = threading.Lock()
+_servers = {}
 
 
-def _serve(module_name, port):
-    # Import lazily so an import error in one tool package does not stop the other.
-    import importlib
-    mod = importlib.import_module(module_name)
+def _serve(module_name, server):
     try:
-        mod.serve("127.0.0.1", port)
+        server.serve_forever()
     except Exception as exc:  # keep the thread's failure visible in logcat
         print("[pyservers] %s crashed: %r" % (module_name, exc), flush=True)
+    finally:
+        server.server_close()
+
+
+def _warm_model_readers():
+    # UnityPy generates its reader classes on first import. Do this before the
+    # WebView starts drawing a loading animation, while this worker owns startup.
+    # Database-only tools can still open if optional model packages are missing.
+    try:
+        print("[pyservers] preparing model readers", flush=True)
+        importlib.import_module("numpy")
+        importlib.import_module("UnityPy")
+        print("[pyservers] model readers ready", flush=True)
+    except Exception as error:
+        print("[pyservers] model readers unavailable: %r" % (error,), flush=True)
 
 
 def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None, server_controller=None):
@@ -61,10 +78,32 @@ def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None, server_controlle
         if astcenc_bin:
             os.environ["ASTCENC_BIN"] = astcenc_bin
 
-        for name, port in (("adminui.server", ADMIN_PORT), ("webtools.server", MOD_PORT)):
-            t = threading.Thread(target=_serve, args=(name, port), name=name, daemon=True)
-            t.start()
-            print("[pyservers] started %s on 127.0.0.1:%d" % (name, port), flush=True)
+        _warm_model_readers()
+        servers, threads = {}, []
+        try:
+            mimetypes.add_type("application/javascript", ".js")
+            for name, port in (("adminui.server", ADMIN_PORT), ("webtools.server", MOD_PORT)):
+                module = importlib.import_module(name)
+                server = ThreadingHTTPServer(("127.0.0.1", port), module.Handler)
+                server.daemon_threads = True
+                servers[name] = server
+            # HTTPServer's constructor has already bound and listened. Clients
+            # can connect immediately, even before the worker gets its CPU slice.
+            for name, server in servers.items():
+                thread = threading.Thread(target=_serve, args=(name, server), name=name, daemon=True)
+                thread.start()
+                threads.append((thread, server))
+                print("[pyservers] started %s on 127.0.0.1:%d" %
+                      (name, server.server_address[1]), flush=True)
+        except Exception:
+            # A failed bind must leave a clean retry, not half a running server.
+            for thread, server in threads:
+                server.shutdown()
+                thread.join(timeout=2)
+            for server in servers.values():
+                server.server_close()
+            raise
+        _servers.update(servers)
         _started = True
 
 

@@ -82,6 +82,10 @@
 
     <!-- server offline overlay (web tabs) -->
     <string name="offline_msg">サーバーが実行されていません。このページを使うにはサーバーを開始してください。</string>
+    <string name="tools_preparing">編集ツールを準備しています…</string>
+    <string name="tools_prepare_failed">ツールを準備できませんでした。もう一度お試しください。</string>
+    <string name="tools_open">ツールを開く</string>
+    <string name="tools_retry">再試行</string>
 
     <!-- localized console log lines -->
     <string name="log_server_exited">[server] 終了 (コード %1$d)</string>

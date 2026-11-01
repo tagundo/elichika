@@ -83,6 +83,10 @@
 
     <!-- server offline overlay (web tabs) -->
     <string name="offline_msg">The server is not running. Start it to use this page.</string>
+    <string name="tools_preparing">Preparing editing tools…</string>
+    <string name="tools_prepare_failed">Could not prepare the tools. Try again.</string>
+    <string name="tools_open">Open tools</string>
+    <string name="tools_retry">Retry</string>
 
     <!-- localized console log lines -->
     <string name="log_server_exited">[server] exited (code %1$d)</string>

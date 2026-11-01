@@ -82,6 +82,10 @@
 
     <!-- server offline overlay (web tabs) -->
     <string name="offline_msg">서버가 실행 중이 아닙니다. 이 페이지를 사용하려면 서버를 시작하세요.</string>
+    <string name="tools_preparing">편집 도구를 준비하고 있습니다…</string>
+    <string name="tools_prepare_failed">도구를 준비하지 못했습니다. 다시 시도해 주세요.</string>
+    <string name="tools_open">도구 열기</string>
+    <string name="tools_retry">다시 시도</string>
 
     <!-- localized console log lines -->
     <string name="log_server_exited">[server] 종료됨 (코드 %1$d)</string>
