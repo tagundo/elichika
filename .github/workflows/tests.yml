@@ -39,10 +39,12 @@ jobs:
           python3 -m unittest discover -s tests -p test_admin_install_restart.py -v
           python3 -m adminui.selftest
 
-      - name: Check model picker and mesh editing regressions
+      - name: Check model picker, mesh editing and texture preview regressions
         working-directory: modtools
         run: |
+          python3 -m pip install "numpy==1.26.2" "Pillow==11.0.0"
           python3 -m unittest discover -s tests -p test_mesh_editor.py -v
+          python3 -m unittest discover -s tests -p test_gallery_decode.py -v
 
       - name: Run all Go tests with default vet checks
         run: python3 tests/run_go_tests.py

@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -520,33 +521,41 @@ class MainActivity : AppCompatActivity() {
         val advToggle = consolePanel.findViewById<Button>(R.id.btn_advanced)
         var hasAdvanced = false
         var lastGroup = ""
+        var normalGrid: ConsoleActionGrid? = null
+        val advancedGrid = actionGrid(advRow)
         for (a in loadActions()) {
             val advanced = a.optBoolean("advanced", false)
-            // A short vertical section keeps actions discoverable without
-            // swiping sideways or squeezing their translated labels.
+            // Headers remain separate while each group's existing buttons reflow
+            // from one to three columns as the actual content width changes.
             if (!advanced) {
                 val g = a.optString("group")
-                if (g.isNotEmpty() && g != lastGroup) {
+                if (normalGrid == null || g != lastGroup) {
                     lastGroup = g
-                    normalRow.addView(groupHeader(g))
+                    if (g.isNotEmpty()) normalRow.addView(groupHeader(g))
+                    normalGrid = actionGrid(normalRow)
                 }
             }
             val b = Button(this)
             b.text = actionLabel(a)
             b.tag = a.optString("id")
             b.isAllCaps = false
+            b.setSingleLine(false)
+            b.maxLines = Int.MAX_VALUE
+            b.ellipsize = null
+            b.minimumHeight = maxOf(b.minimumHeight,
+                resources.getDimensionPixelSize(R.dimen.console_action_min_touch_height))
             b.gravity = Gravity.START or Gravity.CENTER_VERTICAL
             b.setPadding((16 * resources.displayMetrics.density).toInt(),
                 b.paddingTop, (16 * resources.displayMetrics.density).toInt(), b.paddingBottom)
-            b.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+            b.layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
             b.setOnClickListener { runAction(a) }
             if (advanced) {
-                advRow.addView(b); hasAdvanced = true
+                advancedGrid.addView(b); hasAdvanced = true
             } else {
-                normalRow.addView(b)
+                normalGrid!!.addView(b)
             }
             if (a.optString("id") == "cdn_cache_toggle") cdnButton = b
         }
@@ -562,6 +571,12 @@ class MainActivity : AppCompatActivity() {
             advToggle.visibility = View.GONE
         }
     }
+
+    private fun actionGrid(parent: LinearLayout): ConsoleActionGrid =
+        ConsoleActionGrid(this).also { grid ->
+            parent.addView(grid, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
 
     private fun groupHeader(resName: String): TextView {
         val tv = TextView(this)

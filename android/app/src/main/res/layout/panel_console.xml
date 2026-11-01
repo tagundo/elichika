@@ -12,8 +12,8 @@
         android:orientation="vertical"
         android:padding="12dp">
 
-        <!-- Every group and action uses the available width. The whole console
-             scrolls vertically, including in a short split-screen window. -->
+        <!-- Runtime action groups choose their column count from this content
+             width. The whole console scrolls in a short split-screen window. -->
         <LinearLayout
             android:id="@+id/actions_row"
             android:layout_width="match_parent"
