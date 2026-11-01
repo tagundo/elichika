@@ -47,15 +47,8 @@ jobs:
           fetch-depth: 0  # SQL validators compare with the historic Harasho baseline.
           submodules: recursive
 
-      - name: Update modtools submodule to latest for development builds
-        if: ${{ !startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/codex/console-tools-release' && (github.event_name != 'workflow_dispatch' || github.event.inputs.release_tag == '') }}
-        run: |
-          # Ordinary development builds follow the tracked branch. Release-candidate
-          # branch, tag and release_tag builds retain the reviewed gitlink.
-          BR="claude/elichika-apk-build-wwkuu3"
-          git -C modtools fetch --depth 1 origin "$BR"
-          git -C modtools checkout -q FETCH_HEAD
-          git -C modtools log -1 --oneline
+      # Build the reviewed modtools gitlink from this checkout. Following another
+      # branch here can silently replace the UI fixes being tested or released.
 
       - name: Set up Go
         uses: actions/setup-go@v5

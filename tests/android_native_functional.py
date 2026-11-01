@@ -13,6 +13,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
@@ -65,6 +66,88 @@ def rsa_mask(public_key):
     return mask, base64.b64encode(encrypted).decode()
 
 
+def beginner_mesh_checks():
+    """Exercise percent controls through the real binary-vertex bake on each ARM kernel."""
+    import copy
+    import struct
+    import numpy as np
+    import sifas_mesh_baker as baker
+    from webtools.tools.mesh import _body_part_percentages, _build_body_targets
+
+    names = ["LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot"]
+    parents = [-1, 0, 1, -1, 3, 4]
+    rest = []
+    for index, parent in enumerate(parents):
+        local = baker.trs(translate=(0.3, 0.2, -0.1), rotate=(index * 7, 35, -index * 9))
+        rest.append(local if parent < 0 else rest[parent] @ local)
+    point = np.array([0.2, 0.4, -0.3, 1.0])
+    positions = np.array([(matrix @ point)[:3] for matrix in rest])
+    normals = np.array([matrix[:3, :3] @ [0., 1., 0.] for matrix in rest])
+    channels = [{"stream": 0, "offset": 0, "format": 0, "dimension": 0} for _ in range(14)]
+    channels[0]["dimension"] = 3
+    channels[1].update(offset=12, dimension=3)
+    tree = {
+        "m_VertexData": {"m_VertexCount": 6, "m_Channels": channels,
+                         "m_DataSize": b"".join(struct.pack("<6f", *position, *normal)
+                                                 for position, normal in zip(positions, normals))},
+        "m_BindPose": [{f"e{row}{column}": float(matrix[row, column])
+                        for row in range(4) for column in range(4)}
+                       for matrix in map(np.linalg.inv, rest)],
+        "m_Skin": [{"boneIndex[0]": index, "weight[0]": 1.0} for index in range(6)],
+        "m_IndexBuffer": struct.pack("<6H", 0, 1, 2, 3, 4, 5),
+        "m_LocalAABB": {"m_Center": {"x": 0., "y": 0., "z": 0.},
+                        "m_Extent": {"x": 2., "y": 2., "z": 2.}},
+    }
+    original = copy.deepcopy(tree)
+    metadata = [{"name": "body", "bones": names, "parents": parents}]
+    targets = _build_body_targets(baker, _body_part_percentages({"thighs": 110, "calves": 120}), metadata)
+    stats = baker.bake_mesh(tree, names, parents, targets, recompute_normals=True, hierarchical=True)
+    assert set(stats["applied"]) == {"LeftUpLeg", "RightUpLeg", "LeftLeg", "RightLeg"}
+    result = np.frombuffer(tree["m_VertexData"]["m_DataSize"], dtype="<f4").reshape(6, 6)
+    expected = np.array([(matrix @ np.diag([1., factor, factor, 1.]) @ point)[:3]
+                         for matrix, factor in zip(rest, [1.1, 1.2, 1., 1.1, 1.2, 1.])])
+    np.testing.assert_allclose(result[:, :3], expected, rtol=1e-6, atol=1e-6)
+    # Compensation must preserve original foot geometry, including rotated rest frames.
+    np.testing.assert_allclose(result[[2, 5], :3], positions[[2, 5]], atol=1e-6)
+    np.testing.assert_allclose(np.linalg.norm(result[:, 3:], axis=1), np.ones(6), atol=1e-6)
+    for key in ("m_BindPose", "m_Skin", "m_IndexBuffer"):
+        assert tree[key] == original[key], key
+    assert tree["m_VertexData"]["m_Channels"] == original["m_VertexData"]["m_Channels"]
+    assert stats["max_disp"] > 0
+    return True
+
+
+def gallery_png_checks(temporary):
+    """Load a real tiny Unity texture asset through the Android gallery decoder."""
+    from PIL import Image
+    from webtools.core import decode
+
+    # Deterministic Unity 2019.4 Texture2D, generated from UnityPy's type tree:
+    # ch0001_co0001_body, 2x2 RGBA32, red/green then blue/white. No game data.
+    asset = base64.b64decode(
+        "AAAATQAAAPQAAAARAAAAcAAAAAAyMDE5LjQuMGYxAA0AAAAAAQAAABwAAAAA//8AAAAAAAAAAAAAAAAAAAAAAQAAAAABAAAAAAAA"
+        "AAAAAACEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABIAAABjaDAwMDFfY28wMDAxX2JvZHkAAAQAAAAAAAAAAgAAAAIA"
+        "AAAQAAAABAAAAAEAAAABAAAAAAAAAAEAAAACAAAAAAAAAAEAAAAAAAAAAQAAAAEAAAABAAAAAAAAAAEAAAAQAAAA/wAA/wD/AP8A"
+        "AP///////wAAAAAAAAAAAAAAAA==")
+    with tempfile.TemporaryDirectory(prefix="gallery-native-", dir=temporary) as directory:
+        path = Path(directory) / "body.unity"
+        path.write_bytes(asset)
+        if decode._embedded_android():
+            png = decode.thumbnail(path, timeout=30)
+            assert decode.thumbnail(path, timeout=30) == png, "Positive thumbnail cache changed its PNG"
+        else:
+            # The ARM kernel harness has no Java bridge. Exercise the same
+            # Android decoder directly rather than spawning a desktop Python CLI.
+            png = decode._android_thumbnail(str(path), time.monotonic() + 30)
+        assert png and png.startswith(b"\x89PNG\r\n\x1a\n"), "Gallery returned no real PNG"
+        with Image.open(io.BytesIO(png)) as image:
+            image.load()
+            assert image.size == (2, 2) and image.mode == "RGBA"
+            assert [image.getpixel((x, y)) for y in range(2) for x in range(2)] == [
+                (0, 0, 255, 255), (255, 255, 255, 255), (255, 0, 0, 255), (0, 255, 0, 255)]
+        return hashlib.sha256(png).hexdigest()
+
+
 def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     import ssl
     import ctypes
@@ -102,6 +185,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     symmetric = matrix.T @ matrix
     eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
     assert np.allclose(symmetric @ eigenvectors, eigenvectors * eigenvalues)
+    beginner_mesh_checks()
     from numpy.linalg import lapack_lite
     blas = ctypes.CDLL("libopenblas.so")
     blas.openblas_get_config.restype = ctypes.c_char_p
@@ -141,11 +225,14 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     difference = np.abs(np.asarray(decoded.convert("RGBA"), dtype=float)
                         - np.asarray(image, dtype=float)).mean()
     assert difference < 40, "ASTC roundtrip changed image content excessively"
+    gallery_sha256 = gallery_png_checks(temporary)
     return {"python": sys.version.split()[0], "ssl_and_certificates": True,
             "sqlite_unicode": True, "ctypes": True, "numpy_linear_algebra": True,
             "compression_roundtrips": 6, "openblas_config": blas_config, "pillow_png_jpeg_freetype": True,
             "freetype_version": ImageFont.core.freetype2_version,
             "unitypy_binary_io": True, "fsspec_memory_io": True,
+            "beginner_mesh_percentages": True,
+            "gallery_thumbnail_png": True, "gallery_png_sha256": gallery_sha256,
             "adminui_and_webtools_imports": True, "astc_encode_decode": True,
             "astc_sha256": hashlib.sha256(astc_data).hexdigest(), "astc_mean_error": round(float(difference), 3)}
 
