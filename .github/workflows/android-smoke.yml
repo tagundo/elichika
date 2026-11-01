@@ -128,6 +128,8 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-auto-face-disabled.png > evidence/model-viewer-auto-face-disabled.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig.png > evidence/model-viewer-rig.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader.png > evidence/model-viewer-shader.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-report.json > evidence/model-viewer-rig-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader-report.json > evidence/model-viewer-shader-report.json 2>/dev/null || true
           sudo dmesg | tail -100 > evidence/kernel-tail.txt || true
 
       - name: Upload execution evidence

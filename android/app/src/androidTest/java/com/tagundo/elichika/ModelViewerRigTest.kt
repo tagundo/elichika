@@ -152,6 +152,7 @@ class ModelViewerRigTest {
             .put("scrub", scrub).put("playing", playing).put("paused", paused)
             .put("afterTab", afterTab).put("afterContext", afterContext)
             .put("sourcePreserved", true).put("gameServerRemainedStopped", true)
+        persistReport("model-viewer-rig-report.json", report)
         println("MODEL_VIEWER_RIG_REPORT=$report")
     }
 
@@ -193,9 +194,11 @@ class ModelViewerRigTest {
         assertEquals(8, recovered.getJSONObject("probe").getInt("triangles"))
         assertRgb("Context restoration must retain the source Gamma shader output", recovered.getJSONArray("centerRGB"), intArrayOf(14, 63, 84))
         saveScreenshot(session.activity, "model-viewer-shader.png")
-        println("MODEL_VIEWER_SHADER_REPORT=" + JSONObject().put("member", member).put("basic", basic)
+        val report = JSONObject().put("member", member).put("basic", basic)
             .put("posed", posed).put("hidden", hidden).put("recovered", recovered)
-            .put("sourcePreserved", true).put("gameServerRemainedStopped", true))
+            .put("sourcePreserved", true).put("gameServerRemainedStopped", true)
+        persistReport("model-viewer-shader-report.json", report)
+        println("MODEL_VIEWER_SHADER_REPORT=$report")
     }
 
     private data class Session(val activity: MainActivity, val webView: WebView)
@@ -344,6 +347,11 @@ class ModelViewerRigTest {
             assertTrue(screenshot!!.compress(Bitmap.CompressFormat.PNG, 100, it))
         }
         screenshot?.recycle()
+    }
+
+    private fun persistReport(filename: String, report: JSONObject) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        File(context.cacheDir, filename).writeText(report.toString(2))
     }
 
     private fun assertGameStopped() {
