@@ -1,0 +1,220 @@
+name: Diagnose ARM64 WebView model graphics
+
+on:
+  push:
+    branches: [codex/viewer-arm-graphics]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  graphics:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [webgl1, chromium-angle-vulkan, swiftshader]
+    env:
+      SOURCE_RUN_ID: "41298117352"
+      VARIANT: ${{ matrix.variant }}
+      ANDROID_SERIAL: 127.0.0.1:5555
+      VIEWER_JS: /data/user/0/com.tagundo.elichika/files/chaquopy/AssetFinder/app/webtools/web/static/model-viewer.js
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare the pinned native ARM64 Android host
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          mkdir -p evidence "$RUNNER_TEMP/android-data"
+          uname -a > evidence/host.txt
+          getconf PAGESIZE >> evidence/host.txt
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker image inspect redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            --format '{{json .RepoDigests}} {{.Architecture}}' >> evidence/host.txt
+          docker run --detach --privileged --name android-viewer-graphics \
+            --publish 127.0.0.1:5555:5555 \
+            --volume "$RUNNER_TEMP/android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=720 androidboot.redroid_height=1280 \
+            androidboot.redroid_fps=10 ro.secure=0
+
+      - name: Wait for Android and record the graphics environment
+        run: |
+          set -euo pipefail
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect "$ANDROID_SERIAL" >/dev/null || true
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          test "$(adb shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
+          test "$(adb shell id -u | tr -d '\r')" = 0
+          adb shell getprop > evidence/android-properties.txt
+          adb shell dumpsys webviewupdate > evidence/webview-provider.txt
+          adb shell id >> evidence/host.txt
+          adb exec-out screencap -p > evidence/android-boot.png
+
+      - name: Download the existing signed APK without rebuilding
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: candidate
+          run-id: 41298117352
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Download the matching instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-native-test-apk
+          path: instrumentation
+          run-id: 41298117352
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Install the unchanged candidate and instrumentation
+        run: |
+          set -euo pipefail
+          sha256sum candidate/*.apk instrumentation/*.apk > evidence/downloaded-apks.sha256
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          candidates = list(Path('candidate').glob('*.apk'))
+          assert len(candidates) == 1, 'Expected one existing signed candidate'
+          assert hashlib.sha256(candidates[0].read_bytes()).hexdigest() == 'b0c74bbeecc2c7e0f82fc5e9631174f56d0fb417eab50dc196f5e13ad3817b43'
+          PY
+          adb install -r candidate/*.apk
+          adb install -r instrumentation/*.apk
+          adb shell appops set com.tagundo.elichika MANAGE_EXTERNAL_STORAGE allow
+          adb shell pm grant com.tagundo.elichika android.permission.POST_NOTIFICATIONS
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('evidence/environment.json').write_text(json.dumps({
+              'source_run_id': int(os.environ['SOURCE_RUN_ID']),
+              'variant': os.environ['VARIANT'],
+              'candidate_rebuilt': False,
+              'pixel_assertions_changed': False,
+              'webview_software_layer_forced': False,
+          }, indent=2))
+          PY
+
+      - name: Bootstrap extraction for the WebGL1 runtime-only probe
+        if: matrix.variant == 'webgl1'
+        run: |
+          set -euo pipefail
+          adb shell am instrument -w -e class com.tagundo.elichika.NativePythonTest \
+            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee evidence/bootstrap-instrumentation.txt
+          python3 -c 'from pathlib import Path; text=Path("evidence/bootstrap-instrumentation.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
+          adb shell am force-stop com.tagundo.elichika
+          adb pull "$VIEWER_JS" evidence/model-viewer.original.js
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('evidence/model-viewer.original.js')
+          source = path.read_text()
+          original = 'renderer = new window.THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });'
+          replacement = '''var diagnosticCanvas = document.createElement("canvas");
+                var diagnosticContext = diagnosticCanvas.getContext("webgl", { antialias: true, alpha: false, powerPreference: "low-power" });
+                if (!diagnosticContext) throw new Error("Diagnostic WebGL1 context unavailable");
+                renderer = new window.THREE.WebGLRenderer({ canvas: diagnosticCanvas, context: diagnosticContext, antialias: true, alpha: false, powerPreference: "low-power" });'''
+          assert source.count(original) == 1, 'Expected exactly one unchanged WebGLRenderer constructor'
+          Path('evidence/model-viewer.webgl1.js').write_text(source.replace(original, replacement))
+          report = json.loads(Path('evidence/environment.json').read_text())
+          report['runtime_js_patch'] = 'explicit WebGL1 canvas/context; exactly one constructor replaced'
+          Path('evidence/environment.json').write_text(json.dumps(report, indent=2))
+          PY
+          adb push evidence/model-viewer.webgl1.js /data/local/tmp/model-viewer.webgl1.js
+          adb shell cp /data/local/tmp/model-viewer.webgl1.js "$VIEWER_JS"
+          adb shell chmod 644 "$VIEWER_JS"
+          adb pull "$VIEWER_JS" evidence/model-viewer.before-tests.js
+
+      - name: Select Chromium ANGLE Vulkan or SwiftShader for this disposable VM
+        if: matrix.variant != 'webgl1'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          flags = {
+              'chromium-angle-vulkan': '_ --use-gl=angle --use-angle=vulkan --webview-verbose-logging',
+              'swiftshader': 'webview --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --webview-verbose-logging',
+          }[os.environ['VARIANT']]
+          Path('evidence/webview-command-line').write_text(flags + '\n')
+          report = json.loads(Path('evidence/environment.json').read_text())
+          report['webview_command_line'] = flags
+          Path('evidence/environment.json').write_text(json.dumps(report, indent=2))
+          PY
+          adb shell am force-stop com.tagundo.elichika
+          adb push evidence/webview-command-line /data/local/tmp/webview-command-line
+          adb shell chmod 644 /data/local/tmp/webview-command-line
+          adb shell cat /data/local/tmp/webview-command-line > evidence/applied-webview-command-line.txt
+
+      - name: Run all 12 tests with the real model pixel assertions intact
+        run: |
+          set -euo pipefail
+          adb shell am force-stop com.tagundo.elichika
+          adb logcat -c
+          adb shell am instrument -w \
+            -e class com.tagundo.elichika.ModelViewerWebViewTest,com.tagundo.elichika.NativePythonTest,com.tagundo.elichika.ConsoleLayoutTest,com.tagundo.elichika.WindowBusTest,com.tagundo.elichika.ServerPreparationTest,com.tagundo.elichika.ServerControlTest,com.tagundo.elichika.ServerConfigTest,com.tagundo.elichika.MeshWebViewTest \
+            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee evidence/native-instrumentation.txt
+          python3 -c 'from pathlib import Path; text=Path("evidence/native-instrumentation.txt").read_text(); assert "OK (12 tests)" in text and "FAILURES" not in text, text'
+
+      - name: Capture actual renderer diagnostics and frames
+        if: always()
+        run: |
+          mkdir -p evidence
+          docker logs android-viewer-graphics > evidence/container.log 2>&1 || true
+          adb logcat -d -v threadtime > evidence/logcat.txt 2>&1 || true
+          adb logcat -b crash -d > evidence/crash-logcat.txt 2>&1 || true
+          adb exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
+          adb exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-qa.png > evidence/model-viewer.png 2>/dev/null || true
+          adb pull "$VIEWER_JS" evidence/model-viewer.after-tests.js 2>/dev/null || true
+          adb pull /data/tombstones evidence/tombstones 2>/dev/null || true
+          sudo dmesg | tail -100 > evidence/kernel-tail.txt || true
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          root = Path('evidence')
+          text = (root / 'native-instrumentation.txt').read_text() if (root / 'native-instrumentation.txt').exists() else ''
+          log = (root / 'logcat.txt').read_text(errors='replace') if (root / 'logcat.txt').exists() else ''
+          report = {
+              'variant': os.environ['VARIANT'], 'source_run_id': int(os.environ['SOURCE_RUN_ID']),
+              'instrumentation_12_passed': 'OK (12 tests)' in text and 'FAILURES' not in text,
+              'sigsegv_reported': 'SIGSEGV' in log,
+              'model_viewer_reports': [line for line in log.splitlines() if 'MODEL_VIEWER_WEBVIEW_REPORT=' in line],
+              'webview_flags_evidence': [line for line in log.splitlines() if 'WebViewCommandLine' in line],
+          }
+          if os.environ['VARIANT'] == 'webgl1':
+              patch = root / 'model-viewer.after-tests.js'
+              report['webgl1_runtime_patch_retained'] = patch.exists() and 'diagnosticCanvas.getContext("webgl"' in patch.read_text()
+          (root / 'graphics-report.json').write_text(json.dumps(report, indent=2))
+          PY
+
+      - name: Upload isolated graphics evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-arm-graphics-${{ matrix.variant }}
+          path: evidence/
+          if-no-files-found: warn
+
+      - name: Stop the disposable Android instance
+        if: always()
+        run: docker rm -f android-viewer-graphics || true
