@@ -47,11 +47,17 @@ jobs:
 
       - name: Check model picker, mesh editing and texture preview regressions
         working-directory: modtools
+        env:
+          # Automatic original-face downloads reuse the bundled parent extractor.
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python3 -m pip install "numpy==1.26.2" "Pillow==11.0.0" "UnityPy==1.25.0"
           python3 -m unittest discover -s tests -p test_mesh_editor.py -v
           python3 -m unittest discover -s tests -p test_gallery_decode.py -v
           python3 -m unittest discover -s tests -p test_model_viewer.py -v
+          python3 -m unittest discover -s tests -p test_model_faces.py -v
+          python3 -m unittest discover -s tests -p test_model_skinning.py -v
+          python3 -m unittest discover -s tests -p test_viewer_archive.py -v
           python3 -m unittest discover -s tests -p test_viewer_routes.py -v
           python3 -m unittest discover -s tests -p test_job_outputs.py -v
 
