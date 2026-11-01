@@ -95,6 +95,17 @@ class ColdToolServerTests(unittest.TestCase):
         for server in self.launcher._servers.values():
             self.assertListening(server)
 
+    def test_missing_model_reader_keeps_database_tools_available(self):
+        def optional_import(name):
+            if name == "UnityPy":
+                raise ImportError("optional model reader not installed")
+            return SimpleNamespace(Handler=Handler)
+        with patch.object(self.launcher.importlib, "import_module", side_effect=optional_import):
+            self.start()
+        self.assertTrue(self.launcher._started)
+        for server in self.launcher._servers.values():
+            self.assertListening(server)
+
 
 if __name__ == "__main__":
     unittest.main()

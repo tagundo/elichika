@@ -35,6 +35,19 @@ def _serve(module_name, server):
         server.server_close()
 
 
+def _warm_model_readers():
+    # UnityPy generates its reader classes on first import. Do this before the
+    # WebView starts drawing a loading animation, while this worker owns startup.
+    # Database-only tools can still open if optional model packages are missing.
+    try:
+        print("[pyservers] preparing model readers", flush=True)
+        importlib.import_module("numpy")
+        importlib.import_module("UnityPy")
+        print("[pyservers] model readers ready", flush=True)
+    except Exception as error:
+        print("[pyservers] model readers unavailable: %r" % (error,), flush=True)
+
+
 def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None, server_controller=None):
     """Start both web UIs once. server_cwd == the app files dir (also the elichika
     server's working dir, so adminui tools see the same serverdata.db/userdata.db).
@@ -65,6 +78,7 @@ def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None, server_controlle
         if astcenc_bin:
             os.environ["ASTCENC_BIN"] = astcenc_bin
 
+        _warm_model_readers()
         servers, threads = {}, []
         try:
             mimetypes.add_type("application/javascript", ".js")

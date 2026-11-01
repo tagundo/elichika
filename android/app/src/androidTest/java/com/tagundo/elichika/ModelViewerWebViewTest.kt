@@ -12,6 +12,8 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.chaquo.python.PyObject
+import com.chaquo.python.Python
 import com.google.android.material.tabs.TabLayout
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -41,6 +43,7 @@ class ModelViewerWebViewTest {
         val hadGuide = preferences.contains("seen_guide")
         val seenGuide = preferences.getBoolean("seen_guide", false)
         var activity: MainActivity? = null
+        var pythonTraceModule: PyObject? = null
         try {
             val storagePermissions = mutableListOf<String>()
             if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
@@ -87,6 +90,59 @@ class ModelViewerWebViewTest {
                     "!!window.ModelViewer&&!!window.THREE&&" +
                     "!!document.querySelector('#tool-list button[data-id=\"mesh_baker\"]'),title:document.title});"
             }
+            pythonTraceModule = startPythonStackCapture(File(context.cacheDir, "viewer-python-stacks.txt"))
+            evaluate(webView, """
+                window.__viewerQaNetwork={};
+                var originalFetch=window.fetch;
+                window.fetch=function(input,options){
+                  var url=typeof input==='string'?input:(input&&input.url?input.url:String(input));
+                  var prepare=url.indexOf('/api/viewer/prepare')>=0;
+                  var model=url.indexOf('/api/viewer/model/')>=0;
+                  var n=window.__viewerQaNetwork;
+                  if(prepare){n.prepareStarted=true;n.prepareStartedAt=Date.now();}
+                  if(model){n.modelFetchStarted=true;n.modelUrl=url;n.modelStartedAt=Date.now();}
+                  return originalFetch.apply(window,arguments).then(function(response){
+                    if(prepare){
+                      n.prepareResponse=true;n.prepareStatus=response.status;n.prepareResponseAt=Date.now();
+                      response.clone().json().then(function(metadata){
+                        n.prepareMetadataRead=true;n.metadataId=metadata.id;n.metadataStats=metadata.stats;
+                        n.prepareMetadataError=metadata.error||'';
+                      },function(error){n.prepareMetadataReadError=String(error);});
+                    }
+                    if(model){
+                      n.modelResponse=true;n.modelStatus=response.status;n.modelResponseAt=Date.now();
+                      n.modelContentType=response.headers.get('Content-Type');
+                      n.modelContentLength=response.headers.get('Content-Length');
+                      var originalArrayBuffer=response.arrayBuffer;
+                      response.arrayBuffer=function(){
+                        n.modelBodyReadStarted=true;
+                        return originalArrayBuffer.call(response).then(function(buffer){
+                          n.modelBodyRead=true;n.modelBytes=buffer.byteLength;n.modelBodyReadAt=Date.now();
+                          return buffer;
+                        },function(error){n.modelBodyReadError=String(error);throw error;});
+                      };
+                    }
+                    return response;
+                  },function(error){
+                    if(prepare){n.prepareFetchError=String(error);}
+                    if(model){n.modelFetchError=String(error);}
+                    throw error;
+                  });
+                };
+                if(typeof window.createImageBitmap==='function'){
+                  var originalBitmap=window.createImageBitmap;
+                  window.createImageBitmap=function(){
+                    var n=window.__viewerQaNetwork;
+                    n.imageBitmapStarted=true;n.imageBitmapStartedAt=Date.now();
+                    return originalBitmap.apply(window,arguments).then(function(bitmap){
+                      n.imageBitmapResolved=true;n.imageBitmapResolvedAt=Date.now();
+                      n.imageBitmapWidth=bitmap.width;n.imageBitmapHeight=bitmap.height;
+                      return bitmap;
+                    },function(error){n.imageBitmapError=String(error);throw error;});
+                  };
+                }
+                return JSON.stringify({ok:true});
+                """.trimIndent())
             evaluate(webView, "window.openModelViewer([" + JSONObject.quote(source.absolutePath) +
                 "]);return JSON.stringify({ok:true});")
             val rendered = waitForDom(webView, "actual Unity triangle pixels") {
@@ -97,6 +153,7 @@ class ModelViewerWebViewTest {
                   s.stats.meshes===1&&s.stats.vertices===3&&s.stats.triangles===1&&s.stats.textures===1&&p.ready&&
                   p.triangles>=1&&p.nonBackgroundSamples>=5&&p.chromaticSamples>=3&&p.width>=100&&p.height>=100&&
                   p.glError===0,error:s.error,state:s,probe:p,
+                  network:window.__viewerQaNetwork,
                   noHorizontalOverflow:document.documentElement.scrollWidth<=window.innerWidth+1});
                 """.trimIndent()
             }
@@ -164,12 +221,34 @@ class ModelViewerWebViewTest {
             rendered.put("cameraControls", controls)
             println("MODEL_VIEWER_WEBVIEW_REPORT=$rendered")
         } finally {
+            pythonTraceModule?.let { module ->
+                runCatching {
+                    Python.getInstance().getModule("builtins").callAttr("exec", """
+                        if '_viewer_qa_faulthandler' in globals():
+                            _viewer_qa_faulthandler.cancel_dump_traceback_later()
+                        if '_viewer_qa_stacks' in globals():
+                            _viewer_qa_stacks.close()
+                        """.trimIndent(), module.get("__dict__"))
+                }.onFailure { println("MODEL_VIEWER_TRACE_CLEANUP=$it") }
+            }
             instrumentation.runOnMainSync { activity?.finish() }
             source.delete()
             preferences.edit().apply {
                 if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide")
             }.commit()
         }
+    }
+
+    private fun startPythonStackCapture(destination: File): PyObject {
+        val python = Python.getInstance()
+        val module = python.getModule("types").callAttr("ModuleType", "_model_viewer_qa_trace")
+        module.get("__dict__")!!.callAttr("__setitem__", "_viewer_qa_trace_path", destination.absolutePath)
+        python.getModule("builtins").callAttr("exec", """
+            import faulthandler as _viewer_qa_faulthandler
+            _viewer_qa_stacks = open(_viewer_qa_trace_path, 'w')
+            _viewer_qa_faulthandler.dump_traceback_later(15, repeat=True, file=_viewer_qa_stacks)
+            """.trimIndent(), module.get("__dict__"))
+        return module
     }
 
     private fun gameServerPids(): String {
