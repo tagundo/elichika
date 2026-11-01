@@ -66,6 +66,17 @@ jobs:
           adb -s 127.0.0.1:5555 shell id >> evidence/host.txt
           adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/android-boot.png
 
+      - name: Use Chromium ANGLE for Redroid WebGL
+        run: |
+          set -euo pipefail
+          # The pinned Redroid image's vendor ANGLE crashes compiling WebGL
+          # shaders. WebView's own ANGLE uses the same CPU Vulkan device and
+          # passes the unmodified textured-render and all 12 instrumentation checks.
+          printf '%s\n' '_ --use-gl=angle --use-angle=vulkan --webview-verbose-logging' > "$RUNNER_TEMP/webview-command-line"
+          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/webview-command-line" /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell cat /data/local/tmp/webview-command-line > evidence/webview-command-line.txt
+
       - name: Download this build's signed release artifact
         uses: actions/download-artifact@v4
         with:
@@ -109,6 +120,7 @@ jobs:
           mkdir -p evidence
           docker logs android-release-smoke > evidence/container.log 2>&1 || true
           adb -s 127.0.0.1:5555 logcat -d > evidence/logcat.txt 2>&1 || true
+          adb -s 127.0.0.1:5555 shell dumpsys webviewupdate > evidence/webview-provider.txt 2>&1 || true
           adb -s 127.0.0.1:5555 exec-out cat /sdcard/Download/sukusta/logs/elichika.log > evidence/server-console.txt 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-qa.png > evidence/model-viewer.png 2>/dev/null || true
