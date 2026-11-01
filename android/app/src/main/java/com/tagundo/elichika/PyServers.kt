@@ -15,11 +15,37 @@ import java.io.File
 object PyServers {
 
     @Volatile private var started = false
+    @Volatile private var preparing = false
+    @Volatile private var preparationError: Throwable? = null
+    private val preparationLock = Any()
 
-    fun ensureStarted(ctx: Context, serverCwd: File) {
-        if (started) return
+    /** Open the local editors without launching the game server or a foreground service. */
+    fun prepareAsync(ctx: Context) {
+        val appContext = ctx.applicationContext
+        synchronized(preparationLock) {
+            if (started || preparing) return
+            preparing = true
+            preparationError = null
+        }
+        Bus.toolsStateChanged()
+        Thread({
+            try {
+                val directory = AssetInstaller.install(appContext) { Bus.log(it) }
+                ensureStarted(appContext, directory)
+            } catch (error: Throwable) {
+                preparationError = error
+                Bus.log(appContext.getString(R.string.log_pyservers_failed, error.message ?: ""))
+            } finally {
+                preparing = false
+                Bus.toolsStateChanged()
+            }
+        }, "elichika-tools-prepare").apply { isDaemon = true }.start()
+    }
+
+    fun ensureStarted(ctx: Context, serverCwd: File): Boolean {
+        if (started) return true
         synchronized(this) {
-            if (started) return
+            if (started) return true
             try {
                 if (!Python.isStarted()) {
                     Python.start(AndroidPlatform(ctx.applicationContext))
@@ -40,12 +66,20 @@ object PyServers {
                     .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath,
                         Lang.effective(ctx), astcenc, AndroidServerController(ctx.applicationContext))
                 started = true
+                preparationError = null
                 Bus.log(ctx.getString(R.string.log_pyservers_started))
+                Bus.toolsStateChanged()
+                return true
             } catch (e: Throwable) {
+                preparationError = e
                 Bus.log(ctx.getString(R.string.log_pyservers_failed, e.message ?: ""))
+                Bus.toolsStateChanged()
+                return false
             }
         }
     }
 
     fun isStarted(): Boolean = started
+    fun isPreparing(): Boolean = preparing
+    fun hasPreparationError(): Boolean = preparationError != null
 }
