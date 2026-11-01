@@ -57,6 +57,11 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_viewer.py -v
           python3 -m unittest discover -s tests -p test_model_faces.py -v
           python3 -m unittest discover -s tests -p test_model_skinning.py -v
+          python3 -m unittest discover -s tests -p test_model_rig.py -v
+          python3 -m unittest discover -s tests -p test_model_animation.py -v
+          python3 -m unittest discover -s tests -p test_model_scaling.py -v
+          python3 -m unittest discover -s tests -p test_model_materials.py -v
+          python3 -m unittest discover -s tests -p test_node_height_tool.py -v
           python3 -m unittest discover -s tests -p test_viewer_archive.py -v
           python3 -m unittest discover -s tests -p test_viewer_routes.py -v
           python3 -m unittest discover -s tests -p test_job_outputs.py -v
@@ -79,3 +84,56 @@ jobs:
 
       - name: Test real Windows database upgrades
         run: go test -count=1 -v ./clientdb/upgrades
+
+  viewer-webgl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout viewer sources
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install browser test dependencies
+        run: |
+          python3 -m pip install "numpy==1.26.2" "Pillow==11.0.0" "UnityPy==1.25.0"
+          npm install --prefix "$RUNNER_TEMP/viewer-browser" --no-audit --no-fund --ignore-scripts playwright@1.56.1
+          "$RUNNER_TEMP/viewer-browser/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Exercise real WebGL pose, scaling and game materials
+        working-directory: modtools
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          VIEWER_URL: http://127.0.0.1:8898
+          EVIDENCE_DIR: ${{ runner.temp }}/viewer-webgl-evidence
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/viewer-browser/node_modules"
+          mkdir -p "$EVIDENCE_DIR"
+          python3 -m webtools --no-browser --host 127.0.0.1 --port 8898 > "$EVIDENCE_DIR/server.log" 2>&1 &
+          viewer_server_pid=$!
+          trap 'kill "$viewer_server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent "$VIEWER_URL/api/tools" > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent "$VIEWER_URL/api/tools" > /dev/null
+          node tests/viewer_rig_browser.js
+          node tests/sifas_material_browser.js
+
+      - name: Upload neutral WebGL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-webgl-evidence
+          path: ${{ runner.temp }}/viewer-webgl-evidence
+          if-no-files-found: warn
