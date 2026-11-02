@@ -33,6 +33,37 @@ class ModelViewerRigTest {
     fun unitySkinMotionAndLiveSettingsChangePixelsAndSurviveContextRecovery() = withRig { session ->
         val webView = session.webView
         input(webView, "viewer-shader", "basic", "change")
+        val defaultSavedNodes = state(webView).getJSONObject("rig").getJSONObject("savedNodes")
+        assertTrue("Supported saved file settings must be applied on load", defaultSavedNodes.getBoolean("enabled"))
+        assertEquals("Scale, position and rotation records must all apply", 3, defaultSavedNodes.getInt("applied"))
+        assertSavedTransforms(state(webView))
+        val defaultSavedFrame = capture(webView, "savedDefault")
+        click(webView, "viewer-saved-nodes")
+        fun resetAuthoredBaseline() {
+            click(webView, "viewer-preview-reset")
+            assertTrue("Reset must restore the saved-file default", state(webView).getJSONObject("rig").getJSONObject("savedNodes").getBoolean("enabled"))
+            assertSavedTransforms(state(webView))
+            click(webView, "viewer-saved-nodes")
+        }
+        val poseControls = evaluate(webView,
+            "var basic=ViewerRigQa.control('viewer-pose-basic',true),preview=ViewerRigQa.control('viewer-pose-preview',true);" +
+                "return JSON.stringify({basic:basic,preview:preview,rig:ModelViewer.getState().rig});")
+        val authoredButton = poseControls.getJSONObject("basic")
+        val unavailablePreview = poseControls.getJSONObject("preview")
+        assertFalse("Authored pose must remain usable without a verified preview", authoredButton.getBoolean("disabled"))
+        assertEquals("true", authoredButton.getString("pressed"))
+        assertTrue("An ordinary motion clip must not enable the verified SIFAS pose button", unavailablePreview.getBoolean("disabled"))
+        assertEquals("false", unavailablePreview.getString("pressed"))
+        for (button in listOf(authoredButton, unavailablePreview)) {
+            assertTrue("Pose controls must have visible, unobstructed 44 px targets: $button",
+                button.getBoolean("visible") && button.getBoolean("withinViewport") && button.getBoolean("hittable") &&
+                    button.getDouble("width") >= 44 && button.getDouble("height") >= 44)
+        }
+        assertEquals("", poseControls.getJSONObject("rig").getString("defaultClip"))
+        assertEquals("", poseControls.getJSONObject("rig").getString("selectedClip"))
+        run(webView, "document.getElementById('viewer-pose-preview').click();")
+        assertEquals("A disabled preview action must leave the authored pose selected", "", state(webView).getJSONObject("rig").getString("selectedClip"))
+        run(webView, "document.querySelector('.viewer-camera-actions').scrollIntoView({block:'end'});")
         val rest = capture(webView, "rest")
         assertEquals(4, rest.getJSONObject("probe").getInt("sourceTriangles"))
         assertEquals(4, rest.getJSONObject("probe").getInt("triangles"))
@@ -64,25 +95,26 @@ class ModelViewerRigTest {
         assertChanged("BreastSize must change the weighted neutral ribbon", breast)
         input(webView, "viewer-breast", "150")
         assertBoneScale(state(webView), "BreastSize", doubleArrayOf(1.5, 1.5, 1.5))
-        click(webView, "viewer-preview-reset")
+        resetAuthoredBaseline()
         assertRestored("Reset must remove live scaling without compounding", capture(webView, compare = "rest"))
 
         val savedAvailable = state(webView).getJSONObject("rig").getJSONObject("savedNodes")
         assertTrue("The real serialized component must supply a supported saved entry", savedAvailable.getBoolean("available"))
-        assertFalse("Saved entries must not be silently applied on load", savedAvailable.getBoolean("enabled"))
+        assertFalse("The explicit authored baseline must remain opted out", savedAvailable.getBoolean("enabled"))
         click(webView, "viewer-saved-nodes")
         val savedState = state(webView)
-        assertEquals(1, savedState.getJSONObject("rig").getJSONObject("savedNodes").getInt("applied"))
-        assertBoneScale(savedState, "BreastSize", doubleArrayOf(1.3, .9, 1.0))
+        assertEquals(3, savedState.getJSONObject("rig").getJSONObject("savedNodes").getInt("applied"))
+        assertSavedTransforms(savedState)
         val saved = capture(webView, compare = "rest")
         assertChanged("Applying the original serialized saved entry must change pixels", saved)
+        assertRestored("Reapplying saved settings must reproduce the initial file-default pixels", capture(webView, compare = "savedDefault"))
         click(webView, "viewer-saved-nodes")
         assertRestored("Disabling saved entries must restore authored geometry", capture(webView, compare = "rest"))
         click(webView, "viewer-saved-nodes")
         input(webView, "viewer-breast", "150")
         input(webView, "viewer-breast", "150")
         assertBoneScale(state(webView), "BreastSize", doubleArrayOf(1.95, 1.35, 1.5))
-        click(webView, "viewer-preview-reset")
+        resetAuthoredBaseline()
         assertFalse(state(webView).getJSONObject("rig").getJSONObject("savedNodes").getBoolean("enabled"))
         assertRestored("Reset must also remove explicitly applied saved settings", capture(webView, compare = "rest"))
 
@@ -90,7 +122,7 @@ class ModelViewerRigTest {
         assertEquals(1.0, state(webView).getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight"), 1e-9)
         val expression = capture(webView, compare = "rest")
         assertChanged("A real Unity blend-shape channel must change visible geometry", expression)
-        click(webView, "viewer-preview-reset")
+        resetAuthoredBaseline()
         assertRestored("Expression reset must restore the actual rest framebuffer", capture(webView, compare = "rest"))
 
         input(webView, "viewer-motion", "Neutral swing", "change")
@@ -99,6 +131,17 @@ class ModelViewerRigTest {
         val scrub = capture(webView, compare = "rest")
         assertChanged("Scrubbing the actual Unity clip must visibly change its weighted pose", scrub)
         assertTrue(kotlin.math.abs(bone(state(webView), "BreastSize").getJSONArray("quaternion").getDouble(2)) > .4)
+        val otherClipControls = evaluate(webView,
+            "return JSON.stringify({basic:ViewerRigQa.control('viewer-pose-basic',false),preview:ViewerRigQa.control('viewer-pose-preview',false)});")
+        assertEquals("false", otherClipControls.getJSONObject("basic").getString("pressed"))
+        assertEquals("false", otherClipControls.getJSONObject("preview").getString("pressed"))
+        click(webView, "viewer-pose-basic")
+        assertEquals("", state(webView).getJSONObject("rig").getString("selectedClip"))
+        assertEquals(0.0, state(webView).getJSONObject("rig").getDouble("time"), 1e-9)
+        assertFalse(state(webView).getJSONObject("rig").getBoolean("playing"))
+        assertFalse("Basic pose must retain the authored baseline opt-out", state(webView).getJSONObject("rig").getJSONObject("savedNodes").getBoolean("enabled"))
+        assertRestored("The basic-pose button must restore actual authored pixels after an ordinary clip", capture(webView, compare = "rest"))
+        input(webView, "viewer-motion", "Neutral swing", "change")
         input(webView, "viewer-time", ".5")
         capture(webView, "playStart")
         click(webView, "viewer-play")
@@ -118,7 +161,7 @@ class ModelViewerRigTest {
         run(webView, "ViewerRigQa.drop('playStart');ViewerRigQa.drop('paused');")
 
         // Preserve a nontrivial paused pose, rather than only checking defaults.
-        click(webView, "viewer-preview-reset")
+        resetAuthoredBaseline()
         input(webView, "viewer-motion", "Neutral swing", "change")
         input(webView, "viewer-time", ".6")
         click(webView, "viewer-saved-nodes")
@@ -145,8 +188,16 @@ class ModelViewerRigTest {
         assertRestored("A restored native WebGL context must retain the adjusted model", afterContext)
         saveScreenshot(session.activity, "model-viewer-rig.png")
         click(webView, "viewer-preview-reset")
-        assertRestored("Final reset must still recover authored pixels after context restoration", capture(webView, compare = "rest"))
+        assertTrue(state(webView).getJSONObject("rig").getJSONObject("savedNodes").getBoolean("enabled"))
+        assertSavedTransforms(state(webView))
+        val restoredFileDefault = capture(webView, compare = "savedDefault")
+        assertRestored("Final reset must recover saved-file defaults after context restoration", restoredFileDefault)
+        click(webView, "viewer-saved-nodes")
+        assertRestored("Opting out must still recover exact authored pixels after context restoration", capture(webView, compare = "rest"))
         val report = JSONObject().put("scope", "Original serialized Unity rig through real API/GLB/native WebGL")
+            .put("poseControlsWithoutVerifiedPreview", poseControls)
+            .put("defaultSavedNodes", defaultSavedNodes).put("defaultSavedFrame", defaultSavedFrame)
+            .put("restoredFileDefault", restoredFileDefault)
             .put("restVertices", restVertices).put("rest", rest).put("manualPose", manualPose)
             .put("height", height).put("breast", breast).put("savedEntry", saved).put("expression", expression)
             .put("scrub", scrub).put("playing", playing).put("paused", paused)
@@ -267,11 +318,13 @@ class ModelViewerRigTest {
     private fun recoverContext(webView: WebView) {
         run(webView, "ViewerRigQa.loseContext();")
         waitForDom(webView, "actual native context loss", 30) {
-            "var s=ModelViewer.getState();return JSON.stringify({ok:s.contextLost&&document.getElementById('viewer-height').disabled,state:s});"
+            "var s=ModelViewer.getState();return JSON.stringify({ok:s.contextLost&&document.getElementById('viewer-height').disabled&&" +
+                "document.getElementById('viewer-pose-basic').disabled&&document.getElementById('viewer-pose-preview').disabled,state:s});"
         }
         run(webView, "ViewerRigQa.restoreContext();")
         waitForDom(webView, "actual native context restoration", 60) {
-            "var s=ModelViewer.getState();return JSON.stringify({ok:!s.contextLost&&s.loaded&&!s.loading&&!document.getElementById('viewer-height').disabled,state:s});"
+            "var s=ModelViewer.getState();return JSON.stringify({ok:!s.contextLost&&s.loaded&&!s.loading&&!document.getElementById('viewer-height').disabled&&" +
+                "!document.getElementById('viewer-pose-basic').disabled&&document.getElementById('viewer-pose-preview').disabled,state:s});"
         }
     }
 
@@ -307,6 +360,19 @@ class ModelViewerRigTest {
     private fun assertBoneScale(state: JSONObject, name: String, expected: DoubleArray) {
         val scale = bone(state, name).getJSONArray("scale")
         for (axis in expected.indices) assertEquals("$name axis $axis must use the authored baseline", expected[axis], scale.getDouble(axis), 1e-6)
+    }
+
+    private fun assertSavedTransforms(state: JSONObject) {
+        assertBoneScale(state, "BreastSize", doubleArrayOf(1.3, .9, 1.0))
+        val tip = bone(state, "Tip")
+        val position = tip.getJSONArray("position")
+        for ((axis, expected) in doubleArrayOf(-.1, .6, 0.0).withIndex()) {
+            assertEquals("The saved position must apply to its non-BreastSize target", expected, position.getDouble(axis), 1e-6)
+        }
+        val quaternion = tip.getJSONArray("quaternion")
+        val expected = doubleArrayOf(kotlin.math.sin(Math.PI / 12), 0.0, 0.0, kotlin.math.cos(Math.PI / 12))
+        for (axis in expected.indices) assertEquals("The saved Unity X30 rotation must apply as its converted quaternion",
+            expected[axis], quaternion.getDouble(axis), 1e-6)
     }
 
     private fun assertRetained(before: JSONObject, after: JSONObject) {

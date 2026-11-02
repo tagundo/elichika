@@ -28,6 +28,20 @@
     if (result.disabled) throw new Error("Viewer control is disabled: " + id);
     return result;
   }
+  function control(id, scroll) {
+    var target = element(id);
+    if (scroll) target.scrollIntoView({ block: "center" });
+    var rectangle = target.getBoundingClientRect(), style = window.getComputedStyle(target);
+    var x = rectangle.left + rectangle.width / 2, y = rectangle.top + rectangle.height / 2;
+    var top = document.elementFromPoint(x, y);
+    return { id: id, text: target.textContent.trim(), disabled: !!target.disabled,
+      pressed: target.getAttribute("aria-pressed"), width: rectangle.width, height: rectangle.height,
+      visible: rectangle.width > 0 && rectangle.height > 0 && style.display !== "none" &&
+        style.visibility !== "hidden" && Number(style.opacity) !== 0,
+      withinViewport: rectangle.left >= 0 && rectangle.top >= 0 &&
+        rectangle.right <= window.innerWidth && rectangle.bottom <= window.innerHeight,
+      hittable: top === target || !!(top && target.contains(top)) };
+  }
   function context() {
     var canvas = element("viewer-canvas");
     var gl = canvas.getContext("webgl2") || canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
@@ -114,7 +128,7 @@
     return matches[0].node;
   }
   window.ViewerRigQa = {
-    capture: capture, deformedVertices: deformedVertices, nodeId: nodeId,
+    capture: capture, deformedVertices: deformedVertices, nodeId: nodeId, control: control,
     input: function (id, value, event) {
       var target = interactive(id); target.value = String(value);
       target.dispatchEvent(new Event(event || "input", { bubbles: true }));
