@@ -59,6 +59,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_skinning.py -v
           python3 -m unittest discover -s tests -p test_model_rig.py -v
           python3 -m unittest discover -s tests -p test_model_animation.py -v
+          python3 -m unittest discover -s tests -p test_model_motion.py -v
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
           python3 -m unittest discover -s tests -p test_node_height_tool.py -v
