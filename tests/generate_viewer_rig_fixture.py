@@ -161,7 +161,8 @@ def fixture_bytes():
     add(16, 114, m_GameObject=pointer(2), m_Enabled=True, m_Script=pointer(17), m_Name="Neutral saved node settings",
         targetName="SyntheticRig", heightScale=1.,
         scaleValues=[{"target": pointer(7), "originValue": vector(1., 1., 1.), "scaledValue": vector(1.3, .9, 1.)}],
-        positionValues=[], rotationValues=[])
+        positionValues=[{"target": pointer(9), "originValue": vector(y=.5), "scaledValue": vector(.1, .6, 0.)}],
+        rotationValues=[{"target": pointer(9), "originValue": vector(), "scaledValue": vector(30., 0., 0.)}])
     add(17, 115, m_Name="NeutralSavedNodeSettings", m_ClassName="LiveCoreScaling_Node",
         m_Namespace="OriginalQaFixture", m_AssemblyName="OriginalQaFixture.dll")
     add(18, 48, m_Name="AS/Member")
@@ -254,13 +255,18 @@ def validate(data):
         assert rig_meta["rig"]["clips"][0]["name"] == "Neutral swing"
         assert rig_meta["rig"]["clips"][0]["duration"] == 2
         assert len(primitive["targets"]) == 1
-        saved = rig_meta["rig"]["scaling"]["components"][0]["entries"][0]
-        assert saved["supported"] and saved["state"] == "pending"
-        assert np.allclose(saved["scaled"], [1.3, .9, 1])
+        entries = rig_meta["rig"]["scaling"]["components"][0]["entries"]
+        assert len(entries) == 3
+        saved = {entry["kind"]: entry for entry in entries}
+        assert all(entry["supported"] and entry["state"] == "pending" for entry in entries)
+        assert np.allclose(saved["scale"]["scaled"], [1.3, .9, 1])
+        assert np.allclose(saved["position"]["scaled"], [-.1, .6, 0])
+        assert saved["rotation"]["application"] == "absolute_local_quaternion"
+        assert np.allclose(saved["rotation"]["scaledQuaternion"], [math.sin(math.pi / 12), 0, 0, math.cos(math.pi / 12)])
         assert rig_meta["warnings"] == static_meta["warnings"] == []
         assert source.read_bytes() == data
     return {"objects": len(objects), "vertices": 6, "triangles": 4, "joints": 3,
-            "morphs": 1, "clips": 1, "savedScalingEntries": 1, "restStaticMaximumError": maximum_error}
+            "morphs": 1, "clips": 1, "savedScalingEntries": 3, "restStaticMaximumError": maximum_error}
 
 
 def main():
