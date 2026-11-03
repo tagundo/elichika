@@ -66,6 +66,16 @@ jobs:
           adb -s 127.0.0.1:5555 shell id >> evidence/host.txt
           adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/android-boot.png
 
+      - name: Confirm Android immersive-mode education for the test user
+        run: |
+          set -euo pipefail
+          # The one-time system tutorial steals focus from fullscreen captures.
+          # Acknowledge it on this disposable user without changing app assertions.
+          adb -s 127.0.0.1:5555 shell settings --user 0 get secure immersive_mode_confirmations | tr -d '\r' > evidence/immersive-mode-confirmations-before.txt
+          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+          adb -s 127.0.0.1:5555 shell settings --user 0 get secure immersive_mode_confirmations | tr -d '\r' | tee evidence/immersive-mode-confirmations-after.txt
+          test "$(cat evidence/immersive-mode-confirmations-after.txt)" = confirmed
+
       - name: Use Chromium ANGLE for Redroid WebGL
         run: |
           set -euo pipefail
