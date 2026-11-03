@@ -83,7 +83,8 @@ class ByteVectorPatchTests(unittest.TestCase):
                 fast_results.append(result is not None)
                 return result
             context = patch.object(helper, "_read_unsigned_byte_vector", side_effect=tracked) if original else patch.dict({}, {})
-            with context:
+            # Android bundles the Python parser; host Boost must not bypass it.
+            with context, patch.object(helper, "read_typetree_boost", None):
                 try:
                     value = helper.read_typetree(tree, reader, as_dict=as_dict, byte_size=len(raw), check_read=check_read)
                     result = ("value", canonical(value))

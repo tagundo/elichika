@@ -52,6 +52,8 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python3 -m pip install "numpy==1.26.2" "Pillow==11.0.0" "UnityPy==1.25.0"
+          python3 -c 'import hashlib, sys; from pathlib import Path; from UnityPy.helpers import TypeTreeHelper; actual = hashlib.sha256(Path(TypeTreeHelper.__file__).read_bytes()).hexdigest(); actual == "355179e62b14d2f638947e057979d15815a9cadd3a3d868d8b809455193a290b" or sys.exit("Expected pristine UnityPy1.25.0 TypeTreeHelper, got " + actual)'
+          python3 -m unittest discover -s ../android/ci -p 'test_patch_unitypy_*.py' -v
           python3 -m unittest discover -s tests -p test_mesh_editor.py -v
           python3 -m unittest discover -s tests -p test_gallery_decode.py -v
           python3 -m unittest discover -s tests -p test_model_viewer.py -v

@@ -60,7 +60,8 @@ class Vector3PatchTests(unittest.TestCase):
                 hits.append(value is not None)
                 return value
             context = patch.object(helper, "_read_vector3", side_effect=tracked) if original else patch.dict({}, {})
-            with context:
+            # Android bundles the Python parser; host Boost must not bypass it.
+            with context, patch.object(helper, "read_typetree_boost", None):
                 try:
                     value = helper.read_typetree(tree, reader, as_dict=as_dict,
                         byte_size=len(raw) if expected_bytes is None else expected_bytes, check_read=check_read)
