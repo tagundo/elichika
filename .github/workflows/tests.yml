@@ -136,6 +136,8 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/compensation" node tests/viewer_compensation_browser.js
           node tests/sifas_material_browser.js
           node tests/viewer_quality_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/resolution" node tests/viewer_resolution_browser.js
 
       - name: Upload neutral WebGL evidence
         if: always()
