@@ -1,5 +1,4 @@
 """Exact Vector3f parser behavior against the pinned byte-only parser."""
-import copy
 import io
 import pickle
 from pathlib import Path
@@ -122,17 +121,16 @@ class Vector3PatchTests(unittest.TestCase):
         self.compare(vector(child_flag=0x4000), raw, factory=factory, expected_fast=False, expected_bytes=len(raw) - 1)
 
     def test_unsupported_schema_order_names_types_sizes_and_children_fall_back(self):
-        original = vector()
         cases = []
-        changed = copy.deepcopy(original); changed.m_ByteSize = -1; cases.append(changed)
-        changed = copy.deepcopy(original); changed.m_Children.reverse(); cases.append(changed)
-        changed = copy.deepcopy(original); changed.m_Children[0].m_Name = "dirty.x"; cases.append(changed)
-        changed = copy.deepcopy(original); changed.m_Children[0]._clean_name = "other"; cases.append(changed)
-        changed = copy.deepcopy(original); changed.m_Children[0].m_ByteSize = 8; cases.append(changed)
-        changed = copy.deepcopy(original); changed.m_Children[0].m_Type = "int"; cases.append(changed)
-        changed = copy.deepcopy(original); changed.m_Children[0].m_Children = [vector()]; cases.append(changed)
-        changed = copy.deepcopy(original); changed.m_TypeFlags = 1; cases.append(changed)
-        changed = copy.deepcopy(original); changed.m_Children[0].m_TypeFlags = 1; cases.append(changed)
+        changed = vector(); changed.m_ByteSize = -1; cases.append(changed)
+        changed = vector(); changed.m_Children.reverse(); cases.append(changed)
+        changed = vector(); changed.m_Children[0].m_Name = "dirty.x"; cases.append(changed)
+        changed = vector(); changed.m_Children[0]._clean_name = "other"; cases.append(changed)
+        changed = vector(); changed.m_Children[0].m_ByteSize = 8; cases.append(changed)
+        changed = vector(); changed.m_Children[0].m_Type = "int"; cases.append(changed)
+        changed = vector(); changed.m_Children[0].m_Children = [vector()]; cases.append(changed)
+        changed = vector(); changed.m_TypeFlags = 1; cases.append(changed)
+        changed = vector(); changed.m_Children[0].m_TypeFlags = 1; cases.append(changed)
         for tree in cases:
             for as_dict in (False, True):
                 self.compare(tree, struct.pack("<3f", 1, 2, 3), as_dict=as_dict, expected_fast=False)
