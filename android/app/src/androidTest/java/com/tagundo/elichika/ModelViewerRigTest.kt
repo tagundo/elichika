@@ -64,8 +64,9 @@ class ModelViewerRigTest {
             click(webView, "viewer-saved-nodes")
         }
         val poseControls = evaluate(webView,
-            "var basic=ViewerRigQa.control('viewer-pose-basic',true),preview=ViewerRigQa.control('viewer-pose-preview',true);" +
-                "return JSON.stringify({basic:basic,preview:preview,rig:ModelViewer.getState().rig});")
+            "return JSON.stringify(ViewerRigQa.withViewControls(function(){" +
+                "var basic=ViewerRigQa.viewControl('viewer-pose-basic'),preview=ViewerRigQa.viewControl('viewer-pose-preview',true);" +
+                "return {basic:basic,preview:preview,rig:ModelViewer.getState().rig};}));")
         val authoredButton = poseControls.getJSONObject("basic")
         val unavailablePreview = poseControls.getJSONObject("preview")
         assertFalse("Authored pose must remain usable without a verified preview", authoredButton.getBoolean("disabled"))
@@ -79,7 +80,8 @@ class ModelViewerRigTest {
         }
         assertEquals("", poseControls.getJSONObject("rig").getString("defaultClip"))
         assertEquals("", poseControls.getJSONObject("rig").getString("selectedClip"))
-        run(webView, "document.getElementById('viewer-pose-preview').click();")
+        run(webView, "ViewerRigQa.withViewControls(function(){ViewerRigQa.viewControl('viewer-pose-preview',true);" +
+            "document.getElementById('viewer-pose-preview').click();});")
         assertEquals("A disabled preview action must leave the authored pose selected", "", state(webView).getJSONObject("rig").getString("selectedClip"))
         run(webView, "document.querySelector('.viewer-camera-actions').scrollIntoView({block:'end'});")
         val rest = capture(webView, "rest")
@@ -209,7 +211,8 @@ class ModelViewerRigTest {
         assertChanged("Scrubbing the actual Unity clip must visibly change its weighted pose", scrub)
         assertTrue(kotlin.math.abs(bone(state(webView), "BreastSize").getJSONArray("quaternion").getDouble(2)) > .4)
         val otherClipControls = evaluate(webView,
-            "return JSON.stringify({basic:ViewerRigQa.control('viewer-pose-basic',false),preview:ViewerRigQa.control('viewer-pose-preview',false)});")
+            "return JSON.stringify(ViewerRigQa.withViewControls(function(){return {" +
+                "basic:ViewerRigQa.viewControl('viewer-pose-basic'),preview:ViewerRigQa.viewControl('viewer-pose-preview',true)};}));")
         assertEquals("false", otherClipControls.getJSONObject("basic").getString("pressed"))
         assertEquals("false", otherClipControls.getJSONObject("preview").getString("pressed"))
         click(webView, "viewer-pose-basic")
@@ -274,7 +277,7 @@ class ModelViewerRigTest {
             retainedHeadWorld.getJSONArray("matrix"), nodeWorld(webView, "Head").getJSONArray("matrix"))
         val afterContext = capture(webView, compare = highQualityReference)
         assertRestored("A restored native WebGL context must retain the adjusted model", afterContext)
-        run(webView, "ViewerQualityQa.set(false);")
+        run(webView, "ViewerRigQa.withViewControls(function(){ViewerRigQa.viewControl('viewer-high-quality');ViewerQualityQa.set(false);});")
         waitForDom(webView, "the original standard quality after context recovery") {
             "var s=ModelViewer.getState();return JSON.stringify({ok:s.quality.ready&&!s.quality.enabled,state:s});"
         }
@@ -909,7 +912,10 @@ class ModelViewerRigTest {
     private fun state(webView: WebView): JSONObject = evaluate(webView, "return JSON.stringify(ModelViewer.getState());")
     private fun input(webView: WebView, id: String, value: String, event: String = "input") = run(webView,
         "ViewerRigQa.input(" + JSONObject.quote(id) + "," + JSONObject.quote(value) + "," + JSONObject.quote(event) + ");")
-    private fun click(webView: WebView, id: String) = run(webView, "ViewerRigQa.click(" + JSONObject.quote(id) + ");")
+    private fun click(webView: WebView, id: String) = run(webView,
+        if (id == "viewer-pose-basic" || id == "viewer-pose-preview")
+            "ViewerRigQa.withViewControls(function(){ViewerRigQa.viewControl(" + JSONObject.quote(id) + ");ViewerRigQa.click(" + JSONObject.quote(id) + ");});"
+        else "ViewerRigQa.click(" + JSONObject.quote(id) + ");")
     private fun boneInput(webView: WebView, name: String, kind: String, axis: String, value: Number) = run(webView,
         "ViewerRigQa.boneInput(" + JSONObject.quote(name) + "," + JSONObject.quote(kind) + "," + JSONObject.quote(axis) + ",$value);")
     private fun run(webView: WebView, script: String) = evaluate(webView, script + "\nreturn JSON.stringify({ok:true});")

@@ -29,18 +29,59 @@
     return result;
   }
   function control(id, scroll) {
-    var target = element(id);
+    var target = typeof id === "string" ? element(id) : id;
+    if (!target) throw new Error("Missing viewer control target");
     if (scroll) target.scrollIntoView({ block: "center" });
     var rectangle = target.getBoundingClientRect(), style = window.getComputedStyle(target);
     var x = rectangle.left + rectangle.width / 2, y = rectangle.top + rectangle.height / 2;
     var top = document.elementFromPoint(x, y);
-    return { id: id, text: target.textContent.trim(), disabled: !!target.disabled,
+    return { id: target.id || target.tagName, text: target.textContent.trim(), disabled: !!target.disabled,
       pressed: target.getAttribute("aria-pressed"), width: rectangle.width, height: rectangle.height,
       visible: rectangle.width > 0 && rectangle.height > 0 && style.display !== "none" &&
         style.visibility !== "hidden" && Number(style.opacity) !== 0,
       withinViewport: rectangle.left >= 0 && rectangle.top >= 0 &&
         rectangle.right <= window.innerWidth && rectangle.bottom <= window.innerHeight,
       hittable: top === target || !!(top && target.contains(top)) };
+  }
+  function requireTarget(target, allowDisabled) {
+    var result = control(target, true);
+    if ((!allowDisabled && result.disabled) || !result.visible || !result.withinViewport ||
+        !result.hittable || result.width < 44 || result.height < 44) {
+      throw new Error("Expected a visible unobstructed 44 px viewer target: " + JSON.stringify(result));
+    }
+    return result;
+  }
+  function withViewMenu(open, action) {
+    var menu = element("viewer-view-menu"), content = element("viewer-view-menu-content");
+    var prior = { compact: !!state().layout.compactControls, open: menu.open,
+      x: window.scrollX, y: window.scrollY, left: content.scrollLeft, top: content.scrollTop };
+    function setOpen(value) {
+      if (!state().layout.compactControls) return;
+      var summary = menu.querySelector("summary");
+      if (!summary || !summary.textContent.trim()) throw new Error("View controls needs an accessible summary");
+      requireTarget(summary, false);
+      if (menu.open !== value) summary.click();
+      if (menu.open !== value) throw new Error("The actual View controls summary did not toggle its menu");
+    }
+    try {
+      setOpen(open);
+      return action();
+    } finally {
+      // A fullscreen/orientation transition may reparent these same controls.
+      // Only restore an open menu if that original compact mode still applies.
+      setOpen(prior.compact && prior.open && !!state().layout.compactControls);
+      content.scrollLeft = prior.left; content.scrollTop = prior.top;
+      window.scrollTo(prior.x, prior.y);
+    }
+  }
+  function viewControl(id, allowDisabled) {
+    var input = element(id), target = id === "viewer-high-quality" ? input.closest("label") || input : input;
+    var compact = !!state().layout.compactControls, inside = element("viewer-view-menu").contains(target);
+    if (inside !== compact) throw new Error("View control placement must match actual compact mode: " + id);
+    var result = requireTarget(target, !!allowDisabled);
+    result.disabled = !!input.disabled; result.compactControls = compact; result.insideViewMenu = inside;
+    if (!allowDisabled && input.disabled) throw new Error("Viewer control is disabled: " + id);
+    return result;
   }
   function context() {
     var canvas = element("viewer-canvas");
@@ -57,6 +98,9 @@
     return maximum;
   }
   function capture(saveAs, compareWith) {
+    return withViewMenu(false, function () { return capturePixels(saveAs, compareWith); });
+  }
+  function capturePixels(saveAs, compareWith) {
     var probe = window.ModelViewer.renderProbe(33);
     if (!probe.ready || probe.glError !== 0) throw new Error("The application's real render failed: " + JSON.stringify(probe));
     var gl = context(), width = gl.drawingBufferWidth, height = gl.drawingBufferHeight;
@@ -151,6 +195,9 @@
   }
   window.ViewerRigQa = {
     capture: capture, deformedVertices: deformedVertices, nodeId: nodeId, nodeWorld: nodeWorld, control: control,
+    withViewControls: function (action) { return withViewMenu(true, action); },
+    withViewMenuClosed: function (action) { return withViewMenu(false, action); },
+    viewControl: viewControl,
     input: function (id, value, event) {
       if (id === "viewer-expression-value") {
         element("viewer-expression-advanced").open = true;
