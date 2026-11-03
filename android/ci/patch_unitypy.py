@@ -10,7 +10,8 @@ formats (ASTC/ETC/BCn) still need the codecs and are gated with a clear message
 in the texture tool.
 
 The pinned parser also batches bounded byte vectors and canonical Vector3f
-values without changing their values, constructors or alignment.
+values, plus canonical blend-shape vertex arrays, without changing values,
+constructors or alignment.
 
 Run in CI after vendoring UnityPy:  python3 android/ci/patch_unitypy.py <py_dir>
 """
@@ -21,7 +22,8 @@ import sys
 
 _TYPETREE_ORIGINAL_SHA256 = "355179e62b14d2f638947e057979d15815a9cadd3a3d868d8b809455193a290b"
 _TYPETREE_BYTE_ONLY_SHA256 = "2d2f417a6a5b0e4b489bdff9de860ea452d137ca1a0f00bba1aab868b3ba69ca"
-_TYPETREE_PATCHED_SHA256 = "8ff606b2d6647417c007416111acfaa7fbb31304fd4c0dbd3ab247fb3e41a47b"
+_TYPETREE_VECTOR3_SHA256 = "8ff606b2d6647417c007416111acfaa7fbb31304fd4c0dbd3ab247fb3e41a47b"
+_TYPETREE_PATCHED_SHA256 = "92f6e65f439f9a096fd98426556d89626db8992e7d3419139388352e9b3435d9"
 _UNSIGNED_BYTE_VECTOR = '''_MEMORY_BYTE_READ = EndianBinaryReader_Memoryview.read
 
 
@@ -110,6 +112,64 @@ def _read_vector3(node, reader, config):
 
 '''
 
+_BLENDSHAPE_READERS = '''_BLENDSHAPE_CLASSES = {name: (klass, klass.__init__) for name, klass in (
+    ("BlendShapeVertex", _PinnedBlendShapeVertex),
+    ("MeshBlendShapeVertex", _PinnedMeshBlendShapeVertex),
+)}
+_BLENDSHAPE_UINT_READ = EndianBinaryReader.read_u_int
+
+
+def _read_blendshape_array(node, reader, config, size):
+    if type(size) is not int or size <= 0 or config.vector3 is None:
+        return None
+    state = config.vector3
+    if state[0] is not reader or state[1] != reader.endian or state[2] is not reader.view:
+        return None
+    record = _BLENDSHAPE_CLASSES.get(node.m_Type)
+    if record is None:
+        return None
+    klass, init = record
+    if getattr(classes, node.m_Type, None) is not klass or klass.__init__ is not init:
+        return None
+    if classes.Vector3f is not _VECTOR3_CLASS or _VECTOR3_CLASS.__init__ is not _VECTOR3_INIT:
+        return None
+    try:
+        children = node.m_Children
+        if node.m_ByteSize != 40 or node.m_TypeFlags not in (None, 0) or metaflag_is_aligned(node.m_MetaFlag) or type(children) not in (list, tuple) or len(children) != 4:
+            return None
+        for name, vector in zip(("vertex", "normal", "tangent"), children):
+            if vector.m_Name != name or vector._clean_name != name or vector.m_Type != "Vector3f" or vector.m_ByteSize != 12 or vector.m_TypeFlags not in (None, 0) or metaflag_is_aligned(vector.m_MetaFlag) or type(vector.m_Children) not in (list, tuple) or len(vector.m_Children) != 3:
+                return None
+            if not all(child.m_Name == axis and child._clean_name == axis and child.m_Type == "float" and child.m_ByteSize == 4 and child.m_TypeFlags in (None, 0) and not child.m_Children and not metaflag_is_aligned(child.m_MetaFlag) for axis, child in zip(("x", "y", "z"), vector.m_Children)):
+                return None
+        index = children[3]
+        if index.m_Name != "index" or index._clean_name != "index" or index.m_Type not in ("unsigned int", "UInt32") or index.m_ByteSize != 4 or index.m_TypeFlags not in (None, 0) or index.m_Children or metaflag_is_aligned(index.m_MetaFlag):
+            return None
+        if FUNCTION_READ_MAP.get("float") is not _VECTOR3_FLOAT_READ or FUNCTION_READ_MAP.get(index.m_Type) is not _BLENDSHAPE_UINT_READ:
+            return None
+        position, length, view = reader.Position, reader.Length, state[2]
+        if type(position) is not int or type(length) is not int or length != view.nbytes or not 0 <= position <= length - size * 40:
+            return None
+    except (AttributeError, ValueError, TypeError):
+        return None
+    records = Struct(reader.endian + "9fI").iter_unpack(view[position:position + size * 40])
+    if config.as_dict:
+        value = [{"vertex": {"x": a, "y": b, "z": c}, "normal": {"x": d, "y": e, "z": f}, "tangent": {"x": g, "y": h, "z": i}, "index": index}
+                 for a, b, c, d, e, f, g, h, i, index in records]
+    else:
+        vector3 = state[5]
+        value = []
+        for a, b, c, d, e, f, g, h, i, index in records:
+            vertex = vector3(a, b, c)
+            normal = vector3(d, e, f)
+            tangent = vector3(g, h, i)
+            value.append(klass(index, normal, tangent, vertex))
+    reader.Position = position + size * 40
+    return value
+
+
+'''
+
 
 def _unsigned_byte_vector_source(source):
     replacements = [
@@ -175,6 +235,30 @@ def _vector3_source(source):
     return source
 
 
+def _blendshape_source(source):
+    # One fixed-width schema; unsupported or truncated arrays retain the old loop.
+    original_loop = """            value = _read_unsigned_byte_vector(subtype, reader, size)
+            if value is None:
+                value = [read_value(subtype, reader, config) for _ in range(size)]"""
+    array_loop = """            value = _read_unsigned_byte_vector(subtype, reader, size)
+            if value is None:
+                value = _read_blendshape_array(subtype, reader, config, size)
+            if value is None:
+                value = [read_value(subtype, reader, config) for _ in range(size)]"""
+    replacements = [
+        ("from ..classes.math import Vector3f as _PinnedVector3f\n",
+         "from ..classes.math import Vector3f as _PinnedVector3f\n"
+         "from ..classes.generated import BlendShapeVertex as _PinnedBlendShapeVertex, MeshBlendShapeVertex as _PinnedMeshBlendShapeVertex\n"),
+        ("def get_ref_type_node(", _BLENDSHAPE_READERS + "def get_ref_type_node("),
+        (original_loop, array_loop),
+    ]
+    for original, replacement in replacements:
+        if source.count(original) != 1:
+            raise RuntimeError("Pinned UnityPy blend-shape array patch anchor differs")
+        source = source.replace(original, replacement, 1)
+    return source
+
+
 def patch_typetree_reads(py_dir):
     path = os.path.join(py_dir, "UnityPy", "helpers", "TypeTreeHelper.py")
     with open(path, "rb") as stream:
@@ -184,16 +268,18 @@ def patch_typetree_reads(py_dir):
         return
     if digest == _TYPETREE_ORIGINAL_SHA256:
         source = _unsigned_byte_vector_source(source.decode("utf-8"))
-    elif digest == _TYPETREE_BYTE_ONLY_SHA256:
+    elif digest in (_TYPETREE_BYTE_ONLY_SHA256, _TYPETREE_VECTOR3_SHA256):
         source = source.decode("utf-8")
     else:
-        raise RuntimeError("Expected the pinned UnityPy 1.25.0 original or byte-patched TypeTreeHelper source")
-    patched = _vector3_source(source).encode("utf-8")
+        raise RuntimeError("Expected a pinned UnityPy 1.25.0 original, byte or Vector3f-patched TypeTreeHelper source")
+    if digest != _TYPETREE_VECTOR3_SHA256:
+        source = _vector3_source(source)
+    patched = _blendshape_source(source).encode("utf-8")
     if hashlib.sha256(patched).hexdigest() != _TYPETREE_PATCHED_SHA256:
         raise RuntimeError("Pinned UnityPy typetree patch output differs")
     with open(path, "wb") as stream:
         stream.write(patched)
-    print(f"[patch_unitypy] batched exact byte and Vector3f reads in {path}")
+    print(f"[patch_unitypy] batched exact byte, Vector3f and blend-shape reads in {path}")
 
 
 def guard_imports(path, modules):
