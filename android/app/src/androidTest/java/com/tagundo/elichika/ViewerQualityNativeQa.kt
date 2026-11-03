@@ -18,7 +18,8 @@ object ViewerQualityNativeQa {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val helper = instrumentation.context.assets.open("viewer_quality_qa.js").bufferedReader().use { it.readText() }
         evaluate(webView, helper + "\nreturn JSON.stringify({ok:!!window.ViewerQualityQa&&!!window.ViewerRigQa});")
-        val control = evaluate(webView, "return JSON.stringify(ViewerQualityQa.control());")
+        val control = evaluate(webView, "return JSON.stringify(ViewerRigQa.withViewControls(function(){" +
+            "ViewerRigQa.viewControl('viewer-high-quality');return ViewerQualityQa.control();}));")
         assertTrue("The high-quality label must provide an unobstructed 44 px target: $control",
             !control.getBoolean("disabled") && control.getBoolean("withinViewport") && control.getBoolean("hittable") &&
                 control.getDouble("width") >= 44 && control.getDouble("height") >= 44)
@@ -84,12 +85,15 @@ object ViewerQualityNativeQa {
         assertExact("The standard image must remain exact after HQ context restoration",
             frame(webView, compare = prefix + "-standard"))
         val rejected = if (highDriver.getJSONObject("quality").getString("mode") == "multisample") {
-            val injected = evaluate(webView, "return JSON.stringify(ViewerQualityQa.rejectAllocations());")
+            val injected = evaluate(webView, "return JSON.stringify(ViewerRigQa.withViewControls(function(){" +
+                "ViewerRigQa.viewControl('viewer-high-quality');return ViewerQualityQa.rejectAllocations();}));")
             val fallbackReport = try {
                 // Deliberately inspect the first rendered frame. Polling a probe
                 // until it succeeds could consume and hide an earlier GL error.
-                val immediate = evaluate(webView, "ViewerQualityQa.set(true);" +
-                    "var p=ModelViewer.renderProbe(33);return JSON.stringify({probe:p,state:ModelViewer.getState(),driver:ViewerQualityQa.snapshot()});")
+                val immediate = evaluate(webView,
+                    "ViewerRigQa.withViewControls(function(){ViewerRigQa.viewControl('viewer-high-quality');ViewerQualityQa.set(true);});" +
+                    "return JSON.stringify(ViewerRigQa.withViewMenuClosed(function(){var p=ModelViewer.renderProbe(33);" +
+                    "return {probe:p,state:ModelViewer.getState(),driver:ViewerQualityQa.snapshot()};}));")
                 assertTrue(immediate.getJSONObject("probe").getBoolean("ready"))
                 assertEquals("Rejected owned storage must not leak a GL error into the first fallback frame", 0,
                     immediate.getJSONObject("probe").getInt("glError"))
@@ -105,7 +109,8 @@ object ViewerQualityNativeQa {
                 assertFrame(frame(webView), sourceTriangles, drawTriangles, centerRgb)
                 immediate.put("faultInjection", injected)
             } finally {
-                action(webView, "ViewerQualityQa.set(false);ViewerQualityQa.restoreAllocations();")
+                action(webView, "try{ViewerRigQa.withViewControls(function(){" +
+                    "ViewerRigQa.viewControl('viewer-high-quality');ViewerQualityQa.set(false);});}finally{ViewerQualityQa.restoreAllocations();}")
             }
             setQuality(webView, true)
             assertDimensions(driver(webView), true)
@@ -195,7 +200,7 @@ object ViewerQualityNativeQa {
     }
 
     private fun setQuality(webView: WebView, enabled: Boolean) {
-        action(webView, "ViewerQualityQa.set($enabled);")
+        action(webView, "ViewerRigQa.withViewControls(function(){ViewerRigQa.viewControl('viewer-high-quality');ViewerQualityQa.set($enabled);});")
         waitFor(webView, "the requested high-quality setting") {
             "var s=ModelViewer.getState(),q=s.quality,p=ModelViewer.renderProbe(33);" +
                 "return JSON.stringify({ok:q&&q.ready&&q.enabled===$enabled&&p.ready&&p.glError===0,state:s,probe:p});"
