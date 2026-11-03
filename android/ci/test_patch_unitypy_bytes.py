@@ -61,7 +61,7 @@ class ByteVectorPatchTests(unittest.TestCase):
         target = cls.root / "UnityPy/helpers/TypeTreeHelper.py"
         target.parent.mkdir(parents=True)
         target.write_bytes(cls.original)
-        patcher.patch_unsigned_byte_vectors(str(cls.root))
+        patcher.patch_typetree_reads(str(cls.root))
         cls.patched_source = target.read_bytes()
         cls.proposed = load_module("UnityPy.helpers._ByteVectorTestHelper", target)
 
@@ -211,17 +211,17 @@ class ByteVectorPatchTests(unittest.TestCase):
 
     def test_patch_is_idempotent_and_fails_closed_without_writes(self):
         target = self.root / "UnityPy/helpers/TypeTreeHelper.py"
-        patcher.patch_unsigned_byte_vectors(str(self.root))
+        patcher.patch_typetree_reads(str(self.root))
         self.assertEqual(target.read_bytes(), self.patched_source)
         for malformed in (self.original + b"\n", self.patched_source + b"\n"):
             target.write_bytes(malformed)
             with self.assertRaises(RuntimeError):
-                patcher.patch_unsigned_byte_vectors(str(self.root))
+                patcher.patch_typetree_reads(str(self.root))
             self.assertEqual(target.read_bytes(), malformed)
         target.write_bytes(self.original)
         with patch.object(patcher, "_TYPETREE_PATCHED_SHA256", "0" * 64):
             with self.assertRaises(RuntimeError):
-                patcher.patch_unsigned_byte_vectors(str(self.root))
+                patcher.patch_typetree_reads(str(self.root))
         self.assertEqual(target.read_bytes(), self.original)
         target.write_bytes(self.patched_source)
 
