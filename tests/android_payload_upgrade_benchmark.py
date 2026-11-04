@@ -48,11 +48,22 @@ def _identity(path):
     return (info.st_dev, info.st_ino)
 
 
+def _android_api_level():
+    if hasattr(sys, 'getandroidapilevel'):
+        return sys.getandroidapilevel()
+    # Released Chaquopy builds can omit the CPython Android API helper.
+    # Read the actual Android framework value through the installed bridge.
+    try:
+        from java import jclass
+        return int(jclass('android.os.Build$VERSION').SDK_INT)
+    except Exception:
+        return 0
+
+
 def _validate_context(cache, work, report, enabled, hardware, abi, static_mib):
     _require(enabled is True, 'benchmark_requires_explicit_opt_in')
     _require(hardware == 'redroid' and abi == 'arm64-v8a', 'benchmark_requires_disposable_native_arm64_redroid')
-    _require(hasattr(sys, 'getandroidapilevel') and sys.getandroidapilevel() >= 29,
-             'benchmark_requires_android_runtime')
+    _require(_android_api_level() >= 29, 'benchmark_requires_android_runtime')
     _require(type(static_mib) is int and static_mib in (0, 256), 'benchmark_static_size_not_allowlisted')
     cache, work, report = Path(cache), Path(work), Path(report)
     _require(cache.is_absolute() and cache.is_dir() and not cache.is_symlink(), 'benchmark_private_cache_missing')
@@ -258,7 +269,7 @@ def run_benchmark(cache, work, report, enabled, hardware, abi, static_mib=256, p
     _require(type(profile_enabled) is bool, 'benchmark_profile_flag_invalid')
     result = {'status': 'RUNNING', 'protocol': 'fixed-public-v2-payload-v1',
               'fixture_apk_sha256': FIXTURE_SHA256, 'fixture_apk_bytes': FIXTURE_BYTES,
-              'android_api': sys.getandroidapilevel(), 'abi': abi, 'hardware': hardware,
+              'android_api': _android_api_level(), 'abi': abi, 'hardware': hardware,
               'python_version': '.'.join(map(str, sys.version_info[:3])), 'retained_static_mib': static_mib,
               'timed_scope': 'actual installed engine.apply_upgrade_json only; staging/verification excluded',
               'profile_enabled': profile_enabled}

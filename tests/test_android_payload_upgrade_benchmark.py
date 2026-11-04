@@ -77,6 +77,29 @@ class BenchmarkGuardTests(unittest.TestCase):
                 benchmark._validate_context(self.cache, self.work, self.report,
                                             True, 'redroid', 'arm64-v8a', 0)
 
+    def test_context_uses_exact_android_framework_api_on_chaquopy_without_sys_helper(self):
+        framework = types.SimpleNamespace(SDK_INT=34)
+        jclass = mock.Mock(return_value=framework)
+        java = types.SimpleNamespace(jclass=jclass)
+        with mock.patch.dict(benchmark.sys.__dict__), mock.patch.dict(sys.modules, {'java': java}):
+            benchmark.sys.__dict__.pop('getandroidapilevel', None)
+            benchmark._validate_context(self.cache, self.work, self.report,
+                                        True, 'redroid', 'arm64-v8a', 0)
+            self.assertEqual(benchmark._android_api_level(), 34)
+        self.assertEqual(jclass.call_args_list, [mock.call('android.os.Build$VERSION')] * 2)
+
+    def test_chaquopy_runtime_fallback_refuses_missing_framework_and_low_api(self):
+        providers = [None, types.SimpleNamespace(jclass=mock.Mock(side_effect=ImportError)),
+                     types.SimpleNamespace(jclass=mock.Mock(return_value=types.SimpleNamespace())),
+                     types.SimpleNamespace(jclass=mock.Mock(return_value=types.SimpleNamespace(SDK_INT=28)))]
+        for java in providers:
+            with self.subTest(java=java), mock.patch.dict(benchmark.sys.__dict__), \
+                    mock.patch.dict(sys.modules, {'java': java}):
+                benchmark.sys.__dict__.pop('getandroidapilevel', None)
+                with self.assertRaisesRegex(ValueError, '^benchmark_requires_android_runtime$'):
+                    benchmark._validate_context(self.cache, self.work, self.report,
+                                                True, 'redroid', 'arm64-v8a', 0)
+
     def test_context_rejects_paths_outside_its_owned_cache_namespace(self):
         outside = self.base / (benchmark.FIXTURE_PREFIX + 'outside')
         outside.mkdir()
@@ -234,8 +257,11 @@ class BenchmarkGuardTests(unittest.TestCase):
             exec(compile(old_source, '<released-v2-payload-engine>', 'exec'), old_engine.__dict__)
         for label, engine in [('released_v2', old_engine), ('optimized', current_engine)]:
             with self.subTest(engine=label), self.fixture_contract(apk), \
-                    mock.patch.object(benchmark.sys, 'getandroidapilevel', return_value=34, create=True), \
-                    mock.patch.dict(sys.modules, {'payload_db_upgrade': engine}):
+                    mock.patch.dict(benchmark.sys.__dict__), \
+                    mock.patch.dict(sys.modules, {'payload_db_upgrade': engine,
+                        'java': types.SimpleNamespace(jclass=mock.Mock(
+                            return_value=types.SimpleNamespace(SDK_INT=34)))}):
+                benchmark.sys.__dict__.pop('getandroidapilevel', None)
                 work = self.cache / (benchmark.FIXTURE_PREFIX + label)
                 work.mkdir()
                 report = self.cache / (benchmark.FIXTURE_PREFIX + label + '.json')
@@ -244,6 +270,7 @@ class BenchmarkGuardTests(unittest.TestCase):
                 import json
                 result = json.loads(result)
                 self.assertEqual(result['status'], 'PASS', result)
+                self.assertEqual(result['android_api'], 34)
                 self.assertEqual(result['databases'], 55)
                 self.assertEqual(len(result['cases']), 2)
                 self.assertTrue(result['fixture_cleanup_complete'])
