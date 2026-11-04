@@ -128,6 +128,7 @@ def require_no_live_user_data():
 
 
 def report_path_from_output(output, label):
+    require(label in ('baseline', 'candidate'), 'benchmark_report_label_invalid')
     paths = re.findall(r'ANDROID_PAYLOAD_BENCHMARK_REPORT_FILE=([^\r\n]+)', output)
     require(len(paths) == 1, 'benchmark_report_path_not_unique')
     path = PurePosixPath(paths[0].strip())
@@ -136,6 +137,24 @@ def report_path_from_output(output, label):
         r'payload-upgrade-benchmark-' + label + r'-[0-9a-f-]{36}\.json', path.name) is not None,
         'benchmark_report_outside_private_cache')
     return str(path)
+
+
+def collect_report_path(output, label):
+    require(label in ('baseline', 'candidate'), 'benchmark_report_label_invalid')
+    marker = 'ANDROID_PAYLOAD_BENCHMARK_REPORT_FILE='
+    if marker in output:
+        path, source = report_path_from_output(output, label), 'instrumentation_stdout'
+    else:
+        # AndroidJUnitRunner can omit println output from am instrument stdout.
+        # Discover only this completed test's report in the fixed private cache.
+        names = shell('find', f'/data/user/0/{PACKAGE}/cache', '-maxdepth', '1', '-type', 'f',
+                      '-name', f'payload-upgrade-benchmark-{label}-*.json').splitlines()
+        path = report_path_from_output('\n'.join(marker + name for name in names), label)
+        source = 'private_cache_fallback'
+    regular = shell('sh', '-c', 'if [ -f "$1" ] && [ ! -L "$1" ]; then echo regular; fi',
+                    'benchmark-report', path)
+    require(regular == 'regular', 'benchmark_report_not_regular_file')
+    return path, source
 
 
 def validate_report(report, label, identity):
@@ -190,14 +209,16 @@ def run_case(label, identity, evidence):
     evidence.joinpath(label + '-instrumentation.txt').write_text(output)
     require(completed.returncode == 0 and 'OK (1 test)' in output and 'FAILURES' not in output
             and 'INSTRUMENTATION_FAILED' not in output, 'benchmark_instrumentation_failed')
-    path = report_path_from_output(output, label)
+    path, source = collect_report_path(output, label)
     raw = adb('exec-out', 'cat', path, raw=True)
     require(len(raw) <= 256 * 1024, 'benchmark_report_too_large')
     report = json.loads(raw)
     validate_report(report, label, identity)
     evidence.joinpath(label + '-report.json').write_bytes(raw)
+    evidence.joinpath(label + '-report-collection.json').write_text(json.dumps(
+        {'report_path': path, 'report_path_source': source}, sort_keys=True) + '\n')
     require_no_live_user_data()
-    print(json.dumps({'label': label, 'status': 'PASS', 'target': identity,
+    print(json.dumps({'label': label, 'status': 'PASS', 'target': identity, 'report_path_source': source,
                       'cases': [{'case': c['case'], 'seconds': c['elapsed_seconds'],
                                  'cpu_seconds': c['process_cpu_seconds']} for c in report['cases']]}), flush=True)
     return report
