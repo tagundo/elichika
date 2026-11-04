@@ -21,6 +21,7 @@ import tempfile
 import subprocess
 import zipfile
 import xml.etree.ElementTree as ET
+from urllib.parse import urlsplit, parse_qs
 
 from android_release_smoke import Android, Client, FILES, sha
 
@@ -32,6 +33,67 @@ PERMISSION_BUTTONS = {
     "com.android.permissioncontroller:id/permission_allow_foreground_only_button",
     "com.android.packageinstaller:id/permission_allow_button",
 }
+QA_LABELS = {
+    "en": {"contract": "Contract", "agree": "Agree", "no": "No", "download": "Download Confirmation", "ok": "OK", "cancel": "Cancel"},
+    "ko": {"contract": "약관", "agree": "동의합니다.", "no": "동의하지 않습니다.", "download": "데이터 다운로드 확인", "ok": "확인", "cancel": "취소"},
+}
+
+
+def diagnostic_summary(server_text, logcat_text):
+    """Allowlisted route metadata and fixed failure categories, never bodies/keys."""
+    server_text = server_text if isinstance(server_text, str) else ""
+    logcat_text = logcat_text if isinstance(logcat_text, str) else ""
+    requests = []
+    pattern = re.compile(r'^\[GIN\] ([0-9/ :\-]+)\|\s*(\d{3})\s*\|\s*([0-9.a-zµμ]+)\s*\|[^|]+\|\s*(GET|POST|HEAD)\s+"([^"\r\n]+)"$')
+    for line in server_text.splitlines():
+        match = pattern.fullmatch(line.strip())
+        if not match:
+            continue
+        timestamp, status, duration, method, uri = match.groups()
+        parsed = urlsplit(uri)
+        if not re.fullmatch(r"/[A-Za-z0-9_./-]{1,300}", parsed.path):
+            continue
+        locale = parse_qs(parsed.query).get("l", [None])[0]
+        row = {"timestamp": timestamp.strip(), "status": int(status), "duration": duration, "method": method, "path": parsed.path}
+        if locale in ("en", "ko", "zh", "ja"):
+            row["language"] = locale
+        requests.append(row)
+    versions = sorted(set(re.findall(r'(?:Performing integrity check for version:|new version:)\s+([0-9a-f]{16})\b', server_text)))
+    # Never persist arbitrary Unity exception text, Android logs or stack values.
+    categories = {name: len(re.findall(regex, logcat_text, re.I)) for name, regex in {
+        "unity_null_reference": r"NullReferenceException", "unity_missing_reference": r"MissingReferenceException",
+        "unity_key_not_found": r"KeyNotFoundException", "unity_index_out_of_range": r"IndexOutOfRangeException",
+        "unity_exception": r"(?:E|Error)[ /]+Unity.*Exception", "fatal_exception": r"FATAL EXCEPTION",
+        "native_fatal_signal": r"Fatal signal [0-9]+", "anr": r"ANR in com\.klab\.lovelive\.allstars\.global",
+        "out_of_memory": r"OutOfMemory(?:Error|Exception)", "low_memory_kill": r"(?:Killing|Kill).*com\.klab\.lovelive\.allstars\.global.*(?:low|memory)"}.items()}
+    # Known code namespaces and method identifiers only: strip exception messages,
+    # arguments, addresses and source paths which may contain app/user values.
+    frames = sorted(set(re.findall(r'\bat\s+((?:System|UnityEngine|LLAS)\.[A-Za-z0-9_.+`<>]{1,180})\s*\(', logcat_text)))[:80]
+    return {"requests": requests, "master_versions": versions, "failure_category_counts": categories,
+            "known_exception_frame_methods": frames,
+            "scope": "Current route metadata without query identifiers/bodies; fixed failure counts and known code method identifiers without messages/arguments"}
+
+
+def capture_phase_diagnostics(android, evidence, phase, report):
+    evidence.mkdir(parents=True, exist_ok=True)
+    result = {"phase": phase, "captured_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    texts = []
+    for name, read in (("server", lambda: android.read("/sdcard/Download/sukusta/logs/elichika.log").decode("utf-8", "replace")),
+                       ("logcat", lambda: android.adb("logcat", "-d", "-v", "brief", timeout=25))):
+        try:
+            texts.append(read())
+        except Exception as exc:
+            texts.append("")
+            result[name + "_unavailable"] = type(exc).__name__
+    result.update(diagnostic_summary(*texts))
+    try:
+        result["game_process_running"] = android.shell("pidof", "-s", GAME).isdecimal()
+    except Exception:
+        result["game_process_running"] = False
+    filename = phase + "-diagnostics.json"
+    evidence.joinpath(filename).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    report.setdefault("phase_diagnostics", []).append({"phase": phase, "report": filename,
+        "request_count": len(result["requests"]), "failure_category_counts": result["failure_category_counts"]})
 
 
 def database_from_bytes(contents):
@@ -147,6 +209,37 @@ def prepare_new_home(android, before, favorite_suit):
     return {"status": "PREPARED", "user_id": uid, "favorite_suit": favorite_suit,
             "favorite_member_id": owners[favorite_suit], "background_id": 202300200,
             "game_rendering_verified": False}
+
+
+def prepare_existing_home(android, before, language="ko"):
+    """Keep the one game-created Nov3 account's vanilla favourite and theme."""
+    with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
+        created = {row[0] for row in connection.execute("SELECT user_id FROM u_status")} - before
+        if len(created) != 1:
+            return {"status": "SKIPPED", "reason": "Exactly one game-created account is not available", "new_account_count": len(created)}
+        uid = created.pop()
+        status = connection.execute("SELECT tutorial_phase,favorite_member_id FROM u_status WHERE user_id=?", (uid,)).fetchone()
+        auth = connection.execute("SELECT session_key,command_id FROM u_authentication WHERE user_id=?", (uid,)).fetchone()
+        if status is None or status[0] != 99 or auth is None or auth[0] is None or len(auth[0]) != 32:
+            return {"status": "SKIPPED", "reason": "Game-created existing account/session is not ready", "user_id": uid}
+        member = status[1]
+        theme = connection.execute("SELECT suit_master_id,custom_background_master_id FROM u_member WHERE user_id=? AND member_master_id=?", (uid, member)).fetchone()
+        assert theme is not None and connection.execute("SELECT 1 FROM u_suit WHERE user_id=? AND suit_master_id=?", (uid, theme[0])).fetchone(), "Existing theme must use an owned costume"
+        suit, background = tuple(theme)
+    with closing(database_from_bytes(android.read(f"{FILES}/assets/db/gl/masterdata.db"))) as master:
+        assert master.execute("SELECT member_m_id FROM m_suit WHERE id=?", (suit,)).fetchone()[0] == member
+    android.shell("am", "force-stop", GAME)
+    time.sleep(2)
+    with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
+        auth = connection.execute("SELECT session_key,command_id FROM u_authentication WHERE user_id=?", (uid,)).fetchone()
+        assert auth is not None and auth[0] is not None and len(auth[0]) == 32
+        session, command = bytes(auth[0]), auth[1]
+    client = Client(language, None)
+    client.uid, client.session, client.command = uid, session, command
+    client.request("/communicationMember/setTheme", {"member_master_id": member, "suit_master_id": suit, "custom_background_master_id": background})
+    client.request("/communicationMember/setFavoriteMember", {"member_master_id": member})
+    return {"status": "PREPARED", "user_id": uid, "favorite_suit": suit, "favorite_member_id": member,
+            "background_id": background, "fixture": "existing_owned_vanilla_theme_preserved", "game_rendering_verified": False}
 
 
 LATEST_BASELINE_SHA = "70fa45d9fbb70e92b56b486617e4cc3c4afc39a76922f7f941caf6a29787fa8f"
@@ -339,7 +432,8 @@ def live_tool(args, tool, output, timeout):
     command = [str(args.live_python), str(tools / tool), "--serial", args.serial,
                "--apk", str(args.game), "--output", str(output)]
     if tool == "language_setup.py":
-        command.append("--prepare-light-download")
+        command += ["--prepare-light-download", "--qa-language", getattr(args, "qa_language", "en"),
+                    "--qa-download-mode", getattr(args, "qa_download_mode", "light")]
     if tool == "snapshot.py":
         command += ["--allow-screen-space-camera", "--allow-download-size-labels"]
         for label in ("English", "한국어", "OK", "Cancel", "Confirm", "Download", "Download All",
@@ -366,7 +460,8 @@ def live_tool(args, tool, output, timeout):
         if tool == "language_setup.py":
             summary.update(key=data.get("key"), before_kind=data.get("before_kind"),
                            readback=data.get("readback"), apk_identity_unchanged=data.get("apk_identity_unchanged"),
-                           download_mode=data.get("download_mode"), auto_delete_mode=data.get("auto_delete_mode"))
+                           download_mode=data.get("download_mode"), auto_delete_mode=data.get("auto_delete_mode"),
+                           full_download_getter_readback=data.get("full_download_getter_readback"))
     else:
         summary["status"] = "NO_REPORT"
     if result.returncode:
@@ -379,8 +474,12 @@ def prepare_english_language(android, args, report, component):
     wait_for_initialized_game(android, args)
     setup = live_tool(args, "language_setup.py", args.evidence / "english-preference", 50)
     report["english_preference_setup"] = setup
-    assert (setup.get("status") == "PREPARED" and setup.get("readback") == "en" and setup.get("apk_identity_unchanged")
-            and setup.get("download_mode", {}).get("readback") == 0 and setup.get("auto_delete_mode", {}).get("readback") == 0), "QA English/Light Download preference setup refused"
+    report["qa_language"] = getattr(args, "qa_language", "en")
+    report["qa_download_mode"] = getattr(args, "qa_download_mode", "light")
+    expected_download = 1 if report["qa_download_mode"] == "full" else 0
+    assert (setup.get("status") == "PREPARED" and setup.get("readback") == getattr(args, "qa_language", "en") and setup.get("apk_identity_unchanged")
+            and setup.get("download_mode", {}).get("readback") == expected_download and setup.get("auto_delete_mode", {}).get("readback") == 0
+            and (expected_download == 0 or setup.get("full_download_getter_readback") is True)), "QA locale/download preference setup refused"
     assert sha(args.game.read_bytes()) == GAME_SHA
     android.shell("am", "force-stop", GAME)
     # The positive GMS acknowledgement may be needed once in each new process.
@@ -428,6 +527,7 @@ def observe_live_ui(android, args, report, phase="gl-observation", seconds=120):
         if remaining > 0:
             time.sleep(min(args.interval, remaining))
     report["live_ui_snapshot_obtained"] = any(tree.get("status") == "SNAPSHOT" for tree in trees)
+    capture_phase_diagnostics(android, args.evidence, phase, report)
 
 
 def tap_ready_title(android, args, report, location="label-center", source="touchscreen", phase="bootstrap"):
@@ -497,21 +597,22 @@ def accept_local_qa_contract(android, args, report, phase):
         return False
     tree = json.loads((output / "unity-ui-tree.json").read_text())
     public_labels = {text.get("label") for text in tree.get("texts", [])}
+    locale = QA_LABELS[getattr(args, "qa_language", "en")]
     # The captured Contract modal disables the full-screen title control behind
     # it. Its heading may use a text component omitted from this UI reader.
     blocked_title = [widget for widget in tree.get("widgets", [])
                      if widget.get("active") is True and widget.get("clickable") is False
                      and widget.get("geometry", {}) is not None
                      and widget.get("geometry", {}).get("bounds") == tree.get("gameViewBounds")]
-    scene_proof = "Contract heading" if "Contract" in public_labels else "Observed Agree/No modal over the disabled title control"
-    if not {"Agree", "No"} <= public_labels or not ("Contract" in public_labels or
+    scene_proof = "Contract heading" if locale["contract"] in public_labels else "Observed Agree/No modal over the disabled title control"
+    if not {locale["agree"], locale["no"]} <= public_labels or not (locale["contract"] in public_labels or
             (len(blocked_title) == 1 and public_labels & {"Tap to Start", "Tap To Start"})):
         report[phase + "_contract_action"] = {"status": "REFUSED", "reason": "Observed contract scene not present"}
         return False
     buttons = [widget for widget in tree.get("widgets", []) if widget.get("active") is True
                and widget.get("clickable") is True and widget.get("geometry")]
-    agree = [widget for widget in buttons if widget.get("labels") == ["Agree"]]
-    no = [widget for widget in buttons if widget.get("labels") == ["No"]]
+    agree = [widget for widget in buttons if widget.get("labels") == [locale["agree"]]]
+    no = [widget for widget in buttons if widget.get("labels") == [locale["no"]]]
     if (len(agree) != 1 or len(no) != 1 or
             agree[0]["geometry"]["canvasId"] != no[0]["geometry"]["canvasId"]):
         report[phase + "_contract_action"] = {"status": "REFUSED", "reason": "No unique active contract action pair on the same observed Canvas"}
@@ -524,7 +625,7 @@ def accept_local_qa_contract(android, args, report, phase):
     b = area["geometry"]["bounds"]
     point = [round((b[0] + b[2]) / 2), round((b[1] + b[3]) / 2)]
     android.shell("input", "touchscreen", "swipe", *map(str, point + point), "240")
-    report[phase + "_contract_action"] = {"status": "TAPPED", "label": "Agree", "widget_id": widget["id"],
+    report[phase + "_contract_action"] = {"status": "TAPPED", "label": locale["agree"], "widget_id": widget["id"],
         "coordinates": point, "bounds": b, "duration_ms": 240,
         "scene_evidence": scene_proof,
         "scope": "Only the synthetic localhost QA account; normal client /terms/agreement flow"}
@@ -540,11 +641,12 @@ def confirm_qa_download(android, args, report, phase):
         return False
     tree = json.loads((output / "unity-ui-tree.json").read_text())
     labels = {text.get("label") for text in tree.get("texts", [])}
+    locale = QA_LABELS[getattr(args, "qa_language", "en")]
     buttons = [widget for widget in tree.get("widgets", []) if widget.get("active") is True
                and widget.get("clickable") is True and widget.get("geometry")]
-    ok = [widget for widget in buttons if widget.get("labels") == ["OK"]]
-    cancel = [widget for widget in buttons if widget.get("labels") == ["Cancel"]]
-    if ("Download Confirmation" not in labels or len(ok) != 1 or len(cancel) != 1 or
+    ok = [widget for widget in buttons if widget.get("labels") == [locale["ok"]]]
+    cancel = [widget for widget in buttons if widget.get("labels") == [locale["cancel"]]]
+    if (locale["download"] not in labels or len(ok) != 1 or len(cancel) != 1 or
             ok[0]["geometry"]["canvasId"] != cancel[0]["geometry"]["canvasId"]):
         report[phase + "_download_action"] = {"status": "REFUSED", "reason": "Exact Download Confirmation/OK/Cancel dialog not present"}
         return False
@@ -555,7 +657,7 @@ def confirm_qa_download(android, args, report, phase):
     b = area["geometry"]["bounds"]
     point = [round((b[0] + b[2]) / 2), round((b[1] + b[3]) / 2)]
     android.shell("input", "touchscreen", "swipe", *map(str, point + point), "240")
-    report[phase + "_download_action"] = {"status": "TAPPED", "label": "OK", "widget_id": ok[0]["id"],
+    report[phase + "_download_action"] = {"status": "TAPPED", "label": locale["ok"], "widget_id": ok[0]["id"],
         "coordinates": point, "bounds": b, "duration_ms": 240,
         "scope": "Resource download on disposable native ARM64 QA Android"}
     return True
@@ -624,8 +726,9 @@ def run(args, report):
             if account_ids(android) == before:
                 if tap_ready_title(android, args, report, phase="retry"):
                     observe_live_ui(android, args, report, "gl-after-retry-start", seconds=60)
-    if args.prepare_new_home:
-        report["new_home"] = prepare_new_home(android, before, args.favorite_suit)
+    if args.prepare_new_home or args.prepare_existing_home:
+        report["new_home"] = (prepare_existing_home(android, before, args.qa_language) if args.prepare_existing_home
+                              else prepare_new_home(android, before, args.favorite_suit))
         if report["new_home"].get("status") == "PREPARED":
             if args.prepare_english:
                 report["play_services_warning_dismissed"] = False
@@ -673,7 +776,7 @@ def main():
     parser.add_argument("--baseline-version-code", type=int, default=LATEST_BASELINE_CODE)
     parser.add_argument("--check-resource-modes", action="store_true")
     parser.add_argument("--skip-game", action="store_true")
-    parser.add_argument("--prepare-english", action="store_true", help="QA CurrentLanguage=en and Light Download prefs plus read-only live Unity UI snapshots")
+    parser.add_argument("--prepare-english", action="store_true", help="Enable QA locale/download preference setup (en/Light defaults) and live UI snapshots")
     parser.add_argument("--live-python", type=Path, help="Interpreter with the pinned Frida package")
     parser.add_argument("--serial", default="127.0.0.1:5555")
     parser.add_argument("--evidence", type=Path, required=True)
@@ -681,9 +784,13 @@ def main():
     parser.add_argument("--interval", type=int, default=10)
     parser.add_argument("--tap-surface-center", action="store_true")
     parser.add_argument("--prepare-new-home", action="store_true")
+    parser.add_argument("--prepare-existing-home", action="store_true", help="Preserve the game-created legacy account vanilla owned theme; no new JP content fixture")
+    parser.add_argument("--qa-language", choices=("en", "ko"), default="en")
+    parser.add_argument("--qa-download-mode", choices=("light", "full"), default="light")
     parser.add_argument("--favorite-suit", type=int, choices=(300207, 321107, 321207), default=300207)
     args = parser.parse_args()
     assert 1 <= args.frames <= 12 and 1 <= args.interval <= 30
+    assert not args.prepare_existing_home or (args.prepare_english and not args.prepare_new_home), "existing-home requires locale setup and excludes the new-content fixture"
     assert not args.skip_game or args.baseline or args.check_resource_modes, "skip-game requires an explicit preservation check"
     assert not args.prepare_english or args.skip_game or args.live_python is not None, "prepare-english requires pinned live tools"
     args.evidence.mkdir(parents=True, exist_ok=True)
@@ -699,6 +806,7 @@ def main():
         raise
     finally:
         # Save diagnostic logs, never the account database or authentication rows.
+        capture_phase_diagnostics(Android(args.serial, args.evidence), args.evidence, "gl-final", report)
         android = Android(args.serial, args.evidence)
         for filename, command in (("gl-logcat.txt", ("logcat", "-d")),
                                   ("gl-crash.txt", ("logcat", "-d", "-b", "crash"))):

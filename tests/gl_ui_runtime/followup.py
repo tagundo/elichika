@@ -20,9 +20,12 @@ import android_gl_visual_smoke as smoke
 
 COMMAND_PATH = "tests/gl_ui_runtime/live-command.json"
 SUITS = {300207, 321107, 321207}
-UPGRADE_SOURCE_SHA = "4ab6b4f275a1fb2e006e46ab46b60124996fc451"
-UPGRADE_VERSION_CODE = 2026110400
-UPGRADE_VERSION_NAME = "2026.11.04-dev"
+UPGRADE_SOURCE_SHA = "e6aa8588c02923a4a3dfcb995d5211e19e6c3940"
+UPGRADE_VERSION_CODE = 2026110401
+UPGRADE_VERSION_NAME = "2026.11.04.1"
+UPGRADE_ARTIFACT_ID = 13304790579
+UPGRADE_RUN_ID = "41791847801"
+UPGRADE_APK_SHA = "8c725e5af842bb5a7f6f87417bbb902a6c16caaf1ee6ddde7675ca15988e2483"
 
 
 class Refused(ValueError):
@@ -75,10 +78,9 @@ def validate_command(command, run_id, sequence):
     if action == "set_favorite_suit" and (type(command["suit_id"]) is not int or command["suit_id"] not in SUITS):
         raise Refused("suit_not_allowlisted")
     if action == "upgrade_candidate":
-        if (type(command["artifact_id"]) is not int or command["artifact_id"] <= 0 or
-                not isinstance(command["artifact_run_id"], str) or not command["artifact_run_id"].isdecimal() or
-                int(command["artifact_run_id"]) <= 0 or command["source_sha"] != UPGRADE_SOURCE_SHA or
-                not isinstance(command["apk_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", command["apk_sha256"]) or
+        if (type(command["artifact_id"]) is not int or command["artifact_id"] != UPGRADE_ARTIFACT_ID or
+                command["artifact_run_id"] != UPGRADE_RUN_ID or command["source_sha"] != UPGRADE_SOURCE_SHA or
+                command["apk_sha256"] != UPGRADE_APK_SHA or
                 type(command["version_code"]) is not int or command["version_code"] != UPGRADE_VERSION_CODE or
                 command["version_name"] != UPGRADE_VERSION_NAME):
             raise Refused("candidate_upgrade_pin_mismatch")
@@ -430,6 +432,10 @@ def execute(command, args, state, report):
         raise
     finally:
         try:
+            smoke.capture_phase_diagnostics(android, args.evidence, "followup-final", report)
+        except Exception as error:
+            report["diagnostic_error"] = type(error).__name__
+        try:
             if primary_error is None:
                 snapshot(android, args, report, "after")
             else:
@@ -513,7 +519,8 @@ def main():
     parser.add_argument("--live-python", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
-    parser.add_argument("--command-ref", default="codex/jp-global-content-gl-qa")
+    parser.add_argument("--command-ref", default="codex/gl-ko-home-regression")
+    parser.add_argument("--qa-language", choices=("en", "ko"), default="en")
     parser.add_argument("--repository", default="tagundo/elichika")
     args = parser.parse_args()
     if not 1 <= args.sequence <= 40 or not args.run_id.isdecimal() or int(args.run_id) <= 0:

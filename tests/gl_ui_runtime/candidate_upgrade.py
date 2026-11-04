@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 import urllib.error
@@ -22,10 +23,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import android_gl_visual_smoke as smoke
 import android_release_smoke as release
 
-SOURCE_SHA = "4ab6b4f275a1fb2e006e46ab46b60124996fc451"
-VERSION_CODE = 2026110400
-VERSION_NAME = "2026.11.04-dev"
-APK_NAME = "elichika-2026.11.04-dev.apk"
+SOURCE_SHA = "e6aa8588c02923a4a3dfcb995d5211e19e6c3940"
+ARTIFACT_ID = 13304790579
+ARTIFACT_RUN_ID = "41791847801"
+APK_SHA256 = "8c725e5af842bb5a7f6f87417bbb902a6c16caaf1ee6ddde7675ca15988e2483"
+VERSION_CODE = 2026110401
+VERSION_NAME = "2026.11.04.1"
+APK_NAME = "elichika-2026.11.04.1.apk"
+BASELINE_SHA256 = "70fa45d9fbb70e92b56b486617e4cc3c4afc39a76922f7f941caf6a29787fa8f"
+BASELINE_VERSION_CODE = 2026110304
+BASELINE_VERSION_NAME = "2026.11.03.4"
+SIGNER_SHA256 = "fed020601692d2e759286831ad229f0c8e4562a8e90f9067d7472fa5fc99f930"
 REPOSITORY = "tagundo/elichika"
 MAX_BYTES = 768 * 1024 * 1024
 
@@ -42,13 +50,13 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def validate_pins(command, repository):
     if repository != REPOSITORY:
         raise CandidateUpgradeError("candidate_repository_not_allowlisted")
-    if type(command.get("artifact_id")) is not int or command["artifact_id"] <= 0:
+    if type(command.get("artifact_id")) is not int or command["artifact_id"] != ARTIFACT_ID:
         raise CandidateUpgradeError("invalid_candidate_artifact_id")
-    if not isinstance(command.get("artifact_run_id"), str) or not re.fullmatch(r"[1-9][0-9]*", command["artifact_run_id"]):
+    if command.get("artifact_run_id") != ARTIFACT_RUN_ID:
         raise CandidateUpgradeError("invalid_candidate_run_id")
     if command.get("source_sha") != SOURCE_SHA:
         raise CandidateUpgradeError("candidate_source_not_allowlisted")
-    if not isinstance(command.get("apk_sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", command["apk_sha256"]):
+    if command.get("apk_sha256") != APK_SHA256:
         raise CandidateUpgradeError("invalid_candidate_apk_hash")
     if type(command.get("version_code")) is not int or command["version_code"] != VERSION_CODE or command.get("version_name") != VERSION_NAME:
         raise CandidateUpgradeError("candidate_version_not_allowlisted")
@@ -155,6 +163,61 @@ def download_candidate(repository, pins, directory, token):
         # URLs, signed query strings, bodies, headers, and token never enter an
         # exception message or an evidence file.
         raise CandidateUpgradeError("candidate_artifact_download_failed") from None
+
+
+def verify_apk_certificate(apk):
+    """Check the APK signature locally; never persist signer-tool output."""
+    roots = [os.environ.get(name) for name in ("ANDROID_SDK_ROOT", "ANDROID_HOME")]
+    signer = next((Path(root) / "build-tools/34.0.0/apksigner" for root in roots
+                   if root and (Path(root) / "build-tools/34.0.0/apksigner").is_file()), None)
+    if signer is None:
+        raise CandidateUpgradeError("candidate_apksigner_unavailable")
+    try:
+        checked = subprocess.run([str(signer), "verify", "--verbose", "--print-certs", str(apk)],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90, check=True)
+        certificates = re.findall(r"^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]{64})$",
+                                  checked.stdout.decode("utf-8", "replace"), re.MULTILINE)
+        if len(certificates) != 1 or certificates[0].lower() != SIGNER_SHA256:
+            raise CandidateUpgradeError("candidate_apk_signer_mismatch")
+    except CandidateUpgradeError:
+        raise
+    except Exception:
+        raise CandidateUpgradeError("candidate_apk_signature_verification_failed") from None
+    return SIGNER_SHA256
+
+
+def installed_apk_path(android, package=release.PACKAGE):
+    rows = android.shell("pm", "path", package).splitlines()
+    if len(rows) != 1 or not re.fullmatch(r"package:/data/app/[A-Za-z0-9_~+./=-]+/base\.apk", rows[0]):
+        raise CandidateUpgradeError("candidate_installed_apk_not_unique")
+    return rows[0][8:]
+
+
+def verify_retained_game(android):
+    actual = android.shell("sha256sum", installed_apk_path(android, smoke.GAME)).split()[0]
+    if actual != smoke.GAME_SHA:
+        raise CandidateUpgradeError("candidate_gl_apk_hash_changed")
+    return actual
+
+
+def verify_baseline(android, directory):
+    existing = android.shell("dumpsys", "package", release.PACKAGE)
+    if (not re.search(r"(?:^|\s)versionCode=" + str(BASELINE_VERSION_CODE) + r"(?:\s|$)", existing) or
+            not re.search(r"(?:^|\s)versionName=" + re.escape(BASELINE_VERSION_NAME) + r"(?:\s|$)", existing)):
+        raise CandidateUpgradeError("candidate_existing_wrapper_version_mismatch")
+    path = installed_apk_path(android)
+    if android.shell("sha256sum", path).split()[0] != BASELINE_SHA256:
+        raise CandidateUpgradeError("candidate_existing_wrapper_hash_mismatch")
+    local = directory / "baseline.apk"
+    android.adb("pull", path, str(local), timeout=180)
+    with local.open("rb") as stream:
+        actual = hashlib.file_digest(stream, "sha256").hexdigest()
+    if actual != BASELINE_SHA256:
+        raise CandidateUpgradeError("candidate_existing_wrapper_hash_mismatch")
+    certificate = verify_apk_certificate(local)
+    return {"apk_sha256": actual, "version_code": BASELINE_VERSION_CODE,
+            "version_name": BASELINE_VERSION_NAME, "signer_certificate_sha256": certificate,
+            "signature_verification": "PASS"}
 
 
 def userdata_state(android, uid):
@@ -316,15 +379,14 @@ def upgrade_candidate(android, args, state, report, command, uid):
             temporary_path = Path(temporary).resolve()
             if any(temporary_path == evidence or temporary_path.is_relative_to(evidence) for evidence in evidence_roots):
                 raise CandidateUpgradeError("candidate_temporary_path_inside_evidence")
+            result["game_apk_before_sha256"] = verify_retained_game(android)
+            result["baseline"] = verify_baseline(android, temporary_path)
             apk = download_candidate(args.repository, pins, temporary_path, os.environ.get("GITHUB_TOKEN", ""))
+            result["signer_certificate_sha256"] = verify_apk_certificate(apk)
             with zipfile.ZipFile(apk) as archive:
                 if archive.namelist().count("lib/arm64-v8a/libelichika.so") != 1:
                     raise CandidateUpgradeError("candidate_arm64_native_missing")
                 expected_native = smoke.sha(archive.read("lib/arm64-v8a/libelichika.so"))
-            existing = android.shell("dumpsys", "package", release.PACKAGE)
-            if (not re.search(r"(?:^|\s)versionCode=" + str(VERSION_CODE) + r"(?:\s|$)", existing) or
-                    not re.search(r"(?:^|\s)versionName=" + re.escape(VERSION_NAME) + r"(?:\s|$)", existing)):
-                raise CandidateUpgradeError("candidate_existing_wrapper_version_mismatch")
             android.shell("am", "force-stop", smoke.GAME)
             smoke.stop_server(android)
             before = userdata_state(android, uid)
@@ -345,10 +407,7 @@ def upgrade_candidate(android, args, state, report, command, uid):
             if (not re.search(r"(?:^|\s)versionCode=" + str(VERSION_CODE) + r"(?:\s|$)", info) or
                     not re.search(r"(?:^|\s)versionName=" + re.escape(VERSION_NAME) + r"(?:\s|$)", info)):
                 raise CandidateUpgradeError("candidate_installed_version_mismatch")
-            package_paths = android.shell("pm", "path", release.PACKAGE).splitlines()
-            if len(package_paths) != 1 or not package_paths[0].startswith("package:"):
-                raise CandidateUpgradeError("candidate_installed_apk_not_unique")
-            actual_apk = android.shell("sha256sum", package_paths[0][8:]).split()[0]
+            actual_apk = android.shell("sha256sum", installed_apk_path(android)).split()[0]
             if actual_apk != pins["apk_sha256"]:
                 raise CandidateUpgradeError("candidate_installed_apk_hash_mismatch")
             if after_install != before:
@@ -360,6 +419,7 @@ def upgrade_candidate(android, args, state, report, command, uid):
             after_start = userdata_state(android, uid)
             config_after_start = config_state(android.read(f"{smoke.FILES}/config.json"))
             record_retained(result, "after_start", after_start, config_after_start, before, config_before)
+            result["game_apk_after_sha256"] = verify_retained_game(android)
             if started.get("running_native_sha256") != expected_native:
                 raise CandidateUpgradeError("candidate_running_native_hash_mismatch")
             if after_start != before:

@@ -2,9 +2,10 @@
 """Set documented QA preferences using PlayerPrefs on Unity's main thread.
 
 This is separate from the read-only UI inspector: it may set CurrentLanguage
-to en when the existing value is absent, empty, or already en. The explicit
-Light Download option also sets DownloadMode=0 and AutoDeleteMode=0 only when
-both prior values are absent or zero. It never patches game code, reads any
+to the explicit en/ko QA locale when absent, empty, or already that locale. The
+download option sets DownloadMode=0 (Light) or explicit Full=1, with AutoDeleteMode=0.
+Full permits absent/zero/already-one and verifies the public IsFullDownloadMode
+getter. Light retains the absent/zero guard. It never patches game code, reads any
 other preferences, dumps accounts, or changes the APK.
 """
 
@@ -26,10 +27,12 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--port", type=int, default=27043)
     parser.add_argument("--prepare-light-download", action="store_true")
+    parser.add_argument("--qa-language", choices=("en", "ko"), default="en")
+    parser.add_argument("--qa-download-mode", choices=("light", "full"), default="light")
     args = parser.parse_args()
     assert 1 <= args.port <= 65535
     args.output.mkdir(parents=True, exist_ok=True)
-    report = {"status": "REFUSED", "purpose": "QA-only CurrentLanguage and optional Light Download preferences; not read-only inspection",
+    report = {"status": "REFUSED", "purpose": "QA-only CurrentLanguage and explicit download preferences; not read-only inspection",
               "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     installed = None
     session = script = None
@@ -56,7 +59,7 @@ def main():
         (args.output / "android-ui-before.xml").write_bytes(xml)
         # Main-thread and already-initialized IL2CPP guards are also checked by
         # the injected setter before it accesses the one permitted preference.
-        options = {"prepareLightDownload": args.prepare_light_download}
+        options = {"prepareLightDownload": args.prepare_light_download, "qaLanguage": args.qa_language, "downloadMode": args.qa_download_mode}
         source = bridge.read_text() + "\nconst GL_QA_SETUP_OPTIONS = " + json.dumps(options) + ";\n" + (ROOT / "language-setup.js").read_text()
         adb("forward", "tcp:" + str(args.port), "tcp:27042")
         forwarded = True
@@ -79,9 +82,11 @@ def main():
         assert event.wait(30), "Unity main-thread preference setup was not delivered"
         assert response, "; ".join(errors) or "Preference setup response missing"
         report.update(response)
-        assert report.get("status") == "PREPARED" and report.get("readback") == "en", "Preference setup was refused"
+        assert report.get("status") == "PREPARED" and report.get("readback") == args.qa_language, "Preference setup was refused"
         if args.prepare_light_download:
-            assert report.get("download_mode", {}).get("readback") == 0 and report.get("auto_delete_mode", {}).get("readback") == 0, "Light Download setup was refused"
+            expected = 1 if args.qa_download_mode == "full" else 0
+            assert report.get("download_mode", {}).get("readback") == expected and report.get("auto_delete_mode", {}).get("readback") == 0, "Download mode setup was refused"
+            assert args.qa_download_mode != "full" or report.get("full_download_getter_readback") is True, "Full Download public getter did not confirm the setting"
         report.update(game_apk_sha256=GAME_SHA, frida_version=FRIDA_VERSION,
                       bridge_version="0.14.0", bridge_sha256=BRIDGE_SHA)
     except Exception as exc:

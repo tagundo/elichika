@@ -14,6 +14,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
         FOLLOWUP_SEQUENCE: ${{ inputs.sequence }}
+        QA_LANGUAGE: ko
       run: |
         set -euo pipefail
         python3 tests/gl_ui_runtime/followup.py \
@@ -24,7 +25,8 @@ runs:
           --live-python "$RUNNER_TEMP/gl-live-python/bin/python" \
           --output "evidence/followup-$FOLLOWUP_SEQUENCE" \
           --state evidence/gl/gl-visual-smoke.json \
-          --command-ref codex/jp-global-content-gl-qa \
+          --qa-language "$QA_LANGUAGE" \
+          --command-ref codex/gl-ko-home-regression \
           --repository "$GITHUB_REPOSITORY"
 
     - name: Upload GL follow-up evidence

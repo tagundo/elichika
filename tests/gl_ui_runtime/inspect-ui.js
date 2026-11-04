@@ -10,7 +10,9 @@
     // Never whitelist arbitrary suffixes or unknown account/display strings.
     const size = "(?:[0-9]{1,12}|[0-9]{1,3}(?:,[0-9]{3}){1,3})(?:\\.[0-9]{1,3})? ?(?:B|KB|MB|GB)";
     const downloadLabels = [new RegExp("^(?:Full|Light) Download \\(" + size + "\\)$"),
-        new RegExp("^Light Download \\(Auto-delete story data\\) \\[" + size + "\\]$")];
+        new RegExp("^Light Download \\(Auto-delete story data\\) \\[" + size + "\\]$"),
+        new RegExp("^(?:모두|간편) 다운로드 \\[" + size + "\\]$"),
+        new RegExp("^간편 다운로드\\(시나리오 자동 삭제\\) \\[" + size + "\\]$")];
     const publicDownloadSize = text => opt.includeDownloadSizes === true && typeof text === "string" &&
         text.length <= 96 && downloadLabels.some(pattern => pattern.test(text));
     const call = (o, name, ...args) => o.method(name, args.length).invoke(...args);

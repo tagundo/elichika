@@ -22,13 +22,13 @@ def apk_bytes():
 
 
 def pins():
-    return {"artifact_id": 10, "artifact_run_id": "20", "source_sha": qa.SOURCE_SHA,
+    return {"artifact_id": qa.ARTIFACT_ID, "artifact_run_id": qa.ARTIFACT_RUN_ID, "source_sha": qa.SOURCE_SHA,
             "apk_sha256": qa.smoke.sha(apk_bytes()), "version_code": qa.VERSION_CODE, "version_name": qa.VERSION_NAME}
 
 
 def metadata():
-    return {"id": 10, "name": "elichika-release-apk", "expired": False,
-            "workflow_run": {"id": 20, "head_sha": qa.SOURCE_SHA}}
+    return {"id": qa.ARTIFACT_ID, "name": "elichika-release-apk", "expired": False,
+            "workflow_run": {"id": int(qa.ARTIFACT_RUN_ID), "head_sha": qa.SOURCE_SHA}}
 
 
 def zip_bytes(entries=None):
@@ -40,10 +40,100 @@ def zip_bytes(entries=None):
 
 
 class CandidateUpgradeTests(unittest.TestCase):
+    def setUp(self):
+        fixture_pin = mock.patch.object(qa, "APK_SHA256", qa.smoke.sha(apk_bytes()))
+        fixture_pin.start()
+        self.addCleanup(fixture_pin.stop)
+
+    def test_baseline_installed_version_hash_pull_and_signature_are_all_verified(self):
+        fixture = b"synthetic old official APK"
+        digest = qa.smoke.sha(fixture)
+        android = mock.Mock()
+        android.shell.side_effect = [f"versionCode={qa.BASELINE_VERSION_CODE} versionName={qa.BASELINE_VERSION_NAME}",
+                                    "package:/data/app/wrapper/base.apk", digest + " base.apk"]
+        android.adb.side_effect = lambda *parts, **kwargs: Path(parts[2]).write_bytes(fixture)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(qa, "BASELINE_SHA256", digest), mock.patch.object(qa, "verify_apk_certificate", return_value=qa.SIGNER_SHA256) as signature:
+            result = qa.verify_baseline(android, Path(directory))
+            self.assertEqual(result["apk_sha256"], digest)
+            self.assertEqual(result["version_code"], 2026110304)
+            self.assertEqual(result["signer_certificate_sha256"], qa.SIGNER_SHA256)
+            signature.assert_called_once_with(Path(directory) / "baseline.apk")
+        android.adb.assert_called_once()
+        android.install.assert_not_called()
+        android.write.assert_not_called()
+
+    def test_wrong_baseline_hash_or_certificate_refuses_before_download_and_stop(self):
+        for failure in ("hash", "signature"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                args = types.SimpleNamespace(repository=qa.REPOSITORY, evidence=root / "evidence/followup-1",
+                                             state=root / "evidence/gl/gl-visual-smoke.json")
+                android = mock.Mock()
+                android.shell.side_effect = ["uid=0(root)", "arm64-v8a",
+                    f"versionCode={qa.BASELINE_VERSION_CODE} versionName={qa.BASELINE_VERSION_NAME}",
+                    "package:/data/app/wrapper/base.apk", ("0" * 64 if failure == "hash" else qa.BASELINE_SHA256) + " base.apk"]
+                android.adb.side_effect = lambda *parts, **kwargs: Path(parts[2]).write_bytes(b"baseline fixture")
+                fake_digest = types.SimpleNamespace(hexdigest=lambda: qa.BASELINE_SHA256)
+                with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "verify_retained_game", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa.hashlib, "file_digest", return_value=fake_digest), mock.patch.object(qa, "verify_apk_certificate", side_effect=qa.CandidateUpgradeError("candidate_apk_signer_mismatch")), mock.patch.object(qa, "download_candidate") as download, mock.patch.object(qa.smoke, "stop_server") as stop:
+                    reason = "candidate_existing_wrapper_hash_mismatch" if failure == "hash" else "candidate_apk_signer_mismatch"
+                    with self.assertRaisesRegex(qa.CandidateUpgradeError, reason):
+                        qa.upgrade_candidate(android, args, {"new_home": {"status": "PREPARED", "user_id": 99}}, {}, pins(), 99)
+                    download.assert_not_called()
+                    stop.assert_not_called()
+                    android.install.assert_not_called()
+                    self.assertFalse(any(call.args[:2] == ("am", "force-stop") for call in android.shell.call_args_list))
+
+    def test_pulled_baseline_is_rehashed_and_split_apks_are_refused(self):
+        android = mock.Mock()
+        android.shell.side_effect = [f"versionCode={qa.BASELINE_VERSION_CODE} versionName={qa.BASELINE_VERSION_NAME}",
+                                    "package:/data/app/wrapper/base.apk", qa.BASELINE_SHA256 + " base.apk"]
+        android.adb.side_effect = lambda *parts, **kwargs: Path(parts[2]).write_bytes(b"changed during pull")
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(qa, "verify_apk_certificate") as signature:
+            with self.assertRaisesRegex(qa.CandidateUpgradeError, "candidate_existing_wrapper_hash_mismatch"):
+                qa.verify_baseline(android, Path(directory))
+            signature.assert_not_called()
+        for output in ("", "package:/data/app/wrapper/base.apk\npackage:/data/app/wrapper/split.apk", "package:/sdcard/other.apk"):
+            android.shell.side_effect = None
+            android.shell.return_value = output
+            with self.subTest(output=output), self.assertRaisesRegex(qa.CandidateUpgradeError, "candidate_installed_apk_not_unique"):
+                qa.installed_apk_path(android)
+
+    def test_signature_verification_rejects_missing_multiple_wrong_and_failed_signers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sdk = Path(directory)
+            signer = sdk / "build-tools/34.0.0/apksigner"
+            signer.parent.mkdir(parents=True)
+            signer.touch()
+            valid = ("Signer #1 certificate SHA-256 digest: " + qa.SIGNER_SHA256 + "\n").encode()
+            with mock.patch.dict(qa.os.environ, {"ANDROID_SDK_ROOT": directory}), mock.patch.object(qa.subprocess, "run") as run:
+                run.return_value = types.SimpleNamespace(stdout=valid)
+                self.assertEqual(qa.verify_apk_certificate(sdk / "fixture.apk"), qa.SIGNER_SHA256)
+                self.assertEqual(run.call_args.args[0][1:4], ["verify", "--verbose", "--print-certs"])
+                self.assertTrue(run.call_args.kwargs["check"])
+                for output in (b"", valid + valid.replace(b"#1", b"#2"), valid.replace(qa.SIGNER_SHA256.encode(), b"0" * 64)):
+                    run.return_value = types.SimpleNamespace(stdout=output)
+                    with self.assertRaisesRegex(qa.CandidateUpgradeError, "candidate_apk_signer_mismatch"):
+                        qa.verify_apk_certificate(sdk / "fixture.apk")
+                run.side_effect = RuntimeError("private tool output must not escape")
+                with self.assertRaises(qa.CandidateUpgradeError) as caught:
+                    qa.verify_apk_certificate(sdk / "fixture.apk")
+                self.assertEqual(str(caught.exception), "candidate_apk_signature_verification_failed")
+
+    def test_retained_gl_apk_is_checked_without_reinstall_or_clear(self):
+        android = mock.Mock()
+        android.shell.side_effect = ["package:/data/app/game/base.apk", qa.smoke.GAME_SHA + " base.apk"]
+        self.assertEqual(qa.verify_retained_game(android), qa.smoke.GAME_SHA)
+        self.assertEqual(android.shell.call_args_list[0].args, ("pm", "path", qa.smoke.GAME))
+        android.shell.side_effect = ["package:/data/app/game/base.apk", "0" * 64 + " base.apk"]
+        with self.assertRaisesRegex(qa.CandidateUpgradeError, "candidate_gl_apk_hash_changed"):
+            qa.verify_retained_game(android)
+        android.install.assert_not_called()
+        android.write.assert_not_called()
+
     def test_exact_candidate_source_version_and_typed_pins(self):
         self.assertEqual(qa.validate_pins(pins(), qa.REPOSITORY), pins())
-        for key, value in (("artifact_id", True), ("artifact_id", 0), ("artifact_run_id", 20),
-                           ("source_sha", "0" * 40), ("apk_sha256", "not-a-hash"),
+        for key, value in (("artifact_id", True), ("artifact_id", 0), ("artifact_id", qa.ARTIFACT_ID + 1), ("artifact_run_id", 20), ("artifact_run_id", "41780163617"),
+                           ("source_sha", "0" * 40), ("apk_sha256", "not-a-hash"), ("apk_sha256", "f" * 64),
                            ("version_code", True), ("version_code", 1), ("version_name", "other")):
             command = pins()
             command[key] = value
@@ -73,7 +163,7 @@ class CandidateUpgradeTests(unittest.TestCase):
             requests = [call.args[0] for call in opener.open.call_args_list]
             self.assertEqual(len(requests), 3)
             self.assertEqual([r.get_method() for r in requests], ["GET"] * 3)
-            self.assertTrue(all(r.full_url.startswith("https://api.github.com/repos/tagundo/elichika/actions/artifacts/10") for r in requests[:2]))
+            self.assertTrue(all(r.full_url.startswith(f"https://api.github.com/repos/tagundo/elichika/actions/artifacts/{qa.ARTIFACT_ID}") for r in requests[:2]))
             self.assertTrue(all(r.get_header("Authorization") == "Bearer secret-token" for r in requests[:2]))
             self.assertIsNone(requests[2].get_header("Authorization"))
             self.assertEqual(requests[2].full_url, signed)
@@ -165,7 +255,7 @@ class CandidateUpgradeTests(unittest.TestCase):
             changed = dict(before, logical_sha256="changed")
             state = {"new_home": {"status": "PREPARED", "user_id": 99}}
             report = {}
-            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server"), mock.patch.object(qa, "userdata_state", side_effect=[before, changed]):
+            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "verify_retained_game", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "verify_baseline", return_value={"signature_verification": "PASS"}), mock.patch.object(qa, "verify_apk_certificate", return_value=qa.SIGNER_SHA256), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server"), mock.patch.object(qa, "userdata_state", side_effect=[before, changed]):
                 with self.assertRaisesRegex(qa.CandidateUpgradeError, "candidate_install_changed_userdata"):
                     qa.upgrade_candidate(android, args, state, report, pins(), 99)
             android.start.assert_not_called()
@@ -201,7 +291,7 @@ class CandidateUpgradeTests(unittest.TestCase):
             retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 2, "profile_rows": 1, "deck_rows": 1}
             titles = {language: [{"suit_id": 321107}, {"suit_id": 321207}] for language in ("en", "ko", "zh")}
             report = {}
-            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server"), mock.patch.object(qa, "userdata_state", return_value=retained), mock.patch.object(qa, "verify_titles", return_value=titles):
+            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "verify_retained_game", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "verify_baseline", return_value={"signature_verification": "PASS"}), mock.patch.object(qa, "verify_apk_certificate", return_value=qa.SIGNER_SHA256), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server"), mock.patch.object(qa, "userdata_state", return_value=retained), mock.patch.object(qa, "verify_titles", return_value=titles):
                 result = qa.upgrade_candidate(android, args, {"new_home": {"status": "PREPARED", "user_id": 99}}, report, pins(), 99)
             self.assertEqual(result["status"], "UPGRADED")
             self.assertEqual(result["before_update"], result["after_start"])
@@ -234,8 +324,8 @@ class CandidateUpgradeTests(unittest.TestCase):
             args = types.SimpleNamespace(repository=qa.REPOSITORY, evidence=root / "evidence/followup-1",
                                          state=root / "evidence/gl/gl-visual-smoke.json")
             android = mock.Mock()
-            android.shell.side_effect = ["uid=0(root)", "arm64-v8a", "versionCode=2026110304 versionName=2026.11.03.4"]
-            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server") as stop:
+            android.shell.side_effect = ["uid=0(root)", "arm64-v8a", "versionCode=2026110400 versionName=2026.11.04-dev"]
+            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "verify_retained_game", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "verify_apk_certificate", return_value=qa.SIGNER_SHA256), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server") as stop:
                 with self.assertRaisesRegex(qa.CandidateUpgradeError, "candidate_existing_wrapper_version_mismatch"):
                     qa.upgrade_candidate(android, args, {"new_home": {"status": "PREPARED", "user_id": 99}}, {}, pins(), 99)
                 stop.assert_not_called()
@@ -263,7 +353,7 @@ class CandidateUpgradeTests(unittest.TestCase):
             android.install.return_value = {"native_sha256": native_sha}
             android.start.return_value = {"running_native_sha256": native_sha}
             report = {}
-            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server"), mock.patch.object(qa, "userdata_state", side_effect=states), mock.patch.object(qa, "verify_titles", return_value={}):
+            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "verify_retained_game", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "verify_baseline", return_value={"signature_verification": "PASS"}), mock.patch.object(qa, "verify_apk_certificate", return_value=qa.SIGNER_SHA256), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server"), mock.patch.object(qa, "userdata_state", side_effect=states), mock.patch.object(qa, "verify_titles", return_value={}):
                 if reason:
                     with self.assertRaisesRegex(qa.CandidateUpgradeError, reason):
                         qa.upgrade_candidate(android, args, {"new_home": {"status": "PREPARED", "user_id": 99}}, report, pins(), 99)

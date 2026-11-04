@@ -1,18 +1,24 @@
 /* QA PREFERENCE SETTER. This is deliberately separate from inspect-ui.js.
  * Concatenate after unmodified frida-il2cpp-bridge@0.14.0/dist/index.js.
  * On Unity's main thread, set only the disposable GL QA preference
- * CurrentLanguage=en, and only when its previous state is unset/empty/en.
+ * CurrentLanguage=en (default) or explicitly ko on a fresh disposable device,
+ * and only when its previous state is unset/empty/already the target locale.
  * Explicit GL_QA_SETUP_OPTIONS.prepareLightDownload === true also prepares
- * DownloadMode=0 and AutoDeleteMode=0, only from unset/zero states. All three
+ * DownloadMode=0 (Light, default) or explicit full=1; AutoDeleteMode=0.
+ * Full accepts unset/zero/already-one only; Light accepts unset/zero only.
  * guards run before any setter, and one Save follows the accepted setters.
  * No game code hooks, APK changes, other preference keys, or account reads.
  */
 (function () {
     "use strict";
     const KEY = "CurrentLanguage";
-    const TARGET = "en";
+    const TARGET = typeof GL_QA_SETUP_OPTIONS !== "undefined" &&
+        GL_QA_SETUP_OPTIONS != null && GL_QA_SETUP_OPTIONS.qaLanguage !== undefined ? GL_QA_SETUP_OPTIONS.qaLanguage : "en";
     const PREPARE_LIGHT = typeof GL_QA_SETUP_OPTIONS !== "undefined" &&
         GL_QA_SETUP_OPTIONS != null && GL_QA_SETUP_OPTIONS.prepareLightDownload === true;
+    const DOWNLOAD_MODE = typeof GL_QA_SETUP_OPTIONS !== "undefined" && GL_QA_SETUP_OPTIONS != null &&
+        GL_QA_SETUP_OPTIONS.downloadMode !== undefined ? GL_QA_SETUP_OPTIONS.downloadMode : "light";
+    const FULL = DOWNLOAD_MODE === "full";
     const INT_KEYS = ["DownloadMode", "AutoDeleteMode"];
     const MISSING_INT = -2147483648;
     const CONTEXT_CLASS = "UnityEngine.UnitySynchronizationContext";
@@ -45,6 +51,14 @@
             const save = prefs.method("Save", 0);
             const getInt = PREPARE_LIGHT ? prefs.method("GetInt", 2).overload("System.String", "System.Int32") : null;
             const setInt = PREPARE_LIGHT ? prefs.method("SetInt", 2).overload("System.String", "System.Int32") : null;
+            let fullGetter = null;
+            if (PREPARE_LIGHT && FULL) {
+                for (const assembly of Il2Cpp.domain.assemblies) {
+                    const mode = assembly.image.tryClass("LLAS.DM.DotUnderDM.DownloadModeDM");
+                    if (mode != null) { fullGetter = mode.method("get_IsFullDownloadMode", 0); break; }
+                }
+                if (fullGetter == null || fullGetter.isStatic !== true) return refuse("full_download_getter_unavailable");
+            }
             const key = Il2Cpp.string(KEY);
             const empty = Il2Cpp.string("");
             stage = "read_allowed_preference";
@@ -55,7 +69,7 @@
             if (typeof prior !== "string") return refuse("language_value_not_string");
             if (!existed && prior !== "") return refuse("inconsistent_language_key_state");
             if (prior !== "" && prior !== TARGET) return refuse("existing_language_not_allowlisted");
-            const beforeKind = !existed ? "unset" : prior === "" ? "empty" : "en";
+            const beforeKind = !existed ? "unset" : prior === "" ? "empty" : TARGET;
             const integers = [];
             if (PREPARE_LIGHT) {
                 stage = "guard_light_download_preferences";
@@ -65,10 +79,11 @@
                     const intPrior = getInt.invoke(intKey, MISSING_INT);
                     // An existing value must be a stored zero; a wrong-type
                     // preference returns the sentinel and also refuses.
-                    if ((intExisted && intPrior !== 0) || (!intExisted && intPrior !== MISSING_INT)) {
+                    const target = name === "DownloadMode" && FULL ? 1 : 0;
+                    if ((intExisted && intPrior !== 0 && intPrior !== target) || (!intExisted && intPrior !== MISSING_INT)) {
                         return refuse("existing_download_preference_not_allowlisted");
                     }
-                    integers.push({key: intKey, before_kind: intExisted ? "zero" : "unset"});
+                    integers.push({key: intKey, target, before_kind: !intExisted ? "unset" : intPrior === 0 ? "zero" : "already_full"});
                 }
             }
 
@@ -77,7 +92,7 @@
             setString.invoke(key, Il2Cpp.string(TARGET));
             if (PREPARE_LIGHT) {
                 stage = "set_light_download_preferences";
-                for (const item of integers) setInt.invoke(item.key, 0);
+                for (const item of integers) setInt.invoke(item.key, item.target);
             }
             stage = "save_language";
             save.invoke();
@@ -93,13 +108,22 @@
             if (PREPARE_LIGHT) {
                 stage = "verify_light_download_readback";
                 for (const item of integers) {
-                    if (!hasKey.invoke(item.key) || getInt.invoke(item.key, MISSING_INT) !== 0) {
+                    if (!hasKey.invoke(item.key) || getInt.invoke(item.key, MISSING_INT) !== item.target) {
                         return refuse("download_preference_readback_mismatch", {mainThreadId: expectedThread, mutation_attempted: true});
                     }
                 }
-                result.download_mode = {before_kind: integers[0].before_kind, readback: 0};
+                result.download_mode = {before_kind: integers[0].before_kind, readback: integers[0].target};
                 result.auto_delete_mode = {before_kind: integers[1].before_kind, readback: 0};
-                result.scope = "disposable_qa_language_and_light_download_preferences";
+                result.scope = "disposable_qa_language_and_explicit_download_preferences";
+                result.qa_download_mode = DOWNLOAD_MODE;
+                if (FULL) {
+                    // Native GL DownloadModeDM getter (AOT 0x4adcad8) reads the
+                    // temporary override first, then ASLocalStorage's bool.
+                    // A persisted 1 alone does not prove the effective mode.
+                    const readback = fullGetter.invoke();
+                    if (readback !== true) return refuse("full_download_public_getter_mismatch", {mutation_attempted: true});
+                    result.full_download_getter_readback = true;
+                }
             }
             return result;
         } catch (_) {
@@ -110,6 +134,8 @@
     }
 
     async function run() {
+        if (TARGET !== "en" && TARGET !== "ko") return refuse("qa_language_not_allowlisted");
+        if (DOWNLOAD_MODE !== "light" && DOWNLOAD_MODE !== "full") return refuse("qa_download_mode_not_allowlisted");
         if (Frida.version !== "17.25.2") return refuse("frida_version_mismatch");
         const module = Process.findModuleByName("libil2cpp.so");
         if (module == null) return refuse("late_attach_module_not_loaded");

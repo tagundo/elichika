@@ -179,8 +179,8 @@ class FollowupTests(unittest.TestCase):
                 qa.select_widget(value, command())
 
     def upgrade_command(self, **updates):
-        return command("upgrade_candidate", artifact_id=123, artifact_run_id="456",
-                       source_sha=qa.UPGRADE_SOURCE_SHA, apk_sha256="a" * 64,
+        return command("upgrade_candidate", artifact_id=qa.UPGRADE_ARTIFACT_ID, artifact_run_id=qa.UPGRADE_RUN_ID,
+                       source_sha=qa.UPGRADE_SOURCE_SHA, apk_sha256=qa.UPGRADE_APK_SHA,
                        version_code=qa.UPGRADE_VERSION_CODE, version_name=qa.UPGRADE_VERSION_NAME, **updates)
 
     def test_back_has_no_coordinate_or_shell_parameters(self):
@@ -193,7 +193,7 @@ class FollowupTests(unittest.TestCase):
         valid = self.upgrade_command()
         self.assertEqual(qa.validate_command(valid, "123", 1)["action"], "upgrade_candidate")
         for key, bad in [("artifact_id", True), ("artifact_run_id", 456), ("source_sha", "b" * 40),
-                         ("apk_sha256", "not-a-sha"), ("version_code", 2026110401), ("version_name", "other")]:
+                         ("apk_sha256", "not-a-sha"), ("version_code", 2026110400), ("version_name", "other")]:
             value = valid | {key: bad}
             with self.assertRaises(qa.Refused):
                 qa.validate_command(value, "123", 1)
