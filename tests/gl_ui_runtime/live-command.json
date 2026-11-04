@@ -1,1 +1,1 @@
-{"run_id":"41829645966","sequence":3,"action":"tap_widget","widget_id":-5370,"expected_class":"LLAS.Components.UI.ProductButton","expected_bounds":[444.25787353515625,534.6324920654297,835.7421264648438,603.7179565429688],"expected_label":"닫기"}
+{"run_id":"41829645966","sequence":4,"action":"observe_expected_mod_loss","control_mode":"expected-mod-loss","reviewed_baseline_sequence":3,"reviewed_baseline_png_sha256":"0fefe2fdf63aaf4a07473b07739ccf48359846582cf39007380274320c1bf451"}
