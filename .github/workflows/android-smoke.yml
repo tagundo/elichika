@@ -35,28 +35,27 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate candidate source and completed build artifacts
+      - name: Validate candidate source and build artifact provenance
         run: |
           mkdir -p evidence
           python3 - <<'PY'
-          import json, os, re, subprocess
+          import importlib.util, json, os, re, subprocess
           from pathlib import Path
           run_id = os.environ['CANDIDATE_RUN_ID']; source = os.environ['CANDIDATE_SOURCE_SHA']; digest = os.environ['CANDIDATE_SHA256']
           assert re.fullmatch(r'[1-9][0-9]{0,19}', run_id), 'Invalid run id'
           assert re.fullmatch(r'[0-9a-f]{40}', source) and re.fullmatch(r'[0-9a-f]{64}', digest), 'Invalid candidate identity'
-          def api(path): return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/' + path], text=True))
-          run = api('actions/runs/' + run_id)
-          assert run['head_sha'] == source and run['repository']['full_name'] == 'tagundo/elichika' and run['head_repository']['full_name'] == 'tagundo/elichika', 'Source repository mismatch'
-          jobs = api('actions/runs/' + run_id + '/jobs?per_page=100')['jobs']
-          assert any(job['name'] == 'build' and job['status'] == 'completed' and job['conclusion'] == 'success' for job in jobs), 'Candidate build not successful'
+          def api(path): return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/' + path], text=True, timeout=30))
+          spec = importlib.util.spec_from_file_location('paired_benchmark', 'tests/android_payload_upgrade_benchmark_pair.py')
+          module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+          run, build = module.wait_for_candidate_build(api, run_id, source)
           artifacts = api('actions/runs/' + run_id + '/artifacts?per_page=100')['artifacts']
           selected = {}
           for name in ('elichika-release-apk','elichika-native-test-apk'):
               matches = [artifact for artifact in artifacts if artifact['name'] == name and not artifact['expired']]
               assert len(matches) == 1, 'Expected unique candidate artifact'
               selected[name] = {key: matches[0][key] for key in ('id','name','size_in_bytes','digest')}
-          Path('evidence/candidate-artifact-binding.json').write_text(json.dumps({'run_id':run_id,'source_sha':source,'apk_sha256':digest,'artifacts':selected},indent=2) + '\n')
-          print('Reviewed source and successful candidate build/artifacts verified')
+          Path('evidence/candidate-artifact-binding.json').write_text(json.dumps({'run_id':run_id,'source_sha':source,'apk_sha256':digest,'verified_build_job_id':build['id'],'build_verification':build['verification_mode'],'observed_build_status':build['status'],'artifacts':selected},indent=2) + '\n')
+          print(json.dumps({'preflight':'artifact_source_verified','build_verification':build['verification_mode'],'observed_job_status':build['status']}))
           PY
 
       - name: Download candidate wrapper

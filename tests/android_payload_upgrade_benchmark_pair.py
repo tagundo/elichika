@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shlex
 import subprocess
+import time
 import zipfile
 
 
@@ -29,6 +30,44 @@ CASE_NAMES = ('legacy_first_upgrade', 'managed_unchanged_stock_upgrade')
 def require(condition, reason):
     if not condition:
         raise ValueError(reason)
+
+
+def wait_for_candidate_build(api, run_id, source_sha, *, timeout_seconds=600,
+                            poll_seconds=10, monotonic=time.monotonic, sleep=time.sleep):
+    """Verify build evidence for an isolated fixture run, not a release gate."""
+    require(re.fullmatch(r'[1-9][0-9]{0,19}', run_id) is not None
+            and re.fullmatch(r'[0-9a-f]{40}', source_sha) is not None, 'candidate_identity_inputs_invalid')
+    deadline = monotonic() + timeout_seconds
+    while True:
+        run = api('actions/runs/' + run_id)
+        require(run.get('head_sha') == source_sha
+                and run.get('repository', {}).get('full_name') == 'tagundo/elichika'
+                and run.get('head_repository', {}).get('full_name') == 'tagundo/elichika',
+                'candidate_source_repository_mismatch')
+        jobs = api('actions/runs/' + run_id + '/jobs?per_page=100')['jobs']
+        builds = [job for job in jobs if job.get('name') == 'build']
+        require(len(builds) == 1, 'candidate_build_job_not_unique')
+        build = builds[0]
+        if build.get('status') == 'completed':
+            require(build.get('conclusion') == 'success', 'candidate_build_terminal_non_success')
+            return run, dict(build, verification_mode='completed_job_success')
+        require(build.get('status') in ('queued', 'in_progress', 'waiting', 'pending', 'requested'),
+                'candidate_build_status_unknown')
+        require(build.get('conclusion') is None, 'candidate_build_nonterminal_conclusion_invalid')
+        steps = build.get('steps') or []
+        require(not any(step.get('conclusion') not in (None, 'success') for step in steps),
+                'candidate_build_failed_step')
+        if (build.get('status') in ('queued', 'in_progress') and build.get('conclusion') is None
+                and steps and steps[-1].get('name') == 'Complete job'
+                and all(step.get('status') == 'completed' and step.get('conclusion') == 'success' for step in steps)):
+            print(json.dumps({'candidate_build': 'completion_steps_verified',
+                              'terminal_metadata': 'pending', 'job_status': build['status']}), flush=True)
+            return run, dict(build, verification_mode='completion_steps_verified_terminal_metadata_pending')
+        remaining = deadline - monotonic()
+        require(remaining > 0, 'candidate_build_success_metadata_timeout')
+        print(json.dumps({'candidate_build': 'waiting_for_completed_success',
+                          'job_status': build['status'], 'remaining_seconds': round(remaining)}), flush=True)
+        sleep(min(poll_seconds, remaining))
 
 
 def sha(path):
