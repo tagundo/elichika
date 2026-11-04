@@ -69,6 +69,22 @@ def capture(android, evidence, label, report):
     try:
         root = ui_tree(android, evidence, label)
         record["game_nodes"] = sum(node.get("package") == GAME for node in root.iter("node"))
+        # The unchanged GL APK shows this standard Play-services warning on
+        # Redroid. Its positive OK button dismisses it; Back/Cancel reopens it.
+        # Use the exact observed message and button, at most once per run.
+        warning = "Love Live!AS won't run without Google Play services, which are not supported by your device."
+        messages = [node for node in root.iter("node") if node.get("package") == GAME
+                    and node.get("resource-id") == "android:id/message" and node.get("text") == warning]
+        buttons = [node for node in root.iter("node") if node.get("package") == GAME
+                   and node.get("resource-id") == "android:id/button1" and node.get("text") == "OK"
+                   and node.get("enabled") == "true"]
+        if len(messages) == len(buttons) == 1 and not report.get("play_services_warning_dismissed"):
+            x, y = bounds_center(buttons[0])
+            android.shell("input", "tap", str(x), str(y))
+            record["play_services_warning_dismissed_from_ui_node"] = {
+                "resource_id": "android:id/button1", "bounds": buttons[0].get("bounds"),
+                "coordinates": [x, y], "message": warning}
+            report["play_services_warning_dismissed"] = True
         for node in root.iter("node"):
             if node.get("resource-id") in PERMISSION_BUTTONS and node.get("enabled") == "true":
                 x, y = bounds_center(node)
