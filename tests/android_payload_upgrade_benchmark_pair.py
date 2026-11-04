@@ -18,9 +18,17 @@ import zipfile
 
 PACKAGE = 'com.tagundo.elichika'
 SERIAL = '127.0.0.1:5555'
-BASELINE_SHA = '6ae25ea0cf7225e941afb721569ecadac4cb095db657954854d86ceefca1d2db'
-BASELINE_BYTES = 289656423
-BASELINE_SOURCE = '21acaf2c2e3e6af3cf9bba0ec3f2a4c59e34e590'
+BASELINE_SHA = 'e806ced4659ba1691607d4f99271a77331436c5895cc896ff2e26d528d934e22'
+BASELINE_BYTES = 289685607
+BASELINE_SOURCE = '4e9ca3b620e3010cf0f9fccfa3f3799b8a9da3c2'
+BASELINE_NATIVE_SHA = 'a4b448e52950f58304d2dbfd952e5eeb6c4e1be5689f25b444bdbdb435010df9'
+FIXTURE_SHA = '6ae25ea0cf7225e941afb721569ecadac4cb095db657954854d86ceefca1d2db'
+FIXTURE_BYTES = 289656423
+FIXTURE_SOURCE = '21acaf2c2e3e6af3cf9bba0ec3f2a4c59e34e590'
+FIXTURE_NATIVE_SHA = '606cf6c84f712e6bc79064921663d07ebdf1c90f93ca233dfb193fbce8e35816'
+BENCHMARK_ASSET = 'assets/android_payload_upgrade_benchmark.py'
+BENCHMARK_ASSET_SHA = '46b41475adbf2a40d0f94954751b6bf584a1521cb5a571c955fe8ff44e6c94b4'
+CERTIFICATE_SHA = 'fed020601692d2e759286831ad229f0c8e4562a8e90f9067d7472fa5fc99f930'
 FIXTURE_APK = '/data/local/tmp/elichika-perf-fixture.apk'
 CLASS = PACKAGE + '.PayloadUpgradeBenchmarkTest'
 INSTRUMENTATION = PACKAGE + '.test/androidx.test.runner.AndroidJUnitRunner'
@@ -92,16 +100,47 @@ def one_apk(directory):
     return found[0]
 
 
-def apk_identity(path, expected_sha, expected_source):
+def apk_identity(path, expected_sha, expected_source, *, expected_native_sha=None, expected_bytes=None):
+    require(Path(path).is_file() and not Path(path).is_symlink(), 'apk_not_regular_file')
     require(sha(path) == expected_sha, 'apk_sha256_mismatch')
+    require(expected_bytes is None or path.stat().st_size == expected_bytes, 'apk_size_mismatch')
     with zipfile.ZipFile(path) as archive:
         entry = 'lib/arm64-v8a/libelichika.so'
         require(archive.namelist().count(entry) == 1, 'native_server_missing')
         native = archive.read(entry)
     revisions = set(re.findall(rb'build\tvcs\.revision=([0-9a-f]{40})\n', native))
     require(revisions == {expected_source.encode()}, 'native_source_revision_mismatch')
+    native_sha = hashlib.sha256(native).hexdigest()
+    require(expected_native_sha is None or native_sha == expected_native_sha, 'native_sha256_mismatch')
     return {'apk_sha256': expected_sha, 'apk_bytes': path.stat().st_size,
-            'native_sha256': hashlib.sha256(native).hexdigest(), 'source_sha': expected_source}
+            'native_sha256': native_sha, 'source_sha': expected_source}
+
+
+def verify_test_apk(path, evidence):
+    """Use the untouched same-run test APK; verify its asset and actual signer."""
+    require(Path(path).is_file() and not Path(path).is_symlink(), 'apk_not_regular_file')
+    with zipfile.ZipFile(path) as archive:
+        require(archive.namelist().count(BENCHMARK_ASSET) == 1, 'benchmark_test_asset_not_unique')
+        require(hashlib.sha256(archive.read(BENCHMARK_ASSET)).hexdigest() == BENCHMARK_ASSET_SHA,
+                'benchmark_test_asset_mismatch')
+    completed = subprocess.run(['apksigner', 'verify', '--verbose', '--print-certs', str(path)],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+    require(completed.returncode == 0, 'benchmark_test_signature_invalid')
+    certificate = completed.stdout.decode(errors='replace')
+    require(len(certificate) <= 128 * 1024, 'benchmark_test_certificate_report_too_large')
+    signers = re.findall(r'(?m)^Signer #([0-9]+) certificate SHA-256 digest: ([0-9a-fA-F:]+)\s*$', certificate)
+    require(len(signers) == 1 and signers[0][0] == '1'
+            and signers[0][1].replace(':', '').lower() == CERTIFICATE_SHA
+            and re.search(r'(?m)^Number of signers: 1\s*$', certificate), 'benchmark_test_signer_mismatch')
+    require(re.search(r'(?m)^Verified using v2 scheme[^\n]*: true\s*$', certificate)
+            and re.search(r'(?m)^Verified using v1 scheme[^\n]*: false\s*$', certificate),
+            'benchmark_test_signature_scheme_mismatch')
+    identity = {'apk_sha256': sha(path), 'apk_bytes': path.stat().st_size,
+                'benchmark_asset_sha256': BENCHMARK_ASSET_SHA, 'signer_certificate_sha256': CERTIFICATE_SHA,
+                'signature_verified': True, 'same_run_unmodified_test_apk': True}
+    evidence.joinpath('instrumentation-certificate.txt').write_text(certificate)
+    evidence.joinpath('instrumentation-identity.json').write_text(json.dumps(identity, indent=2) + '\n')
+    return identity
 
 
 def verify_disposable_device():
@@ -158,11 +197,12 @@ def collect_report_path(output, label):
 
 
 def validate_report(report, label, identity):
+    require(label in ('baseline', 'candidate'), 'benchmark_report_label_invalid')
     require(report.get('status') == 'PASS' and report.get('fixture_cleanup_complete') is True,
             'benchmark_failed_or_fixture_not_cleaned')
     require(report.get('protocol') == 'fixed-public-v2-payload-v1' and report.get('databases') == 55
-            and report.get('fixture_apk_sha256') == BASELINE_SHA
-            and report.get('fixture_apk_bytes') == BASELINE_BYTES
+            and report.get('fixture_apk_sha256') == FIXTURE_SHA
+            and report.get('fixture_apk_bytes') == FIXTURE_BYTES
             and report.get('retained_static_mib') == 256 and report.get('profile_enabled') is False,
             'benchmark_input_protocol_mismatch')
     require(report.get('hardware') == 'redroid' and report.get('abi') == 'arm64-v8a'
@@ -187,7 +227,7 @@ def validate_report(report, label, identity):
                 'benchmark_state_not_preserved')
         require(all(protected[x].get('same_inode') is True for x in ('userdata.db', 'config.json')),
                 'benchmark_protected_inode_changed')
-        require(all(protected[x].get('same_inode') is (label == 'candidate')
+        require(all(protected[x].get('same_inode') is True
                     for x in ('static/benchmark-owner.txt', 'static/benchmark-cache.bin')),
                 'benchmark_static_inode_contract_mismatch')
         backups = case.get('private_backup_independent', {})
@@ -227,6 +267,7 @@ def run_case(label, identity, evidence):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline', type=Path, required=True)
+    parser.add_argument('--fixture', type=Path, required=True)
     parser.add_argument('--candidate-dir', type=Path, required=True)
     parser.add_argument('--instrumentation-dir', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
@@ -236,13 +277,16 @@ def main():
             'candidate_identity_inputs_invalid')
     args.evidence.mkdir(parents=True, exist_ok=True)
     candidate, test_apk = one_apk(args.candidate_dir), one_apk(args.instrumentation_dir)
-    baseline_identity = apk_identity(args.baseline, BASELINE_SHA, BASELINE_SOURCE)
-    require(baseline_identity['apk_bytes'] == BASELINE_BYTES, 'baseline_size_mismatch')
+    baseline_identity = apk_identity(args.baseline, BASELINE_SHA, BASELINE_SOURCE,
+                                     expected_native_sha=BASELINE_NATIVE_SHA, expected_bytes=BASELINE_BYTES)
+    fixture_identity = apk_identity(args.fixture, FIXTURE_SHA, FIXTURE_SOURCE,
+                                    expected_native_sha=FIXTURE_NATIVE_SHA, expected_bytes=FIXTURE_BYTES)
     candidate_identity = apk_identity(candidate, candidate_sha, source_sha)
+    test_identity = verify_test_apk(test_apk, args.evidence)
     verify_disposable_device()
-    adb('push', str(args.baseline), FIXTURE_APK, timeout=180)
+    adb('push', str(args.fixture), FIXTURE_APK, timeout=180)
     shell('chmod', '644', FIXTURE_APK)
-    require(shell('sha256sum', FIXTURE_APK).split()[0] == BASELINE_SHA, 'android_fixture_apk_mismatch')
+    require(shell('sha256sum', FIXTURE_APK).split()[0] == FIXTURE_SHA, 'android_fixture_apk_mismatch')
     install(args.baseline, baseline_identity)
     require('Success' in adb('install', '-r', str(test_apk), timeout=180), 'instrumentation_apk_install_failed')
     baseline = run_case('baseline', baseline_identity, args.evidence)
@@ -254,7 +298,8 @@ def main():
             and baseline['payload_bytes'] == optimized['payload_bytes'], 'paired_dataset_changed')
     summary = {'status': 'PASS', 'sample_count_per_target': 1, 'abi': 'arm64-v8a', 'hardware': 'redroid',
                'baseline': baseline_identity, 'candidate': candidate_identity,
-               'instrumentation_apk_sha256': sha(test_apk), 'fixture_apk_sha256': BASELINE_SHA,
+               'instrumentation_apk_sha256': test_identity['apk_sha256'], 'instrumentation': test_identity,
+               'fixture_apk_sha256': FIXTURE_SHA, 'fixture': fixture_identity,
                'retained_static_mib': 256, 'cases': [],
                'scope': 'One sequential pair on one native ARM64 Redroid host; apply_upgrade_json wall/process CPU only. Fixture setup and verification excluded; host page-cache order may affect timings. Not physical phone timing or GL playback.'}
     for before, after in zip(baseline['cases'], optimized['cases']):
