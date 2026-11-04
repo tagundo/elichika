@@ -38,6 +38,45 @@ and incoming log lines do not move the action menu.
 The Kotlin layer only knows how to: run the binary, host WebViews, and dispatch
 `actions.json`. It contains no server or tool logic.
 
+## Updating an installation with mods
+
+`AssetInstaller` stages the incoming payload without overwriting live databases.
+The canonical `payload_db_upgrade.py` then snapshots the coupled game databases,
+merges the initialized APK data into copies, validates them, and publishes a
+recoverable transaction. `installed_version` is published last. Account data,
+configuration, server state and the shared pack cache are not replaced during a
+normal update. `serverdata.db` is merged too: it can contain owner gacha and other
+mod settings, so calling `rebuild_assets` would discard part of the mod state.
+
+The first upgrade from an older APK has no trusted stock baseline. Existing rows
+therefore win and missing stock rows are added. Later upgrades compare against
+compressed stock DB snapshots: untouched official rows may advance, while owner
+overrides, additions and deletions remain. Unsupported schema changes, conflicting
+new IDs and constraint failures stop preparation instead of guessing. This is a
+conservative merge policy, not a general migration for every future schema change.
+
+The transaction retains a private pre-upgrade backup under
+`.payload-upgrade/transactions/`. Its compact `baseline.sqlite`, compressed
+baseline files and committed `current.json` are installer state. The Go startup
+validates this contract before historical SQL or JP-to-GL import; it must not
+reimport a retained JP-only mod into GL. Changed package mappings receive coherent
+counts and version tokens, and client transfer databases are checked against the
+merged plaintext before reuse.
+
+The updater and supported tool jobs share a nonblocking maintenance barrier. A
+busy operation fails before database replacement and can be retried after the
+other job finishes. Legacy external scripts that bypass this barrier are outside
+that guarantee. The supported backup-restore adapter requests a rebase before
+replacing data, so restoring an older snapshot cannot leave it falsely marked as
+current. An explicit Reset Server uses a vanilla transaction and then the separate
+account-reset action; it does not use the mod-preserving merge.
+
+Host regressions use synthetic databases and cover retained mods, subsequent
+updates, interrupted commit/recovery and tool exclusion. Kotlin host checks also
+compile the actual installer against small platform doubles. A signed Android
+upgrade with a genuine custom costume selection is required in addition to those
+checks; a vanilla HOME render alone cannot establish mod preservation.
+
 The running-server notification includes a Stop action. Settings also offers an
 automatic stop timer in minutes (0 disables it); the service owns the timer, so
 resizing the app or entering split screen does not reset it. Changing the timer

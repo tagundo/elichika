@@ -26,6 +26,33 @@ _lock = threading.Lock()
 _servers = {}
 
 
+def _bind_job_managers(server_cwd, modules):
+    """Adapt both bundled panels without changing the modtools submodule.
+
+    Native checks can import servers before launcher chdir. Replace their
+    cached MANAGER references as well as the defining jobs modules, before any
+    HTTP listener exists. An already active old manager must never be orphaned.
+    """
+    from adminui import jobs as guarded_jobs
+    from webtools import jobs as mod_jobs
+    from database_maintenance import BusyError
+
+    manager = guarded_jobs.MANAGER
+    for previous in [mod_jobs.MANAGER] + [module.MANAGER for module in modules.values()]:
+        if previous is manager:
+            continue
+        # Both bundled managers expose this exact job API. Refuse an unknown
+        # implementation instead of silently leaving an unguarded panel alive.
+        with previous._lock:
+            if (getattr(previous, "_active", 0)
+                    or any(not job.is_done for job in previous._jobs.values())):
+                raise BusyError()
+    manager.bind_runtime_root(server_cwd)
+    mod_jobs.MANAGER = manager
+    for module in modules.values():
+        module.MANAGER = manager
+
+
 def _serve(module_name, server):
     try:
         server.serve_forever()
@@ -82,8 +109,11 @@ def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None, server_controlle
         servers, threads = {}, []
         try:
             mimetypes.add_type("application/javascript", ".js")
+            modules = {name: importlib.import_module(name)
+                       for name in ("adminui.server", "webtools.server")}
+            _bind_job_managers(server_cwd, modules)
             for name, port in (("adminui.server", ADMIN_PORT), ("webtools.server", MOD_PORT)):
-                module = importlib.import_module(name)
+                module = modules[name]
                 server = ThreadingHTTPServer(("127.0.0.1", port), module.Handler)
                 server.daemon_threads = True
                 servers[name] = server

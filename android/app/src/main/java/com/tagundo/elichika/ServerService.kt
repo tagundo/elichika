@@ -156,10 +156,15 @@ class ServerService : Service() {
             }
             ACTION_STOP -> {
                 cancellation++
-                // The installer still owns its DB writes. Cancel only the pending
-                // restart, keeping its foreground protection until finish().
+                // The installer still owns its DB writes. Stop Go and cancel
+                // restart, keeping foreground protection until the job finishes.
                 when {
-                    installing -> Bus.log(getString(R.string.log_install_restart_cancelled))
+                    installing -> {
+                        Bus.log(getString(R.string.log_install_restart_cancelled))
+                        // A whole-job reservation may deliberately leave Go
+                        // running until a nested stop is requested.
+                        pauseReservedInstall()
+                    }
                     maintenance -> { stopAfterMaintenance = true; server.stop() }
                     else -> stopServer(stopSelfToo = true)
                 }
@@ -191,7 +196,7 @@ class ServerService : Service() {
             Bus.log(getString(R.string.log_server_exited, code))
             Bus.setRunning(false)
             cancelAutoStop()
-            finishService()
+            if (!installing) finishService()
         } }
         Bus.setRunning(ok)
         if (ok) {
@@ -272,23 +277,36 @@ class ServerService : Service() {
 
     // All controller calls below run on the main thread; process exit is awaited
     // on the Python job thread. The hold blocks other windows from opening DBs.
-    internal fun pauseForInstall(): Process? {
+    internal fun reserveForInstall() {
         check(current === this) { "The server service changed; retry installation" }
         check(isReady) { "Server files are still being prepared" }
         check(!installing && !maintenance) { getString(R.string.log_install_busy) }
         installing = true
+        if (stopping) operation++ // Cancel a previous hold's pending service shutdown.
         stopping = false
-        operation++
         cancelAutoStop()
-        val process = server.stop()
-        Bus.setRunning(false)
         acquireWakeLock()
         startForeground(NOTIF_ID, buildNotification())
+    }
+
+    internal fun pauseReservedInstall(): Process? {
+        check(current === this && installing) { "The installation hold changed" }
+        operation++
+        val process = server.stop()
+        Bus.setRunning(false)
         return process
     }
 
+    internal fun pauseForInstall(): Process? {
+        reserveForInstall()
+        return pauseReservedInstall()
+    }
+
+    internal fun canResumeAfterInstall(expectedCancellation: Long): Boolean =
+        current === this && cancellation == expectedCancellation && installing
+
     internal fun resumeAfterInstall(expectedCancellation: Long): Boolean {
-        if (current !== this || cancellation != expectedCancellation || !installing) return false
+        if (!canResumeAfterInstall(expectedCancellation)) return false
         installing = false
         check(startServer()) { getString(R.string.log_error_exec_failed, "server restart failed") }
         return true
@@ -297,7 +315,7 @@ class ServerService : Service() {
     internal fun finishInstall() {
         if (current !== this) return
         installing = false
-        if (!Bus.serverRunning) stopServer(stopSelfToo = true)
+        if (!Bus.serverRunning) stopServer(stopSelfToo = true) else scheduleAutoStop()
     }
 
     /** Run a one-shot CLI verb; optionally stop the server first to avoid DB locks. */

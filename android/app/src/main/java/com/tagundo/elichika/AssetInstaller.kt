@@ -5,38 +5,36 @@ import android.os.Environment
 import java.io.File
 
 /**
- * Unpacks the bundled server payload (the assets/payload tree, assembled by CI) into
- * the app's files dir, which is also the elichika server's working directory.
- *
- * Overwrite policy:
- *  - static server files (webui/, "server init jsons/", *.pem) are refreshed on
- *    every app upgrade so server changes ride along with a new APK;
- *  - user/state files (config.json, serverdata.db, userdata.db) are only created
- *    when missing, so progress and settings survive an upgrade.
- *
- * A version marker keyed to the APK's versionCode decides when to refresh the
- * static set.
+ * Stages the APK payload and delegates publishing to the recoverable updater.
+ * Normal updates merge game definitions while preserving mods. First install
+ * and explicit Reset Server restore vanilla definitions. User state is never
+ * replaced by the bundled payload; the explicit account reset remains separate.
  */
 object AssetInstaller {
 
     private const val PAYLOAD = "payload"
     private const val MARKER = "installed_version"
 
-    // Refresh-on-upgrade (server-owned master data / static assets, safe to overwrite
-    // so a new APK ships updated game data). serverdata.db + the harasho assets/ tree +
-    // the rekeyed static/ output are all regenerated from the build, not user state.
-    private val ALWAYS = listOf(
-        "webui", "server init jsons", "privatekey.pem", "publickey.pem",
-        "assets", "static", "serverdata.db"
-    )
-    // Create-if-missing (user-owned, preserve across upgrades).
-    private val PRESERVE = listOf("config.json", "userdata.db")
-
     /** Returns the server working dir (== app files dir). */
     @Synchronized
-    fun install(ctx: Context, log: (String) -> Unit): File {
+    fun install(ctx: Context, log: (String) -> Unit): File = prepare(ctx, log, reset = false)
+
+    /** Vanilla file restoration; ServerService performs the separate account reset. */
+    @Synchronized
+    fun resetServerData(ctx: Context, log: (String) -> Unit): File = prepare(ctx, log, reset = true)
+
+    private fun prepare(ctx: Context, log: (String) -> Unit, reset: Boolean): File =
+        PayloadUpgrade.withMaintenance(ctx, ctx.filesDir) { prepareLocked(ctx, log, reset) }
+
+    private fun prepareLocked(ctx: Context, log: (String) -> Unit, reset: Boolean): File {
         val root = ctx.filesDir
         val am = ctx.assets
+        // The maintenance lease covers recovery, staging cleanup, settings and
+        // publishing. A read-only CLEAN result alone would not grant ownership.
+        // Recovery precedes the version check, stage cleanup and every live write.
+        // Starting raw Python here does not start the editor HTTP servers.
+        PayloadUpgrade.recover(ctx, root, log)
+        PayloadFiles.clearStages(root)
         val payloadExists = runCatching { am.list(PAYLOAD)?.isNotEmpty() == true }.getOrDefault(false)
         if (!payloadExists) {
             log(ctx.getString(R.string.log_setup_no_payload))
@@ -45,50 +43,45 @@ object AssetInstaller {
 
         val installedVersion = File(root, MARKER).takeIf { it.exists() }?.readText()?.trim()
         val currentVersion = appVersion(ctx)
-        val refreshStatic = installedVersion != currentVersion
-
-        log(ctx.getString(R.string.log_setup_preparing, currentVersion, refreshStatic.toString()))
-        copyDir(ctx, PAYLOAD, root, refreshStatic, log)
-
-        ensureSharedLinks(ctx, root, log)
-        ensureCacheDir(ctx, root, log)
-        ensureCdnDefaultOn(ctx, root, log)
-        ensureLanguage(ctx, root, log)
-        File(root, MARKER).writeText(currentVersion)
-        log(ctx.getString(R.string.log_setup_ready))
-        return root
-    }
-
-    /**
-     * "Reset server": delete every server-owned tree (the ALWAYS set: webui,
-     * "server init jsons", *.pem, assets, static, serverdata.db) and re-extract the
-     * bundled vanilla payload. Installed/cloned mod costumes live in exactly those
-     * files, so this removes them all and puts the game data back to the state the
-     * APK shipped with. User-owned files (config.json, userdata.db) are kept — the
-     * account wipe runs separately (reset_accounts CLI verb) so logins survive.
-     * Must be called with the server stopped.
-     */
-    @Synchronized
-    fun resetServerData(ctx: Context, log: (String) -> Unit): File {
-        val root = ctx.filesDir
-        // Never delete anything unless the bundled payload is actually there to
-        // restore from (it is absent in non-CI local builds).
-        val payloadExists = runCatching { ctx.assets.list(PAYLOAD)?.isNotEmpty() == true }.getOrDefault(false)
-        if (!payloadExists) {
-            log(ctx.getString(R.string.log_setup_no_payload))
-            return root
+        check(currentVersion != "unknown") { "Cannot determine the installed application version" }
+        val source = object : PayloadFiles.Source {
+            override fun list(path: String): Array<String> = am.list(path) ?: emptyArray()
+            override fun open(path: String) = am.open(path)
         }
-        for (name in ALWAYS) {
-            val f = File(root, name)
-            if (f.exists()) {
-                log(ctx.getString(R.string.log_reset_removing, name))
-                f.deleteRecursively()
+        val required = PayloadFiles.managedFiles(source)
+        // Check names/existence without copying large DBs on every server start.
+        // A missing core DB also goes through the journal, even at the same version.
+        val update = reset || PayloadFiles.needsUpdate(root, installedVersion, currentVersion, required)
+        log(ctx.getString(R.string.log_setup_preparing, currentVersion, update.toString()))
+        val mode = when {
+            reset -> "reset"
+            PayloadFiles.hasInstalledData(root, installedVersion) -> "upgrade"
+            else -> "fresh"
+        }
+        val staged = if (update) PayloadFiles.stage(root, source, required) else null
+        var enteredUpdater = false
+        var committed = false
+        try {
+            // Existing settings helpers merge only defaults or explicit app choices.
+            // Complete them before the updater publishes its final version marker.
+            ensureBundledConfig(ctx, root)
+            ensureSharedLinks(ctx, root, log)
+            ensureCacheDir(ctx, root, log)
+            ensureCdnDefaultOn(ctx, root, log)
+            ensureLanguage(ctx, root, log)
+            if (staged != null) {
+                if (mode == "upgrade") log(ctx.getString(R.string.log_setup_preserving_mods))
+                enteredUpdater = true
+                PayloadUpgrade.apply(ctx, root, staged, installedVersion, currentVersion, mode)
+                committed = true
             }
+            log(ctx.getString(R.string.log_setup_ready))
+            return root
+        } finally {
+            // If publishing was interrupted, retain its inputs until recover()
+            // finishes. Never delete a journal dependency merely because it threw.
+            if (staged != null && (!enteredUpdater || committed)) PayloadFiles.removeStage(staged)
         }
-        // Dropping the marker forces install() to treat this as a fresh version and
-        // re-copy the whole ALWAYS set from the bundled payload.
-        File(root, MARKER).delete()
-        return install(ctx, log)
     }
 
     // Termux default that the server injects into config.json on Android.
@@ -192,46 +185,17 @@ object AssetInstaller {
             "${pi.versionName}-${pi.versionCode}"
         }.getOrDefault("unknown")
 
-    private fun copyDir(ctx: Context, assetPath: String, destRoot: File, refreshStatic: Boolean, log: (String) -> Unit) {
-        val am = ctx.assets
-        val entries = am.list(assetPath) ?: return
-        for (name in entries) {
-            val childAsset = "$assetPath/$name"
-            val children = am.list(childAsset)
-            // Path relative to the payload root, used for the overwrite-policy check.
-            val rel = childAsset.removePrefix("$PAYLOAD/")
-            if (children != null && children.isNotEmpty()) {
-                copyDir(ctx, childAsset, destRoot, refreshStatic, log)
-            } else {
-                val dest = File(destRoot, rel)
-                if (rel == "config.json") {
-                    // A bundled default is small, but it still participates in
-                    // the same transaction as settings changed during setup.
-                    val defaultConfig = am.open(childAsset).bufferedReader().use { it.readText() }
-                    ServerConfig.update(destRoot) { config ->
-                        if (!dest.exists()) {
-                            val bundled = org.json.JSONObject(defaultConfig)
-                            bundled.keys().forEach { key -> config.put(key, bundled.get(key)) }
-                        }
-                    }
-                    continue
-                }
-                if (shouldWrite(rel, dest, refreshStatic)) {
-                    dest.parentFile?.mkdirs()
-                    am.open(childAsset).use { input ->
-                        dest.outputStream().use { input.copyTo(it) }
-                    }
-                }
+    private fun ensureBundledConfig(ctx: Context, root: File) {
+        val destination = File(root, "config.json")
+        if (destination.exists()) return
+        val defaults = runCatching {
+            ctx.assets.open("$PAYLOAD/config.json").bufferedReader().use { it.readText() }
+        }.getOrNull() ?: return
+        ServerConfig.update(root) { config ->
+            if (!destination.exists()) {
+                val bundled = org.json.JSONObject(defaults)
+                bundled.keys().forEach { key -> config.put(key, bundled.get(key)) }
             }
-        }
-    }
-
-    private fun shouldWrite(rel: String, dest: File, refreshStatic: Boolean): Boolean {
-        val top = rel.substringBefore('/')
-        return when {
-            PRESERVE.contains(top) || PRESERVE.contains(rel) -> !dest.exists()
-            ALWAYS.contains(top) || ALWAYS.contains(rel) -> refreshStatic || !dest.exists()
-            else -> !dest.exists()
         }
     }
 }
