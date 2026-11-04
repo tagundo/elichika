@@ -1,6 +1,18 @@
 name: Android 4KB and 16KB native compatibility
 
 on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Existing build run containing the signed APK artifact"
+        type: string
+        required: true
+      candidate_sha256:
+        type: string
+        required: true
+      version_name:
+        type: string
+        required: true
   workflow_call:
     inputs:
       candidate_sha256:
@@ -36,6 +48,8 @@ jobs:
         with:
           name: elichika-release-apk
           path: candidate
+          run-id: ${{ inputs.source_run_id || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run original APK server, Python packages and ASTC on both kernels
         run: >-
