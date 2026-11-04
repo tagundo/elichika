@@ -67,6 +67,9 @@ stack and actual screens before classifying or closing the run. Followup
 artifacts are named `gl-mod-loss-control-N` to avoid mixing them with positive
 results. The release remains withdrawn; this control grants no publish action.
 
-Host preparation passes148 Python tests, the JS preference checks, py_compile,
+Host preparation passes153 Python tests, the JS preference checks, py_compile,
 14 shell syntax blocks and the ten-input workflow limit. No Android run, APK
-build, remote write, release or tag action has been performed for this branch.
+build, release or tag action is part of the host checks. Run41827878073 stopped
+before custom Home when the initial fixture incorrectly expected a present-box
+entry for a unique suit. The fixed fixture follows Nov3.4's normal direct-grant
+behavior, verifies exact ownership, and never fabricates a present/receive path.

@@ -220,9 +220,14 @@ def assert_stopped(android):
 
 
 def grant_and_select(android, uid, background, language):
-    # Reuse normal gift/receive, not a userdata fixture or a direct game callback.
+    # Suits are unique rewards: the normal gift handler grants them directly,
+    # not through present/fetch or present/receive (including Nov3.4).
     from gl_ui_runtime.accessory_fixture import NoRedirect
     with closing(db(android.read(f"{smoke.FILES}/userdata.db"))) as connection:
+        require(connection.execute("SELECT COUNT(*) FROM u_status").fetchone()[0] == 1,
+                "mod_unique_disposable_gift_user_required")
+        require(connection.execute("SELECT COUNT(*) FROM u_suit WHERE user_id=? AND suit_master_id=?", (uid, CUSTOM_SUIT)).fetchone()[0] == 0,
+                "mod_fresh_clone_already_owned")
         auth = connection.execute("SELECT session_key,command_id FROM u_authentication WHERE user_id=?", (uid,)).fetchone()
         require(auth is not None and isinstance(auth[0], bytes) and len(auth[0]) == 32, "mod_authenticated_game_session_required")
         session, command = bytes(auth[0]), auth[1]
@@ -241,16 +246,15 @@ def grant_and_select(android, uid, background, language):
         status = response.status
         response.close()
     require(status in (200, 302, 303), "mod_gift_request_rejected")
+    with closing(db(android.read(f"{smoke.FILES}/userdata.db"))) as connection:
+        require(connection.execute("SELECT COUNT(*) FROM u_suit WHERE user_id=? AND suit_master_id=?", (uid, CUSTOM_SUIT)).fetchone()[0] == 1,
+                "mod_unique_suit_grant_missing")
     client = smoke.Client(language, None)
     client.uid, client.session, client.command = uid, session, command
-    response = client.request("/present/fetch", {})
-    candidates = [item for item in response.get("present_items", []) if item.get("content", {}).get("content_type") == 7
-                  and item["content"].get("content_id") == CUSTOM_SUIT and item["content"].get("content_amount") == 1]
-    require(len(candidates) == 1 and type(candidates[0].get("id")) is int, "mod_unique_clone_present_missing")
-    received = client.request("/present/receive", {"ids": [candidates[0]["id"]]})
-    require(received.get("limit_exceeded_items") == [], "mod_clone_present_receive_rejected")
     client.request("/communicationMember/setTheme", {"member_master_id": MEMBER, "suit_master_id": CUSTOM_SUIT, "custom_background_master_id": background})
     client.request("/communicationMember/setFavoriteMember", {"member_master_id": MEMBER})
+    return {"gift_http_status": status, "grant_mode": "unique_suit_direct", "owned_custom_suits": 1,
+            "present_fetch_used": False, "present_receive_used": False}
 
 
 @schema_guard
@@ -289,7 +293,9 @@ def prepare(android, before, args, report):
         assert_stopped(android)
         android.write(f"{smoke.FILES}/{path}", outputs[path])
     result["cold_server_restart"] = android.start("qa-disposable-mod-fixture")
-    grant_and_select(android, uid, background, getattr(args, "qa_language", "ko"))
+    require(public_components(read_inputs(android)) == expected, "mod_catalog_changed_during_baseline_restart")
+    result["catalog_verified_after_cold_restart"] = True
+    result["ownership_api"] = grant_and_select(android, uid, background, getattr(args, "qa_language", "ko"))
     fixture = {"source_suit_id": SOURCE_SUIT, "custom_suit_id": CUSTOM_SUIT, "components": expected,
                "selection": selected_state(android, uid)}
     verify_retained(android, fixture, uid)

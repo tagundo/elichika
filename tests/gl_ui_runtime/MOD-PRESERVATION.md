@@ -33,8 +33,10 @@ and crypto values are copied from existing stock data; no invented pack file or
 modified asset payload is used. The original stock model key remains the actual
 costume's model, as in costume_clone.
 
-After a cold server restart, the fixed clone is granted through normal suit
-gift/present-receive APIs, then selected through the normal theme/favourite APIs.
+After a cold server restart, the catalog is verified before any gift. The normal
+suit gift handler grants this unique item directly, including on Nov3.4; its
+ownership is read back before the normal theme/favourite APIs. No present-box
+entry or receive request is fabricated.
 Only safe row hashes and selected IDs enter evidence. The custom master/view/
 dictionary/alias/override/table rows, exact ownership and exact selected custom
 ID must all survive. A stock costume or missing custom master is a refusal even
@@ -53,7 +55,7 @@ and library basenames. Messages, arguments, paths, addresses, credentials and
 unknown strings are discarded. Fatal-signal counts remain separate from those
 attributable events so unattributed crashes cannot silently become passes.
 
-Host validation:104 Python tests, JS preference checks, py_compile,14 shell
+Host validation:109 Python tests, JS preference checks, py_compile,14 shell
 syntax blocks and the10-input limit pass. The fixture also passed an in-memory
 copy validation against seven original stock databases, with source file SHA256
 unchanged. Actual Android/GL validation is pending the new candidate.
