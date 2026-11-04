@@ -37,6 +37,7 @@ QA_LABELS = {
     "en": {"contract": "Contract", "agree": "Agree", "no": "No", "download": "Download Confirmation", "ok": "OK", "cancel": "Cancel"},
     "ko": {"contract": "약관", "agree": "동의합니다.", "no": "동의하지 않습니다.", "download": "데이터 다운로드 확인", "ok": "확인", "cancel": "취소"},
 }
+TITLE_LABELS = ("Tap to Start", "Tap To Start", "터치하여 시작하세요")
 
 
 def diagnostic_summary(server_text, logcat_text):
@@ -551,7 +552,7 @@ def tap_ready_title(android, args, report, location="label-center", source="touc
         return False
     choices = {}
     for text in tree.get("texts", []):
-        if text.get("label") not in ("Tap to Start", "Tap To Start") or not text.get("geometry"):
+        if text.get("label") not in TITLE_LABELS or not text.get("geometry"):
             continue
         tb = text["geometry"]["bounds"]
         tx, ty = (tb[0] + tb[2]) / 2, (tb[1] + tb[3]) / 2
@@ -581,7 +582,7 @@ def tap_ready_title(android, args, report, location="label-center", source="touc
     # Redroid presents ten frames per second. Keep the normal short touch down
     # across at least two render frames, without crossing the long-press window.
     android.shell("input", source, "swipe", *map(str, point + point), "240")
-    report["ready_title_tap"] = {"status": "TAPPED", "widget_id": widget["id"], "bounds": b,
+    report["ready_title_tap"] = {"status": "TAPPED", "widget_id": widget["id"], "label": text["label"], "bounds": b,
         "coordinates": point, "location": location, "input_source": source, "duration_ms": 240,
         "source": "fresh Unity UI tree; unique smallest clickable rectangle containing the exact title text"}
     report.setdefault("ready_title_actions", []).append(report["ready_title_tap"].copy())
@@ -606,7 +607,7 @@ def accept_local_qa_contract(android, args, report, phase):
                      and widget.get("geometry", {}).get("bounds") == tree.get("gameViewBounds")]
     scene_proof = "Contract heading" if locale["contract"] in public_labels else "Observed Agree/No modal over the disabled title control"
     if not {locale["agree"], locale["no"]} <= public_labels or not (locale["contract"] in public_labels or
-            (len(blocked_title) == 1 and public_labels & {"Tap to Start", "Tap To Start"})):
+            (len(blocked_title) == 1 and public_labels.intersection(TITLE_LABELS))):
         report[phase + "_contract_action"] = {"status": "REFUSED", "reason": "Observed contract scene not present"}
         return False
     buttons = [widget for widget in tree.get("widgets", []) if widget.get("active") is True
