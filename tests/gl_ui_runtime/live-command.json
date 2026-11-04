@@ -1,1 +1,1 @@
-{"run_id":"41783144081","sequence":4,"action":"tap_widget","widget_id":-5510,"expected_class":"LLAS.Components.UI.ProductButton","expected_bounds":[444.25787353515625,534.6324920654297,835.7421264648438,603.7179565429688],"expected_label":"Close"}
+{"run_id":"41783144081","sequence":5,"action":"upgrade_candidate","artifact_id":13299108244,"artifact_run_id":"41780163617","source_sha":"4ab6b4f275a1fb2e006e46ab46b60124996fc451","apk_sha256":"9aaced71da97ecaf9e65cf32bc211eb61133f4ae11032ad33da9d9f9fa71c4a1","version_code":2026110400,"version_name":"2026.11.04-dev"}
