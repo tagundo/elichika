@@ -8,6 +8,11 @@ first start. On a server that has **already run**, they silently do not.
 
 This page explains why, and how to pick up the new data either way.
 
+The additive [JP-to-GL content upgrade](jp_global_content.md) uses a separate,
+idempotent native path after the original SQL and existing upgrades. It does not
+require resetting modified databases or running a Python migration. The steps
+below still apply when historical baseline SQL is missing from an installation.
+
 ## Why a running server does not pick them up
 
 `clientdb` applies a migration to a client database only while that database is still

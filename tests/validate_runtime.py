@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 import sqlite3
 
+from validate_jp_global_content import validate_jp_global_content
+
 
 def database(path):
     connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
@@ -78,7 +80,9 @@ def validate_runtime(runtime):
     with closing(database(runtime / "serverdata.db")) as server:
         for table in ("s_dictionary_en", "s_dictionary_ko", "s_dictionary_zh", "s_dictionary_ja", "s_event_available", "s_gacha", "s_trade"):
             assert server.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0] > 0, f"Empty server data: {table}"
-    print(json.dumps({"status": "PASS", "runtime": str(runtime.resolve()), "lessons": report}, indent=2), flush=True)
+    content = validate_jp_global_content(runtime)
+    print(json.dumps({"status": "PASS", "runtime": str(runtime.resolve()), "lessons": report,
+                      "jp_global_content": content}, indent=2), flush=True)
     return report
 
 
