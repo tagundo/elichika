@@ -17,15 +17,16 @@ import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import android_gl_visual_smoke as smoke
+import candidate_upgrade as candidate_pins
 
 COMMAND_PATH = "tests/gl_ui_runtime/live-command.json"
 SUITS = {300207, 321107, 321207}
-UPGRADE_SOURCE_SHA = "e6aa8588c02923a4a3dfcb995d5211e19e6c3940"
-UPGRADE_VERSION_CODE = 2026110401
-UPGRADE_VERSION_NAME = "2026.11.04.1"
-UPGRADE_ARTIFACT_ID = 13304790579
-UPGRADE_RUN_ID = "41791847801"
-UPGRADE_APK_SHA = "8c725e5af842bb5a7f6f87417bbb902a6c16caaf1ee6ddde7675ca15988e2483"
+UPGRADE_SOURCE_SHA = candidate_pins.SOURCE_SHA
+UPGRADE_VERSION_CODE = candidate_pins.VERSION_CODE
+UPGRADE_VERSION_NAME = candidate_pins.VERSION_NAME
+UPGRADE_ARTIFACT_ID = candidate_pins.ARTIFACT_ID
+UPGRADE_RUN_ID = candidate_pins.ARTIFACT_RUN_ID
+UPGRADE_APK_SHA = candidate_pins.APK_SHA256
 
 
 class Refused(ValueError):
@@ -395,6 +396,9 @@ def execute(command, args, state, report):
     if smoke.sha(args.game.read_bytes()) != smoke.GAME_SHA:
         raise Refused("game_apk_sha_mismatch")
     action = command["action"]
+    mod_fixture = state.get("new_home", {}).get("mod_fixture")
+    if mod_fixture is not None and action in {"set_favorite_suit", "seed_accessories"}:
+        raise Refused("mod_retention_run_rejects_fixture_replacement")
     maintenance = action in {"set_favorite_suit", "seed_accessories", "upgrade_candidate", "relaunch_game"}
     if maintenance:
         uid, _ = favorite_identity(android, state)
@@ -427,6 +431,14 @@ def execute(command, args, state, report):
             restart_game(android, args, report, "relaunch")
         else:
             raise Refused("unsupported_action")
+        if mod_fixture is not None:
+            from gl_ui_runtime.mod_fixture import ModFixtureError, verify_retained
+            uid, _ = favorite_identity(android, state)
+            try:
+                report["retained_mod_after_action"] = {"status": "PASS", **verify_retained(android, mod_fixture, uid)}
+            except ModFixtureError as error:
+                report["retained_mod_after_action"] = {"status": "REFUSED", "reason": str(error)}
+                raise Refused("mod_selected_content_not_retained") from None
     except Exception as error:
         primary_error = error
         raise
@@ -491,7 +503,8 @@ def run_round(args, poll=poll_command, executor=execute):
         partial_upgrade_refusal = (report.get("action") == "upgrade_candidate" and
             type(error).__name__ == "CandidateUpgradeError" and candidate.get("status") == "REFUSED" and
             candidate.get("reason") in {"candidate_install_changed_userdata", "candidate_install_changed_config", "candidate_start_changed_userdata",
-                "candidate_start_changed_config", "candidate_start_changed_retained_data", "candidate_localized_owner_title_not_repaired"})
+                "candidate_start_changed_config", "candidate_start_changed_retained_data", "candidate_localized_owner_title_not_repaired",
+                "candidate_mod_fixture_not_preserved", "candidate_official_additions_missing"})
         domain_refusal = isinstance(error, Refused) or partial_upgrade_refusal
         report.update(status="REFUSED" if domain_refusal else "ERROR",
                       reason=candidate["reason"] if partial_upgrade_refusal else str(error) if isinstance(error, Refused) else type(error).__name__)
@@ -519,7 +532,7 @@ def main():
     parser.add_argument("--live-python", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
-    parser.add_argument("--command-ref", default="codex/gl-ko-home-regression")
+    parser.add_argument("--command-ref", default="codex/gl-mod-preservation-qa")
     parser.add_argument("--qa-language", choices=("en", "ko"), default="en")
     parser.add_argument("--repository", default="tagundo/elichika")
     args = parser.parse_args()
