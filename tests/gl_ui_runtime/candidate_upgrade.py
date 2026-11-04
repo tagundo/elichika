@@ -329,6 +329,30 @@ def record_retained(result, stage, userdata, config, before=None, config_before=
         result.setdefault("config_changes", {})[stage] = config_changes(config_before, config)
 
 
+def record_mod_retained(android, state, result, uid, stage):
+    fixture = state.get("new_home", {}).get("mod_fixture")
+    if fixture is None:
+        return
+    from gl_ui_runtime.mod_fixture import ModFixtureError, verify_retained
+    record = {"status": "REFUSED"}
+    result.setdefault("mod_preservation", {})[stage] = record
+    try:
+        record.update(verify_retained(android, fixture, uid), status="PASS")
+    except ModFixtureError as error:
+        record["reason"] = str(error)
+        raise CandidateUpgradeError("candidate_mod_fixture_not_preserved") from None
+
+
+def verify_imported_content(android):
+    with closing(smoke.database_from_bytes(android.read(f"{smoke.FILES}/assets/db/gl/masterdata.db"))) as master:
+        suits = [row[0] for row in master.execute("SELECT id FROM m_suit WHERE id IN (300207,321107,321207) ORDER BY id")]
+        background = master.execute("SELECT id FROM m_custom_background WHERE id=202300200").fetchone()
+        live = master.execute("SELECT live_id,music_id FROM m_live WHERE live_id=13001").fetchone()
+    if suits != [300207, 321107, 321207] or background is None or live is None or tuple(live) != (13001, 3001):
+        raise CandidateUpgradeError("candidate_official_additions_missing")
+    return {"suit_ids": suits, "background_id": background[0], "live_id": live[0], "music_id": live[1]}
+
+
 def verify_titles(android):
     with closing(smoke.database_from_bytes(android.read(f"{smoke.FILES}/assets/db/gl/masterdata.db"))) as master:
         references = master.execute("""
@@ -392,6 +416,7 @@ def upgrade_candidate(android, args, state, report, command, uid):
             before = userdata_state(android, uid)
             config_before = config_state(android.read(f"{smoke.FILES}/config.json"))
             record_retained(result, "before_update", before, config_before)
+            record_mod_retained(android, state, result, uid, "before_update")
             if before["profile_rows"] != 1 or before["deck_rows"] < 1:
                 raise CandidateUpgradeError("candidate_synthetic_profile_or_deck_missing")
             if not config_before["valid"]:
@@ -401,6 +426,7 @@ def upgrade_candidate(android, args, state, report, command, uid):
             after_install = userdata_state(android, uid)
             config_after_install = config_state(android.read(f"{smoke.FILES}/config.json"))
             record_retained(result, "after_install", after_install, config_after_install, before, config_before)
+            record_mod_retained(android, state, result, uid, "after_install")
             if installed.get("native_sha256") != expected_native:
                 raise CandidateUpgradeError("candidate_installed_native_hash_mismatch")
             info = android.shell("dumpsys", "package", release.PACKAGE)
@@ -419,6 +445,7 @@ def upgrade_candidate(android, args, state, report, command, uid):
             after_start = userdata_state(android, uid)
             config_after_start = config_state(android.read(f"{smoke.FILES}/config.json"))
             record_retained(result, "after_start", after_start, config_after_start, before, config_before)
+            record_mod_retained(android, state, result, uid, "after_start")
             result["game_apk_after_sha256"] = verify_retained_game(android)
             if started.get("running_native_sha256") != expected_native:
                 raise CandidateUpgradeError("candidate_running_native_hash_mismatch")
@@ -429,6 +456,8 @@ def upgrade_candidate(android, args, state, report, command, uid):
             result.update(after_install=after_install, after_start=after_start, start=started,
                           userdata_preserved=True, profile_preserved=True, deck_preserved=True, config_preserved=True,
                           repaired_titles=verify_titles(android), status="UPGRADED")
+            if home.get("mod_fixture") is not None:
+                result["official_additions"] = verify_imported_content(android)
         return result
     except CandidateUpgradeError as error:
         result.update(status="REFUSED", reason=str(error))

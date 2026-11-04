@@ -1,4 +1,4 @@
-name: Android ARM64 release smoke tests
+name: Android GL expected mod loss negative control
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ on:
         type: boolean
         default: false
       prepare_new_home:
-        description: "Prepare an existing owned costume and original background on the game-created account"
+        description: "Prepare the fixed disposable modded Home fixture (QA branch only)"
         type: boolean
         default: false
       latest_baseline_upgrade:
@@ -225,9 +225,15 @@ jobs:
             extra+=(--game LLAS_GL_LOCAL.apk)
           fi
           if [ "$TAP_SURFACE" = true ]; then extra+=(--tap-surface-center); fi
-          if [ "$PREPARE_HOME" = true ]; then extra+=(--prepare-existing-home); fi
+          if [ "$PREPARE_HOME" = true ]; then
+            test "$PREPARE_ENGLISH" = true
+            test "$TAP_SURFACE" = true
+            test "$SKIP_GAME" != true
+            test "$LATEST_BASELINE" != true
+            extra+=(--prepare-mod-home)
+          fi
           if [ "$PREPARE_ENGLISH" = true ] && [ "$SKIP_GAME" != true ]; then
-            extra+=(--prepare-english --qa-download-mode full --live-python "$RUNNER_TEMP/gl-live-python/bin/python")
+            extra+=(--prepare-english --qa-download-mode light --live-python "$RUNNER_TEMP/gl-live-python/bin/python")
           fi
           python3 -u tests/android_gl_visual_smoke.py \
             --candidate "candidate/elichika-$VERSION_NAME.apk" \

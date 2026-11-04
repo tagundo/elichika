@@ -17,7 +17,7 @@ runs:
         QA_LANGUAGE: ko
       run: |
         set -euo pipefail
-        python3 tests/gl_ui_runtime/followup.py \
+        python3 tests/gl_ui_runtime/mod_loss_followup.py \
           --sequence "$FOLLOWUP_SEQUENCE" \
           --run-id "$GITHUB_RUN_ID" \
           --serial 127.0.0.1:5555 \
@@ -26,13 +26,13 @@ runs:
           --output "evidence/followup-$FOLLOWUP_SEQUENCE" \
           --state evidence/gl/gl-visual-smoke.json \
           --qa-language "$QA_LANGUAGE" \
-          --command-ref codex/gl-ko-home-regression \
+          --command-ref codex/gl-mod-loss-control \
           --repository "$GITHUB_REPOSITORY"
 
     - name: Upload GL follow-up evidence
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
-        name: gl-followup-${{ inputs.sequence }}
+        name: gl-mod-loss-control-${{ inputs.sequence }}
         path: evidence/followup-${{ inputs.sequence }}
         if-no-files-found: warn

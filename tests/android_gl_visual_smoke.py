@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from urllib.parse import urlsplit, parse_qs
 
 from android_release_smoke import Android, Client, FILES, sha
+from gl_ui_runtime.native_diagnostics import sanitize_native_failures
 
 
 GAME = "com.klab.lovelive.allstars.global"
@@ -69,10 +70,11 @@ def diagnostic_summary(server_text, logcat_text):
         "out_of_memory": r"OutOfMemory(?:Error|Exception)", "low_memory_kill": r"(?:Killing|Kill).*com\.klab\.lovelive\.allstars\.global.*(?:low|memory)"}.items()}
     # Known code namespaces and method identifiers only: strip exception messages,
     # arguments, addresses and source paths which may contain app/user values.
-    frames = sorted(set(re.findall(r'\bat\s+((?:System|UnityEngine|LLAS)\.[A-Za-z0-9_.+`<>]{1,180})\s*\(', logcat_text)))[:80]
+    frames = sorted(set(re.findall(r'\bat\s+((?:System|UnityEngine|LLAS|DotUnder|Jigbox)\.[A-Za-z0-9_.+`<>]{1,180})\s*\(', logcat_text)))[:80]
     return {"requests": requests, "master_versions": versions, "failure_category_counts": categories,
+            "native_failures": sanitize_native_failures(logcat_text),
             "known_exception_frame_methods": frames,
-            "scope": "Current route metadata without query identifiers/bodies; fixed failure counts and known code method identifiers without messages/arguments"}
+            "scope": "Current routes without query identifiers/bodies; fixed failure counts, known code method identifiers and bounded native timestamp/process/signal/library basenames without messages/arguments/paths"}
 
 
 def capture_phase_diagnostics(android, evidence, phase, report):
@@ -80,7 +82,7 @@ def capture_phase_diagnostics(android, evidence, phase, report):
     result = {"phase": phase, "captured_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     texts = []
     for name, read in (("server", lambda: android.read("/sdcard/Download/sukusta/logs/elichika.log").decode("utf-8", "replace")),
-                       ("logcat", lambda: android.adb("logcat", "-d", "-v", "brief", timeout=25))):
+                       ("logcat", lambda: android.adb("logcat", "-d", "-v", "threadtime", timeout=25))):
         try:
             texts.append(read())
         except Exception as exc:
@@ -727,9 +729,13 @@ def run(args, report):
             if account_ids(android) == before:
                 if tap_ready_title(android, args, report, phase="retry"):
                     observe_live_ui(android, args, report, "gl-after-retry-start", seconds=60)
-    if args.prepare_new_home or args.prepare_existing_home:
-        report["new_home"] = (prepare_existing_home(android, before, args.qa_language) if args.prepare_existing_home
-                              else prepare_new_home(android, before, args.favorite_suit))
+    if args.prepare_new_home or args.prepare_existing_home or args.prepare_mod_home:
+        if args.prepare_mod_home:
+            from gl_ui_runtime.mod_fixture import prepare as prepare_mod_fixture
+            report["new_home"] = prepare_mod_fixture(android, before, args, report)
+        else:
+            report["new_home"] = (prepare_existing_home(android, before, args.qa_language) if args.prepare_existing_home
+                                  else prepare_new_home(android, before, args.favorite_suit))
         if report["new_home"].get("status") == "PREPARED":
             if args.prepare_english:
                 report["play_services_warning_dismissed"] = False
@@ -750,6 +756,9 @@ def run(args, report):
                     report["new_home"]["terms_version_after_client"] = connection.execute(
                         "SELECT terms_of_use_version FROM u_status WHERE user_id=?",
                         (report["new_home"]["user_id"],)).fetchone()[0]
+                if args.prepare_mod_home:
+                    from gl_ui_runtime.mod_fixture import verify_retained
+                    report["mod_fixture"]["after_client"] = {"status": "PASS", **verify_retained(android, report["new_home"]["mod_fixture"], report["new_home"]["user_id"])}
     pid = android.shell("pidof", "-s", GAME)
     assert pid.isdecimal(), "The GL process is no longer running"
     report["game_pid"] = int(pid)
@@ -786,12 +795,14 @@ def main():
     parser.add_argument("--tap-surface-center", action="store_true")
     parser.add_argument("--prepare-new-home", action="store_true")
     parser.add_argument("--prepare-existing-home", action="store_true", help="Preserve the game-created legacy account vanilla owned theme; no new JP content fixture")
+    parser.add_argument("--prepare-mod-home", action="store_true", help="Explicit fresh disposable Redroid-only stock-model custom-ID preservation fixture")
     parser.add_argument("--qa-language", choices=("en", "ko"), default="en")
     parser.add_argument("--qa-download-mode", choices=("light", "full"), default="light")
     parser.add_argument("--favorite-suit", type=int, choices=(300207, 321107, 321207), default=300207)
     args = parser.parse_args()
     assert 1 <= args.frames <= 12 and 1 <= args.interval <= 30
     assert not args.prepare_existing_home or (args.prepare_english and not args.prepare_new_home), "existing-home requires locale setup and excludes the new-content fixture"
+    assert not args.prepare_mod_home or (args.prepare_english and not args.prepare_new_home and not args.prepare_existing_home and not args.baseline and not args.skip_game), "mod-home requires a fresh locale-enabled GL run and excludes other fixtures"
     assert not args.skip_game or args.baseline or args.check_resource_modes, "skip-game requires an explicit preservation check"
     assert not args.prepare_english or args.skip_game or args.live_python is not None, "prepare-english requires pinned live tools"
     args.evidence.mkdir(parents=True, exist_ok=True)
