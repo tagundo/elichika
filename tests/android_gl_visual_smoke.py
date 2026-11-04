@@ -349,6 +349,13 @@ def live_tool(args, tool, output, timeout):
             command += ["--label", label]
         for label in ("Contract", "User Agreement", "Privacy Policy", "Terms of Use"):
             command += ["--label", label]
+        public_file = tools / "public-content-labels.json"
+        if public_file.is_file():
+            labels = json.loads(public_file.read_text())
+            assert isinstance(labels, list) and len(labels) <= 500
+            assert all(isinstance(label, str) and 0 < len(label) <= 200 and "\n" not in label for label in labels)
+            for label in dict.fromkeys(labels):
+                command += ["--label", label]
     result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     filename = "language-setup.json" if tool == "language_setup.py" else "unity-ui-tree.json"
     path = output / filename
@@ -524,6 +531,36 @@ def accept_local_qa_contract(android, args, report, phase):
     return True
 
 
+def confirm_qa_download(android, args, report, phase):
+    """Confirm the exact resource-download dialog already observed in QA."""
+    output = args.evidence / (phase + "-download-ui")
+    result = live_tool(args, "snapshot.py", output, 50)
+    report[phase + "_download_ui"] = result
+    if result.get("status") != "SNAPSHOT":
+        return False
+    tree = json.loads((output / "unity-ui-tree.json").read_text())
+    labels = {text.get("label") for text in tree.get("texts", [])}
+    buttons = [widget for widget in tree.get("widgets", []) if widget.get("active") is True
+               and widget.get("clickable") is True and widget.get("geometry")]
+    ok = [widget for widget in buttons if widget.get("labels") == ["OK"]]
+    cancel = [widget for widget in buttons if widget.get("labels") == ["Cancel"]]
+    if ("Download Confirmation" not in labels or len(ok) != 1 or len(cancel) != 1 or
+            ok[0]["geometry"]["canvasId"] != cancel[0]["geometry"]["canvasId"]):
+        report[phase + "_download_action"] = {"status": "REFUSED", "reason": "Exact Download Confirmation/OK/Cancel dialog not present"}
+        return False
+    area = ok[0].get("inputDiagnostics", {}).get("raycastArea", {})
+    if not isinstance(area, dict) or area.get("active") is not True or area.get("raycastTarget") is not True or not isinstance(area.get("geometry"), dict):
+        report[phase + "_download_action"] = {"status": "REFUSED", "reason": "Observed download OK raycast target unavailable"}
+        return False
+    b = area["geometry"]["bounds"]
+    point = [round((b[0] + b[2]) / 2), round((b[1] + b[3]) / 2)]
+    android.shell("input", "touchscreen", "swipe", *map(str, point + point), "240")
+    report[phase + "_download_action"] = {"status": "TAPPED", "label": "OK", "widget_id": ok[0]["id"],
+        "coordinates": point, "bounds": b, "duration_ms": 240,
+        "scope": "Resource download on disposable native ARM64 QA Android"}
+    return True
+
+
 def run(args, report):
     android = Android(args.serial, args.evidence)
     assert android.shell("id").startswith("uid=0"), "Disposable Android root diagnostics required"
@@ -603,6 +640,7 @@ def run(args, report):
                     observe_live_ui(android, args, report, "gl-home-after-start", seconds=30)
                 if accept_local_qa_contract(android, args, report, phase="gl-home"):
                     observe_live_ui(android, args, report, "gl-after-contract", seconds=30)
+                confirm_qa_download(android, args, report, phase="gl-home")
                 observe_live_ui(android, args, report, "gl-new-home")
                 with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
                     report["new_home"]["terms_version_after_client"] = connection.execute(

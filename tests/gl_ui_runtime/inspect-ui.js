@@ -247,6 +247,86 @@
                 }
             }
         }
+        // Exact UI-reference fields from the original GL APK metadata. Read-only:
+        // no navigation methods, UI callbacks, setters, model or account fields.
+        function attachSemanticReferences() {
+            const refs = [
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "menuButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "backButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "communicationButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "liveButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "homeButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "cardButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "accessoryButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "communicationMemberSelectButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "communicationMemberDetailButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "deckLiveEditButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "basicLiveButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.GlobalMenu.GlobalMenuButtonsController", "accessoryListButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.CommunicationMemberDetail.CommunicationMemberDetailTopMenu", "themeListButton", "LLAS.Components.UI.ProductButton"],
+                ["LLAS.Scene.CommunicationMemberDetail.CommunicationMemberDetailThemeList", "costumePreviewButton", "LLAS.Components.UI.ProductButton"]
+            ];
+            const derivesFrom = (cls, name) => {
+                for (let depth = 0; cls != null && depth < 64; depth++, cls = cls.parent) {
+                    if (cls.fullName === name) return true;
+                }
+                return false;
+            };
+            const widgetById = new Map(report.widgets.map(widget => [widget.id, widget]));
+            const ownersByClass = new Map();
+            const diagnostics = [];
+            for (const [ownerName, fieldName, buttonType] of refs) {
+                const ref = ownerName + "." + fieldName;
+                const entry = {ref, activeOwners: 0, matchedWidgets: 0, status: "UNAVAILABLE"};
+                diagnostics.push(entry);
+                try {
+                    if (!ownersByClass.has(ownerName)) {
+                        const cls = findClass(ownerName);
+                        if (cls == null || !derivesFrom(cls, "UnityEngine.MonoBehaviour")) {
+                            ownersByClass.set(ownerName, null);
+                        } else {
+                            const found = find(cls);
+                            if (found.length > 128) throw Error("Semantic owner bound exceeded");
+                            const owners = [];
+                            for (let i = 0; i < found.length; i++) {
+                                const owner = found.get(i);
+                                if (active(owner)) owners.push(owner);
+                            }
+                            ownersByClass.set(ownerName, owners);
+                        }
+                    }
+                    const owners = ownersByClass.get(ownerName);
+                    if (owners == null) { entry.status = "OWNER_CLASS_UNAVAILABLE"; continue; }
+                    entry.activeOwners = owners.length;
+                    const matched = new Set();
+                    let fieldMismatch = false;
+                    for (const owner of owners) {
+                        // Only these fixed, metadata-verified ProductButton fields.
+                        const field = owner.tryField(fieldName);
+                        if (field == null || field.type.name !== buttonType) { fieldMismatch = true; continue; }
+                        const button = nullable(field.value);
+                        if (button == null || !derivesFrom(button.class, buttonType) || !active(button)) continue;
+                        const widget = widgetById.get(id(button));
+                        if (widget == null || widget.active !== true) continue;
+                        if (widget.semantic_refs == null) widget.semantic_refs = [];
+                        if (!widget.semantic_refs.includes(ref)) widget.semantic_refs.push(ref);
+                        matched.add(widget.id);
+                    }
+                    entry.matchedWidgets = matched.size;
+                    entry.status = matched.size > 1 ? "AMBIGUOUS" : matched.size === 1 ? "MATCHED" :
+                        fieldMismatch ? "FIELD_UNAVAILABLE_OR_TYPE_MISMATCH" : owners.length ? "NO_ACTIVE_WIDGET" : "NO_ACTIVE_OWNER";
+                } catch (_) {
+                    // Do not persist native exception strings, object names or fields.
+                    entry.status = "READ_REFUSED";
+                }
+            }
+            report.semanticReferences = {schema: 1,
+                source: "original-GL-APK-metadata-8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e",
+                references: diagnostics,
+                limitations: ["References identify buttons, not occlusion or navigation success",
+                    "Multiple matched active widgets are ambiguous and require refusal by the driver"]};
+        }
+        attachSemanticReferences();
         for (const widget of report.widgets) {
             widget.labels = [...new Set(report.texts.filter(t => t.label !== undefined &&
                 (t.gameObjectId === widget.gameObjectId || t.ancestorIds.includes(widget.gameObjectId))).map(t => t.label))];

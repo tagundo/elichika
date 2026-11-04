@@ -1,0 +1,36 @@
+name: GL follow-up round
+description: Wait for one scoped GL UI command and upload its evidence while Android stays running.
+
+inputs:
+  sequence:
+    description: Ordered follow-up sequence for the current manual workflow run.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Wait for the scoped GL follow-up command
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        FOLLOWUP_SEQUENCE: ${{ inputs.sequence }}
+      run: |
+        set -euo pipefail
+        python3 tests/gl_ui_runtime/followup.py \
+          --sequence "$FOLLOWUP_SEQUENCE" \
+          --run-id "$GITHUB_RUN_ID" \
+          --serial 127.0.0.1:5555 \
+          --game LLAS_GL_LOCAL.apk \
+          --live-python "$RUNNER_TEMP/gl-live-python/bin/python" \
+          --output "evidence/followup-$FOLLOWUP_SEQUENCE" \
+          --state evidence/gl/gl-visual-smoke.json \
+          --command-ref codex/jp-global-content-gl-qa \
+          --repository "$GITHUB_REPOSITORY"
+
+    - name: Upload GL follow-up evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gl-followup-${{ inputs.sequence }}
+        path: evidence/followup-${{ inputs.sequence }}
+        if-no-files-found: warn

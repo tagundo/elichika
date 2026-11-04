@@ -60,7 +60,7 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: ${{ inputs.source_run_id && 35 || 25 }}
+    timeout-minutes: ${{ inputs.source_run_id && 60 || 25 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -246,6 +246,131 @@ jobs:
           name: android-arm64-smoke-evidence
           path: evidence/
           if-no-files-found: warn
+
+      # Keep this Android instance alive while the operator reviews each artifact.
+      # Commands must match this run_id and sequence, for example:
+      # {"run_id":"<this run>","sequence":1,"action":"capture"}
+      # tap_widget.expected_bounds uses inputDiagnostics.raycastArea.geometry.bounds.
+      # Idle, close, malformed commands and infrastructure errors close later rounds.
+      - name: GL follow-up round 1
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '1'
+
+      - name: GL follow-up round 2
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '2'
+
+      - name: GL follow-up round 3
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '3'
+
+      - name: GL follow-up round 4
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '4'
+
+      - name: GL follow-up round 5
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '5'
+
+      - name: GL follow-up round 6
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '6'
+
+      - name: GL follow-up round 7
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '7'
+
+      - name: GL follow-up round 8
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '8'
+
+      - name: GL follow-up round 9
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '9'
+
+      - name: GL follow-up round 10
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '10'
+
+      - name: GL follow-up round 11
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '11'
+
+      - name: GL follow-up round 12
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '12'
+
+      - name: GL follow-up round 13
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '13'
+
+      - name: GL follow-up round 14
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '14'
+
+      - name: GL follow-up round 15
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '15'
+
+      - name: GL follow-up round 16
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '16'
+
+      - name: GL follow-up round 17
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '17'
+
+      - name: GL follow-up round 18
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '18'
+
+      - name: GL follow-up round 19
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '19'
+
+      - name: GL follow-up round 20
+        if: ${{ !cancelled() && inputs.source_run_id && inputs.prepare_english && inputs.prepare_new_home && !inputs.skip_game && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/gl-followup
+        with:
+          sequence: '20'
 
       - name: Stop disposable Android instance
         if: always()
