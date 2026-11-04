@@ -1,30 +1,88 @@
-name: Android ARM64 release smoke tests
+name: Paired native Android payload-upgrade benchmark
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
+      candidate_run_id:
+        description: Build Android APK run containing the candidate and instrumentation artifacts
+        required: true
+        type: string
       candidate_sha256:
-        type: string
+        description: Independently audited raw candidate APK SHA-256
         required: true
-      version_name:
         type: string
+      candidate_source_sha:
+        description: Reviewed candidate source commit SHA
         required: true
-      version_code:
         type: string
-        required: true
 
 permissions:
   contents: read
   actions: read
 
 jobs:
-  android:
+  android-benchmark:
+    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-upgrade-benchmark-qa'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
+    timeout-minutes: 50
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+      CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
+      CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Prepare native ARM64 Android host
+      - name: Validate candidate source and completed build artifacts
+        run: |
+          mkdir -p evidence
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          run_id = os.environ['CANDIDATE_RUN_ID']; source = os.environ['CANDIDATE_SOURCE_SHA']; digest = os.environ['CANDIDATE_SHA256']
+          assert re.fullmatch(r'[1-9][0-9]{0,19}', run_id), 'Invalid run id'
+          assert re.fullmatch(r'[0-9a-f]{40}', source) and re.fullmatch(r'[0-9a-f]{64}', digest), 'Invalid candidate identity'
+          def api(path): return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/' + path], text=True))
+          run = api('actions/runs/' + run_id)
+          assert run['head_sha'] == source and run['repository']['full_name'] == 'tagundo/elichika' and run['head_repository']['full_name'] == 'tagundo/elichika', 'Source repository mismatch'
+          jobs = api('actions/runs/' + run_id + '/jobs?per_page=100')['jobs']
+          assert any(job['name'] == 'build' and job['status'] == 'completed' and job['conclusion'] == 'success' for job in jobs), 'Candidate build not successful'
+          artifacts = api('actions/runs/' + run_id + '/artifacts?per_page=100')['artifacts']
+          selected = {}
+          for name in ('elichika-release-apk','elichika-native-test-apk'):
+              matches = [artifact for artifact in artifacts if artifact['name'] == name and not artifact['expired']]
+              assert len(matches) == 1, 'Expected unique candidate artifact'
+              selected[name] = {key: matches[0][key] for key in ('id','name','size_in_bytes','digest')}
+          Path('evidence/candidate-artifact-binding.json').write_text(json.dumps({'run_id':run_id,'source_sha':source,'apk_sha256':digest,'artifacts':selected},indent=2) + '\n')
+          print('Reviewed source and successful candidate build/artifacts verified')
+          PY
+
+      - name: Download candidate wrapper
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: candidate
+          repository: tagundo/elichika
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Download the same new instrumentation for both targets
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-native-test-apk
+          path: instrumentation
+          repository: tagundo/elichika
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Download fixed public baseline and fixture dataset
+        run: >-
+          curl --fail --location --retry 2 --output baseline.apk
+          https://github.com/tagundo/elichika/releases/download/v2026.11.04.2/elichika-2026.11.04.2.apk
+
+      - name: Prepare pinned private native ARM64 Android host
         run: |
           set -euo pipefail
           test "$(uname -m)" = aarch64
@@ -34,23 +92,17 @@ jobs:
             sudo apt-get install -y "linux-modules-extra-$(uname -r)"
             sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
           fi
-          mkdir -p evidence "$RUNNER_TEMP/android-data"
+          mkdir -p "$RUNNER_TEMP/android-payload-benchmark-data"
           uname -a > evidence/host.txt
           getconf PAGESIZE >> evidence/host.txt
           docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
-          docker image inspect redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
-            --format '{{json .RepoDigests}} {{.Architecture}}' >> evidence/host.txt
-          docker run --detach --privileged --name android-release-smoke \
+          docker run --detach --privileged --name android-payload-benchmark \
             --publish 127.0.0.1:5555:5555 \
-            --volume "$RUNNER_TEMP/android-data:/data" \
+            --volume "$RUNNER_TEMP/android-payload-benchmark-data:/data" \
             redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
             androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 androidboot.redroid_height=1280 \
             androidboot.redroid_fps=10 ro.secure=0
-
-      - name: Wait for Android boot and verify native ABI
-        run: |
-          set -euo pipefail
           ready=0
           for attempt in $(seq 1 120); do
             adb connect 127.0.0.1:5555 >/dev/null || true
@@ -61,95 +113,23 @@ jobs:
             sleep 2
           done
           test "$ready" = 1
-          adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
           adb -s 127.0.0.1:5555 shell id >> evidence/host.txt
-          adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/android-boot.png
 
-      - name: Confirm Android immersive-mode education for the test user
-        run: |
-          set -euo pipefail
-          # The one-time system tutorial steals focus from fullscreen captures.
-          # Acknowledge it on this disposable user without changing app assertions.
-          adb -s 127.0.0.1:5555 shell settings --user 0 get secure immersive_mode_confirmations | tr -d '\r' > evidence/immersive-mode-confirmations-before.txt
-          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
-          adb -s 127.0.0.1:5555 shell settings --user 0 get secure immersive_mode_confirmations | tr -d '\r' | tee evidence/immersive-mode-confirmations-after.txt
-          test "$(cat evidence/immersive-mode-confirmations-after.txt)" = confirmed
-
-      - name: Use Chromium ANGLE for Redroid WebGL
-        run: |
-          set -euo pipefail
-          # The pinned Redroid image's vendor ANGLE crashes compiling WebGL
-          # shaders. WebView's own ANGLE uses the same CPU Vulkan device and
-          # preserves the textured-render assertions used by the instrumentation checks.
-          printf '%s\n' '_ --use-gl=angle --use-angle=vulkan --webview-verbose-logging' > "$RUNNER_TEMP/webview-command-line"
-          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/webview-command-line" /data/local/tmp/webview-command-line
-          adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
-          adb -s 127.0.0.1:5555 shell cat /data/local/tmp/webview-command-line > evidence/webview-command-line.txt
-
-      - name: Download this build's signed release artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-release-apk
-          path: candidate
-
-      - name: Download the latest official APK
+      - name: Run fixed-input baseline and optimized engine pair
         run: >-
-          curl --fail --location --retry 2 --output official.apk
-          https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk
+          python3 -u tests/android_payload_upgrade_benchmark_pair.py
+          --baseline baseline.apk --candidate-dir candidate
+          --instrumentation-dir instrumentation --evidence evidence
 
-      - name: Test actual APK upgrade, accounts, services and gameplay APIs
-        run: >-
-          python3 -u tests/android_release_smoke.py
-          --old official.apk --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
-          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
-          --version-code "${{ inputs.version_code }}"
-          --evidence evidence
-
-      - name: Download native-package instrumentation
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-native-test-apk
-          path: instrumentation
-
-      - name: Exercise Python, console, multiwindow and service configuration
-        run: |
-          set -euo pipefail
-          adb -s 127.0.0.1:5555 install -r instrumentation/*.apk
-          # These service-control checks intentionally require a stopped server.
-          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-          adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e class com.tagundo.elichika.ModelViewerWebViewTest,com.tagundo.elichika.ModelViewerAutoFaceTest,com.tagundo.elichika.ModelViewerRigTest,com.tagundo.elichika.NativePythonTest,com.tagundo.elichika.ConsoleLayoutTest,com.tagundo.elichika.WindowBusTest,com.tagundo.elichika.ServerPreparationTest,com.tagundo.elichika.ServerControlTest,com.tagundo.elichika.ServerConfigTest,com.tagundo.elichika.MeshWebViewTest \
-            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee evidence/native-instrumentation.txt
-          python3 -c 'from pathlib import Path; text=Path("evidence/native-instrumentation.txt").read_text(); assert "OK (15 tests)" in text and "FAILURES" not in text, text'
-
-      - name: Collect Android diagnostics
-        if: always()
-        run: |
-          mkdir -p evidence
-          docker logs android-release-smoke > evidence/container.log 2>&1 || true
-          adb -s 127.0.0.1:5555 logcat -d > evidence/logcat.txt 2>&1 || true
-          adb -s 127.0.0.1:5555 shell dumpsys webviewupdate > evidence/webview-provider.txt 2>&1 || true
-          adb -s 127.0.0.1:5555 exec-out cat /sdcard/Download/sukusta/logs/elichika.log > evidence/server-console.txt 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-qa.png > evidence/model-viewer.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-auto-face.png > evidence/model-viewer-auto-face.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-auto-face-disabled.png > evidence/model-viewer-auto-face-disabled.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig.png > evidence/model-viewer-rig.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader.png > evidence/model-viewer-shader.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-report.json > evidence/model-viewer-rig-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader-report.json > evidence/model-viewer-shader-report.json 2>/dev/null || true
-          sudo dmesg | tail -100 > evidence/kernel-tail.txt || true
-
-      - name: Upload execution evidence
+      - name: Upload only synthetic benchmark reports and instrumentation output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-arm64-smoke-evidence
+          name: android-payload-upgrade-paired-benchmark
           path: evidence/
           if-no-files-found: warn
 
-      - name: Stop disposable Android instance
+      - name: Stop disposable Android container
         if: always()
-        run: docker rm -f android-release-smoke || true
+        run: docker rm -f android-payload-benchmark || true
