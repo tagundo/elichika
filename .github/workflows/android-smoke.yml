@@ -1,6 +1,30 @@
 name: Android ARM64 release smoke tests
 
 on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Existing Build Android APK run containing the signed artifact"
+        type: string
+        required: true
+      candidate_sha256:
+        description: "SHA256 of the exact signed candidate APK"
+        type: string
+        required: true
+      version_name:
+        type: string
+        required: true
+      version_code:
+        type: string
+        required: true
+      tap_surface_center:
+        description: "One tap at the observed Unity surface center (never an inferred menu button)"
+        type: boolean
+        default: false
+      prepare_new_home:
+        description: "Prepare imported outfit and DiverCity using the account actually created by the game"
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       candidate_sha256:
@@ -20,7 +44,7 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
+    timeout-minutes: ${{ inputs.source_run_id && 35 || 25 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -92,13 +116,36 @@ jobs:
         with:
           name: elichika-release-apk
           path: candidate
+          run-id: ${{ inputs.source_run_id || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download and capture the real GL client on native ARM64
+        if: inputs.source_run_id
+        env:
+          TAP_SURFACE: ${{ inputs.tap_surface_center }}
+          PREPARE_HOME: ${{ inputs.prepare_new_home }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 2 --output LLAS_GL_LOCAL.apk \
+            https://github.com/arina999999997/elichika/releases/download/clients/LLAS_GL_LOCAL.apk
+          extra=()
+          if [ "$TAP_SURFACE" = true ]; then extra+=(--tap-surface-center); fi
+          if [ "$PREPARE_HOME" = true ]; then extra+=(--prepare-new-home); fi
+          python3 -u tests/android_gl_visual_smoke.py \
+            --candidate "candidate/elichika-${{ inputs.version_name }}.apk" \
+            --candidate-sha256 "${{ inputs.candidate_sha256 }}" \
+            --version-code "${{ inputs.version_code }}" \
+            --game LLAS_GL_LOCAL.apk --evidence evidence/gl \
+            "${extra[@]}"
 
       - name: Download the latest official APK
+        if: ${{ !inputs.source_run_id }}
         run: >-
           curl --fail --location --retry 2 --output official.apk
           https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk
 
       - name: Test actual APK upgrade, accounts, services and gameplay APIs
+        if: ${{ !inputs.source_run_id }}
         run: >-
           python3 -u tests/android_release_smoke.py
           --old official.apk --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
@@ -107,12 +154,14 @@ jobs:
           --evidence evidence
 
       - name: Download native-package instrumentation
+        if: ${{ !inputs.source_run_id }}
         uses: actions/download-artifact@v4
         with:
           name: elichika-native-test-apk
           path: instrumentation
 
       - name: Exercise Python, console, multiwindow and service configuration
+        if: ${{ !inputs.source_run_id }}
         run: |
           set -euo pipefail
           adb -s 127.0.0.1:5555 install -r instrumentation/*.apk
