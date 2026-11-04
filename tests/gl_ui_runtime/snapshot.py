@@ -132,6 +132,7 @@ def main():
                 response["selection_refusal"] = str(exc)
         (args.output / "unity-ui-tree.json").write_text(json.dumps(response, ensure_ascii=False, indent=2) + "\n")
         print(json.dumps({"status": response["status"], "output": str(args.output / "unity-ui-tree.json"),
+                          "environment": response.get("environment"),
                           "selection": response.get("selection"), "selection_refusal": response.get("selection_refusal")}, ensure_ascii=False))
     finally:
         if script is not None:

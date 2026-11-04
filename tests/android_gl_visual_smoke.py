@@ -380,9 +380,10 @@ def prepare_english_language(android, args, report, component):
     report["english_restart_game_view"] = {"class": node.get("class"), "content_desc": node.get("content-desc"), "bounds": node.get("bounds")}
 
 
-def observe_live_ui(android, args, report, phase="gl-observation"):
+def observe_live_ui(android, args, report, phase="gl-observation", seconds=120):
     # A bounded observation window, without additional menu taps or mutations.
-    deadline = time.monotonic() + 120
+    assert 1 <= seconds <= 120
+    deadline = time.monotonic() + seconds
     next_tree = time.monotonic()
     index = 0
     trees = report.setdefault("live_unity_ui", [])
@@ -413,9 +414,11 @@ def observe_live_ui(android, args, report, phase="gl-observation"):
     report["live_ui_snapshot_obtained"] = any(tree.get("status") == "SNAPSHOT" for tree in trees)
 
 
-def tap_ready_title(android, args, report):
+def tap_ready_title(android, args, report, location="control-center", source="touchscreen"):
     """Select the observed title input from a fresh runtime component tree."""
-    output = args.evidence / "gl-ready-title-ui"
+    assert location in ("control-center", "label-center")
+    assert source in ("touchscreen", "mouse")
+    output = args.evidence / ("gl-ready-title-ui-" + source + "-" + location)
     result = live_tool(args, "snapshot.py", output, 50)
     report["ready_title_ui"] = result
     if result.get("status") != "SNAPSHOT":
@@ -451,16 +454,21 @@ def tap_ready_title(android, args, report):
             smallest = min(area for area, _ in matches)
             precise = [widget for area, widget in matches if abs(area - smallest) < 0.01]
             if len(precise) == 1:
-                choices[precise[0]["id"]] = precise[0]
+                choices[(precise[0]["id"], text["id"])] = (precise[0], text)
     if len(choices) != 1:
         report["ready_title_tap"] = {"status": "REFUSED", "reason": "No unique clickable control containing the observed title label"}
         return False
-    widget = next(iter(choices.values()))
+    widget, text = next(iter(choices.values()))
     b = widget["geometry"]["bounds"]
-    point = [int((b[0] + b[2]) / 2), int((b[1] + b[3]) / 2)]
-    android.shell("input", "tap", *map(str, point))
+    target = b if location == "control-center" else text["geometry"]["bounds"]
+    point = [round((target[0] + target[2]) / 2), round((target[1] + target[3]) / 2)]
+    # Redroid presents ten frames per second. Keep the normal short touch down
+    # across at least two render frames, without crossing the long-press window.
+    android.shell("input", source, "swipe", *map(str, point + point), "240")
     report["ready_title_tap"] = {"status": "TAPPED", "widget_id": widget["id"], "bounds": b,
-        "coordinates": point, "source": "fresh Unity UI tree; unique smallest clickable rectangle containing the exact title text"}
+        "coordinates": point, "location": location, "input_source": source, "duration_ms": 240,
+        "source": "fresh Unity UI tree; unique smallest clickable rectangle containing the exact title text"}
+    report.setdefault("ready_title_actions", []).append(report["ready_title_tap"].copy())
     return True
 
 
@@ -523,7 +531,15 @@ def run(args, report):
     if args.prepare_english:
         observe_live_ui(android, args, report)
         if args.tap_surface_center and account_ids(android) == before and tap_ready_title(android, args, report):
-            observe_live_ui(android, args, report, "gl-after-ready-start")
+            observe_live_ui(android, args, report, "gl-after-ready-start", seconds=20)
+            # A second action is allowed only if a new snapshot still proves
+            # the same title. Its point is the measured public text center.
+            if account_ids(android) == before:
+                tap_ready_title(android, args, report, location="label-center")
+            observe_live_ui(android, args, report, "gl-after-touch-label", seconds=20)
+            if account_ids(android) == before:
+                tap_ready_title(android, args, report, location="label-center", source="mouse")
+            observe_live_ui(android, args, report, "gl-after-label-start")
     if args.prepare_new_home:
         report["new_home"] = prepare_new_home(android, before, args.favorite_suit)
         if report["new_home"].get("status") == "PREPARED":
@@ -540,7 +556,8 @@ def run(args, report):
     assert pid.isdecimal(), "The GL process is no longer running"
     report["game_pid"] = int(pid)
     args.evidence.joinpath("gl-native-maps.txt").write_bytes(android.read(f"/proc/{pid}/maps"))
-    args.evidence.joinpath("gl-window.txt").write_text(android.shell("dumpsys", "window", "windows"))
+    args.evidence.joinpath("gl-window.txt").write_text(android.shell("dumpsys", "window"))
+    args.evidence.joinpath("gl-input.txt").write_text(android.shell("dumpsys", "input"))
     if args.prepare_english:
         package_path = android.shell("pm", "path", GAME).splitlines()
         assert len(package_path) == 1 and package_path[0].startswith("package:")

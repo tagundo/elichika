@@ -28,6 +28,19 @@
         }
         return null;
     };
+    function optionalStaticValue(className, getterName) {
+        try {
+            const cls = findClass(className);
+            const getter = cls?.tryMethod(getterName, 0);
+            if (getter == null || !getter.isStatic) return "unavailable";
+            const value = getter.invoke();
+            return typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value)) ? value : "unavailable";
+        } catch (_) {
+            // A stripped/unavailable API must not fail the UI snapshot or leak
+            // native error text. These diagnostics contain values only.
+            return "unavailable";
+        }
+    }
     function inspect(expectedThread) {
         if (Il2Cpp.currentThread.id !== expectedThread) throw Error("Not on verified main Unity thread");
         const contextClass = Il2Cpp.corlib.class("System.Threading.SynchronizationContext");
@@ -129,6 +142,12 @@
         }
         const report = {schema: 1, status: "SNAPSHOT", mainThreadId: expectedThread,
             screen: [w, h], gameViewBounds: opt.gameViewBounds, classes: [], widgets: [], texts: [],
+            environment: {
+                "Input.touchSupported": optionalStaticValue("UnityEngine.Input", "get_touchSupported"),
+                "Input.mousePresent": optionalStaticValue("UnityEngine.Input", "get_mousePresent"),
+                "Input.touchCount": optionalStaticValue("UnityEngine.Input", "get_touchCount"),
+                "Application.isFocused": optionalStaticValue("UnityEngine.Application", "get_isFocused")
+            },
             limitations: ["Occlusion, custom RaycastArea hit testing, and animation stability are not asserted", "Non-allowlisted display text and object names are omitted"]};
         const specs = [
             ["UnityEngine.UI.Button", "button", null],
@@ -166,6 +185,38 @@
                     // recorded separately from Unity Selectable.interactable.
                     const clickable = o.tryMethod("get_Clickable", 0);
                     item.clickable = clickable == null ? null : clickable.invoke();
+                    item.inputDiagnostics = {colleague: "unavailable", raycastArea: "unavailable"};
+                    try {
+                        // Exact private UI field confirmed in original metadata.
+                        const field = o.tryField("colleague");
+                        if (field != null) {
+                            const colleague = nullable(field.value);
+                            if (colleague == null) item.inputDiagnostics.colleague = {present: false};
+                            else {
+                                const enabled = colleague.class.fullName === "Jigbox.UIControl.SubmitColleague" ? colleague.tryMethod("get_IsEnable", 0) : null;
+                                item.inputDiagnostics.colleague = {present: true, class: colleague.class.fullName,
+                                    isEnable: enabled == null ? "unavailable" : enabled.invoke()};
+                            }
+                        }
+                    } catch (_) { /* Preserve unavailable; never invoke event methods. */ }
+                    try {
+                        const field = o.tryField("raycastArea");
+                        if (field != null) {
+                            const area = nullable(field.value);
+                            if (area == null) item.inputDiagnostics.raycastArea = {present: false};
+                            else {
+                                const details = {present: true, class: area.class.fullName};
+                                item.inputDiagnostics.raycastArea = details;
+                                if (area.class.fullName === "Jigbox.Components.RaycastArea") {
+                                    details.active = active(area);
+                                    const target = area.tryMethod("get_raycastTarget", 0);
+                                    details.raycastTarget = target == null ? "unavailable" : target.invoke();
+                                    try { details.geometry = geometry(area); }
+                                    catch (_) { details.geometry = "unavailable"; }
+                                }
+                            }
+                        }
+                    } catch (_) { /* Preserve known fields already read; no native error text. */ }
                     report.widgets.push(item);
                 }
             }
