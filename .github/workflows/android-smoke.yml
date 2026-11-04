@@ -21,7 +21,121 @@ permissions:
   actions: read
 
 jobs:
+  patch-instrumentation:
+    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-upgrade-benchmark-qa'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+      CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify pinned instrumentation provenance and patch contracts
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p test_patch_payload_upgrade_benchmark_apk.py
+          mkdir -p instrumentation
+          python3 - <<'PY'
+          import importlib.util, json, os, re, subprocess
+          from pathlib import Path
+          run_id = os.environ['CANDIDATE_RUN_ID']; source = os.environ['CANDIDATE_SOURCE_SHA']
+          assert run_id == '41866258468', 'This QA patch is bound to the audited original build'
+          assert source == '4e9ca3b620e3010cf0f9fccfa3f3799b8a9da3c2', 'This QA patch is bound to the audited candidate source'
+          def api(path): return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/' + path], text=True, timeout=30))
+          spec = importlib.util.spec_from_file_location('paired_benchmark', 'tests/android_payload_upgrade_benchmark_pair.py')
+          module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+          run, build = module.wait_for_candidate_build(api, run_id, source)
+          artifact = api('actions/artifacts/13344245790')
+          assert artifact['id'] == 13344245790 and artifact['name'] == 'elichika-native-test-apk' and not artifact['expired'], 'Unexpected original instrumentation artifact'
+          assert artifact['workflow_run']['id'] == int(run_id) and artifact['workflow_run']['head_sha'] == source, 'Instrumentation build source mismatch'
+          Path('instrumentation/patch-source-binding.json').write_text(json.dumps({'original_build_run_id':run_id,'original_build_source_sha':source,'original_artifact':{key:artifact[key] for key in ('id','name','size_in_bytes','digest')},'verified_build_job_id':build['id']},indent=2) + '\n')
+          PY
+
+      - name: Download only the audited original instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: 13344245790
+          merge-multiple: true
+          path: instrumentation-original
+          repository: tagundo/elichika
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Set up JDK 17 for the existing Android signing tools
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Use standard x86 Android SDK build tools
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -d "$SDK_ROOT"
+          BUILD_TOOLS="$SDK_ROOT/build-tools/34.0.0"
+          if [ ! -x "$BUILD_TOOLS/apksigner" ] || [ ! -x "$BUILD_TOOLS/zipalign" ]; then
+            "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "build-tools;34.0.0"
+          fi
+          test -x "$BUILD_TOOLS/apksigner"
+          test -x "$BUILD_TOOLS/zipalign"
+          echo "ANDROID_BUILD_TOOLS=$BUILD_TOOLS" >> "$GITHUB_ENV"
+
+      - name: Patch the one test asset, align, re-sign and verify every other entry
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          test -n "$RELEASE_STORE_PASSWORD"
+          test -n "$RELEASE_KEY_ALIAS"
+          test -n "$RELEASE_KEY_PASSWORD"
+          PATCH_WORK="$(mktemp -d "$RUNNER_TEMP/benchmark-apk-patch.XXXXXX")"
+          trap 'rm -rf "$PATCH_WORK"' EXIT
+          ORIGINAL=instrumentation-original/app-release-androidTest.apk
+          SCRIPT=tests/android_payload_upgrade_benchmark.py
+          "$ANDROID_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$ORIGINAL" > "$PATCH_WORK/original-certificate.txt"
+          python3 tests/patch_payload_upgrade_benchmark_apk.py certificate --report "$PATCH_WORK/original-certificate.txt"
+          python3 tests/patch_payload_upgrade_benchmark_apk.py patch \
+            --original "$ORIGINAL" --script "$SCRIPT" --output "$PATCH_WORK/unsigned.apk" \
+            --manifest "$PATCH_WORK/unsigned-manifest.json"
+          "$ANDROID_BUILD_TOOLS/zipalign" -f 4 "$PATCH_WORK/unsigned.apk" "$PATCH_WORK/aligned.apk"
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$PATCH_WORK/release.keystore"
+          chmod 600 "$PATCH_WORK/release.keystore"
+          "$ANDROID_BUILD_TOOLS/apksigner" sign --ks "$PATCH_WORK/release.keystore" \
+            --ks-pass env:RELEASE_STORE_PASSWORD --ks-key-alias "$RELEASE_KEY_ALIAS" \
+            --key-pass env:RELEASE_KEY_PASSWORD \
+            --v1-signing-enabled false --v2-signing-enabled true \
+            --v3-signing-enabled false --v4-signing-enabled false \
+            --out instrumentation/app-benchmark-androidTest.apk "$PATCH_WORK/aligned.apk"
+          "$ANDROID_BUILD_TOOLS/zipalign" -c 4 instrumentation/app-benchmark-androidTest.apk
+          "$ANDROID_BUILD_TOOLS/apksigner" verify --verbose --print-certs \
+            instrumentation/app-benchmark-androidTest.apk > "$PATCH_WORK/patched-certificate.txt"
+          python3 tests/patch_payload_upgrade_benchmark_apk.py verify \
+            --original "$ORIGINAL" --script "$SCRIPT" --patched instrumentation/app-benchmark-androidTest.apk \
+            --certificate-report "$PATCH_WORK/patched-certificate.txt" \
+            --manifest instrumentation/patch-verification.json
+
+      - name: Upload verified patched instrumentation and its manifests only
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-benchmark-instrumentation
+          path: |
+            instrumentation/app-benchmark-androidTest.apk
+            instrumentation/patch-source-binding.json
+            instrumentation/patch-verification.json
+          if-no-files-found: error
+
   android-benchmark:
+    needs: patch-instrumentation
     if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-upgrade-benchmark-qa'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 50
@@ -67,14 +181,14 @@ jobs:
           run-id: ${{ env.CANDIDATE_RUN_ID }}
           github-token: ${{ github.token }}
 
-      - name: Download the same new instrumentation for both targets
+      - name: Download the same verified patched instrumentation for both targets
         uses: actions/download-artifact@v4
         with:
-          name: elichika-native-test-apk
+          name: patched-benchmark-instrumentation
           path: instrumentation
-          repository: tagundo/elichika
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
-          github-token: ${{ github.token }}
+
+      - name: Include instrumentation patch proof in benchmark evidence
+        run: cp instrumentation/patch-source-binding.json instrumentation/patch-verification.json evidence/
 
       - name: Download fixed public baseline and fixture dataset
         run: >-
