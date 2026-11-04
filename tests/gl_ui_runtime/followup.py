@@ -64,7 +64,7 @@ def validate_command(command, run_id, sequence):
         return None
     action = command.get("action")
     base = {"run_id", "sequence", "action"}
-    allowed = {"capture": base, "close": base, "back": base, "seed_accessories": base, "set_favorite_suit": base | {"suit_id"},
+    allowed = {"capture": base, "close": base, "back": base, "relaunch_game": base, "seed_accessories": base, "set_favorite_suit": base | {"suit_id"},
                "upgrade_candidate": base | {"artifact_id", "artifact_run_id", "source_sha", "apk_sha256", "version_code", "version_name"},
                "tap_widget": base | {"widget_id", "expected_class", "expected_bounds", "expected_label"}}
     if not isinstance(action, str) or action not in allowed or set(command) - allowed[action]:
@@ -252,7 +252,12 @@ def snapshot(android, args, report, phase, required=True):
     previous = report.get("play_services_warning_dismissed")
     report["play_services_warning_dismissed"] = True
     try:
-        smoke.capture(android, args.evidence, phase, report)
+        try:
+            smoke.capture(android, args.evidence, phase, report)
+        except Exception as error:
+            if required:
+                raise
+            report.setdefault("evidence_errors", []).append({"phase": phase, "capture_error": type(error).__name__})
     finally:
         if previous is None:
             report.pop("play_services_warning_dismissed", None)
@@ -261,7 +266,13 @@ def snapshot(android, args, report, phase, required=True):
     output = args.evidence / (phase + "-ui")
     if (output / "unity-ui-tree.json").exists():
         raise Refused("snapshot_path_already_used")
-    summary = smoke.live_tool(args, "snapshot.py", output, 50)
+    try:
+        summary = smoke.live_tool(args, "snapshot.py", output, 50)
+    except Exception as error:
+        if required:
+            raise
+        report.setdefault("snapshots", []).append({"status": "UNAVAILABLE", "phase": phase, "error": type(error).__name__})
+        return None
     report.setdefault("snapshots", []).append({k: summary.get(k) for k in ("returncode", "report", "status")})
     if summary.get("returncode") != 0 or summary.get("status") != "SNAPSHOT":
         if required:
@@ -338,13 +349,17 @@ def seed_accessory_fixture(android, args, state, report):
     set_favorite(android, args, state, report, suit)
 
 
-def upgrade_and_restart(android, args, state, report, command):
-    # The account proof precedes artifact access and every install/stop action.
-    uid, _ = favorite_identity(android, state)
-    from candidate_upgrade import upgrade_candidate
-    upgrade_candidate(android, args, state, report, command, uid)
-    # Do not call prepare_new_home/set_favorite here: preserve the current
-    # actual favorite, themes and cache instead of replaying the initial state.
+def verify_installed_game(android):
+    paths = android.shell("pm", "path", smoke.GAME).splitlines()
+    if len(paths) != 1 or not paths[0].startswith("package:"):
+        raise Refused("installed_game_apk_not_unique")
+    digest = android.shell("sha256sum", paths[0][8:]).split()
+    if not digest or digest[0] != smoke.GAME_SHA:
+        raise Refused("game_apk_sha_mismatch")
+
+
+def restart_game(android, args, report, phase):
+    """Normal launch/login only; never replay favorite/theme/account fixtures."""
     component = android.shell("cmd", "package", "resolve-activity", "--brief", smoke.GAME)
     choices = [line.strip() for line in component.splitlines() if re.fullmatch(re.escape(smoke.GAME) + r"/[A-Za-z0-9_.$]+", line.strip())]
     if len(choices) != 1:
@@ -353,12 +368,22 @@ def upgrade_and_restart(android, args, state, report, command):
     android.shell("am", "start", "-W", "-n", choices[0], timeout=90)
     for index in range(3):
         time.sleep(args.interval)
-        smoke.capture(android, args.evidence, f"upgrade-restart-{index:02d}", report)
-    smoke.observe_live_ui(android, args, report, "upgrade-ready", seconds=30)
-    if smoke.tap_ready_title(android, args, report, phase="followup-upgrade"):
-        smoke.observe_live_ui(android, args, report, "upgrade-after-title", seconds=30)
-    smoke.confirm_qa_download(android, args, report, phase="followup-upgrade")
-    smoke.observe_live_ui(android, args, report, "upgrade-cache-refresh", seconds=120)
+        smoke.capture(android, args.evidence, f"{phase}-restart-{index:02d}", report)
+    smoke.observe_live_ui(android, args, report, phase + "-ready", seconds=30)
+    if smoke.tap_ready_title(android, args, report, phase="followup-" + phase):
+        smoke.observe_live_ui(android, args, report, phase + "-after-title", seconds=30)
+    smoke.confirm_qa_download(android, args, report, phase="followup-" + phase)
+    smoke.observe_live_ui(android, args, report, phase + "-cache-refresh", seconds=120)
+
+
+def upgrade_and_restart(android, args, state, report, command):
+    # The account proof precedes artifact access and every install/stop action.
+    uid, _ = favorite_identity(android, state)
+    from candidate_upgrade import upgrade_candidate
+    upgrade_candidate(android, args, state, report, command, uid)
+    # Do not call prepare_new_home/set_favorite here: preserve the current
+    # actual favorite, themes and cache instead of replaying the initial state.
+    restart_game(android, args, report, "upgrade")
 
 
 def execute(command, args, state, report):
@@ -367,9 +392,16 @@ def execute(command, args, state, report):
         raise Refused("disposable_arm64_target_required")
     if smoke.sha(args.game.read_bytes()) != smoke.GAME_SHA:
         raise Refused("game_apk_sha_mismatch")
+    action = command["action"]
+    maintenance = action in {"set_favorite_suit", "seed_accessories", "upgrade_candidate", "relaunch_game"}
+    if maintenance:
+        uid, _ = favorite_identity(android, state)
+        verify_installed_game(android)
+        report["maintenance_preconditions"] = {"synthetic_user_id": uid, "installed_gl_apk_sha256": smoke.GAME_SHA,
+                                               "before_game_view_required": False}
+    primary_error = None
     try:
-        tree = snapshot(android, args, report, "before")
-        action = command["action"]
+        tree = snapshot(android, args, report, "before", required=False) if maintenance else snapshot(android, args, report, "before")
         if action == "capture":
             smoke.observe_live_ui(android, args, report, "capture", seconds=30)
         elif action == "back":
@@ -389,11 +421,23 @@ def execute(command, args, state, report):
             seed_accessory_fixture(android, args, state, report)
         elif action == "upgrade_candidate":
             upgrade_and_restart(android, args, state, report, command)
+        elif action == "relaunch_game":
+            restart_game(android, args, report, "relaunch")
         else:
             raise Refused("unsupported_action")
+    except Exception as error:
+        primary_error = error
+        raise
     finally:
-        # Preserve post-action context even if the action/observation refuses.
-        snapshot(android, args, report, "after")
+        try:
+            if primary_error is None:
+                snapshot(android, args, report, "after")
+            else:
+                snapshot(android, args, report, "after", required=False)
+        except Exception as error:
+            report["after_evidence_error"] = {"type": type(error).__name__}
+            if primary_error is None:
+                raise
 
 
 def closed_marker(args):
@@ -437,13 +481,19 @@ def run_round(args, poll=poll_command, executor=execute):
                 executor(command, args, state, report)
                 report["status"] = "CAPTURED"
     except Exception as error:
-        report.update(status="REFUSED" if isinstance(error, Refused) else "ERROR",
-                      reason=str(error) if isinstance(error, Refused) else type(error).__name__)
+        candidate = report.get("candidate_upgrade", {})
+        partial_upgrade_refusal = (report.get("action") == "upgrade_candidate" and
+            type(error).__name__ == "CandidateUpgradeError" and candidate.get("status") == "REFUSED" and
+            candidate.get("reason") in {"candidate_install_changed_userdata", "candidate_install_changed_config", "candidate_start_changed_userdata",
+                "candidate_start_changed_config", "candidate_start_changed_retained_data", "candidate_localized_owner_title_not_repaired"})
+        domain_refusal = isinstance(error, Refused) or partial_upgrade_refusal
+        report.update(status="REFUSED" if domain_refusal else "ERROR",
+                      reason=candidate["reason"] if partial_upgrade_refusal else str(error) if isinstance(error, Refused) else type(error).__name__)
         if hasattr(error, "command_sha256"):
             report["command_sha256"] = error.command_sha256
-        fatal = (not isinstance(error, Refused) or not action_started or str(error) in {
+        fatal = (not domain_refusal or not action_started or str(error) in {
             "disposable_arm64_target_required", "game_apk_sha_mismatch", "fresh_snapshot_unverified",
-            "snapshot_path_already_used", "invalid_json", "duplicate_json_key", "nonfinite_json_number"})
+            "installed_game_apk_not_unique", "snapshot_path_already_used", "invalid_json", "duplicate_json_key", "nonfinite_json_number"})
         if fatal:
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.write_text("followup_failed\n")

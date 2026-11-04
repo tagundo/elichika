@@ -4,6 +4,7 @@ The caller must validate the prepared, game-created synthetic UID first. No GL
 APK reinstall/data clearing, preference mutation, or game UI actions occur here.
 """
 from contextlib import closing
+from decimal import Decimal
 import hashlib
 import json
 import os
@@ -160,16 +161,109 @@ def userdata_state(android, uid):
     with closing(smoke.database_from_bytes(android.read(f"{smoke.FILES}/userdata.db"))) as connection:
         profile = connection.execute("SELECT * FROM u_status WHERE user_id=?", (uid,)).fetchall()
         decks = connection.execute("SELECT * FROM u_live_deck WHERE user_id=? ORDER BY user_live_deck_id", (uid,)).fetchall()
-        if len(profile) != 1 or not decks:
-            raise CandidateUpgradeError("candidate_synthetic_profile_or_deck_missing")
         def digest(rows):
             value = [tuple(row) for row in rows]
             encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"),
                                  default=lambda data: {"bytes": bytes(data).hex()}).encode()
             return hashlib.sha256(encoded).hexdigest()
+        tables = {}
+        quote = lambda name: '"' + name.replace('"', '""') + '"'
+        for table, sql in connection.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name"):
+            rows = connection.execute("SELECT * FROM " + quote(table)).fetchall()
+            columns = [row[1] for row in connection.execute("PRAGMA table_info(" + quote(table) + ")")]
+            # Sorted hashes diagnose changed data without exporting row values.
+            def multiset_hash(values):
+                return smoke.sha(json.dumps(sorted(digest([value]) for value in values), separators=(",", ":")).encode())
+            tables[table] = {"rows": len(rows), "schema_sha256": smoke.sha((sql or "").encode()),
+                             "rows_sha256": multiset_hash(rows),
+                             "columns": {column: multiset_hash([(row[index],) for row in rows])
+                                         for index, column in enumerate(columns)}}
         return {"logical_sha256": smoke.sha("\n".join(connection.iterdump()).encode()),
                 "accounts": connection.execute("SELECT COUNT(*) FROM u_status").fetchone()[0],
-                "profile_sha256": digest(profile), "deck_sha256": digest(decks)}
+                "profile_sha256": digest(profile), "deck_sha256": digest(decks),
+                "profile_rows": len(profile), "deck_rows": len(decks), "tables": tables}
+
+
+def userdata_changes(before, after):
+    changes = {}
+    old, new = before.get("tables", {}), after.get("tables", {})
+    for table in sorted(old.keys() | new.keys()):
+        if old.get(table) == new.get(table):
+            continue
+        previous, current = old.get(table, {}), new.get(table, {})
+        columns_before, columns_after = previous.get("columns", {}), current.get("columns", {})
+        changes[table] = {"kind": "added" if table not in old else "removed" if table not in new else "changed",
+                          "schema_changed": previous.get("schema_sha256") != current.get("schema_sha256"),
+                          "row_count_changed": previous.get("rows") != current.get("rows"),
+                          "changed_columns": sorted(column for column in columns_before.keys() | columns_after.keys()
+                                                    if columns_before.get(column) != columns_after.get(column))}
+    return {"logical_changed": before.get("logical_sha256") != after.get("logical_sha256"),
+            "profile_changed": before.get("profile_sha256") != after.get("profile_sha256"),
+            "deck_changed": before.get("deck_sha256") != after.get("deck_sha256"), "tables": changes}
+
+
+def config_state(raw):
+    """Hash JSON in memory; type tags prevent bool/int or number rounding equality."""
+    result = {"raw_sha256": smoke.sha(raw), "semantic_sha256": None, "valid": False, "keys": {}}
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError("duplicate key")
+            value[key] = item
+        return value
+    def typed(value):
+        if isinstance(value, dict):
+            return ["object", [[key, typed(value[key])] for key in sorted(value)]]
+        if isinstance(value, list):
+            return ["array", [typed(item) for item in value]]
+        if isinstance(value, Decimal):
+            if not value.is_finite():
+                raise ValueError("nonfinite number")
+            # Decimal normalization without context rounding.
+            sign, digits, exponent = value.as_tuple()
+            digits = list(digits)
+            while len(digits) > 1 and digits[-1] == 0:
+                digits.pop()
+                exponent += 1
+            return ["decimal", sign, digits, exponent]
+        return [type(value).__name__, value]
+    def digest(value):
+        return smoke.sha(json.dumps(typed(value), ensure_ascii=True, separators=(",", ":")).encode())
+    def keys(value, path=""):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                child = path + "/" + key.replace("~", "~0").replace("/", "~1")
+                result["keys"][child] = digest(item)
+                keys(item, child)
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                keys(item, path + "/" + str(index))
+    try:
+        value = json.loads(raw, object_pairs_hook=pairs, parse_float=Decimal,
+                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite number")))
+        if not isinstance(value, dict):
+            return result
+        result.update(semantic_sha256=digest(value), valid=True)
+        keys(value)
+    except (ValueError, TypeError, UnicodeError, RecursionError):
+        pass
+    return result
+
+
+def config_changes(before, after):
+    old, new = before["keys"], after["keys"]
+    return {"added_keys": sorted(new.keys() - old.keys()), "removed_keys": sorted(old.keys() - new.keys()),
+            "changed_keys": sorted(key for key in old.keys() & new.keys() if old[key] != new[key])}
+
+
+def record_retained(result, stage, userdata, config, before=None, config_before=None):
+    # Store evidence before any preservation guard can raise.
+    result[stage] = userdata
+    result.setdefault("config", {})[stage] = {key: config[key] for key in ("raw_sha256", "semantic_sha256", "valid")}
+    if before is not None:
+        result.setdefault("userdata_changes", {})[stage] = userdata_changes(before, userdata)
+        result.setdefault("config_changes", {})[stage] = config_changes(config_before, config)
 
 
 def verify_titles(android):
@@ -234,9 +328,17 @@ def upgrade_candidate(android, args, state, report, command, uid):
             android.shell("am", "force-stop", smoke.GAME)
             smoke.stop_server(android)
             before = userdata_state(android, uid)
-            config_before = smoke.sha(android.read(f"{smoke.FILES}/config.json"))
-            result["before_update"] = before
+            config_before = config_state(android.read(f"{smoke.FILES}/config.json"))
+            record_retained(result, "before_update", before, config_before)
+            if before["profile_rows"] != 1 or before["deck_rows"] < 1:
+                raise CandidateUpgradeError("candidate_synthetic_profile_or_deck_missing")
+            if not config_before["valid"]:
+                raise CandidateUpgradeError("candidate_config_invalid")
             installed = android.install(apk, VERSION_CODE)
+            result["install"] = installed
+            after_install = userdata_state(android, uid)
+            config_after_install = config_state(android.read(f"{smoke.FILES}/config.json"))
+            record_retained(result, "after_install", after_install, config_after_install, before, config_before)
             if installed.get("native_sha256") != expected_native:
                 raise CandidateUpgradeError("candidate_installed_native_hash_mismatch")
             info = android.shell("dumpsys", "package", release.PACKAGE)
@@ -249,16 +351,21 @@ def upgrade_candidate(android, args, state, report, command, uid):
             actual_apk = android.shell("sha256sum", package_paths[0][8:]).split()[0]
             if actual_apk != pins["apk_sha256"]:
                 raise CandidateUpgradeError("candidate_installed_apk_hash_mismatch")
-            after_install = userdata_state(android, uid)
             if after_install != before:
                 raise CandidateUpgradeError("candidate_install_changed_userdata")
-            result["install"] = installed
+            if not config_after_install["valid"] or config_after_install["semantic_sha256"] != config_before["semantic_sha256"]:
+                raise CandidateUpgradeError("candidate_install_changed_config")
             started = android.start("followup-candidate-upgrade")
+            result["start"] = started
+            after_start = userdata_state(android, uid)
+            config_after_start = config_state(android.read(f"{smoke.FILES}/config.json"))
+            record_retained(result, "after_start", after_start, config_after_start, before, config_before)
             if started.get("running_native_sha256") != expected_native:
                 raise CandidateUpgradeError("candidate_running_native_hash_mismatch")
-            after_start = userdata_state(android, uid)
-            if after_start != before or smoke.sha(android.read(f"{smoke.FILES}/config.json")) != config_before:
-                raise CandidateUpgradeError("candidate_start_changed_retained_data")
+            if after_start != before:
+                raise CandidateUpgradeError("candidate_start_changed_userdata")
+            if not config_after_start["valid"] or config_after_start["semantic_sha256"] != config_before["semantic_sha256"]:
+                raise CandidateUpgradeError("candidate_start_changed_config")
             result.update(after_install=after_install, after_start=after_start, start=started,
                           userdata_preserved=True, profile_preserved=True, deck_preserved=True, config_preserved=True,
                           repaired_titles=verify_titles(android), status="UPGRADED")

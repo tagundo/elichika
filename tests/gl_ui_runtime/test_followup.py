@@ -43,6 +43,90 @@ def triangle_tree():
 
 
 class FollowupTests(unittest.TestCase):
+    def execution_fixture(self, root):
+        args = self.args(root)
+        args.evidence, args.serial, args.game = args.output, "fixture", root / "game.apk"
+        args.game.write_bytes(b"host fixture")
+        android = mock.Mock()
+        def shell(*parts, **kwargs):
+            if parts == ("id",): return "uid=0(root)"
+            if parts[:1] == ("getprop",): return "arm64-v8a"
+            if parts[:2] == ("pm", "path"): return "package:/data/app/game/base.apk"
+            if parts[:1] == ("sha256sum",): return qa.smoke.GAME_SHA + " game"
+            return ""
+        android.shell.side_effect = shell
+        return args, android
+
+    def test_relaunch_game_is_base_only_without_favorite_or_shell_parameters(self):
+        self.assertEqual(qa.validate_command(command("relaunch_game"), "123", 1)["action"], "relaunch_game")
+        for extra in ({"suit_id": 300207}, {"shell": "arbitrary"}, {"uid": 1}):
+            with self.assertRaises(qa.Refused):
+                qa.validate_command(command("relaunch_game", **extra), "123", 1)
+
+    def test_all_maintenance_actions_proceed_without_a_running_game_view(self):
+        for action, function in (("set_favorite_suit", "set_favorite"), ("seed_accessories", "seed_accessory_fixture"),
+                                 ("upgrade_candidate", "upgrade_and_restart"), ("relaunch_game", "restart_game")):
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as directory:
+                args, android = self.execution_fixture(Path(directory))
+                report = {"captures": []}
+                value = command(action, **({"suit_id": 300207} if action == "set_favorite_suit" else {}))
+                def snapshots(*parts, **kwargs):
+                    if parts[3] == "before":
+                        self.assertIs(kwargs.get("required"), False)
+                        return None
+                    self.assertNotIn("required", kwargs)
+                    return tree()
+                with mock.patch.object(qa.smoke, "Android", return_value=android), mock.patch.object(qa.smoke, "sha", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "favorite_identity", return_value=(2, {1, 2})), mock.patch.object(qa, "snapshot", side_effect=snapshots), mock.patch.object(qa, function) as operation:
+                    qa.execute(value, args, {}, report)
+                operation.assert_called_once()
+                self.assertFalse(report["maintenance_preconditions"]["before_game_view_required"])
+                android.shell.assert_any_call("sha256sum", "/data/app/game/base.apk")
+
+    def test_maintenance_identity_and_installed_apk_guards_precede_optional_ui(self):
+        for missing_identity in (True, False):
+            with tempfile.TemporaryDirectory() as directory:
+                args, android = self.execution_fixture(Path(directory))
+                with mock.patch.object(qa.smoke, "Android", return_value=android), mock.patch.object(qa.smoke, "sha", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "favorite_identity", side_effect=qa.Refused("prepared_synthetic_account_missing") if missing_identity else None, return_value=(2, {1, 2})), mock.patch.object(qa, "verify_installed_game", side_effect=qa.Refused("game_apk_sha_mismatch")), mock.patch.object(qa, "snapshot") as snapshot, mock.patch.object(qa, "restart_game") as restart:
+                    with self.assertRaises(qa.Refused):
+                        qa.execute(command("relaunch_game"), args, {}, {"captures": []})
+                snapshot.assert_not_called()
+                restart.assert_not_called()
+
+    def test_optional_no_report_does_not_relax_current_ui_actions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args, android = self.execution_fixture(Path(directory))
+            args.evidence.mkdir(parents=True)
+            with mock.patch.object(qa.smoke, "capture"), mock.patch.object(qa.smoke, "live_tool", return_value={"returncode": 1, "status": "NO_REPORT"}):
+                self.assertIsNone(qa.snapshot(android, args, {"captures": []}, "no-game", required=False))
+            for action in ("capture", "tap_widget", "back"):
+                failure = qa.Refused("fresh_ui_snapshot_unavailable")
+                with mock.patch.object(qa.smoke, "Android", return_value=android), mock.patch.object(qa.smoke, "sha", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "snapshot", side_effect=[failure, None]), mock.patch.object(qa.smoke, "observe_live_ui") as observe:
+                    with self.assertRaises(qa.Refused) as caught:
+                        qa.execute(command(action), args, {}, {"captures": []})
+                self.assertIs(caught.exception, failure)
+                observe.assert_not_called()
+            self.assertFalse(any(call.args[:1] == ("input",) for call in android.shell.call_args_list))
+
+    def test_partial_upgrade_guard_failure_is_not_masked_and_allows_recovery(self):
+        class CandidateUpgradeError(ValueError):
+            pass
+        failure = CandidateUpgradeError("candidate_start_changed_config")
+        with tempfile.TemporaryDirectory() as directory:
+            args, android = self.execution_fixture(Path(directory))
+            report = {"captures": [], "candidate_upgrade": {"status": "REFUSED", "reason": str(failure)}}
+            with mock.patch.object(qa.smoke, "Android", return_value=android), mock.patch.object(qa.smoke, "sha", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "favorite_identity", return_value=(2, {1, 2})), mock.patch.object(qa, "snapshot", side_effect=[None, qa.Refused("fresh_ui_snapshot_unavailable")]), mock.patch.object(qa, "upgrade_and_restart", side_effect=failure):
+                with self.assertRaises(CandidateUpgradeError) as caught:
+                    qa.execute(self.upgrade_command(), args, {}, report)
+            self.assertIs(caught.exception, failure)
+            self.assertEqual(report["after_evidence_error"]["type"], "Refused")
+            def refuse(*parts):
+                parts[3]["candidate_upgrade"] = report["candidate_upgrade"]
+                raise failure
+            result = qa.run_round(args, poll=lambda _: (self.upgrade_command(), "f" * 64), executor=refuse)
+            self.assertEqual(result["reason"], "candidate_start_changed_config")
+            self.assertEqual(result["status"], "REFUSED")
+            self.assertFalse(result["sequence_closed"])
+
     def test_triangle_uses_verified_interior_point_instead_of_bbox_center(self):
         value = triangle_tree()
         selected = qa.select_widget(value, command())

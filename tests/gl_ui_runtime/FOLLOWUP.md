@@ -40,6 +40,15 @@ of these exact schemas, using the actual current run and sequence:
 {"run_id":"41700000000","sequence":7,"action":"close"}
 ```
 
+The base-only recovery command is:
+
+```json
+{"run_id":"41700000000","sequence":8,"action":"relaunch_game"}
+```
+
+Choose its next live sequence before issuing `close`; a closed run cannot accept
+further commands.
+
 Artifact IDs, run IDs and the all-zero APK hash above are placeholders. Replace
 them with the actual approved artifact pins before requesting the upgrade.
 
@@ -82,6 +91,20 @@ grant permissions.
 `back` has no parameters and sends the ordinary Android `KEYCODE_BACK`, then
 observes for 30 seconds with the same fresh before/after evidence.
 
+Current-UI actions (`capture`, `tap_widget`, `back`) require a running verified
+Game view. Maintenance (`set_favorite_suit`, `seed_accessories`,
+`upgrade_candidate`, `relaunch_game`) instead checks the prepared synthetic UID,
+native ARM64/root target, local GL reference SHA and installed GL APK SHA first.
+It saves a passive Android screenshot and treats the before Unity snapshot as
+optional, so an already-stopped game can be recovered. Successful maintenance
+still requires a fresh post-restart game snapshot. If an operation fails,
+post-action evidence errors are recorded separately and never replace its cause.
+
+`relaunch_game` launches the unchanged installed GL app through the normal
+activity, known GMS acknowledgement and fresh title/download guards. It does not
+change the current favorite, themes or cache, reinstall either APK, or weaken an
+earlier upgrade preservation failure.
+
 `set_favorite_suit` accepts only `300207`, `321107`, or `321207`. It additionally
 requires the initial state file to identify the one prepared game-created
 synthetic account, preserves the baseline account, and checks current account
@@ -121,6 +144,17 @@ reinstalled with `-r`. Full logical userdata, profile, deck and configuration
 hashes must match after installation and the new native server's startup. The
 new native executable SHA and six localized titles are verified from the actual
 installed databases through `m_suit → m_member.name → dictionary` references.
+
+Before each preservation guard, the report records full userdata/profile/deck
+hashes and configuration raw/canonical hashes for `before_update`,
+`after_install` and `after_start`. Configuration formatting, key order and JSON
+escape reserialization may differ; parsed values and types must stay identical.
+Added/removed/changed configuration key names and userdata table/column hash
+differences are recorded without values, authentication material or DB exports.
+The full userdata hash remains a strict guard. A mismatch is evidence of a failed
+preservation check and does not by itself establish data loss. Known post-install
+preservation refusals leave the next explicit maintenance round available for
+diagnosis/relaunch; they do not silently continue the rejected upgrade.
 
 The GL APK is neither reinstalled nor cleared, and this action does not delete
 or replace its data/cache. The current actual favorite, themes and background

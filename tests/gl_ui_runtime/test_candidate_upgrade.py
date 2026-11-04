@@ -131,6 +131,14 @@ class CandidateUpgradeTests(unittest.TestCase):
         after = qa.userdata_state(android, 99)
         self.assertNotEqual(after["logical_sha256"], before["logical_sha256"])
         self.assertEqual(after["profile_sha256"], before["profile_sha256"])
+        self.assertEqual(qa.userdata_changes(before, after)["tables"]["u_authentication"]["changed_columns"], ["secret"])
+        connection.execute("DELETE FROM u_status")
+        connection.execute("DELETE FROM u_live_deck")
+        android.read.return_value = connection.serialize()
+        missing = qa.userdata_state(android, 99)
+        self.assertEqual((missing["profile_rows"], missing["deck_rows"]), (0, 0))
+        self.assertIn("logical_sha256", missing)
+        self.assertNotIn("private profile value", json.dumps(missing))
         connection.close()
 
     def test_upgrade_refuses_userdata_change_before_start_and_preserves_gl_install(self):
@@ -152,8 +160,8 @@ class CandidateUpgradeTests(unittest.TestCase):
             android.shell.side_effect = shell
             android.install.return_value = {"version_code": qa.VERSION_CODE, "native_sha256": native_sha}
             android.start.return_value = {"running_native_sha256": native_sha}
-            android.read.return_value = b"config"
-            before = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 2}
+            android.read.return_value = b'{"enabled":true}'
+            before = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 2, "profile_rows": 1, "deck_rows": 1}
             changed = dict(before, logical_sha256="changed")
             state = {"new_home": {"status": "PREPARED", "user_id": 99}}
             report = {}
@@ -162,6 +170,9 @@ class CandidateUpgradeTests(unittest.TestCase):
                     qa.upgrade_candidate(android, args, state, report, pins(), 99)
             android.start.assert_not_called()
             self.assertEqual(report["candidate_upgrade"]["status"], "REFUSED")
+            self.assertEqual(report["candidate_upgrade"]["after_install"], changed)
+            self.assertTrue(report["candidate_upgrade"]["userdata_changes"]["after_install"]["logical_changed"])
+            self.assertIn("raw_sha256", report["candidate_upgrade"]["config"]["after_install"])
             self.assertEqual(android.install.call_args.args, (apk, qa.VERSION_CODE))
             commands = [call.args for call in android.shell.call_args_list]
             self.assertIn(("am", "force-stop", qa.smoke.GAME), commands)
@@ -186,8 +197,8 @@ class CandidateUpgradeTests(unittest.TestCase):
             android.shell.side_effect = shell
             android.install.return_value = {"version_code": qa.VERSION_CODE, "native_sha256": native_sha}
             android.start.return_value = {"running_native_sha256": native_sha}
-            android.read.return_value = b"retained config"
-            retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 2}
+            android.read.return_value = b'{"enabled":true}'
+            retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 2, "profile_rows": 1, "deck_rows": 1}
             titles = {language: [{"suit_id": 321107}, {"suit_id": 321207}] for language in ("en", "ko", "zh")}
             report = {}
             with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server"), mock.patch.object(qa, "userdata_state", return_value=retained), mock.patch.object(qa, "verify_titles", return_value=titles):
@@ -230,6 +241,99 @@ class CandidateUpgradeTests(unittest.TestCase):
                 stop.assert_not_called()
                 android.install.assert_not_called()
                 self.assertFalse(any(call.args[:2] == ("am", "force-stop") for call in android.shell.call_args_list))
+
+    def run_retained_case(self, configs, states, reason=None):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            apk = root / "candidate.apk"
+            apk.write_bytes(apk_bytes())
+            args = types.SimpleNamespace(repository=qa.REPOSITORY, evidence=root / "evidence/followup-1",
+                                         state=root / "evidence/gl/gl-visual-smoke.json")
+            native_sha = qa.smoke.sha(b"synthetic native candidate")
+            android = mock.Mock()
+            def shell(*parts):
+                if parts == ("id",): return "uid=0(root)"
+                if parts[:1] == ("getprop",): return "arm64-v8a"
+                if parts[:2] == ("dumpsys", "package"): return "versionCode=" + str(qa.VERSION_CODE) + " versionName=" + qa.VERSION_NAME
+                if parts[:2] == ("pm", "path"): return "package:/data/app/wrapper/base.apk"
+                if parts[:1] == ("sha256sum",): return pins()["apk_sha256"] + " wrapper"
+                return ""
+            android.shell.side_effect = shell
+            android.read.side_effect = configs
+            android.install.return_value = {"native_sha256": native_sha}
+            android.start.return_value = {"running_native_sha256": native_sha}
+            report = {}
+            with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), mock.patch.object(qa, "download_candidate", return_value=apk), mock.patch.object(qa.smoke, "stop_server"), mock.patch.object(qa, "userdata_state", side_effect=states), mock.patch.object(qa, "verify_titles", return_value={}):
+                if reason:
+                    with self.assertRaisesRegex(qa.CandidateUpgradeError, reason):
+                        qa.upgrade_candidate(android, args, {"new_home": {"status": "PREPARED", "user_id": 99}}, report, pins(), 99)
+                else:
+                    qa.upgrade_candidate(android, args, {"new_home": {"status": "PREPARED", "user_id": 99}}, report, pins(), 99)
+            return report["candidate_upgrade"]
+
+    def test_config_reformat_is_accepted_and_all_stage_hashes_are_recorded(self):
+        retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 1, "profile_rows": 1, "deck_rows": 1}
+        before = b'{"enabled":true,"nested":{"host":"synthetic-secret-value","count":1}}'
+        reformatted = b'{\n "nested": {"count": 1, "host": "synthetic-secret-value"}, "enabled": true\n}'
+        result = self.run_retained_case([before, before, reformatted], [retained] * 3)
+        self.assertEqual(result["status"], "UPGRADED")
+        configs = result["config"]
+        self.assertNotEqual(configs["before_update"]["raw_sha256"], configs["after_start"]["raw_sha256"])
+        self.assertEqual(configs["before_update"]["semantic_sha256"], configs["after_start"]["semantic_sha256"])
+        self.assertNotIn("synthetic-secret-value", json.dumps(result))
+        self.assertEqual(result["config_changes"]["after_start"]["changed_keys"], [])
+
+    def test_config_value_changes_refuse_after_recording_hashes_and_only_key_names(self):
+        retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 1, "profile_rows": 1, "deck_rows": 1}
+        before = b'{"enabled":true,"host":"private-before"}'
+        for after in (b'{"enabled":1,"host":"private-after"}', b'{"enabled":true}',
+                      b'{"enabled":true,"host":"private-before","added":0}'):
+            with self.subTest(after=after):
+                result = self.run_retained_case([before, before, after], [retained] * 3, "candidate_start_changed_config")
+                self.assertEqual(result["after_start"], retained)
+                self.assertNotEqual(result["config"]["before_update"]["semantic_sha256"], result["config"]["after_start"]["semantic_sha256"])
+                self.assertNotIn("private-before", json.dumps(result))
+                self.assertNotIn("private-after", json.dumps(result))
+                self.assertTrue(any(result["config_changes"]["after_start"].values()))
+
+    def test_start_userdata_change_has_separate_diagnostics_before_guard_raises(self):
+        columns = {"secret": "old-column-hash"}
+        retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 1, "profile_rows": 1, "deck_rows": 1,
+                    "tables": {"u_authentication": {"rows": 1, "schema_sha256": "s", "rows_sha256": "r", "columns": columns}}}
+        changed = copy.deepcopy(retained)
+        changed["logical_sha256"] = "new"
+        changed["tables"]["u_authentication"]["columns"]["secret"] = "new-column-hash"
+        result = self.run_retained_case([b'{"enabled":true}'] * 3, [retained, retained, changed], "candidate_start_changed_userdata")
+        self.assertEqual(result["after_install"], retained)
+        self.assertEqual(result["after_start"], changed)
+        diff = result["userdata_changes"]["after_start"]
+        self.assertTrue(diff["logical_changed"])
+        self.assertFalse(diff["profile_changed"])
+        self.assertFalse(diff["deck_changed"])
+        self.assertEqual(diff["tables"]["u_authentication"]["changed_columns"], ["secret"])
+        self.assertEqual(result["config"]["before_update"], result["config"]["after_start"])
+
+    def test_config_canonical_preserves_scalar_types_and_rejects_ambiguous_json(self):
+        pairs = [(b'{"v":true}', b'{"v":1}'), (b'{"v":1}', b'{"v":1.0}'),
+                 (b'{"v":1.00000000000000000001}', b'{"v":1.00000000000000000002}')]
+        for before, after in pairs:
+            self.assertNotEqual(qa.config_state(before)["semantic_sha256"], qa.config_state(after)["semantic_sha256"])
+        for invalid in (b'{"v":1,"v":2}', b'{"v":NaN}', b'{"v":Infinity}', b'[]', b'not json'):
+            self.assertFalse(qa.config_state(invalid)["valid"])
+
+    def test_missing_profile_after_start_still_records_full_hash_and_counts(self):
+        retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 1, "profile_rows": 1, "deck_rows": 1}
+        missing = dict(retained, logical_sha256="changed", profile_sha256="empty", profile_rows=0)
+        result = self.run_retained_case([b'{}'] * 3, [retained, retained, missing], "candidate_start_changed_userdata")
+        self.assertEqual(result["after_start"]["profile_rows"], 0)
+        self.assertEqual(result["after_start"]["logical_sha256"], "changed")
+        self.assertTrue(result["userdata_changes"]["after_start"]["profile_changed"])
+
+    def test_config_change_on_install_is_recorded_and_blocks_start(self):
+        retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 1, "profile_rows": 1, "deck_rows": 1}
+        result = self.run_retained_case([b'{"enabled":true}', b'{"enabled":false}'], [retained] * 2, "candidate_install_changed_config")
+        self.assertIn("after_install", result["config"])
+        self.assertNotIn("start", result)
 
 
 if __name__ == "__main__":
