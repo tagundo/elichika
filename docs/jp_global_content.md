@@ -20,6 +20,10 @@ Japanese fallback can receive its corresponding translated text. Configured
 tables without primary keys, such as lesson drop weights, are left intact.
 JP databases are opened read-only by the content import.
 
+Suit titles follow the suit's owner ID. The two ODAIBA titles with swapped
+Mia/Lanzhu names in the JP dictionary, including their exact historical generated
+translations, are corrected without replacing owner-written titles.
+
 Package memberships that change receive an updated count and a deterministic
 version so previously installed clients can download the added resources. Each
 database commits its content and source fingerprint together. Interrupted runs

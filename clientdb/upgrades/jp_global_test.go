@@ -229,6 +229,83 @@ func TestJapaneseContentImportsMissingRowsAndPreservesCustomizations(t *testing.
 	assertJapaneseContentSnapshot(t, beforeRepeat)
 }
 
+func TestJapaneseContentSuitTitlesFollowMemberIDsAndPreserveCustomTitles(t *testing.T) {
+	f := newJapaneseContentFixture(t)
+	db := testDatabase(t, f.jpMaster)
+	execTestSQL(t, db,
+		`CREATE TABLE m_suit (id INTEGER PRIMARY KEY, member_m_id INTEGER, name TEXT)`,
+		// These actual JP suit references point to dictionary names containing
+		// the opposite character. The suit's member ID remains authoritative.
+		`INSERT INTO m_suit VALUES (321107, 211, 'k.suit_name_321207'), (321207, 212, 'k.suit_name_321107')`,
+	)
+	db.Close()
+	db = testDatabase(t, f.jpDictionary)
+	execTestSQL(t, db,
+		`INSERT INTO m_dictionary VALUES ('m_dic_member_name_211', 'ショウ・ランジュ'), ('m_dic_member_name_212', 'ミア・テイラー'), ('suit_name_321207', 'ODAIBAゲーマーズ Tシャツ ミア・テイラー'), ('suit_name_321107', 'ODAIBAゲーマーズ Tシャツ ショウ・ランジュ')`,
+	)
+	db.Close()
+	locales := []struct{ prefix, lanzhu, mia string }{
+		{"ODAIBA Gamers T-Shirt", "Lanzhu Zhong", "Mia Taylor"},
+		{"오다이바 게이머즈 T셔츠", "쇼우 란쥬", "미아 테일러"},
+		{"ODAIBA Gamers T恤", "鐘嵐珠", "米雅・泰勒"},
+	}
+	for i, locale := range locales {
+		db = testDatabase(t, f.glDictionaries[i])
+		for key, message := range map[string]string{
+			"m_dic_member_name_211": locale.lanzhu,
+			"m_dic_member_name_212": locale.mia,
+			// Reproduce the exact previously generated wrong owner-211 title;
+			// leave owner 212 absent to also cover the initial localization.
+			"suit_name_321207": locale.prefix + " " + locale.mia,
+		} {
+			if _, err := db.Exec(`INSERT INTO m_dictionary (id, message) VALUES (?, ?)`, key, message); err != nil {
+				t.Fatal(err)
+			}
+		}
+		db.Close()
+	}
+	assertTitles := func() {
+		t.Helper()
+		for i, locale := range locales {
+			assertJapaneseContentRows(t, f.glDictionaries[i], `SELECT id, message FROM m_dictionary WHERE id LIKE 'suit_name_%' ORDER BY id`, [][]any{
+				{"suit_name_321107", locale.prefix + " " + locale.mia},
+				{"suit_name_321207", locale.prefix + " " + locale.lanzhu},
+			})
+		}
+	}
+	report, err := JapaneseContent(f.root)
+	if err != nil || report.DictionaryRows != 12 {
+		t.Fatalf("initial suit names and known wrong titles: report=%+v err=%v", report, err)
+	}
+	assertTitles()
+	// An already migrated database can also contain the reverse legacy title.
+	for i, locale := range locales {
+		db = testDatabase(t, f.glDictionaries[i])
+		if _, err := db.Exec(`UPDATE m_dictionary SET message = ? WHERE id = 'suit_name_321107'`, locale.prefix+" "+locale.lanzhu); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+	}
+	report, err = JapaneseContent(f.root)
+	if err != nil || report.DictionaryRows != 3 || report.MasterRows != 0 || report.AssetRows != 0 || report.PackagesUpdated != 0 {
+		t.Fatalf("repair reverse legacy title after migration: report=%+v err=%v", report, err)
+	}
+	assertTitles()
+	for i, path := range f.glDictionaries {
+		db = testDatabase(t, path)
+		if _, err := db.Exec(`UPDATE m_dictionary SET message = ? WHERE id LIKE 'suit_name_%'`, "Owner's custom suit title {0} "+locales[i].mia); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+	}
+	beforeCustom := japaneseContentSnapshot(t, f.allPaths())
+	report, err = JapaneseContent(f.root)
+	if err != nil || report.DictionaryRows != 0 || report.MasterRows != 0 || report.AssetRows != 0 || report.PackagesUpdated != 0 {
+		t.Fatalf("custom titles should remain unchanged: report=%+v err=%v", report, err)
+	}
+	assertJapaneseContentSnapshot(t, beforeCustom)
+}
+
 func TestJapaneseContentPreflightsAllDatabasesBeforeMutation(t *testing.T) {
 	for _, problem := range []string{"late asset schema mismatch", "late dictionary schema mismatch", "missing target", "missing source"} {
 		t.Run(problem, func(t *testing.T) {

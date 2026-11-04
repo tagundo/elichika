@@ -114,6 +114,10 @@ def validate_jp_global_content(runtime):
         report["masterdata"]["jp_keys_covered"] = {
             table: key_coverage(connection, table, target) for table in MASTER_TABLES
         }
+        owner_suits = connection.execute(
+            "SELECT name,member_m_id FROM m_suit WHERE id IN (321107,321207) ORDER BY id"
+        ).fetchall()
+        assert len(owner_suits) == 2, "Missing imported ODAIBA suit owners"
     for platform in ("a", "i"):
         source = jp / f"asset_{platform}_ja.db"
         for language in LANGUAGES:
@@ -159,6 +163,17 @@ def validate_jp_global_content(runtime):
                     actual = connection.execute("SELECT message FROM m_dictionary WHERE id=?", (key,)).fetchone()
                     assert actual == (prefix + " " + member[0],), (target, key, "Missing imported suit translation", actual)
                     checked.append(key)
+                    # JP's two ODAIBA names contain the opposite member's name.
+                    # The model owner in m_suit, rather than that text, is authoritative.
+                    prefix = ("ODAIBA Gamers T-Shirt", "오다이바 게이머즈 T셔츠", "ODAIBA Gamers T恤")[language_index]
+                    for name_key, owner in owner_suits:
+                        key = name_key.removeprefix("k.")
+                        member = connection.execute(
+                            "SELECT message FROM m_dictionary WHERE id=?", (f"m_dic_member_name_{owner}",)
+                        ).fetchone()
+                        actual = connection.execute("SELECT message FROM m_dictionary WHERE id=?", (key,)).fetchone()
+                        assert actual == (prefix + " " + member[0],), (target, key, "Suit name does not match its owner", actual)
+                        checked.append(key)
                 report["dictionaries"][target.name] = {"jp_keys_covered": covered, "translation_keys_verified": checked}
     assert len(report["assets"]) == 6 and len(report["dictionaries"]) == 12
     return report

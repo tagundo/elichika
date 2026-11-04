@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// NaufalFajri contributed the translations and suit-name corrections in PR #57.
+// NaufalFajri contributed the translations and original suit handling in PR #57.
 // Keep the data separate so the original multilingual strings remain reviewable.
 //
 //go:embed jp_global_translations.json
@@ -49,9 +49,10 @@ type jpGlobalDictionaryRow struct {
 }
 
 type jpGlobalDictionaryPlan struct {
-	path         string
-	rows         []jpGlobalDictionaryRow
-	translations map[string]string
+	path               string
+	rows               []jpGlobalDictionaryRow
+	translations       map[string]string
+	legacyTranslations map[string]string
 }
 
 // validateJPGlobalDictionaries lets the caller check dictionary inputs before
@@ -146,6 +147,7 @@ func prepareJPGlobalDictionaries(assetRoot string) ([]jpGlobalDictionaryPlan, er
 			continue
 		}
 		plan.translations = make(map[string]string)
+		plan.legacyTranslations = make(map[string]string)
 		for key, text := range translations.Accessories {
 			plan.translations[key] = text.forLanguage(language)
 		}
@@ -158,24 +160,29 @@ func prepareJPGlobalDictionaries(assetRoot string) ([]jpGlobalDictionaryPlan, er
 			if !japanese.Valid {
 				continue
 			}
-			memberID := suit.memberID
-			// Some JP suit dictionary names have Mia/Lanzhu's member IDs swapped.
-			if strings.Contains(japanese.String, "ミア・テイラー") {
-				memberID = 212
-			} else if strings.Contains(japanese.String, "ショウ・ランジュ") {
-				memberID = 211
-			}
-			memberKey := fmt.Sprintf("m_dic_member_name_%d", memberID)
-			memberName := glNames[memberKey]
-			if !memberName.Valid || memberName.String == "" {
-				memberName = jpNames[memberKey]
-			}
-			if !memberName.Valid || memberName.String == "" {
+			memberName := jpGlobalSuitMemberName(suit.memberID, glNames, jpNames)
+			if memberName == "" {
 				continue // Preserve the full JP name when no member name is available.
 			}
 			for _, prefix := range translations.SuitPrefixes {
 				if strings.Contains(japanese.String, prefix.JA) {
-					plan.translations[key] = prefix.forLanguage(language) + " " + memberName.String
+					// The suit owner is authoritative; some JP name keys mention
+					// the opposite member. Never infer ownership from that text.
+					localizedPrefix := prefix.forLanguage(language) + " "
+					plan.translations[key] = localizedPrefix + memberName
+					// Recognize only the exact wrong title emitted by the old
+					// JP-name-based override, so custom titles remain untouched.
+					oldMemberID := suit.memberID
+					if strings.Contains(japanese.String, "ミア・テイラー") {
+						oldMemberID = 212
+					} else if strings.Contains(japanese.String, "ショウ・ランジュ") {
+						oldMemberID = 211
+					}
+					if oldMemberID != suit.memberID && (suit.memberID == 211 || suit.memberID == 212) {
+						if oldName := jpGlobalSuitMemberName(oldMemberID, glNames, jpNames); oldName != "" {
+							plan.legacyTranslations[key] = localizedPrefix + oldName
+						}
+					}
 					break
 				}
 			}
@@ -185,14 +192,33 @@ func prepareJPGlobalDictionaries(assetRoot string) ([]jpGlobalDictionaryPlan, er
 	return plans, nil
 }
 
+func jpGlobalSuitMemberName(memberID int, global, japanese map[string]sql.NullString) string {
+	key := fmt.Sprintf("m_dic_member_name_%d", memberID)
+	if name := global[key]; name.Valid && name.String != "" {
+		return name.String
+	}
+	return japanese[key].String
+}
+
+func (plan jpGlobalDictionaryPlan) acceptsReplacement(row jpGlobalDictionaryRow, current sql.NullString) bool {
+	translated, known := plan.translations[row.id]
+	if !known || !current.Valid || current.String == translated {
+		return false
+	}
+	if row.message.Valid && current.String == row.message.String {
+		return true
+	}
+	legacy, knownLegacy := plan.legacyTranslations[row.id]
+	return knownLegacy && current.String == legacy
+}
+
 func (plan *jpGlobalDictionaryPlan) retainNeededRows(existing map[string]sql.NullString) {
 	// Keep only candidates rather than issuing a query for every imported key
 	// on every rebuild. The transaction still checks each candidate's guard.
 	var needed []jpGlobalDictionaryRow
 	for _, row := range plan.rows {
 		current, exists := existing[row.id]
-		translated, known := plan.translations[row.id]
-		if !exists || (known && current.Valid && row.message.Valid && current.String == row.message.String && current.String != translated) {
+		if !exists || plan.acceptsReplacement(row, current) {
 			needed = append(needed, row)
 		}
 	}
@@ -331,10 +357,9 @@ func applyJPGlobalDictionary(plan jpGlobalDictionaryPlan) (int64, error) {
 			result, err = tx.Exec("INSERT INTO m_dictionary (id, message) VALUES (?, ?)", row.id, message)
 		case err != nil:
 			return 0, fmt.Errorf("dictionary key %q: %w", row.id, err)
-		case known && current.Valid && row.message.Valid && current.String == row.message.String && current.String != translated:
-			// Repair only the exact JP fallback inserted by a previous migration.
-			// NULLs, existing localizations, and custom values are never replaced.
-			result, err = tx.Exec("UPDATE m_dictionary SET message = ? WHERE id = ? AND message = ?", translated, row.id, row.message.String)
+		case plan.acceptsReplacement(row, current):
+			// Repair only exact JP fallbacks or the known historical suit title.
+			result, err = tx.Exec("UPDATE m_dictionary SET message = ? WHERE id = ? AND message = ?", translated, row.id, current.String)
 		default:
 			continue
 		}
@@ -366,8 +391,7 @@ func jpGlobalDictionaryNeedsChanges(database *sql.DB, plan jpGlobalDictionaryPla
 		if err != nil {
 			return false, err
 		}
-		translated, known := plan.translations[row.id]
-		if known && current.Valid && row.message.Valid && current.String == row.message.String && current.String != translated {
+		if plan.acceptsReplacement(row, current) {
 			return true, nil
 		}
 	}
