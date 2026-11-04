@@ -47,6 +47,7 @@ jobs:
 
       - name: Check mod-preserving payload updates and recovery
         run: |
+          python3 -m unittest discover -s tests -p test_payload_file_hash.py -v
           python3 -m unittest discover -s tests -p test_payload_db_upgrade.py -v
           python3 -m unittest discover -s tests -p test_database_maintenance.py -v
           python3 -m unittest discover -s tests -p test_restore_payload_rebase.py -v

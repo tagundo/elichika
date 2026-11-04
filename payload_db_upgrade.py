@@ -18,6 +18,8 @@ import sqlite3
 import tempfile
 import uuid
 
+import payload_file_hash
+
 MANAGED = ("webui", "server init jsons", "privatekey.pem", "publickey.pem", "assets", "static", "serverdata.db")
 PROTECTED = ("userdata.db", "config.json", "serverstate.db")
 META = ".payload-upgrade"
@@ -45,8 +47,7 @@ def _quote(name):
 
 
 def _sha(path):
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+    return payload_file_hash.sha256(path)
 
 
 def _files(path):
@@ -127,6 +128,12 @@ def _clone_snapshot(source, destination, expected_sha):
         raise
     except Exception:
         raise UpgradeError("DATABASE_SNAPSHOT_COPY_FAILED") from None
+
+
+def _has_database_sidecars(path):
+    # A main-file digest cannot certify state stored in a SQLite sidecar.
+    sidecars = (path.with_name(path.name + suffix) for suffix in ("-wal", "-shm", "-journal"))
+    return any(sidecar.exists() or sidecar.is_symlink() for sidecar in sidecars)
 
 
 def _columns(db, table, schema="main"):
@@ -297,7 +304,7 @@ def _merge_manifest(current, incoming, previous=None):
 
 
 def _merge_database(current, incoming, output, relative, prior, baseline, prior_files, next_files,
-                    *, current_snapshot_sha=None, identical_current=False):
+                    *, current_snapshot_sha=None, identical_current=False, output_integrity_certificates=None):
     counts = {"inserted": 0, "advanced": 0, "owner_rows_preserved": 0, "unkeyed_tables_preserved": 0, "packages_refreshed": 0, "unchanged_stock_databases_reused": 0}
     has_current = bool(current and current.exists())
     identical_current = bool(identical_current and has_current and prior is None)
@@ -414,9 +421,26 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
                     result = target.execute("UPDATE m_asset_package SET pack_num=?,version=? WHERE package_key=?", (number, digest.hexdigest(), package))
                     _require(result.rowcount == 1, "PACKAGE_HEADER_MISSING")
                     counts["packages_refreshed"] += 1
-            _require(target.execute("PRAGMA integrity_check").fetchall() == [("ok",)], "DATABASE_INTEGRITY_FAILED")
+            reuse_main_integrity = bool(current_snapshot_sha is not None
+                                        and (unchanged_stock or identical_current)
+                                        and not old and target.total_changes == 0)
+            # A bare integrity_check checks every attached database. Incoming
+            # still receives its full SQL check when main can inherit the
+            # independent snapshot's certificate. Mutating/general merges keep
+            # the complete check, including previous_stock when attached.
+            check = "PRAGMA incoming_stock.integrity_check" if reuse_main_integrity else "PRAGMA integrity_check"
+            _require(target.execute(check).fetchall() == [("ok",)], "DATABASE_INTEGRITY_FAILED")
             _require(not (_foreign_key_violations(target) - old_foreign_keys), "DATABASE_RELATION_CHECK_FAILED")
             target.commit()
+        if reuse_main_integrity:
+            # Compare only after commit and close: dirty pager or WAL state can
+            # otherwise hide changes behind an unchanged main-file digest.
+            identical_output = not _has_database_sidecars(output) and _sha(output) == current_snapshot_sha
+            if not identical_output:
+                with closing(_ro(output)) as checked:
+                    _require(checked.execute("PRAGMA integrity_check").fetchall() == [("ok",)], "DATABASE_INTEGRITY_FAILED")
+            elif output_integrity_certificates is not None:
+                output_integrity_certificates[relative] = current_snapshot_sha
         if unchanged_stock:
             next_files.mkdir(parents=True, exist_ok=True)
             copied = next_files / previous[2]
@@ -644,6 +668,7 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     backup.mkdir(mode=0o700)
     prior = baseline = None
     snapshot_hashes = {}
+    output_integrity_certificates = {}
     try:
         coverage = _coverage(staged)
         for name in MANAGED + PROTECTED + (MARKER, BASELINE, BASELINE_FILES, DESCRIPTOR, REBASE_FLAG):
@@ -692,7 +717,8 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                 result = _merge_database(current, source, destination, relative, prior, baseline,
                                          root / BASELINE_FILES, next_root / BASELINE_FILES,
                                          current_snapshot_sha=snapshot_hashes.get(relative),
-                                         identical_current=identical_current)
+                                         identical_current=identical_current,
+                                         output_integrity_certificates=output_integrity_certificates)
                 for key, value in result.items():
                     totals[key] += value
             elif _is_manifest(relative):
@@ -739,6 +765,17 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
             item = next(item for item in data["operations"] if item["path"] == "static")
             item.update(retain=True, new=inputs["static"])
             _validate_transaction_plan(data, work, "INVALID_TRANSACTION")
+        # The prepared plan must publish exactly the bytes that inherited a
+        # snapshot certificate, without later WAL/journal state. Commit retains
+        # its independent comparison against this complete prepared fingerprint.
+        prepared_outputs = {item["path"]: item["new"] for item in data["operations"]}
+        for name, digest in output_integrity_certificates.items():
+            _require(_input_digest(prepared_outputs, name) == digest
+                     and not _has_database_sidecars(next_root / name)
+                     and all(_input_digest(prepared_outputs, name + suffix) is None
+                             for suffix in ("-wal", "-shm", "-journal")),
+                     "OUTPUT_INTEGRITY_CERTIFICATE_CHANGED")
+        totals["main_integrity_certificates_reused"] = len(output_integrity_certificates)
         _atomic_json(work / "prepared.json", data)
         _sync_directory(transactions)
         return summary
