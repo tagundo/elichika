@@ -157,13 +157,13 @@ def collect_report_path(output, label):
     return path, source
 
 
-def validate_report(report, label, identity):
+def validate_report(report, label, identity, *, profile_enabled=False):
     require(report.get('status') == 'PASS' and report.get('fixture_cleanup_complete') is True,
             'benchmark_failed_or_fixture_not_cleaned')
     require(report.get('protocol') == 'fixed-public-v2-payload-v1' and report.get('databases') == 55
             and report.get('fixture_apk_sha256') == BASELINE_SHA
             and report.get('fixture_apk_bytes') == BASELINE_BYTES
-            and report.get('retained_static_mib') == 256 and report.get('profile_enabled') is False,
+            and report.get('retained_static_mib') == 256 and report.get('profile_enabled') is profile_enabled,
             'benchmark_input_protocol_mismatch')
     require(report.get('hardware') == 'redroid' and report.get('abi') == 'arm64-v8a'
             and report.get('target_apk_sha256') == identity['apk_sha256']
@@ -175,7 +175,7 @@ def validate_report(report, label, identity):
     require(len(cases) == 2 and tuple(c.get('case') for c in cases) == CASE_NAMES, 'benchmark_cases_missing')
     for case in cases:
         require(case.get('engine_status') == 'COMMITTED' and case.get('recovery_before') == 'CLEAN'
-                and case.get('recovery_after') == 'CLEAN' and case.get('profile_enabled') is False,
+                and case.get('recovery_after') == 'CLEAN' and case.get('profile_enabled') is profile_enabled,
                 'benchmark_engine_state_invalid')
         for field in ('elapsed_seconds', 'process_cpu_seconds'):
             value = case.get(field)
@@ -195,7 +195,7 @@ def validate_report(report, label, identity):
                 and all(value is True for value in backups.values()), 'benchmark_backups_not_independent')
 
 
-def run_case(label, identity, evidence):
+def run_case(label, identity, evidence, *, profile_enabled=False):
     shell('am', 'force-stop', PACKAGE)
     require_no_live_user_data()
     print('Starting explicit private-fixture benchmark: ' + label, flush=True)
@@ -203,7 +203,8 @@ def run_case(label, identity, evidence):
         'adb', '-s', SERIAL, 'shell', 'am', 'instrument', '-w', '-r',
         '-e', 'class', CLASS, '-e', 'payloadUpgradeBenchmark', 'true',
         '-e', 'payloadBenchmarkLabel', label, '-e', 'payloadBenchmarkStaticMiB', '256',
-        '-e', 'payloadBenchmarkProfile', 'false', '-e', 'timeout_msec', '1100000', INSTRUMENTATION,
+        '-e', 'payloadBenchmarkProfile', 'true' if profile_enabled else 'false',
+        '-e', 'timeout_msec', '1100000', INSTRUMENTATION,
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=1200)
     output = completed.stdout.decode(errors='replace')
     evidence.joinpath(label + '-instrumentation.txt').write_text(output)
@@ -213,7 +214,7 @@ def run_case(label, identity, evidence):
     raw = adb('exec-out', 'cat', path, raw=True)
     require(len(raw) <= 256 * 1024, 'benchmark_report_too_large')
     report = json.loads(raw)
-    validate_report(report, label, identity)
+    validate_report(report, label, identity, profile_enabled=profile_enabled)
     evidence.joinpath(label + '-report.json').write_bytes(raw)
     evidence.joinpath(label + '-report-collection.json').write_text(json.dumps(
         {'report_path': path, 'report_path_source': source}, sort_keys=True) + '\n')
