@@ -3,10 +3,14 @@
 Events are buffered in a list so a client connecting slightly late still replays
 everything. (Copied from the SIFAS webtools panel - identical framework.)
 """
+import os
 import threading
 import time
 import traceback
 import uuid
+
+from database_maintenance import BusyError, guard
+from adminui.serverctl import whole_job_server
 
 
 class Job:
@@ -64,9 +68,23 @@ class Job:
 
 
 class JobManager:
-    def __init__(self):
+    def __init__(self, root=None):
         self._jobs = {}
         self._lock = threading.Lock()
+        self._active = 0
+        # Bind once when the panel is imported after launcher chdir. A tool's
+        # temporary cwd change must not select a different maintenance lock.
+        self._runtime_root = os.path.realpath(os.path.abspath(root if root is not None else os.getcwd()))
+
+    def bind_runtime_root(self, root):
+        """Bind an imported manager before serving; never redirect active jobs."""
+        runtime_root = os.path.realpath(os.path.abspath(root))
+        with self._lock:
+            if runtime_root == self._runtime_root:
+                return
+            if self._active or any(not job.is_done for job in self._jobs.values()):
+                raise BusyError()
+            self._runtime_root = runtime_root
 
     def create(self, tool_id: str) -> Job:
         job_id = uuid.uuid4().hex[:12]
@@ -87,10 +105,24 @@ class JobManager:
         return False
 
     def run_async(self, job: Job, fn):
+        with self._lock:
+            runtime_root = self._runtime_root
+            self._active += 1
+
         def runner():
-            job.status = "running"
             try:
-                summary = fn(job) or ""
+                # Include all tool code, even stop_server=False paths, and its
+                # context-manager exit/restart request. The outer Java hold
+                # defers actual startup until the DB guard has been released.
+                with whole_job_server(job.log) as lifecycle:
+                    with guard(runtime_root):
+                        job.status = "running"
+                        summary = str(fn(job) or "")
+                        lifecycle.successful = not job.cancel_event.is_set()
+                # Java finish/restart runs after the DB guard is released, so
+                # another preparation thread can take its nonblocking lease.
+                if lifecycle.restart_pending:
+                    summary += "; server restarted" if lifecycle.restarted else "; server restart cancelled"
                 took = f"(took {job.elapsed():.1f}s)"
                 summary = f"{summary} {took}".strip() if summary else took
                 if job.cancel_event.is_set():
@@ -99,14 +131,27 @@ class JobManager:
                 else:
                     job.status = "done"
                     job.emit({"type": "done", "status": "done", "summary": summary})
+            except BusyError as error:
+                job.status = "error"
+                job.emit({"type": "log", "line": str(error)})
+                job.emit({"type": "done", "status": "error", "summary": str(error),
+                          "reason": error.reason, "retryable": True})
             except Exception as exc:  # noqa: BLE001
                 job.status = "error"
                 job.emit({"type": "log", "line": f"ERROR: {exc}"})
                 job.emit({"type": "log", "line": traceback.format_exc()})
                 job.emit({"type": "done", "status": "error", "summary": str(exc)})
+            finally:
+                with self._lock:
+                    self._active -= 1
 
         thread = threading.Thread(target=runner, name=f"job-{job.id}", daemon=True)
-        thread.start()
+        try:
+            thread.start()
+        except BaseException:
+            with self._lock:
+                self._active -= 1
+            raise
         return thread
 
 

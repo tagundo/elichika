@@ -39,6 +39,7 @@ func login(ctx *gin.Context) {
 	// log.Println("User logins: ", userId)
 
 	resp := session.Login()
+	session.NormalizeHomeSuits()
 	resp.SessionKey = session.EncodedSessionKey(req.Mask)
 	{
 		exist, _, startLiveRequest := user_live.LoadUserLive(session)

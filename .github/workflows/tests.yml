@@ -45,6 +45,15 @@ jobs:
           python3 -m unittest discover -s tests -p test_android_python_launch.py -v
           python3 -m adminui.selftest
 
+      - name: Check mod-preserving payload updates and recovery
+        run: |
+          python3 -m unittest discover -s tests -p test_payload_db_upgrade.py -v
+          python3 -m unittest discover -s tests -p test_database_maintenance.py -v
+          python3 -m unittest discover -s tests -p test_restore_payload_rebase.py -v
+          python3 -m unittest discover -s tests -p test_android_app_version.py -v
+          python3 -m unittest discover -s tests -p test_android_payload_upgrade.py -v
+          python3 -m unittest discover -s tests -p test_android_server_config_payload.py -v
+
       - name: Check model picker, mesh editing and texture preview regressions
         working-directory: modtools
         env:

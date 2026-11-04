@@ -49,11 +49,24 @@ type jpGlobalQueryer interface {
 	QueryRow(string, ...any) *sql.Row
 }
 
+// ManagedJapaneseContent recognizes a complete installer transaction. Call this
+// before historical migrations: those SQL files describe pristine databases and
+// must never be replayed against a retained, managed mod installation.
+func ManagedJapaneseContent(assetRoot string) (bool, error) {
+	return managedJapaneseContent(assetRoot, jpGlobalAlgorithm)
+}
+
 // JapaneseContent imports missing Japanese content into the initialized Global
 // databases. Each target commits independently so an interrupted run can resume.
 // Existing Global rows, including custom translations and assets, always win.
 func JapaneseContent(assetRoot string) (JapaneseContentReport, error) {
 	var report JapaneseContentReport
+	if managed, err := ManagedJapaneseContent(assetRoot); err != nil {
+		return report, err
+	} else if managed {
+		report.SkippedReason = "initialized APK content was merged by the managed installer; retained regional mods are preserved"
+		return report, nil
+	}
 	jp := filepath.Join(assetRoot, "db", "jp")
 	gl := filepath.Join(assetRoot, "db", "gl")
 	pairs := []jpGlobalPair{{source: filepath.Join(jp, "masterdata.db"), target: filepath.Join(gl, "masterdata.db")}}

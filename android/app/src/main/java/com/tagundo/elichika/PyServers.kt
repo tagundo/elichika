@@ -2,8 +2,6 @@ package com.tagundo.elichika
 
 import android.content.Context
 import android.os.Environment
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
 import java.io.File
 
 /**
@@ -47,9 +45,7 @@ object PyServers {
         synchronized(this) {
             if (started) return true
             try {
-                if (!Python.isStarted()) {
-                    Python.start(AndroidPlatform(ctx.applicationContext))
-                }
+                val py = EmbeddedPython.instance(ctx)
                 // shared Download/sukusta (same as Termux), so the modding tools'
                 // extracted/ + modded/ folders are user-visible. Needs storage access.
                 val sukusta = File(
@@ -61,7 +57,6 @@ object PyServers {
                 // ASTC textures on-device. Pass null if it isn't present.
                 val astcenc = File(ctx.applicationInfo.nativeLibraryDir, "libastcenc.so")
                     .takeIf { it.exists() }?.absolutePath
-                val py = Python.getInstance()
                 py.getModule("elichika_launch")
                     .callAttr("start", serverCwd.absolutePath, sukusta.absolutePath,
                         Lang.effective(ctx), astcenc, AndroidServerController(ctx.applicationContext))

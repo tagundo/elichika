@@ -50,8 +50,8 @@ class ServerConfigTest {
             release.countDown()
             executor.shutdownNow()
         }
-        // The test APK provides a tiny real payload, so this exercises the same
-        // preparation/default/locale paths without extracting the game database.
+        // Build-time synthetic SQLite fixtures satisfy the same seven-pair and
+        // dictionary checks as production, without extracting the real game DBs.
         AssetInstaller.install(context) {}
         val config = JSONObject(File(context.filesDir, "config.json").readText())
         assertEquals("ko", config.getString("locales"))
@@ -128,6 +128,12 @@ class ServerConfigTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val target = instrumentation.targetContext
         val directory = File(target.cacheDir, "config-test-${UUID.randomUUID()}").apply { mkdirs() }
+        // Exercise no-follow cleanup against an isolated private target. A
+        // symlink-following cleanup must fail this test without risking shared
+        // Download/sukusta packs, addons, or backups.
+        val outside = File(target.cacheDir, "config-cleanup-trap-${UUID.randomUUID()}").apply { mkdirs() }
+        val sentinel = File(outside, "must-survive").apply { writeText("synthetic cleanup sentinel") }
+        Files.createSymbolicLink(File(directory, "cleanup-trap").toPath(), outside.toPath())
         val prefix = directory.name
         val context = object : ContextWrapper(target) {
             override fun getFilesDir(): File = directory
@@ -140,8 +146,18 @@ class ServerConfigTest {
             context.getSharedPreferences("elichika", Context.MODE_PRIVATE).edit().clear().commit()
             // Preparation creates storage/downloads as a symlink to the real
             // shared folder. Walk without FOLLOW_LINKS when removing fixtures.
-            Files.walk(directory.toPath()).use { paths ->
-                paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            try {
+                Files.walk(directory.toPath()).use { paths ->
+                    paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+                }
+                assertTrue("Fixture cleanup followed a symlink outside its root", sentinel.isFile)
+                assertEquals("synthetic cleanup sentinel", sentinel.readText())
+            } finally {
+                if (outside.exists()) {
+                    Files.walk(outside.toPath()).use { paths ->
+                        paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+                    }
+                }
             }
         }
     }

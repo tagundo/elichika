@@ -34,6 +34,12 @@ def run_restore(job, params):
 
     if params.get("stop_server", True):
         stop_server(job.log)
+    # A historical snapshot no longer corresponds to the APK baseline recorded
+    # by the managed updater. Mark it before the first replacement, including a
+    # partially failed restore, so the next setup conservatively merges it again.
+    # Standalone installations without that contract remain unaffected.
+    from payload_db_upgrade import request_rebase
+    request_rebase(os.getcwd(), reason="database_restore")
     job.progress(0, 1)
     with capture_stdout(job):
         result = m.restore_from_backup(backup)

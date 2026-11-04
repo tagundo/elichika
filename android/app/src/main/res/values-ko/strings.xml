@@ -103,7 +103,9 @@
     <string name="log_settings_lang">[settings] 언어 → %1$s. %2$s</string>
     <string name="log_settings_gamedata">[settings] 게임 데이터 언어 → %1$s. %2$s</string>
     <string name="log_setup_no_payload">[setup] 번들 페이로드가 없습니다 (CI 빌드가 아님). 서버 파일 추출을 건너뜁니다.</string>
-    <string name="log_setup_preparing">[setup] 서버 파일 준비 중… (버전 %1$s, 정적자산 갱신=%2$s)</string>
+    <string name="log_setup_preparing">[setup] 서버 파일 준비 중… (버전 %1$s, 데이터 갱신=%2$s)</string>
+    <string name="log_setup_preserving_mods">[setup] 설치된 모드를 보존하며 게임 데이터 갱신 중…</string>
+    <string name="log_setup_upgrade_recovered">[setup] 중단된 게임 데이터 갱신을 복구했습니다.</string>
     <string name="log_setup_ready">[setup] 준비 완료.</string>
     <string name="log_setup_downloads_link">[setup] ~/storage/downloads → %1$s</string>
     <string name="log_setup_link_failed">[setup] 공유 폴더 링크 실패(권한 필요할 수 있음): %1$s</string>

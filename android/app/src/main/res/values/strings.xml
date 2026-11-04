@@ -104,7 +104,9 @@
     <string name="log_settings_lang">[settings] language → %1$s. %2$s</string>
     <string name="log_settings_gamedata">[settings] game-data language → %1$s. %2$s</string>
     <string name="log_setup_no_payload">[setup] no bundled payload (not a CI build). Skipping server file extraction.</string>
-    <string name="log_setup_preparing">[setup] preparing server files… (version %1$s, refresh static=%2$s)</string>
+    <string name="log_setup_preparing">[setup] preparing server files… (version %1$s, data update=%2$s)</string>
+    <string name="log_setup_preserving_mods">[setup] updating game data while preserving installed mods…</string>
+    <string name="log_setup_upgrade_recovered">[setup] recovered an interrupted game-data update.</string>
     <string name="log_setup_ready">[setup] ready.</string>
     <string name="log_setup_downloads_link">[setup] ~/storage/downloads → %1$s</string>
     <string name="log_setup_link_failed">[setup] failed to link shared folder (may need permission): %1$s</string>

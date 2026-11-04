@@ -26,3 +26,9 @@ template.go
 __pycache__/
 *.pyc
 !/clientdb/upgrades/jp_global_translations.json
+
+# Managed APK runtime state and private update backups.
+/.payload-upgrade/
+/.payload-incoming/
+/.database-maintenance.lock
+/installed_version

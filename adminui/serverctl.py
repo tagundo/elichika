@@ -16,6 +16,8 @@ import shutil
 import subprocess
 import threading
 
+from database_maintenance import BusyError
+
 _NAMES = ("libelichika.so", "elichika")
 _controller = None
 _INSTALL_LOCK = threading.RLock()
@@ -65,7 +67,60 @@ class InstallServerSession:
     def __init__(self):
         self.was_running = False
         self.restarted = False
+        self.restart_pending = False
         self.restart_allowed = True
+
+
+class ToolJobHold:
+    def __init__(self):
+        self.successful = False
+        self.restart_pending = False
+        self.restarted = False
+
+
+@contextlib.contextmanager
+def whole_job_server(log=print):
+    """Reserve Android lifecycle before the DB guard; finish after its release.
+
+    Reserving never forces a running server to stop. Inner stop/start/finish
+    calls nest inside the Java reservation; any requested restart is deferred
+    until this context exits, outside the Python database critical section.
+    """
+    session = ToolJobHold()
+    controller = _controller
+    if controller is None:
+        yield session
+        return
+    begin = getattr(controller, "begin_job", None)
+    finish = getattr(controller, "finish_job", None)
+    if not callable(begin) or not callable(finish):
+        raise RuntimeError("The server controller needs an app update before database tools can run safely.")
+    try:
+        acquired = bool(begin())
+    except Exception:
+        raise RuntimeError("Server preparation could not complete. Retry the tool after setup finishes.") from None
+    if not acquired:
+        raise BusyError()
+    try:
+        yield session
+    finally:
+        pending = getattr(controller, "restart_is_pending", None)
+        try:
+            session.restart_pending = bool(pending()) if callable(pending) else False
+        except Exception:
+            session.restart_pending = False
+        try:
+            finished = bool(finish(session.successful))
+            session.restarted = session.successful and session.restart_pending and finished
+        except Exception:
+            raise RuntimeError("The tool finished but the server could not restart. Retry starting it manually.") from None
+        if session.restart_pending:
+            if session.restarted:
+                log("  restarted the elichika server")
+            elif session.successful:
+                log("  restart cancelled by a manual server stop")
+            else:
+                log("  tool failed or was cancelled; server kept stopped")
 
 
 @contextlib.contextmanager
@@ -99,8 +154,13 @@ def installation_server(log=print, *, stop=True, restart=False):
                         "a backup before restarting.")
                 raise
             if restart and session.was_running and session.restart_allowed:
-                session.restarted = bool(controller.start())
-                if session.restarted:
+                accepted = bool(controller.start())
+                pending = getattr(controller, "restart_is_pending", None)
+                session.restart_pending = accepted and bool(pending()) if callable(pending) else False
+                session.restarted = accepted and not session.restart_pending
+                if session.restart_pending:
+                    log("  server restart requested after the tool finishes")
+                elif session.restarted:
                     log("  restarted the elichika server")
                 else:
                     log("  restart cancelled by a manual server stop")

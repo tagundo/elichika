@@ -263,7 +263,8 @@ def _run_installer(job, key, params):
         state = "; server kept stopped" if want_restart or params.get("stop_server", True) else ""
         return f"{key}: cancelled after {done}/{total} file(s){state}."
     if want_restart:
-        tail = "server restarted." if server.restarted else "server remains stopped."
+        tail = ("server restart requested." if server.restart_pending else
+                "server restarted." if server.restarted else "server remains stopped.")
     else:
         tail = "restart the server to apply."
     return f"{key}: installed {done}/{total} file(s) — {tail}"

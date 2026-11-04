@@ -18,6 +18,10 @@ on:
         description: "Optional text shown at the TOP of the release notes (above the auto-generated changelog). Use for user-facing highlights, e.g. changed defaults."
         required: false
         default: ""
+      build_version:
+        description: "Artifact-only APK version YYYY.MM.DD[.N] (e.g. 2026.11.04.2). Does not publish a release. Leave release_tag blank."
+        required: false
+        default: ""
   push:
     # No paths filter: the APK bundles the whole Go server, so any source change
     # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
@@ -49,6 +53,18 @@ jobs:
 
       # Build the reviewed modtools gitlink from this checkout. Following another
       # branch here can silently replace the UI fixes being tested or released.
+
+      - name: Derive app version (CalVer)
+        id: ver
+        env:
+          REL_TAG: ${{ github.event.inputs.release_tag }}
+          BUILD_VERSION: ${{ github.event.inputs.build_version }}
+        run: |
+          python3 android/ci/app_version.py \
+            --release-tag "${REL_TAG:-}" \
+            --build-version "${BUILD_VERSION:-}" \
+            --ref "$GITHUB_REF" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -168,6 +184,11 @@ jobs:
           cp -r modtools/webtools "$PY/webtools"
           cp modtools/*.py "$PY/" 2>/dev/null || true
           [ -d modtools/live_timeline ] && cp -r modtools/live_timeline "$PY/" || true
+          # The mandatory installer must be our reviewed module, even if a tools
+          # checkout happens to ship a module with the same name.
+          cp payload_db_upgrade.py database_maintenance.py "$PY/"
+          cmp payload_db_upgrade.py "$PY/payload_db_upgrade.py"
+          cmp database_maintenance.py "$PY/database_maintenance.py"
           # drop the host build artifact if it landed in python/
           rm -f "$PY/elichika_host"
           # Vendor UnityPy so the bundle-editing tools import it instantly instead
@@ -241,29 +262,6 @@ jobs:
             --ndk "$ANDROID_HOME/ndk/${NDK_VERSION}" \
             --work "$RUNNER_TEMP/openblas-build" \
             --wheel android/app/native-wheels/chaquopy_openblas-0.3.33-1-py3-none-android_24_arm64_v8a.whl
-
-      - name: Derive app version (CalVer)
-        id: ver
-        env:
-          REL_TAG: ${{ github.event.inputs.release_tag }}
-        run: |
-          set -eu
-          # A workflow_dispatch may pass the CalVer tag directly (no tag push needed);
-          # otherwise fall back to the pushed tag ref.
-          REF="${REL_TAG:-}"
-          [ -z "$REF" ] && REF="${GITHUB_REF#refs/tags/}"
-          if [[ "$REF" =~ ^v([0-9]{4})\.([0-9]{2})\.([0-9]{2})(\.([0-9]+))?$ ]]; then
-            Y=${BASH_REMATCH[1]}; M=${BASH_REMATCH[2]}; D=${BASH_REMATCH[3]}; N=${BASH_REMATCH[5]:-0}
-            NAME="${Y}.${M}.${D}${BASH_REMATCH[4]}"
-            YMD=$(( 10#$Y * 10000 + 10#$M * 100 + 10#$D ))
-            CODE=$(( YMD * 100 + 10#$N ))
-          else
-            NAME="$(date -u +%Y.%m.%d)-dev"
-            CODE=$(( $(date -u +%Y%m%d) * 100 ))
-          fi
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "code=$CODE" >> "$GITHUB_OUTPUT"
-          echo "elichika version: $NAME (code $CODE)"
 
       - name: Build debug APK
         working-directory: android
@@ -361,6 +359,8 @@ jobs:
         run: |
           mkdir -p app/src/androidTest/assets
           cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
+          python3 ci/generate_server_config_payload.py \
+            --output app/build/generated/serverConfigTestAssets/payload
           ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
             -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
             -PappVersionName="${{ steps.ver.outputs.name }}" \

@@ -110,8 +110,14 @@ func initLocale(locale string) {
 
 // initialise the database inside of the db repository, if necessary
 func databaseInit() {
-	initLocale("gl")
-	initLocale("jp")
+	managed, err := upgrades.ManagedJapaneseContent(config.AssetPath)
+	if err != nil {
+		log.Panic(fmt.Sprintf("Managed payload setup is incomplete; databases were not migrated: %v", err))
+	}
+	if !managed {
+		initLocale("gl")
+		initLocale("jp")
+	}
 	// Restored/custom DBs skip the original migrations. Add only missing lesson
 	// animation metadata, before manifests are regenerated and gamedata is loaded.
 	for _, locale := range []string{"gl", "jp"} {
