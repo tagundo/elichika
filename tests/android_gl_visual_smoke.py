@@ -17,6 +17,8 @@ import sqlite3
 import struct
 import time
 import traceback
+import tempfile
+import zipfile
 import xml.etree.ElementTree as ET
 
 from android_release_smoke import Android, Client, FILES, sha
@@ -133,20 +135,148 @@ def prepare_new_home(android, before, favorite_suit):
             "game_rendering_verified": False}
 
 
+LATEST_BASELINE_SHA = "70fa45d9fbb70e92b56b486617e4cc3c4afc39a76922f7f941caf6a29787fa8f"
+LATEST_BASELINE_CODE = 2026110304
+
+
+def userdata_snapshot(android, uid=None):
+    # Hash the full logical database in memory; authentication material is not
+    # persisted to a temporary evidence file or included in the report.
+    with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
+        result = {"logical_sha256": sha("\n".join(connection.iterdump()).encode()),
+                  "accounts": connection.execute("SELECT COUNT(*) FROM u_status").fetchone()[0]}
+        if uid is not None:
+            name = connection.execute("SELECT name FROM u_status WHERE user_id=?", (uid,)).fetchone()[0]
+            deck = connection.execute("SELECT name FROM u_live_deck WHERE user_id=? AND user_live_deck_id=1", (uid,)).fetchone()[0]
+            result["synthetic_profile_preserved"] = name in ("JPGLQA", b"JPGLQA")
+            result["synthetic_deck_preserved"] = deck in ("ReviewDeck", b"ReviewDeck")
+        return result
+
+
+def stop_server(android):
+    android.stop()
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if not android.shell("sh", "-c", "pidof libelichika.so || true").strip():
+            return
+        time.sleep(1)
+    raise AssertionError("Native server did not stop before the startup-mode check")
+
+
+def read_mode(android):
+    # Report the selected mode, never the full configuration.
+    return json.loads(android.read(f"{FILES}/config.json"))["resource_config_type"]
+
+
+def set_mode(android, mode):
+    config = json.loads(android.read(f"{FILES}/config.json"))
+    config["resource_config_type"] = mode
+    android.write(f"{FILES}/config.json", json.dumps(config, separators=(",", ":")).encode())
+
+
+def install_candidate_from_latest(android, args, report):
+    assert args.baseline_sha256 == LATEST_BASELINE_SHA
+    assert args.baseline_version_code == LATEST_BASELINE_CODE
+    assert sha(args.baseline.read_bytes()) == args.baseline_sha256
+    baseline = {"apk_sha256": args.baseline_sha256, "version_code": args.baseline_version_code}
+    report["latest_baseline_upgrade"] = baseline
+    baseline["install"] = android.install(args.baseline, args.baseline_version_code)
+    baseline["start"] = android.start("latest-baseline")
+    with tempfile.TemporaryDirectory(prefix="gl-qa-public-key-") as directory:
+        # Only a public key is written. Authentication keys stay on the test
+        # device and in the Client object; the directory is outside artifacts.
+        public = Path(directory) / "publickey.pem"
+        with zipfile.ZipFile(args.baseline) as archive:
+            key = archive.read("assets/payload/publickey.pem")
+        with zipfile.ZipFile(args.candidate) as archive:
+            assert archive.read("assets/payload/publickey.pem") == key
+        public.write_bytes(key)
+        client = Client("en", public)
+        client.create()
+        client.login()
+        client.request("/userProfile/setProfile", {"name": "JPGLQA"})
+        client.request("/liveDeck/changeDeckNameLiveDeck", {"deck_id": 1, "deck_name": "ReviewDeck"})
+        uid = client.uid
+        baseline["synthetic_user_id"] = uid
+        stop_server(android)
+        set_mode(android, "comfortable")
+        marker_path = f"{FILES}/gl-qa-private-marker.txt"
+        marker = b"PR59 latest baseline preservation fixture\n"
+        android.write(marker_path, marker)
+        before = userdata_snapshot(android, uid)
+        assert before["synthetic_profile_preserved"] and before["synthetic_deck_preserved"]
+        baseline["before_update"] = before
+        config_before = android.read(f"{FILES}/config.json")
+        report["candidate_install"] = android.install(args.candidate, args.version_code)
+        assert userdata_snapshot(android, uid) == before, "Package update changed userdata"
+        assert android.read(f"{FILES}/config.json") == config_before, "Package update changed config"
+        assert android.read(marker_path) == marker, "Package update lost the private marker"
+        report["candidate_start"] = android.start("latest-to-candidate")
+        after = userdata_snapshot(android, uid)
+        assert after == before, "Candidate payload refresh changed retained account data"
+        assert read_mode(android) == "comfortable", "Upgrade changed the resource mode"
+        assert android.read(marker_path) == marker, "Payload refresh lost the private marker"
+        assert str(args.version_code) in android.read(f"{FILES}/installed_version").decode()
+        baseline.update(status="PASS", after_start=after, config_preserved=True,
+                        comfortable_preserved=True, private_marker_preserved=True,
+                        candidate_version_marker=True)
+        # Login only after taking the preservation hash: login itself updates
+        # auth counters and last-login fields as expected.
+        client.login()
+        baseline["retained_account_login"] = True
+
+
+def verify_resource_modes(android, args, report):
+    cases = {}
+    report["resource_modes"] = cases
+    for mode in ("comfortable", "original"):
+        stop_server(android)
+        set_mode(android, mode)
+        case = {}
+        cases[mode] = case
+        case["fresh_process"] = android.start(f"resource-{mode}-fresh")
+        case["stored_after_fresh_process"] = read_mode(android)
+        assert case["stored_after_fresh_process"] == mode
+        stop_server(android)
+        case["restart"] = android.start(f"resource-{mode}-restart")
+        case["stored_after_restart"] = read_mode(android)
+        assert case["stored_after_restart"] == mode
+        case["status"] = "PASS"
+    stop_server(android)
+    set_mode(android, "comfortable")
+    restored = {"stored_mode": read_mode(android), "server_running": False}
+    assert restored["stored_mode"] == "comfortable"
+    if not args.skip_game:
+        restored["start"] = android.start("resource-comfortable-restored")
+        assert read_mode(android) == "comfortable"
+        restored["server_running"] = True
+    report["resource_mode_restored"] = restored
+
+
 def run(args, report):
     android = Android(args.serial, args.evidence)
     assert android.shell("id").startswith("uid=0"), "Disposable Android root diagnostics required"
     abi = android.shell("getprop", "ro.product.cpu.abi")
     assert abi == "arm64-v8a", "This driver requires native ARM64 Android"
     assert sha(args.candidate.read_bytes()) == args.candidate_sha256
-    assert sha(args.game.read_bytes()) == GAME_SHA
+    if not args.skip_game:
+        assert args.game is not None and sha(args.game.read_bytes()) == GAME_SHA
     report["environment"] = {"abi": abi, "android": android.shell("getprop", "ro.build.version.release"),
                              "kernel": android.shell("uname", "-r"),
                              "type": "native ARM64 Redroid; not a physical phone"}
     report["candidate_sha256"] = args.candidate_sha256
+    if args.baseline:
+        install_candidate_from_latest(android, args, report)
+    else:
+        report["candidate_install"] = android.install(args.candidate, args.version_code)
+        report["candidate_start"] = android.start("gl-qa-server")
+    if args.check_resource_modes:
+        verify_resource_modes(android, args, report)
+    if args.skip_game:
+        report.update(status="PASS", gl_execution_skipped=True, visual_review_required=False,
+                      scope="APK installation/startup and requested preservation checks; no GL execution")
+        return
     report["game_sha256"] = GAME_SHA
-    report["candidate_install"] = android.install(args.candidate, args.version_code)
-    report["candidate_start"] = android.start("gl-qa-server")
     before = account_ids(android)
     report["accounts_before_game"] = len(before)
     output = android.adb("install", "-r", "-g", str(args.game), timeout=240)
@@ -192,7 +322,12 @@ def main():
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--candidate-sha256", required=True)
     parser.add_argument("--version-code", type=int, required=True)
-    parser.add_argument("--game", type=Path, required=True)
+    parser.add_argument("--game", type=Path)
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--baseline-sha256", default=LATEST_BASELINE_SHA)
+    parser.add_argument("--baseline-version-code", type=int, default=LATEST_BASELINE_CODE)
+    parser.add_argument("--check-resource-modes", action="store_true")
+    parser.add_argument("--skip-game", action="store_true")
     parser.add_argument("--serial", default="127.0.0.1:5555")
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--frames", type=int, default=5)
@@ -202,6 +337,7 @@ def main():
     parser.add_argument("--favorite-suit", type=int, choices=(300207, 321107, 321207), default=300207)
     args = parser.parse_args()
     assert 1 <= args.frames <= 12 and 1 <= args.interval <= 30
+    assert not args.skip_game or args.baseline or args.check_resource_modes, "skip-game requires an explicit preservation check"
     args.evidence.mkdir(parents=True, exist_ok=True)
     report = {"status": "RUNNING", "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "captures": [], "limits": [
         "Screenshots require human review; process liveness does not prove a rendered game screen",

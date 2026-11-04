@@ -25,6 +25,18 @@ on:
         description: "Prepare imported outfit and DiverCity using the account actually created by the game"
         type: boolean
         default: false
+      latest_baseline_upgrade:
+        description: "Upgrade the latest Nov3 signed APK with one synthetic account"
+        type: boolean
+        default: false
+      check_resource_modes:
+        description: "Check comfortable/original in fresh processes and after restart"
+        type: boolean
+        default: false
+      skip_game:
+        description: "Run only the requested APK preservation checks"
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       candidate_sha256:
@@ -119,23 +131,41 @@ jobs:
           run-id: ${{ inputs.source_run_id || github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download and capture the real GL client on native ARM64
+      - name: Verify APK and capture requested GL evidence on native ARM64
         if: inputs.source_run_id
         env:
           TAP_SURFACE: ${{ inputs.tap_surface_center }}
           PREPARE_HOME: ${{ inputs.prepare_new_home }}
+          LATEST_BASELINE: ${{ inputs.latest_baseline_upgrade }}
+          CHECK_MODES: ${{ inputs.check_resource_modes }}
+          SKIP_GAME: ${{ inputs.skip_game }}
+          VERSION_NAME: ${{ inputs.version_name }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
         run: |
           set -euo pipefail
-          curl --fail --location --retry 2 --output LLAS_GL_LOCAL.apk \
-            https://github.com/arina999999997/elichika/releases/download/clients/LLAS_GL_LOCAL.apk
           extra=()
+          if [ "$LATEST_BASELINE" = true ]; then
+            curl --fail --location --retry 2 --output latest-baseline.apk \
+              https://github.com/tagundo/elichika/releases/download/v2026.11.03.4/elichika-2026.11.03.4.apk
+            extra+=(--baseline latest-baseline.apk \
+              --baseline-sha256 70fa45d9fbb70e92b56b486617e4cc3c4afc39a76922f7f941caf6a29787fa8f \
+              --baseline-version-code 2026110304)
+          fi
+          if [ "$CHECK_MODES" = true ]; then extra+=(--check-resource-modes); fi
+          if [ "$SKIP_GAME" = true ]; then
+            extra+=(--skip-game)
+          else
+            curl --fail --location --retry 2 --output LLAS_GL_LOCAL.apk \
+              https://github.com/arina999999997/elichika/releases/download/clients/LLAS_GL_LOCAL.apk
+            extra+=(--game LLAS_GL_LOCAL.apk)
+          fi
           if [ "$TAP_SURFACE" = true ]; then extra+=(--tap-surface-center); fi
           if [ "$PREPARE_HOME" = true ]; then extra+=(--prepare-new-home); fi
           python3 -u tests/android_gl_visual_smoke.py \
-            --candidate "candidate/elichika-${{ inputs.version_name }}.apk" \
-            --candidate-sha256 "${{ inputs.candidate_sha256 }}" \
-            --version-code "${{ inputs.version_code }}" \
-            --game LLAS_GL_LOCAL.apk --evidence evidence/gl \
+            --candidate "candidate/elichika-$VERSION_NAME.apk" \
+            --candidate-sha256 "$CANDIDATE_SHA" \
+            --version-code "$VERSION_CODE" --evidence evidence/gl \
             "${extra[@]}"
 
       - name: Download the latest official APK
