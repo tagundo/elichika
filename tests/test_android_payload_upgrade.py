@@ -196,7 +196,7 @@ class PackagingTests(unittest.TestCase):
         optional = workflow.index('cp modtools/*.py')
         mandatory = workflow.index('cp payload_db_upgrade.py database_maintenance.py')
         self.assertLess(optional, mandatory)
-        for module in ('payload_db_upgrade.py', 'database_maintenance.py'):
+        for module in ('payload_db_upgrade.py', 'database_maintenance.py', 'payload_file_hash.py'):
             self.assertTrue((ROOT / module).is_file(), f'Missing canonical updater source: {module}')
             self.assertIn(f'cmp {module} "$PY/{module}"', workflow)
 
@@ -252,7 +252,7 @@ class KotlinInstallerTests(unittest.TestCase):
         runtime = os.pathsep.join([sdk, *(str(p) for p in jars if p.name.startswith(('kotlin-stdlib-', 'annotations-', 'json-')))])
         names = ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'EmbeddedPython.kt',
                  'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerService.kt',
-                 'ServerProcess.kt', 'ServerSettings.kt', 'Bus.kt')
+                 'ServerProcess.kt', 'ServerSettings.kt', 'Bus.kt', 'PayloadFileHasher.kt')
         sources = [KOTLIN / name for name in names]
         resources = {}
         for source in sources:

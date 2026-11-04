@@ -125,6 +125,7 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
     def test_legacy_owner_rows_extra_columns_and_tables_survive_with_new_rows(self):
         original, protected = fingerprint(self.current), fingerprint(self.protected)
         prepared = self.prepare()
+        self.assertEqual(prepared["counts"]["main_integrity_certificates_reused"], 0)
         self.assertEqual(fingerprint(self.current), original, "prepare modified live payload")
         self.assertEqual(fingerprint(self.protected), protected)
         result = self.commit(prepared)
@@ -1435,6 +1436,286 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
                 self.prepare()
         self.assertEqual(str(caught.exception), "INSUFFICIENT_UPGRADE_SPACE")
         self.assertEqual(fingerprint(self.current + self.protected + caches), before)
+
+
+# Retain the actual constructor while individual merge tests trace SQLite calls.
+_INTEGRITY_CONNECT = sqlite3.connect
+
+
+def integrity_database(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _INTEGRITY_CONNECT(path) as connection:
+        connection.executescript("""
+            CREATE TABLE t(id INTEGER PRIMARY KEY,value TEXT);
+            INSERT INTO t VALUES(1,'stock');
+            CREATE INDEX t_value ON t(value);
+        """)
+
+
+def corrupt_integrity_index(path):
+    with _INTEGRITY_CONNECT(path) as connection:
+        page_size = connection.execute("PRAGMA page_size").fetchone()[0]
+        root_page = connection.execute("SELECT rootpage FROM sqlite_master WHERE name='t_value'").fetchone()[0]
+    with path.open("r+b") as stream:
+        stream.seek((root_page - 1) * page_size)
+        stream.write(b"\0")
+
+
+def integrity_baseline():
+    connection = _INTEGRITY_CONNECT(":memory:")
+    upgrade._baseline_schema(connection)
+    return connection
+
+
+class PayloadIntegrityCertificateTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="elichika-integrity-certificate-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.incoming, self.current = self.root / "incoming.db", self.root / "current.db"
+        self.backup, self.output = self.root / "backup.db", self.root / "output.db"
+        integrity_database(self.incoming)
+        shutil.copyfile(self.incoming, self.current)
+        self.baseline, self.prior = integrity_baseline(), integrity_baseline()
+        self.addCleanup(self.baseline.close)
+        self.addCleanup(self.prior.close)
+        self.statements, self.certificates = [], {}
+
+    def snapshot(self):
+        upgrade._snapshot(self.current, self.backup)
+        return upgrade._sha(self.backup)
+
+    def merge(self, *, managed=True, certificate=None, identical=False, factory=None, use_certificate=True):
+        certificate = certificate or self.snapshot()
+        if managed:
+            upgrade._compress_stock(self.incoming, "serverdata.db", self.prior, self.root / "prior-files")
+
+        def traced_connect(*args, **kwargs):
+            if factory is not None:
+                kwargs["factory"] = factory
+            connection = _INTEGRITY_CONNECT(*args, **kwargs)
+            connection.set_trace_callback(self.statements.append)
+            return connection
+
+        with mock.patch.object(upgrade.sqlite3, "connect", side_effect=traced_connect):
+            return upgrade._merge_database(
+                self.backup, self.incoming, self.output, "serverdata.db", self.prior if managed else None,
+                self.baseline, self.root / "prior-files", self.root / "next-files",
+                current_snapshot_sha=certificate if use_certificate else None, identical_current=identical,
+                output_integrity_certificates=self.certificates)
+
+    def test_managed_noop_retains_owner_tables_triggers_fk_and_exact_snapshot_certificate(self):
+        with _INTEGRITY_CONNECT(self.current) as connection:
+            connection.executescript("""
+                CREATE TABLE owner(id INTEGER PRIMARY KEY,value TEXT);
+                INSERT INTO owner VALUES(9,'keep');
+                CREATE TRIGGER owner_t AFTER INSERT ON owner BEGIN
+                    UPDATE owner SET value=value WHERE id=new.id;
+                END;
+                CREATE TABLE parent(id INTEGER PRIMARY KEY);
+                CREATE TABLE child(id INTEGER PRIMARY KEY,parent_id REFERENCES parent(id));
+                INSERT INTO child VALUES(1,999);
+                UPDATE t SET value='owner' WHERE id=1;
+            """)
+        certificate = self.snapshot()
+        self.merge(certificate=certificate)
+        self.assertEqual(upgrade._sha(self.output), certificate)
+        self.assertEqual(self.certificates, {"serverdata.db": certificate})
+        self.assertIn("PRAGMA incoming_stock.integrity_check", self.statements)
+        self.assertNotIn("PRAGMA integrity_check", self.statements)
+        with _INTEGRITY_CONNECT(self.output) as connection:
+            self.assertEqual(connection.execute("SELECT value FROM t").fetchall(), [("owner",)])
+            self.assertEqual(connection.execute("SELECT value FROM owner").fetchall(), [("keep",)])
+            self.assertEqual(len(connection.execute("PRAGMA foreign_key_check").fetchall()), 1)
+
+    def test_identical_legacy_begin_attach_and_commit_reuse_exact_snapshot_certificate(self):
+        certificate = self.snapshot()
+        self.merge(managed=False, certificate=certificate, identical=True)
+        self.assertEqual(upgrade._sha(self.output), certificate)
+        self.assertEqual(self.certificates, {"serverdata.db": certificate})
+        self.assertIn("PRAGMA incoming_stock.integrity_check", self.statements)
+        self.assertNotIn("PRAGMA integrity_check", self.statements)
+
+    def test_malformed_attached_incoming_is_refused_despite_valid_main_certificate(self):
+        certificate = self.snapshot()
+        corrupt_integrity_index(self.incoming)
+        with self.assertRaises(upgrade.UpgradeError):
+            self.merge(certificate=certificate)
+        self.assertIn("PRAGMA incoming_stock.integrity_check", self.statements)
+        self.assertEqual(upgrade._sha(self.backup), certificate)
+        self.assertEqual(self.certificates, {})
+
+    def test_main_corruption_after_commit_forces_full_sql_fallback_and_refusal(self):
+        output = self.output
+
+        class CorruptAtCommit(sqlite3.Connection):
+            def commit(connection):
+                super(CorruptAtCommit, connection).commit()
+                if Path(connection.execute("PRAGMA database_list").fetchone()[2]) == output:
+                    corrupt_integrity_index(output)
+
+        with self.assertRaises(upgrade.UpgradeError):
+            self.merge(factory=CorruptAtCommit)
+        self.assertIn("PRAGMA integrity_check", self.statements)
+        self.assertEqual(self.certificates, {})
+
+    def test_header_change_after_commit_forces_full_main_integrity_check(self):
+        output = self.output
+
+        class HeaderAtCommit(sqlite3.Connection):
+            def commit(connection):
+                super(HeaderAtCommit, connection).commit()
+                if Path(connection.execute("PRAGMA database_list").fetchone()[2]) == output:
+                    connection.execute("PRAGMA user_version=19")
+
+        self.merge(factory=HeaderAtCommit)
+        self.assertEqual(self.certificates, {})
+        self.assertIn("PRAGMA incoming_stock.integrity_check", self.statements)
+        self.assertIn("PRAGMA integrity_check", self.statements)
+
+    def test_valid_wal_state_prevents_reuse_even_when_main_sha_matches(self):
+        with _INTEGRITY_CONNECT(self.current) as connection:
+            connection.execute("PRAGMA journal_mode=WAL")
+        certificate, output, writers = self.snapshot(), self.output, []
+
+        def close_writers():
+            for connection in writers:
+                connection.close()
+
+        self.addCleanup(close_writers)
+
+        class WalAtCommit(sqlite3.Connection):
+            def commit(connection):
+                super(WalAtCommit, connection).commit()
+                if Path(connection.execute("PRAGMA database_list").fetchone()[2]) == output:
+                    writer = _INTEGRITY_CONNECT(output)
+                    writer.execute("INSERT INTO t VALUES(900,'WAL state')")
+                    writer.commit()
+                    writers.append(writer)
+
+        self.merge(certificate=certificate, factory=WalAtCommit)
+        self.assertEqual(upgrade._sha(self.output), certificate, "WAL must hold state outside the equal main bytes")
+        self.assertEqual(self.certificates, {})
+        self.assertIn("PRAGMA integrity_check", self.statements)
+        with _INTEGRITY_CONNECT(self.output) as connection:
+            self.assertEqual(connection.execute("SELECT value FROM t WHERE id=900").fetchone(), ("WAL state",))
+
+    def test_mutating_merge_keeps_unqualified_final_integrity_check(self):
+        with _INTEGRITY_CONNECT(self.incoming) as connection:
+            connection.execute("INSERT INTO t VALUES(2,'new official')")
+        self.merge(managed=False)
+        self.assertIn("PRAGMA integrity_check", self.statements)
+        self.assertNotIn("PRAGMA incoming_stock.integrity_check", self.statements)
+        self.assertEqual(self.certificates, {})
+
+    def test_actual_dml_in_unchanged_branch_keeps_unqualified_final_integrity_check(self):
+        output = self.output
+
+        class DmlAtBegin(sqlite3.Connection):
+            def execute(connection, sql, *args, **kwargs):
+                result = super(DmlAtBegin, connection).execute(sql, *args, **kwargs)
+                if (sql == "BEGIN IMMEDIATE" and
+                        Path(super(DmlAtBegin, connection).execute("PRAGMA database_list").fetchone()[2]) == output):
+                    super(DmlAtBegin, connection).execute("INSERT INTO t VALUES(900,'private staged DML')")
+                return result
+
+        self.merge(factory=DmlAtBegin)
+        self.assertIn("PRAGMA integrity_check", self.statements)
+        self.assertNotIn("PRAGMA incoming_stock.integrity_check", self.statements)
+        self.assertEqual(self.certificates, {})
+
+    def test_missing_snapshot_certificate_keeps_complete_integrity_check(self):
+        self.merge(use_certificate=False)
+        self.assertIn("PRAGMA integrity_check", self.statements)
+        self.assertNotIn("PRAGMA incoming_stock.integrity_check", self.statements)
+        self.assertEqual(self.certificates, {})
+
+
+class PayloadPreparedCertificateTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="elichika-prepared-certificate-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name) / "runtime"
+        self.root.mkdir()
+        self.staged = self.root / ".payload-incoming" / "stage"
+        self.staged.mkdir(parents=True)
+        for name in ("serverdata.db", "assets/db/gl/masterdata.db"):
+            incoming, live = self.staged / name, self.root / name
+            integrity_database(incoming)
+            live.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(incoming, live)
+        (self.root / "installed_version").write_text("before")
+
+    def prepare(self):
+        return upgrade.prepare_upgrade(str(self.root), str(self.staged), "before", "after")
+
+    def assert_late_change_refused(self, invalid):
+        sync = upgrade._sync_tree
+
+        def mutate(path):
+            sync(path)
+            if Path(path).name == "next":
+                output = Path(path) / "assets/db/gl/masterdata.db"
+                if invalid:
+                    corrupt_integrity_index(output)
+                else:
+                    with _INTEGRITY_CONNECT(output) as connection:
+                        connection.execute("UPDATE t SET value='late valid SQLite change' WHERE id=1")
+
+        before = fingerprint([self.root / "serverdata.db", self.root / "assets/db/gl/masterdata.db"])
+        with mock.patch.object(upgrade, "_sync_tree", side_effect=mutate), self.assertRaises(upgrade.UpgradeError) as caught:
+            self.prepare()
+        self.assertEqual(str(caught.exception), "OUTPUT_INTEGRITY_CERTIFICATE_CHANGED")
+        self.assertEqual(fingerprint([self.root / "serverdata.db", self.root / "assets/db/gl/masterdata.db"]), before)
+
+    def test_valid_sql_change_after_certificate_before_prepared_fingerprint_is_refused(self):
+        self.assert_late_change_refused(False)
+
+    def test_corruption_after_certificate_before_prepared_fingerprint_is_refused(self):
+        self.assert_late_change_refused(True)
+
+    def test_late_wal_journal_or_shm_cannot_inherit_main_only_certificate(self):
+        sync = upgrade._sync_tree
+        for suffix in ("-wal", "-journal", "-shm"):
+            with self.subTest(suffix=suffix):
+                def mutate(path):
+                    sync(path)
+                    if Path(path).name == "next":
+                        output = Path(path) / "assets/db/gl/masterdata.db"
+                        output.with_name(output.name + suffix).write_bytes(b"synthetic newly appeared sidecar")
+
+                with mock.patch.object(upgrade, "_sync_tree", side_effect=mutate), self.assertRaises(upgrade.UpgradeError) as caught:
+                    self.prepare()
+                self.assertEqual(str(caught.exception), "OUTPUT_INTEGRITY_CERTIFICATE_CHANGED")
+
+    def test_valid_sql_change_after_prepared_fingerprint_is_refused_by_commit_guard(self):
+        prepared = self.prepare()
+        self.assertEqual(prepared["counts"]["main_integrity_certificates_reused"], 2)
+        output = self.root / ".payload-upgrade/transactions" / prepared["transaction_id"] / "next/assets/db/gl/masterdata.db"
+        with _INTEGRITY_CONNECT(output) as connection:
+            connection.execute("UPDATE t SET value='late prepared change' WHERE id=1")
+        with self.assertRaises(upgrade.UpgradeError) as caught:
+            upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+        self.assertEqual(str(caught.exception), "PREPARED_PAYLOAD_CHANGED")
+
+    def test_summary_counts_bound_certificates_and_excludes_full_sql_fallback(self):
+        class HeaderAtCommit(sqlite3.Connection):
+            def commit(connection):
+                super(HeaderAtCommit, connection).commit()
+                output = Path(connection.execute("PRAGMA database_list").fetchone()[2])
+                if "next" in output.parts and output.name == "masterdata.db":
+                    connection.execute("PRAGMA user_version=19")
+
+        def connect(*args, **kwargs):
+            kwargs["factory"] = HeaderAtCommit
+            return _INTEGRITY_CONNECT(*args, **kwargs)
+
+        with mock.patch.object(upgrade.sqlite3, "connect", side_effect=connect):
+            prepared = self.prepare()
+        self.assertEqual(prepared["counts"]["databases"], 2)
+        self.assertEqual(prepared["counts"]["main_integrity_certificates_reused"], 1)
+        result = upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+        self.assertEqual(result["counts"]["main_integrity_certificates_reused"], 1)
 
 if __name__ == "__main__":
     unittest.main()
