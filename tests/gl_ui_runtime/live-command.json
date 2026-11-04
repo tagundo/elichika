@@ -1,1 +1,1 @@
-{"run_id":"41808866358","sequence":8,"action":"upgrade_candidate","artifact_id":13304790579,"artifact_run_id":"41791847801","source_sha":"e6aa8588c02923a4a3dfcb995d5211e19e6c3940","apk_sha256":"8c725e5af842bb5a7f6f87417bbb902a6c16caaf1ee6ddde7675ca15988e2483","version_code":2026110401,"version_name":"2026.11.04.1"}
+{"run_id":"41808866358","sequence":9,"action":"capture"}
