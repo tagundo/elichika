@@ -28,7 +28,7 @@ object PyServers {
         Bus.toolsStateChanged()
         Thread({
             try {
-                val directory = AssetInstaller.install(appContext) { Bus.log(it) }
+                val directory = AssetInstaller.install(appContext, Bus::setPreparationPhase) { Bus.log(it) }
                 ensureStarted(appContext, directory)
             } catch (error: Throwable) {
                 preparationError = error

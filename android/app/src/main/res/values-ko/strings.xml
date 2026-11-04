@@ -49,6 +49,9 @@
 
     <!-- server state -->
     <string name="status_starting">◌ 시작 중…</string>
+    <string name="status_preparing">서버 파일 준비 중…</string>
+    <string name="status_updating_game_data">설치된 모드를 보존하며 게임 데이터 갱신 중…</string>
+    <string name="status_preparation_failed">준비 실패 · 콘솔 로그를 확인하세요</string>
 
     <!-- confirmations -->
     <string name="confirm_title">확인</string>

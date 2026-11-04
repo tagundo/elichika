@@ -50,6 +50,9 @@
 
     <!-- server state -->
     <string name="status_starting">◌ starting…</string>
+    <string name="status_preparing">Preparing server files…</string>
+    <string name="status_updating_game_data">Updating game data while preserving installed mods…</string>
+    <string name="status_preparation_failed">Preparation failed · check the console log</string>
 
     <!-- confirmations -->
     <string name="confirm_title">Please confirm</string>

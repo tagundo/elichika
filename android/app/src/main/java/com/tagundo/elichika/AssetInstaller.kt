@@ -15,18 +15,47 @@ object AssetInstaller {
     private const val PAYLOAD = "payload"
     private const val MARKER = "installed_version"
 
+    enum class PreparationPhase { IDLE, PREPARING, UPDATING_GAME_DATA, FAILED }
+
     /** Returns the server working dir (== app files dir). */
     @Synchronized
-    fun install(ctx: Context, log: (String) -> Unit): File = prepare(ctx, log, reset = false)
+    fun install(ctx: Context, log: (String) -> Unit): File =
+        prepare(ctx, log, {}, reset = false)
+
+    /** Phase reporting is separate from console text and never marks Go as running. */
+    @Synchronized
+    fun install(ctx: Context, onPhase: (PreparationPhase) -> Unit, log: (String) -> Unit): File =
+        prepare(ctx, log, onPhase, reset = false)
 
     /** Vanilla file restoration; ServerService performs the separate account reset. */
     @Synchronized
-    fun resetServerData(ctx: Context, log: (String) -> Unit): File = prepare(ctx, log, reset = true)
+    fun resetServerData(ctx: Context, log: (String) -> Unit): File =
+        prepare(ctx, log, {}, reset = true)
 
-    private fun prepare(ctx: Context, log: (String) -> Unit, reset: Boolean): File =
-        PayloadUpgrade.withMaintenance(ctx, ctx.filesDir) { prepareLocked(ctx, log, reset) }
+    @Synchronized
+    fun resetServerData(ctx: Context, onPhase: (PreparationPhase) -> Unit, log: (String) -> Unit): File =
+        prepare(ctx, log, onPhase, reset = true)
 
-    private fun prepareLocked(ctx: Context, log: (String) -> Unit, reset: Boolean): File {
+    private fun prepare(ctx: Context, log: (String) -> Unit,
+                        onPhase: (PreparationPhase) -> Unit, reset: Boolean): File {
+        // A cancelled pending Start still lets this atomic operation finish.
+        // Keep its real phase visible independently of the queued server start.
+        fun report(phase: PreparationPhase) { runCatching { onPhase(phase) } }
+        var completed = false
+        report(PreparationPhase.PREPARING)
+        try {
+            val result = PayloadUpgrade.withMaintenance(ctx, ctx.filesDir) {
+                prepareLocked(ctx, log, ::report, reset)
+            }
+            completed = true
+            return result
+        } finally {
+            report(if (completed) PreparationPhase.IDLE else PreparationPhase.FAILED)
+        }
+    }
+
+    private fun prepareLocked(ctx: Context, log: (String) -> Unit,
+                              onPhase: (PreparationPhase) -> Unit, reset: Boolean): File {
         val root = ctx.filesDir
         val am = ctx.assets
         // The maintenance lease covers recovery, staging cleanup, settings and
@@ -70,9 +99,16 @@ object AssetInstaller {
             ensureCdnDefaultOn(ctx, root, log)
             ensureLanguage(ctx, root, log)
             if (staged != null) {
-                if (mode == "upgrade") log(ctx.getString(R.string.log_setup_preserving_mods))
+                if (mode == "upgrade") {
+                    onPhase(PreparationPhase.UPDATING_GAME_DATA)
+                    log(ctx.getString(R.string.log_setup_preserving_mods))
+                }
                 enteredUpdater = true
-                PayloadUpgrade.apply(ctx, root, staged, installedVersion, currentVersion, mode)
+                try {
+                    PayloadUpgrade.apply(ctx, root, staged, installedVersion, currentVersion, mode)
+                } finally {
+                    onPhase(PreparationPhase.PREPARING)
+                }
                 committed = true
             }
             log(ctx.getString(R.string.log_setup_ready))
