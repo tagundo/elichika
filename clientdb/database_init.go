@@ -140,4 +140,17 @@ func databaseInit() {
 			log.Println("Updated dictionary text for ", language, ": ", changed, " messages")
 		}
 	}
+	// Both regions must finish their original SQL and idempotent upgrades first.
+	// Importing earlier dirties GL databases and makes the historical Git gate
+	// skip their SQL; importing here also keeps the JP source fingerprint stable.
+	content, err := upgrades.JapaneseContent(config.AssetPath)
+	if err != nil {
+		log.Panic(fmt.Sprintf("JP-to-GL content upgrade failed; client manifests were not regenerated: %v", err))
+	}
+	if content.SkippedReason != "" {
+		log.Println("JP-to-GL content upgrade skipped: ", content.SkippedReason)
+	} else if content.MasterRows+content.AssetRows+content.DictionaryRows+content.PackagesUpdated != 0 {
+		log.Printf("JP-to-GL content: %d master rows, %d asset rows, %d dictionary messages, %d package versions updated\n",
+			content.MasterRows, content.AssetRows, content.DictionaryRows, content.PackagesUpdated)
+	}
 }

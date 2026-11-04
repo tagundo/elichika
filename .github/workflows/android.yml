@@ -118,11 +118,13 @@ jobs:
           # assets/sql migrations on `git diff` of each db file, so inverting first
           # makes masterdata.db dirty and silently skips 001.masterdata.db.sql (missing
           # lives/beatmap patches — the v2026.07.04.1 regression). Running after, the
-          # migrations apply to pristine data first; the inversion then leaves the
-          # payload manifest stale, which is fine — the device recomputes the client
-          # db version at first boot (the "Difference detected" path) and clients
-          # re-download.
+          # migrations apply to pristine data first. Refresh afterward because the
+          # inversion also changes the JP source fingerprint; the bundled import
+          # marker and client manifests must describe the final ordered databases.
           python3 bin/fix_outfit_order.py
+          ./elichika_host rebuild_assets
+          python3 tests/validate_runtime.py .
+          python3 assets/tests/validate_localization.py --runtime .
 
       - name: Assemble bundled payload
         run: |

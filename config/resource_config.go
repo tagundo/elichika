@@ -11,7 +11,7 @@ package config
 //   - Think of this like what a whale can afford to do.
 //   - Things like LP and AP and Gem are unlimited, as it can be bought.
 //   - But other things earned ingame like shop currencies are limited, so you still have to play to get them.
-//   - This is the default settings.
+//   - The startup default is chosen by defaultConfigs.
 // - Free:
 //   - Like comfortable but even more unrestrictive.
 //   - Generally, numbers can only go up, not down.
@@ -40,18 +40,18 @@ type ResourceConfig struct {
 	ConsumeMiscItems        bool // whether to consume random items like memory key or water bottle.
 }
 
-var resourceConfigs = map[string]*ResourceConfig{}
-
-func init() {
-	resourceConfigs["free"] = &ResourceConfig{}
-	resourceConfigs["comfortable"] = &ResourceConfig{
+// Load is called from config.go's init. Populate the presets during variable
+// initialization, before any init function validates the persisted choice.
+var resourceConfigs = map[string]*ResourceConfig{
+	"free": {},
+	"comfortable": {
 		ConsumeSkipTicket:       true,
 		ConsumePracticeItems:    true,
 		ConsumeExchangeCurrency: true,
 		ConsumeMemberCheerItem:  true,
 		ConsumeMiscItems:        true,
-	}
-	resourceConfigs["original"] = &ResourceConfig{
+	},
+	"original": {
 		ConsumeLp:             true,
 		ConsumeAp:             true,
 		ConsumeGachaCurrency:  true,
@@ -63,5 +63,5 @@ func init() {
 		ConsumeExchangeCurrency: true,
 		ConsumeMemberCheerItem:  true,
 		ConsumeMiscItems:        true,
-	}
+	},
 }

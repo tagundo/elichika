@@ -299,7 +299,7 @@ def extract_apk_runtime(archive, root):
         else:
             shutil.copyfile(path, destination)
     source = Path(__file__).parent
-    for filename in ("android_release_smoke.py", "validate_runtime.py"):
+    for filename in ("android_release_smoke.py", "validate_runtime.py", "validate_jp_global_content.py"):
         shutil.copyfile(source / filename, python / "app" / filename)
     shutil.copyfile(source / "android_native_functional.py", python / "native_probe.py")
     (root / "runtime/config.json").write_text(json.dumps({

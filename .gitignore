@@ -25,3 +25,4 @@ template.go
 
 __pycache__/
 *.pyc
+!/clientdb/upgrades/jp_global_translations.json

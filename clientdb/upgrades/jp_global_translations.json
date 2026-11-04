@@ -1,0 +1,313 @@
+{
+  "attribution": "Translations contributed by NaufalFajri in PR #57 (migrate_jp_to_gl.py).",
+  "accessories": {
+    "accessory_name_33": {
+      "ja": "ニジガク帽子",
+      "en": "Nijigaku Cap",
+      "ko": "니지가쿠 모자",
+      "zh": "虹咲帽子"
+    },
+    "accessory_name_45": {
+      "ja": "ローダンセの髪飾り",
+      "en": "Rhodanthe Hair Ornament",
+      "ko": "로단세 머리장식",
+      "zh": "羅丹斯髮飾"
+    },
+    "accessory_name_50": {
+      "ja": "ランニングシューズ",
+      "en": "Running Shoes",
+      "ko": "러닝화",
+      "zh": "慢跑鞋"
+    },
+    "accessory_name_51": {
+      "ja": "虹ヶ咲学園どんぶり",
+      "en": "Nijigasaki Donburi Bowl",
+      "ko": "니지가사키 학원 덮밥 그릇",
+      "zh": "虹咲學園丼飯碗"
+    },
+    "accessory_name_52": {
+      "ja": "アランロボ",
+      "en": "Aran Robot",
+      "ko": "아란 로봇",
+      "zh": "亞蘭機器人"
+    },
+    "accessory_name_53": {
+      "ja": "彼方ちゃんの枕",
+      "en": "Kanata's Pillow",
+      "ko": "카나타의 베개",
+      "zh": "彼方的枕頭"
+    },
+    "accessory_name_54": {
+      "ja": "しずくのマスク",
+      "en": "Shizuku's Mask",
+      "ko": "시즈쿠의 마스크",
+      "zh": "雫的口罩"
+    },
+    "accessory_name_55": {
+      "ja": "果林のチョーカー",
+      "en": "Karin's Choker",
+      "ko": "카린의 초커",
+      "zh": "果林的項圈"
+    },
+    "accessory_name_56": {
+      "ja": "ニジガクバット",
+      "en": "Nijigaku Bat",
+      "ko": "니지가쿠 배트",
+      "zh": "虹咲球棒"
+    },
+    "accessory_name_57": {
+      "ja": "Brand New Story マフラータオル",
+      "en": "Brand New Story Towel",
+      "ko": "Brand New Story 머플러 타올",
+      "zh": "Brand New Story 圍巾毛巾"
+    },
+    "accessory_name_58": {
+      "ja": "Back to the TOKIMEKI マフラータオル",
+      "en": "Back to the TOKIMEKI Towel",
+      "ko": "Back to the TOKIMEKI 머플러 타올",
+      "zh": "Back to the TOKIMEKI 圍巾毛巾"
+    },
+    "accessory_name_59": {
+      "ja": "DiverDiva リボン",
+      "en": "DiverDiva Ribbon",
+      "ko": "DiverDiva 리본",
+      "zh": "DiverDiva 蝴蝶結"
+    },
+    "accessory_name_60": {
+      "ja": "花火のキーホルダー",
+      "en": "Fireworks Keyholder",
+      "ko": "불꽃 열쇠고리",
+      "zh": "煙火鑰匙圈"
+    },
+    "accessory_name_61": {
+      "ja": "かすみんBOX",
+      "en": "Kasumin Box",
+      "ko": "카스밍 BOX",
+      "zh": "小霞霞BOX"
+    },
+    "accessory_name_62": {
+      "ja": "SIFTシャツ",
+      "en": "SIF T-Shirt",
+      "ko": "SIF T셔츠",
+      "zh": "SIF T恤"
+    },
+    "accessory_name_63": {
+      "ja": "黄色のガーベラ",
+      "en": "Yellow Gerbera",
+      "ko": "노란색 거베라",
+      "zh": "黃色非洲菊"
+    },
+    "accessory_name_64": {
+      "ja": "A・ZU・NA リボン＆ハット",
+      "en": "A•ZU•NA Ribbon & Hat",
+      "ko": "A·ZU·NA 리본&모자",
+      "zh": "A・ZU・NA 蝴蝶結＆帽子"
+    },
+    "accessory_name_65": {
+      "ja": "QU4RTZ 花のキーホルダー",
+      "en": "QU4RTZ Flower Keyholder",
+      "ko": "QU4RTZ 꽃 열쇠고리",
+      "zh": "QU4RTZ 花朵鑰匙圈"
+    },
+    "accessory_name_66": {
+      "ja": "R3BIRTHのリボン",
+      "en": "R3BIRTH Ribbon",
+      "ko": "R3BIRTH의 리본",
+      "zh": "R3BIRTH的蝴蝶結"
+    },
+    "accessory_name_67": {
+      "ja": "ニジガクのピンバッヂ",
+      "en": "Nijigaku Pin Badge",
+      "ko": "니지가쿠 핀 배지",
+      "zh": "虹咲胸針"
+    },
+    "accessory_name_68": {
+      "ja": "～夢の始まり～ メモリアルピンズ",
+      "en": "~The beginning of the dream~ Memorial Pin",
+      "ko": "~꿈의 시작~ 메모리얼 핀즈",
+      "zh": "～夢想的起點～ 紀念徽章"
+    },
+    "accessory_name_69": {
+      "ja": "夢と笑顔のイヤーマフ",
+      "en": "Earmuffs of Dreams and Smiles",
+      "ko": "꿈과 미소의 귀마개",
+      "zh": "夢想與笑容的耳罩"
+    },
+    "accessory_name_70": {
+      "ja": "虹色の花",
+      "en": "Rainbow-Colored Flower",
+      "ko": "무지개색 꽃",
+      "zh": "彩虹色的花"
+    },
+    "accessory_name_71": {
+      "ja": "ENJOY IT！",
+      "en": "ENJOY IT!",
+      "ko": "ENJOY IT!",
+      "zh": "ENJOY IT！"
+    },
+    "accessory_name_72": {
+      "ja": "Eternal Light",
+      "en": "Eternal Light",
+      "ko": "Eternal Light",
+      "zh": "Eternal Light"
+    },
+    "accessory_name_73": {
+      "ja": "Infinity！Our wings!!",
+      "en": "Infinity! Our wings!!",
+      "ko": "Infinity！Our wings!!",
+      "zh": "Infinity！Our wings!!"
+    },
+    "accessory_name_74": {
+      "ja": "Eutopia",
+      "en": "Eutopia",
+      "ko": "Eutopia",
+      "zh": "Eutopia"
+    },
+    "accessory_name_75": {
+      "ja": "stars we chase",
+      "en": "stars we chase",
+      "ko": "stars we chase",
+      "zh": "stars we chase"
+    },
+    "accessory_name_76": {
+      "ja": "EMOTION",
+      "en": "EMOTION",
+      "ko": "EMOTION",
+      "zh": "EMOTION"
+    },
+    "accessory_name_77": {
+      "ja": "ストラップ付USB",
+      "en": "USB Stick with Strap",
+      "ko": "스트랩 달린 USB",
+      "zh": "附掛繩隨身碟"
+    },
+    "accessory_name_78": {
+      "ja": "食パンふせん",
+      "en": "Bread Sticky Note",
+      "ko": "식빵 포스트잇",
+      "zh": "吐司便利貼"
+    },
+    "accessory_name_79": {
+      "ja": "おそろいパンダ",
+      "en": "Matching Pandas",
+      "ko": "커플 판다",
+      "zh": "成對熊貓"
+    },
+    "accessory_name_80": {
+      "ja": "かすみのアルバム",
+      "en": "Kasumi's Album",
+      "ko": "카스미의 앨범",
+      "zh": "霞的相簿"
+    },
+    "accessory_name_81": {
+      "ja": "しずくの空想ノート",
+      "en": "Shizuku's Fantasy Notebook",
+      "ko": "시즈쿠의 망상 노트",
+      "zh": "雫的空想筆記本"
+    },
+    "accessory_name_82": {
+      "ja": "せつ菜の髪留め",
+      "en": "Setsuna's Hair Clip",
+      "ko": "세츠나의 머리핀",
+      "zh": "雪菜的髮夾"
+    },
+    "accessory_name_83": {
+      "ja": "翡翠の羽根",
+      "en": "Jade Feather",
+      "ko": "비취색 날개",
+      "zh": "翡翠羽毛"
+    },
+    "accessory_name_84": {
+      "ja": "第2回SIFのTシャツ",
+      "en": "SIF 2 T-Shirt",
+      "ko": "제2회 SIF T셔츠",
+      "zh": "第2屆SIF T恤"
+    },
+    "accessory_name_85": {
+      "ja": "ミアのヘッドホン",
+      "en": "Mia's Headphones",
+      "ko": "미아의 헤드폰",
+      "zh": "米雅的耳機"
+    },
+    "accessory_name_86": {
+      "ja": "かすみんフラッグ",
+      "en": "Kasumin Flag",
+      "ko": "카스밍 깃발",
+      "zh": "小霞霞旗幟"
+    },
+    "accessory_name_87": {
+      "ja": "ニジガクのクレープ",
+      "en": "Nijigaku Crêpe",
+      "ko": "니지가쿠 크레페",
+      "zh": "虹咲可麗餅"
+    },
+    "accessory_name_88": {
+      "ja": "コンクールのポスター",
+      "en": "Competition Poster",
+      "ko": "콩쿠르 포스터",
+      "zh": "比賽海報"
+    },
+    "accessory_name_89": {
+      "ja": "あなたへの贈り物",
+      "en": "A Gift for You",
+      "ko": "당신에게 주는 선물",
+      "zh": "給你的禮物"
+    },
+    "accessory_name_90": {
+      "ja": "永遠のティアラ",
+      "en": "Tiara of Eternity",
+      "ko": "영원의 티아라",
+      "zh": "永遠的提亞拉"
+    },
+    "accessory_name_91": {
+      "ja": "永遠のクラウン",
+      "en": "Crown of Eternity",
+      "ko": "영원의 크라운",
+      "zh": "永遠的皇冠"
+    }
+  },
+  "suit_prefixes": [
+    {
+      "ja": "2020カウントダウンライブ Tシャツ",
+      "en": "2020 Countdown Live T-Shirt",
+      "ko": "2020 카운트다운 라이브 T셔츠",
+      "zh": "2020倒數演唱會 T恤"
+    },
+    {
+      "ja": "AqoursユニットライブTシャツ",
+      "en": "Aqours Unit Live T-Shirt",
+      "ko": "Aqours 유닛 라이브 T셔츠",
+      "zh": "Aqours小隊演唱會 T恤"
+    },
+    {
+      "ja": "アスルクラロ沼津3rdユニフォーム",
+      "en": "Azul Claro Numazu 3rd Uniform",
+      "ko": "아줄 클라로 누마즈 3rd 유니폼",
+      "zh": "沼津青藍3rd球衣"
+    },
+    {
+      "ja": "Brand New Story Tシャツ",
+      "en": "Brand New Story T-Shirt",
+      "ko": "Brand New Story T셔츠",
+      "zh": "Brand New Story T恤"
+    },
+    {
+      "ja": "ODAIBAゲーマーズ Tシャツ",
+      "en": "ODAIBA Gamers T-Shirt",
+      "ko": "오다이바 게이머즈 T셔츠",
+      "zh": "ODAIBA Gamers T恤"
+    }
+  ],
+  "songs": {
+    "song_name_so3001": {
+      "en": "Hajimari wa Kimi no Sora",
+      "ko": "시작은 너의 하늘",
+      "zh": "始於君之空"
+    },
+    "song_pronunciation_so3001": {
+      "en": "はじまりはきみのそら",
+      "ko": "はじまりはきみのそら",
+      "zh": "はじまりはきみのそら"
+    }
+  }
+}

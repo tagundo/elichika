@@ -1,9 +1,11 @@
-"""Check that the release gate also rejects incompatible hidden Python modules."""
+"""Check native APK compatibility and isolated guest runtime helpers."""
 
 import importlib.util
 import io
 from pathlib import Path
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -12,6 +14,10 @@ import zipfile
 spec = importlib.util.spec_from_file_location("native_audit", Path(__file__).resolve().parents[1] / "android/ci/audit_native.py")
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
+
+spec = importlib.util.spec_from_file_location("native_runner", Path(__file__).with_name("android_16k_native.py"))
+native_runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(native_runner)
 
 
 def elf(alignment, virtual_address=0):
@@ -88,6 +94,37 @@ class NativeGateTests(unittest.TestCase):
     def test_truncated_headers_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "program header"):
             audit.elf_layout(elf(16384)[:70])
+
+
+class NativeRuntimeTests(unittest.TestCase):
+    def test_extracted_gameplay_helpers_work_without_repository_python_path(self):
+        empty_zip = io.BytesIO()
+        with zipfile.ZipFile(empty_zip, "w"):
+            pass
+        apk = io.BytesIO()
+        with zipfile.ZipFile(apk, "w") as archive:
+            for filename in ("stdlib-common.imy", "stdlib-arm64-v8a.imy",
+                             "requirements-common.imy", "requirements-arm64-v8a.imy", "app.imy"):
+                archive.writestr("assets/chaquopy/" + filename, empty_zip.getvalue())
+            archive.writestr("assets/chaquopy/cacert.pem", b"")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with zipfile.ZipFile(apk) as archive:
+                native_runner.extract_apk_runtime(archive, root)
+            result = subprocess.run([
+                sys.executable, "-I", "-c", """
+import sys
+sys.path.insert(0, sys.argv[1])
+from android_release_smoke import Client
+from validate_runtime import eligible
+
+skills = [(11, 1, 1, 3, 0), (12, 1, 2, 3, 0), (13, 1, 3, 0, 0), (14, 1, 4, 3, 7)]
+for combination, expected in [((3, 3, 3), [11, 12, 13]),
+                              ((3, 3, 7), [12, 13, 14]),
+                              ((1, 2, 7), [13])]:
+    assert [skill[0] for skill in skills if eligible(skill, combination)] == expected
+""", str(root / "python/app")], cwd=root / "runtime", capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
