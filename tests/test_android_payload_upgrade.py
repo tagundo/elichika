@@ -145,6 +145,7 @@ object Bus {
     fun log(value: String) {}; fun toolsStateChanged() {}
     fun setRunning(value: Boolean) { serverRunning=value }
     fun setStarting(value: Boolean) {}
+    fun setPreparationPhase(value: AssetInstaller.PreparationPhase) {}
 }
 class ServerProcess { companion object { fun awaitStopped(process: java.lang.Process?)=true } }
 class ServerService {
@@ -251,7 +252,7 @@ class KotlinInstallerTests(unittest.TestCase):
         runtime = os.pathsep.join([sdk, *(str(p) for p in jars if p.name.startswith(('kotlin-stdlib-', 'annotations-', 'json-')))])
         names = ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'EmbeddedPython.kt',
                  'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerService.kt',
-                 'ServerProcess.kt', 'ServerSettings.kt')
+                 'ServerProcess.kt', 'ServerSettings.kt', 'Bus.kt')
         sources = [KOTLIN / name for name in names]
         resources = {}
         for source in sources:
@@ -262,11 +263,6 @@ class KotlinInstallerTests(unittest.TestCase):
         app = '''package com.tagundo.elichika
 import android.content.Context
 import java.io.File
-object Bus {
-    var serverRunning=false
-    fun log(value: String) {}; fun toolsStateChanged() {}
-    fun setRunning(value: Boolean) { serverRunning=value }; fun setStarting(value: Boolean) {}
-}
 object Lang { fun effective(context: Context)="en"; fun writeWebuiLanguage(context: Context,root: File) {} }
 class MainActivity: android.app.Activity()
 ''' + resource_code

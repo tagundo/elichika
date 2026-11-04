@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import stat
 import sys
@@ -144,6 +145,206 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
             self.assertNotIn("private owner note", serialized)
             self.assertNotIn("never include this private value", serialized)
             self.assertNotIn("synthetic old private key", serialized)
+
+    def test_incoming_database_is_merged_once_and_owner_only_database_survives_rollback(self):
+        extra = self.root / "assets/db/gl/owner_only.db"
+        database(extra, "CREATE TABLE owner_only(id INTEGER PRIMARY KEY,value TEXT); INSERT INTO owner_only VALUES(900,'keep owner-only database');")
+        tracked = self.current + self.protected + [extra]
+        before = fingerprint(tracked)
+        snapshot = upgrade._snapshot
+        copied_to_next = []
+
+        def record_snapshot(source, destination):
+            if "next" in Path(destination).parts:
+                copied_to_next.append(Path(destination).name)
+            return snapshot(source, destination)
+
+        with mock.patch.object(upgrade, "_snapshot", side_effect=record_snapshot):
+            prepared = self.prepare()
+        next_root = self.root / ".payload-upgrade/transactions" / prepared["transaction_id"] / "next"
+        self.assertEqual(self.rows(next_root / "assets/db/gl/masterdata.db", "SELECT id,name FROM m_content ORDER BY id"),
+                         [(1, "owner override"), (2, "new official row"), (900, "owner addition")])
+        self.assertEqual(self.rows(next_root / "assets/db/gl/owner_only.db", "SELECT * FROM owner_only"),
+                         [(900, "keep owner-only database")])
+        # Incoming databases use their validated backup clone; an owner-only DB
+        # still gets its complete next-tree snapshot instead of disappearing.
+        self.assertEqual(copied_to_next, ["owner_only.db"])
+        self.assertEqual(fingerprint(tracked), before)
+        replace = upgrade._replace
+
+        def interrupt_after_assets(source, destination):
+            result = replace(source, destination)
+            if Path(destination) == self.root / "assets":
+                raise SimulatedPowerLoss()
+            return result
+
+        with mock.patch.object(upgrade, "_replace", side_effect=interrupt_after_assets):
+            with self.assertRaises(SimulatedPowerLoss):
+                upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+        self.assertEqual(upgrade.recover_upgrade(str(self.root))["status"], "ROLLED_BACK")
+        self.assertEqual(fingerprint(tracked), before)
+
+    def test_byte_identical_legacy_database_skips_row_joins_while_modified_database_merges(self):
+        incoming = self.staged / "assets/db/gl/masterdata.db"
+        shutil.copyfile(incoming, self.master)
+        statements = []
+        connect = sqlite3.connect
+
+        def traced_connect(*args, **kwargs):
+            connection = connect(*args, **kwargs)
+            connection.set_trace_callback(statements.append)
+            return connection
+
+        protected = fingerprint(self.protected)
+        with mock.patch.object(upgrade.sqlite3, "connect", side_effect=traced_connect):
+            prepared = self.prepare()
+        master_joins = [statement for statement in statements if 'incoming_stock."m_content"' in statement]
+        server_joins = [statement for statement in statements if 'incoming_stock."m_settings"' in statement]
+        self.assertEqual(master_joins, [], "identical catalog rows were scanned for differences")
+        self.assertTrue(server_joins, "a genuinely modified coupled database did not merge")
+        self.assertTrue(any("PRAGMA integrity_check" in statement for statement in statements))
+        self.assertTrue(any("PRAGMA foreign_key_check" in statement for statement in statements))
+        self.assertTrue(any('"id" IS NULL' in statement for statement in statements))
+        self.assertEqual(prepared["counts"]["inserted"], 1)
+        self.assertEqual(prepared["counts"]["advanced"], 0)
+        self.assertEqual(prepared["counts"]["owner_rows_preserved"], 1)
+        self.commit(prepared)
+        self.assertEqual(self.rows(self.master, "SELECT * FROM m_content ORDER BY id"),
+                         [(1, "new official wording"), (2, "new official row")])
+        self.assertEqual(self.rows(self.server, "SELECT * FROM m_settings ORDER BY id"),
+                         [(1, "owner server setting"), (2, "new official server row")])
+        self.assertEqual(fingerprint(self.protected), protected)
+
+    def test_same_schema_legacy_owner_edit_still_merges_missing_stock_rows(self):
+        incoming = self.staged / "assets/db/gl/masterdata.db"
+        shutil.copyfile(incoming, self.master)
+        with sqlite3.connect(self.master) as connection:
+            connection.execute("UPDATE m_content SET name='owner edited stock row' WHERE id=1")
+            connection.execute("DELETE FROM m_content WHERE id=2")
+        self.commit(self.prepare())
+        self.assertEqual(self.rows(self.master, "SELECT * FROM m_content ORDER BY id"),
+                         [(1, "owner edited stock row"), (2, "new official row")])
+
+    def test_identical_main_files_with_hidden_wal_edits_use_full_merge(self):
+        wal_paths = []
+        for current, relative, table, value in (
+                (self.master, "assets/db/gl/masterdata.db", "m_content", "name"),
+                (self.server, "serverdata.db", "m_settings", "value")):
+            incoming = self.staged / relative
+            connection = sqlite3.connect(incoming)
+            self.assertEqual(connection.execute("PRAGMA journal_mode=WAL").fetchone(), ("wal",))
+            connection.close()
+            shutil.copyfile(incoming, current)
+            connection = sqlite3.connect(current)
+            self.addCleanup(connection.close)
+            connection.execute("PRAGMA wal_autocheckpoint=0")
+            connection.execute(f"UPDATE {table} SET {value}='owner WAL edit' WHERE id=1")
+            connection.execute(f"DELETE FROM {table} WHERE id=2")
+            connection.execute(f"INSERT INTO {table} VALUES(900,'owner WAL addition')")
+            connection.commit()
+            self.assertEqual(hashlib.sha256(current.read_bytes()).digest(),
+                             hashlib.sha256(incoming.read_bytes()).digest(), "main files must be byte-identical despite committed WAL changes")
+            wal = Path(str(current) + "-wal")
+            self.assertGreater(wal.stat().st_size, 0)
+            wal_paths.append(wal)
+        before = fingerprint(self.current + self.protected + wal_paths)
+        prepared = self.prepare()
+        next_root = self.root / ".payload-upgrade/transactions" / prepared["transaction_id"] / "next"
+        for relative, table in (("assets/db/gl/masterdata.db", "m_content"), ("serverdata.db", "m_settings")):
+            expected = "new official row" if table == "m_content" else "new official server row"
+            self.assertEqual(self.rows(next_root / relative, f"SELECT * FROM {table} ORDER BY id"),
+                             [(1, "owner WAL edit"), (2, expected), (900, "owner WAL addition")])
+        self.assertEqual(fingerprint(self.current + self.protected + wal_paths), before)
+
+    def test_byte_identical_legacy_database_still_refuses_null_primary_keys(self):
+        incoming = self.staged / "assets/db/gl/masterdata.db"
+        incoming.unlink()
+        database(incoming, "CREATE TABLE m_content(id TEXT PRIMARY KEY,name TEXT); INSERT INTO m_content VALUES(NULL,'not a usable primary key');")
+        shutil.copyfile(incoming, self.master)
+        before = fingerprint(self.current + self.protected)
+        with self.assertRaises(upgrade.UpgradeError) as caught:
+            self.prepare()
+        self.assertEqual(str(caught.exception), "NULL_PRIMARY_KEY_REQUIRES_REVIEW")
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+
+    def assert_identical_database_late_change_refused(self, target):
+        incoming = self.staged / "assets/db/gl/masterdata.db"
+        shutil.copyfile(incoming, self.master)
+        clone = upgrade._clone_snapshot
+        changed = []
+        after_change = []
+
+        def mutate_after_identity_check(source, destination, expected_sha):
+            if Path(source).name == "masterdata.db" and not changed:
+                with sqlite3.connect(self.master if target == "live" else incoming) as connection:
+                    connection.execute("UPDATE m_content SET name='late owner or staged edit' WHERE id=1")
+                changed.append(True)
+                after_change.append(fingerprint(self.current + self.protected + [incoming]))
+            return clone(source, destination, expected_sha)
+
+        with mock.patch.object(upgrade, "_clone_snapshot", side_effect=mutate_after_identity_check):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                self.prepare()
+        self.assertTrue(changed)
+        expected = "LIVE_INPUT_CHANGED_DURING_PREPARE" if target == "live" else "STAGED_INPUT_CHANGED_DURING_PREPARE"
+        self.assertEqual(str(caught.exception), expected)
+        self.assertEqual(fingerprint(self.current + self.protected + [incoming]), after_change[0])
+        self.assertEqual(self.marker.read_text(), "2026.11.03.4")
+
+    def test_identical_database_fastpath_retains_late_live_change_guard(self):
+        self.assert_identical_database_late_change_refused("live")
+
+    def test_identical_database_fastpath_retains_late_staged_change_guard(self):
+        self.assert_identical_database_late_change_refused("staged")
+
+    def test_valid_sqlite_value_corruption_during_snapshot_clone_is_refused(self):
+        copyfile = shutil.copyfile
+        damaged = []
+
+        def damage_valid_clone(source, destination, *args, **kwargs):
+            result = copyfile(source, destination, *args, **kwargs)
+            if Path(destination).name == "masterdata.db" and "next" in Path(destination).parts:
+                with sqlite3.connect(destination) as connection:
+                    connection.execute("UPDATE m_content SET name='copy corruption with valid SQLite structure' WHERE id=1")
+                    self.assertEqual(connection.execute("PRAGMA integrity_check").fetchall(), [("ok",)])
+                damaged.append(True)
+            return result
+
+        before = fingerprint(self.current + self.protected)
+        with mock.patch.object(upgrade.shutil, "copyfile", side_effect=damage_valid_clone):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                self.prepare()
+        self.assertTrue(damaged)
+        self.assertEqual(str(caught.exception), "DATABASE_SNAPSHOT_COPY_FAILED")
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+
+    def test_snapshot_changed_after_validation_is_refused_before_clone(self):
+        clone = upgrade._clone_snapshot
+        changed = []
+
+        def change_private_snapshot(source, destination, expected_sha):
+            if Path(source).name == "masterdata.db" and not changed:
+                with sqlite3.connect(source) as connection:
+                    connection.execute("UPDATE m_content SET name='private snapshot changed after validation' WHERE id=1")
+                changed.append(True)
+            return clone(source, destination, expected_sha)
+
+        before = fingerprint(self.current + self.protected)
+        with mock.patch.object(upgrade, "_clone_snapshot", side_effect=change_private_snapshot):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                self.prepare()
+        self.assertTrue(changed)
+        self.assertEqual(str(caught.exception), "DATABASE_SNAPSHOT_CHANGED")
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+
+    def test_validated_snapshot_backup_stays_independent_after_commit(self):
+        prepared = self.prepare()
+        backup = self.root / prepared["backup_relative_path"] / "assets/db/gl/masterdata.db"
+        self.commit(prepared)
+        with sqlite3.connect(self.master) as connection:
+            connection.execute("UPDATE m_content SET name='later owner change' WHERE id=1")
+        self.assertEqual(self.rows(backup, "SELECT name FROM m_content WHERE id=1"), [("owner override",)])
+        self.assertEqual(self.rows(self.master, "SELECT name FROM m_content WHERE id=1"), [("later owner change",)])
 
     def test_schema_mismatch_rejects_prepare_without_live_changes(self):
         staged_master = self.staged / "assets/db/gl/masterdata.db"
@@ -956,5 +1157,284 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), "OFFICIAL_SCHEMA_CHANGE_REQUIRES_REVIEW")
         self.assertEqual(fingerprint(tracked), before)
         self.assertEqual(self.rows(self.master, "SELECT name FROM sqlite_master WHERE name='incoming_content_name_unique'"), [])
+    def add_static_cache(self):
+        paths = [self.root / "static/generated-version/masterdata.db",
+                 self.root / "static/owner-custom.pack"]
+        write(paths[0], b"synthetic encrypted transfer database")
+        write(paths[1], b"owner static bytes must remain independent of their backup")
+        return paths
+
+    def prepared_plan(self, prepared):
+        work = self.root / ".payload-upgrade/transactions" / prepared["transaction_id"]
+        path = work / "prepared.json"
+        return work, path, json.loads(path.read_text())
+
+    def test_absent_incoming_static_stays_in_place_with_an_independent_private_backup(self):
+        caches = self.add_static_cache()
+        contents, inodes = fingerprint(caches), [path.stat().st_ino for path in caches]
+        protected = fingerprint(self.protected)
+        copied_bytes, hashed_bytes = [], []
+        copy_tree, sha = upgrade._copy_tree, upgrade._sha
+
+        def copy(source, destination, root, **kwargs):
+            if source.name == "static":
+                copied_bytes.append(sum(path.stat().st_size for path in upgrade._files(source)))
+            return copy_tree(source, destination, root, **kwargs)
+
+        def hash_file(path):
+            if path in caches:
+                hashed_bytes.append(path.stat().st_size)
+            return sha(path)
+
+        with mock.patch.object(upgrade, "_copy_tree", side_effect=copy), mock.patch.object(upgrade, "_sha", side_effect=hash_file):
+            prepared = self.prepare()
+            work, _, plan = self.prepared_plan(prepared)
+            self.assertEqual(plan["journal_version"], 2)
+            self.assertEqual([item["path"] for item in plan["operations"]], upgrade._operations())
+            retained = [item for item in plan["operations"] if item.get("retain")]
+            self.assertEqual(len(retained), 1)
+            self.assertEqual(retained[0]["path"], "static")
+            self.assertEqual(retained[0]["new"], plan["inputs"]["static"])
+            self.assertFalse((work / "next/static").exists())
+            self.commit(prepared)
+        self.assertEqual(fingerprint(caches), contents)
+        self.assertEqual([path.stat().st_ino for path in caches], inodes)
+        self.assertEqual(fingerprint(self.protected), protected)
+        size = sum(path.stat().st_size for path in caches)
+        self.assertEqual(copied_bytes, [size], "retained caches need one independent backup, no next-tree copy")
+        self.assertEqual(sum(hashed_bytes), size * 4, "keep the three live-input guards and final committed check")
+        backup = self.root / prepared["backup_relative_path"]
+        for path in caches:
+            saved = backup / path.relative_to(self.root)
+            self.assertEqual(saved.read_bytes(), path.read_bytes())
+            self.assertNotEqual(saved.stat().st_ino, path.stat().st_ino)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(saved.stat().st_mode), 0o600)
+        caches[1].write_bytes(b"later legitimate owner edit")
+        self.assertNotEqual(caches[1].read_bytes(), (backup / "static/owner-custom.pack").read_bytes())
+
+    def test_retained_static_powerloss_before_or_after_marker_keeps_cache_and_recovers_other_data(self):
+        for after_marker in (False, True):
+            with self.subTest(after_marker=after_marker):
+                if after_marker:
+                    # Start a second independent version after the first rollback.
+                    self.assertEqual(self.marker.read_text(), "2026.11.03.4")
+                caches = self.add_static_cache()
+                tracked = self.current + self.protected + caches
+                before = fingerprint(tracked)
+                inodes = [path.stat().st_ino for path in caches]
+                prepared = self.prepare()
+                replace = upgrade._replace
+
+                def interrupt_marker(source, destination):
+                    marker = Path(destination) == self.marker and Path(source).parent.name == "next"
+                    if marker and not after_marker:
+                        raise SimulatedPowerLoss()
+                    result = replace(source, destination)
+                    if marker and after_marker:
+                        raise SimulatedPowerLoss()
+                    return result
+
+                with mock.patch.object(upgrade, "_replace", side_effect=interrupt_marker):
+                    with self.assertRaises(SimulatedPowerLoss):
+                        upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+                outcome = upgrade.recover_upgrade(str(self.root))
+                self.assertEqual(outcome["status"], "COMMITTED" if after_marker else "ROLLED_BACK")
+                self.assertEqual([path.stat().st_ino for path in caches], inodes)
+                self.assertEqual(fingerprint(caches), {str(path): before[str(path)] for path in caches})
+                self.assertFalse((self.root / ".payload-upgrade/journal.json").exists())
+                if not after_marker:
+                    self.assertEqual(fingerprint(tracked), before)
+                else:
+                    self.assertEqual(self.marker.read_text(), "2026.11.04.2")
+
+    def test_durably_committed_retained_cache_allows_later_owner_changes_before_cleanup(self):
+        caches = self.add_static_cache()
+        prepared = self.prepare()
+        atomic_json = upgrade._atomic_json
+
+        def interrupt_committed(path, data):
+            result = atomic_json(path, data)
+            if path == self.root / ".payload-upgrade/journal.json" and data.get("state") == "COMMITTED":
+                raise SimulatedPowerLoss()
+            return result
+
+        with mock.patch.object(upgrade, "_atomic_json", side_effect=interrupt_committed):
+            with self.assertRaises(SimulatedPowerLoss):
+                upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+        caches[1].write_bytes(b"owner edit after durable commit")
+        self.assertEqual(upgrade.recover_upgrade(str(self.root))["status"], "COMMITTED")
+        self.assertEqual(caches[1].read_bytes(), b"owner edit after durable commit")
+        self.assertEqual(self.marker.read_text(), "2026.11.04.2")
+
+    def test_retained_static_changes_before_and_during_commit_are_detected_without_erasing_owner_edit(self):
+        caches = self.add_static_cache()
+        prepared = self.prepare()
+        before = fingerprint(self.current + self.protected)
+        caches[1].write_bytes(b"owner edit before commit")
+        with self.assertRaises(upgrade.UpgradeError) as caught:
+            upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+        self.assertEqual(str(caught.exception), "LIVE_INPUT_CHANGED_BEFORE_COMMIT")
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+        self.assertEqual(caches[1].read_bytes(), b"owner edit before commit")
+
+        prepared = self.prepare()
+        replace = upgrade._replace
+
+        def mutate_after_marker(source, destination):
+            result = replace(source, destination)
+            if Path(destination) == self.marker and Path(source).parent.name == "next":
+                caches[1].write_bytes(b"owner edit during commit")
+            return result
+
+        with mock.patch.object(upgrade, "_replace", side_effect=mutate_after_marker):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+        self.assertEqual(str(caught.exception), "COMMITTED_PAYLOAD_VERIFICATION_FAILED")
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+        self.assertEqual(caches[1].read_bytes(), b"owner edit during commit")
+        self.assertFalse((self.root / ".payload-upgrade/journal.json").exists())
+
+    def test_incoming_static_uses_legacy_publication_and_version_one_recovery(self):
+        caches = self.add_static_cache()
+        write(self.staged / "static/incoming.pack", b"new official cache")
+        before = fingerprint(self.current + self.protected + caches)
+        prepared = self.prepare()
+        _, _, plan = self.prepared_plan(prepared)
+        self.assertNotIn("journal_version", plan)
+        self.assertFalse(any("retain" in item for item in plan["operations"]))
+        replace = upgrade._replace
+
+        def interrupt_marker(source, destination):
+            if Path(destination) == self.marker and Path(source).parent.name == "next":
+                raise SimulatedPowerLoss()
+            return replace(source, destination)
+
+        with mock.patch.object(upgrade, "_replace", side_effect=interrupt_marker):
+            with self.assertRaises(SimulatedPowerLoss):
+                upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+        journal = json.loads((self.root / ".payload-upgrade/journal.json").read_text())
+        self.assertEqual(journal["journal_version"], 1)
+        self.assertTrue((self.root / "static/incoming.pack").is_file())
+        self.assertEqual(upgrade.recover_upgrade(str(self.root))["status"], "ROLLED_BACK")
+        self.assertEqual(fingerprint(self.current + self.protected + caches), before)
+        self.assertFalse((self.root / "static/incoming.pack").exists())
+        self.commit(self.prepare())
+        self.assertEqual((self.root / "static/incoming.pack").read_bytes(), b"new official cache")
+        self.assertTrue(all(path.is_file() for path in caches))
+
+    def test_explicit_reset_without_incoming_static_removes_cache_using_legacy_plan(self):
+        self.add_static_cache()
+        protected = fingerprint(self.protected)
+        prepared = self.prepare(mode="reset")
+        _, _, plan = self.prepared_plan(prepared)
+        self.assertNotIn("journal_version", plan)
+        self.assertFalse(any("retain" in item for item in plan["operations"]))
+        self.commit(prepared)
+        self.assertFalse((self.root / "static").exists())
+        self.assertEqual(fingerprint(self.protected), protected)
+
+    def test_forged_retained_static_plans_are_refused_before_live_writes(self):
+        caches = self.add_static_cache()
+        prepared = self.prepare()
+        work, path, original = self.prepared_plan(prepared)
+        tracked = self.current + self.protected + caches
+        before = fingerprint(tracked)
+
+        def static(data):
+            return next(item for item in data["operations"] if item["path"] == "static")
+
+        def retain_assets(data):
+            static(data).pop("retain")
+            next(item for item in data["operations"] if item["path"] == "assets")["retain"] = True
+
+        mutations = {
+            "retain other root": retain_assets,
+            "reset": lambda data: data.update(mode="reset"),
+            "no original": lambda data: static(data).update(had_old=False),
+            "incoming static": lambda data: data["incoming"].update({"static/new.pack": "not relevant"}),
+            "wrong static fingerprint": lambda data: static(data).update(new={"forged": "hash"}),
+            "version1 retain": lambda data: data.update(journal_version=1),
+            "no retain": lambda data: static(data).pop("retain"),
+            "retain false": lambda data: static(data).update(retain=False),
+            "drop operation": lambda data: data["operations"].pop(0),
+            "reorder operations": lambda data: data["operations"].reverse(),
+            "bool version": lambda data: data.update(journal_version=True),
+            "unknown version": lambda data: data.update(journal_version=3),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                data = json.loads(json.dumps(original))
+                mutate(data)
+                path.write_text(json.dumps(data))
+                with self.assertRaises(upgrade.UpgradeError) as caught:
+                    upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+                self.assertEqual(str(caught.exception), "INVALID_TRANSACTION")
+                self.assertEqual(fingerprint(tracked), before)
+                self.assertFalse((self.root / ".payload-upgrade/journal.json").exists())
+        path.write_text(json.dumps(original))
+        for tree in ("next", "rollback"):
+            with self.subTest(tree=tree):
+                unexpected = work / tree / "static"
+                write(unexpected / "must-survive.pack", b"unexpected data must not be discarded")
+                with self.assertRaises(upgrade.UpgradeError) as caught:
+                    upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+                self.assertEqual(str(caught.exception), "INVALID_TRANSACTION")
+                self.assertEqual((unexpected / "must-survive.pack").read_bytes(), b"unexpected data must not be discarded")
+                self.assertEqual(fingerprint(tracked), before)
+                shutil.rmtree(unexpected)
+
+    def test_invalid_retained_recovery_metadata_preserves_real_rollback_static(self):
+        self.add_static_cache()
+        prepared = self.prepare()
+        work, _, plan = self.prepared_plan(prepared)
+        journal = self.root / ".payload-upgrade/journal.json"
+        plan.update(state="COMMITTING")
+        journal.write_text(json.dumps(plan))
+        unexpected = work / "rollback/static/must-survive.pack"
+        write(unexpected, b"real rollback bytes")
+        before = fingerprint(self.current + self.protected + [unexpected])
+        with self.assertRaises(upgrade.UpgradeError) as caught:
+            upgrade.recover_upgrade(str(self.root))
+        self.assertEqual(str(caught.exception), "INVALID_RECOVERY_JOURNAL")
+        self.assertEqual(fingerprint(self.current + self.protected + [unexpected]), before)
+        self.assertTrue(journal.is_file())
+
+    @unittest.skipIf(os.name == "nt", "Creating symlinks may require a Windows privilege")
+    def test_retained_plan_refuses_dangling_next_or_rollback_static_links(self):
+        caches = self.add_static_cache()
+        prepared = self.prepare()
+        work, _, _ = self.prepared_plan(prepared)
+        before = fingerprint(self.current + self.protected + caches)
+        for tree in ("next", "rollback"):
+            with self.subTest(tree=tree):
+                link = work / tree / "static"
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(self.root / "missing-external-cache", target_is_directory=True)
+                self.assertFalse(link.exists())
+                with self.assertRaises(upgrade.UpgradeError) as caught:
+                    upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
+                self.assertEqual(str(caught.exception), "INVALID_TRANSACTION")
+                self.assertTrue(link.is_symlink())
+                self.assertEqual(fingerprint(self.current + self.protected + caches), before)
+                link.unlink()
+
+    def test_retained_cache_space_guard_needs_one_copy_but_incoming_static_still_needs_two(self):
+        caches = self.add_static_cache()
+        caches[0].write_bytes(b"s" * (4 * 1024 * 1024))
+        before = fingerprint(self.current + self.protected + caches)
+        usage = shutil.disk_usage(self.root)
+        free = 6 * 1024 * 1024
+        limited = type(usage)(usage.total, usage.total - free, free)
+        with mock.patch.object(upgrade.shutil, "disk_usage", return_value=limited):
+            prepared = self.prepare()
+            _, _, plan = self.prepared_plan(prepared)
+            self.assertEqual(plan["journal_version"], 2)
+            write(self.staged / "static/incoming.pack", b"new cache requires normal publication")
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                self.prepare()
+        self.assertEqual(str(caught.exception), "INSUFFICIENT_UPGRADE_SPACE")
+        self.assertEqual(fingerprint(self.current + self.protected + caches), before)
+
 if __name__ == "__main__":
     unittest.main()

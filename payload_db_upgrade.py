@@ -92,20 +92,41 @@ def _snapshot(source, destination):
         raise UpgradeError("DATABASE_SNAPSHOT_FAILED") from None
 
 
-def _copy_tree(source, destination, root):
+def _copy_tree(source, destination, root, *, skip_databases=(), snapshot_hashes=None):
     for path in _files(source):
         relative = path.relative_to(root).as_posix()
         # SQLite backup includes committed WAL pages. Transient sidecars must
         # not be copied back beside the resulting complete snapshot.
         if any(relative.endswith(suffix) and _is_database(relative[:-len(suffix)]) for suffix in ("-wal", "-shm", "-journal")):
             continue
+        database = _is_database(relative)
+        if database and relative in skip_databases:
+            continue
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        if _is_database(relative):
+        if database:
             _snapshot(path, target)
+            if snapshot_hashes is not None:
+                # Record bytes only after the consistent snapshot passed its
+                # integrity check. A later clone must match this exact image.
+                snapshot_hashes[relative] = _sha(target)
         else:
             shutil.copyfile(path, target)
             target.chmod(0o600)
+
+
+def _clone_snapshot(source, destination, expected_sha):
+    """Copy an already validated private snapshot without another SQLite backup."""
+    try:
+        _require(_sha(source) == expected_sha, "DATABASE_SNAPSHOT_CHANGED")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        _require(_sha(destination) == expected_sha, "DATABASE_SNAPSHOT_COPY_FAILED")
+        destination.chmod(0o600)
+    except UpgradeError:
+        raise
+    except Exception:
+        raise UpgradeError("DATABASE_SNAPSHOT_COPY_FAILED") from None
 
 
 def _columns(db, table, schema="main"):
@@ -275,9 +296,11 @@ def _merge_manifest(current, incoming, previous=None):
     return hashlib.sha1(body).digest() + body
 
 
-def _merge_database(current, incoming, output, relative, prior, baseline, prior_files, next_files):
+def _merge_database(current, incoming, output, relative, prior, baseline, prior_files, next_files,
+                    *, current_snapshot_sha=None, identical_current=False):
     counts = {"inserted": 0, "advanced": 0, "owner_rows_preserved": 0, "unkeyed_tables_preserved": 0, "packages_refreshed": 0, "unchanged_stock_databases_reused": 0}
     has_current = bool(current and current.exists())
+    identical_current = bool(identical_current and has_current and prior is None)
     old_path = output.with_name(output.name + ".official-previous")
     old = None
     try:
@@ -289,7 +312,10 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
             _require(previous is not None, "NEW_OFFICIAL_DATABASE_COLLIDES_WITH_OWNER")
             if not unchanged_stock:
                 old = _restore_stock(prior, prior_files, relative, old_path)
-        _snapshot(current if has_current else incoming, output)
+        if has_current and current_snapshot_sha is not None:
+            _clone_snapshot(current, output, current_snapshot_sha)
+        else:
+            _snapshot(current if has_current else incoming, output)
         with closing(_ro(incoming)) as source, closing(sqlite3.connect(output, uri=True)) as target:
             old_foreign_keys = _foreign_key_violations(target) | _foreign_key_violations(source)
             target.execute("ATTACH DATABASE ? AS incoming_stock", (incoming.resolve().as_uri() + "?mode=ro",))
@@ -328,6 +354,13 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
                 if primary:
                     nulls = " OR ".join(_quote(name) + " IS NULL" for name in primary)
                     _require(not source.execute("SELECT 1 FROM " + quoted + " WHERE " + nulls + " LIMIT 1").fetchone(), "NULL_PRIMARY_KEY_REQUIRES_REVIEW")
+                    # The caller certifies exact live/incoming bytes from the
+                    # authoritative input hashes, only when no WAL or journal
+                    # can contain hidden owner edits. SQLite snapshot headers
+                    # change, so comparing snapshot hashes would miss this case.
+                    # Schema, NULL-PK, integrity and relationship checks remain.
+                    if identical_current:
+                        continue
                     match = _keys("u", "s", primary)
                     missing = "NOT EXISTS(SELECT 1 FROM main." + quoted + " u WHERE " + match + ")"
                     different = "NOT (" + _same("u", "s", names) + ")"
@@ -450,8 +483,40 @@ def _inputs(root):
     return {name: _fingerprint(root / name) for name in paths}
 
 
+def _input_digest(inputs, relative):
+    head, separator, tail = relative.partition("/")
+    files = inputs.get(head)
+    # Existing journal fingerprints use the platform's relative path spelling.
+    return files.get(str(Path(tail)) if separator else "") if isinstance(files, dict) else None
+
+
 def _operations():
     return list(MANAGED) + ["serverdata.db-wal", "serverdata.db-shm", "serverdata.db-journal", BASELINE_FILES, BASELINE, DESCRIPTOR, REBASE_FLAG, MARKER]
+
+
+def _validate_transaction_plan(data, work, reason):
+    """Keep legacy journals valid and narrowly validate untouched static caches."""
+    operations = data.get("operations")
+    _require(isinstance(operations, list) and all(isinstance(item, dict) for item in operations), reason)
+    _require([item.get("path") for item in operations] == _operations(), reason)
+    version = data.get("journal_version", 1)  # Legacy prepared files have no version yet.
+    _require(type(version) is int and version in (1, 2), reason)
+    retained = [item for item in operations if "retain" in item]
+    if version == 1:
+        _require(not retained, reason)
+        return version
+    _require(len(retained) == 1 and all(type(item.get("had_old")) is bool and "new" in item for item in operations), reason)
+    item = retained[0]
+    inputs, incoming = data.get("inputs"), data.get("incoming")
+    _require(item.get("path") == "static" and item.get("retain") is True and item.get("had_old") is True and data.get("mode") == "upgrade", reason)
+    _require(isinstance(inputs, dict) and isinstance(inputs.get("static"), dict) and item.get("new") == inputs["static"], reason)
+    _require(isinstance(incoming, dict) and all(isinstance(name, str) and name != "static" and not name.startswith("static/") for name in incoming), reason)
+    # Retention is never a substitute for publishing incoming files or restoring
+    # an old rollback image. Neither tree may contain a retained cache.
+    for tree in ("next", "rollback"):
+        path = work / tree / "static"
+        _require(not path.exists() and not path.is_symlink(), reason)
+    return version
 
 
 def _coverage(staged):
@@ -554,6 +619,7 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     _require(mode != "fresh" or not any(_is_database(path.relative_to(root).as_posix()) for name in MANAGED for path in _files(root / name)), "FRESH_RUNTIME_ALREADY_HAS_DATABASES")
     inputs = _inputs(root)
     source_hashes = {name: _sha(path) for name, path in incoming.items()}
+    retain_static = mode == "upgrade" and (root / "static").exists() and not (staged / "static").exists()
     private_root = root / META
     private_root.mkdir(mode=0o700, exist_ok=True)
     private_root.chmod(0o700)
@@ -567,7 +633,8 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     # Live snapshots and prepared copies coexist. New source files additionally
     # need their next-tree copy and a bounded stock archive, including on fresh
     # installs where no current tree contributes to the estimate.
-    needed = sum(path.stat().st_size for name in MANAGED + PROTECTED for path in _files(root / name)) * 2 + sum(path.stat().st_size for path in incoming.values()) * 2 + sum(path.stat().st_size for path in _files(root / BASELINE_FILES))
+    live_sizes = {name: sum(path.stat().st_size for path in _files(root / name)) for name in MANAGED + PROTECTED}
+    needed = sum(live_sizes.values()) * 2 - (live_sizes["static"] if retain_static else 0) + sum(path.stat().st_size for path in incoming.values()) * 2 + sum(path.stat().st_size for path in _files(root / BASELINE_FILES))
     _require(shutil.disk_usage(root).free >= needed + 1024 * 1024, "INSUFFICIENT_UPGRADE_SPACE")
     identity = uuid.uuid4().hex
     work = transactions / identity
@@ -576,6 +643,7 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     next_root.mkdir(mode=0o700)
     backup.mkdir(mode=0o700)
     prior = baseline = None
+    snapshot_hashes = {}
     try:
         coverage = _coverage(staged)
         for name in MANAGED + PROTECTED + (MARKER, BASELINE, BASELINE_FILES, DESCRIPTOR, REBASE_FLAG):
@@ -584,10 +652,19 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                 if name in ("userdata.db", "serverstate.db"):
                     _snapshot(source, backup / name)
                 else:
-                    _copy_tree(source, backup, root)
+                    _copy_tree(source, backup, root, snapshot_hashes=snapshot_hashes)
         if mode == "upgrade":
+            incoming_databases = frozenset(dbs)
             for name in MANAGED:
-                _copy_tree(backup / name, next_root, backup)
+                if name == "static" and retain_static:
+                    # The independent pre-upgrade backup above is kept. With no
+                    # incoming cache, publishing a second identical tree would
+                    # only copy and rename owner files that need no change.
+                    continue
+                # These files are created by _merge_database below. Priming
+                # them here produced a whole checked SQLite copy only to
+                # unlink it immediately before creating another copy.
+                _copy_tree(backup / name, next_root, backup, skip_databases=incoming_databases)
         if mode == "upgrade" and (root / BASELINE).is_file() and not (root / REBASE_FLAG).exists():
             prior = _ro(root / BASELINE)
             version = prior.execute("SELECT value FROM meta WHERE key='payload_version'").fetchone()
@@ -608,7 +685,14 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                 if destination.exists():
                     destination.unlink()
                 current = backup / relative if mode == "upgrade" else None
-                result = _merge_database(current, source, destination, relative, prior, baseline, root / BASELINE_FILES, next_root / BASELINE_FILES)
+                identical_current = (mode == "upgrade" and prior is None
+                                     and _input_digest(inputs, relative) == source_hashes[relative]
+                                     and all(_input_digest(inputs, relative + suffix) is None
+                                             for suffix in ("-wal", "-journal")))
+                result = _merge_database(current, source, destination, relative, prior, baseline,
+                                         root / BASELINE_FILES, next_root / BASELINE_FILES,
+                                         current_snapshot_sha=snapshot_hashes.get(relative),
+                                         identical_current=identical_current)
                 for key, value in result.items():
                     totals[key] += value
             elif _is_manifest(relative):
@@ -650,6 +734,11 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
         data = {"transaction_id": identity, "from_version": fromVersion, "to_version": toVersion, "mode": mode,
                 "inputs": inputs, "incoming": source_hashes, "summary": summary,
                 "operations": [{"path": name, "had_old": (root / name).exists(), "new": _fingerprint(next_root / name)} for name in operations]}
+        if retain_static:
+            data["journal_version"] = 2
+            item = next(item for item in data["operations"] if item["path"] == "static")
+            item.update(retain=True, new=inputs["static"])
+            _validate_transaction_plan(data, work, "INVALID_TRANSACTION")
         _atomic_json(work / "prepared.json", data)
         _sync_directory(transactions)
         return summary
@@ -691,8 +780,8 @@ def recover_upgrade(rootPath):
     try:
         journal = json.loads(journal_path.read_text())
         work = _transaction(root, journal["transaction_id"])
-        _require([item["path"] for item in journal["operations"]] == _operations(), "INVALID_RECOVERY_JOURNAL")
-        _require(journal.get("journal_version") == 1 and journal.get("state") in ("COMMITTING", "COMMITTED"), "INVALID_RECOVERY_JOURNAL")
+        _require(type(journal.get("journal_version")) is int and journal["journal_version"] in (1, 2) and journal.get("state") in ("COMMITTING", "COMMITTED"), "INVALID_RECOVERY_JOURNAL")
+        _validate_transaction_plan(journal, work, "INVALID_RECOVERY_JOURNAL")
         if journal["state"] == "COMMITTED" or _committed(root, journal):
             # Once durably committed, subsequent legitimate mod writes must not
             # turn leftover cleanup metadata into a rollback request.
@@ -701,6 +790,8 @@ def recover_upgrade(rootPath):
             _finish(root, work)
             return {"status": "COMMITTED", "to_version": journal["to_version"]}
         for item in reversed(journal["operations"]):
+            if item.get("retain") is True:
+                continue
             relative = item["path"]
             original, live, pending = work / "rollback" / relative, root / relative, work / "next" / relative
             if original.exists():
@@ -725,16 +816,19 @@ def commit_upgrade(rootPath, transaction_id):
     _require(not (root / META / "journal.json").exists(), "RECOVERY_REQUIRED")
     try:
         data = json.loads((work / "prepared.json").read_text())
-        _require(data.get("transaction_id") == transaction_id and [item["path"] for item in data["operations"]] == _operations(), "INVALID_TRANSACTION")
+        _require(data.get("transaction_id") == transaction_id, "INVALID_TRANSACTION")
+        version = _validate_transaction_plan(data, work, "INVALID_TRANSACTION")
         _require(_inputs(root) == data["inputs"], "LIVE_INPUT_CHANGED_BEFORE_COMMIT")
-        _require(all(_fingerprint(work / "next" / item["path"]) == item["new"] for item in data["operations"]), "PREPARED_PAYLOAD_CHANGED")
+        _require(all(_fingerprint(work / "next" / item["path"]) == item["new"] for item in data["operations"] if item.get("retain") is not True), "PREPARED_PAYLOAD_CHANGED")
         for item in data["operations"]:
             (work / "rollback" / item["path"]).parent.mkdir(parents=True, exist_ok=True)
         _sync_tree(work / "rollback")
         _sync_directory(work)
-        data.update(journal_version=1, state="COMMITTING")
+        data.update(journal_version=version, state="COMMITTING")
         _atomic_json(root / META / "journal.json", data)
         for item in data["operations"]:
+            if item.get("retain") is True:
+                continue
             relative = item["path"]
             live, original, pending = root / relative, work / "rollback" / relative, work / "next" / relative
             if live.exists():

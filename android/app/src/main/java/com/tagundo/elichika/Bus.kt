@@ -26,6 +26,8 @@ object Bus {
         private set
     @Volatile var serverStarting = false
         private set
+    @Volatile var preparationPhase = AssetInstaller.PreparationPhase.IDLE
+        private set
 
     private data class Listener(
         val log: (String) -> Unit,
@@ -90,6 +92,15 @@ object Bus {
     /** Includes queued starts while payload/Python preparation runs off-main. */
     fun setStarting(starting: Boolean) {
         serverStarting = starting
+        if (starting && preparationPhase == AssetInstaller.PreparationPhase.FAILED) {
+            preparationPhase = AssetInstaller.PreparationPhase.IDLE
+        }
+        main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
+    }
+
+    /** The installer owns this phase until its atomic work finishes, even after Stop. */
+    fun setPreparationPhase(phase: AssetInstaller.PreparationPhase) {
+        preparationPhase = phase
         main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
     }
 

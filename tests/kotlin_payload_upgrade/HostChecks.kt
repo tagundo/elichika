@@ -115,7 +115,11 @@ fun main(args: Array<String>) {
     check(backend.launchCount==0)
 
     val first=context(temporary,"fresh")
-    AssetInstaller.install(first) {}
+    val phases=mutableListOf<AssetInstaller.PreparationPhase>()
+    val observePhase: (AssetInstaller.PreparationPhase)->Unit = { phases.add(it) }
+    AssetInstaller.install(first,observePhase) {}
+    check(phases.first()==AssetInstaller.PreparationPhase.PREPARING && phases.last()==AssetInstaller.PreparationPhase.IDLE)
+    check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA !in phases) { "Fresh install must not claim to preserve installed mods" }
     check(backend.modes.last()=="fresh")
     check(File(first.filesDir,"installed_version").readText()=="new-2")
     check(!File(first.filesDir,"userdata.db").exists())
@@ -125,8 +129,10 @@ fun main(args: Array<String>) {
     check(config.getBoolean("cdn_cache"))
     val count=backend.applyCount
     val opens=first.assets.opens
-    AssetInstaller.install(first) {}
+    phases.clear()
+    AssetInstaller.install(first,observePhase) {}
     check(backend.applyCount==count && first.assets.opens==opens) { "Same version needlessly copied the payload" }
+    check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA !in phases && phases.last()==AssetInstaller.PreparationPhase.IDLE)
     File(first.filesDir,"assets/db/gl/asset_a_ko.db").delete()
     AssetInstaller.install(first) {}
     check(backend.applyCount==count+1 && backend.modes.last()=="upgrade")
@@ -149,6 +155,7 @@ fun main(args: Array<String>) {
     backend.beforeApply={ root,payload,mode ->
         if (root==upgrade.filesDir) {
             check(mode=="upgrade")
+            check(phases.last()==AssetInstaller.PreparationPhase.UPDATING_GAME_DATA) { "Long merge must expose its active phase" }
             check(File(root,"assets/db/gl/masterdata.db").readText()=="MOD_DB")
             check(File(root,"installed_version").readText()=="old-1")
             check(File(root,"userdata.db").readText()=="KEEP_USER")
@@ -156,7 +163,9 @@ fun main(args: Array<String>) {
             check(!File(payload,"userdata.db").exists() && !File(payload,"config.json").exists() && !File(payload,"serverstate.db").exists())
         }
     }
-    AssetInstaller.install(upgrade) {}
+    phases.clear()
+    AssetInstaller.install(upgrade,observePhase) {}
+    check(phases.last()==AssetInstaller.PreparationPhase.IDLE)
     check(File(upgrade.filesDir,"assets/db/gl/masterdata.db").readText()=="MOD_DB+NEW_DB")
     check(File(upgrade.filesDir,"assets/mod-extra").readText()=="KEEP_EXTRA")
     check(JSONObject(File(upgrade.filesDir,"config.json").readText()).getString("custom")=="KEEP_CONFIG")
@@ -172,13 +181,17 @@ fun main(args: Array<String>) {
     File(retry.filesDir,"installed_version").writeText("old-1")
     backend.beforeApply={ _,_,_-> }
     backend.refused=true
-    check("DATABASE_MAINTENANCE_BUSY" in expectFailure { AssetInstaller.install(retry) {} })
+    phases.clear()
+    check("DATABASE_MAINTENANCE_BUSY" in expectFailure { AssetInstaller.install(retry,observePhase) {} })
+    check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA in phases && phases.last()==AssetInstaller.PreparationPhase.FAILED)
     check(File(retry.filesDir,"installed_version").readText()=="old-1")
     val retained=backend.failedStage!!
     check(retained.exists())
     backend.refused=false; backend.recovered=true
     backend.beforeApply={ root,_,_-> if (root==retry.filesDir) check(!retained.exists()) { "Recovered inputs were not cleaned before retry" } }
-    AssetInstaller.install(retry) {}
+    phases.clear()
+    AssetInstaller.install(retry,observePhase) {}
+    check(phases.first()==AssetInstaller.PreparationPhase.PREPARING && phases.last()==AssetInstaller.PreparationPhase.IDLE)
     check(File(retry.filesDir,"installed_version").readText()=="new-2")
 
     val busy=context(temporary,"busy-before-preparation")
@@ -199,8 +212,10 @@ fun main(args: Array<String>) {
     File(extraction.filesDir,"installed_version").writeText("old-1")
     extraction.assets.failPath="payload/assets/db/gl/masterdata.db"
     val before=backend.applyCount
-    try { AssetInstaller.install(extraction) {}; error("Expected source failure") } catch (_: java.io.IOException) {}
+    phases.clear()
+    try { AssetInstaller.install(extraction,observePhase) {}; error("Expected source failure") } catch (_: java.io.IOException) {}
     check(backend.applyCount==before && File(extraction.filesDir,"installed_version").readText()=="old-1")
+    check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA !in phases && phases.last()==AssetInstaller.PreparationPhase.FAILED)
 
     val missingModule=context(temporary,"missing-module")
     File(missingModule.filesDir,"installed_version").writeText("old-1")

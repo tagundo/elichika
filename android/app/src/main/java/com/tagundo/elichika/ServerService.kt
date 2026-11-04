@@ -66,7 +66,7 @@ class ServerService : Service() {
         val appContext = applicationContext
         Thread({
             try {
-                val prepared = AssetInstaller.install(appContext) { Bus.log(it) }
+                val prepared = AssetInstaller.install(appContext, ::preparationChanged) { Bus.log(it) }
                 if (destroyed) return@Thread
                 // Cold Chaquopy initialization also belongs off the UI thread.
                 PyServers.ensureStarted(appContext, prepared)
@@ -255,6 +255,15 @@ class ServerService : Service() {
         stopSelf()
     }
 
+    private fun preparationChanged(phase: AssetInstaller.PreparationPhase) {
+        Bus.setPreparationPhase(phase)
+        main.post {
+            if (current === this && !destroyed && !closing) {
+                getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification())
+            }
+        }
+    }
+
     private fun cancelAutoStop() {
         autoStop?.let { main.removeCallbacks(it) }
         autoStop = null
@@ -372,7 +381,7 @@ class ServerService : Service() {
             try {
                 check(ServerProcess.awaitStopped(previous)) { "Server did not stop" }
                 Bus.log(getString(R.string.log_reset_restore))
-                AssetInstaller.resetServerData(this) { Bus.log(it) }
+                AssetInstaller.resetServerData(this, ::preparationChanged) { Bus.log(it) }
                 Bus.log(getString(R.string.log_reset_accounts))
                 main.post {
                     if (token != operation) return@post
@@ -436,8 +445,12 @@ class ServerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val minutes = ServerSettings.autoStopMinutes(this)
+        val phase = Bus.preparationPhase
+        val preparing = phase == AssetInstaller.PreparationPhase.PREPARING ||
+            phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA
         val text = when {
-            initializing -> getString(R.string.notif_preparing_text)
+            phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA -> getString(R.string.status_updating_game_data)
+            initializing || preparing -> getString(R.string.notif_preparing_text)
             installing -> getString(R.string.notif_installing_text)
             minutes > 0 -> getString(R.string.notif_auto_stop, minutes)
             else -> getString(R.string.notif_text)
@@ -445,7 +458,7 @@ class ServerService : Service() {
         val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             Notification.Builder(this, CHANNEL) else @Suppress("DEPRECATION") Notification.Builder(this)
         val title = when {
-            initializing -> R.string.notif_preparing
+            initializing || preparing -> R.string.notif_preparing
             installing -> R.string.notif_installing
             else -> R.string.notif_running
         }

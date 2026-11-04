@@ -20,6 +20,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -42,6 +43,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var content: FrameLayout
     private lateinit var statusText: TextView
+    private lateinit var preparationProgress: ProgressBar
     private lateinit var toggle: Button
 
     private lateinit var consolePanel: View
@@ -107,6 +109,7 @@ class MainActivity : AppCompatActivity() {
 
         content = findViewById(R.id.content)
         statusText = findViewById(R.id.txt_status)
+        preparationProgress = findViewById(R.id.progress_preparing)
         toggle = findViewById(R.id.btn_toggle)
         viewerFullscreen = ViewerFullscreen(this,
             listOf(findViewById(R.id.app_header), findViewById(R.id.tabs))) { view ->
@@ -318,12 +321,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateRunning(running: Boolean) {
+        val phase = Bus.preparationPhase
+        val preparing = phase == AssetInstaller.PreparationPhase.PREPARING ||
+            phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA
         toggle.setText(if (running || Bus.serverStarting) R.string.stop_server else R.string.start_server)
         statusText.text = when {
+            phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA -> getString(R.string.status_updating_game_data)
+            phase == AssetInstaller.PreparationPhase.PREPARING -> getString(R.string.status_preparing)
             running -> getString(R.string.status_running)
+            phase == AssetInstaller.PreparationPhase.FAILED -> getString(R.string.status_preparation_failed)
             Bus.serverStarting -> getString(R.string.status_starting)
             else -> getString(R.string.status_stopped)
         }
+        preparationProgress.visibility = if (preparing ||
+            (Bus.serverStarting && phase != AssetInstaller.PreparationPhase.FAILED)) View.VISIBLE else View.GONE
         // If a web tab is showing the offline overlay and the server just came up,
         // swap the overlay for the (now reachable) page.
         if ((running || (currentTab >= 3 && PyServers.isStarted())) &&
