@@ -1,4 +1,4 @@
-name: Paired native Android payload-upgrade benchmark
+name: Native Android SHA-256 backend investigation
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   patch-instrumentation:
-    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-upgrade-benchmark-qa'
+    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-hash-backend-qa'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -38,6 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s tests -p test_patch_payload_upgrade_benchmark_apk.py
+          python3 -m unittest discover -s tests -p test_android_payload_hash_benchmark.py
           mkdir -p instrumentation
           python3 - <<'PY'
           import importlib.util, json, os, re, subprocess
@@ -101,7 +102,7 @@ jobs:
           PATCH_WORK="$(mktemp -d "$RUNNER_TEMP/benchmark-apk-patch.XXXXXX")"
           trap 'rm -rf "$PATCH_WORK"' EXIT
           ORIGINAL=instrumentation-original/app-release-androidTest.apk
-          SCRIPT=tests/android_payload_upgrade_benchmark.py
+          SCRIPT=tests/android_payload_upgrade_hash_benchmark.py
           "$ANDROID_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$ORIGINAL" > "$PATCH_WORK/original-certificate.txt"
           python3 tests/patch_payload_upgrade_benchmark_apk.py certificate --report "$PATCH_WORK/original-certificate.txt"
           python3 tests/patch_payload_upgrade_benchmark_apk.py patch \
@@ -136,7 +137,7 @@ jobs:
 
   android-benchmark:
     needs: patch-instrumentation
-    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-upgrade-benchmark-qa'
+    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-hash-backend-qa'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 50
     env:
@@ -229,9 +230,9 @@ jobs:
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
           adb -s 127.0.0.1:5555 shell id >> evidence/host.txt
 
-      - name: Run fixed-input baseline and optimized engine pair
+      - name: Compare SHA-256 backends only without upgrading game data
         run: >-
-          python3 -u tests/android_payload_upgrade_benchmark_pair.py
+          python3 -u tests/android_payload_hash_backend_runner.py
           --baseline baseline.apk --candidate-dir candidate
           --instrumentation-dir instrumentation --evidence evidence
 
@@ -239,7 +240,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-payload-upgrade-paired-benchmark
+          name: android-sha256-backend-investigation
           path: evidence/
           if-no-files-found: warn
 
