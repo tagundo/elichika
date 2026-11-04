@@ -249,7 +249,9 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
 
 def game_checks():
     from android_release_smoke import Client
-    deadline = time.monotonic() + 480
+    # Full four-locale initialization exceeds eight minutes under QEMU TCG.
+    # Keep the real HTTP readiness and gameplay checks within the VM budget.
+    deadline = time.monotonic() + 900
     while True:
         try:
             with urllib.request.urlopen("http://127.0.0.1:18080/webui/admin/", timeout=5) as response:
