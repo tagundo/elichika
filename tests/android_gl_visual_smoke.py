@@ -69,6 +69,13 @@ def capture(android, evidence, label, report):
     evidence.joinpath(label + ".png").write_bytes(data)
     record = {"label": label, "screenshot": label + ".png", "width": width, "height": height,
               "captured_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if report.get("play_services_warning_dismissed"):
+        # The system dialog was handled for this process. Read the Android UI
+        # again immediately before actual actions, rather than idle-waiting on
+        # every passive screenshot of the animated Unity surface.
+        record["passive_capture"] = True
+        report["captures"].append(record)
+        return
     try:
         root = ui_tree(android, evidence, label)
         record["game_nodes"] = sum(node.get("package") == GAME for node in root.iter("node"))
@@ -340,6 +347,8 @@ def live_tool(args, tool, output, timeout):
                       "Data Download Settings", "Download Confirmation", "Recommended", "Yes", "No", "Start",
                       "Retry", "Agree", "Next", "Touch Screen", "Tap to Start", "Tap To Start"):
             command += ["--label", label]
+        for label in ("Contract", "User Agreement", "Privacy Policy", "Terms of Use"):
+            command += ["--label", label]
     result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     filename = "language-setup.json" if tool == "language_setup.py" else "unity-ui-tree.json"
     path = output / filename
@@ -414,11 +423,11 @@ def observe_live_ui(android, args, report, phase="gl-observation", seconds=120):
     report["live_ui_snapshot_obtained"] = any(tree.get("status") == "SNAPSHOT" for tree in trees)
 
 
-def tap_ready_title(android, args, report, location="control-center", source="touchscreen"):
+def tap_ready_title(android, args, report, location="label-center", source="touchscreen", phase="bootstrap"):
     """Select the observed title input from a fresh runtime component tree."""
     assert location in ("control-center", "label-center")
     assert source in ("touchscreen", "mouse")
-    output = args.evidence / ("gl-ready-title-ui-" + source + "-" + location)
+    output = args.evidence / ("gl-ready-title-ui-" + phase + "-" + source + "-" + location)
     result = live_tool(args, "snapshot.py", output, 50)
     report["ready_title_ui"] = result
     if result.get("status") != "SNAPSHOT":
@@ -472,6 +481,49 @@ def tap_ready_title(android, args, report, location="control-center", source="to
     return True
 
 
+def accept_local_qa_contract(android, args, report, phase):
+    """Advance the observed contract on the disposable localhost QA account."""
+    output = args.evidence / (phase + "-contract-ui")
+    result = live_tool(args, "snapshot.py", output, 50)
+    report[phase + "_contract_ui"] = result
+    if result.get("status") != "SNAPSHOT":
+        return False
+    tree = json.loads((output / "unity-ui-tree.json").read_text())
+    public_labels = {text.get("label") for text in tree.get("texts", [])}
+    # The captured Contract modal disables the full-screen title control behind
+    # it. Its heading may use a text component omitted from this UI reader.
+    blocked_title = [widget for widget in tree.get("widgets", [])
+                     if widget.get("active") is True and widget.get("clickable") is False
+                     and widget.get("geometry", {}) is not None
+                     and widget.get("geometry", {}).get("bounds") == tree.get("gameViewBounds")]
+    scene_proof = "Contract heading" if "Contract" in public_labels else "Observed Agree/No modal over the disabled title control"
+    if not {"Agree", "No"} <= public_labels or not ("Contract" in public_labels or
+            (len(blocked_title) == 1 and public_labels & {"Tap to Start", "Tap To Start"})):
+        report[phase + "_contract_action"] = {"status": "REFUSED", "reason": "Observed contract scene not present"}
+        return False
+    buttons = [widget for widget in tree.get("widgets", []) if widget.get("active") is True
+               and widget.get("clickable") is True and widget.get("geometry")]
+    agree = [widget for widget in buttons if widget.get("labels") == ["Agree"]]
+    no = [widget for widget in buttons if widget.get("labels") == ["No"]]
+    if (len(agree) != 1 or len(no) != 1 or
+            agree[0]["geometry"]["canvasId"] != no[0]["geometry"]["canvasId"]):
+        report[phase + "_contract_action"] = {"status": "REFUSED", "reason": "No unique active contract action pair on the same observed Canvas"}
+        return False
+    widget = agree[0]
+    area = widget.get("inputDiagnostics", {}).get("raycastArea", {})
+    if not isinstance(area, dict) or area.get("active") is not True or area.get("raycastTarget") is not True or not isinstance(area.get("geometry"), dict):
+        report[phase + "_contract_action"] = {"status": "REFUSED", "reason": "Observed Agree raycast target unavailable"}
+        return False
+    b = area["geometry"]["bounds"]
+    point = [round((b[0] + b[2]) / 2), round((b[1] + b[3]) / 2)]
+    android.shell("input", "touchscreen", "swipe", *map(str, point + point), "240")
+    report[phase + "_contract_action"] = {"status": "TAPPED", "label": "Agree", "widget_id": widget["id"],
+        "coordinates": point, "bounds": b, "duration_ms": 240,
+        "scene_evidence": scene_proof,
+        "scope": "Only the synthetic localhost QA account; normal client /terms/agreement flow"}
+    return True
+
+
 def run(args, report):
     android = Android(args.serial, args.evidence)
     assert android.shell("id").startswith("uid=0"), "Disposable Android root diagnostics required"
@@ -513,7 +565,7 @@ def run(args, report):
         capture(android, args.evidence, f"gl-initial-{index:02d}", report)
     if args.prepare_english:
         prepare_english_language(android, args, report, component)
-    if args.tap_surface_center:
+    if args.tap_surface_center and not args.prepare_english:
         root = ui_tree(android, args.evidence, "gl-before-title-tap")
         if args.prepare_english:
             node = observed_game_view(root)
@@ -529,17 +581,12 @@ def run(args, report):
             time.sleep(args.interval)
             capture(android, args.evidence, f"gl-after-title-tap-{index:02d}", report)
     if args.prepare_english:
-        observe_live_ui(android, args, report)
+        observe_live_ui(android, args, report, seconds=30)
         if args.tap_surface_center and account_ids(android) == before and tap_ready_title(android, args, report):
-            observe_live_ui(android, args, report, "gl-after-ready-start", seconds=20)
-            # A second action is allowed only if a new snapshot still proves
-            # the same title. Its point is the measured public text center.
+            observe_live_ui(android, args, report, "gl-after-ready-start", seconds=60)
             if account_ids(android) == before:
-                tap_ready_title(android, args, report, location="label-center")
-            observe_live_ui(android, args, report, "gl-after-touch-label", seconds=20)
-            if account_ids(android) == before:
-                tap_ready_title(android, args, report, location="label-center", source="mouse")
-            observe_live_ui(android, args, report, "gl-after-label-start")
+                if tap_ready_title(android, args, report, phase="retry"):
+                    observe_live_ui(android, args, report, "gl-after-retry-start", seconds=60)
     if args.prepare_new_home:
         report["new_home"] = prepare_new_home(android, before, args.favorite_suit)
         if report["new_home"].get("status") == "PREPARED":
@@ -551,7 +598,16 @@ def run(args, report):
                 time.sleep(args.interval)
                 capture(android, args.evidence, f"gl-after-home-preparation-{index:02d}", report)
             if args.prepare_english:
+                observe_live_ui(android, args, report, "gl-home-restart", seconds=30)
+                if tap_ready_title(android, args, report, phase="home-restart"):
+                    observe_live_ui(android, args, report, "gl-home-after-start", seconds=30)
+                if accept_local_qa_contract(android, args, report, phase="gl-home"):
+                    observe_live_ui(android, args, report, "gl-after-contract", seconds=30)
                 observe_live_ui(android, args, report, "gl-new-home")
+                with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
+                    report["new_home"]["terms_version_after_client"] = connection.execute(
+                        "SELECT terms_of_use_version FROM u_status WHERE user_id=?",
+                        (report["new_home"]["user_id"],)).fetchone()[0]
     pid = android.shell("pidof", "-s", GAME)
     assert pid.isdecimal(), "The GL process is no longer running"
     report["game_pid"] = int(pid)

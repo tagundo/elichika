@@ -41,6 +41,31 @@
             return "unavailable";
         }
     }
+    function eventSystemValues() {
+        const values = {"EventSystem.isFocused": "unavailable", "EventSystem.currentInputModule.class": "unavailable", "EventSystem.currentInputModule.enabled": "unavailable"};
+        try {
+            const cls = findClass("UnityEngine.EventSystems.EventSystem");
+            const currentGetter = cls?.tryMethod("get_current", 0);
+            if (currentGetter == null || !currentGetter.isStatic) return values;
+            const system = nullable(currentGetter.invoke());
+            if (system == null) return values;
+            try {
+                const getter = system.tryMethod("get_isFocused", 0);
+                const value = getter == null ? null : getter.invoke();
+                if (typeof value === "boolean") values["EventSystem.isFocused"] = value;
+            } catch (_) { /* Optional getter unavailable. */ }
+            const moduleGetter = system.tryMethod("get_currentInputModule", 0);
+            const module = moduleGetter == null ? null : nullable(moduleGetter.invoke());
+            if (module == null) return values;
+            values["EventSystem.currentInputModule.class"] = module.class.fullName;
+            try {
+                const getter = module.tryMethod("get_enabled", 0);
+                const value = getter == null ? null : getter.invoke();
+                if (typeof value === "boolean") values["EventSystem.currentInputModule.enabled"] = value;
+            } catch (_) { /* Optional inherited Behaviour getter unavailable. */ }
+        } catch (_) { /* Keep known values only; never serialize native error text. */ }
+        return values;
+    }
     function inspect(expectedThread) {
         if (Il2Cpp.currentThread.id !== expectedThread) throw Error("Not on verified main Unity thread");
         const contextClass = Il2Cpp.corlib.class("System.Threading.SynchronizationContext");
@@ -146,7 +171,8 @@
                 "Input.touchSupported": optionalStaticValue("UnityEngine.Input", "get_touchSupported"),
                 "Input.mousePresent": optionalStaticValue("UnityEngine.Input", "get_mousePresent"),
                 "Input.touchCount": optionalStaticValue("UnityEngine.Input", "get_touchCount"),
-                "Application.isFocused": optionalStaticValue("UnityEngine.Application", "get_isFocused")
+                "Application.isFocused": optionalStaticValue("UnityEngine.Application", "get_isFocused"),
+                ...eventSystemValues()
             },
             limitations: ["Occlusion, custom RaycastArea hit testing, and animation stability are not asserted", "Non-allowlisted display text and object names are omitted"]};
         const specs = [
