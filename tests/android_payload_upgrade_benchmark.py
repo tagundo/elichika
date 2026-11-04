@@ -49,10 +49,8 @@ def _identity(path):
 
 
 def _android_api_level():
-    if hasattr(sys, 'getandroidapilevel'):
-        return sys.getandroidapilevel()
-    # Released Chaquopy builds can omit the CPython Android API helper.
-    # Read the actual Android framework value through the installed bridge.
+    # CPython's Android API helper can describe its build target, rather than
+    # the running device. Use the actual framework value through Chaquopy.
     try:
         from java import jclass
         return int(jclass('android.os.Build$VERSION').SDK_INT)

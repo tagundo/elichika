@@ -37,7 +37,8 @@ class BenchmarkGuardTests(unittest.TestCase):
         args = dict(cache=self.cache, work=self.work, report=self.report,
                     enabled=True, hardware='redroid', abi='arm64-v8a', static_mib=0)
         args.update(changes)
-        with mock.patch.object(benchmark.sys, 'getandroidapilevel', return_value=34, create=True):
+        with mock.patch.dict(sys.modules, {'java': types.SimpleNamespace(
+                jclass=mock.Mock(return_value=types.SimpleNamespace(SDK_INT=34)))}):
             return benchmark._validate_context(**args)
 
     def tiny_apk(self, entries=None, name='fixture.apk'):
@@ -67,35 +68,36 @@ class BenchmarkGuardTests(unittest.TestCase):
 
     def test_context_refuses_non_android_and_old_android(self):
         for api in (28, 0):
-            with self.subTest(api=api), mock.patch.object(benchmark.sys, 'getandroidapilevel', return_value=api, create=True):
+            with self.subTest(api=api), mock.patch.dict(sys.modules, {'java': types.SimpleNamespace(
+                    jclass=mock.Mock(return_value=types.SimpleNamespace(SDK_INT=api)))}):
                 with self.assertRaises(ValueError):
                     benchmark._validate_context(self.cache, self.work, self.report,
                                                 True, 'redroid', 'arm64-v8a', 0)
-        with mock.patch.dict(benchmark.sys.__dict__):
-            benchmark.sys.__dict__.pop('getandroidapilevel', None)
+        with mock.patch.dict(sys.modules, {'java': None}):
             with self.assertRaises(ValueError):
                 benchmark._validate_context(self.cache, self.work, self.report,
                                             True, 'redroid', 'arm64-v8a', 0)
 
-    def test_context_uses_exact_android_framework_api_on_chaquopy_without_sys_helper(self):
+    def test_context_uses_exact_android_framework_api_despite_older_cpython_build_api(self):
         framework = types.SimpleNamespace(SDK_INT=34)
         jclass = mock.Mock(return_value=framework)
         java = types.SimpleNamespace(jclass=jclass)
-        with mock.patch.dict(benchmark.sys.__dict__), mock.patch.dict(sys.modules, {'java': java}):
-            benchmark.sys.__dict__.pop('getandroidapilevel', None)
+        with mock.patch.object(benchmark.sys, 'getandroidapilevel', return_value=21, create=True) as build_api, \
+                mock.patch.dict(sys.modules, {'java': java}):
             benchmark._validate_context(self.cache, self.work, self.report,
                                         True, 'redroid', 'arm64-v8a', 0)
             self.assertEqual(benchmark._android_api_level(), 34)
+            build_api.assert_not_called()
         self.assertEqual(jclass.call_args_list, [mock.call('android.os.Build$VERSION')] * 2)
 
-    def test_chaquopy_runtime_fallback_refuses_missing_framework_and_low_api(self):
+    def test_runtime_guard_refuses_missing_framework_and_low_api(self):
         providers = [None, types.SimpleNamespace(jclass=mock.Mock(side_effect=ImportError)),
                      types.SimpleNamespace(jclass=mock.Mock(return_value=types.SimpleNamespace())),
                      types.SimpleNamespace(jclass=mock.Mock(return_value=types.SimpleNamespace(SDK_INT=28)))]
         for java in providers:
-            with self.subTest(java=java), mock.patch.dict(benchmark.sys.__dict__), \
+            with self.subTest(java=java), \
+                    mock.patch.object(benchmark.sys, 'getandroidapilevel', return_value=34, create=True), \
                     mock.patch.dict(sys.modules, {'java': java}):
-                benchmark.sys.__dict__.pop('getandroidapilevel', None)
                 with self.assertRaisesRegex(ValueError, '^benchmark_requires_android_runtime$'):
                     benchmark._validate_context(self.cache, self.work, self.report,
                                                 True, 'redroid', 'arm64-v8a', 0)
