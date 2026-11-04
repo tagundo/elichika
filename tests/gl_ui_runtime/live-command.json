@@ -1,1 +1,1 @@
-{"run_id":"41775960780","sequence":6,"action":"tap_widget","widget_id":244042,"expected_class":"LLAS.Components.UI.ProductButton","expected_bounds":[1181.16943359375,102.84857177734375,1273.2833251953125,194.9625244140625]}
+{"run_id":"41775960780","sequence":7,"action":"set_favorite_suit","suit_id":321207}
