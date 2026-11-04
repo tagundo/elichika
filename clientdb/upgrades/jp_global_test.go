@@ -306,6 +306,30 @@ func TestJapaneseContentSuitTitlesFollowMemberIDsAndPreserveCustomTitles(t *test
 	assertJapaneseContentSnapshot(t, beforeCustom)
 }
 
+func TestJapaneseContentRejectsDictionarySourceAliasesBeforeMutation(t *testing.T) {
+	for _, link := range []struct {
+		name   string
+		create func(string, string) error
+	}{{"hardlink", os.Link}, {"symlink", os.Symlink}} {
+		t.Run(link.name, func(t *testing.T) {
+			f := newJapaneseContentFixture(t)
+			target := f.glDictionaries[0]
+			if err := os.Remove(target); err != nil {
+				t.Fatal(err)
+			}
+			if err := link.create(f.jpDictionary, target); err != nil {
+				t.Skipf("%s unavailable: %v", link.name, err)
+			}
+			before := japaneseContentSnapshot(t, f.allPaths())
+			_, err := JapaneseContent(f.root)
+			if err == nil || !strings.Contains(err.Error(), "JP source and GL target must be different files") {
+				t.Errorf("expected dictionary source alias rejection, got %v", err)
+			}
+			assertJapaneseContentSnapshot(t, before)
+		})
+	}
+}
+
 func TestJapaneseContentPreflightsAllDatabasesBeforeMutation(t *testing.T) {
 	for _, problem := range []string{"late asset schema mismatch", "late dictionary schema mismatch", "missing target", "missing source"} {
 		t.Run(problem, func(t *testing.T) {

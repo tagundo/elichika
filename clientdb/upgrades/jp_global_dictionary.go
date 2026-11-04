@@ -108,6 +108,19 @@ func prepareJPGlobalDictionaries(assetRoot string) ([]jpGlobalDictionaryPlan, er
 				return nil, fmt.Errorf("missing required global dictionary: %s", path)
 			}
 			if sourceExists && exists {
+				// A writable GL alias must not turn the read-only JP source
+				// into a translation target. Check before any DB is changed.
+				sourceInfo, err := os.Stat(sourcePath)
+				if err != nil {
+					return nil, err
+				}
+				targetInfo, err := os.Stat(path)
+				if err != nil {
+					return nil, err
+				}
+				if os.SameFile(sourceInfo, targetInfo) {
+					return nil, fmt.Errorf("%s: JP source and GL target must be different files", path)
+				}
 				plans = append(plans, jpGlobalDictionaryPlan{path: path})
 				paired = true
 			}
