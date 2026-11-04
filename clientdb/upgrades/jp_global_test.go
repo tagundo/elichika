@@ -229,14 +229,23 @@ func TestJapaneseContentImportsMissingRowsAndPreservesCustomizations(t *testing.
 	assertJapaneseContentSnapshot(t, beforeRepeat)
 }
 
-func TestJapaneseContentSuitTitlesFollowMemberIDsAndPreserveCustomTitles(t *testing.T) {
+func TestJapaneseContentSuitTitlesFollowMemberNameReferencesAndPreserveCustomTitles(t *testing.T) {
 	f := newJapaneseContentFixture(t)
 	db := testDatabase(t, f.jpMaster)
 	execTestSQL(t, db,
 		`CREATE TABLE m_suit (id INTEGER PRIMARY KEY, member_m_id INTEGER, name TEXT)`,
-		// These actual JP suit references point to dictionary names containing
-		// the opposite character. The suit's member ID remains authoritative.
+		`CREATE TABLE m_member (id INTEGER PRIMARY KEY, name TEXT)`,
+		// These original references are correct: member IDs and name-key
+		// suffixes are independent. Owner 211 is Mia through name key 212.
+		`INSERT INTO m_member VALUES (211, 'k.m_dic_member_name_212'), (212, 'k.m_dic_member_name_211')`,
 		`INSERT INTO m_suit VALUES (321107, 211, 'k.suit_name_321207'), (321207, 212, 'k.suit_name_321107')`,
+	)
+	db.Close()
+	db = testDatabase(t, f.glMaster)
+	execTestSQL(t, db,
+		`CREATE TABLE m_suit (id INTEGER PRIMARY KEY, member_m_id INTEGER, name TEXT)`,
+		`CREATE TABLE m_member (id INTEGER PRIMARY KEY, name TEXT)`,
+		`INSERT INTO m_member VALUES (211, 'k.m_dic_member_name_212'), (212, 'k.m_dic_member_name_211')`,
 	)
 	db.Close()
 	db = testDatabase(t, f.jpDictionary)
@@ -256,7 +265,7 @@ func TestJapaneseContentSuitTitlesFollowMemberIDsAndPreserveCustomTitles(t *test
 			"m_dic_member_name_212": locale.mia,
 			// Reproduce the exact previously generated wrong owner-211 title;
 			// leave owner 212 absent to also cover the initial localization.
-			"suit_name_321207": locale.prefix + " " + locale.mia,
+			"suit_name_321207": locale.prefix + " " + locale.lanzhu,
 		} {
 			if _, err := db.Exec(`INSERT INTO m_dictionary (id, message) VALUES (?, ?)`, key, message); err != nil {
 				t.Fatal(err)
@@ -264,12 +273,13 @@ func TestJapaneseContentSuitTitlesFollowMemberIDsAndPreserveCustomTitles(t *test
 		}
 		db.Close()
 	}
+	beforeSources := japaneseContentSnapshot(t, append([]string{f.jpMaster, f.jpDictionary}, f.jpAssets...))
 	assertTitles := func() {
 		t.Helper()
 		for i, locale := range locales {
 			assertJapaneseContentRows(t, f.glDictionaries[i], `SELECT id, message FROM m_dictionary WHERE id LIKE 'suit_name_%' ORDER BY id`, [][]any{
-				{"suit_name_321107", locale.prefix + " " + locale.mia},
-				{"suit_name_321207", locale.prefix + " " + locale.lanzhu},
+				{"suit_name_321107", locale.prefix + " " + locale.lanzhu},
+				{"suit_name_321207", locale.prefix + " " + locale.mia},
 			})
 		}
 	}
@@ -278,10 +288,15 @@ func TestJapaneseContentSuitTitlesFollowMemberIDsAndPreserveCustomTitles(t *test
 		t.Fatalf("initial suit names and known wrong titles: report=%+v err=%v", report, err)
 	}
 	assertTitles()
+	assertJapaneseContentSnapshot(t, beforeSources)
+	assertJapaneseContentRows(t, f.glMaster, `SELECT s.id, s.member_m_id, s.name, m.name FROM m_suit s JOIN m_member m ON m.id = s.member_m_id ORDER BY s.id`, [][]any{
+		{int64(321107), int64(211), "k.suit_name_321207", "k.m_dic_member_name_212"},
+		{int64(321207), int64(212), "k.suit_name_321107", "k.m_dic_member_name_211"},
+	})
 	// An already migrated database can also contain the reverse legacy title.
 	for i, locale := range locales {
 		db = testDatabase(t, f.glDictionaries[i])
-		if _, err := db.Exec(`UPDATE m_dictionary SET message = ? WHERE id = 'suit_name_321107'`, locale.prefix+" "+locale.lanzhu); err != nil {
+		if _, err := db.Exec(`UPDATE m_dictionary SET message = ? WHERE id = 'suit_name_321107'`, locale.prefix+" "+locale.mia); err != nil {
 			t.Fatal(err)
 		}
 		db.Close()
@@ -291,6 +306,7 @@ func TestJapaneseContentSuitTitlesFollowMemberIDsAndPreserveCustomTitles(t *test
 		t.Fatalf("repair reverse legacy title after migration: report=%+v err=%v", report, err)
 	}
 	assertTitles()
+	assertJapaneseContentSnapshot(t, beforeSources)
 	for i, path := range f.glDictionaries {
 		db = testDatabase(t, path)
 		if _, err := db.Exec(`UPDATE m_dictionary SET message = ? WHERE id LIKE 'suit_name_%'`, "Owner's custom suit title {0} "+locales[i].mia); err != nil {
@@ -304,6 +320,45 @@ func TestJapaneseContentSuitTitlesFollowMemberIDsAndPreserveCustomTitles(t *test
 		t.Fatalf("custom titles should remain unchanged: report=%+v err=%v", report, err)
 	}
 	assertJapaneseContentSnapshot(t, beforeCustom)
+}
+
+func TestJapaneseContentSuitTitlesHonorGlobalMemberNameReference(t *testing.T) {
+	f := newJapaneseContentFixture(t)
+	db := testDatabase(t, f.jpMaster)
+	execTestSQL(t, db,
+		`CREATE TABLE m_suit (id INTEGER PRIMARY KEY, member_m_id INTEGER, name TEXT)`,
+		`CREATE TABLE m_member (id INTEGER PRIMARY KEY, name TEXT)`,
+		`INSERT INTO m_member VALUES (211, 'k.m_dic_member_name_212')`,
+		`INSERT INTO m_suit VALUES (321107, 211, 'k.suit_name_321207')`,
+	)
+	db.Close()
+	db = testDatabase(t, f.glMaster)
+	execTestSQL(t, db,
+		`CREATE TABLE m_member (id INTEGER PRIMARY KEY, name TEXT)`,
+		`INSERT INTO m_member VALUES (211, 'k.owner_member_name')`,
+	)
+	db.Close()
+	db = testDatabase(t, f.jpDictionary)
+	execTestSQL(t, db,
+		`INSERT INTO m_dictionary VALUES ('m_dic_member_name_211', 'ショウ・ランジュ'), ('m_dic_member_name_212', 'ミア・テイラー'), ('suit_name_321207', 'ODAIBAゲーマーズ Tシャツ ミア・テイラー')`,
+	)
+	db.Close()
+	for i, language := range []string{"en", "ko", "zh"} {
+		db = testDatabase(t, f.glDictionaries[i])
+		if _, err := db.Exec(`INSERT INTO m_dictionary (id,message) VALUES ('owner_member_name', ?)`, "Owner's chosen member name "+language); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+	}
+	if _, err := JapaneseContent(f.root); err != nil {
+		t.Fatal(err)
+	}
+	for i, prefix := range []string{"ODAIBA Gamers T-Shirt", "오다이바 게이머즈 T셔츠", "ODAIBA Gamers T恤"} {
+		assertJapaneseContentRows(t, f.glDictionaries[i], `SELECT message FROM m_dictionary WHERE id='suit_name_321207'`, [][]any{
+			{prefix + " Owner's chosen member name " + []string{"en", "ko", "zh"}[i]},
+		})
+	}
+	assertJapaneseContentRows(t, f.glMaster, `SELECT name FROM m_member WHERE id=211`, [][]any{{"k.owner_member_name"}})
 }
 
 func TestJapaneseContentRejectsDictionarySourceAliasesBeforeMutation(t *testing.T) {
