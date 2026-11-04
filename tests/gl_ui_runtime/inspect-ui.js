@@ -55,6 +55,16 @@
             }
             throw Error("Transform hierarchy exceeds bound");
         }
+        function overlayWorldRect(t) {
+            const p = vec(call(t, "get_position"));
+            const s = vec(call(t, "get_lossyScale"));
+            const q = call(t, "get_rotation");
+            const rotation = ["x", "y", "z", "w"].map(k => Number(q.field(k).value));
+            if (rotation.slice(0, 3).some(v => Math.abs(v) > 1e-6) || Math.abs(Math.abs(rotation[3]) - 1) > 1e-6) throw Error("Rotated Overlay transform unsupported");
+            if (!(s[0] > 0 && s[1] > 0)) throw Error("Non-positive Overlay scale unsupported");
+            const r = rect(call(t, "get_rect"));
+            return [p[0] + r[0] * s[0], p[1] + r[1] * s[1], r[2] * s[0], r[3] * s[1]];
+        }
         function geometry(component) {
             const go = call(component, "get_gameObject");
             const t = call(component, "get_transform");
@@ -64,19 +74,16 @@
             if (!active(canvas) || !active(root)) throw Error("Inactive Canvas");
             if (call(root, "get_targetDisplay") !== 0) throw Error("Non-primary display");
             const mode = number(call(root, "get_renderMode"));
-            const pixelRect = rect(call(root, "get_pixelRect"));
-            if (!full(pixelRect, w, h)) throw Error("Canvas pixelRect differs from full Game view");
-            let points, cameraInfo = null, algorithm;
+            // Canvas.get_pixelRect was stripped from this exact GL APK.
+            // Verify the viewport through APIs present in its original metadata.
+            let points, cameraInfo = null, canvasViewport, algorithm;
             if (mode === 0) {
-                // Overlay only: world XY pixels from observed RectTransform data.
-                const p = vec(call(t, "get_position"));
-                const s = vec(call(t, "get_lossyScale"));
-                const q = call(t, "get_rotation");
-                const rotation = ["x", "y", "z", "w"].map(k => Number(q.field(k).value));
-                if (rotation.slice(0, 3).some(v => !near(v, 0)) || !near(Math.abs(rotation[3]), 1)) throw Error("Rotated Overlay transform unsupported");
-                if (!(s[0] > 0 && s[1] > 0)) throw Error("Non-positive Overlay scale unsupported");
-                const r = rect(call(t, "get_rect"));
-                points = [[r[0], r[1]], [r[0] + r[2], r[1] + r[3]]].map(([x, y]) => [p[0] + x * s[0], p[1] + y * s[1]]);
+                // Overlay world XY is pixel space only with this measured root.
+                const rootRect = overlayWorldRect(call(root, "get_transform"));
+                if (!full(rootRect, w, h)) throw Error("Overlay root RectTransform differs from full Game view");
+                canvasViewport = {source: "root-RectTransform", rect: rootRect};
+                const r = overlayWorldRect(t);
+                points = [[r[0], r[1]], [r[0] + r[2], r[1] + r[3]]];
                 algorithm = "overlay-position-rect-lossyScale";
             } else if (mode === 1 && opt.allowScreenSpaceCamera) {
                 // Use only the camera actually assigned to this root Canvas.
@@ -84,8 +91,20 @@
                 if (camera == null || !active(camera)) throw Error("Canvas worldCamera absent or inactive");
                 if (!call(camera, "get_orthographic")) throw Error("Perspective camera unsupported");
                 if (call(camera, "get_targetDisplay") !== 0 || nullable(call(camera, "get_targetTexture")) != null) throw Error("Camera output is not primary display");
-                const cameraRect = rect(call(camera, "get_pixelRect"));
+                let cameraRect, viewportSource;
+                const pixelRectGetter = camera.tryMethod("get_pixelRect", 0);
+                if (pixelRectGetter != null) {
+                    cameraRect = rect(pixelRectGetter.invoke());
+                    viewportSource = "Camera.pixelRect";
+                } else {
+                    // These exact normalized-viewport APIs also exist in the APK.
+                    const normalized = rect(call(camera, "get_rect"));
+                    if (normalized.some((v, i) => Math.abs(v - [0, 0, 1, 1][i]) > 1e-6) || call(camera, "get_pixelWidth") !== w || call(camera, "get_pixelHeight") !== h) throw Error("Camera normalized viewport/dimensions differ from full Game view");
+                    cameraRect = [normalized[0] * w, normalized[1] * h, normalized[2] * w, normalized[3] * h];
+                    viewportSource = "Camera.rect+pixelWidth+pixelHeight";
+                }
                 if (!full(cameraRect, w, h)) throw Error("Camera viewport differs from full Game view");
+                canvasViewport = {source: viewportSource, rect: cameraRect};
                 const corners = Il2Cpp.array(Vector3, 4);
                 t.method("GetWorldCorners", 1).invoke(corners); // Fills our new array, never the component.
                 points = [];
@@ -94,16 +113,19 @@
                     if (!(p[2] > 0)) throw Error("UI corner behind Canvas camera");
                     points.push(p.slice(0, 2));
                 }
-                cameraInfo = {id: id(camera), orthographic: true, pixelRect: cameraRect};
+                cameraInfo = {id: id(camera), orthographic: true, pixelRect: cameraRect, viewportSource};
                 algorithm = "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint";
             } else {
                 throw Error("Canvas mode unsupported or camera opt-in absent: " + mode);
             }
             const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
-            const b = [left + Math.min(...xs), top + h - Math.max(...ys), left + Math.max(...xs), top + h - Math.min(...ys)];
-            if (!b.every(Number.isFinite) || !(b[2] > b[0] && b[3] > b[1])) throw Error("Invalid UI rectangle");
-            if (b[0] < left || b[1] < top || b[2] > right || b[3] > bottom) throw Error("Partially clipped UI rectangle unsupported");
-            return {bounds: b, canvasId: id(root), renderMode: mode, canvasPixelRect: pixelRect, camera: cameraInfo, algorithm};
+            const rawBounds = [left + Math.min(...xs), top + h - Math.max(...ys), left + Math.max(...xs), top + h - Math.min(...ys)];
+            if (!rawBounds.every(Number.isFinite) || !(rawBounds[2] > rawBounds[0] && rawBounds[3] > rawBounds[1])) throw Error("Invalid UI rectangle");
+            const clipTolerancePx = 0.1;
+            if (rawBounds[0] < left - clipTolerancePx || rawBounds[1] < top - clipTolerancePx || rawBounds[2] > right + clipTolerancePx || rawBounds[3] > bottom + clipTolerancePx) throw Error("Partially clipped UI rectangle unsupported");
+            const b = [Math.max(left, rawBounds[0]), Math.max(top, rawBounds[1]), Math.min(right, rawBounds[2]), Math.min(bottom, rawBounds[3])];
+            if (!(b[2] > b[0] && b[3] > b[1])) throw Error("UI rectangle outside Game view");
+            return {bounds: b, rawBounds, clipTolerancePx, clampedToGameView: b.some((v, i) => v !== rawBounds[i]), canvasId: id(root), renderMode: mode, canvasViewport, camera: cameraInfo, algorithm};
         }
         const report = {schema: 1, status: "SNAPSHOT", mainThreadId: expectedThread,
             screen: [w, h], gameViewBounds: opt.gameViewBounds, classes: [], widgets: [], texts: [],

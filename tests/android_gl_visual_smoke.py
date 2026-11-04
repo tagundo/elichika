@@ -103,8 +103,6 @@ def capture(android, evidence, label, report):
 
 def prepare_new_home(android, before, favorite_suit):
     """Use ordinary API calls for the one account actually created by the game."""
-    android.shell("am", "force-stop", GAME)
-    time.sleep(2)
     with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
         created = {row[0] for row in connection.execute("SELECT user_id FROM u_status")} - before
         if len(created) != 1:
@@ -120,6 +118,13 @@ def prepare_new_home(android, before, favorite_suit):
         auth = connection.execute("SELECT session_key,command_id FROM u_authentication WHERE user_id=?", (uid,)).fetchone()
         if auth is None or auth[0] is None or len(auth[0]) != 32:
             return {"status": "SKIPPED", "reason": "The game has not established an authenticated session", "user_id": uid}
+    android.shell("am", "force-stop", GAME)
+    time.sleep(2)
+    # The game may have completed another request during the read-only checks.
+    # Read the final sequence only after its process has stopped.
+    with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
+        auth = connection.execute("SELECT session_key,command_id FROM u_authentication WHERE user_id=?", (uid,)).fetchone()
+        assert auth is not None and auth[0] is not None and len(auth[0]) == 32
         session, command = bytes(auth[0]), auth[1]
     with closing(database_from_bytes(android.read(f"{FILES}/assets/db/gl/masterdata.db"))) as master:
         owners = dict(master.execute("SELECT id,member_m_id FROM m_suit WHERE id IN (300207,321107,321207)"))
@@ -333,7 +338,7 @@ def live_tool(args, tool, output, timeout):
         for label in ("English", "한국어", "OK", "Cancel", "Confirm", "Download", "Download All",
                       "Minimum", "Full Download", "Light Download", "Light Download (Auto-delete story data)",
                       "Data Download Settings", "Download Confirmation", "Recommended", "Yes", "No", "Start",
-                      "Retry", "Agree", "Next", "Touch Screen"):
+                      "Retry", "Agree", "Next", "Touch Screen", "Tap to Start", "Tap To Start"):
             command += ["--label", label]
     result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     filename = "language-setup.json" if tool == "language_setup.py" else "unity-ui-tree.json"
@@ -408,6 +413,57 @@ def observe_live_ui(android, args, report, phase="gl-observation"):
     report["live_ui_snapshot_obtained"] = any(tree.get("status") == "SNAPSHOT" for tree in trees)
 
 
+def tap_ready_title(android, args, report):
+    """Select the observed title input from a fresh runtime component tree."""
+    output = args.evidence / "gl-ready-title-ui"
+    result = live_tool(args, "snapshot.py", output, 50)
+    report["ready_title_ui"] = result
+    if result.get("status") != "SNAPSHOT":
+        return False
+    tree = json.loads((output / "unity-ui-tree.json").read_text())
+    controls = [widget for widget in tree.get("widgets", [])
+                if widget.get("active") is True and widget.get("geometry")
+                and widget.get("interactable") is not False
+                and (widget.get("clickable") is True or widget.get("interactable") is True)]
+    # The observed title consists of the start area and two corner controls.
+    # An extra modal or a changed layout must not inherit this selector.
+    if len(controls) != 3:
+        report["ready_title_tap"] = {"status": "REFUSED", "reason": "Observed three-control title layout changed"}
+        return False
+    choices = {}
+    for text in tree.get("texts", []):
+        if text.get("label") not in ("Tap to Start", "Tap To Start") or not text.get("geometry"):
+            continue
+        tb = text["geometry"]["bounds"]
+        tx, ty = (tb[0] + tb[2]) / 2, (tb[1] + tb[3]) / 2
+        matches = []
+        for widget in controls:
+            geometry = widget.get("geometry")
+            if (widget.get("active") is not True or not geometry or
+                widget.get("interactable") is False or
+                not (widget.get("clickable") is True or widget.get("interactable") is True) or
+                geometry["canvasId"] != text["geometry"]["canvasId"]):
+                continue
+            b = geometry["bounds"]
+            if b[0] <= tx <= b[2] and b[1] <= ty <= b[3]:
+                matches.append(((b[2] - b[0]) * (b[3] - b[1]), widget))
+        if matches:
+            smallest = min(area for area, _ in matches)
+            precise = [widget for area, widget in matches if abs(area - smallest) < 0.01]
+            if len(precise) == 1:
+                choices[precise[0]["id"]] = precise[0]
+    if len(choices) != 1:
+        report["ready_title_tap"] = {"status": "REFUSED", "reason": "No unique clickable control containing the observed title label"}
+        return False
+    widget = next(iter(choices.values()))
+    b = widget["geometry"]["bounds"]
+    point = [int((b[0] + b[2]) / 2), int((b[1] + b[3]) / 2)]
+    android.shell("input", "tap", *map(str, point))
+    report["ready_title_tap"] = {"status": "TAPPED", "widget_id": widget["id"], "bounds": b,
+        "coordinates": point, "source": "fresh Unity UI tree; unique smallest clickable rectangle containing the exact title text"}
+    return True
+
+
 def run(args, report):
     android = Android(args.serial, args.evidence)
     assert android.shell("id").startswith("uid=0"), "Disposable Android root diagnostics required"
@@ -466,17 +522,20 @@ def run(args, report):
             capture(android, args.evidence, f"gl-after-title-tap-{index:02d}", report)
     if args.prepare_english:
         observe_live_ui(android, args, report)
+        if args.tap_surface_center and account_ids(android) == before and tap_ready_title(android, args, report):
+            observe_live_ui(android, args, report, "gl-after-ready-start")
     if args.prepare_new_home:
         report["new_home"] = prepare_new_home(android, before, args.favorite_suit)
-        if args.prepare_english:
-            report["play_services_warning_dismissed"] = False
-            report["game_launch_generation"] = report.get("game_launch_generation", 0) + 1
-        android.shell("am", "start", "-W", "-n", component, timeout=90)
-        for index in range(3):
-            time.sleep(args.interval)
-            capture(android, args.evidence, f"gl-after-home-preparation-{index:02d}", report)
-        if args.prepare_english and report["new_home"].get("status") == "PREPARED":
-            observe_live_ui(android, args, report, "gl-new-home")
+        if report["new_home"].get("status") == "PREPARED":
+            if args.prepare_english:
+                report["play_services_warning_dismissed"] = False
+                report["game_launch_generation"] = report.get("game_launch_generation", 0) + 1
+            android.shell("am", "start", "-W", "-n", component, timeout=90)
+            for index in range(3):
+                time.sleep(args.interval)
+                capture(android, args.evidence, f"gl-after-home-preparation-{index:02d}", report)
+            if args.prepare_english:
+                observe_live_ui(android, args, report, "gl-new-home")
     pid = android.shell("pidof", "-s", GAME)
     assert pid.isdecimal(), "The GL process is no longer running"
     report["game_pid"] = int(pid)
