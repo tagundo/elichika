@@ -66,6 +66,40 @@
         } catch (_) { /* Keep known values only; never serialize native error text. */ }
         return values;
     }
+    // Strict interior subset of the original TriangleRaycastArea shape predicate.
+    // Inputs are current projected UI vertices/bounds, never screenshot coordinates.
+    function strictTriangleContains(vertices, point) {
+        if (!Array.isArray(vertices) || vertices.length !== 3 ||
+            !vertices.every(v => Array.isArray(v) && v.length === 2 && v.every(Number.isFinite)) ||
+            !Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite)) return false;
+        const [a, b, c] = vertices;
+        const ab = [b[0] - a[0], b[1] - a[1]];
+        const ac = [c[0] - a[0], c[1] - a[1]];
+        const ap = [point[0] - a[0], point[1] - a[1]];
+        const determinant = ab[0] * ac[1] - ab[1] * ac[0];
+        if (!Number.isFinite(determinant) || Math.abs(determinant) <= 1e-6) return false;
+        const wb = (ap[0] * ac[1] - ap[1] * ac[0]) / determinant;
+        const wc = (ab[0] * ap[1] - ab[1] * ap[0]) / determinant;
+        const wa = 1 - wb - wc;
+        return [wa, wb, wc].every(weight => Number.isFinite(weight) && weight > 1e-6);
+    }
+    function selectTriangleHitCandidate(vertices, bounds, gameViewBounds) {
+        const validBounds = b => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite) && b[2] > b[0] && b[3] > b[1];
+        if (!validBounds(bounds) || !validBounds(gameViewBounds) ||
+            !Array.isArray(vertices) || vertices.length !== 3 ||
+            !vertices.every(v => Array.isArray(v) && v.length === 2 && v.every(Number.isFinite))) return null;
+        const centroid = [0, 1].map(axis => vertices.reduce((sum, v) => sum + v[axis], 0) / 3);
+        const candidates = [
+            {point: centroid.map(Math.round), source: "projected-triangle-centroid-rounded"},
+            {point: [Math.round((bounds[0] + bounds[2]) / 2), Math.round((bounds[1] + bounds[3]) / 2)], source: "measured-rectangle-center-rounded"}
+        ];
+        const inside = (point, b) => point[0] > b[0] && point[0] < b[2] && point[1] > b[1] && point[1] < b[3];
+        for (const candidate of candidates) {
+            if (inside(candidate.point, bounds) && inside(candidate.point, gameViewBounds) &&
+                strictTriangleContains(vertices, candidate.point)) return {...candidate, centroid};
+        }
+        return null;
+    }
     function inspect(expectedThread) {
         if (Il2Cpp.currentThread.id !== expectedThread) throw Error("Not on verified main Unity thread");
         const contextClass = Il2Cpp.corlib.class("System.Threading.SynchronizationContext");
@@ -165,6 +199,59 @@
             if (!(b[2] > b[0] && b[3] > b[1])) throw Error("UI rectangle outside Game view");
             return {bounds: b, rawBounds, clipTolerancePx, clampedToGameView: b.some((v, i) => v !== rawBounds[i]), canvasId: id(root), renderMode: mode, canvasViewport, camera: cameraInfo, algorithm};
         }
+        function verifiedTriangleHitPoint(area, measured) {
+            // Exact original TriangleRaycastArea shape; do not invoke its
+            // IsRaycastLocationValid/Graphic.Raycast: those can write caches.
+            if (area.class.fullName !== "LLAS.Components.TriangleRaycastArea" || !active(area) ||
+                measured == null || measured.renderMode !== 1 || measured.camera == null) throw Error("Triangle camera geometry unavailable");
+            const transform = call(area, "get_transform");
+            if (transform.class.fullName !== "UnityEngine.RectTransform") throw Error("Triangle RectTransform unavailable");
+            const canvas = parentComponent(call(area, "get_gameObject"), Canvas);
+            if (canvas == null || !active(canvas)) throw Error("Triangle Canvas unavailable");
+            const root = call(canvas, "get_rootCanvas");
+            if (!active(root) || number(call(root, "get_renderMode")) !== 1 || call(root, "get_targetDisplay") !== 0) throw Error("Triangle Canvas mismatch");
+            const camera = nullable(call(root, "get_worldCamera"));
+            if (camera == null || !active(camera) || id(camera) !== measured.camera.id ||
+                !call(camera, "get_orthographic") || call(camera, "get_targetDisplay") !== 0 ||
+                nullable(call(camera, "get_targetTexture")) != null) throw Error("Triangle assigned camera mismatch");
+            // GetLocalCorners writes only our new array, not area.localCorners.
+            // get_transform avoids Graphic.get_rectTransform's component cache.
+            const ownedCorners = Il2Cpp.array(Vector3, 4);
+            transform.method("GetLocalCorners", 1).invoke(ownedCorners);
+            const corners = [0, 1, 2, 3].map(i => vec(ownedCorners.get(i)));
+            const pivot = call(transform, "get_pivot");
+            const pivotX = Number(pivot.field("x").value);
+            if (!Number.isFinite(pivotX) || !corners.every(v => v.every(Number.isFinite))) throw Error("Triangle local geometry invalid");
+            // Native Vector3.Lerp clamps t to [0,1]. Native vertices are bottom
+            // corners0/3 and Lerp(top corners1/2, pivot.x), in this order.
+            const t = Math.max(0, Math.min(1, pivotX));
+            const apex = [0, 1, 2].map(axis => corners[1][axis] + t * (corners[2][axis] - corners[1][axis]));
+            const localTriangle = [corners[0], apex, corners[3]];
+            const makeOwnedVector3 = values => {
+                const value = new Il2Cpp.ValueType(Memory.alloc(Vector3.valueTypeSize), Vector3.type);
+                // Writes are restricted to this freshly allocated temporary.
+                ["x", "y", "z"].forEach((key, i) => { value.field(key).value = values[i]; });
+                return value;
+            };
+            const transformPoint = transform.method("TransformPoint", 1).overload("UnityEngine.Vector3");
+            const project = camera.method("WorldToScreenPoint", 1).overload("UnityEngine.Vector3");
+            const screenTriangle = localTriangle.map(v => {
+                const world = transformPoint.invoke(makeOwnedVector3(v));
+                const screen = vec(project.invoke(world));
+                if (!screen.every(Number.isFinite) || !(screen[2] > 0)) throw Error("Triangle projection invalid");
+                return [left + screen[0], top + h - screen[1]];
+            });
+            // Orthographic projection is affine: projected centroid lies in the
+            // same actual triangle. Verify the exact integer point used by adb.
+            const hit = selectTriangleHitCandidate(screenTriangle, measured.bounds, opt.gameViewBounds);
+            if (hit == null) throw Error("No strict interior triangle pixel");
+            return {kind: "TriangleRaycastArea.local-corners-pivot.strict-interior.v1", point: hit.point,
+                candidate: hit.source, strictInsideTriangle: true, triangleVertices: screenTriangle,
+                centroid: hit.centroid, geometrySource: "inspector-owned-GetLocalCorners+Clamp01-pivot-apex+TransformPoint+assigned-orthographic-WorldToScreenPoint",
+                canvasId: measured.canvasId, cameraId: id(camera), pivotX, clampedPivotX: t,
+                verification: "JS-barycentric-strict-interior-subset-of-native-triangle-shape",
+                originalRaycastInvoked: false, ancestorFiltersChecked: false};
+        }
         const report = {schema: 1, status: "SNAPSHOT", mainThreadId: expectedThread,
             screen: [w, h], gameViewBounds: opt.gameViewBounds, classes: [], widgets: [], texts: [],
             environment: {
@@ -174,7 +261,7 @@
                 "Application.isFocused": optionalStaticValue("UnityEngine.Application", "get_isFocused"),
                 ...eventSystemValues()
             },
-            limitations: ["Occlusion, custom RaycastArea hit testing, and animation stability are not asserted", "Non-allowlisted display text and object names are omitted"]};
+            limitations: ["Occlusion, ancestor raycast filters, non-Triangle custom hit testing, and animation stability are not asserted", "Non-allowlisted display text and object names are omitted"]};
         const specs = [
             ["UnityEngine.UI.Button", "button", null],
             ["LLAS.Components.UI.ProductButton", "button", null],
@@ -233,12 +320,19 @@
                             else {
                                 const details = {present: true, class: area.class.fullName};
                                 item.inputDiagnostics.raycastArea = details;
-                                if (area.class.fullName === "Jigbox.Components.RaycastArea") {
+                                if (area.class.fullName === "Jigbox.Components.RaycastArea" ||
+                                    area.class.fullName === "LLAS.Components.TriangleRaycastArea") {
                                     details.active = active(area);
                                     const target = area.tryMethod("get_raycastTarget", 0);
                                     details.raycastTarget = target == null ? "unavailable" : target.invoke();
                                     try { details.geometry = geometry(area); }
                                     catch (_) { details.geometry = "unavailable"; }
+                                    if (area.class.fullName === "LLAS.Components.TriangleRaycastArea" &&
+                                        details.active === true && details.raycastTarget === true &&
+                                        details.geometry != null && typeof details.geometry === "object") {
+                                        try { details.verifiedTriangleHitPoint = verifiedTriangleHitPoint(area, details.geometry); }
+                                        catch (_) { details.triangleHitRefusal = "strict_triangle_geometry_unavailable"; }
+                                    }
                                 }
                             }
                         }

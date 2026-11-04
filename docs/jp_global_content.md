@@ -20,9 +20,13 @@ Japanese fallback can receive its corresponding translated text. Configured
 tables without primary keys, such as lesson drop weights, are left intact.
 JP databases are opened read-only by the content import.
 
-Suit titles follow the suit's owner ID. The two ODAIBA titles with swapped
-Mia/Lanzhu names in the JP dictionary, including their exact historical generated
-translations, are corrected without replacing owner-written titles.
+Suit titles follow `m_suit.member_m_id` to `m_member.name`, then resolve that
+dictionary reference in the selected language. A member ID does not necessarily
+match its dictionary key suffix: member 211 references `k.m_dic_member_name_212`
+(Mia), while member 212 references `k.m_dic_member_name_211` (Lanzhu). The JP
+dictionary and suit references already agree; synthesizing dictionary keys from
+member IDs caused the incorrect imported titles. Known generated titles are
+corrected through the actual references without replacing owner-written titles.
 
 Package memberships that change receive an updated count and a deterministic
 version so previously installed clients can download the added resources. Each
@@ -59,5 +63,7 @@ python3 tests/run_go_tests.py --assets /path/to/pristine/harasho
 
 The normal runtime validator checks JP-to-GL content coverage, package counts and
 version tokens, source fingerprints, dictionary coverage, and translated names.
+For all 68 imported promotional suits it follows the actual suit-to-member
+dictionary references and checks the localized owner in EN, KO and ZH titles.
 It is also used by Android build and APK audit jobs. Tests use disposable copies;
 they do not modify an installed account or the source asset checkout.

@@ -1,0 +1,271 @@
+"""Upgrade only the wrapper APK on an existing disposable GL QA device.
+
+The caller must validate the prepared, game-created synthetic UID first. No GL
+APK reinstall/data clearing, preference mutation, or game UI actions occur here.
+"""
+from contextlib import closing
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import android_gl_visual_smoke as smoke
+import android_release_smoke as release
+
+SOURCE_SHA = "4ab6b4f275a1fb2e006e46ab46b60124996fc451"
+VERSION_CODE = 2026110400
+VERSION_NAME = "2026.11.04-dev"
+APK_NAME = "elichika-2026.11.04-dev.apk"
+REPOSITORY = "tagundo/elichika"
+MAX_BYTES = 768 * 1024 * 1024
+
+
+class CandidateUpgradeError(ValueError):
+    """Only fixed non-sensitive reason identifiers may be used."""
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        return None
+
+
+def validate_pins(command, repository):
+    if repository != REPOSITORY:
+        raise CandidateUpgradeError("candidate_repository_not_allowlisted")
+    if type(command.get("artifact_id")) is not int or command["artifact_id"] <= 0:
+        raise CandidateUpgradeError("invalid_candidate_artifact_id")
+    if not isinstance(command.get("artifact_run_id"), str) or not re.fullmatch(r"[1-9][0-9]*", command["artifact_run_id"]):
+        raise CandidateUpgradeError("invalid_candidate_run_id")
+    if command.get("source_sha") != SOURCE_SHA:
+        raise CandidateUpgradeError("candidate_source_not_allowlisted")
+    if not isinstance(command.get("apk_sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", command["apk_sha256"]):
+        raise CandidateUpgradeError("invalid_candidate_apk_hash")
+    if type(command.get("version_code")) is not int or command["version_code"] != VERSION_CODE or command.get("version_name") != VERSION_NAME:
+        raise CandidateUpgradeError("candidate_version_not_allowlisted")
+    return {key: command[key] for key in ("artifact_id", "artifact_run_id", "source_sha", "apk_sha256", "version_code", "version_name")}
+
+
+def validate_metadata(metadata, pins):
+    workflow = metadata.get("workflow_run", {}) if isinstance(metadata, dict) else {}
+    if (not isinstance(metadata, dict) or type(metadata.get("id")) is not int or metadata["id"] != pins["artifact_id"] or
+            metadata.get("name") != "elichika-release-apk" or metadata.get("expired") is not False or
+            not isinstance(workflow, dict) or type(workflow.get("id")) is not int or
+            str(workflow["id"]) != pins["artifact_run_id"] or workflow.get("head_sha") != pins["source_sha"]):
+        raise CandidateUpgradeError("candidate_artifact_metadata_mismatch")
+
+
+def trusted_redirect(url):
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        host = parsed.hostname or ""
+        valid = (parsed.scheme == "https" and not parsed.username and not parsed.password and
+                 parsed.port in (None, 443) and not parsed.fragment and
+                 any(host.endswith(suffix) for suffix in (".blob.core.windows.net", ".actions.githubusercontent.com")) and
+                 not any(ord(c) <= 32 for c in url))
+    except (ValueError, TypeError):
+        valid = False
+    if not valid:
+        raise CandidateUpgradeError("candidate_download_host_not_allowlisted")
+    return url
+
+
+def copy_bounded(source, destination):
+    total = 0
+    with destination.open("wb") as output:
+        while True:
+            block = source.read(1024 * 1024)
+            if not block:
+                break
+            total += len(block)
+            if total > MAX_BYTES:
+                raise CandidateUpgradeError("candidate_download_too_large")
+            output.write(block)
+    if total == 0:
+        raise CandidateUpgradeError("candidate_download_empty")
+
+
+def extract_candidate(archive_path, directory, pins):
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            entries = archive.infolist()
+            if len(entries) != 1:
+                raise CandidateUpgradeError("candidate_archive_members_invalid")
+            entry = entries[0]
+            kind = stat.S_IFMT(entry.external_attr >> 16)
+            if (entry.filename != APK_NAME or entry.is_dir() or kind not in (0, stat.S_IFREG) or
+                    entry.flag_bits & 1 or not 0 < entry.file_size <= MAX_BYTES):
+                raise CandidateUpgradeError("candidate_archive_member_invalid")
+            target = directory / "candidate.apk"
+            with archive.open(entry) as source:
+                copy_bounded(source, target)
+        with target.open("rb") as source:
+            actual = hashlib.file_digest(source, "sha256").hexdigest()
+        if actual != pins["apk_sha256"]:
+            raise CandidateUpgradeError("candidate_apk_hash_mismatch")
+        return target
+    except CandidateUpgradeError:
+        raise
+    except Exception:
+        raise CandidateUpgradeError("candidate_archive_invalid") from None
+
+
+def download_candidate(repository, pins, directory, token):
+    if not token:
+        raise CandidateUpgradeError("candidate_actions_token_missing")
+    opener = urllib.request.build_opener(NoRedirect)
+    base = f"https://api.github.com/repos/{repository}/actions/artifacts/{pins['artifact_id']}"
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+               "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "Elichika-disposable-GL-candidate-upgrade"}
+    try:
+        with opener.open(urllib.request.Request(base, headers=headers, method="GET"), timeout=30) as response:
+            raw = response.read(65537)
+        if len(raw) > 65536:
+            raise CandidateUpgradeError("candidate_metadata_too_large")
+        validate_metadata(json.loads(raw), pins)
+        request = urllib.request.Request(base + "/zip", headers=headers, method="GET")
+        try:
+            with opener.open(request, timeout=30):
+                raise CandidateUpgradeError("candidate_download_redirect_missing")
+        except urllib.error.HTTPError as redirect:
+            try:
+                if redirect.code != 302:
+                    raise CandidateUpgradeError("candidate_download_redirect_missing")
+                location = trusted_redirect(redirect.headers.get("Location", ""))
+            finally:
+                redirect.close()
+        # Never forward Authorization, API headers, or follow another redirect.
+        public_request = urllib.request.Request(location, headers={"User-Agent": "Elichika-disposable-GL-candidate-upgrade"}, method="GET")
+        archive_path = directory / "artifact.zip"
+        with opener.open(public_request, timeout=90) as response:
+            copy_bounded(response, archive_path)
+        return extract_candidate(archive_path, directory, pins)
+    except CandidateUpgradeError:
+        raise
+    except Exception:
+        # URLs, signed query strings, bodies, headers, and token never enter an
+        # exception message or an evidence file.
+        raise CandidateUpgradeError("candidate_artifact_download_failed") from None
+
+
+def userdata_state(android, uid):
+    with closing(smoke.database_from_bytes(android.read(f"{smoke.FILES}/userdata.db"))) as connection:
+        profile = connection.execute("SELECT * FROM u_status WHERE user_id=?", (uid,)).fetchall()
+        decks = connection.execute("SELECT * FROM u_live_deck WHERE user_id=? ORDER BY user_live_deck_id", (uid,)).fetchall()
+        if len(profile) != 1 or not decks:
+            raise CandidateUpgradeError("candidate_synthetic_profile_or_deck_missing")
+        def digest(rows):
+            value = [tuple(row) for row in rows]
+            encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"),
+                                 default=lambda data: {"bytes": bytes(data).hex()}).encode()
+            return hashlib.sha256(encoded).hexdigest()
+        return {"logical_sha256": smoke.sha("\n".join(connection.iterdump()).encode()),
+                "accounts": connection.execute("SELECT COUNT(*) FROM u_status").fetchone()[0],
+                "profile_sha256": digest(profile), "deck_sha256": digest(decks)}
+
+
+def verify_titles(android):
+    with closing(smoke.database_from_bytes(android.read(f"{smoke.FILES}/assets/db/gl/masterdata.db"))) as master:
+        references = master.execute("""
+            SELECT s.id,s.name,s.member_m_id,m.name FROM m_suit s
+            JOIN m_member m ON m.id=s.member_m_id WHERE s.id IN (321107,321207) ORDER BY s.id
+        """).fetchall()
+    expected = [(321107, "k.suit_name_321207", 211, "k.m_dic_member_name_212"),
+                (321207, "k.suit_name_321107", 212, "k.m_dic_member_name_211")]
+    if [tuple(row) for row in references] != expected:
+        raise CandidateUpgradeError("candidate_member_reference_chain_changed")
+    result = {}
+    for language, prefix in (("en", "ODAIBA Gamers T-Shirt"), ("ko", "오다이바 게이머즈 T셔츠"), ("zh", "ODAIBA Gamers T恤")):
+        checked = []
+        with closing(smoke.database_from_bytes(android.read(f"{smoke.FILES}/assets/db/gl/dictionary_{language}_k.db"))) as dictionary:
+            for suit_id, suit_key, member_id, member_key in references:
+                if not suit_key.startswith("k.") or not member_key.startswith("k."):
+                    raise CandidateUpgradeError("candidate_dictionary_reference_invalid")
+                owner = dictionary.execute("SELECT message FROM m_dictionary WHERE id=?", (member_key[2:],)).fetchone()
+                title = dictionary.execute("SELECT message FROM m_dictionary WHERE id=?", (suit_key[2:],)).fetchone()
+                if not owner or not owner[0] or not title or title[0] != prefix + " " + owner[0]:
+                    raise CandidateUpgradeError("candidate_localized_owner_title_not_repaired")
+                checked.append({"suit_id": suit_id, "member_id": member_id, "member_dictionary_key": member_key,
+                                "suit_dictionary_key": suit_key, "title": title[0]})
+        result[language] = checked
+    return result
+
+
+def upgrade_candidate(android, args, state, report, command, uid):
+    result = {"status": "RUNNING", "game_restart_required": True}
+    report["candidate_upgrade"] = result
+    try:
+        pins = validate_pins(command, args.repository)
+        home = state.get("new_home", {})
+        home_uid = home.get("user_id", home.get("uid"))
+        if type(uid) is not int or uid <= 0 or home.get("status") != "PREPARED" or type(home_uid) is not int or home_uid != uid:
+            raise CandidateUpgradeError("candidate_known_synthetic_uid_required")
+        if not android.shell("id").startswith("uid=0") or android.shell("getprop", "ro.product.cpu.abi") != "arm64-v8a":
+            raise CandidateUpgradeError("candidate_disposable_arm64_target_required")
+        evidence_roots = {Path(args.evidence).resolve(), Path(args.state).resolve().parent.parent}
+        runner_temp = os.environ.get("RUNNER_TEMP")
+        if not runner_temp:
+            raise CandidateUpgradeError("candidate_runner_temp_missing")
+        base = Path(runner_temp).resolve()
+        if any(base == evidence or base.is_relative_to(evidence) for evidence in evidence_roots):
+            raise CandidateUpgradeError("candidate_temporary_path_inside_evidence")
+        result.update(pins)
+        with tempfile.TemporaryDirectory(prefix="elichika-qa-candidate-", dir=base) as temporary:
+            temporary_path = Path(temporary).resolve()
+            if any(temporary_path == evidence or temporary_path.is_relative_to(evidence) for evidence in evidence_roots):
+                raise CandidateUpgradeError("candidate_temporary_path_inside_evidence")
+            apk = download_candidate(args.repository, pins, temporary_path, os.environ.get("GITHUB_TOKEN", ""))
+            with zipfile.ZipFile(apk) as archive:
+                if archive.namelist().count("lib/arm64-v8a/libelichika.so") != 1:
+                    raise CandidateUpgradeError("candidate_arm64_native_missing")
+                expected_native = smoke.sha(archive.read("lib/arm64-v8a/libelichika.so"))
+            existing = android.shell("dumpsys", "package", release.PACKAGE)
+            if (not re.search(r"(?:^|\s)versionCode=" + str(VERSION_CODE) + r"(?:\s|$)", existing) or
+                    not re.search(r"(?:^|\s)versionName=" + re.escape(VERSION_NAME) + r"(?:\s|$)", existing)):
+                raise CandidateUpgradeError("candidate_existing_wrapper_version_mismatch")
+            android.shell("am", "force-stop", smoke.GAME)
+            smoke.stop_server(android)
+            before = userdata_state(android, uid)
+            config_before = smoke.sha(android.read(f"{smoke.FILES}/config.json"))
+            result["before_update"] = before
+            installed = android.install(apk, VERSION_CODE)
+            if installed.get("native_sha256") != expected_native:
+                raise CandidateUpgradeError("candidate_installed_native_hash_mismatch")
+            info = android.shell("dumpsys", "package", release.PACKAGE)
+            if (not re.search(r"(?:^|\s)versionCode=" + str(VERSION_CODE) + r"(?:\s|$)", info) or
+                    not re.search(r"(?:^|\s)versionName=" + re.escape(VERSION_NAME) + r"(?:\s|$)", info)):
+                raise CandidateUpgradeError("candidate_installed_version_mismatch")
+            package_paths = android.shell("pm", "path", release.PACKAGE).splitlines()
+            if len(package_paths) != 1 or not package_paths[0].startswith("package:"):
+                raise CandidateUpgradeError("candidate_installed_apk_not_unique")
+            actual_apk = android.shell("sha256sum", package_paths[0][8:]).split()[0]
+            if actual_apk != pins["apk_sha256"]:
+                raise CandidateUpgradeError("candidate_installed_apk_hash_mismatch")
+            after_install = userdata_state(android, uid)
+            if after_install != before:
+                raise CandidateUpgradeError("candidate_install_changed_userdata")
+            result["install"] = installed
+            started = android.start("followup-candidate-upgrade")
+            if started.get("running_native_sha256") != expected_native:
+                raise CandidateUpgradeError("candidate_running_native_hash_mismatch")
+            after_start = userdata_state(android, uid)
+            if after_start != before or smoke.sha(android.read(f"{smoke.FILES}/config.json")) != config_before:
+                raise CandidateUpgradeError("candidate_start_changed_retained_data")
+            result.update(after_install=after_install, after_start=after_start, start=started,
+                          userdata_preserved=True, profile_preserved=True, deck_preserved=True, config_preserved=True,
+                          repaired_titles=verify_titles(android), status="UPGRADED")
+        return result
+    except CandidateUpgradeError as error:
+        result.update(status="REFUSED", reason=str(error))
+        raise
+    except Exception:
+        result.update(status="REFUSED", reason="candidate_upgrade_failed")
+        raise CandidateUpgradeError("candidate_upgrade_failed") from None

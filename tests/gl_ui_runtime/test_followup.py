@@ -29,7 +29,113 @@ def tree():
                              "active": True, "raycastTarget": True, "geometry": {"bounds": [10, 20, 30, 40], "canvasId": 2}}}}]}
 
 
+def triangle_tree():
+    value = tree()
+    node = value["widgets"][0]
+    node["geometry"].update(renderMode=1, camera={"id": 7})
+    area = node["inputDiagnostics"]["raycastArea"]
+    area["class"] = "LLAS.Components.TriangleRaycastArea"
+    area["geometry"].update(renderMode=1, camera={"id": 7})
+    area["verifiedTriangleHitPoint"] = {"kind": "TriangleRaycastArea.local-corners-pivot.strict-interior.v1",
+        "point": [17, 33], "strictInsideTriangle": True, "triangleVertices": [[10, 40], [10, 20], [30, 40]],
+        "canvasId": 2, "cameraId": 7, "originalRaycastInvoked": False, "ancestorFiltersChecked": False}
+    return value
+
+
 class FollowupTests(unittest.TestCase):
+    def test_triangle_uses_verified_interior_point_instead_of_bbox_center(self):
+        value = triangle_tree()
+        selected = qa.select_widget(value, command())
+        self.assertEqual(selected["coordinates"], [17, 33])
+        self.assertNotEqual(selected["coordinates"], [20, 30])
+        self.assertTrue(selected["shape_verification_only"])
+        self.assertFalse(selected["proof_original_raycast_invoked"])
+        self.assertFalse(selected["proof_ancestor_filters_checked"])
+        value["widgets"][0]["inputDiagnostics"]["raycastArea"]["verifiedTriangleHitPoint"]["triangleVertices"].reverse()
+        self.assertEqual(qa.select_widget(value, command())["coordinates"], [17, 33])
+
+    def test_triangle_missing_or_unrecognized_proof_has_no_bbox_fallback(self):
+        for change in (lambda a: a.pop("verifiedTriangleHitPoint"),
+                       lambda a: a["verifiedTriangleHitPoint"].update(kind="unknown"),
+                       lambda a: a["verifiedTriangleHitPoint"].update(strictInsideTriangle=False),
+                       lambda a: a["verifiedTriangleHitPoint"].update(originalRaycastInvoked=True)):
+            value = triangle_tree()
+            change(value["widgets"][0]["inputDiagnostics"]["raycastArea"])
+            with self.assertRaises(qa.Refused):
+                qa.select_widget(value, command())
+
+    def test_triangle_rejects_noninteger_nonfinite_and_outside_points(self):
+        for point in ([17.0, 33], [True, 33], [float("nan"), 33], [float("inf"), 33], [40, 33], [20, 21]):
+            value = triangle_tree()
+            value["widgets"][0]["inputDiagnostics"]["raycastArea"]["verifiedTriangleHitPoint"]["point"] = point
+            with self.assertRaises(qa.Refused):
+                qa.select_widget(value, command())
+
+    def test_triangle_rejects_boundary_degenerate_or_nonfinite_vertices(self):
+        for point, vertices in (([20, 30], [[10, 40], [10, 20], [30, 40]]),
+                                ([17, 33], [[10, 20], [20, 30], [30, 40]]),
+                                ([17, 33], [[float("nan"), 40], [10, 20], [30, 40]])):
+            value = triangle_tree()
+            proof = value["widgets"][0]["inputDiagnostics"]["raycastArea"]["verifiedTriangleHitPoint"]
+            proof.update(point=point, triangleVertices=vertices)
+            with self.assertRaises(qa.Refused):
+                qa.select_widget(value, command())
+
+    def test_triangle_rejects_wrong_canvas_or_camera(self):
+        for change in (lambda a, n: a["verifiedTriangleHitPoint"].update(cameraId=8),
+                       lambda a, n: a["verifiedTriangleHitPoint"].update(canvasId=3),
+                       lambda a, n: n["geometry"].update(camera={"id": 8}),
+                       lambda a, n: a["geometry"].update(camera=None),
+                       lambda a, n: (n["geometry"].update(canvasId=1), a["geometry"].update(canvasId=True),
+                                     a["verifiedTriangleHitPoint"].update(canvasId=1))):
+            value = triangle_tree()
+            node = value["widgets"][0]
+            change(node["inputDiagnostics"]["raycastArea"], node)
+            with self.assertRaises(qa.Refused):
+                qa.select_widget(value, command())
+
+    def upgrade_command(self, **updates):
+        return command("upgrade_candidate", artifact_id=123, artifact_run_id="456",
+                       source_sha=qa.UPGRADE_SOURCE_SHA, apk_sha256="a" * 64,
+                       version_code=qa.UPGRADE_VERSION_CODE, version_name=qa.UPGRADE_VERSION_NAME, **updates)
+
+    def test_back_has_no_coordinate_or_shell_parameters(self):
+        self.assertEqual(qa.validate_command(command("back"), "123", 1)["action"], "back")
+        for extra in ({"key": "KEYCODE_HOME"}, {"x": 100}, {"shell": "arbitrary"}):
+            with self.assertRaises(qa.Refused):
+                qa.validate_command(command("back", **extra), "123", 1)
+
+    def test_candidate_requires_exact_source_version_and_all_artifact_pins(self):
+        valid = self.upgrade_command()
+        self.assertEqual(qa.validate_command(valid, "123", 1)["action"], "upgrade_candidate")
+        for key, bad in [("artifact_id", True), ("artifact_run_id", 456), ("source_sha", "b" * 40),
+                         ("apk_sha256", "not-a-sha"), ("version_code", 2026110401), ("version_name", "other")]:
+            value = valid | {key: bad}
+            with self.assertRaises(qa.Refused):
+                qa.validate_command(value, "123", 1)
+        with self.assertRaises(qa.Refused):
+            qa.validate_command(valid | {"download_url": "https://example.com/"}, "123", 1)
+
+    def test_upgrade_identity_is_checked_before_download_or_install(self):
+        upgrade = mock.Mock()
+        with mock.patch.dict(sys.modules, {"candidate_upgrade": types.SimpleNamespace(upgrade_candidate=upgrade)}), mock.patch.object(qa, "favorite_identity", side_effect=qa.Refused("prepared_synthetic_account_missing")):
+            with self.assertRaises(qa.Refused):
+                qa.upgrade_and_restart(object(), object(), {}, {}, self.upgrade_command())
+        upgrade.assert_not_called()
+
+    def test_upgrade_restarts_without_resetting_the_actual_favorite_or_theme(self):
+        android = mock.Mock()
+        android.shell.return_value = qa.smoke.GAME + "/.MainActivity"
+        args, state, report = types.SimpleNamespace(interval=10, evidence=Path("fixture")), {}, {"captures": []}
+        upgrade = mock.Mock()
+        with mock.patch.dict(sys.modules, {"candidate_upgrade": types.SimpleNamespace(upgrade_candidate=upgrade)}), mock.patch.object(qa, "favorite_identity", return_value=(2, {1, 2})), mock.patch.object(qa, "set_favorite") as favorite, mock.patch.object(qa.smoke, "prepare_new_home") as home, mock.patch.object(qa.time, "sleep"), mock.patch.object(qa.smoke, "capture"), mock.patch.object(qa.smoke, "observe_live_ui"), mock.patch.object(qa.smoke, "tap_ready_title", return_value=True), mock.patch.object(qa.smoke, "confirm_qa_download"):
+            value = self.upgrade_command()
+            qa.upgrade_and_restart(android, args, state, report, value)
+        upgrade.assert_called_once_with(android, args, state, report, value, 2)
+        favorite.assert_not_called()
+        home.assert_not_called()
+        self.assertFalse(any("install" in parts or "clear" in parts for parts, _ in android.shell.call_args_list))
+
     def test_schema_refuses_extra_coordinates_boolean_ids_and_nonfinite_values(self):
         cases = [command(x=20), command(widget_id=True), command(expected_bounds=[0, 0, float("nan"), 40]),
                  command(expected_bounds=[True, 0, 30, 40]), command(action=["capture"]),
@@ -216,6 +322,31 @@ class FollowupTests(unittest.TestCase):
                 qa.execute(command(), args, {}, {"captures": []})
             self.assertEqual(phases, ["before", "after"])
             self.assertIn(("input", "touchscreen", "swipe", "20", "30", "20", "30", "240"), shell_calls)
+
+    def test_back_uses_only_normal_back_key_and_observes_thirty_seconds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = self.args(root)
+            args.evidence, args.serial, args.game = args.output, "fixture", root / "game.apk"
+            args.game.write_bytes(b"host fixture")
+            android = mock.Mock()
+            android.shell.side_effect = lambda *parts, **_: "uid=0" if parts == ("id",) else "arm64-v8a"
+            with mock.patch.object(qa.smoke, "Android", return_value=android), mock.patch.object(qa.smoke, "sha", return_value=qa.smoke.GAME_SHA), mock.patch.object(qa, "snapshot", return_value=tree()) as snapshots, mock.patch.object(qa.smoke, "observe_live_ui") as observe:
+                qa.execute(command("back"), args, {}, {"captures": []})
+            android.shell.assert_any_call("input", "keyevent", "KEYCODE_BACK")
+            self.assertEqual([call.args[3] for call in snapshots.call_args_list], ["before", "after"])
+            self.assertEqual(observe.call_args.kwargs, {"seconds": 30})
+
+    def test_cli_accepts_round_forty_and_refuses_forty_one_before_poll(self):
+        argv = ["followup.py", "--sequence", "40", "--run-id", "123", "--serial", "fixture",
+                "--game", "game.apk", "--live-python", "python", "--output", "output", "--state", "evidence/gl/state.json"]
+        with mock.patch.object(sys, "argv", argv), mock.patch.object(qa, "run_round", return_value={"status": "ALREADY_CLOSED", "sequence": 40}) as run, mock.patch("builtins.print"):
+            qa.main()
+            self.assertEqual(run.call_args.args[0].sequence, 40)
+        argv[2] = "41"
+        with mock.patch.object(sys, "argv", argv), mock.patch.object(qa, "run_round") as run, mock.patch.object(sys, "stderr", io.StringIO()), self.assertRaises(SystemExit):
+            qa.main()
+        run.assert_not_called()
 
 
 if __name__ == "__main__":

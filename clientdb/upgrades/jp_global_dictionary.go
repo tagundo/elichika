@@ -138,6 +138,10 @@ func prepareJPGlobalDictionaries(assetRoot string) ([]jpGlobalDictionaryPlan, er
 	if err != nil {
 		return nil, err
 	}
+	globalMemberNames, err := readJPGlobalMemberNameKeys(filepath.Join(glRoot, "masterdata.db"))
+	if err != nil {
+		return nil, err
+	}
 	jpNames := make(map[string]sql.NullString)
 	for _, row := range sources["k"] {
 		jpNames[row.id] = row.message
@@ -173,28 +177,26 @@ func prepareJPGlobalDictionaries(assetRoot string) ([]jpGlobalDictionaryPlan, er
 			if !japanese.Valid {
 				continue
 			}
-			memberName := jpGlobalSuitMemberName(suit.memberID, glNames, jpNames)
+			memberKey := suit.memberNameKey
+			if globalKey, exists := globalMemberNames[suit.memberID]; exists {
+				memberKey = globalKey // Existing GL member records remain authoritative.
+			}
+			memberName := jpGlobalSuitMemberName(memberKey, glNames, jpNames)
 			if memberName == "" {
 				continue // Preserve the full JP name when no member name is available.
 			}
 			for _, prefix := range translations.SuitPrefixes {
 				if strings.Contains(japanese.String, prefix.JA) {
-					// The suit owner is authoritative; some JP name keys mention
-					// the opposite member. Never infer ownership from that text.
+					// Member IDs and dictionary-key suffixes are independent.
+					// Follow m_member.name rather than synthesizing a name key.
 					localizedPrefix := prefix.forLanguage(language) + " "
 					plan.translations[key] = localizedPrefix + memberName
-					// Recognize only the exact wrong title emitted by the old
-					// JP-name-based override, so custom titles remain untouched.
-					oldMemberID := suit.memberID
-					if strings.Contains(japanese.String, "ミア・テイラー") {
-						oldMemberID = 212
-					} else if strings.Contains(japanese.String, "ショウ・ランジュ") {
-						oldMemberID = 211
-					}
-					if oldMemberID != suit.memberID && (suit.memberID == 211 || suit.memberID == 212) {
-						if oldName := jpGlobalSuitMemberName(oldMemberID, glNames, jpNames); oldName != "" {
-							plan.legacyTranslations[key] = localizedPrefix + oldName
-						}
+					// Repair only the exact title produced by the previous ID-
+					// derived lookup, including already-marked installations.
+					// This historical key is never used for the correct title.
+					legacyKey := fmt.Sprintf("m_dic_member_name_%d", suit.memberID)
+					if oldName := jpGlobalSuitMemberName(legacyKey, glNames, jpNames); oldName != "" && oldName != memberName {
+						plan.legacyTranslations[key] = localizedPrefix + oldName
 					}
 					break
 				}
@@ -205,8 +207,8 @@ func prepareJPGlobalDictionaries(assetRoot string) ([]jpGlobalDictionaryPlan, er
 	return plans, nil
 }
 
-func jpGlobalSuitMemberName(memberID int, global, japanese map[string]sql.NullString) string {
-	key := fmt.Sprintf("m_dic_member_name_%d", memberID)
+func jpGlobalSuitMemberName(reference string, global, japanese map[string]sql.NullString) string {
+	key := strings.TrimPrefix(reference, "k.")
 	if name := global[key]; name.Valid && name.String != "" {
 		return name.String
 	}
@@ -299,11 +301,46 @@ func readJPGlobalDictionary(path string) ([]jpGlobalDictionaryRow, error) {
 }
 
 type jpGlobalSuit struct {
-	memberID int
-	nameKey  string
+	memberID      int
+	nameKey       string
+	memberNameKey string
+}
+
+func readJPGlobalMemberNameKeys(path string) (map[int]string, error) {
+	database, err := openJPDictionaryReadOnly(path)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	defer database.Close()
+	var exists bool
+	if err := database.QueryRow("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'm_member' COLLATE NOCASE)").Scan(&exists); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	names := make(map[int]string)
+	if !exists {
+		return names, nil
+	}
+	rows, err := database.Query("SELECT id, COALESCE(name, '') FROM m_member ORDER BY id")
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var key string
+		if err := rows.Scan(&id, &key); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		names[id] = key
+	}
+	return names, rows.Err()
 }
 
 func readJPGlobalSuits(path string) ([]jpGlobalSuit, error) {
+	memberNames, err := readJPGlobalMemberNameKeys(path)
+	if err != nil {
+		return nil, err
+	}
 	database, err := openJPDictionaryReadOnly(path)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -327,6 +364,7 @@ func readJPGlobalSuits(path string) ([]jpGlobalSuit, error) {
 		if err := rows.Scan(&suit.memberID, &suit.nameKey); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
+		suit.memberNameKey = memberNames[suit.memberID]
 		suits = append(suits, suit)
 	}
 	if err := rows.Err(); err != nil {

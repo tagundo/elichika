@@ -20,6 +20,9 @@ import android_gl_visual_smoke as smoke
 
 COMMAND_PATH = "tests/gl_ui_runtime/live-command.json"
 SUITS = {300207, 321107, 321207}
+UPGRADE_SOURCE_SHA = "4ab6b4f275a1fb2e006e46ab46b60124996fc451"
+UPGRADE_VERSION_CODE = 2026110400
+UPGRADE_VERSION_NAME = "2026.11.04-dev"
 
 
 class Refused(ValueError):
@@ -61,7 +64,8 @@ def validate_command(command, run_id, sequence):
         return None
     action = command.get("action")
     base = {"run_id", "sequence", "action"}
-    allowed = {"capture": base, "close": base, "seed_accessories": base, "set_favorite_suit": base | {"suit_id"},
+    allowed = {"capture": base, "close": base, "back": base, "seed_accessories": base, "set_favorite_suit": base | {"suit_id"},
+               "upgrade_candidate": base | {"artifact_id", "artifact_run_id", "source_sha", "apk_sha256", "version_code", "version_name"},
                "tap_widget": base | {"widget_id", "expected_class", "expected_bounds", "expected_label"}}
     if not isinstance(action, str) or action not in allowed or set(command) - allowed[action]:
         raise Refused("unsupported_command_schema")
@@ -70,6 +74,14 @@ def validate_command(command, run_id, sequence):
         raise Refused("missing_command_field")
     if action == "set_favorite_suit" and (type(command["suit_id"]) is not int or command["suit_id"] not in SUITS):
         raise Refused("suit_not_allowlisted")
+    if action == "upgrade_candidate":
+        if (type(command["artifact_id"]) is not int or command["artifact_id"] <= 0 or
+                not isinstance(command["artifact_run_id"], str) or not command["artifact_run_id"].isdecimal() or
+                int(command["artifact_run_id"]) <= 0 or command["source_sha"] != UPGRADE_SOURCE_SHA or
+                not isinstance(command["apk_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", command["apk_sha256"]) or
+                type(command["version_code"]) is not int or command["version_code"] != UPGRADE_VERSION_CODE or
+                command["version_name"] != UPGRADE_VERSION_NAME):
+            raise Refused("candidate_upgrade_pin_mismatch")
     if action == "tap_widget":
         if type(command["widget_id"]) is not int:
             raise Refused("invalid_widget_id")
@@ -148,6 +160,51 @@ def poll_command(args, fetch=None, clock=time.monotonic, sleep=time.sleep):
     return None, None
 
 
+def verified_triangle_point(area, node_geometry, actual, view, canvas):
+    proof = area.get("verifiedTriangleHitPoint")
+    if (not isinstance(proof, dict) or
+            proof.get("kind") != "TriangleRaycastArea.local-corners-pivot.strict-interior.v1" or
+            proof.get("strictInsideTriangle") is not True or
+            proof.get("originalRaycastInvoked") is not False or proof.get("ancestorFiltersChecked") is not False):
+        raise Refused("triangle_shape_proof_unavailable")
+    measured = area["geometry"]
+    area_camera, node_camera = measured.get("camera"), node_geometry.get("camera")
+    camera_id = proof.get("cameraId")
+    if (type(proof.get("canvasId")) is not int or proof["canvasId"] != canvas or
+            type(measured.get("canvasId")) is not int or measured["canvasId"] != canvas or
+            type(camera_id) is not int or not camera_id or
+            not isinstance(area_camera, dict) or not isinstance(node_camera, dict) or
+            type(area_camera.get("id")) is not int or type(node_camera.get("id")) is not int or
+            area_camera["id"] != camera_id or node_camera["id"] != camera_id or
+            type(measured.get("renderMode")) is not int or measured["renderMode"] != 1 or
+            type(node_geometry.get("renderMode")) is not int or node_geometry["renderMode"] != 1):
+        raise Refused("triangle_canvas_or_camera_changed")
+    point = proof.get("point")
+    if not isinstance(point, list) or len(point) != 2 or not all(type(n) is int for n in point):
+        raise Refused("triangle_integer_point_unavailable")
+    if any(not (bounds[0] < point[0] < bounds[2] and bounds[1] < point[1] < bounds[3]) for bounds in (actual, view)):
+        raise Refused("triangle_point_outside_measured_bounds")
+    vertices = proof.get("triangleVertices")
+    try:
+        valid = (isinstance(vertices, list) and len(vertices) == 3 and
+                 all(isinstance(v, list) and len(v) == 2 and
+                     all(type(n) in (int, float) and math.isfinite(n) for n in v) for v in vertices))
+    except (OverflowError, TypeError):
+        valid = False
+    if not valid:
+        raise Refused("triangle_vertices_unavailable")
+    a, b, c = [[float(n) for n in vertex] for vertex in vertices]
+    ab, ac, ap = [b[i] - a[i] for i in (0, 1)], [c[i] - a[i] for i in (0, 1)], [point[i] - a[i] for i in (0, 1)]
+    determinant = ab[0] * ac[1] - ab[1] * ac[0]
+    if not math.isfinite(determinant) or abs(determinant) <= 1e-6:
+        raise Refused("triangle_degenerate")
+    wb = (ap[0] * ac[1] - ap[1] * ac[0]) / determinant
+    wc = (ab[0] * ap[1] - ab[1] * ap[0]) / determinant
+    if not all(math.isfinite(weight) and weight > 1e-6 for weight in (1 - wb - wc, wb, wc)):
+        raise Refused("triangle_point_not_strictly_inside")
+    return list(point)
+
+
 def select_widget(tree, command):
     if tree.get("status") != "SNAPSHOT" or tree.get("game_apk_sha256") != smoke.GAME_SHA:
         raise Refused("fresh_snapshot_unverified")
@@ -177,11 +234,17 @@ def select_widget(tree, command):
     canvas = node["geometry"].get("canvasId")
     if type(canvas) is not int or not canvas or area["geometry"].get("canvasId") != canvas:
         raise Refused("raycast_canvas_changed")
-    point = [round((actual[0] + actual[2]) / 2), round((actual[1] + actual[3]) / 2)]
+    triangle = area.get("class") == "LLAS.Components.TriangleRaycastArea"
+    point = verified_triangle_point(area, node["geometry"], actual, view, canvas) if triangle else [
+        round((actual[0] + actual[2]) / 2), round((actual[1] + actual[3]) / 2)]
     if not actual[0] <= point[0] < actual[2] or not actual[1] <= point[1] < actual[3]:
         raise Refused("raycast_has_no_safe_integer_center")
-    return {"widget_id": node["id"], "class": node["class"], "bounds": actual, "coordinates": point,
-            "duration_ms": 240, "source": "fresh actual raycast UI geometry"}
+    result = {"widget_id": node["id"], "class": node["class"], "bounds": actual, "coordinates": point,
+              "duration_ms": 240, "source": "fresh actual raycast UI geometry"}
+    if triangle:
+        result.update(triangle_proof_kind=area["verifiedTriangleHitPoint"]["kind"],
+                      shape_verification_only=True, proof_original_raycast_invoked=False, proof_ancestor_filters_checked=False)
+    return result
 
 
 def snapshot(android, args, report, phase, required=True):
@@ -275,6 +338,29 @@ def seed_accessory_fixture(android, args, state, report):
     set_favorite(android, args, state, report, suit)
 
 
+def upgrade_and_restart(android, args, state, report, command):
+    # The account proof precedes artifact access and every install/stop action.
+    uid, _ = favorite_identity(android, state)
+    from candidate_upgrade import upgrade_candidate
+    upgrade_candidate(android, args, state, report, command, uid)
+    # Do not call prepare_new_home/set_favorite here: preserve the current
+    # actual favorite, themes and cache instead of replaying the initial state.
+    component = android.shell("cmd", "package", "resolve-activity", "--brief", smoke.GAME)
+    choices = [line.strip() for line in component.splitlines() if re.fullmatch(re.escape(smoke.GAME) + r"/[A-Za-z0-9_.$]+", line.strip())]
+    if len(choices) != 1:
+        raise Refused("game_activity_not_unique")
+    report["play_services_warning_dismissed"] = False
+    android.shell("am", "start", "-W", "-n", choices[0], timeout=90)
+    for index in range(3):
+        time.sleep(args.interval)
+        smoke.capture(android, args.evidence, f"upgrade-restart-{index:02d}", report)
+    smoke.observe_live_ui(android, args, report, "upgrade-ready", seconds=30)
+    if smoke.tap_ready_title(android, args, report, phase="followup-upgrade"):
+        smoke.observe_live_ui(android, args, report, "upgrade-after-title", seconds=30)
+    smoke.confirm_qa_download(android, args, report, phase="followup-upgrade")
+    smoke.observe_live_ui(android, args, report, "upgrade-cache-refresh", seconds=120)
+
+
 def execute(command, args, state, report):
     android = smoke.Android(args.serial, args.evidence)
     if not android.shell("id").startswith("uid=0") or android.shell("getprop", "ro.product.cpu.abi") != "arm64-v8a":
@@ -286,6 +372,10 @@ def execute(command, args, state, report):
         action = command["action"]
         if action == "capture":
             smoke.observe_live_ui(android, args, report, "capture", seconds=30)
+        elif action == "back":
+            android.shell("input", "keyevent", "KEYCODE_BACK")
+            report["back_performed"] = True
+            smoke.observe_live_ui(android, args, report, "after-back", seconds=30)
         elif action == "tap_widget":
             selected = select_widget(tree, command)
             report["selection"] = selected
@@ -297,6 +387,8 @@ def execute(command, args, state, report):
             set_favorite(android, args, state, report, command["suit_id"])
         elif action == "seed_accessories":
             seed_accessory_fixture(android, args, state, report)
+        elif action == "upgrade_candidate":
+            upgrade_and_restart(android, args, state, report, command)
         else:
             raise Refused("unsupported_action")
     finally:
@@ -374,8 +466,8 @@ def main():
     parser.add_argument("--command-ref", default="codex/jp-global-content-gl-qa")
     parser.add_argument("--repository", default="tagundo/elichika")
     args = parser.parse_args()
-    if not 1 <= args.sequence <= 20 or not args.run_id.isdecimal() or int(args.run_id) <= 0:
-        parser.error("A positive run ID and sequence 1..20 are required")
+    if not 1 <= args.sequence <= 40 or not args.run_id.isdecimal() or int(args.run_id) <= 0:
+        parser.error("A positive run ID and sequence 1..40 are required")
     report = run_round(args)
     print(json.dumps({k: report[k] for k in ("status", "run_id", "sequence", "action", "command_sha256", "reason") if k in report}), flush=True)
 
