@@ -18,6 +18,7 @@ import struct
 import time
 import traceback
 import tempfile
+import subprocess
 import zipfile
 import xml.etree.ElementTree as ET
 
@@ -117,7 +118,8 @@ def prepare_new_home(android, before, favorite_suit):
         if not {300207, 321107, 321207} <= suits or not has_background:
             return {"status": "SKIPPED", "reason": "Default synthetic ownership is incomplete", "user_id": uid}
         auth = connection.execute("SELECT session_key,command_id FROM u_authentication WHERE user_id=?", (uid,)).fetchone()
-        assert auth is not None
+        if auth is None or auth[0] is None or len(auth[0]) != 32:
+            return {"status": "SKIPPED", "reason": "The game has not established an authenticated session", "user_id": uid}
         session, command = bytes(auth[0]), auth[1]
     with closing(database_from_bytes(android.read(f"{FILES}/assets/db/gl/masterdata.db"))) as master:
         owners = dict(master.execute("SELECT id,member_m_id FROM m_suit WHERE id IN (300207,321107,321207)"))
@@ -293,6 +295,119 @@ def verify_resource_modes(android, args, report):
     report["resource_mode_restored"] = restored
 
 
+def observed_game_view(root):
+    nodes = [node for node in root.iter("node") if node.get("package") == GAME
+             and node.get("class") == "android.view.View" and node.get("content-desc") == "Game view"
+             and node.get("enabled") == "true"]
+    assert len(nodes) == 1, "Exactly one observed enabled Game view is required"
+    bounds = nodes[0].get("bounds", "")
+    assert re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds), "Invalid Game view bounds"
+    bounds_center(nodes[0])
+    return nodes[0]
+
+
+def wait_for_initialized_game(android, args):
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        try:
+            root = ui_tree(android, args.evidence, "gl-before-language-setup")
+            observed_game_view(root)
+            pid = android.shell("pidof", "-s", GAME)
+            assert pid.isdecimal()
+            if b"libil2cpp.so" in android.read(f"/proc/{pid}/maps"):
+                return
+        except Exception:
+            pass
+        time.sleep(2)
+    raise AssertionError("No observed Game view with loaded IL2CPP for late attachment")
+
+
+def live_tool(args, tool, output, timeout):
+    tools = Path(__file__).parent / "gl_ui_runtime"
+    command = [str(args.live_python), str(tools / tool), "--serial", args.serial,
+               "--apk", str(args.game), "--output", str(output)]
+    if tool == "language_setup.py":
+        command.append("--prepare-light-download")
+    if tool == "snapshot.py":
+        command += ["--allow-screen-space-camera", "--allow-download-size-labels"]
+        for label in ("English", "한국어", "OK", "Cancel", "Confirm", "Download", "Download All",
+                      "Minimum", "Full Download", "Light Download", "Light Download (Auto-delete story data)",
+                      "Data Download Settings", "Download Confirmation", "Recommended", "Yes", "No", "Start",
+                      "Retry", "Agree", "Next", "Touch Screen"):
+            command += ["--label", label]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    filename = "language-setup.json" if tool == "language_setup.py" else "unity-ui-tree.json"
+    path = output / filename
+    summary = {"returncode": result.returncode, "report": str(path.relative_to(args.evidence))}
+    if path.is_file():
+        data = json.loads(path.read_text())
+        summary.update(status=data.get("status"), reason=data.get("reason"))
+        if tool == "language_setup.py":
+            summary.update(key=data.get("key"), before_kind=data.get("before_kind"),
+                           readback=data.get("readback"), apk_identity_unchanged=data.get("apk_identity_unchanged"),
+                           download_mode=data.get("download_mode"), auto_delete_mode=data.get("auto_delete_mode"))
+    else:
+        summary["status"] = "NO_REPORT"
+    if result.returncode:
+        # These helpers never read account data or non-allowlisted UI strings.
+        summary["diagnostic"] = result.stderr[-1600:]
+    return summary
+
+
+def prepare_english_language(android, args, report, component):
+    wait_for_initialized_game(android, args)
+    setup = live_tool(args, "language_setup.py", args.evidence / "english-preference", 50)
+    report["english_preference_setup"] = setup
+    assert (setup.get("status") == "PREPARED" and setup.get("readback") == "en" and setup.get("apk_identity_unchanged")
+            and setup.get("download_mode", {}).get("readback") == 0 and setup.get("auto_delete_mode", {}).get("readback") == 0), "QA English/Light Download preference setup refused"
+    assert sha(args.game.read_bytes()) == GAME_SHA
+    android.shell("am", "force-stop", GAME)
+    # The positive GMS acknowledgement may be needed once in each new process.
+    # Previous captures retain the first acknowledgement record.
+    report["play_services_warning_dismissed"] = False
+    report["game_launch_generation"] = report.get("game_launch_generation", 0) + 1
+    report["language_restart"] = android.shell("am", "start", "-W", "-n", component, timeout=90)
+    for index in range(3):
+        time.sleep(args.interval)
+        capture(android, args.evidence, f"gl-after-english-restart-{index:02d}", report)
+    root = ui_tree(android, args.evidence, "gl-english-game-view")
+    node = observed_game_view(root)
+    report["english_restart_game_view"] = {"class": node.get("class"), "content_desc": node.get("content-desc"), "bounds": node.get("bounds")}
+
+
+def observe_live_ui(android, args, report, phase="gl-observation"):
+    # A bounded observation window, without additional menu taps or mutations.
+    deadline = time.monotonic() + 120
+    next_tree = time.monotonic()
+    index = 0
+    trees = report.setdefault("live_unity_ui", [])
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        label = f"{phase}-{index:02d}"
+        try:
+            data = android.adb("exec-out", "screencap", "-p", raw=True, timeout=min(15, remaining))
+            assert data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) > 24
+            width, height = struct.unpack(">II", data[16:24])
+            assert width > 0 and height > 0
+            (args.evidence / (label + ".png")).write_bytes(data)
+            report["captures"].append({"label": label, "screenshot": label + ".png", "width": width, "height": height,
+                                       "captured_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        except Exception as exc:
+            report["observation_capture_error"] = type(exc).__name__
+        remaining = deadline - time.monotonic()
+        if time.monotonic() >= next_tree and remaining > 5:
+            try:
+                trees.append(live_tool(args, "snapshot.py", args.evidence / f"{phase}-unity-ui-{len(trees):02d}", min(40, remaining)))
+            except Exception as exc:
+                trees.append({"status": "REFUSED", "reason": type(exc).__name__})
+            next_tree = time.monotonic() + 30
+        index += 1
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(args.interval, remaining))
+    report["live_ui_snapshot_obtained"] = any(tree.get("status") == "SNAPSHOT" for tree in trees)
+
+
 def run(args, report):
     android = Android(args.serial, args.evidence)
     assert android.shell("id").startswith("uid=0"), "Disposable Android root diagnostics required"
@@ -332,27 +447,47 @@ def run(args, report):
     for index in range(args.frames):
         time.sleep(args.interval)
         capture(android, args.evidence, f"gl-initial-{index:02d}", report)
+    if args.prepare_english:
+        prepare_english_language(android, args, report, component)
     if args.tap_surface_center:
         root = ui_tree(android, args.evidence, "gl-before-title-tap")
-        surfaces = [node for node in root.iter("node") if node.get("class") == "android.view.SurfaceView" and node.get("package") == GAME]
-        assert len(surfaces) == 1, "The game surface is not unambiguous; no coordinates inferred"
-        x, y = bounds_center(surfaces[0])
+        if args.prepare_english:
+            node = observed_game_view(root)
+        else:
+            surfaces = [node for node in root.iter("node") if node.get("class") == "android.view.SurfaceView" and node.get("package") == GAME]
+            assert len(surfaces) == 1, "The game surface is not unambiguous; no coordinates inferred"
+            node = surfaces[0]
+        x, y = bounds_center(node)
         android.shell("input", "tap", str(x), str(y))
-        report["title_surface_tap"] = {"bounds": surfaces[0].get("bounds"), "coordinates": [x, y]}
+        report["title_surface_tap"] = {"bounds": node.get("bounds"), "coordinates": [x, y],
+                                        "source": "observed Game view" if args.prepare_english else "SurfaceView"}
         for index in range(3):
             time.sleep(args.interval)
             capture(android, args.evidence, f"gl-after-title-tap-{index:02d}", report)
+    if args.prepare_english:
+        observe_live_ui(android, args, report)
     if args.prepare_new_home:
         report["new_home"] = prepare_new_home(android, before, args.favorite_suit)
+        if args.prepare_english:
+            report["play_services_warning_dismissed"] = False
+            report["game_launch_generation"] = report.get("game_launch_generation", 0) + 1
         android.shell("am", "start", "-W", "-n", component, timeout=90)
         for index in range(3):
             time.sleep(args.interval)
             capture(android, args.evidence, f"gl-after-home-preparation-{index:02d}", report)
+        if args.prepare_english and report["new_home"].get("status") == "PREPARED":
+            observe_live_ui(android, args, report, "gl-new-home")
     pid = android.shell("pidof", "-s", GAME)
     assert pid.isdecimal(), "The GL process is no longer running"
     report["game_pid"] = int(pid)
     args.evidence.joinpath("gl-native-maps.txt").write_bytes(android.read(f"/proc/{pid}/maps"))
     args.evidence.joinpath("gl-window.txt").write_text(android.shell("dumpsys", "window", "windows"))
+    if args.prepare_english:
+        package_path = android.shell("pm", "path", GAME).splitlines()
+        assert len(package_path) == 1 and package_path[0].startswith("package:")
+        installed_sha = android.shell("sha256sum", package_path[0].removeprefix("package:")).split()[0]
+        assert sha(args.game.read_bytes()) == installed_sha == GAME_SHA
+        report["game_apk_identity_unchanged"] = True
     report["status"] = "CAPTURED"
     report["visual_review_required"] = True
 
@@ -368,6 +503,8 @@ def main():
     parser.add_argument("--baseline-version-code", type=int, default=LATEST_BASELINE_CODE)
     parser.add_argument("--check-resource-modes", action="store_true")
     parser.add_argument("--skip-game", action="store_true")
+    parser.add_argument("--prepare-english", action="store_true", help="QA CurrentLanguage=en and Light Download prefs plus read-only live Unity UI snapshots")
+    parser.add_argument("--live-python", type=Path, help="Interpreter with the pinned Frida package")
     parser.add_argument("--serial", default="127.0.0.1:5555")
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--frames", type=int, default=5)
@@ -378,6 +515,7 @@ def main():
     args = parser.parse_args()
     assert 1 <= args.frames <= 12 and 1 <= args.interval <= 30
     assert not args.skip_game or args.baseline or args.check_resource_modes, "skip-game requires an explicit preservation check"
+    assert not args.prepare_english or args.skip_game or args.live_python is not None, "prepare-english requires pinned live tools"
     args.evidence.mkdir(parents=True, exist_ok=True)
     report = {"status": "RUNNING", "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "captures": [], "limits": [
         "Screenshots require human review; process liveness does not prove a rendered game screen",

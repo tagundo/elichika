@@ -37,6 +37,10 @@ on:
         description: "Run only the requested APK preservation checks"
         type: boolean
         default: false
+      prepare_english:
+        description: "Set documented English/Light Download QA preferences and inspect live Unity UI"
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       candidate_sha256:
@@ -131,11 +135,19 @@ jobs:
           run-id: ${{ inputs.source_run_id || github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare pinned live Unity QA tooling
+        if: ${{ inputs.source_run_id && inputs.prepare_english && !inputs.skip_game }}
+        run: >-
+          bash tests/gl_ui_runtime/prepare_tools.sh
+          "$RUNNER_TEMP/gl-live-python" "$GITHUB_WORKSPACE/tests/gl_ui_runtime"
+          127.0.0.1:5555 evidence/gl-live-tools.json
+
       - name: Verify APK and capture requested GL evidence on native ARM64
         if: inputs.source_run_id
         env:
           TAP_SURFACE: ${{ inputs.tap_surface_center }}
           PREPARE_HOME: ${{ inputs.prepare_new_home }}
+          PREPARE_ENGLISH: ${{ inputs.prepare_english }}
           LATEST_BASELINE: ${{ inputs.latest_baseline_upgrade }}
           CHECK_MODES: ${{ inputs.check_resource_modes }}
           SKIP_GAME: ${{ inputs.skip_game }}
@@ -162,6 +174,9 @@ jobs:
           fi
           if [ "$TAP_SURFACE" = true ]; then extra+=(--tap-surface-center); fi
           if [ "$PREPARE_HOME" = true ]; then extra+=(--prepare-new-home); fi
+          if [ "$PREPARE_ENGLISH" = true ] && [ "$SKIP_GAME" != true ]; then
+            extra+=(--prepare-english --live-python "$RUNNER_TEMP/gl-live-python/bin/python")
+          fi
           python3 -u tests/android_gl_visual_smoke.py \
             --candidate "candidate/elichika-$VERSION_NAME.apk" \
             --candidate-sha256 "$CANDIDATE_SHA" \
@@ -220,6 +235,9 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-report.json > evidence/model-viewer-rig-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader-report.json > evidence/model-viewer-shader-report.json 2>/dev/null || true
           sudo dmesg | tail -100 > evidence/kernel-tail.txt || true
+          if [ -f tests/gl_ui_runtime/downloads/frida-server.log ]; then
+            cp tests/gl_ui_runtime/downloads/frida-server.log evidence/gl-frida-server.log
+          fi
 
       - name: Upload execution evidence
         if: always()
