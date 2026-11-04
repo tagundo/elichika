@@ -5,6 +5,7 @@ import (
 	"elichika/log"
 	"elichika/utils"
 
+	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
 	"encoding/hex"
@@ -50,7 +51,7 @@ func fileSha1AndSize(fileName string) ([]byte, int) {
 func updateClientDb(baseDir string, masterdataRefs []string) {
 	versionBytes := []byte{}
 	oldVersion := ""
-	newFileVersion := map[string]string{}
+	actualFileVersions := map[string]string{}
 	mMap := map[string]*manifest{}
 	for _, refPath := range masterdataRefs {
 		log.Println(baseDir + refPath)
@@ -64,9 +65,10 @@ func updateClientDb(baseDir string, masterdataRefs []string) {
 			log.Panic("manifest files must come from the same version")
 		}
 		for _, file := range mMap[refPath].Files {
-			actualFileVersion := hex.EncodeToString(fileSha1(baseDir + file.Name))
-			if actualFileVersion != file.SHA {
-				newFileVersion[file.Name] = actualFileVersion
+			actualFileVersion, checked := actualFileVersions[file.Name]
+			if !checked {
+				actualFileVersion = hex.EncodeToString(fileSha1(baseDir + file.Name))
+				actualFileVersions[file.Name] = actualFileVersion
 			}
 			versionBytes = append(versionBytes, []byte(actualFileVersion)...)
 		}
@@ -74,6 +76,19 @@ func updateClientDb(baseDir string, masterdataRefs []string) {
 	version := md5.Sum(versionBytes) // use md5 because it generate a 16 bytes string, which we can fold into 16 hex char
 	newVersion := versionString(hex.EncodeToString(version[:]))
 	os.MkdirAll(config.StaticDataPath+newVersion+"/", 0755)
+	// A shared DB can appear in several locale/platform manifests. Reuse only
+	// outputs already verified/generated in this call, with this source SHA and
+	// fixed keySpec; a pre-existing disk path is never sufficient evidence.
+	verified := map[string]FileReference{}
+	prepare := func(inputFile, outputFile string, file *FileReference) {
+		file.SHA = actualFileVersions[file.Name]
+		if previous, ok := verified[outputFile]; ok && previous.SHA == file.SHA {
+			file.EncryptedSHA, file.Size = previous.EncryptedSHA, previous.Size
+			return
+		}
+		rekey(inputFile, outputFile, file, keySpec)
+		verified[outputFile] = *file
+	}
 	if newVersion == oldVersion {
 		// check for integrity  of the data
 		log.Println("Performing integrity check for version: ", oldVersion)
@@ -82,16 +97,19 @@ func updateClientDb(baseDir string, masterdataRefs []string) {
 			for i := range m.Files {
 				inputFile := baseDir + m.Files[i].Name
 				existingFile := config.StaticDataPath + oldVersion + "/" + m.Files[i].Name
-				if hex.EncodeToString(fileSha1(existingFile)) != m.Files[i].EncryptedSHA {
-					log.Println("Integrity error detected for file: ", m.Files[i].Name, ", rekeying")
-					// remove the file first, if it exists
-					if fileExist(existingFile) {
-						err := os.Remove(existingFile)
-						utils.CheckErr(err)
-					}
-					rekey(inputFile, existingFile, &m.Files[i], keySpec)
+				before := m.Files[i]
+				prepare(inputFile, existingFile, &m.Files[i])
+				if m.Files[i] != before {
 					updated = true
 				}
+			}
+		}
+		// A restored output may have the same metadata as before, while the
+		// corresponding static manifest is missing or damaged.
+		for refPath, m := range mMap {
+			existing, err := os.ReadFile(config.StaticDataPath + oldVersion + "/" + refPath)
+			if err != nil || !bytes.Equal(existing, m.serialize()) {
+				updated = true
 			}
 		}
 		if updated { // update all the manifest
@@ -108,21 +126,9 @@ func updateClientDb(baseDir string, masterdataRefs []string) {
 		for refPath, m := range mMap {
 			m.Version = newVersion
 			for i := range m.Files {
-				ver, exists := newFileVersion[m.Files[i].Name]
 				inputFile := baseDir + m.Files[i].Name
 				outputFile := config.StaticDataPath + newVersion + "/" + m.Files[i].Name
-				if !exists {
-					// no need to change this file, but we have to copy it over from the existing version
-					err := copy(config.StaticDataPath+oldVersion+"/"+m.Files[i].Name, outputFile)
-					// if there is an error then something is wrong, here we assume the old version doesn't already exists, so we just key this file anyway
-					if err == nil {
-						continue
-					}
-					ver = m.Files[i].SHA
-				}
-				log.Println("Rekeying file: ", m.Files[i].Name)
-				m.Files[i].SHA = ver
-				rekey(inputFile, outputFile, &m.Files[i], keySpec)
+				prepare(inputFile, outputFile, &m.Files[i])
 			}
 			serialized := m.serialize()
 			err := os.WriteFile(config.StaticDataPath+newVersion+"/"+refPath, serialized, 0777)
