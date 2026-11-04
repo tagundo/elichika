@@ -15,6 +15,7 @@ import re
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -25,6 +26,8 @@ import candidate_upgrade as positive
 import followup as ui
 import mod_fixture as mod
 import mod_loss_policy as policy
+
+READINESS_ENDPOINTS = ((18080, "/webui/admin/"), (18770, "/"), (18772, "/"))
 
 
 def require(condition, reason):
@@ -121,24 +124,36 @@ def compare_core(before, config_before, actual, config_actual, phase):
             "config_preserved": True, **{key: before[key] for key in ("logical_sha256", "profile_sha256", "deck_sha256")}}
 
 
-def running_target(android, expected_native):
+def running_target(android, expected_native, evidence=None):
     pids = android.shell("sh", "-c", "pidof libelichika.so || true").split()
     require(len(pids) == 1 and pids[0].isdigit(), "negative_running_native_not_unique")
     actual = android.shell("sha256sum", f"/proc/{pids[0]}/exe").split()[0]
     require(actual == expected_native, "negative_running_native_mismatch")
-    statuses = {}
-    for port in (18080, 18770, 18772):
+    statuses, probes = {}, []
+    if evidence is None:
+        evidence = {}
+    evidence.update(running_native_sha256=actual, single_native_process=True, readiness_probes=probes)
+    for port, path in READINESS_ENDPOINTS:
         # Loopback readiness only. Never persist HTML, headers or body values.
-        request = urllib.request.Request(f"http://127.0.0.1:{port}/", method="GET")
+        probe = {"port": port, "path": path}
+        probes.append(probe)
+        request = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method="GET")
         try:
             response = urllib.request.build_opener(positive.NoRedirect()).open(request, timeout=10)
             status = response.status
             response.close()
-        except Exception:
+        except urllib.error.HTTPError as error:
+            probe.update(status=error.code, error_type="HTTPError")
+            error.close()
             raise policy.ModLossControlError("negative_server_readiness_failed") from None
+        except Exception as error:
+            probe["error_type"] = type(error).__name__
+            raise policy.ModLossControlError("negative_server_readiness_failed") from None
+        probe["status"] = status
         require(status == 200, "negative_server_readiness_failed")
         statuses[str(port)] = status
-    return {"running_native_sha256": actual, "single_native_process": True, "readiness": statuses}
+    evidence["readiness"] = statuses
+    return evidence
 
 
 def catalog_loss(android, fixture, uid):
@@ -221,7 +236,8 @@ def upgrade_expected_loss(android, args, state, command, report):
     result["after_start_core"] = compare_core(before, config_before, current, config, "fresh_after_start")
     result["game_apk_sha256"] = positive.verify_retained_game(android)
     require(result["game_apk_sha256"] == policy.GAME_SHA256, "negative_gl_apk_changed")
-    result["running_identity"] = running_target(android, result["installed_identity"]["native_sha256"])
+    running_evidence = result.setdefault("running_identity", {})
+    result["running_identity"] = running_target(android, result["installed_identity"]["native_sha256"], running_evidence)
     result["catalog_loss"] = catalog_loss(android, fixture, uid)
     result.update(status="CORE_VALIDATED_EXPECTED_CATALOG_LOSS", run_id=args.run_id, positive_guard_status="REFUSED",
                   positive_guard_stage=stage, synthetic_user_id=uid,

@@ -67,9 +67,15 @@ stack and actual screens before classifying or closing the run. Followup
 artifacts are named `gl-mod-loss-control-N` to avoid mixing them with positive
 results. The release remains withdrawn; this control grants no publish action.
 
-Host preparation passes153 Python tests, the JS preference checks, py_compile,
+Host preparation passes158 Python tests, the JS preference checks, py_compile,
 14 shell syntax blocks and the ten-input workflow limit. No Android run, APK
 build, release or tag action is part of the host checks. Run41827878073 stopped
 before custom Home when the initial fixture incorrectly expected a present-box
 entry for a unique suit. The fixed fixture follows Nov3.4's normal direct-grant
 behavior, verifies exact ownership, and never fabricates a present/receive path.
+Run41829645966 reached a reviewed real custom Home and verified withdrawn v1's
+catalog loss with unchanged userdata/config, but stopped before GL observation
+because the independent Go readiness probe used the wrong root URL. Its original
+seq4 artifact is preserved. The fixed probe uses the same per-port endpoints as
+the existing release smoke helper and records only sanitized port/path/status or
+error type; all three HTTP200 checks remain mandatory.
