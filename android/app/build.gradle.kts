@@ -97,6 +97,26 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    // Test APK only: keep the synthetic DBs out of the production payload/APK.
+    sourceSets.getByName("androidTest").assets.srcDir(
+        layout.buildDirectory.dir("generated/serverConfigTestAssets")
+    )
+}
+
+val generateServerConfigTestPayload by tasks.registering(Exec::class) {
+    val generator = rootProject.file("ci/generate_server_config_payload.py")
+    val assets = layout.buildDirectory.dir("generated/serverConfigTestAssets")
+    inputs.file(generator)
+    outputs.dir(assets)
+    commandLine(providers.gradleProperty("buildPython").orElse("python3").get(),
+        generator.absolutePath, "--output", assets.get().dir("payload").asFile.absolutePath)
+}
+
+// Applies to both debug and release instrumentation variants when available.
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("AndroidTestAssets")) {
+        dependsOn(generateServerConfigTestPayload)
+    }
 }
 
 chaquopy {

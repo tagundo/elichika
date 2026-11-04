@@ -359,6 +359,8 @@ jobs:
         run: |
           mkdir -p app/src/androidTest/assets
           cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
+          python3 ci/generate_server_config_payload.py \
+            --output app/build/generated/serverConfigTestAssets/payload
           ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
             -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
             -PappVersionName="${{ steps.ver.outputs.name }}" \
