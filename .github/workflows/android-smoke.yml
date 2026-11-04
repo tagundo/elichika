@@ -1,96 +1,72 @@
-name: Paired native Android hash-validation integration benchmark
+name: Published v4 native Android updater cProfile
 
-on:
-  workflow_dispatch:
-    inputs:
-      candidate_run_id:
-        description: Build Android APK run containing the candidate and instrumentation artifacts
-        required: true
-        type: string
-      candidate_sha256:
-        description: Independently audited raw candidate APK SHA-256
-        required: true
-        type: string
-      candidate_source_sha:
-        description: Reviewed candidate source commit SHA
-        required: true
-        type: string
-
+on: workflow_dispatch
 permissions:
   contents: read
   actions: read
 
 jobs:
-  android-benchmark:
-    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-hash-validation-qa'
+  android-profile:
+    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-v4-profile-qa'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 50
+    timeout-minutes: 35
     env:
       GH_TOKEN: ${{ github.token }}
-      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
-      CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
-      CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Verify pair contracts and candidate build artifact provenance
-        id: provenance
+      - name: Verify profile contracts and fixed published artifact provenance
         run: |
           set -euo pipefail
           python3 -m unittest discover -s tests -p 'test_android_payload_upgrade_benchmark_*.py'
           mkdir -p evidence
           python3 - <<'PY'
-          import importlib.util, json, os, re, subprocess
+          import hashlib, json, subprocess
           from pathlib import Path
-          run_id = os.environ['CANDIDATE_RUN_ID']; source = os.environ['CANDIDATE_SOURCE_SHA']; digest = os.environ['CANDIDATE_SHA256']
-          assert re.fullmatch(r'[1-9][0-9]{0,19}', run_id), 'Invalid run id'
-          assert re.fullmatch(r'[0-9a-f]{40}', source) and re.fullmatch(r'[0-9a-f]{64}', digest), 'Invalid candidate identity'
+          source = 'cca1438a8ee4408123e6ede22d974f1dbf2a823b'
           def api(path): return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/' + path], text=True, timeout=30))
-          spec = importlib.util.spec_from_file_location('paired_benchmark', 'tests/android_payload_upgrade_benchmark_pair.py')
-          module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-          run, build = module.wait_for_candidate_build(api, run_id, source)
-          artifacts = api('actions/runs/' + run_id + '/artifacts?per_page=100')['artifacts']
-          selected = {}
-          for name in ('elichika-release-apk','elichika-native-test-apk'):
-              matches = [artifact for artifact in artifacts if artifact['name'] == name and not artifact['expired']]
-              assert len(matches) == 1, 'Expected unique candidate artifact'
-              artifact = matches[0]
-              assert artifact['workflow_run']['id'] == int(run_id) and artifact['workflow_run']['head_sha'] == source, 'Artifact build source mismatch'
-              selected[name] = {key: artifact[key] for key in ('id','name','size_in_bytes','digest')}
-          Path('evidence/candidate-artifact-binding.json').write_text(json.dumps({'run_id':run_id,'source_sha':source,'apk_sha256':digest,'verified_build_job_id':build['id'],'build_verification':build['verification_mode'],'observed_build_status':build['status'],'artifacts':selected},indent=2) + '\n')
-          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
-              output.write('candidate_artifact_id=' + str(selected['elichika-release-apk']['id']) + '\n')
-              output.write('instrumentation_artifact_id=' + str(selected['elichika-native-test-apk']['id']) + '\n')
-          print(json.dumps({'preflight':'artifact_source_verified','build_verification':build['verification_mode'],'observed_job_status':build['status']}))
+          run = api('actions/runs/41884324695')
+          assert (run['status'],run['conclusion'],run['head_sha']) == ('completed','success',source), 'Published source build mismatch'
+          assert run['repository']['full_name'] == run['head_repository']['full_name'] == 'tagundo/elichika', 'Published build repository mismatch'
+          artifact_page = api('actions/runs/41884324695/artifacts?per_page=100')
+          assert artifact_page['total_count'] <= 100, 'Artifact page requires review'
+          matches = [a for a in artifact_page['artifacts'] if a['name'] == 'elichika-native-test-apk']
+          assert len(matches) == 1 and matches[0]['id'] == 13352072069 and not matches[0]['expired'], 'Original test artifact mismatch'
+          artifact = matches[0]
+          assert artifact['workflow_run']['id'] == 41884324695 and artifact['workflow_run']['head_sha'] == source, 'Original test artifact source mismatch'
+          assert artifact['digest'] == 'sha256:cc69cb0d542ffc3c3eae250834908cc9c3d9af7643df9cffb219bc8cf25a4418', 'Original test ZIP digest mismatch'
+          tag = api('git/ref/tags/v2026.11.04.4')['object']
+          assert tag['type'] == 'commit' and tag['sha'] == source, 'Published source tag mismatch'
+          release = api('releases/434326439')
+          assert release['draft'] is False and release['prerelease'] is False and release['tag_name'] == 'v2026.11.04.4' and release['target_commitish'] == source, 'Expected published v4 release'
+          apk_sha = '815e9dd70d1b0e89b97f76b83c1b71136ec7f5f73f6e9a6a983d123a7aa42cac'
+          checksum = (apk_sha + '  elichika-2026.11.04.4.apk\n').encode()
+          expected = {'elichika-2026.11.04.4.apk': (289671611,apk_sha), 'SHA256SUMS': (len(checksum),hashlib.sha256(checksum).hexdigest())}
+          assert len(checksum) == 92 and len(release['assets']) == 2 and {a['name'] for a in release['assets']} == set(expected), 'Published asset set mismatch'
+          for asset in release['assets']:
+              size,digest = expected[asset['name']]
+              assert (asset['state'],asset['size'],asset['digest']) == ('uploaded',size,'sha256:' + digest), 'Published asset identity mismatch'
+          Path('evidence/profile-source-binding.json').write_text(json.dumps({'build_run_id':41884324695,'source_sha':source,'test_artifact':{key:artifact[key] for key in ('id','name','size_in_bytes','digest')},'published_release_id':release['id'],'published_apk_sha256':apk_sha,'benchmark_script_sha256':'46b41475adbf2a40d0f94954751b6bf584a1521cb5a571c955fe8ff44e6c94b4','instrumentation_modified':False},indent=2) + '\n')
+          print('Verified exact published v4 and original same-run signed instrumentation')
           PY
 
-      - name: Download the exact verified candidate wrapper artifact
+      - name: Download the original signed same-build instrumentation without modification
         uses: actions/download-artifact@v4
         with:
-          artifact-ids: ${{ steps.provenance.outputs.candidate_artifact_id }}
-          merge-multiple: true
-          path: candidate
-          repository: tagundo/elichika
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
-          github-token: ${{ github.token }}
-
-      - name: Download the same-run unmodified instrumentation artifact for both targets
-        uses: actions/download-artifact@v4
-        with:
-          artifact-ids: ${{ steps.provenance.outputs.instrumentation_artifact_id }}
+          artifact-ids: 13352072069
           merge-multiple: true
           path: instrumentation
           repository: tagundo/elichika
-          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          run-id: 41884324695
           github-token: ${{ github.token }}
 
-      - name: Download the fixed public v3 baseline app and separate v2 fixture dataset
+      - name: Download fixed public v4 target and separate v2 fixture dataset
         run: |
           set -euo pipefail
-          curl --fail --location --retry 2 --output baseline.apk \
-            https://github.com/tagundo/elichika/releases/download/v2026.11.04.3/elichika-2026.11.04.3.apk
+          curl --fail --location --retry 2 --output target.apk \
+            https://github.com/tagundo/elichika/releases/download/v2026.11.04.4/elichika-2026.11.04.4.apk
           curl --fail --location --retry 2 --output fixture.apk \
             https://github.com/tagundo/elichika/releases/download/v2026.11.04.2/elichika-2026.11.04.2.apk
 
@@ -128,17 +104,17 @@ jobs:
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
           adb -s 127.0.0.1:5555 shell id >> evidence/host.txt
 
-      - name: Run the v3 and candidate engines on the same fixed v2 inputs
+      - name: Profile both published v4 updater cases on the fixed inputs
         run: >-
-          python3 -u tests/android_payload_upgrade_benchmark_pair.py
-          --baseline baseline.apk --fixture fixture.apk --candidate-dir candidate
+          python3 -u tests/android_payload_upgrade_benchmark_profile.py
+          --target target.apk --fixture fixture.apk
           --instrumentation-dir instrumentation --evidence evidence
 
-      - name: Upload only synthetic benchmark reports and instrumentation output
+      - name: Upload only synthetic profile reports and instrumentation output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-payload-upgrade-paired-benchmark
+          name: android-payload-v4-cprofile
           path: evidence/
           if-no-files-found: warn
 
