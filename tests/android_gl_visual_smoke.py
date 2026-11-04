@@ -139,7 +139,45 @@ LATEST_BASELINE_SHA = "70fa45d9fbb70e92b56b486617e4cc3c4afc39a76922f7f941caf6a29
 LATEST_BASELINE_CODE = 2026110304
 
 
-def userdata_snapshot(android, uid=None):
+def stored_nullable_id(value):
+    # u_live_deck nullable IDs are declared xorm:"json" and contain JSON integers.
+    if isinstance(value, bytes):
+        value = value.decode()
+    value = json.loads(value) if isinstance(value, str) else value
+    assert type(value) is int
+    return value
+
+
+def prepare_deck_suit_fixture(android, client):
+    # The baseline's deck-name API does not persist this field. Exercise a
+    # supported deck edit with a different owned costume of the same member.
+    uid = client.uid
+    with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
+        row = connection.execute(
+            "SELECT card_master_id_1,suit_master_id_1 FROM u_live_deck "
+            "WHERE user_id=? AND user_live_deck_id=1", (uid,)).fetchone()
+        assert row is not None
+        card, previous = map(stored_nullable_id, row)
+        owned = {r[0] for r in connection.execute(
+            "SELECT suit_master_id FROM u_suit WHERE user_id=?", (uid,))}
+    with closing(database_from_bytes(android.read(f"{FILES}/assets/db/gl/masterdata.db"))) as master:
+        member = master.execute("SELECT member_m_id FROM m_card WHERE id=?", (card,)).fetchone()[0]
+        choices = [r[0] for r in master.execute(
+            "SELECT id FROM m_suit WHERE member_m_id=? ORDER BY id", (member,))]
+    selected = next((suit for suit in choices if suit != previous and suit in owned), None)
+    assert selected is not None, "Synthetic baseline account has no alternate owned suit"
+    client.request("/liveDeck/saveSuit", {"deck_id": 1, "card_index": 1,
+                   "suit_master_id": selected, "view_status": 1})
+    with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
+        saved = stored_nullable_id(connection.execute(
+            "SELECT suit_master_id_1 FROM u_live_deck WHERE user_id=? AND user_live_deck_id=1",
+            (uid,)).fetchone()[0])
+    assert selected != previous and saved == selected, "Normal API deck fixture did not persist"
+    return {"deck_id": 1, "card_index": 1, "card_master_id": card,
+            "member_id": member, "previous_suit_id": previous, "selected_suit_id": selected}
+
+
+def userdata_snapshot(android, uid=None, expected_deck_suit=None):
     # Hash the full logical database in memory; authentication material is not
     # persisted to a temporary evidence file or included in the report.
     with closing(database_from_bytes(android.read(f"{FILES}/userdata.db"))) as connection:
@@ -147,9 +185,10 @@ def userdata_snapshot(android, uid=None):
                   "accounts": connection.execute("SELECT COUNT(*) FROM u_status").fetchone()[0]}
         if uid is not None:
             name = connection.execute("SELECT name FROM u_status WHERE user_id=?", (uid,)).fetchone()[0]
-            deck = connection.execute("SELECT name FROM u_live_deck WHERE user_id=? AND user_live_deck_id=1", (uid,)).fetchone()[0]
+            deck_suit = stored_nullable_id(connection.execute("SELECT suit_master_id_1 FROM u_live_deck WHERE user_id=? AND user_live_deck_id=1", (uid,)).fetchone()[0])
             result["synthetic_profile_preserved"] = name in ("JPGLQA", b"JPGLQA")
-            result["synthetic_deck_preserved"] = deck in ("ReviewDeck", b"ReviewDeck")
+            result["synthetic_deck_suit_master_id"] = deck_suit
+            result["synthetic_deck_preserved"] = deck_suit == expected_deck_suit
         return result
 
 
@@ -195,24 +234,25 @@ def install_candidate_from_latest(android, args, report):
         client.create()
         client.login()
         client.request("/userProfile/setProfile", {"name": "JPGLQA"})
-        client.request("/liveDeck/changeDeckNameLiveDeck", {"deck_id": 1, "deck_name": "ReviewDeck"})
+        deck_fixture = prepare_deck_suit_fixture(android, client)
         uid = client.uid
         baseline["synthetic_user_id"] = uid
+        baseline["deck_fixture"] = deck_fixture
         stop_server(android)
         set_mode(android, "comfortable")
         marker_path = f"{FILES}/gl-qa-private-marker.txt"
         marker = b"PR59 latest baseline preservation fixture\n"
         android.write(marker_path, marker)
-        before = userdata_snapshot(android, uid)
+        before = userdata_snapshot(android, uid, deck_fixture["selected_suit_id"])
         assert before["synthetic_profile_preserved"] and before["synthetic_deck_preserved"]
         baseline["before_update"] = before
         config_before = android.read(f"{FILES}/config.json")
         report["candidate_install"] = android.install(args.candidate, args.version_code)
-        assert userdata_snapshot(android, uid) == before, "Package update changed userdata"
+        assert userdata_snapshot(android, uid, deck_fixture["selected_suit_id"]) == before, "Package update changed userdata"
         assert android.read(f"{FILES}/config.json") == config_before, "Package update changed config"
         assert android.read(marker_path) == marker, "Package update lost the private marker"
         report["candidate_start"] = android.start("latest-to-candidate")
-        after = userdata_snapshot(android, uid)
+        after = userdata_snapshot(android, uid, deck_fixture["selected_suit_id"])
         assert after == before, "Candidate payload refresh changed retained account data"
         assert read_mode(android) == "comfortable", "Upgrade changed the resource mode"
         assert android.read(marker_path) == marker, "Payload refresh lost the private marker"
