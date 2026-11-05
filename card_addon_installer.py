@@ -24,6 +24,7 @@ import shutil
 import json
 import hashlib
 from datetime import datetime
+from sukusta_paths import installer_scan_path
 
 check_json_config = "config.json"
 
@@ -469,7 +470,7 @@ passive_skill_evaluation = 0
 passive_skill_evaluation_step_even_up = 0
 passive_skill_evaluation_step_odd_up = 0
 
-modding_elichika_path = "assets/package/card/"
+modding_elichika_path = installer_scan_path("card", "assets/package/card/")
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)

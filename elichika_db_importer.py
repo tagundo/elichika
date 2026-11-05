@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import platform
+from sukusta_paths import installer_scan_path
 
 check_json_config = "config.json"
 
@@ -13,11 +14,7 @@ if not os.path.exists(check_json_config):
 def is_termux():
     return 'com.termux' in os.getenv('PREFIX', '')
     
-if is_termux():
-    folder_path = os.path.expanduser('~/storage/downloads/sukusta/sql/')
-else:
-    # Set a default or other path if not in Termux
-    folder_path = "assets/package/sql/"
+folder_path = installer_scan_path("sql", "assets/package/sql/")
     
 if not os.path.exists(folder_path):
     os.makedirs(folder_path)

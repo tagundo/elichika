@@ -70,8 +70,8 @@ _TABLES = {
         # tool labels
         "Backup Database": "데이터베이스 백업",
         "Clear Pack Cache": "팩 캐시 비우기",
-        "Delete downloaded game packs (Download/sukusta/packs) to free storage. Missing packs re-download when you play.":
-            "받아둔 게임 팩(Download/sukusta/packs)을 삭제해 저장공간을 확보합니다. 부족한 팩은 플레이 시 다시 받습니다.",
+        "Delete downloaded game packs (sukusta/packs) to free storage. Missing packs re-download when you play.":
+            "받아둔 게임 팩(sukusta/packs)을 삭제해 저장공간을 확보합니다. 부족한 팩은 플레이 시 다시 받습니다.",
         "Restore Database": "데이터베이스 복원",
         "Costume Clone": "코스튬 복제",
         "Extract / Decrypt Assets": "에셋 추출 / 복호화",
@@ -103,18 +103,18 @@ _TABLES = {
             "이전 백업에서 데이터베이스를 복원합니다(현재 상태는 먼저 백업됩니다).",
         "Copy a costume from one character to another (adds a cloned suit for every user).":
             "한 캐릭터의 코스튬을 다른 캐릭터로 복사합니다(모든 유저에게 복제 코스튬 추가).",
-        "Install a costume add-on zip into the server database. Drop the zip into Download/sukusta/suit (or use the file picker), then pick it.":
-            "코스튬 애드온 zip을 서버 DB에 설치합니다. zip을 Download/sukusta/suit 에 넣거나 파일 선택기로 가져온 뒤 고르세요.",
-        "Install a live (song) add-on zip into the server database. Drop the zip into Download/sukusta/live.":
-            "라이브(곡) 애드온 zip을 서버 DB에 설치합니다. zip을 Download/sukusta/live 에 넣으세요.",
-        "Install a card add-on zip into the server database. Drop the zip into Download/sukusta/card.":
-            "카드 애드온 zip을 서버 DB에 설치합니다. zip을 Download/sukusta/card 에 넣으세요.",
-        "Install a tower / DLP add-on zip. Drop the zip into Download/sukusta/tower.":
-            "타워 / DLP 애드온 zip을 설치합니다. zip을 Download/sukusta/tower 에 넣으세요.",
-        "Install a live camera / timeline add-on zip. Drop the zip into Download/sukusta/livetimeline.":
-            "라이브 카메라 / 타임라인 애드온 zip을 설치합니다. zip을 Download/sukusta/livetimeline 에 넣으세요.",
-        "Import a .sql patch into the master / user databases (advanced). Drop the file into Download/sukusta/sql.":
-            "마스터 / 유저 DB에 .sql 패치를 임포트합니다(고급). 파일을 Download/sukusta/sql 에 넣으세요.",
+        "Install a costume add-on zip into the server database. Drop the zip into sukusta/suit (or use the file picker), then pick it.":
+            "코스튬 애드온 zip을 서버 DB에 설치합니다. zip을 sukusta/suit 에 넣거나 파일 선택기로 가져온 뒤 고르세요.",
+        "Install a live (song) add-on zip into the server database. Drop the zip into sukusta/live.":
+            "라이브(곡) 애드온 zip을 서버 DB에 설치합니다. zip을 sukusta/live 에 넣으세요.",
+        "Install a card add-on zip into the server database. Drop the zip into sukusta/card.":
+            "카드 애드온 zip을 서버 DB에 설치합니다. zip을 sukusta/card 에 넣으세요.",
+        "Install a tower / DLP add-on zip. Drop the zip into sukusta/tower.":
+            "타워 / DLP 애드온 zip을 설치합니다. zip을 sukusta/tower 에 넣으세요.",
+        "Install a live camera / timeline add-on zip. Drop the zip into sukusta/livetimeline.":
+            "라이브 카메라 / 타임라인 애드온 zip을 설치합니다. zip을 sukusta/livetimeline 에 넣으세요.",
+        "Import a .sql patch into the master / user databases (advanced). Drop the file into sukusta/sql.":
+            "마스터 / 유저 DB에 .sql 패치를 임포트합니다(고급). 파일을 sukusta/sql 에 넣으세요.",
         "Swap the JP client's text for another language's dictionary. To revert, swap back to ja.":
             "JP 클라이언트의 텍스트를 다른 언어 사전으로 교체합니다. 되돌리려면 다시 ja로 바꾸세요.",
         # field labels
@@ -123,8 +123,8 @@ _TABLES = {
         "Back up the database first": "DB 먼저 백업",
         "Stop the elichika server first": "먼저 elichika 서버 중지",
         "Automatically restart the server after installation": "설치 후 서버 자동 재시작",
-        "Android app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
-            "Android 앱: 실행 중인 서버를 먼저 중지하고 모든 파일 설치가 성공하면 다시 시작합니다. 꺼져 있던 서버는 켜지지 않습니다. 실패하거나 취소하면 중지 상태를 유지합니다.",
+        "In the app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
+            "앱: 실행 중인 서버를 먼저 중지하고 모든 파일 설치가 성공하면 다시 시작합니다. 꺼져 있던 서버는 켜지지 않습니다. 실패하거나 취소하면 중지 상태를 유지합니다.",
         "Backup to restore": "복원할 백업",
         "Source character": "원본 캐릭터",
         "Costume to clone": "복제할 코스튬",
@@ -147,10 +147,10 @@ _TABLES = {
             "고른 하나가 아니라 위 목록의 모든 코스튬(캐릭터의 코스튬 또는 검색 결과 전체)을 추출합니다.",
         "Recommended: a full DB backup is taken before the clone.":
             "권장: 복제 전에 전체 DB 백업이 수행됩니다.",
-        "Files in Download/sukusta/{folder} and …/addons appear here.":
-            "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다.",
-        "Files in Download/sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
-            "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다. Ctrl/Cmd를 누른 채(또는 드래그) 여러 개를 선택하면 차례로 설치됩니다.",
+        "Files in sukusta/{folder} and …/addons appear here.":
+            "sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다.",
+        "Files in sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
+            "sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다. Ctrl/Cmd를 누른 채(또는 드래그) 여러 개를 선택하면 차례로 설치됩니다.",
     },
     "ja": {
         # static UI chrome (client-side, app.js / index.html)
@@ -175,8 +175,8 @@ _TABLES = {
         # tool labels
         "Backup Database": "データベースのバックアップ",
         "Clear Pack Cache": "パックキャッシュを消去",
-        "Delete downloaded game packs (Download/sukusta/packs) to free storage. Missing packs re-download when you play.":
-            "ダウンロード済みのゲームパック（Download/sukusta/packs）を削除して空き容量を確保します。不足分はプレイ時に再取得されます。",
+        "Delete downloaded game packs (sukusta/packs) to free storage. Missing packs re-download when you play.":
+            "ダウンロード済みのゲームパック（sukusta/packs）を削除して空き容量を確保します。不足分はプレイ時に再取得されます。",
         "Restore Database": "データベースの復元",
         "Costume Clone": "衣装クローン",
         "Extract / Decrypt Assets": "アセット抽出 / 復号",
@@ -207,18 +207,18 @@ _TABLES = {
             "以前のバックアップからデータベースを復元します（現在の状態は先にバックアップされます）。",
         "Copy a costume from one character to another (adds a cloned suit for every user).":
             "ある衣装を別のキャラにコピーします（全ユーザーにクローン衣装を追加）。",
-        "Install a costume add-on zip into the server database. Drop the zip into Download/sukusta/suit (or use the file picker), then pick it.":
-            "衣装アドオンzipをサーバーDBにインストールします。zipをDownload/sukusta/suitに置くかファイル選択で取り込み、選択してください。",
-        "Install a live (song) add-on zip into the server database. Drop the zip into Download/sukusta/live.":
-            "ライブ（楽曲）アドオンzipをサーバーDBにインストールします。zipをDownload/sukusta/liveに置いてください。",
-        "Install a card add-on zip into the server database. Drop the zip into Download/sukusta/card.":
-            "カードアドオンzipをサーバーDBにインストールします。zipをDownload/sukusta/cardに置いてください。",
-        "Install a tower / DLP add-on zip. Drop the zip into Download/sukusta/tower.":
-            "タワー / DLP アドオンzipをインストールします。zipをDownload/sukusta/towerに置いてください。",
-        "Install a live camera / timeline add-on zip. Drop the zip into Download/sukusta/livetimeline.":
-            "ライブカメラ / タイムラインアドオンzipをインストールします。zipをDownload/sukusta/livetimelineに置いてください。",
-        "Import a .sql patch into the master / user databases (advanced). Drop the file into Download/sukusta/sql.":
-            "マスター / ユーザーDBに.sqlパッチをインポートします（上級）。ファイルをDownload/sukusta/sqlに置いてください。",
+        "Install a costume add-on zip into the server database. Drop the zip into sukusta/suit (or use the file picker), then pick it.":
+            "衣装アドオンzipをサーバーDBにインストールします。zipをsukusta/suitに置くかファイル選択で取り込み、選択してください。",
+        "Install a live (song) add-on zip into the server database. Drop the zip into sukusta/live.":
+            "ライブ（楽曲）アドオンzipをサーバーDBにインストールします。zipをsukusta/liveに置いてください。",
+        "Install a card add-on zip into the server database. Drop the zip into sukusta/card.":
+            "カードアドオンzipをサーバーDBにインストールします。zipをsukusta/cardに置いてください。",
+        "Install a tower / DLP add-on zip. Drop the zip into sukusta/tower.":
+            "タワー / DLP アドオンzipをインストールします。zipをsukusta/towerに置いてください。",
+        "Install a live camera / timeline add-on zip. Drop the zip into sukusta/livetimeline.":
+            "ライブカメラ / タイムラインアドオンzipをインストールします。zipをsukusta/livetimelineに置いてください。",
+        "Import a .sql patch into the master / user databases (advanced). Drop the file into sukusta/sql.":
+            "マスター / ユーザーDBに.sqlパッチをインポートします（上級）。ファイルをsukusta/sqlに置いてください。",
         "Swap the JP client's text for another language's dictionary. To revert, swap back to ja.":
             "JPクライアントのテキストを別言語の辞書に置き換えます。戻すにはjaに置換し直してください。",
         "File to install": "インストールするファイル",
@@ -226,8 +226,8 @@ _TABLES = {
         "Back up the database first": "先にDBをバックアップ",
         "Stop the elichika server first": "先にelichikaサーバーを停止",
         "Automatically restart the server after installation": "インストール後にサーバーを自動再起動",
-        "Android app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
-            "Androidアプリ: 実行中のサーバーを停止し、全ファイルのインストール成功後に再起動します。停止中のサーバーは起動しません。失敗やキャンセル時は停止したままにします。",
+        "In the app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
+            "アプリ: 実行中のサーバーを停止し、全ファイルのインストール成功後に再起動します。停止中のサーバーは起動しません。失敗やキャンセル時は停止したままにします。",
         "Backup to restore": "復元するバックアップ",
         "Source character": "元キャラ",
         "Costume to clone": "クローンする衣装",
@@ -249,9 +249,9 @@ _TABLES = {
             "選んだ1つではなく、上の一覧のすべての衣装（キャラの衣装、または検索結果すべて）を抽出します。",
         "Recommended: a full DB backup is taken before the clone.":
             "推奨: クローン前に完全なDBバックアップが取られます。",
-        "Files in Download/sukusta/{folder} and …/addons appear here.":
-            "Download/sukusta/{folder} と …/addons のファイルがここに表示されます。",
-        "Files in Download/sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
-            "Download/sukusta/{folder} と …/addons のファイルがここに表示されます。Ctrl/Cmdを押しながら（またはドラッグで）複数選択すると順番にインストールされます。",
+        "Files in sukusta/{folder} and …/addons appear here.":
+            "sukusta/{folder} と …/addons のファイルがここに表示されます。",
+        "Files in sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
+            "sukusta/{folder} と …/addons のファイルがここに表示されます。Ctrl/Cmdを押しながら（またはドラッグで）複数選択すると順番にインストールされます。",
     },
 }

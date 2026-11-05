@@ -1,6 +1,6 @@
 """Adapters that run the interactive Developer-Menu tools (costume / live / card /
 tower / camera-timeline / db installers, and the JP dictionary swap) from the web
-UI **without modifying them**.
+UI through their numbered-file flows.
 
 These tools run their whole flow at module top level with input() prompts and
 exit(). Rather than refactor them, we drive them as-is:
@@ -15,7 +15,8 @@ exit(). Rather than refactor them, we drive them as-is:
   * a prompt-aware fake input() answers the rest (proceed / backup / platform);
   * the module is (re)imported so it executes end to end, stdout captured.
 
-This keeps the Termux CLI of each tool untouched.
+The apps select their own library with SUKUSTA_DIR; ordinary CLI paths remain
+available without pretending that a desktop process is running in Termux.
 """
 import builtins
 import importlib
@@ -25,6 +26,7 @@ import sys
 
 from adminui.serverctl import installation_server, stop_server
 from adminui.tools.common import capture_stdout, ensure_repo_on_path
+from sukusta_paths import CLI_MODE_ENV, configured_root, library_path, resolve_library_alias
 
 # Shared, user-visible drop folder (the in-app file picker copies imports here).
 DROP_DIR = os.path.expanduser("~/storage/downloads/sukusta/addons")
@@ -49,13 +51,17 @@ INSTALLERS = {
 
 
 def _dirs(spec):
-    return [os.path.abspath(os.path.expanduser(s)) for s in spec["scans"]]
+    return [resolve_library_alias(s) for s in spec["scans"]]
 
 
 def _candidate_dirs(key):
     """Every folder a chosen file might already sit in: the shared addons drop
     folder plus the installer's own per-type folders (suit / live / ...)."""
-    return [os.path.abspath(os.path.expanduser(DROP_DIR))] + _dirs(INSTALLERS[key])
+    # An explicit app library wins even when the module was imported before the
+    # launcher selected it. DROP_DIR remains the legacy, patchable fallback.
+    drop = (library_path("addons") if configured_root() is not None
+            else os.path.abspath(os.path.expanduser(DROP_DIR)))
+    return [drop] + _dirs(INSTALLERS[key])
 
 
 def _locate(key, name):
@@ -142,21 +148,17 @@ def _reload(module_name):
     return importlib.import_module(module_name)
 
 
-def _force_termux_mode():
-    """These installers branch on is_termux() (== 'com.termux' in $PREFIX). Off
-    Termux they take a desktop path that `import tkinter` (absent in the app) and
-    pops a file dialog. We drive the Termux/CLI path instead (folder scan + fake
-    input), so spoof $PREFIX for the duration of the run. Returns a restore fn."""
-    had = "PREFIX" in os.environ
-    old = os.environ.get("PREFIX", "")
-    if "com.termux" not in old:
-        os.environ["PREFIX"] = "/data/data/com.termux/files/usr"
+def _force_cli_mode():
+    """Use numbered-file selection without spoofing an operating system."""
+    had = CLI_MODE_ENV in os.environ
+    old = os.environ.get(CLI_MODE_ENV, "")
+    os.environ[CLI_MODE_ENV] = "cli"
 
     def restore():
         if had:
-            os.environ["PREFIX"] = old
+            os.environ[CLI_MODE_ENV] = old
         else:
-            os.environ.pop("PREFIX", None)
+            os.environ.pop(CLI_MODE_ENV, None)
 
     return restore
 
@@ -187,7 +189,7 @@ def _install_one(job, key, spec, chosen, do_backup):
 
     job.log(f"[{key}] installing {chosen}")
     restore_listing = _patched_listing(scans, chosen)
-    restore_env = _force_termux_mode()
+    restore_env = _force_cli_mode()
     real_input = builtins.input
     builtins.input = _Answers(do_backup)
     module = None
@@ -309,7 +311,7 @@ def run_dictionary(job, params):
     if params.get("stop_server", True):
         stop_server(job.log)
     job.log(f"[dictionary] swapping JP client text to: {lang}")
-    restore_env = _force_termux_mode()
+    restore_env = _force_cli_mode()
     real_input = builtins.input
     builtins.input = _Answers(False, lang=num)
     try:

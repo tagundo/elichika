@@ -42,6 +42,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -p test_assets_extract.py -v
           python3 -m unittest discover -s tests -p test_admin_install_restart.py -v
+          python3 -m unittest discover -s tests -p test_sukusta_paths.py -v
           python3 -m unittest discover -s tests -p test_android_python_launch.py -v
           python3 -m adminui.selftest
 
@@ -69,6 +70,8 @@ jobs:
           python3 -c 'import hashlib, sys; from pathlib import Path; from UnityPy.helpers import TypeTreeHelper; actual = hashlib.sha256(Path(TypeTreeHelper.__file__).read_bytes()).hexdigest(); actual == "355179e62b14d2f638947e057979d15815a9cadd3a3d868d8b809455193a290b" or sys.exit("Expected pristine UnityPy1.25.0 TypeTreeHelper, got " + actual)'
           # Exercise the real guarded Android launcher after model dependencies are installed.
           python3 -m unittest discover -s ../tests -p test_android_python_launch.py -v
+          python3 -m pip install "certifi==2026.10.23"
+          python3 -m unittest discover -s ../tests -p 'test_macos_runtime*.py' -v
           python3 -m unittest discover -s ../android/ci -p 'test_patch_unitypy_*.py' -v
           python3 -m unittest discover -s tests -p test_mesh_editor.py -v
           python3 -m unittest discover -s tests -p test_gallery_decode.py -v
@@ -110,7 +113,7 @@ jobs:
 
   viewer-webgl:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout viewer sources
         uses: actions/checkout@v4
@@ -159,6 +162,7 @@ jobs:
           node tests/viewer_quality_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/macos" node tests/viewer_macos_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/resolution" node tests/viewer_resolution_browser.js
 
       - name: Upload neutral WebGL evidence

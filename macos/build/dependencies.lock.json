@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "minimum_macos": "13.0",
+  "python_version": "3.12.16",
+  "python_release": "20261026",
+  "python_distribution": "astral-sh/python-build-standalone",
+  "astc_commit": "0d6c9047c5ad19640e2d60fdb8f11a16675e7938",
+  "astc_version": "4.8.0",
+  "packages": {
+    "numpy": "1.26.2",
+    "Pillow": "11.0.0",
+    "UnityPy": "1.25.0",
+    "lz4": "4.3.3",
+    "brotli": "1.1.0",
+    "attrs": "26.1.0",
+    "fsspec": "2026.9.0",
+    "texture2ddecoder": "1.0.6",
+    "etcpak": "0.9.15",
+    "astc-encoder-py": "0.1.12",
+    "fmod-toolkit": "0.1.3",
+    "pyfmodex": "0.7.2",
+    "archspec": "0.2.7",
+    "certifi": "2026.10.23"
+  },
+  "architectures": {
+    "arm64": {
+      "python": {
+        "filename": "cpython-3.12.16+20261026-aarch64-apple-darwin-install_only_stripped.tar.gz",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.12.16%2B20261026-aarch64-apple-darwin-install_only_stripped.tar.gz",
+        "sha256": "353d5f1b4fd2715e7053f12f068435d5bbad16b91e057006b5d01e0925709a7e",
+        "bytes": 25035343
+      },
+      "wheels": [
+        {
+          "package": "numpy",
+          "version": "1.26.2",
+          "filename": "numpy-1.26.2-cp312-cp312-macosx_11_0_arm64.whl",
+          "url": "https://files.pythonhosted.org/packages/2a/17/1fdc154e75d24d8c20c42b71bae1b5cf752453f0fc3a2504bbb810293dd1/numpy-1.26.2-cp312-cp312-macosx_11_0_arm64.whl",
+          "sha256": "5d5244aabd6ed7f312268b9247be47343a654ebea52a60f002dc70c769048e75",
+          "bytes": 13675818
+        },
+        {
+          "package": "Pillow",
+          "version": "11.0.0",
+          "filename": "pillow-11.0.0-cp312-cp312-macosx_11_0_arm64.whl",
+          "url": "https://files.pythonhosted.org/packages/4f/d5/1caabedd8863526a6cfa44ee7a833bd97f945dc1d56824d6d76e11731939/pillow-11.0.0-cp312-cp312-macosx_11_0_arm64.whl",
+          "sha256": "084a07ef0821cfe4858fe86652fffac8e187b6ae677e9906e192aafcc1b69903",
+          "bytes": 2978999
+        },
+        {
+          "package": "UnityPy",
+          "version": "1.25.0",
+          "filename": "unitypy-1.25.0-cp312-cp312-macosx_11_0_arm64.whl",
+          "url": "https://files.pythonhosted.org/packages/18/e0/de01b6a9f8b8c9553f2af20b6e4cb1d147631b03cbc905088decd9d56d21/unitypy-1.25.0-cp312-cp312-macosx_11_0_arm64.whl",
+          "sha256": "1dd515cb435bcefcffc83068c71a101ec66b7c12cf6a413d25b350e2cc2b035f",
+          "bytes": 417514
+        },
+        {
+          "package": "lz4",
+          "version": "4.3.3",
+          "filename": "lz4-4.3.3-cp312-cp312-macosx_11_0_arm64.whl",
+          "url": "https://files.pythonhosted.org/packages/53/4d/8e04ef75feff8848ba3c624ce81c7732bdcea5f8f994758afa88cd3d7764/lz4-4.3.3-cp312-cp312-macosx_11_0_arm64.whl",
+          "sha256": "31ea4be9d0059c00b2572d700bf2c1bc82f241f2c3282034a759c9a4d6ca4dc2",
+          "bytes": 212354
+        },
+        {
+          "package": "brotli",
+          "version": "1.1.0",
+          "filename": "Brotli-1.1.0-cp312-cp312-macosx_10_13_universal2.whl",
+          "url": "https://files.pythonhosted.org/packages/5c/d0/5373ae13b93fe00095a58efcbce837fd470ca39f703a235d2a999baadfbc/Brotli-1.1.0-cp312-cp312-macosx_10_13_universal2.whl",
+          "sha256": "32d95b80260d79926f5fab3c41701dbb818fde1c9da590e77e571eefd14abe28",
+          "bytes": 815693
+        },
+        {
+          "package": "attrs",
+          "version": "26.1.0",
+          "filename": "attrs-26.1.0-py3-none-any.whl",
+          "url": "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl",
+          "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+          "bytes": 67548
+        },
+        {
+          "package": "fsspec",
+          "version": "2026.9.0",
+          "filename": "fsspec-2026.9.0-py3-none-any.whl",
+          "url": "https://files.pythonhosted.org/packages/6c/c0/a98505f18594f1bce828bb159cec0fcf9860562f1a2c85913409fc8f3d9e/fsspec-2026.9.0-py3-none-any.whl",
+          "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f",
+          "bytes": 221738
+        },
+        {
+          "package": "texture2ddecoder",
+          "version": "1.0.6",
+          "filename": "texture2ddecoder-1.0.6-cp311-abi3-macosx_11_0_arm64.whl",
+          "url": "https://files.pythonhosted.org/packages/af/39/e95286fdff39227eef8741c3138dfec22bbbaf4bea966ae081df1e664ba5/texture2ddecoder-1.0.6-cp311-abi3-macosx_11_0_arm64.whl",
+          "sha256": "ebb12555f8774a2e497c92803102224546abe4d9bb8d10c77c2f300f07ce6ed9",
+          "bytes": 89260
+        },
+        {
+          "package": "etcpak",
+          "version": "0.9.15",
+          "filename": "etcpak-0.9.15-cp37-abi3-macosx_11_0_arm64.whl",
+          "url": "https://files.pythonhosted.org/packages/17/6c/501e3c4307ce022d2522af84e78dd03c4e225870f7484ccb5d4302b7c0ec/etcpak-0.9.15-cp37-abi3-macosx_11_0_arm64.whl",
+          "sha256": "b96260c18ff79387d9b003c9188196c2490bdcd3420496fcf544f246a534c31b",
+          "bytes": 185525
+        },
+        {
+          "package": "astc-encoder-py",
+          "version": "0.1.12",
+          "filename": "astc_encoder_py-0.1.12-cp37-abi3-macosx_11_0_arm64.whl",
+          "url": "https://files.pythonhosted.org/packages/96/6c/096111aa3b31149edf384f24272086ca91d224f0fb2dcdeb2c21cf47ffd7/astc_encoder_py-0.1.12-cp37-abi3-macosx_11_0_arm64.whl",
+          "sha256": "b7fdd11d997610da9e64a91bb031a5e18f41cfd20315763019fb14227b461c85",
+          "bytes": 272780
+        },
+        {
+          "package": "fmod-toolkit",
+          "version": "0.1.3",
+          "filename": "fmod_toolkit-0.1.3-cp38-abi3-macosx_11_0_arm64.whl",
+          "url": "https://files.pythonhosted.org/packages/3a/15/ea58b59d424f6a5751c555acc9b31d65afff5d6db2b80979877751c58657/fmod_toolkit-0.1.3-cp38-abi3-macosx_11_0_arm64.whl",
+          "sha256": "c54c6503ee7b99522a7bee9463b706bc8ed68c3cbdf2b214203a13668526802b",
+          "bytes": 1151247
+        },
+        {
+          "package": "pyfmodex",
+          "version": "0.7.2",
+          "filename": "pyfmodex-0.7.2-py3-none-any.whl",
+          "url": "https://files.pythonhosted.org/packages/2c/7b/f7fdcdf6a6e8fd951c41e91baae8c1cecfffc2ed3199157afd6ab5728716/pyfmodex-0.7.2-py3-none-any.whl",
+          "sha256": "1c42112b788e80ee7b4b57ae25bbbc0a98eb1e32a8e7c9e1246698cdf72efa9d",
+          "bytes": 126703
+        },
+        {
+          "package": "archspec",
+          "version": "0.2.7",
+          "filename": "archspec-0.2.7-py3-none-any.whl",
+          "url": "https://files.pythonhosted.org/packages/8a/51/ef383bb83ed9018413d3a9259c3d0535c9fb2c05ebce13a7ada259b20a0b/archspec-0.2.7-py3-none-any.whl",
+          "sha256": "b6d97c2d840d8538d3f63b70c7c45ace2d26b3d9591d7c93d5fb33e50b1bc592",
+          "bytes": 87319
+        },
+        {
+          "package": "certifi",
+          "version": "2026.10.23",
+          "filename": "certifi-2026.10.23-py3-none-any.whl",
+          "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl",
+          "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1",
+          "bytes": 135082
+        }
+      ]
+    }
+  }
+}

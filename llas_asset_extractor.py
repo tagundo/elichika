@@ -52,6 +52,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from sukusta_paths import configured_root, library_path, termux_storage_missing
 
 # key0 is always 12345 in LLAS asset encryption.
 FIXED_KEY0 = 12345
@@ -138,7 +139,7 @@ GAME_PACKAGE_NAMES = [
 # This folder is auto-searched; both layouts are handled:
 #   ~/storage/downloads/sukusta/packs/pak9/...        (buckets at the top)
 #   ~/storage/downloads/sukusta/packs/files/pak9/...  (inside a 'files' wrapper)
-COPIED_PACKS_DIR = os.path.expanduser("~/storage/downloads/sukusta/packs")
+COPIED_PACKS_DIR = library_path("packs")
 
 
 def _probe_dir(path):
@@ -1138,6 +1139,8 @@ def is_termux():
 
 
 def default_out_dir(base_dir):
+    if configured_root() is not None:
+        return library_path("extracted")
     if is_termux():
         return os.path.expanduser("~/storage/downloads/sukusta/extracted")
     return os.path.join(base_dir, "extracted")
@@ -1173,11 +1176,10 @@ def main():
 
     base_dir = os.path.abspath(os.path.expanduser(args.base))
 
-    if is_termux():
-        if not os.path.exists(os.path.expanduser("~/storage")):
-            print("No Termux storage access. Run this first:")
-            print("  termux-setup-storage   (and allow the permission)")
-            sys.exit(1)
+    if termux_storage_missing():
+        print("No Termux storage access. Run this first:")
+        print("  termux-setup-storage   (and allow the permission)")
+        sys.exit(1)
 
     if not os.path.isdir(os.path.join(base_dir, "assets", "db")):
         print(f"'{base_dir}' has no assets/db.")

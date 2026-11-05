@@ -24,6 +24,7 @@ import sys
 import shutil
 import hashlib
 from datetime import datetime
+from sukusta_paths import installer_scan_path, termux_storage_missing
 
 # ============================================================
 # 1. 데이터 테이블
@@ -658,16 +659,10 @@ if not os.path.exists(check_json_config):
     print('Config file is missing, Exiting...')
     sys.exit(1)
 
-# Set folder path based on environment
-if is_termux():
-    modding_elichika_path = os.path.expanduser('~/storage/downloads/sukusta/live/')
-    termux_storage_chc = os.path.expanduser('~/storage/')
-    if not os.path.exists(termux_storage_chc):
-        print('Path is missing, please execute termux-setup-storage command and allow it')
-        sys.exit(1)
-else:
-    # Set a default or other path if not in Termux
-    modding_elichika_path = "assets/package/live/"
+modding_elichika_path = installer_scan_path("live", "assets/package/live/")
+if termux_storage_missing():
+    print('Path is missing, please execute termux-setup-storage command and allow it')
+    sys.exit(1)
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)
