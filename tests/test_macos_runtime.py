@@ -64,7 +64,7 @@ class RuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="elichika-mac-test-")
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.resources = self.root / "Example.app/Contents/Resources"
         self.resources.mkdir(parents=True)
         self.data = self.root / "Application Support/Elichika"
@@ -188,7 +188,7 @@ class LifecycleTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="elichika-mac-child-")
         self.addCleanup(self.temporary.cleanup)
-        self.data = Path(self.temporary.name)
+        self.data = Path(self.temporary.name).resolve()
         self.port = unused_port()
         (self.data / "config.json").write_text(json.dumps({"server_address":f"127.0.0.1:{self.port}"}))
         self.binary = self.data / "elichika"
@@ -309,7 +309,7 @@ class PayloadTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="macos-payload-")
         self.addCleanup(self.temporary.cleanup)
-        self.base = Path(self.temporary.name)
+        self.base = Path(self.temporary.name).resolve()
         self.resources = self.base / "Example.app/Contents/Resources"
         self.payload = self.resources / "payload"
         spec = importlib.util.spec_from_file_location("macos_config_fixture", ROOT / "android/ci/generate_server_config_payload.py")
@@ -418,7 +418,7 @@ class IntegrationTests(unittest.TestCase):
     def _cli_fixture(self):
         directory = tempfile.TemporaryDirectory(prefix="한국어 Mac runtime ")
         self.addCleanup(directory.cleanup)
-        base = Path(directory.name)
+        base = Path(directory.name).resolve()
         resources = base / "Relocated Elichika.app/Contents/Resources"
         app = resources / "python-app"
         app.mkdir(parents=True)
@@ -595,7 +595,7 @@ root=pathlib.Path(sys.argv[1])
 spec=importlib.util.spec_from_file_location('fixture',root/'android/ci/generate_server_config_payload.py')
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
 with tempfile.TemporaryDirectory(prefix='real-mac-runtime-') as directory:
-    base=pathlib.Path(directory); resources=base/'Elichika.app/Contents/Resources'; payload=resources/'payload'
+    base=pathlib.Path(directory).resolve(); resources=base/'Elichika.app/Contents/Resources'; payload=resources/'payload'
     fixture.generate(payload);(payload/'config.json').unlink();(payload/fixture.MARKER).unlink()
     (resources/'payload_revision.json').write_text(json.dumps(payload_revision.build_manifest(payload)))
     data=base/'Application Support/Elichika';library=data/'sukusta'
