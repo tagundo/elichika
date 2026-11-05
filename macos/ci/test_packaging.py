@@ -24,7 +24,7 @@ class PackagingBoundaries(unittest.TestCase):
 
     def test_python_archive_keeps_internal_relative_links(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             archive = root / "python.tar.gz"
             with tarfile.open(archive, "w:gz") as output:
                 member = tarfile.TarInfo("python/bin/python3.12")
@@ -41,7 +41,7 @@ class PackagingBoundaries(unittest.TestCase):
         for name, target in (("../escape", None), ("python/bin/escape", "../../../escape"),
                              ("python/bin/escape", "/usr/bin/python3")):
             with self.subTest(name=name, target=target), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory); archive = root / "bad.tar.gz"
+                root = Path(directory).resolve(); archive = root / "bad.tar.gz"
                 with tarfile.open(archive, "w:gz") as output:
                     member = tarfile.TarInfo(name)
                     if target:
@@ -53,7 +53,7 @@ class PackagingBoundaries(unittest.TestCase):
 
     def test_dependency_resolves_inside_app_and_rejects_system_installation(self):
         with tempfile.TemporaryDirectory() as directory:
-            app = Path(directory) / "Elichika.app"; loader = app / "runtime/python/lib/module.so"
+            app = Path(directory).resolve() / "Elichika.app"; loader = app / "runtime/python/lib/module.so"
             executable = app / "runtime/python/bin/python3"
             library = app / "runtime/python/lib/libprivate.dylib"
             library.parent.mkdir(parents=True); library.write_bytes(b"private")
@@ -67,7 +67,7 @@ class PackagingBoundaries(unittest.TestCase):
 
     def test_system_dependency_prefix_cannot_hide_an_external_path(self):
         with tempfile.TemporaryDirectory() as directory:
-            app = Path(directory) / "Elichika.app"; app.mkdir()
+            app = Path(directory).resolve() / "Elichika.app"; app.mkdir()
             loader, executable = app / "module.so", app / "python"
             for value in ("/usr/lib/../../opt/homebrew/libX.dylib",
                           "/System/Library/../../opt/local/libX.dylib"):
@@ -83,7 +83,7 @@ class PackagingBoundaries(unittest.TestCase):
 
     def test_dependency_symlink_cannot_escape_private_bundle(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory); app = root / "Elichika.app"; app.mkdir()
+            root = Path(directory).resolve(); app = root / "Elichika.app"; app.mkdir()
             outside = root / "outside.dylib"; outside.write_bytes(b"outside")
             (app / "link.dylib").symlink_to(outside)
             with self.assertRaises(RuntimeError):
