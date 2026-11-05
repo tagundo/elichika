@@ -1,1 +1,1 @@
-{"run_id":"41957039268","sequence":4,"action":"tap_widget","widget_id":-5370,"expected_class":"LLAS.Components.UI.ProductButton","expected_bounds":[444.25787353515625,534.6324920654297,835.7421264648438,603.7179565429688],"expected_label":"닫기"}
+{"run_id":"41957039268","sequence":5,"action":"upgrade_candidate","artifact_id":13383271400,"artifact_run_id":"41954227948","source_sha":"28338a69622acd84f77c8575784ec179d6441d70","apk_sha256":"a10a3f06313069685e849daf419c61949acc7d710b6f506a2ad183e52e28528b","version_code":2026110501,"version_name":"2026.11.05.1"}
