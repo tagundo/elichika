@@ -41,7 +41,7 @@ struct ElichikaMacApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private weak var model: AppModel?
     private var pendingURLs: [URL] = []
-    private var terminating = false
+    private var termination = AppTerminationGate()
     func attach(_ model: AppModel) {
         self.model = model
         if !pendingURLs.isEmpty { model.openDocuments(pendingURLs); pendingURLs.removeAll() }
@@ -49,10 +49,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
-        if terminating { return .terminateLater }
-        terminating = true
-        model.quit { sender.reply(toApplicationShouldTerminate: true) }
-        return .terminateLater
+        model.smokeEvent?("appkit-termination-delegate")
+        switch termination.request() {
+        case .terminate:
+            model.smokeEvent?("appkit-termination-ready")
+            return .terminateNow
+        case .cancel:
+            model.smokeEvent?("appkit-termination-cancelled-during-cleanup")
+            return .terminateCancel
+        case .cleanUp:
+            // Keep the ordinary main run loop active while async child cleanup
+            // runs. terminateLater enters AppKit's termination loop, which can
+            // prevent MainActor tasks and their continuations from progressing.
+            model.quit { [weak self] in
+                self?.termination.cleanupFinished()
+                model.smokeEvent?("appkit-termination-retry")
+                sender.terminate(nil)
+            }
+            return .terminateCancel
+        }
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         let files = urls.filter(\.isFileURL)

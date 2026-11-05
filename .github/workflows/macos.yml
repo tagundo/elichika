@@ -106,7 +106,7 @@ jobs:
           set -euo pipefail
           python3 assets/tests/validate_shooting_star.py
           python3 assets/tests/validate_localization.py
-          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/elichika-data-builder" .
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/elichika-data-builder" .
           "$RUNNER_TEMP/elichika-data-builder" rebuild_assets
           python3 tests/validate_runtime.py .
           python3 assets/tests/validate_localization.py --runtime .
@@ -129,6 +129,8 @@ jobs:
             --cache "$RUNNER_TEMP/elichika-macos-build-cache" \
             --version "$ELICHIKA_MAC_VERSION" \
             --report "$RUNNER_TEMP/macos-evidence/app-build.json"
+          cp "$RUNNER_TEMP/elichika-macos-built/Elichika.app/Contents/Resources/bundle-provenance.json" \
+            "$RUNNER_TEMP/macos-evidence/bundle-provenance.json"
           python3 macos/ci/audit_bundle.py \
             --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" --arch arm64 \
             --report "$RUNNER_TEMP/macos-evidence/bundle-before-launch.json"

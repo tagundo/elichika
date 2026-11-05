@@ -88,6 +88,24 @@ enum RuntimePreparationGate: Equatable {
     }
 }
 
+struct AppTerminationGate {
+    enum Phase { case idle, cleaning, ready }
+    enum Decision: Equatable { case cleanUp, cancel, terminate }
+    private(set) var phase: Phase = .idle
+
+    mutating func request() -> Decision {
+        switch phase {
+        case .idle: phase = .cleaning; return .cleanUp
+        case .cleaning: return .cancel
+        case .ready: return .terminate
+        }
+    }
+
+    mutating func cleanupFinished() {
+        if case .cleaning = phase { phase = .ready }
+    }
+}
+
 struct ServerNetworkConfig: Decodable, Equatable {
     let serverAddress: String
     let cdnServer: String

@@ -73,4 +73,20 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertEqual(RuntimePreparationGate.evaluate(ready: true, launching: false,
             running: true, failed: false, stopping: true), .unavailable)
     }
+
+    func testQuitCleansUpOnceAndTerminatesOnlyOnTheCompletedRequest() {
+        var gate = AppTerminationGate()
+        XCTAssertEqual(gate.request(), .cleanUp)
+        XCTAssertEqual(gate.request(), .cancel)
+        XCTAssertEqual(gate.request(), .cancel)
+        gate.cleanupFinished()
+        XCTAssertEqual(gate.request(), .terminate)
+        XCTAssertEqual(gate.request(), .terminate)
+    }
+
+    func testUnsolicitedCleanupCompletionCannotSkipChildCleanup() {
+        var gate = AppTerminationGate()
+        gate.cleanupFinished()
+        XCTAssertEqual(gate.request(), .cleanUp)
+    }
 }

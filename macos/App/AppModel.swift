@@ -41,6 +41,7 @@ final class AppModel: ObservableObject {
     private var reportedRuntimeError: String?
     private let http: URLSession
     var smokeQuitObserver: (() async -> Void)?
+    var smokeEvent: ((String) -> Void)?
 
     init(arguments: [String] = CommandLine.arguments, resources: URL? = Bundle.main.resourceURL) {
         let locale = Locale.preferredLanguages.first?.prefix(2).lowercased() ?? "en"
@@ -404,16 +405,23 @@ final class AppModel: ObservableObject {
     }
 
     func stopRuntime() async {
+        smokeEvent?("runtime-stop-entered")
         if stoppingRuntime {
+            smokeEvent?("runtime-stop-awaiting-existing-stop")
             while stoppingRuntime { try? await Task.sleep(nanoseconds: 50_000_000) }
             return
         }
         stoppingRuntime = true
         defer { stoppingRuntime = false }
         polling?.cancel()
-        if connection != nil && process?.isRunning == true { _ = try? await request("/v1/shutdown", method: "POST") }
+        if connection != nil && process?.isRunning == true {
+            smokeEvent?("runtime-shutdown-request")
+            _ = try? await request("/v1/shutdown", method: "POST")
+            smokeEvent?("runtime-shutdown-response")
+        }
         let deadline = Date().addingTimeInterval(8)
         while process?.isRunning == true && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
+        smokeEvent?("runtime-stop-grace-period-finished")
         terminateOwnedRuntime()
         let killDeadline = Date().addingTimeInterval(2)
         while let group = verifiedGroup, Darwin.kill(-group, 0) == 0, Date() < killDeadline {
@@ -424,6 +432,7 @@ final class AppModel: ObservableObject {
         readers.forEach { $0.stop() }; readers.removeAll()
         verifiedGroup = nil
         process = nil
+        smokeEvent?("runtime-stop-finished")
     }
 
     private func terminateOwnedRuntime() {
@@ -432,12 +441,15 @@ final class AppModel: ObservableObject {
     }
 
     func quit(completion: @escaping () -> Void) {
+        smokeEvent?("native-quit-received")
         guard !quitting else { return }
         quitting = true
         Task {
+            smokeEvent?("native-quit-task-started")
             await stopRuntime()
             let observer = smokeQuitObserver; smokeQuitObserver = nil
             await observer?()
+            smokeEvent?("native-quit-cleanup-complete")
             completion()
         }
     }
