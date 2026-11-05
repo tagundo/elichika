@@ -20,6 +20,7 @@ import sys
 from common import (BUILD_ROOT, copy_tree, clean_python_bytecode, extract_python,
                     readonly_tree, require, run, sha256, sign_bundle,
                     source_identity, source_ignore, verified_download, write_json)
+from native_macho import prune_external_runpaths
 
 
 def bundle_versions(version):
@@ -170,9 +171,11 @@ def build(repo, shared, output, cache, version):
         if path.name == "Info.plist":
             continue
         copy_tree(path, resources / path.name) if path.is_dir() else shutil.copy2(path, resources / path.name)
+    runpath_changes = prune_external_runpaths(output)
     provenance = {"schema": 1, "version": version, "source": identity, "architectures": ["arm64"],
                   "python_version": lock["python_version"], "dependencies_lock_sha256": sha256(BUILD_ROOT / "dependencies.lock.json"),
                   "shared_source_files": source_files, "shared_payload": payload_build,
+                  "native_runpath_sanitization": runpath_changes,
                   "qa_files": {path.name: sha256(path) for path in sorted(qa.iterdir())},
                   "signature": "ad-hoc; Developer ID notarization is not part of this review build"}
     write_json(resources / "bundle-provenance.json", provenance)

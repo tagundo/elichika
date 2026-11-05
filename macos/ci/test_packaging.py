@@ -7,11 +7,13 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 from build_app import bundle_versions
 from common import extract_python, sha256, verified_download
 from audit_bundle import resolve_private, system_path
+from native_macho import allowed_runpath, loader_context, prune_external_runpaths
 
 
 class PackagingBoundaries(unittest.TestCase):
@@ -88,6 +90,54 @@ class PackagingBoundaries(unittest.TestCase):
             (app / "link.dylib").symlink_to(outside)
             with self.assertRaises(RuntimeError):
                 resolve_private("@loader_path/link.dylib", app / "module.so", app / "python", [], app)
+
+    def test_runpath_policy_keeps_private_and_system_paths_and_refuses_build_fallbacks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); app = root / "Elichika.app"
+            private = app / "Contents/Resources/runtime/arm64/python"
+            loader = private / "lib/python3.12/site-packages/numpy/core/module.so"
+            loader.parent.mkdir(parents=True)
+            executable = private / "bin/python3"
+            self.assertEqual(loader_context(loader, app), executable)
+            for value in ("@loader_path/../.dylibs", "@executable_path/../lib", "/usr/lib/swift/"):
+                with self.subTest(value=value):
+                    self.assertTrue(allowed_runpath(value, loader, executable, app))
+            for value in ("/opt/arm64-builds/lib", "/opt/homebrew/lib", "/usr/lib/../../opt/local/lib",
+                          "@loader_path/" + "../" * (len(loader.parent.relative_to(app).parts) + 1) + "outside",
+                          "relative/lib", "@rpath/other"):
+                with self.subTest(value=value):
+                    self.assertFalse(allowed_runpath(value, loader, executable, app))
+
+    def test_whole_bundle_runpath_pruning_records_before_after_and_preserves_dependencies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory).resolve() / "Elichika.app"
+            first = app / "Contents/Resources/runtime/arm64/python/lib/module.so"
+            second = app / "Contents/Resources/runtime/arm64/bin/astcenc"
+            for binary in (first, second):
+                binary.parent.mkdir(parents=True, exist_ok=True)
+                binary.write_bytes(b"\xcf\xfa\xed\xfeoriginal")
+            descriptions = {first: {"architectures":["arm64"], "dependencies":["@loader_path/libprivate.dylib"],
+                "install_id":None, "rpaths":["/opt/arm64-builds/lib", "/opt/arm64-builds/lib", "@loader_path/../.dylibs"]},
+                second: {"architectures":["arm64"], "dependencies":["/usr/lib/libSystem.B.dylib"],
+                "install_id":None, "rpaths":["/usr/lib/swift/"]}}
+            def inspect(binary):
+                return json.loads(json.dumps(descriptions[binary]))
+            def delete(arguments):
+                self.assertEqual(arguments[:2], ["/usr/bin/install_name_tool", "-delete_rpath"])
+                value, binary = arguments[2:]
+                descriptions[binary]["rpaths"].remove(value)
+                binary.write_bytes(binary.read_bytes() + b"-pruned")
+            before = sha256(first)
+            with patch("native_macho.native_info", side_effect=inspect), patch("native_macho.run", side_effect=delete) as commands:
+                report = prune_external_runpaths(app)
+            self.assertEqual(commands.call_count, 2)
+            self.assertEqual(report["examined_native_images"], 2)
+            changed = report["changed_images"][first.relative_to(app).as_posix()]
+            self.assertEqual(changed["removed_rpaths"], ["/opt/arm64-builds/lib", "/opt/arm64-builds/lib"])
+            self.assertEqual(changed["after_rpaths"], ["@loader_path/../.dylibs"])
+            self.assertEqual(changed["before_sha256"], before)
+            self.assertEqual(changed["after_sha256"], sha256(first))
+            self.assertNotEqual(changed["before_sha256"], changed["after_sha256"])
 
     def test_dependency_lock_covers_only_requested_apple_silicon_and_all_runtime_packages(self):
         lock = json.loads((Path(__file__).resolve().parents[1] / "build/dependencies.lock.json").read_text())

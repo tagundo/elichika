@@ -7,64 +7,12 @@ import json
 import os
 from pathlib import Path
 import plistlib
-import posixpath
-import re
 import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 from common import is_macho, require, run, sha256, write_json
-
-
-SYSTEM_PREFIXES = ("/System/Library/", "/usr/lib/")
-
-
-def system_path(value):
-    """Check the normalized path, never an external path masked by '..'."""
-    return posixpath.normpath(str(value)).startswith(SYSTEM_PREFIXES)
-
-
-def loader_context(binary, app):
-    """Extensions run in their architecture's private Python executable."""
-    relative = binary.relative_to(app).parts
-    if "runtime" in relative:
-        index = relative.index("runtime")
-        arch = relative[index + 1]
-        root = app.joinpath(*relative[:index + 2])
-        if "python" in relative[index + 2:]:
-            return (root / "python/bin/python3").resolve()
-    return binary
-
-
-def native_info(path):
-    dependencies = run(["/usr/bin/otool", "-arch", "arm64", "-L", path], capture=True).splitlines()[1:]
-    dependencies = [line.strip().split(" (", 1)[0] for line in dependencies if " (compatibility version " in line]
-    load_commands = run(["/usr/bin/otool", "-arch", "arm64", "-l", path], capture=True).splitlines()
-    rpaths, install_id = [], None
-    for index, line in enumerate(load_commands):
-        if line.strip() == "cmd LC_RPATH":
-            for entry in load_commands[index + 1:index + 4]:
-                match = re.match(r"\s*path (.+) \(offset \d+\)", entry)
-                if match:
-                    rpaths.append(match.group(1))
-        if line.strip() == "cmd LC_ID_DYLIB":
-            for entry in load_commands[index + 1:index + 4]:
-                match = re.match(r"\s*name (.+) \(offset \d+\)", entry)
-                if match:
-                    install_id = match.group(1)
-    return {"architectures": run(["/usr/bin/lipo", "-archs", path], capture=True).split(),
-            "dependencies": [item for item in dependencies if item != install_id],
-            "rpaths": rpaths, "install_id": install_id}
-
-
-def expand_path(value, loader, executable):
-    if value == "@loader_path" or value.startswith("@loader_path/"):
-        return loader.parent / value[len("@loader_path"):].lstrip("/")
-    if value == "@executable_path" or value.startswith("@executable_path/"):
-        return executable.parent / value[len("@executable_path"):].lstrip("/")
-    if value.startswith("/"):
-        return Path(value)
-    return None
+from native_macho import allowed_runpath, expand_path, loader_context, native_info, system_path
 
 
 def resolve_private(value, loader, executable, rpaths, app):
@@ -131,9 +79,7 @@ def audit(app, required_architectures):
         inherited = native.get(executable, {}).get("rpaths", [])
         paths = list(details["rpaths"])
         for value in paths:
-            expanded = expand_path(value, binary, executable)
-            require(expanded is not None and (system_path(expanded)
-                    or expanded.resolve().is_relative_to(app)),
+            require(allowed_runpath(value, binary, executable, app),
                     f"Native runpath borrows an external installation: {relative}: {value}")
         # Convert main-executable runpaths in their own loader context before
         # applying them to an extension loaded later by that Python process.
