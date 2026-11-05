@@ -41,9 +41,17 @@ def zip_bytes(entries=None):
 
 class CandidateUpgradeTests(unittest.TestCase):
     def setUp(self):
-        fixture_pin = mock.patch.object(qa, "APK_SHA256", qa.smoke.sha(apk_bytes()))
-        fixture_pin.start()
-        self.addCleanup(fixture_pin.stop)
+        for name, value in {"APK_SHA256": qa.smoke.sha(apk_bytes()),
+                            "NATIVE_SHA256": qa.smoke.sha(b"synthetic native candidate"),
+                            "SOURCE_SHA": "a" * 40, "ARTIFACT_ID": 123, "ARTIFACT_RUN_ID": "456"}.items():
+            fixture_pin = mock.patch.object(qa, name, value)
+            fixture_pin.start()
+            self.addCleanup(fixture_pin.stop)
+        for name, value in {"read_packaged_manifest": {"revision": "payload-v1:" + "a" * 64},
+                            "verify_committed_receipt": {"status": "PASS"}}.items():
+            fixture_pin = mock.patch.object(qa.revision_receipt, name, return_value=value)
+            fixture_pin.start()
+            self.addCleanup(fixture_pin.stop)
 
     def test_baseline_installed_version_hash_pull_and_signature_are_all_verified(self):
         fixture = b"synthetic old official APK"
@@ -55,7 +63,7 @@ class CandidateUpgradeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(qa, "BASELINE_SHA256", digest), mock.patch.object(qa, "verify_apk_certificate", return_value=qa.SIGNER_SHA256) as signature:
             result = qa.verify_baseline(android, Path(directory))
             self.assertEqual(result["apk_sha256"], digest)
-            self.assertEqual(result["version_code"], 2026110304)
+            self.assertEqual(result["version_code"], 2026110404)
             self.assertEqual(result["signer_certificate_sha256"], qa.SIGNER_SHA256)
             signature.assert_called_once_with(Path(directory) / "baseline.apk")
         android.adb.assert_called_once()
@@ -139,6 +147,16 @@ class CandidateUpgradeTests(unittest.TestCase):
             command[key] = value
             with self.subTest(key=key, value=value), self.assertRaises(qa.CandidateUpgradeError):
                 qa.validate_pins(command, qa.REPOSITORY)
+
+    def test_pending_root_audit_refuses_before_any_device_or_network_mutation(self):
+        android = mock.Mock()
+        with mock.patch.object(qa, "ARTIFACT_ID", 0), mock.patch.object(qa, "download_candidate") as download:
+            with self.assertRaisesRegex(qa.CandidateUpgradeError, "candidate_not_pinned_after_independent_audit"):
+                qa.upgrade_candidate(android, types.SimpleNamespace(repository=qa.REPOSITORY), {}, {}, pins(), 99)
+        android.shell.assert_not_called()
+        android.install.assert_not_called()
+        android.write.assert_not_called()
+        download.assert_not_called()
         with self.assertRaises(qa.CandidateUpgradeError):
             qa.validate_pins(pins(), "other/repo")
 
@@ -332,6 +350,33 @@ class CandidateUpgradeTests(unittest.TestCase):
                 android.install.assert_not_called()
                 self.assertFalse(any(call.args[:2] == ("am", "force-stop") for call in android.shell.call_args_list))
 
+    def test_unapproved_native_or_bad_signed_manifest_refuses_before_stop_or_install(self):
+        for failure in ("native", "manifest"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                apk = root / "candidate.apk"
+                apk.write_bytes(apk_bytes())
+                args = types.SimpleNamespace(repository=qa.REPOSITORY, evidence=root / "evidence/followup-1",
+                    state=root / "evidence/gl/gl-visual-smoke.json")
+                android = mock.Mock()
+                android.shell.side_effect = ["uid=0(root)", "arm64-v8a"]
+                native = "0" * 64 if failure == "native" else qa.NATIVE_SHA256
+                reason = "candidate_audited_native_hash_mismatch" if failure == "native" else "candidate_revision_payload_mismatch"
+                with mock.patch.dict(qa.os.environ, {"RUNNER_TEMP": directory}), \
+                        mock.patch.object(qa, "NATIVE_SHA256", native), \
+                        mock.patch.object(qa, "verify_retained_game", return_value=qa.smoke.GAME_SHA), \
+                        mock.patch.object(qa, "verify_baseline", return_value={}), \
+                        mock.patch.object(qa, "verify_apk_certificate", return_value=qa.SIGNER_SHA256), \
+                        mock.patch.object(qa, "download_candidate", return_value=apk), \
+                        mock.patch.object(qa.revision_receipt, "read_packaged_manifest",
+                            side_effect=qa.revision_receipt.ReceiptError("candidate_revision_payload_mismatch")), \
+                        mock.patch.object(qa.smoke, "stop_server") as stop:
+                    with self.assertRaisesRegex(qa.CandidateUpgradeError, reason):
+                        qa.upgrade_candidate(android, args, {"new_home": {"status": "PREPARED", "user_id": 99}}, {}, pins(), 99)
+                stop.assert_not_called()
+                android.install.assert_not_called()
+                self.assertFalse(any(call.args[:2] == ("am", "force-stop") for call in android.shell.call_args_list))
+
     def run_retained_case(self, configs, states, reason=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -372,6 +417,14 @@ class CandidateUpgradeTests(unittest.TestCase):
         self.assertEqual(configs["before_update"]["semantic_sha256"], configs["after_start"]["semantic_sha256"])
         self.assertNotIn("synthetic-secret-value", json.dumps(result))
         self.assertEqual(result["config_changes"]["after_start"]["changed_keys"], [])
+
+    def test_missing_committed_data_receipt_cannot_be_reported_as_a_successful_upgrade(self):
+        retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 1, "profile_rows": 1, "deck_rows": 1}
+        with mock.patch.object(qa.revision_receipt, "verify_committed_receipt",
+                               side_effect=qa.revision_receipt.ReceiptError("candidate_committed_revision_mismatch")):
+            result = self.run_retained_case([b'{}'] * 3, [retained] * 3, "candidate_committed_revision_mismatch")
+        self.assertEqual(result["status"], "REFUSED")
+        self.assertNotIn("userdata_preserved", result)
 
     def test_config_value_changes_refuse_after_recording_hashes_and_only_key_names(self):
         retained = {"logical_sha256": "a", "profile_sha256": "b", "deck_sha256": "c", "accounts": 1, "profile_rows": 1, "deck_rows": 1}

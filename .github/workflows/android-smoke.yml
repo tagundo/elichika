@@ -26,7 +26,7 @@ on:
         type: boolean
         default: false
       latest_baseline_upgrade:
-        description: "Upgrade the latest Nov3 signed APK with one synthetic account"
+        description: "Upgrade the pinned public v4 APK with one synthetic account"
         type: boolean
         default: false
       check_resource_modes:
@@ -206,15 +206,16 @@ jobs:
           VERSION_NAME: ${{ inputs.version_name }}
           VERSION_CODE: ${{ inputs.version_code }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
+          SOURCE_RUN: ${{ inputs.source_run_id }}
         run: |
           set -euo pipefail
           extra=()
           if [ "$LATEST_BASELINE" = true ]; then
             curl --fail --location --retry 2 --output latest-baseline.apk \
-              https://github.com/tagundo/elichika/releases/download/v2026.11.03.4/elichika-2026.11.03.4.apk
+              https://github.com/tagundo/elichika/releases/download/v2026.11.04.4/elichika-2026.11.04.4.apk
             extra+=(--baseline latest-baseline.apk \
-              --baseline-sha256 70fa45d9fbb70e92b56b486617e4cc3c4afc39a76922f7f941caf6a29787fa8f \
-              --baseline-version-code 2026110304)
+              --baseline-sha256 815e9dd70d1b0e89b97f76b83c1b71136ec7f5f73f6e9a6a983d123a7aa42cac \
+              --baseline-version-code 2026110404)
           fi
           if [ "$CHECK_MODES" = true ]; then extra+=(--check-resource-modes); fi
           if [ "$SKIP_GAME" = true ]; then
@@ -226,6 +227,10 @@ jobs:
           fi
           if [ "$TAP_SURFACE" = true ]; then extra+=(--tap-surface-center); fi
           if [ "$PREPARE_HOME" = true ]; then
+            test "$SOURCE_RUN" = 41884324695
+            test "$VERSION_NAME" = 2026.11.04.4
+            test "$VERSION_CODE" = 2026110404
+            test "$CANDIDATE_SHA" = 815e9dd70d1b0e89b97f76b83c1b71136ec7f5f73f6e9a6a983d123a7aa42cac
             test "$PREPARE_ENGLISH" = true
             test "$TAP_SURFACE" = true
             test "$SKIP_GAME" != true

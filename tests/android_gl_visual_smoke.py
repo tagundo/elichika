@@ -245,8 +245,8 @@ def prepare_existing_home(android, before, language="ko"):
             "background_id": background, "fixture": "existing_owned_vanilla_theme_preserved", "game_rendering_verified": False}
 
 
-LATEST_BASELINE_SHA = "70fa45d9fbb70e92b56b486617e4cc3c4afc39a76922f7f941caf6a29787fa8f"
-LATEST_BASELINE_CODE = 2026110304
+LATEST_BASELINE_SHA = "815e9dd70d1b0e89b97f76b83c1b71136ec7f5f73f6e9a6a983d123a7aa42cac"
+LATEST_BASELINE_CODE = 2026110404
 
 
 def stored_nullable_id(value):

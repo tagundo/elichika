@@ -26,7 +26,7 @@ runs:
           --output "evidence/followup-$FOLLOWUP_SEQUENCE" \
           --state evidence/gl/gl-visual-smoke.json \
           --qa-language "$QA_LANGUAGE" \
-          --command-ref codex/gl-mod-preservation-qa \
+          --command-ref codex/gl-mod-preservation-v5-qa \
           --repository "$GITHUB_REPOSITORY"
 
     - name: Upload GL follow-up evidence

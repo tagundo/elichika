@@ -266,7 +266,7 @@ def prepare(android, before, args, report):
             android.shell("getprop", "ro.product.cpu.abi") == "arm64-v8a" and android.shell("getprop", "ro.hardware") == "redroid",
             "mod_disposable_native_arm64_required")
     require(smoke.sha(args.candidate.read_bytes()) == smoke.LATEST_BASELINE_SHA and args.version_code == smoke.LATEST_BASELINE_CODE,
-            "mod_pinned_nov3_baseline_required")
+            "mod_pinned_public_v4_baseline_required")
     for package, expected in ((PACKAGE, smoke.LATEST_BASELINE_SHA), (smoke.GAME, smoke.GAME_SHA)):
         installed = android.shell("pm", "path", package).splitlines()
         require(len(installed) == 1 and installed[0].startswith("package:"), "mod_installed_apk_not_unique")

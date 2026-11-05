@@ -532,7 +532,7 @@ def main():
     parser.add_argument("--live-python", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
-    parser.add_argument("--command-ref", default="codex/gl-mod-preservation-qa")
+    parser.add_argument("--command-ref", default="codex/gl-mod-preservation-v5-qa")
     parser.add_argument("--qa-language", choices=("en", "ko"), default="en")
     parser.add_argument("--repository", default="tagundo/elichika")
     args = parser.parse_args()

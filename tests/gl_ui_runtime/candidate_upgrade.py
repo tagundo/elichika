@@ -22,17 +22,20 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import android_gl_visual_smoke as smoke
 import android_release_smoke as release
+import revision_receipt
 
-SOURCE_SHA = "21acaf2c2e3e6af3cf9bba0ec3f2a4c59e34e590"
-ARTIFACT_ID = 13321588354
-ARTIFACT_RUN_ID = "41828546272"
-APK_SHA256 = "6ae25ea0cf7225e941afb721569ecadac4cb095db657954854d86ceefca1d2db"
-VERSION_CODE = 2026110402
-VERSION_NAME = "2026.11.04.2"
-APK_NAME = "elichika-2026.11.04.2.apk"
-BASELINE_SHA256 = "70fa45d9fbb70e92b56b486617e4cc3c4afc39a76922f7f941caf6a29787fa8f"
-BASELINE_VERSION_CODE = 2026110304
-BASELINE_VERSION_NAME = "2026.11.03.4"
+# Filled only after root independently audits the exact private signed build.
+SOURCE_SHA = "56861368fd76b82f395492b8e1c456a71a28a57a"
+ARTIFACT_ID = 13381940509
+ARTIFACT_RUN_ID = "41950334362"
+APK_SHA256 = "f31f2aad8de3e05821c25b18781c0bcaf7e13178daa16b94c17c0e03f654fb0f"
+NATIVE_SHA256 = "e8f3ab088f2eb5bad28508d71ebc2414aab898c755c7659d8bde6d981f5e0262"
+VERSION_CODE = 2026110501
+VERSION_NAME = "2026.11.05.1"
+APK_NAME = "elichika-2026.11.05.1.apk"
+BASELINE_SHA256 = "815e9dd70d1b0e89b97f76b83c1b71136ec7f5f73f6e9a6a983d123a7aa42cac"
+BASELINE_VERSION_CODE = 2026110404
+BASELINE_VERSION_NAME = "2026.11.04.4"
 SIGNER_SHA256 = "fed020601692d2e759286831ad229f0c8e4562a8e90f9067d7472fa5fc99f930"
 REPOSITORY = "tagundo/elichika"
 MAX_BYTES = 768 * 1024 * 1024
@@ -48,6 +51,10 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def validate_pins(command, repository):
+    if (ARTIFACT_ID <= 0 or not re.fullmatch(r"[0-9a-f]{40}", SOURCE_SHA)
+            or not re.fullmatch(r"[0-9a-f]{64}", APK_SHA256)
+            or not re.fullmatch(r"[0-9a-f]{64}", NATIVE_SHA256)):
+        raise CandidateUpgradeError("candidate_not_pinned_after_independent_audit")
     if repository != REPOSITORY:
         raise CandidateUpgradeError("candidate_repository_not_allowlisted")
     if type(command.get("artifact_id")) is not int or command["artifact_id"] != ARTIFACT_ID:
@@ -411,6 +418,13 @@ def upgrade_candidate(android, args, state, report, command, uid):
                 if archive.namelist().count("lib/arm64-v8a/libelichika.so") != 1:
                     raise CandidateUpgradeError("candidate_arm64_native_missing")
                 expected_native = smoke.sha(archive.read("lib/arm64-v8a/libelichika.so"))
+            if expected_native != NATIVE_SHA256:
+                raise CandidateUpgradeError("candidate_audited_native_hash_mismatch")
+            try:
+                manifest = revision_receipt.read_packaged_manifest(apk)
+            except revision_receipt.ReceiptError as error:
+                raise CandidateUpgradeError(str(error)) from None
+            result["data_revision"] = manifest["revision"]
             android.shell("am", "force-stop", smoke.GAME)
             smoke.stop_server(android)
             before = userdata_state(android, uid)
@@ -453,6 +467,10 @@ def upgrade_candidate(android, args, state, report, command, uid):
                 raise CandidateUpgradeError("candidate_start_changed_userdata")
             if not config_after_start["valid"] or config_after_start["semantic_sha256"] != config_before["semantic_sha256"]:
                 raise CandidateUpgradeError("candidate_start_changed_config")
+            try:
+                result["committed_data_receipt"] = revision_receipt.verify_committed_receipt(android, manifest)
+            except revision_receipt.ReceiptError as error:
+                raise CandidateUpgradeError(str(error)) from None
             result.update(after_install=after_install, after_start=after_start, start=started,
                           userdata_preserved=True, profile_preserved=True, deck_preserved=True, config_preserved=True,
                           repaired_titles=verify_titles(android), status="UPGRADED")
