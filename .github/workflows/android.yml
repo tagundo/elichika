@@ -1,507 +1,77 @@
-# Builds the standalone elichika Android server app (see android/README.md).
-#
-# This is the "update = rebuild" path: it pulls the latest server (this repo) and
-# the latest modding tools (SIFAS-MODDING-HELPING-TOOLS), assembles everything the
-# app bundles, and produces an installable debug-signed APK as an artifact. No
-# local Android toolchain needed.
-
-name: Build Android APK
+name: Standalone ARM Mac runtime capability probe
 
 on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "CalVer tag to publish a GitHub Release as (e.g. v2026.07.02.1). The tag is created on the run's commit — no local git needed. Leave blank to only build APK artifacts."
-        required: false
-        default: ""
-      release_notes:
-        description: "Optional text shown at the TOP of the release notes (above the auto-generated changelog). Use for user-facing highlights, e.g. changed defaults."
-        required: false
-        default: ""
-      build_version:
-        description: "Artifact-only APK version YYYY.MM.DD[.N] (e.g. 2026.11.04.2). Does not publish a release. Leave release_tag blank."
-        required: false
-        default: ""
-  push:
-    # No paths filter: the APK bundles the whole Go server, so any source change
-    # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
-    # previously skipped a clientdb/ fix and shipped a stale APK.
-    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit, codex/first-lesson-rank-compat, codex/console-tools-release]
-    # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
-    # to a GitHub Release. See android/README.md for the one-time secret setup.
-    tags: ['v*']
 
 permissions:
-  contents: write   # needed to create a GitHub Release on tag builds
-  actions: read
+  contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      apk_sha256: ${{ steps.layout.outputs.sha256 }}
-      version_name: ${{ steps.ver.outputs.name }}
-      version_code: ${{ steps.ver.outputs.code }}
-      noop_probe_sha256: ${{ steps.noop_probe.outputs.sha256 }}
+  private-runtime:
+    runs-on: macos-15
+    timeout-minutes: 20
     env:
-      NDK_VERSION: "28.2.13676358"
-      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONDONTWRITEBYTECODE: '1'
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
     steps:
-      - name: Checkout elichika (with harasho + modtools submodules)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # SQL validators compare with the historic Harasho baseline.
+          ref: ${{ github.sha }}
           submodules: recursive
-
-      # Build the reviewed modtools gitlink from this checkout. Following another
-      # branch here can silently replace the UI fixes being tested or released.
-
-      - name: Derive app version (CalVer)
-        id: ver
-        env:
-          REL_TAG: ${{ github.event.inputs.release_tag }}
-          BUILD_VERSION: ${{ github.event.inputs.build_version }}
-        run: |
-          python3 android/ci/app_version.py \
-            --release-tag "${REL_TAG:-}" \
-            --build-version "${BUILD_VERSION:-}" \
-            --ref "$GITHUB_REF" \
-            --github-output "$GITHUB_OUTPUT"
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+          persist-credentials: false
+      - uses: actions/setup-python@v5
         with:
-          go-version: "1.22.12"
-
-      - name: Validate SQL migrations, mappings and locale text
+          python-version: '3.12'
+      - name: Build and exercise exact standalone interpreter and codecs
         run: |
-          python3 assets/tests/validate_shooting_star.py
-          python3 assets/tests/validate_localization.py
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Python matching the embedded runtime
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Prepare pinned offline Android Python wheels
-        id: python_wheels
-        env:
-          WHEELHOUSE_COMMIT: "39b2279db6cf111e2c353cd4880c58e3607837da"
-        run: |
-          set -euo pipefail
-          git fetch --no-tags --depth 1 origin "$WHEELHOUSE_COMMIT"
-          test "$(git rev-parse FETCH_HEAD)" = "$WHEELHOUSE_COMMIT"
-          PREPARED="$RUNNER_TEMP/android-python-wheels"
-          mkdir -p "$PREPARED"
-          git archive "$WHEELHOUSE_COMMIT" manifest.json wheelhouse | tar -x -C "$PREPARED"
-          python3 android/ci/verify_python_wheelhouse.py "$PREPARED"
-          echo "path=$PREPARED/wheelhouse" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          # sdkmanager comes from cmdline-tools; the legacy tools package is gone.
-          packages: platform-tools
-
-      - name: Install platform / build-tools / NDK
-        run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
-
-      - name: Build master data (serverdata.db) on the host
-        run: |
-          # Pure-Go host build, then rebuild_assets turns the harasho submodule
-          # (assets/db/{jp,gl}) into serverdata.db and writes a default config.json.
-          CGO_ENABLED=0 go build -o elichika_host .
-          ./elichika_host rebuild_assets
-          python3 tests/validate_runtime.py .
-          python3 assets/tests/validate_localization.py --runtime .
-
-      - name: Run all Go tests with the initialized payload
-        run: python3 tests/run_go_tests.py --runtime .
-
-      - name: Fix in-game outfit order (orient m_suit newest-first)
-        run: |
-          # The game client sorts the Change Outfit closet by display_order ASCENDING
-          # (verified on-device), so newest-first needs newer suits at LOWER values —
-          # the launch suit at the MAX. The script inverts official-oriented data in
-          # place and is a no-op on data already oriented newest-first.
-          #
-          # MUST run AFTER "Build master data": databaseInit's isNotChanged() gates the
-          # assets/sql migrations on `git diff` of each db file, so inverting first
-          # makes masterdata.db dirty and silently skips 001.masterdata.db.sql (missing
-          # lives/beatmap patches — the v2026.07.04.1 regression). Running after, the
-          # migrations apply to pristine data first. Refresh afterward because the
-          # inversion also changes the JP source fingerprint; the bundled import
-          # marker and client manifests must describe the final ordered databases.
-          python3 bin/fix_outfit_order.py
-          ./elichika_host rebuild_assets
-          python3 tests/validate_runtime.py .
-          python3 assets/tests/validate_localization.py --runtime .
-
-      - name: Regenerate final server data twice and require byte-identical output
-        run: |
-          set -euo pipefail
-          python3 android/ci/build_deterministic_serverdata.py \
-            --runtime . --binary ./elichika_host --build-only \
-            --report "$RUNNER_TEMP/deterministic-serverdata.json"
-          python3 tests/validate_runtime.py .
-          python3 assets/tests/validate_localization.py --runtime .
-
-      - name: Upload deterministic official data evidence
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          sys.path.insert(0, 'macos/build')
+          sys.path.insert(0, 'macos/ci')
+          from common import is_macho, readonly_tree, require, run, sha256, write_json
+          from build_app import vendor_python, copy_python_sources, build_astc
+          from native_macho import allowed_runpath, expand_path, loader_context, native_info, prune_external_runpaths
+          from audit_bundle import resolve_private
+          from verify_runtime import check
+          temporary = pathlib.Path(os.environ['RUNNER_TEMP'])
+          evidence = temporary / 'macos-runtime-probe-evidence'
+          evidence.mkdir()
+          repo = pathlib.Path.cwd()
+          resources = temporary / 'Standalone runtime Elichika.app/Contents/Resources'
+          private = resources / 'runtime/arm64'
+          (private / 'bin').mkdir(parents=True)
+          lock = json.loads((repo / 'macos/build/dependencies.lock.json').read_text())
+          cache = temporary / 'macos-runtime-probe-cache'
+          copy_python_sources(repo, resources / 'python-app')
+          vendor_python(lock['architectures']['arm64'], private, cache, repo)
+          build_astc(lock['astc_commit'], private / 'bin/astcenc', cache)
+          app = resources.parents[1]
+          write_json(evidence / 'runpath-sanitization.json', prune_external_runpaths(app))
+          native = {path:native_info(path) for path in app.rglob('*') if is_macho(path)}
+          native_report = {}
+          for binary, details in native.items():
+              executable = loader_context(binary, app)
+              paths = list(details['rpaths'])
+              require('arm64' in details['architectures'], 'Missing ARM slice: ' + str(binary))
+              require(all(allowed_runpath(value,binary,executable,app) for value in paths), 'External runpath remained')
+              for value in native.get(executable,{}).get('rpaths',[]):
+                  paths.append(str(expand_path(value,executable,executable)))
+              resolved = [resolve_private(value,binary,executable,paths,app) for value in details['dependencies']]
+              native_report[binary.relative_to(app).as_posix()] = dict(details, resolved=[str(value) if value else 'system' for value in resolved])
+              run(['/usr/bin/codesign','--force','--sign','-','--timestamp=none',binary])
+          write_json(evidence / 'private-native-audit.json', native_report)
+          readonly_tree(app)
+          check(app, evidence / 'private-runtime.json', network=True)
+          for binary in native:
+              run(['/usr/bin/codesign','--verify','--strict',binary])
+          write_json(evidence / 'probe-summary.json', {'scope':'Capability probe only; final .app validation remains separate',
+              'status':'PASS','native_images':len(native),'source':run(['git','rev-parse','HEAD'],capture=True).strip(),
+              'dependencies_lock_sha256':sha256(repo/'macos/build/dependencies.lock.json')})
+          PY
+      - name: Upload runtime capability evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: deterministic-serverdata-evidence
-          path: ${{ runner.temp }}/deterministic-serverdata.json
+          name: macos-private-runtime-probe
+          path: ${{ runner.temp }}/macos-runtime-probe-evidence/
           if-no-files-found: warn
-
-      - name: Assemble bundled payload
-        run: |
-          set -eux
-          PAY=android/app/src/main/assets/payload
-          rm -rf "$PAY"; mkdir -p "$PAY"
-          cp -r "server init jsons" "$PAY/"
-          cp -r webui "$PAY/webui"
-          find "$PAY/webui" -name '*.go' -delete
-          cp privatekey.pem publickey.pem "$PAY/"
-          cp serverdata.db "$PAY/"
-          # config.json is deliberately NOT bundled: rebuild_assets writes one with the
-          # server-wide defaults (cdn_cache=false), and shipping it stopped
-          # AssetInstaller's create-if-missing branch from ever running — fresh installs
-          # ended up with the CDN cache OFF. Without it, the app creates config.json with
-          # cdn_cache=true + the shared packs dir, and the server fills in the rest of
-          # the defaults on first Load().
-          # The server reads the whole harasho master-data tree at startup (assets/db,
-          # assets/sql, assets/event, assets/dictionary.json, …) via clientdb.init —
-          # without it the server panics ("open assets/db/gl/masterdata_a_en: no such
-          # file"). Bundle assets/ without Git metadata. static/ is NOT bundled:
-          # the server rekeys it from assets/ on first start, like the Termux install.
-          cp -r assets "$PAY/assets"
-          # AAPT excludes these Git metadata files. Remove them before computing
-          # the revision so it describes exactly the files in the signed APK.
-          find "$PAY/assets" \( -name '.git' -o -name '.gitignore' -o -name '.gitmodules' \) -print0 | xargs -0 -r rm -rf
-          # Host validation bytecode is derived tooling, not official game data.
-          # Its source timestamp must not advance the data revision.
-          find "$PAY/assets" -type d -name '__pycache__' -prune -exec rm -rf {} +
-          find "$PAY/assets" -type f -name '*.pyc' -delete
-          python3 payload_revision.py create --payload "$PAY" \
-            --output android/app/src/main/assets/payload_revision.json
-          python3 payload_revision.py verify --payload "$PAY" \
-            --manifest android/app/src/main/assets/payload_revision.json
-          echo "payload sizes (static/ measured for info, not bundled):"
-          du -sh "$PAY/assets" "$PAY/serverdata.db" "$PAY" static 2>/dev/null || true
-
-      - name: Sync Python sources (both repos)
-        run: |
-          set -eux
-          PY=android/app/src/main/python
-          # keep the committed launcher, drop any previous sync
-          find "$PY" -mindepth 1 -not -name 'elichika_launch.py' -delete 2>/dev/null || true
-          mkdir -p "$PY"
-          # elichika dev tools: adminui package + the installer/util scripts it calls
-          cp -r adminui "$PY/adminui"
-          cp ./*.py "$PY/" 2>/dev/null || true
-          # modding tools from the modtools/ submodule: webtools package + the mod
-          # scripts (copied last so the tools-repo version wins for any duplicate
-          # module name — though elichika no longer vendors its own copies)
-          cp -r modtools/webtools "$PY/webtools"
-          cp modtools/*.py "$PY/" 2>/dev/null || true
-          [ -d modtools/live_timeline ] && cp -r modtools/live_timeline "$PY/" || true
-          # The mandatory installer must be our reviewed module, even if a tools
-          # checkout happens to ship a module with the same name.
-          cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py "$PY/"
-          cmp payload_db_upgrade.py "$PY/payload_db_upgrade.py"
-          cmp database_maintenance.py "$PY/database_maintenance.py"
-          cmp payload_file_hash.py "$PY/payload_file_hash.py"
-          cmp payload_revision.py "$PY/payload_revision.py"
-          # drop the host build artifact if it landed in python/
-          rm -f "$PY/elichika_host"
-          # Vendor UnityPy so the bundle-editing tools import it instantly instead
-          # of trying a runtime `pip install` (which cannot build on-device and
-          # just hangs/fails). --no-deps skips its native texture/audio decoders
-          # (texture2ddecoder/etcpak/astc/fmod), which are only lazy-imported for
-          # texture/audio ops — importing UnityPy and editing bones/mesh/physics
-          # does NOT need them (verified). Its import-time deps (lz4/brotli/attrs/
-          # fsspec) come from Chaquopy pip (see android/app/build.gradle.kts).
-          python3 -m pip install --no-deps --no-compile --target "$PY" "UnityPy==1.25.0"
-          # CRITICAL: the wheel bundles an x86 UnityPyBoost accelerator .so that
-          # would crash on arm64. Delete it — UnityPy falls back to its pure-Python
-          # path (guarded try/except -> None) which runs fine on-device (slower).
-          rm -f "$PY"/UnityPy/UnityPyBoost*.so
-          find "$PY/UnityPy" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
-          # trim bulky metadata / console-script shim that would only bloat the APK
-          rm -rf "$PY"/UnityPy-*.dist-info "$PY"/bin 2>/dev/null || true
-          test -f "$PY/UnityPy/__init__.py"  # fail loudly if the vendor step didn't land
-          # Make UnityPy import without the native texture/audio codecs so that
-          # UNCOMPRESSED texture import (RGBA32, pure PIL) works on-device; the
-          # codecs are only needed for compressed formats (gated in the tool).
-          python3 android/ci/patch_unitypy.py "$PY"
-
-      - name: Cross-compile libelichika.so (android/arm64, cgo)
-        run: |
-          set -eux
-          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}"
-          TC="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          CC="$TC/aarch64-linux-android24-clang" \
-          CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
-          go build -buildmode=pie -trimpath \
-            -ldflags "-s -w -linkmode external -extldflags '-Wl,-z,max-page-size=16384,-z,common-page-size=16384'" \
-            -o android/app/src/main/jniLibs/arm64-v8a/libelichika.so .
-          file android/app/src/main/jniLibs/arm64-v8a/libelichika.so
-
-      - name: Build astcenc (android/arm64) for in-app ASTC texture encoding
-        run: |
-          set -eux
-          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}"
-          git clone --depth 1 --branch 4.8.0 https://github.com/ARM-software/astc-encoder /tmp/astcenc
-          cmake -S /tmp/astcenc -B /tmp/astcenc/build \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
-            -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
-            -DCMAKE_BUILD_TYPE=Release -DASTCENC_ISA_NEON=ON -DASTCENC_CLI=ON
-          cmake --build /tmp/astcenc/build -j"$(nproc)"
-          # the NEON build produces astcenc-neon; ship it as an executable native lib
-          BIN=$(find /tmp/astcenc/build -type f -name 'astcenc-*' ! -name '*.o' | head -1)
-          test -n "$BIN"
-          cp "$BIN" android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
-          file android/app/src/main/jniLibs/arm64-v8a/libastcenc.so
-
-      - name: Rebuild Pillow's FreeType dependency for 16KB pages
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch VER-2-9-1 https://github.com/freetype/freetype.git "$RUNNER_TEMP/freetype-source"
-          python3 android/ci/build_freetype.py \
-            --source "$RUNNER_TEMP/freetype-source" \
-            --ndk "$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}" \
-            --work "$RUNNER_TEMP/freetype-build" \
-            --wheel android/app/native-wheels/chaquopy_freetype-2.9.1-3-py3-none-android_24_arm64_v8a.whl
-
-      # CalVer: a tag vYYYY.MM.DD[.N] sets versionName "YYYY.MM.DD[.N]" and a strictly
-      # increasing versionCode YYYYMMDD*100(+N). Non-tag builds get a dated dev version.
-      - name: Build NumPy BLAS/LAPACK without the legacy Fortran runtime
-        run: |
-          git clone --depth 1 --branch v0.3.33 https://github.com/OpenMathLib/OpenBLAS "$RUNNER_TEMP/openblas-source"
-          python3 android/ci/build_openblas.py \
-            --source "$RUNNER_TEMP/openblas-source" \
-            --ndk "$ANDROID_HOME/ndk/${NDK_VERSION}" \
-            --work "$RUNNER_TEMP/openblas-build" \
-            --wheel android/app/native-wheels/chaquopy_openblas-0.3.33-1-py3-none-android_24_arm64_v8a.whl
-
-      - name: Build debug APK
-        working-directory: android
-        run: >-
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}"
-          -PappVersionName="${{ steps.ver.outputs.name }}"
-          -PappVersionCode="${{ steps.ver.outputs.code }}"
-
-      - name: Rename debug APK
-        run: |
-          set -eu
-          d=android/app/build/outputs/apk/debug
-          mv "$d/app-debug.apk" "$d/elichika-${{ steps.ver.outputs.name }}-debug.apk"
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      # --- Release-signed build (for public GitHub Release distribution) --------
-      # Requires four repo secrets (one-time setup, see android/README.md):
-      #   RELEASE_KEYSTORE_BASE64  - base64 of your private .keystore (NEVER committed)
-      #   RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD
-      # Without them, the release build falls back to the committed debug key.
-      - name: Decode release keystore
-        id: relkey
-        env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-        run: |
-          set -eu
-          if [ -n "${RELEASE_KEYSTORE_BASE64:-}" ]; then
-            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
-            echo "have_key=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "have_key=false" >> "$GITHUB_OUTPUT"
-            echo "No RELEASE_KEYSTORE_BASE64 secret; release APK will use the debug key."
-          fi
-
-      - name: Build release APK
-        working-directory: android
-        env:
-          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: >-
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace
-          -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}"
-          -PappVersionName="${{ steps.ver.outputs.name }}"
-          -PappVersionCode="${{ steps.ver.outputs.code }}"
-
-      # Gradle names the output app-release.apk; give it a versioned, recognisable
-      # name so the artifact and the GitHub Release asset read "elichika-<version>.apk".
-      - name: Rename release APK
-        run: |
-          set -eu
-          d=android/app/build/outputs/apk/release
-          mv "$d/app-release.apk" "$d/elichika-${{ steps.ver.outputs.name }}.apk"
-          ls -la "$d"
-
-      - name: Reject incompatible native files in the actual APK
-        id: layout
-        run: |
-          set -euo pipefail
-          APK=android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
-          python3 android/ci/audit_native.py "$APK" --report android-native-layout.json
-          python3 payload_revision.py verify-apk --apk "$APK" --report payload-revision-audit.json
-          echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload native layout evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-native-layout-evidence
-          path: android-native-layout.json
-          if-no-files-found: warn
-
-      - name: Upload final APK payload revision evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: payload-revision-audit-evidence
-          path: payload-revision-audit.json
-          if-no-files-found: warn
-
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-
-      - name: Assemble Android native-package instrumentation
-        working-directory: android
-        env:
-          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          mkdir -p app/src/androidTest/assets
-          cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
-          cp ../tests/android_payload_upgrade_benchmark.py app/src/androidTest/assets/android_payload_upgrade_benchmark.py
-          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
-            -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
-            -PappVersionName="${{ steps.ver.outputs.name }}" \
-            -PappVersionCode="${{ steps.ver.outputs.code }}"
-          test_apks=(app/build/outputs/apk/androidTest/release/*.apk)
-          test "${#test_apks[@]}" -eq 1
-          test -f "${test_apks[0]}"
-          python3 ../payload_revision.py verify-apk \
-            --apk "${test_apks[0]}" \
-            --report "$GITHUB_WORKSPACE/instrumentation-payload-revision-audit.json"
-
-      - name: Upload instrumentation APK payload revision evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: instrumentation-payload-revision-audit-evidence
-          path: instrumentation-payload-revision-audit.json
-          if-no-files-found: warn
-
-      - name: Upload native-package instrumentation APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-native-test-apk
-          path: android/app/build/outputs/apk/androidTest/release/*.apk
-          if-no-files-found: error
-
-      - name: Build a QA-only same-data APK with a different application version
-        id: noop_probe
-        working-directory: android
-        env:
-          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          PRODUCTION_VERSION_NAME: ${{ steps.ver.outputs.name }}
-          PRODUCTION_VERSION_CODE: ${{ steps.ver.outputs.code }}
-        run: |
-          set -euo pipefail
-          probe_code=$((PRODUCTION_VERSION_CODE + 1))
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace \
-            -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
-            -PappVersionName="${PRODUCTION_VERSION_NAME}-qa-noop" \
-            -PappVersionCode="$probe_code"
-          mkdir -p "$GITHUB_WORKSPACE/noop-probe"
-          cp app/build/outputs/apk/release/app-release.apk \
-            "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk"
-          python3 ../payload_revision.py verify-apk \
-            --apk "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk" \
-            --report "$GITHUB_WORKSPACE/noop-probe-audit.json"
-          echo "sha256=$(sha256sum "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload QA-only version-change probe separately from the release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-revision-noop-probe-apk
-          path: noop-probe/*.apk
-          if-no-files-found: error
-
-  native-compatibility:
-    needs: build
-    uses: ./.github/workflows/android-16k.yml
-    with:
-      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      version_name: ${{ needs.build.outputs.version_name }}
-
-  android-upgrade:
-    needs: build
-    uses: ./.github/workflows/android-smoke.yml
-    with:
-      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      version_name: ${{ needs.build.outputs.version_name }}
-      version_code: ${{ needs.build.outputs.version_code }}
-      noop_probe_sha256: ${{ needs.build.outputs.noop_probe_sha256 }}
-
-  apk-audit:
-    needs: build
-    uses: ./.github/workflows/release-audit.yml
-    with:
-      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      version_name: ${{ needs.build.outputs.version_name }}
-      version_code: ${{ needs.build.outputs.version_code }}
-      source_commit: ${{ github.sha }}
-
-  publish:
-    needs: [build, native-compatibility, android-upgrade, apk-audit]
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download validated release APK
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-release-apk
-          path: release
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.release_tag }}
-          files: release/*.apk
-          # release_notes (if given) appears at the top; with
-          # generate_release_notes the changelog is appended below it.
-          body: ${{ github.event.inputs.release_notes }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
