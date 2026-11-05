@@ -11,12 +11,33 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 from build_app import bundle_versions
-from common import extract_python, sha256, verified_download
+from common import extract_python, readonly_tree, sha256, verified_download, writable_tree
 from audit_bundle import resolve_private, system_path
 from native_macho import allowed_runpath, loader_context, prune_external_runpaths
 
 
 class PackagingBoundaries(unittest.TestCase):
+    def test_app_container_can_move_while_all_signed_contents_stay_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); app = root / "Elichika.app"
+            contents = app / "Contents"; executable = contents / "MacOS/Elichika"
+            source = contents / "Resources/python-app/tool.py"
+            executable.parent.mkdir(parents=True); source.parent.mkdir(parents=True)
+            executable.write_bytes(b"native"); executable.chmod(0o755)
+            source.write_text("# shared source\n"); source.chmod(0o644)
+            for path in [contents, *contents.rglob("*")]:
+                if path.is_dir():
+                    path.chmod(0o755)
+            readonly_tree(app, movable_app_container=True)
+            try:
+                self.assertEqual(app.stat().st_mode & 0o777, 0o755)
+                self.assertEqual(contents.stat().st_mode & 0o777, 0o555)
+                self.assertEqual(source.stat().st_mode & 0o777, 0o444)
+                self.assertEqual(executable.stat().st_mode & 0o777, 0o555)
+                self.assertTrue(all(path.stat().st_mode & 0o222 == 0 for path in contents.rglob("*")))
+            finally:
+                writable_tree(app)
+
     def test_versions_use_apple_numeric_components_and_preserve_calver_separately(self):
         self.assertEqual(bundle_versions("2026.11.06.1"), ("2026.11.6", "2611.6.1"))
         self.assertEqual(bundle_versions("2026.12.31.99"), ("2026.12.31", "2612.31.99"))

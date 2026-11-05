@@ -86,7 +86,8 @@ The workflow checks:
 - The actual signed app starts, controls Go, edits and saves a model, reloads it,
   quits cleanly, moves to a path containing spaces and Korean characters, and
   launches again with the same user data.
-- The app remains read-only and its signature verifies after both launches.
+- Bundled contents remain read-only and the signature verifies after both launches.
+  The outer app directory keeps normal owner permissions so Finder can move it.
 
 The resulting `.app.zip`, `SHA256SUMS` and execution evidence are uploaded as
 workflow artifacts. Packaging does not merge code or publish a GitHub release.

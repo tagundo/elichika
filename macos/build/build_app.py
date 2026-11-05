@@ -182,7 +182,7 @@ def build(repo, shared, output, cache, version):
     write_json(private / "dependency-inputs.json", dependencies)
     clean_python_bytecode(output)
     sign_bundle(output)
-    readonly_tree(output)
+    readonly_tree(output, movable_app_container=True)
     return {"app": str(output), "source": identity, "version": version, "architecture": "arm64"}
 
 

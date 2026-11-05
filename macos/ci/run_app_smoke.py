@@ -73,10 +73,12 @@ def check(app, output, relocation):
     first = launch(app, output, "first-launch")
     relocation.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(app), str(relocation))
+    require(not app.exists() and relocation.is_dir(), "App relocation must remove the original absolute path")
     second = launch(relocation, output, "relocated-relaunch")
     value = {"status": "PASS_FINAL_APP_LAUNCH_RELOCATION_AND_RELAUNCH",
              "app": str(relocation), "no_host_python_or_homebrew_path": True,
              "readonly_app_signature_preserved": True,
+             "original_app_path_removed": True,
              "space_and_unicode_path": " " in str(relocation) and any(ord(char) > 127 for char in str(relocation)),
              "first": first, "relocated": second}
     require(value["space_and_unicode_path"], "Relocation test needs spaces and a non-ASCII path")

@@ -141,11 +141,21 @@ def writable_tree(root):
             path.chmod(path.stat().st_mode | 0o200 | (0o100 if path.is_dir() else 0))
 
 
-def readonly_tree(root):
+def readonly_tree(root, *, movable_app_container=False):
+    """Protect bundle contents while allowing an .app to be moved normally.
+
+    Darwin requires owner write permission on a directory when reparenting it.
+    Only the outer .app container gets that permission; signed Contents and all
+    runtime/source files remain read-only.
+    """
     root = Path(root)
+    require(not movable_app_container or (root.is_dir() and root.suffix == ".app"),
+            "A movable read-only container must be an .app directory")
     for path in [*root.rglob("*"), root]:
         if not path.is_symlink():
             path.chmod(path.stat().st_mode & ~0o222)
+    if movable_app_container:
+        root.chmod(0o755)
 
 
 def content_inventory(root, ignored=()):

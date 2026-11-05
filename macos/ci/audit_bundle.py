@@ -45,6 +45,10 @@ def audit(app, required_architectures):
     require(sys.platform == "darwin", "The finished bundle audit must run on macOS")
     require(app.is_dir() and app.suffix == ".app", "A finished .app is required")
     contents = app / "Contents"
+    require(app.stat().st_mode & 0o777 == 0o755, "The app container must allow normal relocation")
+    for path in [contents, *contents.rglob("*")]:
+        require(path.is_symlink() or path.stat().st_mode & 0o222 == 0,
+                f"Signed bundle contents must remain read-only: {path.relative_to(app)}")
     info = plistlib.loads((contents / "Info.plist").read_bytes())
     require(info["CFBundleExecutable"] == "Elichika", "Unexpected app executable")
     require(info["LSMinimumSystemVersion"] == "13.0", "Unexpected minimum macOS version")
