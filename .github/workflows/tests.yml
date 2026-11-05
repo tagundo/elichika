@@ -78,10 +78,13 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_animation.py -v
           python3 -m unittest discover -s tests -p test_model_motion.py -v
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
+          python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
+          python3 -m unittest discover -s tests -p test_model_edits.py -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
           python3 -m unittest discover -s tests -p test_node_height_tool.py -v
           python3 -m unittest discover -s tests -p test_viewer_archive.py -v
           python3 -m unittest discover -s tests -p test_viewer_routes.py -v
+          python3 -m unittest discover -s tests -p test_viewer_edit_routes.py -v
           python3 -m unittest discover -s tests -p test_job_outputs.py -v
 
       - name: Run all Go tests with default vet checks
@@ -153,6 +156,7 @@ jobs:
           node tests/sifas_material_browser.js
           node tests/viewer_quality_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/resolution" node tests/viewer_resolution_browser.js
 
       - name: Upload neutral WebGL evidence
