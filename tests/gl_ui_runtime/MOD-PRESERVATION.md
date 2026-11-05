@@ -6,16 +6,21 @@ updater. The initial wrapper is the published v4 APK: source
 `2026.11.04.4`, code `2026110404`, APK SHA256
 `815e9dd70d1b0e89b97f76b83c1b71136ec7f5f73f6e9a6a983d123a7aa42cac`.
 The v5 candidate is `2026.11.05.1` / `2026110501`, source
-`56861368fd76b82f395492b8e1c456a71a28a57a`, build `41950334362`, artifact `13381940509`.
+`28338a69622acd84f77c8575784ec179d6441d70`, build `41954227948`, artifact `13383271400`.
 Root's independent raw-APK fast audit bound APK SHA256
-`f31f2aad8de3e05821c25b18781c0bcaf7e13178daa16b94c17c0e03f654fb0f` and native SHA256
-`e8f3ab088f2eb5bad28508d71ebc2414aab898c755c7659d8bde6d981f5e0262`.
+`a10a3f06313069685e849daf419c61949acc7d710b6f506a2ad183e52e28528b` and native SHA256
+`342d25974d7133608b53a1453577e06e29a448782b5d4a6aa131e544b7377af6`.
 The initial dispatch prepares only v4. Candidate installation still
 requires root's independent review of the actual baseline custom Home PNG.
 
 The public v4 wrapper is a reproducible published baseline; this synthetic
 fixture makes no claim about an unknown personal installation.
-The unchanged original GL3.12.0 APK runs Korean with Light download. No GL data
+The unchanged original GL3.12.0 APK runs Korean. The harness requests `light` and
+verifies `DownloadMode=0` / `AutoDeleteMode=0`; this path does not check the public
+Full/Light getter or identify a selected download-size choice. The cancelled
+diagnostic run `41953158876` displayed a total of `10528.47 MB`. Treat its mode as
+unproven, and report the actual selected choice only if fresh evidence proves it.
+No GL data
 clear, cache deletion, reset, or GL APK replacement is part of this test.
 
 `prepare_new_home=true` selects this branch's mod fixture. It reuses the existing
@@ -79,6 +84,8 @@ The earlier controlled positive run `41831583335` and losing negative control
 are not v5 proof. Fresh before/after actual Home captures and bounded client logs
 are required. Unattributed Bluetooth/system crashes stay separate from game
 exceptions; no all-process crash-free claim follows from a rendered Home.
+The cancelled run `41953158876` prepared/retained the custom selection, but stopped
+during resource downloading. It has no HOME proof and did not install a candidate.
 
 Host tests use only small synthetic data. Actual Android/GL validation remains
 pending the independently audited v5 candidate and root's dispatch.
