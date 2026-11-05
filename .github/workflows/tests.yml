@@ -147,6 +147,8 @@ jobs:
           curl --fail --silent "$VIEWER_URL/api/tools" > /dev/null
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/layout" node tests/viewer_layout_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/vertical" node tests/viewer_vertical_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/framing" node tests/viewer_framing_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/compensation" node tests/viewer_compensation_browser.js
           node tests/sifas_material_browser.js
           node tests/viewer_quality_browser.js

@@ -28,6 +28,14 @@
     if (result.disabled) throw new Error("Viewer control is disabled: " + id);
     return result;
   }
+  function minimumTarget(target) {
+    var vertical = element("tab-viewer").classList.contains("viewer-vertical-controls");
+    // Only the deliberately compact, always-visible viewport controls use the
+    // smaller policy. Editing controls and popover contents still require 44px.
+    var hud = target.closest(".viewer-pose-actions,.viewer-screen-actions,.viewer-camera-actions,.viewer-quality-choice") ||
+      target.matches("#viewer-info > summary,#viewer-view-menu > summary,#viewer-workspace-menu > summary");
+    return vertical && hud ? 32 : 44;
+  }
   function control(id, scroll) {
     var target = typeof id === "string" ? element(id) : id;
     if (!target) throw new Error("Missing viewer control target");
@@ -37,6 +45,8 @@
     var top = document.elementFromPoint(x, y);
     return { id: target.id || target.tagName, text: target.textContent.trim(), disabled: !!target.disabled,
       pressed: target.getAttribute("aria-pressed"), width: rectangle.width, height: rectangle.height,
+      left: rectangle.left, top: rectangle.top, right: rectangle.right, bottom: rectangle.bottom,
+      minimumTarget: minimumTarget(target),
       visible: rectangle.width > 0 && rectangle.height > 0 && style.display !== "none" &&
         style.visibility !== "hidden" && Number(style.opacity) !== 0,
       withinViewport: rectangle.left >= 0 && rectangle.top >= 0 &&
@@ -46,17 +56,20 @@
   function requireTarget(target, allowDisabled) {
     var result = control(target, true);
     if ((!allowDisabled && result.disabled) || !result.visible || !result.withinViewport ||
-        !result.hittable || result.width < 44 || result.height < 44) {
-      throw new Error("Expected a visible unobstructed 44 px viewer target: " + JSON.stringify(result));
+        !result.hittable || result.width < result.minimumTarget || result.height < result.minimumTarget) {
+      throw new Error("Expected the visible unobstructed viewer target to meet its explicit size policy: " + JSON.stringify(result));
     }
     return result;
   }
   function withViewMenu(open, action) {
     var menu = element("viewer-view-menu"), content = element("viewer-view-menu-content");
-    var prior = { compact: !!state().layout.compactControls, open: menu.open,
+    var prior = { open: menu.open,
       x: window.scrollX, y: window.scrollY, left: content.scrollLeft, top: content.scrollTop };
-    function setOpen(value) {
-      if (!state().layout.compactControls) return;
+    function setOpen(value, restore) {
+      // compactControls now describes the file list/variant layout. It no
+      // longer means the always-visible pose and quality controls were moved.
+      var containsControls = menu.contains(element("viewer-pose-actions"));
+      if (value && !restore && !containsControls || menu.open === value) return;
       var summary = menu.querySelector("summary");
       if (!summary || !summary.textContent.trim()) throw new Error("View controls needs an accessible summary");
       requireTarget(summary, false);
@@ -64,12 +77,12 @@
       if (menu.open !== value) throw new Error("The actual View controls summary did not toggle its menu");
     }
     try {
-      setOpen(open);
+      setOpen(open, false);
       return action();
     } finally {
-      // A fullscreen/orientation transition may reparent these same controls.
-      // Only restore an open menu if that original compact mode still applies.
-      setOpen(prior.compact && prior.open && !!state().layout.compactControls);
+      // Preserve a previously opened variant menu without opening an unrelated
+      // menu just to use the directly reachable HUD controls.
+      setOpen(prior.open, true);
       content.scrollLeft = prior.left; content.scrollTop = prior.top;
       window.scrollTo(prior.x, prior.y);
     }
@@ -77,7 +90,8 @@
   function viewControl(id, allowDisabled) {
     var input = element(id), target = id === "viewer-high-quality" ? input.closest("label") || input : input;
     var compact = !!state().layout.compactControls, inside = element("viewer-view-menu").contains(target);
-    if (inside !== compact) throw new Error("View control placement must match actual compact mode: " + id);
+    var vertical = element("tab-viewer").classList.contains("viewer-vertical-controls");
+    if (inside !== (!vertical && compact)) throw new Error("View control placement must match the actual visible HUD policy: " + id);
     var result = requireTarget(target, !!allowDisabled);
     result.disabled = !!input.disabled; result.compactControls = compact; result.insideViewMenu = inside;
     if (!allowDisabled && input.disabled) throw new Error("Viewer control is disabled: " + id);
@@ -170,6 +184,86 @@
     }
     return { vertices: points, jointCount: mesh.skeleton.bones.length, mesh: mesh.name };
   }
+  function verticalViewport(readPixels) {
+    if (!parsedModel) throw new Error("The application's real loaded scene is unavailable");
+    var selectors = ["#viewer-pose-basic", "#viewer-pose-preview", ".viewer-quality-choice",
+      "#viewer-expand", "#viewer-fullscreen", '[data-viewer-view="front"]', '[data-viewer-view="back"]',
+      '[data-viewer-view="left"]', '[data-viewer-view="right"]', "#viewer-fit", "#viewer-info > summary"];
+    var controls = selectors.map(function (selector) {
+      var target = document.querySelector(selector);
+      if (!target) throw new Error("Missing retained viewport action: " + selector);
+      var result = control(target, false); result.selector = selector; return result;
+    });
+    var overlapPairs = [];
+    controls.forEach(function (first, index) {
+      controls.slice(index + 1).forEach(function (second) {
+        if (Math.min(first.right, second.right) - Math.max(first.left, second.left) > .5 &&
+            Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top) > .5) {
+          overlapPairs.push([first.selector, second.selector]);
+        }
+      });
+    });
+    var current = state(), canvas = element("viewer-canvas"), stage = canvas.getBoundingClientRect();
+    var result = { vertical: element("tab-viewer").classList.contains("viewer-vertical-controls"),
+      controls: controls, overlapPairs: overlapPairs, layout: current.layout };
+    if (!readPixels) return result;
+    var probe = window.ModelViewer.renderProbe(33);
+    if (!probe.ready || probe.glError !== 0) throw new Error("The real viewer must render for layout QA");
+    var gl = context(), width = gl.drawingBufferWidth, height = gl.drawingBufferHeight;
+    if (width * height * 4 > 32 * 1024 * 1024) throw new Error("Viewport pixel QA exceeds its existing 32 MiB limit");
+    var pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    var background = (width + 1) * 4, covered = 0;
+    controls.forEach(function (box) {
+      var count = 0, left = Math.max(0, Math.floor((box.left - stage.left) / stage.width * width));
+      var right = Math.min(width, Math.ceil((box.right - stage.left) / stage.width * width));
+      var top = Math.max(0, Math.floor((box.top - stage.top) / stage.height * height));
+      var bottom = Math.min(height, Math.ceil((box.bottom - stage.top) / stage.height * height));
+      for (var y = top; y < bottom; y += 1) for (var x = left; x < right; x += 1) {
+        var offset = ((height - 1 - y) * width + x) * 4;
+        if (Math.abs(pixels[offset] - pixels[background]) + Math.abs(pixels[offset + 1] - pixels[background + 1]) +
+            Math.abs(pixels[offset + 2] - pixels[background + 2]) > 24) count += 1;
+      }
+      box.coveredModelPixels = count; covered += count;
+    });
+    // Project the observed source scene's current skin/morph vertices using
+    // the product camera snapshot. This creates no second camera or renderer.
+    var camera = current.camera, position = new window.THREE.Vector3().fromArray(camera.position);
+    var view = position.clone().sub(new window.THREE.Vector3().fromArray(camera.target)).normalize();
+    var rightVector = new window.THREE.Vector3().crossVectors(new window.THREE.Vector3(0, 1, 0), view).normalize();
+    var up = new window.THREE.Vector3().crossVectors(view, rightVector).normalize();
+    var tangentY = Math.tan(camera.fov * Math.PI / 360), tangentX = tangentY * stage.width / stage.height;
+    var projected = { count: 0, outside: 0, left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+    parsedModel.updateMatrixWorld(true);
+    parsedModel.traverseVisible(function (mesh) {
+      if (!mesh.isMesh || mesh.userData && mesh.userData.viewerHelper) return;
+      var attribute = mesh.geometry && mesh.geometry.attributes.position;
+      if (!attribute) return;
+      if (mesh.isSkinnedMesh) mesh.skeleton.update();
+      var morphs = mesh.geometry.morphAttributes.position || [], weights = mesh.morphTargetInfluences || [];
+      for (var vertex = 0; vertex < attribute.count; vertex += 1) {
+        var base = new window.THREE.Vector3().fromBufferAttribute(attribute, vertex), point = base.clone();
+        morphs.forEach(function (morph, index) {
+          if (!weights[index]) return;
+          var delta = new window.THREE.Vector3().fromBufferAttribute(morph, vertex);
+          if (!mesh.geometry.morphTargetsRelative) delta.sub(base);
+          point.addScaledVector(delta, weights[index]);
+        });
+        if (mesh.isSkinnedMesh) mesh.boneTransform(vertex, point);
+        point.applyMatrix4(mesh.matrixWorld).sub(position);
+        var depth = -point.dot(view);
+        var x = (.5 + point.dot(rightVector) / (2 * depth * tangentX)) * stage.width;
+        var y = (.5 - point.dot(up) / (2 * depth * tangentY)) * stage.height;
+        projected.count += 1;
+        if (!(depth > 0) || x < -.5 || y < -.5 || x > stage.width + .5 || y > stage.height + .5) projected.outside += 1;
+        projected.left = Math.min(projected.left, x); projected.right = Math.max(projected.right, x);
+        projected.top = Math.min(projected.top, y); projected.bottom = Math.max(projected.bottom, y);
+      }
+    });
+    result.projectedVertices = projected; result.coveredModelPixels = covered;
+    result.framebuffer = { width: width, height: height, glError: gl.getError(), sourceTriangles: probe.sourceTriangles };
+    return result;
+  }
   function nodeId(name) {
     var matches = state().rig.bones.filter(function (bone) {
       return bone.name === name || bone.name.slice(-(name.length + 1)) === "/" + name;
@@ -195,6 +289,7 @@
   }
   window.ViewerRigQa = {
     capture: capture, deformedVertices: deformedVertices, nodeId: nodeId, nodeWorld: nodeWorld, control: control,
+    verticalViewport: verticalViewport,
     withViewControls: function (action) { return withViewMenu(true, action); },
     withViewMenuClosed: function (action) { return withViewMenu(false, action); },
     viewControl: viewControl,

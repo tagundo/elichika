@@ -46,6 +46,7 @@
     var r = label.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
     var hit = document.elementFromPoint(x, y);
     return { checked: input.checked, disabled: input.disabled, width: r.width, height: r.height,
+      minimumTarget: document.getElementById("tab-viewer").classList.contains("viewer-vertical-controls") ? 32 : 44,
       withinViewport: r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1,
       hittable: hit === label || label.contains(hit) };
   }
