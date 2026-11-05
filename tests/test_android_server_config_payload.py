@@ -4,14 +4,19 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import payload_db_upgrade as upgrade
+import payload_revision as revision
 
 GENERATOR = ROOT / 'android/ci/generate_server_config_payload.py'
 SPEC = importlib.util.spec_from_file_location('server_config_fixture', GENERATOR)
@@ -61,6 +66,84 @@ class ServerConfigPayloadTests(unittest.TestCase):
             self.assertEqual((output / 'config.json').read_bytes(), fixture.CONFIG)
             self.assertTrue((output / 'webui/index.html').is_file())
 
+    def test_gradle_generation_recreates_the_final_test_apk_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            assets = root / 'generated/serverConfigTestAssets'
+            output = assets / 'payload'
+            manifest = assets / 'payload_revision.json'
+            command = [sys.executable, str(GENERATOR), '--output', str(output),
+                       '--manifest-output', str(manifest)]
+
+            def generate_and_package():
+                # Run from outside the repository, as Gradle may select another cwd.
+                subprocess.run(command, cwd=root, check=True, capture_output=True, text=True)
+                apk = root / 'synthetic-test.apk'
+                with zipfile.ZipFile(apk, 'w') as archive:
+                    for path in assets.rglob('*'):
+                        if path.is_file():
+                            archive.write(path, 'assets/' + path.relative_to(assets).as_posix())
+                verified = revision.verify_apk(apk)
+                self.assertEqual(verified, revision.build_manifest(output))
+                self.assertEqual(len(verified['files']), 16)
+                self.assertNotIn('config.json', verified['files'])
+                self.assertFalse((output / 'payload_revision.json').exists())
+                return manifest.read_bytes()
+
+            first = generate_and_package()
+            # Gradle owns/cleans the entire output assets directory. No workflow
+            # pre-generation or previously surviving sibling file may be needed.
+            shutil.rmtree(assets)
+            self.assertEqual(generate_and_package(), first)
+            manifest.unlink()
+            self.assertEqual(generate_and_package(), first)
+
+    def test_android_power_loss_helper_handles_private_directory_aliases(self):
+        kotlin = (ROOT / 'android/app/src/androidTest/java/com/tagundo/elichika/PayloadRevisionTest.kt').read_text()
+        script = kotlin.split('python.getModule("builtins").callAttr("exec", """', 1)[1]
+        script = script.split('""".trimIndent(), helpers.get', 1)[0]
+        helpers = {}
+        exec(textwrap.dedent(script), helpers)
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            canonical = base / 'data-data'
+            canonical.mkdir()
+            alias = base / 'data-user-0'
+            alias.symlink_to(canonical, target_is_directory=True)
+            root = alias / 'runtime'
+            root.mkdir()
+            stock = base / 'stock'
+            fixture.generate(stock)
+            manifest = revision.build_manifest(stock)
+
+            def stage():
+                output = root / '.payload-incoming/fixture/payload'
+                output.mkdir(parents=True)
+                # Match the real Kotlin stager, excluding fixture config/marker.
+                for name in manifest['files']:
+                    target = output / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(stock / name, target)
+                return output
+
+            result = json.loads(revision.apply_json(str(root), str(stage()), '', manifest['revision'],
+                                                   'fresh', json.dumps(manifest)))
+            self.assertEqual(result['status'], 'COMMITTED', result)
+            with sqlite3.connect(root / 'assets/db/gl/masterdata.db') as db:
+                db.execute("UPDATE fixture_catalog SET value='owner override' WHERE id=1")
+            shutil.rmtree(root / '.payload-incoming')
+            original_replace = upgrade._replace
+            helpers['interrupt'](str(root), str(stage()), json.dumps(manifest))
+            self.assertIs(upgrade._replace, original_replace)
+            self.assertTrue((root / '.payload-upgrade/journal.json').is_file())
+            self.assertEqual((root / 'installed_version').read_text(), manifest['revision'])
+            self.assertEqual(upgrade.recover_upgrade(root)['status'], 'ROLLED_BACK')
+            self.assertFalse((root / '.payload-upgrade/journal.json').exists())
+            self.assertEqual((root / 'installed_version').read_text(), manifest['revision'])
+            with closing(sqlite3.connect(root / 'assets/db/gl/masterdata.db')) as db:
+                self.assertEqual(db.execute('SELECT value FROM fixture_catalog WHERE id=1').fetchone(),
+                                 ('owner override',))
+
     def test_missing_coverage_is_still_refused_without_live_changes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -88,8 +171,10 @@ class ServerConfigPayloadTests(unittest.TestCase):
         self.assertIn('name.endsWith("AndroidTestAssets")', gradle)
         self.assertNotIn('name.endsWith("Assets")', gradle)
         self.assertIn('generated/serverConfigTestAssets', gradle)
+        self.assertIn('inputs.file(revisionHelper)', gradle)
+        self.assertIn('"--manifest-output", assets.get().file("payload_revision.json")', gradle)
         workflow = (ROOT / '.github/workflows/android.yml').read_text()
-        self.assertLess(workflow.index('python3 ci/generate_server_config_payload.py'), workflow.index(':app:assembleReleaseAndroidTest'))
+        self.assertIn(':app:assembleReleaseAndroidTest', workflow)
         self.assertFalse((ROOT / 'android/app/src/androidTest/assets/payload/config.json').exists())
 
 

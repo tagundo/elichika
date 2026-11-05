@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import shutil
 import sqlite3
+import subprocess
+import sys
 
 
 ALGORITHM = 'jp-global-content-v1'
@@ -26,7 +28,7 @@ def database(path, script):
         connection.commit()
 
 
-def generate(output):
+def generate(output, *, manifest_output=None):
     output = Path(output)
     if output.is_symlink():
         raise ValueError('Fixture output must not be a symlink')
@@ -73,6 +75,14 @@ def generate(output):
     webui.parent.mkdir()
     webui.write_text('<!doctype html><title>Synthetic settings fixture</title>\n')
     (output / MARKER).write_text(MARKER_CONTENT)
+    if manifest_output is not None:
+        # Gradle owns the entire generated assets directory, including this
+        # sibling. Generate it here rather than relying on workflow pre-work
+        # surviving Gradle's stale-output cleanup. Reuse the production builder
+        # so fixture and game payloads have exactly the same revision contract.
+        helper = Path(__file__).resolve().parents[2] / 'payload_revision.py'
+        subprocess.run([sys.executable, str(helper), 'create', '--payload', str(output),
+                        '--output', str(manifest_output)], check=True, capture_output=True, text=True)
     files = [path for path in output.rglob('*') if path.is_file()]
     return {'database_count': sum(path.suffix == '.db' for path in files),
             'total_bytes': sum(path.stat().st_size for path in files)}
@@ -81,8 +91,10 @@ def generate(output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--manifest-output', type=Path,
+                        help='Revision manifest outside the generated payload, for instrumentation assets')
     args = parser.parse_args()
-    print(json.dumps(generate(args.output), sort_keys=True))
+    print(json.dumps(generate(args.output, manifest_output=args.manifest_output), sort_keys=True))
 
 
 if __name__ == '__main__':

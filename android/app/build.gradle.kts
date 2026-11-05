@@ -105,11 +105,14 @@ android {
 
 val generateServerConfigTestPayload by tasks.registering(Exec::class) {
     val generator = rootProject.file("ci/generate_server_config_payload.py")
+    val revisionHelper = rootProject.file("../payload_revision.py")
     val assets = layout.buildDirectory.dir("generated/serverConfigTestAssets")
     inputs.file(generator)
+    inputs.file(revisionHelper)
     outputs.dir(assets)
     commandLine(providers.gradleProperty("buildPython").orElse("python3").get(),
-        generator.absolutePath, "--output", assets.get().dir("payload").asFile.absolutePath)
+        generator.absolutePath, "--output", assets.get().dir("payload").asFile.absolutePath,
+        "--manifest-output", assets.get().file("payload_revision.json").asFile.absolutePath)
 }
 
 // Applies to both debug and release instrumentation variants when available.

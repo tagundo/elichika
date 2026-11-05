@@ -397,18 +397,28 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           mkdir -p app/src/androidTest/assets
           cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
           cp ../tests/android_payload_upgrade_benchmark.py app/src/androidTest/assets/android_payload_upgrade_benchmark.py
-          python3 ci/generate_server_config_payload.py \
-            --output app/build/generated/serverConfigTestAssets/payload
-          python3 ../payload_revision.py create \
-            --payload app/build/generated/serverConfigTestAssets/payload \
-            --output app/build/generated/serverConfigTestAssets/payload_revision.json
           ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
             -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
             -PappVersionName="${{ steps.ver.outputs.name }}" \
             -PappVersionCode="${{ steps.ver.outputs.code }}"
+          test_apks=(app/build/outputs/apk/androidTest/release/*.apk)
+          test "${#test_apks[@]}" -eq 1
+          test -f "${test_apks[0]}"
+          python3 ../payload_revision.py verify-apk \
+            --apk "${test_apks[0]}" \
+            --report "$GITHUB_WORKSPACE/instrumentation-payload-revision-audit.json"
+
+      - name: Upload instrumentation APK payload revision evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumentation-payload-revision-audit-evidence
+          path: instrumentation-payload-revision-audit.json
+          if-no-files-found: warn
 
       - name: Upload native-package instrumentation APK
         uses: actions/upload-artifact@v4

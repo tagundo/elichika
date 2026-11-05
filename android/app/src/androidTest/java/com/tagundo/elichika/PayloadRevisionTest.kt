@@ -186,15 +186,21 @@ class PayloadRevisionTest {
                         db.execute("UPDATE meta SET value=? WHERE key='payload_version'", (version,))
 
                 def interrupt(path, stage, manifest_json):
-                    root = Path(path)
+                    # Android may expose /data/user/0 while the engine resolves
+                    # the same private directory through /data/data.
+                    root = Path(path).resolve(strict=True)
                     before = (root / 'installed_version').read_text()
                     prepared = upgrade.prepare_upgrade(path, stage, before, 'payload-v1:' + 'f' * 64,
                         expected_files=json.loads(manifest_json)['files'])
+                    assert prepared['status'] == 'PREPARED'
                     replace = upgrade._replace
+                    injected = False
                     class PowerLoss(BaseException):
                         pass
                     def lose_power(source, destination):
+                        nonlocal injected
                         if Path(destination) == root / 'installed_version' and Path(source).parent.name == 'next':
+                            injected = True
                             raise PowerLoss()
                         return replace(source, destination)
                     upgrade._replace = lose_power
@@ -207,6 +213,7 @@ class PayloadRevisionTest {
                             raise AssertionError('Expected a pending real journal')
                     finally:
                         upgrade._replace = replace
+                    assert injected, 'The marker power-loss hook did not run'
                     assert (root / '.payload-upgrade/journal.json').is_file()
             """.trimIndent(), helpers.get("__dict__"))
             refreshManifest()
