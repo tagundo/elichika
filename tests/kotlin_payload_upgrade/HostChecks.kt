@@ -20,6 +20,10 @@ private fun removeTree(file: File) {
 
 private class Backend {
     var applyCount=0
+    var recoverCount=0
+    var decisionCount=0
+    var beforeDecision: (File)->Unit = {}
+    val admittedManifests=mutableMapOf<File,String>()
     var launchCount=0
     var refused=false
     var leaseBusy=false
@@ -42,12 +46,39 @@ private class Backend {
             heldRoot=null
             return JSONObject().put("status","RELEASED").toString()
         }
-        check(module=="payload_db_upgrade" && heldRoot==root) { "Updater ran without the whole preparation lease" }
-        if (method=="recover_upgrade_json") {
+        check(heldRoot==root) { "Admission ran without the whole preparation lease" }
+        if (module=="payload_revision" && method=="decide_json") {
+            decisionCount++
+            beforeDecision(root)
+            val manifest=try { JSONObject(arguments[1].toString()) } catch (_: Exception) {
+                return JSONObject().put("status","FAILED").put("reason","INVALID_PAYLOAD_MANIFEST").toString()
+            }
+            val revision=manifest.getString("revision")
+            admittedManifests[root]=arguments[1].toString()
+            val installed=File(root,"installed_version").takeIf { it.isFile }?.readText()?.trim().orEmpty()
+            val reset=arguments[2] as Boolean
+            if (!reset && installed.startsWith("payload-v1:") && !File(root,".payload-upgrade/current.json").isFile) {
+                return JSONObject().put("status","FAILED").put("reason","MANAGED_PROVENANCE_MISSING").toString()
+            }
+            val required=manifest.getJSONObject("files").keys().asSequence().toList()
+            val action=when {
+                reset -> "reset"
+                installed==revision && !File(root,".payload-upgrade/needs-rebase").exists() && required.all { File(root,it).isFile } -> "skip"
+                installed.isNotEmpty() || File(root,"assets").exists() -> "upgrade"
+                else -> "fresh"
+            }
+            return JSONObject().put("status","READY").put("action",action).put("revision",revision)
+                .put("from_version",installed).put("reason","SYNTHETIC_ADMISSION").toString()
+        }
+        if (module=="payload_db_upgrade") {
+            check(method=="recover_upgrade_json")
+            recoverCount++
             failedStage?.let { check(it.exists()) { "Kotlin removed an input before journal recovery" } }
             return JSONObject().put("status",if (recovered) "ROLLED_BACK" else "CLEAN").toString()
         }
-        check(method=="apply_upgrade_json")
+        check(module=="payload_revision" && method=="apply_json" && arguments.size==6)
+        check(arguments[5]==admittedManifests[root]) { "Publisher lost the exact admitted manifest" }
+        check(JSONObject(arguments[5].toString()).getString("revision")==arguments[3])
         applyCount++
         val payload=File(arguments[1].toString())
         val version=arguments[3].toString()
@@ -70,13 +101,17 @@ private class Backend {
             target.writeText(if (mode=="upgrade" && target.name=="masterdata.db" && target.exists()) target.readText()+"+"+incoming else incoming)
         }
         File(root,"installed_version").writeText(version)
+        File(root,".payload-upgrade/current.json").apply { parentFile.mkdirs(); writeText("{}") }
+        File(root,".payload-upgrade/needs-rebase").delete()
         failedStage=null
         recovered=false
         return JSONObject().put("status","COMMITTED").toString()
     }
 }
 
-private fun source()=AssetManager(mutableMapOf(
+private val revision="payload-v1:"+"a".repeat(64)
+private fun source(): AssetManager {
+    val assets=AssetManager(mutableMapOf(
     "payload/assets/db/gl/masterdata.db" to "NEW_DB",
     "payload/assets/db/gl/asset_a_ko.db" to "NEW_ASSET_DB",
     "payload/assets/new-file" to "NEW_ASSET",
@@ -88,6 +123,16 @@ private fun source()=AssetManager(mutableMapOf(
     "payload/serverstate.db" to "NEVER_STAGE_SERVER_STATE",
     "payload/backup/userdata.db" to "NEVER_STAGE_BACKUP"
 ))
+    val files=JSONObject()
+    for ((name,content) in assets.files) {
+        val relative=name.removePrefix("payload/")
+        if (relative.substringBefore('/') in setOf("assets","webui","serverdata.db","privatekey.pem")) {
+            files.put(relative,JSONObject().put("bytes",content.length).put("sha256","0".repeat(64)))
+        }
+    }
+    assets.files["payload_revision.json"]=JSONObject().put("revision",revision).put("files",files).toString()
+    return assets
+}
 
 private fun context(parent: File,name: String, assets: AssetManager=source()): Context {
     val directory=File(parent,name).apply { mkdirs() }
@@ -121,7 +166,7 @@ fun main(args: Array<String>) {
     check(phases.first()==AssetInstaller.PreparationPhase.PREPARING && phases.last()==AssetInstaller.PreparationPhase.IDLE)
     check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA !in phases) { "Fresh install must not claim to preserve installed mods" }
     check(backend.modes.last()=="fresh")
-    check(File(first.filesDir,"installed_version").readText()=="new-2")
+    check(File(first.filesDir,"installed_version").readText()==revision)
     check(!File(first.filesDir,"userdata.db").exists())
     check(!File(first.filesDir,"serverstate.db").exists())
     val config=JSONObject(File(first.filesDir,"config.json").readText())
@@ -129,20 +174,35 @@ fun main(args: Array<String>) {
     check(config.getBoolean("cdn_cache"))
     val count=backend.applyCount
     val opens=first.assets.opens
+    val languageWrites=Lang.writes
+    first.packageManager.info.versionName="apk-code-only"
+    first.packageManager.info.versionCode=99
+    File(first.filesDir,"assets/db/gl/masterdata.db").appendText("+OWNER_MOD")
+    first.getSharedPreferences("elichika",Context.MODE_PRIVATE).edit().putString("gamedata_locales","ko").apply()
     phases.clear()
     AssetInstaller.install(first,observePhase) {}
-    check(backend.applyCount==count && first.assets.opens==opens) { "Same version needlessly copied the payload" }
+    check(backend.applyCount==count && first.assets.opens==opens+1) { "Same data revision needlessly copied the payload" }
+    check(first.assets.openedPaths.last()=="payload_revision.json")
+    check(File(first.filesDir,"assets/db/gl/masterdata.db").readText().endsWith("+OWNER_MOD"))
+    check(Lang.writes==languageWrites+1 && JSONObject(File(first.filesDir,"config.json").readText()).getString("locales")=="ko")
+    check(!File(first.filesDir,".payload-incoming").exists())
     check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA !in phases && phases.last()==AssetInstaller.PreparationPhase.IDLE)
     File(first.filesDir,"assets/db/gl/asset_a_ko.db").delete()
     AssetInstaller.install(first) {}
     check(backend.applyCount==count+1 && backend.modes.last()=="upgrade")
     check(File(first.filesDir,"assets/db/gl/asset_a_ko.db").isFile)
     val rebase=File(first.filesDir,".payload-upgrade/needs-rebase").apply { parentFile.mkdirs(); writeText("restore") }
-    check(PayloadFiles.needsUpdate(first.filesDir,"new-2","new-2",PayloadFiles.managedFiles(object: PayloadFiles.Source {
-        override fun list(path: String)=first.assets.list(path)
-        override fun open(path: String)=first.assets.open(path)
-    })))
-    rebase.delete()
+    AssetInstaller.install(first) {}
+    check(backend.applyCount==count+2 && backend.modes.last()=="upgrade" && !rebase.exists())
+    first.assets.files["payload_revision.json"]=first.assets.files.getValue("payload_revision.json").replace(revision,"payload-v1:"+"b".repeat(64))
+    AssetInstaller.install(first) {}
+    check(backend.applyCount==count+3 && File(first.filesDir,"installed_version").readText()=="payload-v1:"+"b".repeat(64))
+    File(first.filesDir,".payload-upgrade/current.json").delete()
+    val beforeRefused=backend.applyCount
+    check("MANAGED_PROVENANCE_MISSING" in expectFailure { AssetInstaller.install(first) {} })
+    check(backend.applyCount==beforeRefused)
+    AssetInstaller.resetServerData(first) {}
+    check(backend.modes.last()=="reset")
 
     val upgrade=context(temporary,"upgrade")
     File(upgrade.filesDir,"assets/db/gl").mkdirs()
@@ -192,7 +252,7 @@ fun main(args: Array<String>) {
     phases.clear()
     AssetInstaller.install(retry,observePhase) {}
     check(phases.first()==AssetInstaller.PreparationPhase.PREPARING && phases.last()==AssetInstaller.PreparationPhase.IDLE)
-    check(File(retry.filesDir,"installed_version").readText()=="new-2")
+    check(File(retry.filesDir,"installed_version").readText()==revision)
 
     val busy=context(temporary,"busy-before-preparation")
     File(busy.filesDir,"installed_version").writeText("old-1")
@@ -216,6 +276,22 @@ fun main(args: Array<String>) {
     try { AssetInstaller.install(extraction,observePhase) {}; error("Expected source failure") } catch (_: java.io.IOException) {}
     check(backend.applyCount==before && File(extraction.filesDir,"installed_version").readText()=="old-1")
     check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA !in phases && phases.last()==AssetInstaller.PreparationPhase.FAILED)
+
+    for ((name,manifest) in listOf("missing-manifest" to null, "malformed-manifest" to "{", "oversized-manifest" to "x".repeat(4*1024*1024+1))) {
+        val invalid=context(temporary,name)
+        if (manifest==null) invalid.assets.files.remove("payload_revision.json") else invalid.assets.files["payload_revision.json"]=manifest
+        File(invalid.filesDir,"installed_version").writeText("old-1")
+        File(invalid.filesDir,"config.json").writeText("""{"keep":"exact"}""")
+        val retainedInput=File(invalid.filesDir,".payload-incoming/recovered/payload/keep").apply { parentFile.mkdirs(); writeText("journal input") }
+        backend.failedStage=retainedInput.parentFile
+        val beforeRecover=backend.recoverCount
+        val beforeApply=backend.applyCount
+        expectFailure { AssetInstaller.install(invalid) {} }
+        check(backend.recoverCount==beforeRecover+1 && !retainedInput.exists())
+        check(backend.applyCount==beforeApply && File(invalid.filesDir,"config.json").readText()=="""{"keep":"exact"}""")
+        check(File(invalid.filesDir,"installed_version").readText()=="old-1")
+        backend.failedStage=null
+    }
 
     val missingModule=context(temporary,"missing-module")
     File(missingModule.filesDir,"installed_version").writeText("old-1")
@@ -241,7 +317,7 @@ fun main(args: Array<String>) {
     check(PyServers.ensureStarted(first,first.filesDir))
     check(backend.launchCount==1 && Python.starts.get()==1)
     checkController(temporary)
-    println("KOTLIN_UPGRADE_HOST_CHECKS_PASS: fresh/reset, mod-state isolation, missing-file repair, no-op, whole preparation lease, busy leaves inputs/config untouched, refusal/recovery, source/module failure, no-follow cleanup, shared Python init")
+    println("KOTLIN_UPGRADE_HOST_CHECKS_PASS: fresh/reset, mod-state isolation, missing-file repair, APK-only no-op, data revision change, rebase, missing provenance, manifest admission and recovery ordering, settings on skip, whole preparation lease, busy leaves inputs/config untouched, refusal/recovery, source/module failure, no-follow cleanup, shared Python init")
 }
 
 private fun checkController(parent: File) {

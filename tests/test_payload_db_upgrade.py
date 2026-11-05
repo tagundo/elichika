@@ -1,5 +1,6 @@
 """Exercise payload updates with small synthetic databases, never game/user data."""
 import hashlib
+from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 import importlib.util
 import json
 import os
@@ -108,8 +109,11 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
         write(self.mod_extra, b"preserve unknown installed mod file")
         self.current = [self.master, self.server, self.marker, self.mod_extra] + [self.root / name for name in self.managed_text]
 
-    def prepare(self, mode="upgrade", from_version="2026.11.03.4", to_version="2026.11.04.2"):
-        return upgrade.prepare_upgrade(str(self.root), str(self.staged), from_version, to_version, mode=mode)
+    def prepare(self, mode="upgrade", from_version="2026.11.03.4", to_version="2026.11.04.2", *, expected_files=None):
+        if expected_files is None:
+            return upgrade.prepare_upgrade(str(self.root), str(self.staged), from_version, to_version, mode=mode)
+        return upgrade.prepare_upgrade(str(self.root), str(self.staged), from_version, to_version,
+                                       mode=mode, expected_files=expected_files)
 
     def commit(self, prepared):
         self.assertEqual(prepared["status"], "PREPARED")
@@ -121,6 +125,168 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
     def rows(self, path, query):
         with sqlite3.connect(path) as connection:
             return connection.execute(query).fetchall()
+
+    def signed_files(self):
+        return {path.relative_to(self.staged).as_posix(): {
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "bytes": path.stat().st_size}
+                for name in upgrade.MANAGED for path in upgrade._files(self.staged / name)}
+
+    def assert_manifest_refused_before_backup(self, expected_files):
+        before = fingerprint(self.current + self.protected)
+        with mock.patch.object(upgrade, "_snapshot", side_effect=AssertionError("backup must not start")), \
+                mock.patch.object(upgrade.shutil, "disk_usage", side_effect=AssertionError("space allocation must not start")):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                self.prepare(expected_files=expected_files)
+        self.assertEqual(str(caught.exception), "STAGED_PAYLOAD_MANIFEST_MISMATCH")
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+        self.assertFalse((self.root / ".payload-upgrade").exists())
+
+    def test_signed_expected_file_set_commits_without_replacing_owner_mods(self):
+        protected = fingerprint(self.protected)
+        prepared = self.prepare(expected_files=self.signed_files())
+        self.commit(prepared)
+        self.assertEqual(self.rows(self.master, "SELECT id,name FROM m_content ORDER BY id"),
+                         [(1, "owner override"), (2, "new official row"), (900, "owner addition")])
+        self.assertEqual(fingerprint(self.protected), protected)
+
+    def test_reserved_revision_namespace_requires_manifest_before_source_hashing(self):
+        before = fingerprint(self.current + self.protected)
+        with mock.patch.object(upgrade, "_sha", side_effect=AssertionError("must refuse before hashing")), \
+                mock.patch.object(upgrade, "_snapshot", side_effect=AssertionError("must refuse before backup")):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                self.prepare(to_version="payload-v1:" + "0" * 64)
+        self.assertEqual(str(caught.exception), "SIGNED_PAYLOAD_MANIFEST_REQUIRED")
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+        self.assertFalse((self.root / ".payload-upgrade").exists())
+
+    def test_invalid_expected_file_records_and_path_sets_refuse_before_backup(self):
+        expected = self.signed_files()
+        first = next(iter(expected))
+        missing = dict(expected)
+        missing.pop(first)
+        extra = dict(expected, **{"assets/not-in-payload.txt": {"sha256": "0" * 64, "bytes": 0}})
+        cases = [("not a map", []), ("empty", {}), ("missing path", missing), ("extra path", extra)]
+        for label, record in (
+                ("hash mismatch", {"sha256": "0" * 64, "bytes": expected[first]["bytes"]}),
+                ("size mismatch", {"sha256": expected[first]["sha256"], "bytes": expected[first]["bytes"] + 1}),
+                ("uppercase hash", {"sha256": "A" * 64, "bytes": expected[first]["bytes"]}),
+                ("invalid hash", {"sha256": None, "bytes": expected[first]["bytes"]}),
+                ("negative size", {"sha256": expected[first]["sha256"], "bytes": -1}),
+                ("float size", {"sha256": expected[first]["sha256"], "bytes": float(expected[first]["bytes"])}),
+                ("missing size", {"sha256": expected[first]["sha256"]}),
+                ("extra field", dict(expected[first], sensitive="must not appear")),
+                ("not a record", "must not appear")):
+            malformed = dict(expected)
+            malformed[first] = record
+            cases.append((label, malformed))
+        for label, records in cases:
+            with self.subTest(label=label):
+                self.assert_manifest_refused_before_backup(records)
+
+    def test_expected_boolean_size_is_not_an_integer_even_for_one_byte_file(self):
+        write(self.staged / "webui/one-byte.txt", b"x")
+        records = self.signed_files()
+        records["webui/one-byte.txt"]["bytes"] = True
+        self.assert_manifest_refused_before_backup(records)
+
+    def test_missing_or_extra_managed_staged_file_refuses_signed_file_set(self):
+        expected = self.signed_files()
+        ordinary = self.staged / "webui/index.html"
+        original = ordinary.read_bytes()
+        ordinary.unlink()
+        self.assert_manifest_refused_before_backup(expected)
+        write(ordinary, original)
+        write(self.staged / "assets/unexpected-official.txt", b"not in signed payload")
+        self.assert_manifest_refused_before_backup(expected)
+
+    def test_unmanaged_staged_heads_are_rejected_only_for_signed_file_binding(self):
+        expected = self.signed_files()
+        for head in ("config.json", "userdata.db", "unmanaged-head"):
+            with self.subTest(head=head):
+                path = self.staged / head
+                write(path, b"not an official managed input")
+                self.assert_manifest_refused_before_backup(expected)
+                path.unlink()
+        # Preserve the old five-argument engine contract for legacy benchmark
+        # and fixture callers; only signed-production staging is strict here.
+        write(self.staged / "config.json", b"ignored legacy fixture config")
+        self.commit(self.prepare())
+
+    def test_valid_sqlite_change_after_manifest_creation_refuses_before_backup(self):
+        expected = self.signed_files()
+        with sqlite3.connect(self.staged / "serverdata.db") as connection:
+            connection.execute("UPDATE m_settings SET value='valid changed official data' WHERE id=1")
+        self.assert_manifest_refused_before_backup(expected)
+
+    def test_non_database_change_after_manifest_creation_refuses_before_backup(self):
+        expected = self.signed_files()
+        ordinary = self.staged / "webui/index.html"
+        ordinary.write_bytes(b"x" * ordinary.stat().st_size)
+        self.assert_manifest_refused_before_backup(expected)
+
+    def test_signed_binding_is_checked_before_reusing_a_cached_preparation(self):
+        expected = self.signed_files()
+        prepared = self.prepare(expected_files=expected)
+        work = self.root / ".payload-upgrade/transactions" / prepared["transaction_id"]
+        before = fingerprint(self.current + self.protected + [work / "prepared.json"])
+        wrong = {name: dict(record) for name, record in expected.items()}
+        wrong["serverdata.db"]["sha256"] = "0" * 64
+        with mock.patch.object(upgrade, "_snapshot", side_effect=AssertionError("cached preparation must not start backup")), \
+                mock.patch.object(upgrade.shutil, "disk_usage", side_effect=AssertionError("cached preparation must not allocate")):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                self.prepare(expected_files=wrong)
+            self.assertEqual(str(caught.exception), "STAGED_PAYLOAD_MANIFEST_MISMATCH")
+            self.assertEqual(self.prepare(expected_files=expected)["transaction_id"], prepared["transaction_id"])
+        self.assertEqual(fingerprint(self.current + self.protected + [work / "prepared.json"]), before)
+
+    def assert_signed_late_source_change_refused(self, database_change):
+        expected = self.signed_files()
+        source = self.staged / ("serverdata.db" if database_change else "webui/index.html")
+        size = source.stat().st_size
+        before = fingerprint(self.current + self.protected)
+        real_sha, changed = upgrade._sha, []
+
+        def sha(path):
+            digest = real_sha(path)
+            if path == source and not changed:
+                changed.append(True)
+                if database_change:
+                    with sqlite3.connect(source) as connection:
+                        connection.execute("UPDATE m_settings SET value='late valid mutation' WHERE id=1")
+                else:
+                    source.write_bytes(b"x" * size)
+            return digest
+
+        with mock.patch.object(upgrade, "_sha", side_effect=sha):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                self.prepare(expected_files=expected)
+        self.assertEqual(source.stat().st_size, size, "exercise late SHA guard independently of the initial byte-count binding")
+        self.assertEqual(str(caught.exception), "STAGED_INPUT_CHANGED_DURING_PREPARE")
+        self.assertEqual(changed, [True])
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+        self.assertEqual(list((self.root / ".payload-upgrade/transactions").iterdir()), [])
+
+    def test_valid_sqlite_change_after_initial_signed_hash_retains_late_source_guard(self):
+        self.assert_signed_late_source_change_refused(True)
+
+    def test_non_database_change_after_initial_signed_hash_retains_late_source_guard(self):
+        self.assert_signed_late_source_change_refused(False)
+
+    def test_json_wrapper_forwards_signed_binding_and_masks_invalid_records(self):
+        self.full_jp_global_fixture()
+        expected = self.signed_files()
+        wrong = {name: dict(record) for name, record in expected.items()}
+        wrong["serverdata.db"]["sha256"] = "not a digest or public error value"
+        before = fingerprint(self.current + self.protected)
+        protected = fingerprint(self.protected)
+        result = json.loads(upgrade.apply_upgrade_json(str(self.root), str(self.staged),
+                            "2026.11.03.4", "2026.11.04.2", expected_files=wrong))
+        self.assertEqual(result, {"status": "REFUSED", "reason": "STAGED_PAYLOAD_MANIFEST_MISMATCH"})
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+        result = json.loads(upgrade.apply_upgrade_json(str(self.root), str(self.staged),
+                            "2026.11.03.4", "2026.11.04.2", expected_files=expected))
+        self.assertEqual(result["status"], "COMMITTED")
+        self.assertEqual(fingerprint(self.protected), protected)
 
     def test_legacy_owner_rows_extra_columns_and_tables_survive_with_new_rows(self):
         original, protected = fingerprint(self.current), fingerprint(self.protected)
@@ -660,6 +826,8 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
                 bare.close()
         before = fingerprint(self.current + self.protected + wal_paths)
         prepared = self.prepare()
+        self.assertEqual(prepared["counts"]["backup_snapshot_databases"], 4)
+        self.assertEqual(prepared["counts"]["backup_snapshot_worker_limit"], 2)
         self.assertEqual(fingerprint(self.current + self.protected + wal_paths), before)
         backup_relative = Path(prepared["backup_relative_path"])
         self.assertFalse(backup_relative.is_absolute())
@@ -671,6 +839,63 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
                              [(1, "synthetic committed WAL-only row")])
         self.assertEqual((backup / "config.json").read_bytes(), (self.root / "config.json").read_bytes())
         self.assertNotIn("synthetic committed WAL-only row", json.dumps(prepared))
+
+    def test_failed_parallel_backup_joins_workers_before_prepare_cleanup_and_retry(self):
+        started, failed, release, finished, returned = (threading.Event() for _ in range(5))
+        observed, cleaned = [], []
+        real_snapshot, real_rmtree = upgrade._snapshot, upgrade.shutil.rmtree
+        before = fingerprint(self.current + self.protected)
+
+        def snapshot(source, destination):
+            if source == self.master:
+                if not started.wait(5):
+                    raise RuntimeError("second snapshot did not start")
+                failed.set()
+                raise upgrade.UpgradeError("DATABASE_SNAPSHOT_FAILED")
+            if source == self.server:
+                started.set()
+                try:
+                    if not release.wait(5):
+                        raise RuntimeError("second snapshot was not released")
+                    real_snapshot(source, destination)
+                finally:
+                    finished.set()
+            else:
+                real_snapshot(source, destination)
+
+        def remove(path, *args, **kwargs):
+            if Path(path).parent == self.root / ".payload-upgrade/transactions":
+                cleaned.append(finished.is_set())
+            return real_rmtree(path, *args, **kwargs)
+
+        def prepare():
+            try:
+                self.prepare()
+            except BaseException as error:
+                observed.append(error)
+            finally:
+                returned.set()
+
+        with mock.patch.object(upgrade, "_snapshot", side_effect=snapshot), \
+                mock.patch.object(upgrade.shutil, "rmtree", side_effect=remove):
+            worker = threading.Thread(target=prepare)
+            worker.start()
+            try:
+                self.assertTrue(failed.wait(5))
+                self.assertFalse(returned.wait(0.03))
+                self.assertEqual(cleaned, [])
+            finally:
+                release.set()
+                worker.join(5)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual([str(error) for error in observed], ["DATABASE_SNAPSHOT_FAILED"])
+        self.assertEqual(cleaned, [True])
+        self.assertEqual(fingerprint(self.current + self.protected), before)
+        self.assertEqual(list((self.root / ".payload-upgrade/transactions").iterdir()), [])
+        self.assertEqual(upgrade.recover_upgrade(str(self.root))["status"], "CLEAN")
+        self.commit(self.prepare())
+        self.assertEqual(self.rows(self.master, "SELECT id,name FROM m_content ORDER BY id"),
+                         [(1, "owner override"), (2, "new official row"), (900, "owner addition")])
 
     def test_json_wrapper_masks_unexpected_exception_values(self):
         private = "synthetic secret auth token and signed URL"
@@ -1716,6 +1941,269 @@ class PayloadPreparedCertificateTests(unittest.TestCase):
         self.assertEqual(prepared["counts"]["main_integrity_certificates_reused"], 1)
         result = upgrade.commit_upgrade(str(self.root), prepared["transaction_id"])
         self.assertEqual(result["counts"]["main_integrity_certificates_reused"], 1)
+
+class ParallelSnapshotBatchTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="elichika-parallel-snapshot-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.jobs = []
+        for index in range(6):
+            source = self.root / "source" / f"db{index}.db"
+            destination = self.root / "backup" / f"db{index}.db"
+            database(source, f"CREATE TABLE t(id INTEGER PRIMARY KEY,value TEXT); INSERT INTO t VALUES({index},'synthetic');")
+            self.jobs.append((source, destination, f"db{index}"))
+
+    def test_actual_backups_overlap_with_at_most_two_submissions_and_local_connections(self):
+        original = fingerprint([job[0] for job in self.jobs])
+        gate, first_pair = threading.Lock(), threading.Barrier(2)
+        real_snapshot, real_connect = upgrade._snapshot, sqlite3.connect
+        thread_ids, connection_ids, submitted, worker_limits = set(), [], [], []
+        active = maximum = 0
+        owner = threading.get_ident()
+
+        class CheckedExecutor(ThreadPoolExecutor):
+            def __init__(executor, *args, **kwargs):
+                worker_limits.append(kwargs.get("max_workers"))
+                super().__init__(*args, **kwargs)
+
+            def submit(executor, *args, **kwargs):
+                # A bounded thread count alone would still allow an unbounded
+                # queued input set. Keep at most two not-yet-finished futures.
+                self.assertLess(sum(not future.done() for future in submitted), 2)
+                future = super().submit(*args, **kwargs)
+                submitted.append(future)
+                return future
+
+        def connect(*args, **kwargs):
+            with gate:
+                connection_ids.append(threading.get_ident())
+            return real_connect(*args, **kwargs)
+
+        def snapshot(source, destination):
+            nonlocal active, maximum
+            with gate:
+                active += 1
+                maximum = max(maximum, active)
+                thread_ids.add(threading.get_ident())
+            try:
+                if source in (self.jobs[0][0], self.jobs[1][0]):
+                    first_pair.wait(5)
+                real_snapshot(source, destination)
+            finally:
+                with gate:
+                    active -= 1
+
+        with mock.patch.object(upgrade, "ThreadPoolExecutor", CheckedExecutor), \
+                mock.patch.object(upgrade, "_snapshot", side_effect=snapshot), \
+                mock.patch.object(upgrade.sqlite3, "connect", side_effect=connect):
+            hashes = upgrade._snapshot_batch(self.jobs)
+        self.assertEqual(worker_limits, [2])
+        self.assertEqual(maximum, 2)
+        self.assertEqual(len(thread_ids), 2)
+        self.assertNotIn(owner, thread_ids)
+        self.assertEqual(set(connection_ids), thread_ids)
+        self.assertEqual(len(connection_ids), len(self.jobs) * 2)
+        self.assertEqual(list(hashes), [job[2] for job in self.jobs])
+        self.assertEqual(fingerprint([job[0] for job in self.jobs]), original)
+        for index, (source, target, name) in enumerate(self.jobs):
+            self.assertEqual(hashes[name], hashlib.sha256(target.read_bytes()).hexdigest())
+            self.assertNotEqual(source.stat().st_ino, target.stat().st_ino)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
+            with sqlite3.connect(target) as connection:
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchall(), [("ok",)])
+                self.assertEqual(connection.execute("SELECT * FROM t").fetchall(), [(index, "synthetic")])
+
+    def test_empty_and_single_backup_avoid_a_pool_and_protected_backups_avoid_hashes(self):
+        with mock.patch.object(upgrade, "ThreadPoolExecutor", side_effect=AssertionError("unnecessary pool")):
+            self.assertEqual(upgrade._snapshot_batch([]), {})
+            job = self.jobs[0]
+            self.assertEqual(upgrade._snapshot_batch([job]), {job[2]: upgrade._sha(job[1])})
+        protected = [(source, target, None) for source, target, _ in self.jobs[1:3]]
+        with mock.patch.object(upgrade, "_sha", side_effect=AssertionError("protected snapshot hash not needed")):
+            self.assertEqual(upgrade._snapshot_batch(protected), {})
+        for _, target, _ in protected:
+            self.assertTrue(target.is_file())
+
+    def test_finished_short_job_is_replaced_while_first_large_job_is_still_running(self):
+        first_started, second_finished, third_started, release_first, returned = (threading.Event() for _ in range(5))
+        observed = []
+        real_snapshot = upgrade._snapshot
+
+        def snapshot(source, target):
+            if source == self.jobs[0][0]:
+                first_started.set()
+                if not release_first.wait(5):
+                    raise AssertionError("first job was not released")
+            elif source == self.jobs[1][0]:
+                if not first_started.wait(5):
+                    raise AssertionError("first job did not start")
+                real_snapshot(source, target)
+                second_finished.set()
+                return
+            elif source == self.jobs[2][0]:
+                third_started.set()
+            real_snapshot(source, target)
+
+        def run():
+            try:
+                observed.append(upgrade._snapshot_batch(self.jobs[:3]))
+            except BaseException as error:
+                observed.append(error)
+            finally:
+                returned.set()
+
+        with mock.patch.object(upgrade, "_snapshot", side_effect=snapshot):
+            worker = threading.Thread(target=run)
+            worker.start()
+            try:
+                self.assertTrue(second_finished.wait(5))
+                self.assertTrue(third_started.wait(5), "a completed short job must not idle behind the first job")
+                self.assertFalse(returned.is_set())
+            finally:
+                release_first.set()
+                worker.join(5)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual(len(observed), 1)
+        self.assertIsInstance(observed[0], dict)
+        self.assertEqual(list(observed[0]), [job[2] for job in self.jobs[:3]])
+
+    def assert_failed_batch_joins(self, error, *, hash_failure=False):
+        started, failed, release, finished, returned = (threading.Event() for _ in range(5))
+        observed, sources = [], []
+        real_snapshot, real_sha = upgrade._snapshot, upgrade._sha
+
+        def fail():
+            if not started.wait(5):
+                raise AssertionError("second worker did not start")
+            failed.set()
+            raise error
+
+        def snapshot(source, target):
+            sources.append(source)
+            if source == self.jobs[0][0]:
+                if not hash_failure:
+                    fail()
+                return real_snapshot(source, target)
+            if source == self.jobs[1][0]:
+                started.set()
+                try:
+                    if not release.wait(5):
+                        raise AssertionError("second worker was not released")
+                    real_snapshot(source, target)
+                finally:
+                    finished.set()
+            else:
+                real_snapshot(source, target)
+
+        def sha(path):
+            if path == self.jobs[0][1]:
+                fail()
+            return real_sha(path)
+
+        def run():
+            try:
+                upgrade._snapshot_batch(self.jobs)
+            except BaseException as caught:
+                observed.append(caught)
+            finally:
+                returned.set()
+
+        with mock.patch.object(upgrade, "_snapshot", side_effect=snapshot), \
+                mock.patch.object(upgrade, "_sha", side_effect=sha if hash_failure else real_sha):
+            worker = threading.Thread(target=run)
+            worker.start()
+            try:
+                self.assertTrue(failed.wait(5))
+                self.assertFalse(returned.wait(0.03))
+                self.assertFalse(finished.is_set())
+            finally:
+                release.set()
+                worker.join(5)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual(observed, [error])
+        self.assertTrue(finished.is_set())
+        self.assertCountEqual(sources, [self.jobs[0][0], self.jobs[1][0]])
+
+    def test_snapshot_error_waits_for_running_work_and_does_not_submit_later_jobs(self):
+        self.assert_failed_batch_joins(upgrade.UpgradeError("DATABASE_SNAPSHOT_FAILED"))
+
+    def test_worker_base_exception_waits_for_running_work_before_escape(self):
+        self.assert_failed_batch_joins(SimulatedPowerLoss())
+
+    def test_certificate_hash_error_waits_for_other_worker_before_escape(self):
+        self.assert_failed_batch_joins(OSError("synthetic hash failure"), hash_failure=True)
+
+    def test_completed_failure_is_collected_before_any_later_submission(self):
+        real_snapshot = upgrade._snapshot
+        observed = []
+        error = upgrade.UpgradeError("DATABASE_SNAPSHOT_FAILED")
+
+        def snapshot(source, target):
+            observed.append(source)
+            if source == self.jobs[1][0]:
+                raise error
+            real_snapshot(source, target)
+
+        # Force a wake-up containing a successful first job and failed second
+        # job. Replacing the first before inspecting the second would enqueue
+        # work despite a failure that was already known at this barrier.
+        with mock.patch.object(upgrade, "_snapshot", side_effect=snapshot), \
+                mock.patch.object(upgrade, "wait", side_effect=lambda pending, **kwargs: wait(pending, return_when=ALL_COMPLETED)):
+            with self.assertRaises(upgrade.UpgradeError) as caught:
+                upgrade._snapshot_batch(self.jobs)
+        self.assertIs(caught.exception, error)
+        self.assertCountEqual(observed, [self.jobs[0][0], self.jobs[1][0]])
+
+    def test_second_submit_failure_waits_for_the_first_started_worker(self):
+        started, failed, release, finished, returned = (threading.Event() for _ in range(5))
+        observed, submissions = [], []
+        real_snapshot = upgrade._snapshot
+        error = RuntimeError("synthetic submit failure")
+
+        class FailingExecutor(ThreadPoolExecutor):
+            def submit(executor, *args, **kwargs):
+                submissions.append(1)
+                if len(submissions) == 2:
+                    if not started.wait(5):
+                        raise AssertionError("first worker did not start")
+                    failed.set()
+                    raise error
+                return super().submit(*args, **kwargs)
+
+        def snapshot(source, target):
+            started.set()
+            try:
+                if not release.wait(5):
+                    raise AssertionError("worker was not released")
+                real_snapshot(source, target)
+            finally:
+                finished.set()
+
+        def run():
+            try:
+                upgrade._snapshot_batch(self.jobs)
+            except BaseException as caught:
+                observed.append(caught)
+            finally:
+                returned.set()
+
+        with mock.patch.object(upgrade, "ThreadPoolExecutor", FailingExecutor), \
+                mock.patch.object(upgrade, "_snapshot", side_effect=snapshot):
+            worker = threading.Thread(target=run)
+            worker.start()
+            try:
+                self.assertTrue(failed.wait(5))
+                self.assertFalse(returned.wait(0.03))
+            finally:
+                release.set()
+                worker.join(5)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual(observed, [error])
+        self.assertTrue(finished.is_set())
+        self.assertEqual(len(submissions), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

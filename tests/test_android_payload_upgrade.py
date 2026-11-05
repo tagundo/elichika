@@ -62,12 +62,13 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 open class AssetManager(val files: MutableMap<String,String>) {
     var opens=0
+    val openedPaths=mutableListOf<String>()
     var failPath: String?=null
     fun list(path: String): Array<String> = files.keys.filter { it.startsWith("$path/") }
         .map { it.removePrefix("$path/").substringBefore('/') }.distinct().toTypedArray()
     fun open(path: String): InputStream {
         if (path==failPath) throw java.io.IOException("synthetic extraction failure")
-        opens++
+        opens++; openedPaths.add(path)
         return ByteArrayInputStream(files.getValue(path).toByteArray())
     }
 }
@@ -139,7 +140,7 @@ object R { object string {
     const val log_setup_cdn_dir=7; const val log_setup_cdn_on=8; const val log_setup_preserving_mods=9
     const val log_setup_upgrade_recovered=10; const val log_pyservers_started=11; const val log_pyservers_failed=12
 } }
-object Lang { fun effective(ctx: Context)="en"; fun writeWebuiLanguage(ctx: Context,root: File) {} }
+object Lang { var writes=0; fun effective(ctx: Context)="en"; fun writeWebuiLanguage(ctx: Context,root: File) { writes++ } }
 object Bus {
     var serverRunning=false
     fun log(value: String) {}; fun toolsStateChanged() {}
@@ -196,7 +197,7 @@ class PackagingTests(unittest.TestCase):
         optional = workflow.index('cp modtools/*.py')
         mandatory = workflow.index('cp payload_db_upgrade.py database_maintenance.py')
         self.assertLess(optional, mandatory)
-        for module in ('payload_db_upgrade.py', 'database_maintenance.py', 'payload_file_hash.py'):
+        for module in ('payload_db_upgrade.py', 'database_maintenance.py', 'payload_file_hash.py', 'payload_revision.py'):
             self.assertTrue((ROOT / module).is_file(), f'Missing canonical updater source: {module}')
             self.assertIn(f'cmp {module} "$PY/{module}"', workflow)
 
@@ -225,7 +226,7 @@ class KotlinInstallerTests(unittest.TestCase):
                 path = temporary / name
                 path.write_text(content)
                 sources.append(str(path))
-            sources += [str(KOTLIN / name) for name in ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'EmbeddedPython.kt', 'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt')]
+            sources += [str(KOTLIN / name) for name in ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt', 'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt')]
             sources.append(str(ROOT / 'android/app/src/androidTest/java/com/tagundo/elichika/NativePythonTest.kt'))
             sources.append(str(ROOT / 'tests/kotlin_payload_upgrade/HostChecks.kt'))
             output = temporary / 'checks.jar'
@@ -249,11 +250,12 @@ class KotlinInstallerTests(unittest.TestCase):
         java = os.environ.get('KOTLIN_UPGRADE_QA_JAVA', 'java')
         jars = list(tools.glob('*.jar'))
         compiler = os.pathsep.join(map(str, jars))
-        runtime = os.pathsep.join([sdk, *(str(p) for p in jars if p.name.startswith(('kotlin-stdlib-', 'annotations-', 'json-')))])
-        names = ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'EmbeddedPython.kt',
+        runtime = os.pathsep.join([sdk, *(str(p) for p in jars if p.name.startswith(('kotlin-stdlib-', 'annotations-', 'json-', 'junit-')))])
+        names = ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt',
                  'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerService.kt',
                  'ServerProcess.kt', 'ServerSettings.kt', 'Bus.kt', 'PayloadFileHasher.kt')
         sources = [KOTLIN / name for name in names]
+        sources.append(ROOT / 'android/app/src/androidTest/java/com/tagundo/elichika/PayloadRevisionTest.kt')
         resources = {}
         for source in sources:
             for group, key in re.findall(r'R\.(string|drawable)\.([A-Za-z0-9_]+)', source.read_text()):
@@ -268,7 +270,8 @@ class MainActivity: android.app.Activity()
 ''' + resource_code
         with tempfile.TemporaryDirectory(prefix='kotlin-service-', dir=os.environ.get('KOTLIN_UPGRADE_QA_TMP')) as directory:
             temporary = Path(directory)
-            for filename, text in (('Python.kt', STUBS['Python.kt']), ('Platform.kt', STUBS['Platform.kt']), ('AppSdk.kt', app)):
+            for filename, text in (('Python.kt', STUBS['Python.kt']), ('Platform.kt', STUBS['Platform.kt']), ('AppSdk.kt', app),
+                                   ('TestRegistry.kt', STUBS['TestRegistry.kt']), ('TestRunner.kt', STUBS['TestRunner.kt'])):
                 file = temporary / filename
                 file.write_text(text)
                 sources.append(file)

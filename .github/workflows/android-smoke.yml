@@ -12,6 +12,9 @@ on:
       version_code:
         type: string
         required: true
+      noop_probe_sha256:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -29,7 +32,7 @@ jobs:
           set -euo pipefail
           test "$(uname -m)" = aarch64
           sudo apt-get update -qq
-          sudo apt-get install -y adb
+          sudo apt-get install -y adb apksigner
           if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
             sudo apt-get install -y "linux-modules-extra-$(uname -r)"
             sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
@@ -93,6 +96,12 @@ jobs:
           name: elichika-release-apk
           path: candidate
 
+      - name: Download the same-data APK version-change probe
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-revision-noop-probe-apk
+          path: noop-probe
+
       - name: Download the latest official APK
         run: >-
           curl --fail --location --retry 2 --output official.apk
@@ -104,6 +113,8 @@ jobs:
           --old official.apk --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
           --candidate-sha256 "${{ inputs.candidate_sha256 }}"
           --version-code "${{ inputs.version_code }}"
+          --noop-probe-dir noop-probe
+          --noop-probe-sha256 "${{ inputs.noop_probe_sha256 }}"
           --evidence evidence
 
       - name: Download native-package instrumentation
@@ -119,10 +130,10 @@ jobs:
           # These service-control checks intentionally require a stopped server.
           adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
           adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e class com.tagundo.elichika.ModelViewerWebViewTest,com.tagundo.elichika.ModelViewerAutoFaceTest,com.tagundo.elichika.ModelViewerRigTest,com.tagundo.elichika.NativePythonTest,com.tagundo.elichika.PayloadFileHasherTest,com.tagundo.elichika.ConsoleLayoutTest,com.tagundo.elichika.WindowBusTest,com.tagundo.elichika.ServerPreparationTest,com.tagundo.elichika.ServerControlTest,com.tagundo.elichika.ServerConfigTest,com.tagundo.elichika.MeshWebViewTest \
+            -e class com.tagundo.elichika.ModelViewerWebViewTest,com.tagundo.elichika.ModelViewerAutoFaceTest,com.tagundo.elichika.ModelViewerRigTest,com.tagundo.elichika.NativePythonTest,com.tagundo.elichika.PayloadFileHasherTest,com.tagundo.elichika.PayloadRevisionTest,com.tagundo.elichika.ConsoleLayoutTest,com.tagundo.elichika.WindowBusTest,com.tagundo.elichika.ServerPreparationTest,com.tagundo.elichika.ServerControlTest,com.tagundo.elichika.ServerConfigTest,com.tagundo.elichika.MeshWebViewTest \
             com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
             | tee evidence/native-instrumentation.txt
-          python3 -c 'from pathlib import Path; text=Path("evidence/native-instrumentation.txt").read_text(); assert "OK (17 tests)" in text and "FAILURES" not in text, text'
+          python3 -c 'from pathlib import Path; text=Path("evidence/native-instrumentation.txt").read_text(); assert "OK (21 tests)" in text and "FAILURES" not in text, text'
 
       - name: Collect Android diagnostics
         if: always()

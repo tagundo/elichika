@@ -13,7 +13,6 @@ import java.io.File
 object AssetInstaller {
 
     private const val PAYLOAD = "payload"
-    private const val MARKER = "installed_version"
 
     enum class PreparationPhase { IDLE, PREPARING, UPDATING_GAME_DATA, FAILED }
 
@@ -38,85 +37,17 @@ object AssetInstaller {
 
     private fun prepare(ctx: Context, log: (String) -> Unit,
                         onPhase: (PreparationPhase) -> Unit, reset: Boolean): File {
-        // A cancelled pending Start still lets this atomic operation finish.
-        // Keep its real phase visible independently of the queued server start.
-        fun report(phase: PreparationPhase) { runCatching { onPhase(phase) } }
-        var completed = false
-        report(PreparationPhase.PREPARING)
-        try {
-            val result = PayloadUpgrade.withMaintenance(ctx, ctx.filesDir) {
-                prepareLocked(ctx, log, ::report, reset)
-            }
-            completed = true
-            return result
-        } finally {
-            report(if (completed) PreparationPhase.IDLE else PreparationPhase.FAILED)
-        }
-    }
-
-    private fun prepareLocked(ctx: Context, log: (String) -> Unit,
-                              onPhase: (PreparationPhase) -> Unit, reset: Boolean): File {
-        val root = ctx.filesDir
-        val am = ctx.assets
-        // The maintenance lease covers recovery, staging cleanup, settings and
-        // publishing. A read-only CLEAN result alone would not grant ownership.
-        // Recovery precedes the version check, stage cleanup and every live write.
-        // Starting raw Python here does not start the editor HTTP servers.
-        PayloadUpgrade.recover(ctx, root, log)
-        PayloadFiles.clearStages(root)
-        val payloadExists = runCatching { am.list(PAYLOAD)?.isNotEmpty() == true }.getOrDefault(false)
-        if (!payloadExists) {
-            log(ctx.getString(R.string.log_setup_no_payload))
-            return root
-        }
-
-        val installedVersion = File(root, MARKER).takeIf { it.exists() }?.readText()?.trim()
-        val currentVersion = appVersion(ctx)
-        check(currentVersion != "unknown") { "Cannot determine the installed application version" }
         val source = object : PayloadFiles.Source {
-            override fun list(path: String): Array<String> = am.list(path) ?: emptyArray()
-            override fun open(path: String) = am.open(path)
+            override fun list(path: String): Array<String> = ctx.assets.list(path) ?: emptyArray()
+            override fun open(path: String) = ctx.assets.open(path)
         }
-        val required = PayloadFiles.managedFiles(source)
-        // Check names/existence without copying large DBs on every server start.
-        // A missing core DB also goes through the journal, even at the same version.
-        val update = reset || PayloadFiles.needsUpdate(root, installedVersion, currentVersion, required)
-        log(ctx.getString(R.string.log_setup_preparing, currentVersion, update.toString()))
-        val mode = when {
-            reset -> "reset"
-            PayloadFiles.hasInstalledData(root, installedVersion) -> "upgrade"
-            else -> "fresh"
-        }
-        val staged = if (update) PayloadFiles.stage(root, source, required) else null
-        var enteredUpdater = false
-        var committed = false
-        try {
-            // Existing settings helpers merge only defaults or explicit app choices.
-            // Complete them before the updater publishes its final version marker.
-            ensureBundledConfig(ctx, root)
-            ensureSharedLinks(ctx, root, log)
-            ensureCacheDir(ctx, root, log)
-            ensureCdnDefaultOn(ctx, root, log)
-            ensureLanguage(ctx, root, log)
-            if (staged != null) {
-                if (mode == "upgrade") {
-                    onPhase(PreparationPhase.UPDATING_GAME_DATA)
-                    log(ctx.getString(R.string.log_setup_preserving_mods))
-                }
-                enteredUpdater = true
-                try {
-                    PayloadUpgrade.apply(ctx, root, staged, installedVersion, currentVersion, mode)
-                } finally {
-                    onPhase(PreparationPhase.PREPARING)
-                }
-                committed = true
-            }
-            log(ctx.getString(R.string.log_setup_ready))
-            return root
-        } finally {
-            // If publishing was interrupted, retain its inputs until recover()
-            // finishes. Never delete a journal dependency merely because it threw.
-            if (staged != null && (!enteredUpdater || committed)) PayloadFiles.removeStage(staged)
+        return PayloadPreparation.prepare(ctx, ctx.filesDir, source, appVersion(ctx), reset, onPhase, log) {
+            // Settings still run on data-revision no-ops and preserve explicit choices.
+            ensureBundledConfig(ctx, ctx.filesDir)
+            ensureSharedLinks(ctx, ctx.filesDir, log)
+            ensureCacheDir(ctx, ctx.filesDir, log)
+            ensureCdnDefaultOn(ctx, ctx.filesDir, log)
+            ensureLanguage(ctx, ctx.filesDir, log)
         }
     }
 

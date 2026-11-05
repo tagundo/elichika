@@ -56,6 +56,7 @@ func InitGacha(session *xorm.Session) {
 	// this is the same for everything
 	masterdata, err := xorm.NewEngine("sqlite", config.GlMasterdataPath+"masterdata.db")
 	utils.CheckErr(err)
+	defer masterdata.Close()
 	// 9 groups for now:
 	// (R, SR, UR) * (muse, aqours, niji)
 	weight := make(map[int]int64)
@@ -67,7 +68,7 @@ func InitGacha(session *xorm.Session) {
 			groupMasterId := int32(rarity*10 + school)
 			cardMasterIds := []int32{}
 			err := masterdata.Table("m_card").Where("card_rarity_type = ? AND member_m_id / 100 == ?", rarity, school).
-				Cols("id").Find(&cardMasterIds)
+				Cols("id").OrderBy("id").Find(&cardMasterIds)
 			utils.CheckErr(err)
 			for _, cardMasterId := range cardMasterIds {
 				_, err := session.Table("s_gacha_card").Insert(GachaCard{

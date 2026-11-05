@@ -2,6 +2,9 @@ package com.tagundo.elichika
 
 import java.io.File
 import java.io.InputStream
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.util.Comparator
@@ -10,6 +13,8 @@ import java.util.UUID
 /** APK reads and private staging only: publishing belongs to the upgrade journal. */
 internal object PayloadFiles {
     private const val INCOMING = ".payload-incoming"
+    private const val REVISION_MANIFEST = "payload_revision.json"
+    private const val MAX_MANIFEST_BYTES = 4 * 1024 * 1024
     private val MANAGED = setOf(
         "webui", "server init jsons", "privatekey.pem", "publickey.pem",
         "assets", "static", "serverdata.db"
@@ -18,6 +23,25 @@ internal object PayloadFiles {
     interface Source {
         fun list(path: String): Array<String>
         fun open(path: String): InputStream
+    }
+
+    /** The signed manifest is outside payload/ and never copied into live data. */
+    fun revisionManifest(source: Source): String = try {
+        val bytes = source.open(REVISION_MANIFEST).use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (output.size() <= MAX_MANIFEST_BYTES) {
+                val count = input.read(buffer, 0, minOf(buffer.size, MAX_MANIFEST_BYTES + 1 - output.size()))
+                if (count < 0) break
+                output.write(buffer, 0, count)
+            }
+            check(output.size() <= MAX_MANIFEST_BYTES)
+            output.toByteArray()
+        }
+        Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
+    } catch (_: Exception) {
+        throw IllegalStateException("Game-data update refused (PAYLOAD_MANIFEST_MISSING_OR_INVALID)")
     }
 
     fun managedFiles(source: Source): List<String> {
@@ -40,15 +64,6 @@ internal object PayloadFiles {
         }
         return files.sorted()
     }
-
-    fun needsUpdate(root: File, installed: String?, current: String, files: List<String>): Boolean =
-        installed != current || File(root, ".payload-upgrade/needs-rebase").exists() ||
-            files.any { !File(root, it).isFile }
-
-    fun hasInstalledData(root: File, installed: String?): Boolean =
-        installed != null || MANAGED.any {
-            Files.exists(File(root, it).toPath(), LinkOption.NOFOLLOW_LINKS)
-        }
 
     fun stage(root: File, source: Source, files: List<String>): File {
         val incoming = incoming(root)
