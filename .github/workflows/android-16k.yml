@@ -99,13 +99,17 @@ jobs:
           sudo install -d -m 0755 "$lists/partial"
           sudo chown _apt:root "$lists/partial"
           apt_options=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-' -o "Dir::State::lists=$lists" -o Acquire::Retries=1 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          packages=(qemu-system-arm cpio e2fsprogs erofs-utils android-sdk-libsparse-utils)
+          packages=(qemu-system-arm ipxe-qemu cpio e2fsprogs erofs-utils android-sdk-libsparse-utils)
           # Acquire timeouts alone do not limit an active but very slow mirror.
           sudo timeout --signal=TERM --kill-after=20s 150s apt-get "${apt_options[@]}" update -qq 2>&1 | tee evidence/apt-update.txt
           # Bound networking before dpkg starts; do not kill/retry an active install.
           sudo timeout --signal=TERM --kill-after=20s 360s apt-get "${apt_options[@]}" install -y --no-install-recommends --download-only "${packages[@]}" 2>&1 | tee evidence/apt-download.txt
           sudo apt-get "${apt_options[@]}" install -y --no-install-recommends --no-download "${packages[@]}" 2>&1 | tee evidence/apt-install.txt
           for tool in qemu-system-aarch64 cpio debugfs fsck.erofs simg2img; do command -v "$tool"; done
+          # The unchanged QEMU command creates a default virtio NIC, which needs its ROM.
+          rom=$(dpkg -L ipxe-qemu | awk '/\/efi-virtio[.]rom$/ { print; exit }')
+          test -n "$rom" && test -s "$rom"
+          sha256sum "$rom" > evidence/efi-virtio-rom.sha256
           dpkg-query -W "${packages[@]}" > evidence/apt-package-versions.txt
           qemu-system-aarch64 --version > evidence/qemu-version.txt
 
