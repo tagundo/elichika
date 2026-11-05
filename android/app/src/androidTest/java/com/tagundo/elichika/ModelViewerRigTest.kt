@@ -425,7 +425,20 @@ class ModelViewerRigTest {
     private fun exerciseSectionCollapse(session: Session, retained: JSONObject): JSONArray {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val originallyExpanded = retained.getJSONObject("layout").getBoolean("expanded")
+        val originalGroup = retained.getJSONObject("rig").getString("editorGroup")
+        val selectedBone = retained.getJSONObject("rig").getString("selectedNode")
         val results = JSONArray()
+        fun selectArea(group: String) {
+            run(session.webView, "var group=" + JSONObject.quote(group) + ",id=" + JSONObject.quote(selectedBone) + ";" +
+                "var tab=document.getElementById('viewer-editor-'+group+'-tab'),panel=document.getElementById('viewer-editor-'+group+'-panel');" +
+                "if(tab.getAttribute('aria-selected')!=='true')tab.click();" +
+                "ViewerRigQa.input('viewer-node',id,'change');" +
+                "if(panel.hidden||!panel.contains(document.getElementById('viewer-shared-bone-editor')))" +
+                "throw new Error('The chosen editing area must contain the shared bone controls');")
+            assertRetained(retained, state(session.webView))
+            assertEquals("Changing editing areas preserves the explicitly selected bone", selectedBone,
+                state(session.webView).getJSONObject("rig").getString("selectedNode"))
+        }
         if (originallyExpanded) {
             click(session.webView, "viewer-expand")
             waitForDom(session.webView, "the normal editing layout", 30) {
@@ -433,11 +446,26 @@ class ModelViewerRigTest {
             }
         }
         try {
-            run(session.webView, "var id=ModelViewer.getState().rig.selectedNode;" +
+            // Shortcuts belong to the active Node/Mesh area. The advanced All
+            // filter can select Head while Node is active, so first open its
+            // recommended area instead of expecting every area to repeat it.
+            val shortcutGroup = evaluate(session.webView,
+                "var id=" + JSONObject.quote(selectedBone) + ",metadata=ModelViewer.getEditingMetadata()||{}," +
+                    "target=(metadata.nodes||[]).filter(function(node){return String(node.node)===id;})[0];" +
+                    "return JSON.stringify({group:target&&target.recommendedMethod||ModelViewer.getState().rig.editorGroup});")
+                .getString("group")
+            selectArea(shortcutGroup)
+            run(session.webView, "var id=" + JSONObject.quote(selectedBone) + ";" +
                 "var shortcut=Array.prototype.filter.call(document.querySelectorAll('#viewer-node-shortcuts [data-viewer-bone]'),function(button){return button.dataset.viewerBone===id;})[0];" +
-                "if(!shortcut)throw new Error('The selected frequent bone must have a shortcut');shortcut.click();")
+                "if(!shortcut)throw new Error('The selected frequent bone must have a shortcut in its editing area');" +
+                "var control=ViewerRigQa.control(shortcut,true);" +
+                "if(!control.visible||!control.withinViewport||!control.hittable)throw new Error('The selected shortcut must be visible and unobstructed');shortcut.click();")
             val sections = listOf("viewer-common-adjustments", "viewer-breast-card", "viewer-skirt-card")
             for (id in sections) {
+                // The shared common controls move with their area; breast and
+                // skirt cards intentionally stay in the Node Scaling area.
+                val sectionGroup = if (id == "viewer-common-adjustments") shortcutGroup else "node"
+                selectArea(sectionGroup)
                 val content = if (id == "viewer-common-adjustments") "#viewer-node-shortcuts" else ".viewer-card-content"
                 val closed = evaluate(session.webView,
                     "var card=document.getElementById(" + JSONObject.quote(id) + "),summary=card.querySelector('summary'),content=card.querySelector(" + JSONObject.quote(content) + ");" +
@@ -470,10 +498,13 @@ class ModelViewerRigTest {
                 for (kind in listOf("position", "target")) assertArrayNear("Section toggling preserves camera $kind",
                     retained.getJSONObject("camera").getJSONArray(kind), current.getJSONObject("camera").getJSONArray(kind))
                 assertEquals(retained.getJSONObject("camera").getDouble("fov"), current.getJSONObject("camera").getDouble("fov"), 1e-9)
-                results.put(JSONObject().put("id", id).put("closed", closed).put("keyboardReopened", opened))
+                results.put(JSONObject().put("id", id).put("editingArea", sectionGroup).put("closed", closed).put("keyboardReopened", opened))
             }
             return results
         } finally {
+            selectArea(originalGroup)
+            assertEquals("Section checks restore the original editing area", originalGroup,
+                state(session.webView).getJSONObject("rig").getString("editorGroup"))
             if (state(session.webView).getJSONObject("layout").getBoolean("expanded") != originallyExpanded) click(session.webView, "viewer-expand")
             waitForDom(session.webView, "the original expanded preview geometry", 30) {
                 "var s=ModelViewer.getState(),stage=s.layout.stage;return JSON.stringify({ok:s.layout.expanded===" + originallyExpanded +

@@ -1,9 +1,11 @@
 """Job manager bridging tool callbacks to a Server-Sent-Events stream.
 
 Events are buffered in a list so a client connecting slightly late still replays
-everything. (Copied from the SIFAS webtools panel - identical framework.)
+everything. Android shares this guarded manager with the SIFAS webtools panel;
+its callback and completed-output contracts must remain compatible.
 """
 import os
+from pathlib import Path
 import threading
 import time
 import traceback
@@ -22,6 +24,7 @@ class Job:
         self._events = []
         self._cond = threading.Condition()
         self._done = False
+        self._output_paths = []
         self._t0 = time.monotonic()       # for the [+s] elapsed stamp on log lines
 
     def emit(self, event: dict):
@@ -47,6 +50,24 @@ class Job:
 
     def should_stop(self) -> bool:
         return self.cancel_event.is_set()
+
+    def add_output(self, path):
+        """Match the modtools job contract used by the Android shared manager.
+
+        Publish completed files only. Android deliberately uses this guarded
+        manager for both panels, including the viewer's model/recipe exports.
+        """
+        path = Path(path).resolve()
+        if not path.is_file() or path.stat().st_size == 0:
+            return
+        with self._cond:
+            value = str(path)
+            if value not in self._output_paths:
+                self._output_paths.append(value)
+
+    def output_paths(self):
+        with self._cond:
+            return list(self._output_paths)
 
     def event_at(self, index: int, timeout: float):
         with self._cond:
@@ -127,20 +148,24 @@ class JobManager:
                 summary = f"{summary} {took}".strip() if summary else took
                 if job.cancel_event.is_set():
                     job.status = "cancelled"
-                    job.emit({"type": "done", "status": "cancelled", "summary": summary})
+                    job.emit({"type": "done", "status": "cancelled", "summary": summary,
+                              "output_paths": job.output_paths()})
                 else:
                     job.status = "done"
-                    job.emit({"type": "done", "status": "done", "summary": summary})
+                    job.emit({"type": "done", "status": "done", "summary": summary,
+                              "output_paths": job.output_paths()})
             except BusyError as error:
                 job.status = "error"
                 job.emit({"type": "log", "line": str(error)})
                 job.emit({"type": "done", "status": "error", "summary": str(error),
-                          "reason": error.reason, "retryable": True})
+                          "reason": error.reason, "retryable": True,
+                          "output_paths": job.output_paths()})
             except Exception as exc:  # noqa: BLE001
                 job.status = "error"
                 job.emit({"type": "log", "line": f"ERROR: {exc}"})
                 job.emit({"type": "log", "line": traceback.format_exc()})
-                job.emit({"type": "done", "status": "error", "summary": str(exc)})
+                job.emit({"type": "done", "status": "error", "summary": str(exc),
+                          "output_paths": job.output_paths()})
             finally:
                 with self._lock:
                     self._active -= 1

@@ -67,6 +67,8 @@ jobs:
         run: |
           python3 -m pip install "numpy==1.26.2" "Pillow==11.0.0" "UnityPy==1.25.0"
           python3 -c 'import hashlib, sys; from pathlib import Path; from UnityPy.helpers import TypeTreeHelper; actual = hashlib.sha256(Path(TypeTreeHelper.__file__).read_bytes()).hexdigest(); actual == "355179e62b14d2f638947e057979d15815a9cadd3a3d868d8b809455193a290b" or sys.exit("Expected pristine UnityPy1.25.0 TypeTreeHelper, got " + actual)'
+          # Exercise the real guarded Android launcher after model dependencies are installed.
+          python3 -m unittest discover -s ../tests -p test_android_python_launch.py -v
           python3 -m unittest discover -s ../android/ci -p 'test_patch_unitypy_*.py' -v
           python3 -m unittest discover -s tests -p test_mesh_editor.py -v
           python3 -m unittest discover -s tests -p test_gallery_decode.py -v
@@ -78,10 +80,13 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_animation.py -v
           python3 -m unittest discover -s tests -p test_model_motion.py -v
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
+          python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
+          python3 -m unittest discover -s tests -p test_model_edits.py -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
           python3 -m unittest discover -s tests -p test_node_height_tool.py -v
           python3 -m unittest discover -s tests -p test_viewer_archive.py -v
           python3 -m unittest discover -s tests -p test_viewer_routes.py -v
+          python3 -m unittest discover -s tests -p test_viewer_edit_routes.py -v
           python3 -m unittest discover -s tests -p test_job_outputs.py -v
 
       - name: Run all Go tests with default vet checks
@@ -153,6 +158,7 @@ jobs:
           node tests/sifas_material_browser.js
           node tests/viewer_quality_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/resolution" node tests/viewer_resolution_browser.js
 
       - name: Upload neutral WebGL evidence

@@ -271,6 +271,22 @@
     if (matches.length !== 1) throw new Error("The real rig must have exactly one " + name + " bone");
     return matches[0].node;
   }
+  function nodeOption(id) {
+    var select = element("viewer-node"), value = String(id);
+    function contains() {
+      return Array.prototype.some.call(select.options, function (option) { return option.value === value; });
+    }
+    // The product's default list follows the active Node/Mesh workspace.
+    // Legacy geometry checks explicitly request arbitrary bones, so use its
+    // real advanced All bones filter only when that target is not listed.
+    if (!contains()) {
+      var filter = interactive("viewer-node-filter");
+      filter.value = "all";
+      filter.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (!contains()) throw new Error("The requested source bone is unavailable in All bones: " + value);
+    return interactive("viewer-node");
+  }
   function nodeWorld(name) {
     if (!parsedModel) throw new Error("The application's real loaded scene is unavailable");
     parsedModel.updateMatrixWorld(true);
@@ -294,6 +310,7 @@
     withViewMenuClosed: function (action) { return withViewMenu(false, action); },
     viewControl: viewControl,
     input: function (id, value, event) {
+      if (id === "viewer-node") nodeOption(value);
       if (id === "viewer-expression-value") {
         element("viewer-expression-advanced").open = true;
         var select = interactive("viewer-expression");
@@ -309,7 +326,7 @@
     },
     click: function (id) { interactive(id).click(); return state(); },
     boneInput: function (bone, kind, axis, value) {
-      var select = interactive("viewer-node"); select.value = nodeId(bone);
+      var valueId = nodeId(bone), select = nodeOption(valueId); select.value = valueId;
       select.dispatchEvent(new Event("change", { bubbles: true }));
       var target = document.querySelector('[data-viewer-node-kind="' + kind + '"][data-axis="' + axis + '"]');
       if (!target || target.disabled) throw new Error("The actual bone input is unavailable");
