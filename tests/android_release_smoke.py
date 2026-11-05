@@ -23,7 +23,6 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 
-from android_payload_noop_probe import payload_revision, run_noop_probe, sha_file, verify_noop_probe
 
 
 PACKAGE = "com.tagundo.elichika"
@@ -69,6 +68,8 @@ class Android:
         self.shell("am", "force-stop", PACKAGE)
 
     def install(self, apk, expected_version):
+        from android_payload_noop_probe import sha_file
+
         output = self.adb("install", "-r", str(apk), timeout=180)
         assert "Success" in output, output
         info = self.shell("dumpsys", "package", PACKAGE)
@@ -315,6 +316,8 @@ class Client:
 
 
 def run(args, report):
+    from android_payload_noop_probe import payload_revision, run_noop_probe, sha_file, verify_noop_probe
+
     android = Android(args.serial, args.evidence)
     assert android.shell("id").startswith("uid=0"), "Disposable Android must permit root diagnostics"
     assert android.shell("getprop", "ro.hardware") == "redroid", "Disposable Android must be private Redroid"
