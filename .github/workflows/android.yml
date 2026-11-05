@@ -2,12 +2,19 @@ name: Standalone ARM Mac runtime capability probe
 
 on:
   workflow_dispatch:
+    inputs:
+      probe:
+        description: Capability to measure
+        type: choice
+        options: [quit, runtime]
+        default: quit
 
 permissions:
   contents: read
 
 jobs:
   private-runtime:
+    if: inputs.probe == 'runtime'
     runs-on: macos-15
     timeout-minutes: 20
     env:
@@ -74,4 +81,127 @@ jobs:
         with:
           name: macos-private-runtime-probe
           path: ${{ runner.temp }}/macos-runtime-probe-evidence/
+          if-no-files-found: warn
+
+  appkit-quit:
+    if: inputs.probe == 'quit'
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Measure real AppKit asynchronous termination patterns
+        run: |
+          mkdir -p "$RUNNER_TEMP/appkit-quit-probe"
+          cat > "$RUNNER_TEMP/appkit-quit-probe/QuitProbe.swift" <<'SWIFT'
+          import AppKit
+          import Foundation
+
+          func marker(_ value: String) {
+              FileHandle.standardOutput.write(Data((value + "\n").utf8))
+          }
+
+          @MainActor
+          final class QuitDelegate: NSObject, NSApplicationDelegate {
+              let mode: String
+              var window: NSWindow?
+              var cleaning = false
+              var ready = false
+              init(mode: String) { self.mode = mode; super.init() }
+
+              func applicationDidFinishLaunching(_ notification: Notification) {
+                  marker("launched " + mode)
+                  window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 160),
+                      styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+                  window?.title = "Elichika termination capability probe"
+                  window?.makeKeyAndOrderFront(nil)
+                  NSApp.activate(ignoringOtherApps: true)
+                  DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                      marker("calling terminate")
+                      NSApp.terminate(nil)
+                      marker("terminate call returned")
+                  }
+              }
+
+              func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+                  marker("delegate entered " + mode + " ready=" + String(ready))
+                  if mode == "old" {
+                      Task { @MainActor in
+                          marker("old cleanup task entered")
+                          try? await Task.sleep(nanoseconds: 100_000_000)
+                          marker("old cleanup finished; replying true")
+                          sender.reply(toApplicationShouldTerminate: true)
+                      }
+                      marker("return terminateLater")
+                      return .terminateLater
+                  }
+                  if ready {
+                      marker("return terminateNow")
+                      return .terminateNow
+                  }
+                  if !cleaning {
+                      cleaning = true
+                      Task { @MainActor in
+                          marker("new cleanup task entered")
+                          try? await Task.sleep(nanoseconds: 100_000_000)
+                          marker("new cleanup finished; requesting termination again")
+                          self.ready = true
+                          sender.terminate(nil)
+                      }
+                  }
+                  marker("return terminateCancel")
+                  return .terminateCancel
+              }
+
+              func applicationWillTerminate(_ notification: Notification) {
+                  marker("applicationWillTerminate")
+              }
+          }
+
+          @main
+          struct QuitProbe {
+              @MainActor static func main() {
+                  let app = NSApplication.shared
+                  let delegate = QuitDelegate(mode: CommandLine.arguments[1])
+                  app.delegate = delegate
+                  app.setActivationPolicy(.regular)
+                  withExtendedLifetime(delegate) { app.run() }
+                  marker("NSApplication.run returned")
+              }
+          }
+          SWIFT
+          swiftc -parse-as-library -swift-version 5 -O \
+            "$RUNNER_TEMP/appkit-quit-probe/QuitProbe.swift" \
+            -o "$RUNNER_TEMP/appkit-quit-probe/QuitProbe"
+          /usr/bin/python3 - <<'PY'
+          import json, os, pathlib, signal, subprocess, time
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'appkit-quit-probe'
+          report = {'scope':'AppKit termination capability only; no production app source modified', 'modes':{}}
+          for mode in ('old','new'):
+              path = root / (mode + '.log')
+              started = time.monotonic()
+              with path.open('w') as output:
+                  child = subprocess.Popen([str(root / 'QuitProbe'),mode], stdout=output,
+                      stderr=subprocess.STDOUT, start_new_session=True)
+                  timed_out = False
+                  try: code = child.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      timed_out = True
+                      os.killpg(child.pid,signal.SIGKILL)
+                      code = child.wait(timeout=3)
+              text = path.read_text()
+              report['modes'][mode] = {'exit_code':code,'timed_out':timed_out,
+                  'elapsed_seconds':round(time.monotonic()-started,3), 'markers':text.splitlines()}
+              print(mode, text, flush=True)
+          old, new = report['modes']['old'], report['modes']['new']
+          report['hypothesis_supported'] = old['timed_out'] and not new['timed_out'] and new['exit_code'] == 0
+          report['new_pattern_passed'] = not new['timed_out'] and new['exit_code'] == 0 and 'applicationWillTerminate' in new['markers']
+          (root / 'termination-report.json').write_text(json.dumps(report,indent=2) + '\n')
+          print(json.dumps(report,indent=2))
+          if not report['new_pattern_passed']: raise SystemExit('Proposed termination pattern did not exit cleanly')
+          PY
+      - name: Upload AppKit termination evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appkit-termination-probe
+          path: ${{ runner.temp }}/appkit-quit-probe/
           if-no-files-found: warn
