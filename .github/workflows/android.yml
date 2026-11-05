@@ -1,134 +1,24 @@
-name: macOS native WebKit capability probe
+name: Compile native Apple Silicon companion host
 on: workflow_dispatch
 permissions:
   contents: read
 jobs:
-  probe:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 8
+  native:
+    runs-on: macos-15
+    timeout-minutes: 12
     steps:
-      - name: Compile and execute native AppKit WebKit probe
-        shell: bash
+      - uses: actions/checkout@v4
+      - name: Test native contract and build host
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/evidence"
-          uname -a > "$RUNNER_TEMP/evidence/host.txt"
-          swift --version >> "$RUNNER_TEMP/evidence/host.txt"
-          xcodebuild -version >> "$RUNNER_TEMP/evidence/host.txt"
-          cat > "$RUNNER_TEMP/Probe.swift" <<'SWIFT'
-          import AppKit
-          import Foundation
-          import WebKit
-
-          final class Probe: NSObject, NSApplicationDelegate, WKNavigationDelegate {
-              var window: NSWindow!
-              var view: WKWebView!
-              var finished = false
-              let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-              func applicationDidFinishLaunching(_ notification: Notification) {
-                  NSApp.setActivationPolicy(.regular)
-                  window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-                                    styleMask: [.titled, .closable, .resizable],
-                                    backing: .buffered, defer: false)
-                  let configuration = WKWebViewConfiguration()
-                  configuration.websiteDataStore = .nonPersistent()
-                  view = WKWebView(frame: window.contentView!.bounds, configuration: configuration)
-                  view.autoresizingMask = [.width, .height]
-                  view.navigationDelegate = self
-                  window.contentView!.addSubview(view)
-                  window.makeKeyAndOrderFront(nil)
-                  NSApp.activate(ignoringOtherApps: true)
-                  view.loadHTMLString("<html><body><h1>Elichika native WebKit probe</h1><canvas id='c' width='256' height='256'></canvas></body></html>",
-                                      baseURL: URL(string: "http://127.0.0.1/"))
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 45) { [self] in
-                      if !finished { finish(["status":"TIMEOUT"]) }
-                  }
-              }
-              func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-                  let js = """
-                  (async () => {
-                    const results=[];
-                    for(const api of ['webgl2','webgl']) {
-                      const c=document.createElement('canvas');c.width=256;c.height=256;document.body.appendChild(c);
-                      let lost=0,restored=0;c.addEventListener('webglcontextlost',e=>{e.preventDefault();lost++});
-                      c.addEventListener('webglcontextrestored',()=>{restored++});
-                      const gl=c.getContext(api);const attempts=[];
-                      if(!gl){results.push({api,available:false});continue}
-                      for(let k=0;k<6;k++) {
-                        await new Promise(r=>setTimeout(r,800));
-                        await Promise.race([new Promise(requestAnimationFrame),new Promise(r=>setTimeout(r,100))]);
-                        const isLost=gl.isContextLost();
-                        if(isLost){attempts.push({lost:true});continue}
-                        gl.clearColor(.1,.2,.7,1);gl.clear(gl.COLOR_BUFFER_BIT);
-                        const pixels=new Uint8Array(4);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
-                        const error=gl.getError(),d=gl.getExtension('WEBGL_debug_renderer_info');
-                        const entry={error,pixel:Array.from(pixels),version:gl.getParameter(gl.VERSION),
-                          renderer:d?gl.getParameter(d.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)};
-                        attempts.push(entry);
-                        if(!error&&pixels[3]===255&&pixels[2]>150) {
-                          results.push({api,lost,restored,attempts});
-                          window.__probeReport={status:'CAPABILITY',rendered:true,results,userAgent:navigator.userAgent};return
-                        }
-                      }
-                      results.push({api,lost,restored,attempts});
-                    }
-                    window.__probeReport={status:'CAPABILITY',rendered:false,results,userAgent:navigator.userAgent};
-                  })().catch(e=>{window.__probeReport={status:'JS_ERROR',error:String(e)}});void 0
-                  """
-                  webView.evaluateJavaScript(js) { [self] _, error in
-                      if let error=error { finish(["status":"JS_ERROR","error":error.localizedDescription]);return }
-                      poll()
-                  }
-              }
-              func poll() {
-                  guard !finished else { return }
-                  view.evaluateJavaScript("window.__probeReport?JSON.stringify(window.__probeReport):null") { [self] value,error in
-                      guard let text=value as? String,let data=text.data(using:.utf8),
-                            let report=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] else {
-                          DispatchQueue.main.asyncAfter(deadline:.now()+1) { [self] in poll() };return
-                      }
-                      DispatchQueue.main.asyncAfter(deadline:.now()+2) { [self] in
-                          view.takeSnapshot(with:nil) { [self] image, snapshotError in
-                              var result=report
-                              result["snapshotError"]=snapshotError?.localizedDescription ?? ""
-                              if let tiff=image?.tiffRepresentation,let bitmap=NSBitmapImageRep(data:tiff),
-                                 let png=bitmap.representation(using:.png,properties:[:]) {
-                                  try? png.write(to:output.appendingPathComponent("webkit.png"));result["snapshotBytes"]=png.count
-                              }
-                              finish(result)
-                          }
-                      }
-                  }
-              }
-              func finish(_ report: [String:Any]) {
-                  guard !finished else { return }; finished=true
-                  if let data=try? JSONSerialization.data(withJSONObject:report,options:[.prettyPrinted,.sortedKeys]) {
-                      try? data.write(to:output.appendingPathComponent("capability.json"))
-                      print(String(data:data,encoding:.utf8)!)
-                  }
-                  NSApp.terminate(nil)
-              }
-          }
-          let application=NSApplication.shared
-          let delegate=Probe()
-          application.delegate=delegate
-          application.run()
-          SWIFT
-          swiftc -swift-version 5 "$RUNNER_TEMP/Probe.swift" -o "$RUNNER_TEMP/Probe"
-          "$RUNNER_TEMP/Probe" "$RUNNER_TEMP/evidence"
-          test -s "$RUNNER_TEMP/evidence/capability.json"
-      - name: Upload actual native probe evidence
+          mkdir -p evidence
+          uname -a > evidence/host.txt
+          swift --version >> evidence/host.txt
+          swift test --package-path macos 2>&1 | tee evidence/swift-tests.txt
+          swift build --package-path macos -c release 2>&1 | tee evidence/swift-release.txt
+      - name: Upload compile evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: macos-native-capability-${{ matrix.arch }}
-          path: ${{ runner.temp }}/evidence/
-          if-no-files-found: warn
+          name: macos-native-compile-evidence
+          path: evidence/
