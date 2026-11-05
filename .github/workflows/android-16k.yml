@@ -1,14 +1,6 @@
-name: Android 4KB and 16KB native compatibility
+name: Recheck exact validated APK on official 4KB and 16KB kernels
 
-on:
-  workflow_call:
-    inputs:
-      candidate_sha256:
-        type: string
-        required: true
-      version_name:
-        type: string
-        required: true
+on: workflow_dispatch
 
 permissions:
   contents: read
@@ -16,41 +8,128 @@ permissions:
 
 jobs:
   native-16k:
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/viewer-kernel-mirror-retry'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 5e3547cb1a98833b548e54d1019f6923a405d7ec
+          persist-credentials: false
 
-      - name: Prepare software ARM VM and official 16KB Android image
+      - name: Bind original successful gates and immutable release artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          mkdir -p evidence
-          sudo apt-get update -qq
-          sudo apt-get install -y qemu-system-arm cpio e2fsprogs erofs-utils android-sdk-libsparse-utils
-          python3 -c 'import os,subprocess; subprocess.run([os.environ["ANDROID_HOME"]+"/cmdline-tools/latest/bin/sdkmanager","--licenses"],input=b"y\n"*100,check=True,stdout=subprocess.DEVNULL)'
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            'system-images;android-35;google_apis_ps16k;arm64-v8a'
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          repo = 'tagundo/elichika'
+          source = '5e3547cb1a98833b548e54d1019f6923a405d7ec'
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}'], text=True))
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == source
+          run = api('actions/runs/42040898733')
+          assert (run['id'], run['head_sha'], run['path'], run['event']) == (42040898733, source, '.github/workflows/android.yml', 'workflow_dispatch')
+          assert run['repository']['full_name'] == run['head_repository']['full_name'] == repo
+          gates = []
+          for job_id, name in ((127291128140, 'build'), (127303233648, 'apk-audit / audit'), (127303233751, 'android-upgrade / android')):
+              job = api(f'actions/jobs/{job_id}')
+              assert (job['run_id'], job['name'], job['head_sha'], job['status'], job['conclusion']) == (42040898733, name, source, 'completed', 'success')
+              gates.append({'id': job_id, 'name': name, 'conclusion': 'success'})
+          artifact = api('actions/artifacts/13422968031')
+          assert (artifact['id'], artifact['name'], artifact['expired'], artifact['size_in_bytes'], artifact['digest']) == (13422968031, 'elichika-release-apk', False, 274301298, 'sha256:923899678c6655e7c3649cfd3935fe75052cf78c0ffa4c3abb8fe6cd3fe8e297')
+          binding = artifact['workflow_run']
+          assert (binding['id'], binding['head_sha'], binding['repository_id'], binding['head_repository_id']) == (42040898733, source, 1265017321, 1265017321)
+          scripts = ['tests/android_16k_native.py', 'tests/android_native_functional.py', 'tests/android_release_smoke.py', 'tests/validate_runtime.py', 'tests/validate_jp_global_content.py', 'android/ci/audit_native.py']
+          pathlib.Path('evidence').mkdir()
+          receipt = {'apk_source_commit': source, 'producer_run': 42040898733, 'producer_gates': gates, 'artifact': artifact,
+                     'validation_workflow_sha': os.environ['GITHUB_SHA'], 'validation_run': os.environ['GITHUB_RUN_ID'],
+                     'validation_workflow_ref': os.environ['GITHUB_WORKFLOW_REF'],
+                     'qa_source_files': {name: hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() for name in scripts},
+                     'scope': 'Same original signed APK; separate environment-only kernel recheck. No APK rebuild, signing or publication.'}
+          pathlib.Path('evidence/exact-artifact-binding.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
 
-      - name: Download this build's signed release artifact
+      - name: Download the exact original signed artifact without rebuilding
         uses: actions/download-artifact@v4
         with:
-          name: elichika-release-apk
+          artifact-ids: 13422968031
+          run-id: 42040898733
+          repository: tagundo/elichika
+          github-token: ${{ github.token }}
+          merge-multiple: true
           path: candidate
 
-      - name: Run original APK server, Python packages and ASTC on both kernels
+      - name: Verify exact original APK bytes before preparing the VM
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          apk = pathlib.Path('candidate/elichika-2026.11.05.3.apk')
+          files = [path for path in pathlib.Path('candidate').rglob('*') if path.is_file() or path.is_symlink()]
+          assert files == [apk] and not apk.is_symlink() and apk.stat().st_size == 290031273
+          with apk.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          assert digest == 'a44b47cbef08d3ead0b88c4fbcdcbcea773133434ca685c5d9ba694fb6be4891'
+          receipt = pathlib.Path('evidence/exact-artifact-binding.json')
+          data = json.loads(receipt.read_text())
+          data['candidate_apk'] = {'name': apk.name, 'bytes': apk.stat().st_size, 'sha256': digest}
+          receipt.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+
+      - name: Prepare VM tools from official Ubuntu HTTPS sources with bounded downloads
+        run: |
+          set -euo pipefail
+          # Isolate sources/lists rather than changing third-party runner repos.
+          sources="$RUNNER_TEMP/native-ubuntu.sources"
+          lists="$RUNNER_TEMP/native-apt-lists"
+          cat > "$sources" <<'SOURCES'
+          Types: deb
+          URIs: https://archive.ubuntu.com/ubuntu/
+          Suites: noble noble-updates
+          Components: main universe
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+          Types: deb
+          URIs: https://security.ubuntu.com/ubuntu/
+          Suites: noble-security
+          Components: main universe
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          SOURCES
+          cp "$sources" evidence/apt-sources.sources
+          sudo install -d -m 0755 "$lists/partial"
+          sudo chown _apt:root "$lists/partial"
+          apt_options=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-' -o "Dir::State::lists=$lists" -o Acquire::Retries=1 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          packages=(qemu-system-arm cpio e2fsprogs erofs-utils android-sdk-libsparse-utils)
+          # Acquire timeouts alone do not limit an active but very slow mirror.
+          sudo timeout --signal=TERM --kill-after=20s 150s apt-get "${apt_options[@]}" update -qq 2>&1 | tee evidence/apt-update.txt
+          # Bound networking before dpkg starts; do not kill/retry an active install.
+          sudo timeout --signal=TERM --kill-after=20s 360s apt-get "${apt_options[@]}" install -y --no-install-recommends --download-only "${packages[@]}" 2>&1 | tee evidence/apt-download.txt
+          sudo apt-get "${apt_options[@]}" install -y --no-install-recommends --no-download "${packages[@]}" 2>&1 | tee evidence/apt-install.txt
+          for tool in qemu-system-aarch64 cpio debugfs fsck.erofs simg2img; do command -v "$tool"; done
+          dpkg-query -W "${packages[@]}" > evidence/apt-package-versions.txt
+          qemu-system-aarch64 --version > evidence/qemu-version.txt
+
+      - name: Prepare the same official Android 16KB image
+        run: |
+          set -euo pipefail
+          timeout --kill-after=20s 180s python3 -c 'import os,subprocess; subprocess.run([os.environ["ANDROID_HOME"]+"/cmdline-tools/latest/bin/sdkmanager","--licenses"],input=b"y\n"*100,check=True,stdout=subprocess.DEVNULL)'
+          timeout --kill-after=30s 600s "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'system-images;android-35;google_apis_ps16k;arm64-v8a' 2>&1 | tee evidence/sdk-image-install.txt
+
+      - name: Run unchanged source-5e QA on both official kernels
         run: >-
           python3 -u tests/android_16k_native.py
-          --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
-          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
+          --candidate candidate/elichika-2026.11.05.3.apk
+          --candidate-sha256 a44b47cbef08d3ead0b88c4fbcdcbcea773133434ca685c5d9ba694fb6be4891
           --image "$ANDROID_HOME/system-images/android-35/google_apis_ps16k/arm64-v8a"
           --ndk "$ANDROID_NDK_HOME"
           --work "$RUNNER_TEMP/android-16k-native"
           --evidence evidence
 
-      - name: Upload 16KB diagnostic evidence
+      - name: Upload separate exact-APK kernel recheck evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-16k-native-evidence
+          name: exact-apk-kernel-mirror-recheck-evidence
           path: evidence/
           if-no-files-found: warn
