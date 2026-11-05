@@ -18,10 +18,10 @@ import zipfile
 
 PACKAGE = 'com.tagundo.elichika'
 SERIAL = '127.0.0.1:5555'
-BASELINE_SHA = 'e806ced4659ba1691607d4f99271a77331436c5895cc896ff2e26d528d934e22'
-BASELINE_BYTES = 289685607
-BASELINE_SOURCE = '4e9ca3b620e3010cf0f9fccfa3f3799b8a9da3c2'
-BASELINE_NATIVE_SHA = 'a4b448e52950f58304d2dbfd952e5eeb6c4e1be5689f25b444bdbdb435010df9'
+BASELINE_SHA = '815e9dd70d1b0e89b97f76b83c1b71136ec7f5f73f6e9a6a983d123a7aa42cac'
+BASELINE_BYTES = 289671611
+BASELINE_SOURCE = 'cca1438a8ee4408123e6ede22d974f1dbf2a823b'
+BASELINE_NATIVE_SHA = 'd0ac96c2216627c1b306860bd1f51e44ce337a67b1a08ba5a4f2a0e56580f0ba'
 FIXTURE_SHA = '6ae25ea0cf7225e941afb721569ecadac4cb095db657954854d86ceefca1d2db'
 FIXTURE_BYTES = 289656423
 FIXTURE_SOURCE = '21acaf2c2e3e6af3cf9bba0ec3f2a4c59e34e590'
@@ -33,6 +33,7 @@ FIXTURE_APK = '/data/local/tmp/elichika-perf-fixture.apk'
 CLASS = PACKAGE + '.PayloadUpgradeBenchmarkTest'
 INSTRUMENTATION = PACKAGE + '.test/androidx.test.runner.AndroidJUnitRunner'
 CASE_NAMES = ('legacy_first_upgrade', 'managed_unchanged_stock_upgrade')
+FIXED_INPUTS_SHA = '8de0f7be7570065a395ce77bdf578ee31dee176a6ef33a5f691cea58bd1fc874'
 
 
 def require(condition, reason):
@@ -211,12 +212,27 @@ def validate_report(report, label, identity):
     hashes = report.get('incoming_database_sha256', {})
     require(len(hashes) == 55 and all(isinstance(x, str) and re.fullmatch(r'[0-9a-f]{64}', x) for x in hashes.values()),
             'benchmark_database_hashes_missing')
+    require(report.get('payload_files') == 6442 and report.get('payload_bytes') == 865754569,
+            'benchmark_fixed_payload_size_mismatch')
+    inputs_digest = hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    require(inputs_digest == FIXED_INPUTS_SHA, 'benchmark_fixed_55_database_inputs_changed')
     cases = report.get('cases', [])
     require(len(cases) == 2 and tuple(c.get('case') for c in cases) == CASE_NAMES, 'benchmark_cases_missing')
     for case in cases:
         require(case.get('engine_status') == 'COMMITTED' and case.get('recovery_before') == 'CLEAN'
                 and case.get('recovery_after') == 'CLEAN' and case.get('profile_enabled') is False,
                 'benchmark_engine_state_invalid')
+        counts = case.get('counts', {})
+        require(counts.get('databases') == 55
+                and type(counts.get('main_integrity_certificates_reused')) is int
+                and 0 < counts['main_integrity_certificates_reused'] <= 55,
+                'benchmark_database_validation_counters_missing')
+        if label == 'candidate':
+            require(type(counts.get('backup_snapshot_databases')) is int
+                    and counts['backup_snapshot_databases'] == 56
+                    and type(counts.get('backup_snapshot_worker_limit')) is int
+                    and counts['backup_snapshot_worker_limit'] == 2,
+                    'benchmark_snapshot_batch_contract_mismatch')
         for field in ('elapsed_seconds', 'process_cpu_seconds'):
             value = case.get(field)
             require(type(value) in (int, float) and math.isfinite(value) and value >= 0
@@ -301,6 +317,7 @@ def main():
                'instrumentation_apk_sha256': test_identity['apk_sha256'], 'instrumentation': test_identity,
                'fixture_apk_sha256': FIXTURE_SHA, 'fixture': fixture_identity,
                'retained_static_mib': 256, 'cases': [],
+               'snapshot_counter_scope': 'backup_snapshot_databases counts completed snapshot jobs; backup_snapshot_worker_limit is the configured maximum, not observed concurrency',
                'scope': 'One sequential pair on one native ARM64 Redroid host; apply_upgrade_json wall/process CPU only. Fixture setup and verification excluded; host page-cache order may affect timings. Not physical phone timing or GL playback.'}
     for before, after in zip(baseline['cases'], optimized['cases']):
         old, new = before['elapsed_seconds'], after['elapsed_seconds']
@@ -308,7 +325,8 @@ def main():
                                  'baseline_cpu_seconds': before['process_cpu_seconds'],
                                  'candidate_cpu_seconds': after['process_cpu_seconds'],
                                  'wall_reduction_percent': round((1 - new / old) * 100, 2),
-                                 'speedup': round(old / new, 3)})
+                                 'speedup': round(old / new, 3),
+                                 'candidate_counts': after['counts']})
     args.evidence.joinpath('paired-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     print('ANDROID_PAYLOAD_PAIRED_BENCHMARK=' + json.dumps(summary), flush=True)
 

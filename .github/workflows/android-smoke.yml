@@ -1,4 +1,4 @@
-name: Paired native Android hash-validation integration benchmark
+name: Paired native Android payload revision and parallel snapshot benchmark
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   android-benchmark:
-    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-hash-validation-qa'
+    if: github.repository == 'tagundo/elichika' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/payload-revision-parallel-qa'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 50
     env:
@@ -51,7 +51,9 @@ jobs:
           spec = importlib.util.spec_from_file_location('paired_benchmark', 'tests/android_payload_upgrade_benchmark_pair.py')
           module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
           run, build = module.wait_for_candidate_build(api, run_id, source)
-          artifacts = api('actions/runs/' + run_id + '/artifacts?per_page=100')['artifacts']
+          artifact_page = api('actions/runs/' + run_id + '/artifacts?per_page=100')
+          assert artifact_page['total_count'] <= 100, 'Artifact page requires review'
+          artifacts = artifact_page['artifacts']
           selected = {}
           for name in ('elichika-release-apk','elichika-native-test-apk'):
               matches = [artifact for artifact in artifacts if artifact['name'] == name and not artifact['expired']]
@@ -86,11 +88,11 @@ jobs:
           run-id: ${{ env.CANDIDATE_RUN_ID }}
           github-token: ${{ github.token }}
 
-      - name: Download the fixed public v3 baseline app and separate v2 fixture dataset
+      - name: Download the fixed public v4 baseline app and separate v2 fixture dataset
         run: |
           set -euo pipefail
           curl --fail --location --retry 2 --output baseline.apk \
-            https://github.com/tagundo/elichika/releases/download/v2026.11.04.3/elichika-2026.11.04.3.apk
+            https://github.com/tagundo/elichika/releases/download/v2026.11.04.4/elichika-2026.11.04.4.apk
           curl --fail --location --retry 2 --output fixture.apk \
             https://github.com/tagundo/elichika/releases/download/v2026.11.04.2/elichika-2026.11.04.2.apk
 
@@ -128,7 +130,7 @@ jobs:
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
           adb -s 127.0.0.1:5555 shell id >> evidence/host.txt
 
-      - name: Run the v3 and candidate engines on the same fixed v2 inputs
+      - name: Run the v4 and candidate engines on the same fixed v2 inputs
         run: >-
           python3 -u tests/android_payload_upgrade_benchmark_pair.py
           --baseline baseline.apk --fixture fixture.apk --candidate-dir candidate

@@ -18,15 +18,25 @@ SPEC.loader.exec_module(pair)
 
 
 class PairedBenchmarkContracts(unittest.TestCase):
+    def setUp(self):
+        hashes = {f'assets/db/gl/fixture_{i:02d}.db': '0' * 64 for i in range(55)}
+        digest = hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        patch = mock.patch.object(pair, 'FIXED_INPUTS_SHA', digest)
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def report(self, label='baseline'):
         identity = {'apk_sha256': 'a' * 64, 'native_sha256': 'b' * 64}
         tracked = ('userdata.db', 'config.json', 'static/benchmark-owner.txt', 'static/benchmark-cache.bin')
         cases = []
-        for name in pair.CASE_NAMES:
+        for name, certificates in zip(pair.CASE_NAMES, (53, 55)):
             cases.append({
                 'case': name, 'engine_status': 'COMMITTED', 'recovery_before': 'CLEAN',
                 'recovery_after': 'CLEAN', 'profile_enabled': False,
                 'elapsed_seconds': 1.25, 'process_cpu_seconds': 0.8,
+                'counts': dict({'databases': 55, 'main_integrity_certificates_reused': certificates},
+                               **({'backup_snapshot_databases': 56, 'backup_snapshot_worker_limit': 2}
+                                  if label == 'candidate' else {})),
                 'preservation': {path: {'bytes_preserved': True,
                     'same_inode': True}
                     for path in tracked},
@@ -41,6 +51,7 @@ class PairedBenchmarkContracts(unittest.TestCase):
             'hardware': 'redroid', 'abi': 'arm64-v8a',
             'target_apk_sha256': identity['apk_sha256'], 'target_native_sha256': identity['native_sha256'],
             'incoming_database_sha256': {f'assets/db/gl/fixture_{i:02d}.db': '0' * 64 for i in range(55)},
+            'payload_files': 6442, 'payload_bytes': 865754569,
             'cases': cases,
         }
         return report, identity
@@ -67,7 +78,7 @@ class PairedBenchmarkContracts(unittest.TestCase):
         with self.assertRaises(ValueError):
             pair.report_path_from_output(output + output, 'baseline')
 
-    def test_v3_and_candidate_preservation_contracts_are_both_accepted(self):
+    def test_v4_and_candidate_preservation_contracts_are_both_accepted(self):
         for label in ('baseline', 'candidate'):
             report, identity = self.report(label)
             pair.validate_report(report, label, identity)
@@ -89,10 +100,10 @@ class PairedBenchmarkContracts(unittest.TestCase):
         with self.assertRaises(ValueError):
             pair.validate_report(report, 'baseline', identity)
 
-    def test_v3_baseline_is_distinct_from_the_same_pinned_v2_dataset(self):
+    def test_v4_baseline_is_distinct_from_the_same_pinned_v2_dataset(self):
         self.assertNotEqual(pair.BASELINE_SHA, pair.FIXTURE_SHA)
-        self.assertEqual(pair.BASELINE_SHA, 'e806ced4659ba1691607d4f99271a77331436c5895cc896ff2e26d528d934e22')
-        self.assertEqual(pair.BASELINE_BYTES, 289685607)
+        self.assertEqual(pair.BASELINE_SHA, '815e9dd70d1b0e89b97f76b83c1b71136ec7f5f73f6e9a6a983d123a7aa42cac')
+        self.assertEqual(pair.BASELINE_BYTES, 289671611)
         self.assertEqual(pair.FIXTURE_SHA, '6ae25ea0cf7225e941afb721569ecadac4cb095db657954854d86ceefca1d2db')
         self.assertEqual(pair.FIXTURE_BYTES, 289656423)
         report, identity = self.report()
@@ -101,12 +112,32 @@ class PairedBenchmarkContracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'benchmark_input_protocol_mismatch'):
             pair.validate_report(report, 'baseline', identity)
 
+    def test_exact_known_dataset_and_candidate_batch_counters_are_required(self):
+        mutations = [lambda r: r.update(payload_files=6441),
+                     lambda r: r.update(payload_bytes=865754568),
+                     lambda r: r['incoming_database_sha256'].update({'assets/db/gl/fixture_00.db': '1' * 64}),
+                     lambda r: r['cases'][0]['counts'].update(databases=54),
+                     lambda r: r['cases'][0]['counts'].update(main_integrity_certificates_reused=0),
+                     lambda r: r['cases'][0]['counts'].pop('backup_snapshot_databases'),
+                     lambda r: r['cases'][0]['counts'].update(backup_snapshot_databases=55),
+                     lambda r: r['cases'][0]['counts'].update(backup_snapshot_databases=True),
+                     lambda r: r['cases'][0]['counts'].update(backup_snapshot_worker_limit=1),
+                     lambda r: r['cases'][0]['counts'].update(backup_snapshot_worker_limit=True)]
+        for index, mutate in enumerate(mutations):
+            report, identity = self.report('candidate')
+            mutate(report)
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                pair.validate_report(report, 'candidate', identity)
+        report, identity = self.report('baseline')
+        pair.validate_report(report, 'baseline', identity)
+        self.assertNotIn('backup_snapshot_databases', report['cases'][0]['counts'])
+
     def test_unknown_report_target_is_refused(self):
         report, identity = self.report()
         with self.assertRaisesRegex(ValueError, 'benchmark_report_label_invalid'):
             pair.validate_report(report, 'other', identity)
 
-    def test_main_pushes_only_the_separate_fixture_and_installs_v3_then_candidate(self):
+    def test_main_pushes_only_the_separate_fixture_and_installs_v4_then_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             baseline_apk, fixture_apk = root / 'baseline.apk', root / 'fixture.apk'
@@ -119,7 +150,7 @@ class PairedBenchmarkContracts(unittest.TestCase):
             baseline_report, _ = self.report()
             candidate_report, _ = self.report('candidate')
             for report in (baseline_report, candidate_report):
-                report.update(payload_files=6430, payload_bytes=123456)
+                report.update(payload_files=6442, payload_bytes=865754569)
             arguments = ['paired-benchmark', '--baseline', str(baseline_apk), '--fixture', str(fixture_apk),
                          '--candidate-dir', str(candidate_apk.parent), '--instrumentation-dir', str(test_apk.parent),
                          '--evidence', str(evidence)]
@@ -151,6 +182,8 @@ class PairedBenchmarkContracts(unittest.TestCase):
             self.assertEqual(summary['fixture_apk_sha256'], pair.FIXTURE_SHA)
             self.assertEqual(summary['baseline'], baseline_id)
             self.assertEqual(summary['sample_count_per_target'], 1)
+            self.assertEqual(summary['cases'][0]['candidate_counts']['backup_snapshot_databases'], 56)
+            self.assertIn('configured maximum, not observed concurrency', summary['snapshot_counter_scope'])
 
     def test_raw_size_native_revision_and_native_hash_are_all_bound(self):
         with tempfile.TemporaryDirectory() as directory:
