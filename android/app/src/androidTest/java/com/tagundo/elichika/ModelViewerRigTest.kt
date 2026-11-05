@@ -40,6 +40,7 @@ class ModelViewerRigTest {
     fun unitySkinMotionAndLiveSettingsChangePixelsAndSurviveContextRecovery() = withRig { session ->
         val webView = session.webView
         input(webView, "viewer-shader", "basic", "change")
+        val verticalViewport = exerciseVerticalViewport(webView)
         val defaultSavedNodes = state(webView).getJSONObject("rig").getJSONObject("savedNodes")
         assertTrue("Supported saved file settings must be applied on load", defaultSavedNodes.getBoolean("enabled"))
         assertEquals("Scale, position and rotation records must all apply", 3, defaultSavedNodes.getInt("applied"))
@@ -74,9 +75,10 @@ class ModelViewerRigTest {
         assertTrue("An ordinary motion clip must not enable the verified SIFAS pose button", unavailablePreview.getBoolean("disabled"))
         assertEquals("false", unavailablePreview.getString("pressed"))
         for (button in listOf(authoredButton, unavailablePreview)) {
-            assertTrue("Pose controls must have visible, unobstructed 44 px targets: $button",
+            assertTrue("Pose controls must meet the actual compact HUD target policy: $button",
                 button.getBoolean("visible") && button.getBoolean("withinViewport") && button.getBoolean("hittable") &&
-                    button.getDouble("width") >= 44 && button.getDouble("height") >= 44)
+                    button.getDouble("width") >= button.getInt("minimumTarget") &&
+                    button.getDouble("height") >= button.getInt("minimumTarget"))
         }
         assertEquals("", poseControls.getJSONObject("rig").getString("defaultClip"))
         assertEquals("", poseControls.getJSONObject("rig").getString("selectedClip"))
@@ -256,6 +258,7 @@ class ModelViewerRigTest {
         capture(webView, "retained")
         persistReport("model-viewer-viewport-milestones.json", JSONObject()
             .put("scope", "Strict new-feature milestones captured before the unchanged quality exercise")
+            .put("verticalViewport", verticalViewport)
             .put("absoluteSourceValueEdits", absoluteAxes).put("childBoneCompensation", childCompensation)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen))
         val quality = ViewerQualityNativeQa.exercise(webView, "neutral-rig-quality", 4, 4)
@@ -291,6 +294,7 @@ class ModelViewerRigTest {
         click(webView, "viewer-saved-nodes")
         assertRestored("Opting out must still recover exact authored pixels after context restoration", capture(webView, compare = "rest"))
         val report = JSONObject().put("scope", "Original serialized Unity rig through real API/GLB/native WebGL")
+            .put("verticalViewport", verticalViewport)
             .put("poseControlsWithoutVerifiedPreview", poseControls)
             .put("defaultSavedNodes", defaultSavedNodes).put("defaultSavedFrame", defaultSavedFrame)
             .put("absoluteSourceValueEdits", absoluteAxes).put("childBoneCompensation", childCompensation)
@@ -479,6 +483,49 @@ class ModelViewerRigTest {
         }
     }
 
+    private fun assertVerticalHud(webView: WebView, includeGeometry: Boolean = false): JSONObject {
+        val observed = evaluate(webView, "return JSON.stringify(ViewerRigQa.verticalViewport($includeGeometry));")
+        assertTrue("The APK must use the reviewed visible vertical controls", observed.getBoolean("vertical"))
+        val controls = observed.getJSONArray("controls")
+        assertEquals("Retain every original HUD action", 11, controls.length())
+        assertEquals("Separate controls must not overlap", 0, observed.getJSONArray("overlapPairs").length())
+        for (index in 0 until controls.length()) {
+            val target = controls.getJSONObject(index)
+            assertEquals("Only intentional compact HUD controls use the smaller target", 32, target.getInt("minimumTarget"))
+            assertTrue("Every HUD action remains visible and directly reachable: $target",
+                target.getBoolean("visible") && target.getBoolean("withinViewport") && target.getBoolean("hittable") &&
+                    target.getDouble("width") >= 32 && target.getDouble("height") >= 32)
+        }
+        if (includeGeometry) {
+            val vertices = observed.getJSONObject("projectedVertices")
+            assertTrue("Observe actual converted skin vertices", vertices.getInt("count") >= 6)
+            assertEquals("Explicit Fit must retain all observed deformed vertices inside the viewport", 0, vertices.getInt("outside"))
+            assertEquals("Visible model pixels must not be covered by closed HUD controls", 0, observed.getInt("coveredModelPixels"))
+            assertEquals(0, observed.getJSONObject("framebuffer").getInt("glError"))
+        }
+        return observed
+    }
+
+    private fun exerciseVerticalViewport(webView: WebView): JSONArray {
+        val results = JSONArray()
+        val before = state(webView)
+        assertVerticalHud(webView)
+        try {
+            for (direction in listOf("front", "back", "left", "right")) {
+                run(webView, "document.querySelector('[data-viewer-view=\"$direction\"]').click();" +
+                    "document.getElementById('viewer-fit').click();")
+                results.put(assertVerticalHud(webView, true).put("direction", direction))
+            }
+        } finally {
+            run(webView, "document.querySelector('[data-viewer-view=\"front\"]').click();document.getElementById('viewer-fit').click();")
+        }
+        val after = state(webView)
+        assertEquals("Changing direction/Fit must not reload the model", before.getString("modelId"), after.getString("modelId"))
+        assertEquals("Changing direction/Fit must preserve every rig edit and selected pose",
+            before.getJSONObject("rig").toString(), after.getJSONObject("rig").toString())
+        return results
+    }
+
     /** Exercise the real Android window and the existing renderer without creating a second viewer. */
     private fun exerciseFullscreen(session: Session, retained: JSONObject): JSONObject {
         val activity = session.activity
@@ -531,6 +578,7 @@ class ModelViewerRigTest {
             val immersiveFlags = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             assertEquals("Fullscreen must hide Android status/navigation bars", immersiveFlags, entered.getInt("systemUiVisibility") and immersiveFlags)
             val enteredState = assertPreserved()
+            val enteredControls = assertVerticalHud(webView)
             assertTrue("Fullscreen must give actual model pixels more height",
                 enteredState.getJSONObject("layout").getJSONObject("stage").getDouble("height") > normalLayout.getJSONObject("stage").getDouble("height"))
             val fullscreenFrame = capture(webView)
@@ -552,6 +600,7 @@ class ModelViewerRigTest {
                     (if (originalOrientation == Configuration.ORIENTATION_LANDSCAPE) "v.height>v.width" else "v.width>v.height") + ",state:s});"
             }
             val rendered = capture(webView)
+            val rotatedControls = assertVerticalHud(webView)
             assertEquals(4, rendered.getJSONObject("probe").getInt("sourceTriangles"))
             assertTrue("The rotated fullscreen must render the actual weighted model", rendered.getInt("foregroundPixels") >= 64)
             saveScreenshot(activity, "model-viewer-fullscreen.png")
@@ -586,7 +635,8 @@ class ModelViewerRigTest {
             val afterLifecycle = assertNormal()
             enter()
             val exit = evaluate(webView, "return JSON.stringify(ViewerRigQa.control('viewer-fullscreen',false));")
-            assertTrue("The fullscreen exit must remain a visible, reachable 44 px target", exit.getBoolean("visible") && exit.getBoolean("withinViewport") && exit.getBoolean("hittable") && exit.getDouble("width") >= 44 && exit.getDouble("height") >= 44)
+            assertTrue("The fullscreen exit must retain its compact visible target", exit.getBoolean("visible") && exit.getBoolean("withinViewport") && exit.getBoolean("hittable") &&
+                exit.getDouble("width") >= exit.getInt("minimumTarget") && exit.getDouble("height") >= exit.getInt("minimumTarget"))
             click(webView, "viewer-fullscreen"); waitMode("none")
             val restored = assertNormal()
             waitNativeViewport(session, "the unchanged original preview dimensions") {
@@ -598,6 +648,7 @@ class ModelViewerRigTest {
                     normalLayout.getJSONObject("stage").getDouble("height") + ")<1,state:s});"
             }
             return JSONObject().put("normal", normalNative).put("normalFrame", normalFrame).put("entered", entered)
+                .put("enteredVerticalControls", enteredControls).put("rotatedVerticalControls", rotatedControls)
                 .put("fullscreenFrame", fullscreenFrame).put("rotated", rotated)
                 .put("renderedFullscreen", rendered).put("afterBack", afterBack).put("afterNativeTab", afterNativeTab)
                 .put("afterLifecycle", afterLifecycle).put("restored", restored)

@@ -20,9 +20,10 @@ object ViewerQualityNativeQa {
         evaluate(webView, helper + "\nreturn JSON.stringify({ok:!!window.ViewerQualityQa&&!!window.ViewerRigQa});")
         val control = evaluate(webView, "return JSON.stringify(ViewerRigQa.withViewControls(function(){" +
             "ViewerRigQa.viewControl('viewer-high-quality');return ViewerQualityQa.control();}));")
-        assertTrue("The high-quality label must provide an unobstructed 44 px target: $control",
+        assertTrue("The high-quality label must meet the actual compact HUD target policy: $control",
             !control.getBoolean("disabled") && control.getBoolean("withinViewport") && control.getBoolean("hittable") &&
-                control.getDouble("width") >= 44 && control.getDouble("height") >= 44)
+                control.getDouble("width") >= control.getInt("minimumTarget") &&
+                control.getDouble("height") >= control.getInt("minimumTarget"))
 
         setQuality(webView, false)
         val before = state(webView)

@@ -192,10 +192,11 @@ class ModelViewerWebViewTest {
                 """
                 var buttons=document.querySelectorAll('.viewer-camera-actions button');
                 var fits=buttons.length===5;
+                var minimum=document.getElementById('tab-viewer').classList.contains('viewer-vertical-controls')?32:44;
                 for(var i=0;i<buttons.length;i++){
                   var b=buttons[i],r=b.getBoundingClientRect();
                   var hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
-                  fits=fits&&r.width>=44&&r.height>=44&&r.top>=0&&r.bottom<=window.innerHeight+1&&
+                  fits=fits&&r.width>=minimum&&r.height>=minimum&&r.top>=0&&r.bottom<=window.innerHeight+1&&
                     r.left>=0&&r.right<=window.innerWidth+1&&(hit===b||b.contains(hit));
                 }
                 return JSON.stringify({ok:fits,count:buttons.length,
