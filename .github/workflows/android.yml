@@ -180,10 +180,12 @@ jobs:
           # The server reads the whole harasho master-data tree at startup (assets/db,
           # assets/sql, assets/event, assets/dictionary.json, …) via clientdb.init —
           # without it the server panics ("open assets/db/gl/masterdata_a_en: no such
-          # file"). Bundle assets/ (minus any submodule .git). static/ is NOT bundled:
+          # file"). Bundle assets/ without Git metadata. static/ is NOT bundled:
           # the server rekeys it from assets/ on first start, like the Termux install.
           cp -r assets "$PAY/assets"
-          find "$PAY/assets" -name '.git' -print0 | xargs -0 -r rm -rf
+          # AAPT excludes these Git metadata files. Remove them before computing
+          # the revision so it describes exactly the files in the signed APK.
+          find "$PAY/assets" \( -name '.git' -o -name '.gitignore' -o -name '.gitmodules' \) -print0 | xargs -0 -r rm -rf
           # Host validation bytecode is derived tooling, not official game data.
           # Its source timestamp must not advance the data revision.
           find "$PAY/assets" -type d -name '__pycache__' -prune -exec rm -rf {} +
