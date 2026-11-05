@@ -62,10 +62,18 @@ jobs:
           --expected-version-code "${{ inputs.version_code }}"
           --report release-audit-report.json
 
+      - name: Independently bind the signed revision to every actual payload byte
+        run: >-
+          python3 payload_revision.py verify-apk
+          --apk "candidate/elichika-${{ inputs.version_name }}.apk"
+          --report payload-revision-audit.json
+
       - name: Upload compact audit evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-audit-evidence
-          path: release-audit-report.json
+          path: |
+            release-audit-report.json
+            payload-revision-audit.json
           if-no-files-found: warn

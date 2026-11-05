@@ -5,6 +5,8 @@ import (
 	"elichika/log"
 	"elichika/utils"
 
+	"sort"
+
 	"xorm.io/xorm"
 )
 
@@ -65,7 +67,14 @@ func isTableEmpty(tableName string) bool {
 
 func InitTables() {
 	initializers := []Initializer{}
+	// The official payload is identified by its bytes. A stable creation and
+	// initializer order keeps equal inputs from moving SQLite pages between builds.
+	tableNames := make([]string, 0, len(serverDataTableNameToInterface))
 	for tableName := range serverDataTableNameToInterface {
+		tableNames = append(tableNames, tableName)
+	}
+	sort.Strings(tableNames)
+	for _, tableName := range tableNames {
 		overwrite := rebuildAsset
 		newOrEmpty := createTable(tableName, serverDataTableNameToInterface[tableName], overwrite)
 		newOrEmpty = newOrEmpty || isTableEmpty(tableName)
@@ -75,12 +84,12 @@ func InitTables() {
 	}
 	session := engine.NewSession()
 	defer session.Close()
-	session.Begin()
+	utils.CheckErr(session.Begin())
 	for _, initializer := range initializers {
 		if initializer == nil {
 			continue
 		}
 		initializer(session)
 	}
-	session.Commit()
+	utils.CheckErr(session.Commit())
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -77,12 +78,18 @@ func InitializeDailyTheater(session *xorm.Session) {
 			}
 			members[int32(memberId)] = true
 		}
+		memberIds := make([]int32, 0, len(members))
 		for memberId := range members {
-			session.Table("s_daily_theater_member").Insert(DailyTheaterMember{
+			memberIds = append(memberIds, memberId)
+		}
+		sort.Slice(memberIds, func(i, j int) bool { return memberIds[i] < memberIds[j] })
+		for _, memberId := range memberIds {
+			_, err = session.Table("s_daily_theater_member").Insert(DailyTheaterMember{
 				Language:       dailyTheater.Language,
 				DailyTheaterId: dailyTheater.DailyTheaterId,
 				MemberMasterId: memberId,
 			})
+			utils.CheckErr(err)
 		}
 		return nil
 	})

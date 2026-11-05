@@ -5,6 +5,7 @@ Only synthetic fixtures belong in tests. Reports contain counts and fixed reason
 never database values. No historical SQL script or rebuild_assets is executed.
 """
 from collections import Counter
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import closing
 import functools
 import gzip
@@ -76,6 +77,32 @@ def _is_database(relative):
     return relative == "serverdata.db" or (len(parts) == 4 and parts[:2] == ("assets", "db") and parts[2] in ("gl", "jp") and parts[3].endswith(".db"))
 
 
+def _bind_expected_files(staged, incoming, source_hashes, expected_files):
+    """Bind the already hashed staged bytes to trusted signed-manifest records.
+
+    The production revision wrapper validates the complete signed manifest and
+    its revision/epoch before supplying this map. The core checks the exact
+    consumed file set and records again; it does not infer an epoch or revision
+    from a file map. Existing late staged-input checks still run independently.
+    """
+    reason = "STAGED_PAYLOAD_MANIFEST_MISMATCH"
+    try:
+        _require(isinstance(expected_files, dict) and set(expected_files) == set(incoming), reason)
+        _require(all(path.name in MANAGED for path in staged.iterdir()), reason)
+        for name, record in expected_files.items():
+            _require(isinstance(name, str) and isinstance(record, dict)
+                     and set(record) == {"sha256", "bytes"}
+                     and isinstance(record["sha256"], str)
+                     and re.fullmatch(r"[0-9a-f]{64}", record["sha256"])
+                     and type(record["bytes"]) is int and record["bytes"] >= 0, reason)
+            _require(source_hashes[name] == record["sha256"]
+                     and incoming[name].stat().st_size == record["bytes"], reason)
+    except UpgradeError:
+        raise
+    except Exception:
+        raise UpgradeError(reason) from None
+
+
 def _ro(path):
     return sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
 
@@ -93,7 +120,52 @@ def _snapshot(source, destination):
         raise UpgradeError("DATABASE_SNAPSHOT_FAILED") from None
 
 
-def _copy_tree(source, destination, root, *, skip_databases=(), snapshot_hashes=None):
+def _snapshot_batch(jobs):
+    """Finish independent, checked backups before publishing any certificates.
+
+    Only this pre-merge phase uses workers. Each _snapshot opens and closes its
+    own SQLite connections, while all baseline writes and publication stay on
+    the maintenance owner thread. Submission is bounded as well as execution.
+    The executor joins running jobs even when submission, hashing or result
+    collection raises BaseException; preparation must not remove their tree
+    while a worker could still write into it.
+    """
+    def run(job):
+        source, destination, certificate_name = job
+        _snapshot(source, destination)
+        return _sha(destination) if certificate_name is not None else None
+
+    if len(jobs) < 2:
+        hashes = {}
+        for job in jobs:
+            digest = run(job)
+            if job[2] is not None:
+                hashes[job[2]] = digest
+        return hashes
+    digests, pending, submitted = [None] * len(jobs), {}, 0
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="payload-snapshot") as pool:
+        try:
+            while submitted < 2:
+                pending[pool.submit(run, jobs[submitted])] = submitted
+                submitted += 1
+            while pending:
+                completed, _ = wait(pending, return_when=FIRST_COMPLETED)
+                # Collect every currently completed result before submitting
+                # more work, so a completed failure cannot enqueue later jobs.
+                for future in sorted(completed, key=pending.__getitem__):
+                    index = pending.pop(future)
+                    digests[index] = future.result()
+                while len(pending) < 2 and submitted < len(jobs):
+                    pending[pool.submit(run, jobs[submitted])] = submitted
+                    submitted += 1
+        except BaseException:
+            for future in pending:
+                future.cancel()
+            raise
+    return {job[2]: digests[index] for index, job in enumerate(jobs) if job[2] is not None}
+
+
+def _copy_tree(source, destination, root, *, skip_databases=(), snapshot_hashes=None, snapshot_jobs=None):
     for path in _files(source):
         relative = path.relative_to(root).as_posix()
         # SQLite backup includes committed WAL pages. Transient sidecars must
@@ -106,11 +178,14 @@ def _copy_tree(source, destination, root, *, skip_databases=(), snapshot_hashes=
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         if database:
-            _snapshot(path, target)
-            if snapshot_hashes is not None:
-                # Record bytes only after the consistent snapshot passed its
-                # integrity check. A later clone must match this exact image.
-                snapshot_hashes[relative] = _sha(target)
+            if snapshot_jobs is not None:
+                snapshot_jobs.append((path, target, relative if snapshot_hashes is not None else None))
+            else:
+                _snapshot(path, target)
+                if snapshot_hashes is not None:
+                    # Record bytes only after the consistent snapshot passed its
+                    # integrity check. A later clone must match this exact image.
+                    snapshot_hashes[relative] = _sha(target)
         else:
             shutil.copyfile(path, target)
             target.chmod(0o600)
@@ -628,10 +703,11 @@ def _serialized(function):
 
 
 @_serialized
-def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="upgrade"):
+def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="upgrade", *, expected_files=None):
     root, staged = _root(rootPath), Path(stagedPayloadPath).resolve()
     _require(mode in ("fresh", "reset", "upgrade"), "INVALID_UPGRADE_MODE")
     _require(isinstance(fromVersion, str) and isinstance(toVersion, str) and 0 < len(toVersion) <= 160, "INVALID_VERSION")
+    _require(expected_files is not None or not toVersion.startswith("payload-v1:"), "SIGNED_PAYLOAD_MANIFEST_REQUIRED")
     _require(staged.is_dir() and staged != root and staged.is_relative_to(root / ".payload-incoming"), "INVALID_STAGING_PATH")
     _require(not (root / META / "journal.json").exists(), "RECOVERY_REQUIRED")
     actual_version = (root / MARKER).read_text().strip() if (root / MARKER).is_file() else ""
@@ -643,6 +719,10 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     _require(mode != "fresh" or not any(_is_database(path.relative_to(root).as_posix()) for name in MANAGED for path in _files(root / name)), "FRESH_RUNTIME_ALREADY_HAS_DATABASES")
     inputs = _inputs(root)
     source_hashes = {name: _sha(path) for name, path in incoming.items()}
+    if expected_files is not None:
+        # This barrier precedes any new private work, space allocation or reuse
+        # of an older preparation, without hashing the whole payload twice.
+        _bind_expected_files(staged, incoming, source_hashes, expected_files)
     retain_static = mode == "upgrade" and (root / "static").exists() and not (staged / "static").exists()
     private_root = root / META
     private_root.mkdir(mode=0o700, exist_ok=True)
@@ -668,6 +748,7 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     backup.mkdir(mode=0o700)
     prior = baseline = None
     snapshot_hashes = {}
+    snapshot_jobs = []
     output_integrity_certificates = {}
     try:
         coverage = _coverage(staged)
@@ -675,9 +756,10 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
             source = root / name
             if source.exists():
                 if name in ("userdata.db", "serverstate.db"):
-                    _snapshot(source, backup / name)
+                    snapshot_jobs.append((source, backup / name, None))
                 else:
-                    _copy_tree(source, backup, root, snapshot_hashes=snapshot_hashes)
+                    _copy_tree(source, backup, root, snapshot_hashes=snapshot_hashes, snapshot_jobs=snapshot_jobs)
+        snapshot_hashes.update(_snapshot_batch(snapshot_jobs))
         if mode == "upgrade":
             incoming_databases = frozenset(dbs)
             for name in MANAGED:
@@ -702,6 +784,10 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
         baseline.execute("INSERT INTO meta VALUES('payload_version',?)", (toVersion,))
         baseline.execute("INSERT INTO meta VALUES('format','1')")
         totals = {"databases": len(dbs), "inserted": 0, "advanced": 0, "owner_rows_preserved": 0, "unkeyed_tables_preserved": 0, "packages_refreshed": 0, "unchanged_stock_databases_reused": 0}
+        # These describe the completed backup batch and its configured limit,
+        # not sampled runtime concurrency or later owner-only snapshots.
+        totals["backup_snapshot_databases"] = len(snapshot_jobs)
+        totals["backup_snapshot_worker_limit"] = min(2, len(snapshot_jobs))
         manifest_versions = {}
         for relative, source in sorted(incoming.items()):
             destination = next_root / relative
@@ -926,12 +1012,16 @@ def request_rebase(rootPath, reason="database_restore"):
     return {"status": "REBASE_REQUIRED"}
 
 
-def apply_upgrade_json(root, staged, from_version, to_version, mode="upgrade"):
+def apply_upgrade_json(root, staged, from_version, to_version, mode="upgrade", *, expected_files=None):
     @_serialized
     def apply(rootPath):
         recover_upgrade(rootPath)
         _validate_production_payload(rootPath, staged)
-        prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode)
+        if expected_files is None:
+            prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode)
+        else:
+            prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode,
+                                       expected_files=expected_files)
         _validate_prepared_contract(_root(rootPath), prepared)
         return commit_upgrade(rootPath, prepared["transaction_id"])
     return _json_call(apply, root)

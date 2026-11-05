@@ -42,8 +42,10 @@ jobs:
       apk_sha256: ${{ steps.layout.outputs.sha256 }}
       version_name: ${{ steps.ver.outputs.name }}
       version_code: ${{ steps.ver.outputs.code }}
+      noop_probe_sha256: ${{ steps.noop_probe.outputs.sha256 }}
     env:
       NDK_VERSION: "28.2.13676358"
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout elichika (with harasho + modtools submodules)
         uses: actions/checkout@v4
@@ -69,7 +71,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.22.12"
 
       - name: Validate SQL migrations, mappings and locale text
         run: |
@@ -142,6 +144,23 @@ jobs:
           python3 tests/validate_runtime.py .
           python3 assets/tests/validate_localization.py --runtime .
 
+      - name: Regenerate final server data twice and require byte-identical output
+        run: |
+          set -euo pipefail
+          python3 android/ci/build_deterministic_serverdata.py \
+            --runtime . --binary ./elichika_host --build-only \
+            --report "$RUNNER_TEMP/deterministic-serverdata.json"
+          python3 tests/validate_runtime.py .
+          python3 assets/tests/validate_localization.py --runtime .
+
+      - name: Upload deterministic official data evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deterministic-serverdata-evidence
+          path: ${{ runner.temp }}/deterministic-serverdata.json
+          if-no-files-found: warn
+
       - name: Assemble bundled payload
         run: |
           set -eux
@@ -161,10 +180,20 @@ jobs:
           # The server reads the whole harasho master-data tree at startup (assets/db,
           # assets/sql, assets/event, assets/dictionary.json, …) via clientdb.init —
           # without it the server panics ("open assets/db/gl/masterdata_a_en: no such
-          # file"). Bundle assets/ (minus any submodule .git). static/ is NOT bundled:
+          # file"). Bundle assets/ without Git metadata. static/ is NOT bundled:
           # the server rekeys it from assets/ on first start, like the Termux install.
           cp -r assets "$PAY/assets"
-          find "$PAY/assets" -name '.git' -print0 | xargs -0 -r rm -rf
+          # AAPT excludes these Git metadata files. Remove them before computing
+          # the revision so it describes exactly the files in the signed APK.
+          find "$PAY/assets" \( -name '.git' -o -name '.gitignore' -o -name '.gitmodules' \) -print0 | xargs -0 -r rm -rf
+          # Host validation bytecode is derived tooling, not official game data.
+          # Its source timestamp must not advance the data revision.
+          find "$PAY/assets" -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find "$PAY/assets" -type f -name '*.pyc' -delete
+          python3 payload_revision.py create --payload "$PAY" \
+            --output android/app/src/main/assets/payload_revision.json
+          python3 payload_revision.py verify --payload "$PAY" \
+            --manifest android/app/src/main/assets/payload_revision.json
           echo "payload sizes (static/ measured for info, not bundled):"
           du -sh "$PAY/assets" "$PAY/serverdata.db" "$PAY" static 2>/dev/null || true
 
@@ -186,10 +215,11 @@ jobs:
           [ -d modtools/live_timeline ] && cp -r modtools/live_timeline "$PY/" || true
           # The mandatory installer must be our reviewed module, even if a tools
           # checkout happens to ship a module with the same name.
-          cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py "$PY/"
+          cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py "$PY/"
           cmp payload_db_upgrade.py "$PY/payload_db_upgrade.py"
           cmp database_maintenance.py "$PY/database_maintenance.py"
           cmp payload_file_hash.py "$PY/payload_file_hash.py"
+          cmp payload_revision.py "$PY/payload_revision.py"
           # drop the host build artifact if it landed in python/
           rm -f "$PY/elichika_host"
           # Vendor UnityPy so the bundle-editing tools import it instantly instead
@@ -333,6 +363,7 @@ jobs:
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
           python3 android/ci/audit_native.py "$APK" --report android-native-layout.json
+          python3 payload_revision.py verify-apk --apk "$APK" --report payload-revision-audit.json
           echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
       - name: Upload native layout evidence
@@ -341,6 +372,14 @@ jobs:
         with:
           name: android-native-layout-evidence
           path: android-native-layout.json
+          if-no-files-found: warn
+
+      - name: Upload final APK payload revision evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload-revision-audit-evidence
+          path: payload-revision-audit.json
           if-no-files-found: warn
 
       - name: Upload release APK
@@ -358,21 +397,66 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           mkdir -p app/src/androidTest/assets
           cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
           cp ../tests/android_payload_upgrade_benchmark.py app/src/androidTest/assets/android_payload_upgrade_benchmark.py
-          python3 ci/generate_server_config_payload.py \
-            --output app/build/generated/serverConfigTestAssets/payload
           ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
             -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
             -PappVersionName="${{ steps.ver.outputs.name }}" \
             -PappVersionCode="${{ steps.ver.outputs.code }}"
+          test_apks=(app/build/outputs/apk/androidTest/release/*.apk)
+          test "${#test_apks[@]}" -eq 1
+          test -f "${test_apks[0]}"
+          python3 ../payload_revision.py verify-apk \
+            --apk "${test_apks[0]}" \
+            --report "$GITHUB_WORKSPACE/instrumentation-payload-revision-audit.json"
+
+      - name: Upload instrumentation APK payload revision evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumentation-payload-revision-audit-evidence
+          path: instrumentation-payload-revision-audit.json
+          if-no-files-found: warn
 
       - name: Upload native-package instrumentation APK
         uses: actions/upload-artifact@v4
         with:
           name: elichika-native-test-apk
           path: android/app/build/outputs/apk/androidTest/release/*.apk
+          if-no-files-found: error
+
+      - name: Build a QA-only same-data APK with a different application version
+        id: noop_probe
+        working-directory: android
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          PRODUCTION_VERSION_NAME: ${{ steps.ver.outputs.name }}
+          PRODUCTION_VERSION_CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          set -euo pipefail
+          probe_code=$((PRODUCTION_VERSION_CODE + 1))
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace \
+            -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
+            -PappVersionName="${PRODUCTION_VERSION_NAME}-qa-noop" \
+            -PappVersionCode="$probe_code"
+          mkdir -p "$GITHUB_WORKSPACE/noop-probe"
+          cp app/build/outputs/apk/release/app-release.apk \
+            "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk"
+          python3 ../payload_revision.py verify-apk \
+            --apk "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk" \
+            --report "$GITHUB_WORKSPACE/noop-probe-audit.json"
+          echo "sha256=$(sha256sum "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload QA-only version-change probe separately from the release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-revision-noop-probe-apk
+          path: noop-probe/*.apk
           if-no-files-found: error
 
   native-compatibility:
@@ -389,6 +473,7 @@ jobs:
       candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
       version_name: ${{ needs.build.outputs.version_name }}
       version_code: ${{ needs.build.outputs.version_code }}
+      noop_probe_sha256: ${{ needs.build.outputs.noop_probe_sha256 }}
 
   apk-audit:
     needs: build

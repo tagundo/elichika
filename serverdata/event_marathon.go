@@ -11,6 +11,7 @@ import (
 	// "encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	// "path/filepath"
 	// "strings"
 
@@ -118,7 +119,13 @@ func initEventMarathon(session *xorm.Session) {
 		_, err = session.Table("s_event_marathon").Insert(eventMarathon)
 		utils.CheckErr(err)
 		log.Println(eventMarathon)
-		for language, name := range eventMarathon.EventName {
+		languages := make([]string, 0, len(eventMarathon.EventName))
+		for language := range eventMarathon.EventName {
+			languages = append(languages, language)
+		}
+		sort.Strings(languages)
+		for _, language := range languages {
+			name := eventMarathon.EventName[language]
 			_, err = session.Table("s_dictionary_" + language).Insert(DictionaryItem{
 				Id:      fmt.Sprintf("event_name_%d", eventMarathon.EventId),
 				Message: name,

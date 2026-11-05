@@ -5,6 +5,7 @@ import (
 	"elichika/utils"
 
 	"encoding/json"
+	"sort"
 
 	"xorm.io/xorm"
 )
@@ -28,7 +29,13 @@ func initDictionary(session *xorm.Session) {
 	err = json.Unmarshal([]byte(text), &values)
 	utils.CheckErr(err)
 	items := map[string][]DictionaryItem{}
-	for id, value := range values {
+	ids := make([]string, 0, len(values))
+	for id := range values {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		value := values[id]
 		items["ja"] = append(items["ja"], DictionaryItem{
 			Id:      id,
 			Message: *value.Ja,
@@ -46,7 +53,8 @@ func initDictionary(session *xorm.Session) {
 			Message: *value.Zh,
 		})
 	}
-	for language, values := range items {
+	for _, language := range []string{"en", "ja", "ko", "zh"} {
+		values := items[language]
 		_, err = session.Table("s_dictionary_" + language).Insert(values)
 		utils.CheckErr(err)
 	}

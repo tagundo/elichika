@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 
+
 PACKAGE = "com.tagundo.elichika"
 FILES = f"/data/user/0/{PACKAGE}/files"
 OLD_SHA = "0bdeee9f6f725fa1a8146af49b8f832a5b86f5c962fc1c1b83c2e5bd3156cf95"
@@ -67,10 +68,12 @@ class Android:
         self.shell("am", "force-stop", PACKAGE)
 
     def install(self, apk, expected_version):
+        from android_payload_noop_probe import sha_file
+
         output = self.adb("install", "-r", str(apk), timeout=180)
         assert "Success" in output, output
         info = self.shell("dumpsys", "package", PACKAGE)
-        assert f"versionCode={expected_version}" in info, "Installed version mismatch"
+        assert re.search(rf"\bversionCode={expected_version}(?:\s|$)", info), "Installed version mismatch"
         assert "primaryCpuAbi=arm64-v8a" in info, "Installed APK is not native ARM64"
         self.evidence.joinpath(f"package-{expected_version}.txt").write_text(info)
         api = int(self.shell("getprop", "ro.build.version.sdk"))
@@ -81,14 +84,18 @@ class Android:
         else:
             self.shell("pm", "grant", PACKAGE, "android.permission.WRITE_EXTERNAL_STORAGE")
             self.shell("pm", "grant", PACKAGE, "android.permission.READ_EXTERNAL_STORAGE")
-        apk_path = self.shell("pm", "path", PACKAGE).splitlines()[0].removeprefix("package:")
+        locations = self.shell("pm", "path", PACKAGE).splitlines()
+        assert len(locations) == 1 and locations[0].startswith("package:"), "Unexpected installed APK set"
+        apk_path = locations[0].removeprefix("package:")
+        installed_sha = self.shell("sha256sum", apk_path).split()[0]
+        assert installed_sha == sha_file(apk), "Android installed different APK bytes"
         native = str(Path(apk_path).parent / "lib/arm64/libelichika.so")
         actual_native = self.shell("sha256sum", native).split()[0]
         with zipfile.ZipFile(apk) as archive:
             expected_native = sha(archive.read("lib/arm64-v8a/libelichika.so"))
         assert actual_native == expected_native, "Android installed a different native server"
         self.native_sha = actual_native
-        return {"version_code": expected_version, "native_sha256": actual_native}
+        return {"version_code": expected_version, "native_sha256": actual_native, "apk_sha256": installed_sha}
 
     def start(self, label):
         self.shell("am", "start", "-W", "-n", f"{PACKAGE}/.MainActivity")
@@ -309,8 +316,12 @@ class Client:
 
 
 def run(args, report):
+    from android_payload_noop_probe import payload_revision, run_noop_probe, sha_file, verify_noop_probe
+
     android = Android(args.serial, args.evidence)
     assert android.shell("id").startswith("uid=0"), "Disposable Android must permit root diagnostics"
+    assert android.shell("getprop", "ro.hardware") == "redroid", "Disposable Android must be private Redroid"
+    assert android.shell("getprop", "ro.product.cpu.abi") == "arm64-v8a", "Disposable Android must be native ARM64"
     report["environment"] = {"android": android.shell("getprop", "ro.build.version.release"),
                              "api": android.shell("getprop", "ro.build.version.sdk"),
                              "abi": android.shell("getprop", "ro.product.cpu.abi"),
@@ -319,8 +330,15 @@ def run(args, report):
                              "page_size": subprocess.check_output(["getconf", "PAGESIZE"], text=True).strip(),
                              "type": "native ARM64 Redroid container; not a physical phone"}
     for apk, expected in ((args.old, OLD_SHA), (args.candidate, args.candidate_sha256)):
-        assert sha(apk.read_bytes()) == expected, "APK digest differs from audited artifact"
+        assert sha_file(apk) == expected, "APK digest differs from audited artifact"
     report["apk_sha256"] = {"official": OLD_SHA, "candidate": args.candidate_sha256}
+    expected_revision = payload_revision(args.candidate)
+    report["candidate_payload_revision"] = expected_revision
+    noop_directory = getattr(args, "noop_probe_dir", None)
+    noop_sha = getattr(args, "noop_probe_sha256", None)
+    assert bool(noop_directory) == bool(noop_sha), "No-op companion directory and SHA must be supplied together"
+    noop_apk, noop_binding = (verify_noop_probe(args.candidate, noop_directory, noop_sha, args.evidence)
+                              if noop_directory else (None, None))
     with tempfile.TemporaryDirectory(prefix="android-release-smoke-") as directory:
         temporary = Path(directory)
         public = temporary / "publickey.pem"
@@ -373,12 +391,20 @@ def run(args, report):
         actual_config = json.loads(android.read(f"{FILES}/config.json"))
         assert all(actual_config[key] == config[key]
                    for key in ("cdn_cache", "cdn_cache_dir", "webui_language", "locales")), "User settings lost"
-        assert str(args.version_code) in android.read(f"{FILES}/installed_version").decode()
+        assert android.read(f"{FILES}/installed_version").decode().strip() == expected_revision, "Data revision receipt mismatch"
+        descriptor = json.loads(android.read(f"{FILES}/.payload-upgrade/current.json"))
+        assert descriptor["payload_version"] == expected_revision, "Managed descriptor revision mismatch"
+        baseline_copy = temporary / "candidate-baseline-metadata.db"
+        baseline_copy.write_bytes(android.read(f"{FILES}/.payload-upgrade/baseline.sqlite"))
+        with sqlite3.connect(baseline_copy) as baseline:
+            assert baseline.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+            assert baseline.execute("SELECT value FROM meta WHERE key='payload_version'").fetchone() == (expected_revision,)
         assert "ko" in android.read(prefs).decode()
         for name, content in shared.items():
             assert android.read("/sdcard/Download/sukusta/" + name) == content, "Shared user file lost"
         report["update_preservation"] = {"account_database": True, "accounts": after["accounts"],
                                          "config": True, "app_language": True, "version_marker": True,
+                                         "data_revision_receipt_descriptor_baseline": True,
                                          "shared_cache_addon_backup_files": True}
         report["gameplay"] = {}
         for client in clients:
@@ -397,12 +423,20 @@ def run(args, report):
             client.login()
         report["restart"]["retained_accounts_can_login"] = True
         android.stop()
+        if noop_apk is not None:
+            run_noop_probe(android, args.candidate, noop_apk, noop_binding, args.version_code,
+                           clients, temporary, shared, report)
+        # Uninstall the QA-only higher-version companion before reinstalling
+        # the untouched original candidate. Normal instrumentation therefore
+        # always exercises the exact release APK, never the companion variant.
         android.adb("uninstall", PACKAGE)
         report["fresh_install"] = android.install(args.candidate, args.version_code)
         report["fresh_start"] = android.start("candidate-fresh")
         fresh = Client("ko", public)
         fresh.create()
         fresh.login()
+        assert android.read(f"{FILES}/installed_version").decode().strip() == expected_revision
+        assert json.loads(android.read(f"{FILES}/.payload-upgrade/current.json"))["payload_version"] == expected_revision
         fresh_config = json.loads(android.read(f"{FILES}/config.json"))
         assert fresh_config["cdn_cache"] is True, "Fresh-install CDN default is not enabled"
         report["fresh_start"].update({"new_account_login": True, "cdn_cache_default": True})
@@ -415,13 +449,15 @@ def main():
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--candidate-sha256", required=True)
     parser.add_argument("--version-code", type=int, required=True)
+    parser.add_argument("--noop-probe-dir", type=Path)
+    parser.add_argument("--noop-probe-sha256")
     parser.add_argument("--serial", default="127.0.0.1:5555")
     parser.add_argument("--evidence", type=Path, required=True)
     args = parser.parse_args()
     args.evidence.mkdir(parents=True, exist_ok=True)
     report = {"status": "RUNNING", "limits": ["No physical phone or original game client playback",
               "Host kernel page size applies; 16 KB compatibility is not proven",
-              "Synthetic accounts only; customized master-data restoration is outside this smoke test"]}
+              "Synthetic accounts and controlled GL owner catalog/dictionary modifications only; no original game playback"]}
     try:
         run(args, report)
     except Exception as exc:

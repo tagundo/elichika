@@ -7,6 +7,11 @@ import java.io.File
 /** Mandatory, synchronous bridge; failures prevent preparation and server launch. */
 internal object PayloadUpgrade {
     private val reasonCode = Regex("[a-zA-Z0-9_.:-]{1,100}")
+    private val revisionCode = Regex("payload-v1:[0-9a-f]{64}")
+
+    data class Decision(val action: String, val revision: String, val fromVersion: String) {
+        val requiresUpdate: Boolean get() = action != "skip"
+    }
 
     fun <T> withMaintenance(context: Context, root: File, action: () -> T): T {
         val lease = invoke(context, "database_maintenance", "begin_maintenance_json", root.absolutePath)
@@ -30,9 +35,21 @@ internal object PayloadUpgrade {
         }
     }
 
-    fun apply(context: Context, root: File, payload: File, from: String?, to: String, mode: String) {
-        val result = invoke(context, "payload_db_upgrade", "apply_upgrade_json", root.absolutePath,
-            payload.absolutePath, from.orEmpty(), to, mode)
+    fun decide(context: Context, root: File, manifest: String, reset: Boolean): Decision {
+        val result = invoke(context, "payload_revision", "decide_json", root.absolutePath, manifest, reset)
+        requireStatus(result, setOf("READY"))
+        val action = result.optString("action")
+        val revision = result.optString("revision")
+        check(action in setOf("skip", "upgrade", "fresh", "reset") && revisionCode.matches(revision)) {
+            "Game-data update refused (INVALID_REVISION_DECISION)"
+        }
+        return Decision(action, revision, result.getString("from_version"))
+    }
+
+    fun apply(context: Context, root: File, payload: File, from: String?, to: String,
+              mode: String, manifest: String) {
+        val result = invoke(context, "payload_revision", "apply_json", root.absolutePath,
+            payload.absolutePath, from.orEmpty(), to, mode, manifest)
         requireStatus(result, setOf("COMMITTED"))
         check(File(root, "installed_version").readText().trim() == to) {
             "Game-data update did not publish its completion marker"

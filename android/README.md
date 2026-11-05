@@ -40,13 +40,42 @@ The Kotlin layer only knows how to: run the binary, host WebViews, and dispatch
 
 ## Updating an installation with mods
 
-`AssetInstaller` stages the incoming payload without overwriting live databases.
+`AssetInstaller` runs the shared `PayloadPreparation` path under maintenance.
+Recovery completes before the signed `payload_revision.json` is read or any
+staging is removed. APK versions are informational; `installed_version`, the
+committed receipt and the stock baseline carry the official data revision.
+The first update from an APK-version marker performs one ordinary merge.
+Later APK-only updates with identical official data and compatibility epoch
+skip extraction, new backups and merging. This admission checks bounded
+receipts and required file names without hashing modded live game databases.
+Settings, language and cache helpers still run. A real data/epoch change,
+missing required file, restore rebase or explicit reset takes the update path;
+incomplete provenance refuses preparation rather than discarding mods.
+
+The revision hashes every final managed payload file and an explicit consumer
+compatibility epoch. CI regenerates `serverdata.db` twice from empty files after
+the final client migrations and outfit ordering, requiring identical raw bytes
+and unchanged inputs. Table and keyed insertion order are deterministic.
+The manifest lives outside `payload/`, is verified against the finished APK,
+and is bound again to the updater's actual staged hashes and sizes before any
+backup or prepared-transaction reuse. Bump `COMPATIBILITY_EPOCH` in
+`payload_revision.py` whenever a new installer/consumer contract requires a
+merge despite unchanged official bytes; performance-only or UI changes do not.
+
+When an update is required, `AssetInstaller` stages the incoming payload without overwriting live databases.
 The canonical `payload_db_upgrade.py` then snapshots the coupled game databases,
 merges the initialized APK data into copies, validates them, and publishes a
 recoverable transaction. `installed_version` is published last. Account data,
 configuration, server state and the shared pack cache are not replaced during a
 normal update. `serverdata.db` is merged too: it can contain owner gacha and other
 mod settings, so calling `rebuild_assets` would discard part of the mod state.
+
+Pre-merge backups use at most two independent SQLite workers with at most two
+submitted jobs. Each worker opens its own connections and performs the full
+backup and integrity check. All active jobs finish before error cleanup, and
+snapshot certificates publish only after the complete batch succeeds. Baseline
+writes, merging and publication remain on the maintenance owner thread; late
+hash, sidecar, durability and rollback checks are retained.
 
 The first upgrade from an older APK has no trusted stock baseline. Existing rows
 therefore win and missing stock rows are added. Later upgrades compare against
@@ -108,6 +137,9 @@ The Go binary, the bundled data payload and the embedded Python sources are
   `serverdata.db` (built on the runner via `rebuild_assets`). Extracted to the
   app files dir by `AssetInstaller`. Configuration is created on the device;
   account databases and user configuration are never included in the payload.
+- `app/src/main/assets/payload_revision.json` — the raw final-payload manifest
+  and compatibility epoch, independent of the APK version. Its contents are
+  checked again against every payload byte in the release APK.
 - `app/src/main/python/` — `adminui/` and the dev installer scripts (this repo),
   plus `webtools/` and the modding scripts from the **`modtools/` git submodule**
   (SIFAS-MODDING-HELPING-TOOLS), alongside the committed `elichika_launch.py`. CI
@@ -187,6 +219,11 @@ Physical-device and original-game-client behavior require further device checks.
 Run **Build Android APK** with an empty `release_tag` to generate APKs and all
 verification artifacts without publication. Inspect the native layout, runtime,
 instrumentation and signed-APK audit artifacts for the exact APK digest tested.
+The build also produces a separately named QA-only companion APK with the same
+payload, Python and native files and a different APK version. The Android gate
+installs it over the candidate and checks retained mods, accounts, receipts and
+backups with no new staging or transaction, then reinstalls the original for
+instrumentation. Only the original release artifact is published.
 
 ## Publishing a public release (GitHub Releases)
 
