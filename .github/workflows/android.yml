@@ -48,36 +48,60 @@ jobs:
                   NSApp.activate(ignoringOtherApps: true)
                   view.loadHTMLString("<html><body><h1>Elichika native WebKit probe</h1><canvas id='c' width='256' height='256'></canvas></body></html>",
                                       baseURL: URL(string: "http://127.0.0.1/"))
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [self] in
+                  DispatchQueue.main.asyncAfter(deadline: .now() + 45) { [self] in
                       if !finished { finish(["status":"TIMEOUT"]) }
                   }
               }
               func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
                   let js = """
-                  (() => {
-                    const c=document.getElementById('c');
-                    const gl=c.getContext('webgl2')||c.getContext('webgl');
-                    if(!gl)return JSON.stringify({status:'CAPABILITY',webgl:false,userAgent:navigator.userAgent});
-                    gl.clearColor(0.1,0.2,0.7,1);gl.clear(gl.COLOR_BUFFER_BIT);
-                    const p=new Uint8Array(4);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,p);
-                    const d=gl.getExtension('WEBGL_debug_renderer_info');
-                    return JSON.stringify({status:'CAPABILITY',webgl:true,version:gl.getParameter(gl.VERSION),
-                      renderer:d?gl.getParameter(d.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),
-                      pixel:Array.from(p),error:gl.getError(),userAgent:navigator.userAgent});
-                  })()
+                  (async () => {
+                    const results=[];
+                    for(const api of ['webgl2','webgl']) {
+                      const c=document.createElement('canvas');c.width=256;c.height=256;document.body.appendChild(c);
+                      let lost=0,restored=0;c.addEventListener('webglcontextlost',e=>{e.preventDefault();lost++});
+                      c.addEventListener('webglcontextrestored',()=>{restored++});
+                      const gl=c.getContext(api);const attempts=[];
+                      if(!gl){results.push({api,available:false});continue}
+                      for(let k=0;k<6;k++) {
+                        await new Promise(r=>setTimeout(r,800));
+                        await Promise.race([new Promise(requestAnimationFrame),new Promise(r=>setTimeout(r,100))]);
+                        const isLost=gl.isContextLost();
+                        if(isLost){attempts.push({lost:true});continue}
+                        gl.clearColor(.1,.2,.7,1);gl.clear(gl.COLOR_BUFFER_BIT);
+                        const pixels=new Uint8Array(4);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+                        const error=gl.getError(),d=gl.getExtension('WEBGL_debug_renderer_info');
+                        const entry={error,pixel:Array.from(pixels),version:gl.getParameter(gl.VERSION),
+                          renderer:d?gl.getParameter(d.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)};
+                        attempts.push(entry);
+                        if(!error&&pixels[3]===255&&pixels[2]>150) {
+                          results.push({api,lost,restored,attempts});
+                          window.__probeReport={status:'CAPABILITY',rendered:true,results,userAgent:navigator.userAgent};return
+                        }
+                      }
+                      results.push({api,lost,restored,attempts});
+                    }
+                    window.__probeReport={status:'CAPABILITY',rendered:false,results,userAgent:navigator.userAgent};
+                  })().catch(e=>{window.__probeReport={status:'JS_ERROR',error:String(e)}});void 0
                   """
-                  webView.evaluateJavaScript(js) { [self] value, error in
-                      var report: [String:Any] = ["status":"JS_ERROR", "error":error?.localizedDescription ?? ""]
-                      if let text = value as? String, let data = text.data(using:.utf8),
-                         let object = try? JSONSerialization.jsonObject(with:data) as? [String:Any] { report=object }
+                  webView.evaluateJavaScript(js) { [self] _, error in
+                      if let error=error { finish(["status":"JS_ERROR","error":error.localizedDescription]);return }
+                      poll()
+                  }
+              }
+              func poll() {
+                  guard !finished else { return }
+                  view.evaluateJavaScript("window.__probeReport?JSON.stringify(window.__probeReport):null") { [self] value,error in
+                      guard let text=value as? String,let data=text.data(using:.utf8),
+                            let report=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] else {
+                          DispatchQueue.main.asyncAfter(deadline:.now()+1) { [self] in poll() };return
+                      }
                       DispatchQueue.main.asyncAfter(deadline:.now()+2) { [self] in
                           view.takeSnapshot(with:nil) { [self] image, snapshotError in
                               var result=report
                               result["snapshotError"]=snapshotError?.localizedDescription ?? ""
-                              if let tiff=image?.tiffRepresentation, let bitmap=NSBitmapImageRep(data:tiff),
+                              if let tiff=image?.tiffRepresentation,let bitmap=NSBitmapImageRep(data:tiff),
                                  let png=bitmap.representation(using:.png,properties:[:]) {
-                                  try? png.write(to:output.appendingPathComponent("webkit.png"))
-                                  result["snapshotBytes"]=png.count
+                                  try? png.write(to:output.appendingPathComponent("webkit.png"));result["snapshotBytes"]=png.count
                               }
                               finish(result)
                           }
