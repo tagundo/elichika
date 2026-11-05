@@ -6,7 +6,7 @@ on:
       probe:
         description: Capability to measure
         type: choice
-        options: [quit, runtime]
+        options: [quit, runtime, relocation]
         default: quit
 
 permissions:
@@ -204,4 +204,67 @@ jobs:
         with:
           name: appkit-termination-probe
           path: ${{ runner.temp }}/appkit-quit-probe/
+          if-no-files-found: warn
+
+  app-container-relocation:
+    if: inputs.probe == 'relocation'
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Measure signed app relocation and protected Contents on Darwin
+        run: |
+          /usr/bin/python3 - <<'PY'
+          import errno, json, os, pathlib, plistlib, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'app-container-relocation-probe'
+          app = root / 'original/Elichika.app'
+          target = root / '이동한 Elichika 앱/Elichika.app'
+          contents = app / 'Contents'
+          executable = contents / 'MacOS/Elichika'
+          source = contents / 'Resources/shared-tool.py'
+          executable.parent.mkdir(parents=True)
+          source.parent.mkdir(parents=True)
+          target.parent.mkdir(parents=True)
+          source.write_text('# preserved shared source\n')
+          for path in [app,contents,*contents.rglob('*')]:
+              path.chmod(0o755 if path.is_dir() else 0o644)
+          subprocess.run(['/usr/bin/clang','-x','c','-o',str(executable),'-'],
+              input='int main(void) { return 0; }\n',text=True,check=True)
+          (contents/'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':'Elichika',
+              'CFBundleIdentifier':'com.tagundo.elichika.move-probe','CFBundleName':'Elichika',
+              'CFBundlePackageType':'APPL','CFBundleVersion':'1','CFBundleShortVersionString':'1.0'}))
+          subprocess.run(['/usr/bin/codesign','--force','--sign','-',str(executable)],check=True)
+          subprocess.run(['/usr/bin/codesign','--force','--sign','-',str(app)],check=True)
+          for path in [*app.rglob('*'),app]:
+              path.chmod(path.stat().st_mode & ~0o222)
+          report={'scope':'Darwin signed app container permission capability; production source unchanged'}
+          before={path.relative_to(app).as_posix():oct(path.stat().st_mode & 0o777) for path in contents.rglob('*')}
+          try:
+              os.rename(app,target)
+          except OSError as error:
+              report['root_0555_rename']={'failed':True,'errno':error.errno,'message':error.strerror}
+          else:
+              report['root_0555_rename']={'failed':False}
+              os.rename(target,app)
+          app.chmod(0o755)
+          subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict',str(app)],check=True)
+          os.rename(app,target)
+          assert not app.exists() and target.is_dir()
+          after={path.relative_to(target).as_posix():oct(path.stat().st_mode & 0o777) for path in (target/'Contents').rglob('*')}
+          assert before==after and target.stat().st_mode & 0o777 == 0o755
+          assert (target/'Contents').stat().st_mode & 0o777 == 0o555
+          assert (target/'Contents/MacOS/Elichika').stat().st_mode & 0o777 == 0o555
+          assert (target/'Contents/Resources/shared-tool.py').stat().st_mode & 0o777 == 0o444
+          subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict',str(target)],check=True)
+          subprocess.run([str(target/'Contents/MacOS/Elichika')],check=True)
+          report.update(status='PASS',root_0755_rename='PASS',original_path_removed=not app.exists(),
+              signed_contents_modes_unchanged=True,signature_before_and_after='PASS',relocated_executable='PASS',modes=after)
+          (root/'relocation-report.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Upload Darwin relocation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-container-relocation-probe
+          path: ${{ runner.temp }}/app-container-relocation-probe/relocation-report.json
           if-no-files-found: warn
