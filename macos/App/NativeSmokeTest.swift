@@ -65,13 +65,44 @@ final class NativeSmokeTest {
             let original = try Data(contentsOf: source)
             let originalHash = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
             try require(originalHash == "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1", "The bundled neutral fixture changed.")
+            let zipSource = directory.appendingPathComponent("분수 의상.zip")
+            let originalZIP = try Data(contentsOf: zipSource)
+            let zipHash = SHA256.hash(data: originalZIP).map { String(format: "%02x", $0) }.joined()
+            report["fixture_sha256"] = originalHash
+            report["source_zip_sha256"] = zipHash
             try checkpoint("native-open-model")
             _ = try await js(webView, "return await ElichikaPlatform.perform('openModel');")
             try await loaded(webView)
             report["native_file_bridge_and_authorization"] = true
             try checkpoint("model-rendered")
             let baseline = try await vertices(webView)
-            _ = try await js(webView, "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-node-editor').open=true;document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.boneInput('LeftUpLeg','scale','Y',1.2);ViewerRigQa.input('viewer-save-method','mesh','change');document.getElementById('viewer-editor-node-tab').click();ViewerRigQa.boneInput('BreastSize','scale','Z',1.15);ViewerRigQa.input('viewer-save-method','node','change');return true;")
+            _ = try await js(webView, "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-node-editor').open=true;document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.boneInput('LeftUpLeg','scale','X',1.17);ViewerRigQa.boneInput('LeftUpLeg','scale','Y',1.234567);ViewerRigQa.boneInput('LeftUpLeg','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','mesh','change');document.getElementById('viewer-editor-node-tab').click();ViewerRigQa.boneInput('BreastSize','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','node','change');document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('LeftUpLeg'),'change');return true;")
+            let fractionalControls = try await object(webView, """
+                var inputs=Array.from(document.querySelectorAll('#viewer-node-fields input'));
+                function field(kind,axis){return inputs.find(function(input){return input.dataset.viewerNodeKind===kind&&input.dataset.axis===axis;});}
+                var authored=ModelViewer.getAuthoringState(),s=ModelViewer.getState();
+                return JSON.stringify({offGridInputs:inputs.filter(function(input){return input.validity.stepMismatch;}).map(function(input){return {kind:input.dataset.viewerNodeKind,axis:input.dataset.axis,value:input.value,step:input.step};}),
+                  saveEnabled:!document.getElementById('viewer-save').disabled,unsupported:authored.unsupported,
+                  selectedLeftUpLeg:String(s.rig.selectedNode)===String(ViewerRigQa.nodeId('LeftUpLeg')),
+                  spinnerStepsPreserved:field('scale','Y').step==='0.001'&&field('position','Y').step==='0.001'&&field('rotation','X').step==='1',
+                  originalPositionY:Number(field('position','Y').value),originalRotationX:Number(field('rotation','X').value),
+                  selectedZIP:s.loadedPaths.length===1&&s.loadedPaths[0].endsWith('/분수 의상.zip')});
+                """)
+            let offGrid = fractionalControls["offGridInputs"] as? [[String: Any]] ?? []
+            try require(fractionalControls["selectedZIP"] as? Bool == true && fractionalControls["selectedLeftUpLeg"] as? Bool == true,
+                        "The native file chooser must open the actual ZIP and select LeftUpLeg.")
+            try require(offGrid.contains { $0["kind"] as? String == "position" } && offGrid.contains { $0["kind"] as? String == "rotation" },
+                        "The original fractional position and rotation must remain visibly off the spinner grid.")
+            try require(offGrid.contains { $0["kind"] as? String == "scale" && $0["value"] as? String == "1.234567" },
+                        "An explicit precise scale must remain finer than the spinner increment.")
+            try require(fractionalControls["spinnerStepsPreserved"] as? Bool == true && fractionalControls["saveEnabled"] as? Bool == true &&
+                        (fractionalControls["unsupported"] as? [String]) == [],
+                        "Finite fractional ZIP edits must enable Save without changing the existing spinner increments.")
+            try require(abs((fractionalControls["originalPositionY"] as? Double ?? 0) - 0.1234567) < 0.000001 &&
+                        abs(abs(fractionalControls["originalRotationX"] as? Double ?? 0) - 12.34567) < 0.0001,
+                        "Untouched original fractional TRS values must remain visible without rounding.")
+            report["fractional_zip_save_validation"] = fractionalControls
+            try checkpoint("fractional-zip-save-enabled")
             let edits = try await object(webView, "return JSON.stringify(ModelViewer.getAuthoringState());")
             let authored = edits["edits"] as? [[String: Any]] ?? []
             try require(authored.count == 2 && Set(authored.compactMap { $0["method"] as? String }) == Set(["node", "mesh"]), "Both editing backends must receive real edits.")
@@ -103,6 +134,7 @@ final class NativeSmokeTest {
             let rebuildError = try difference(reloaded, rebuilt)
             try require(rebuildError < 0.00002, "Rebuilding must not accumulate mesh deformation.")
             try require(try Data(contentsOf: source) == original, "Source bundle bytes must remain unchanged.")
+            try require(try Data(contentsOf: zipSource) == originalZIP, "Source ZIP bytes must remain unchanged.")
             _ = try await js(webView, "document.getElementById('viewer-fit').click();return true;")
             try await Task.sleep(nanoseconds: 250_000_000)
             let probe = try await object(webView, "return JSON.stringify(ModelViewer.renderProbe(33));")
@@ -111,6 +143,7 @@ final class NativeSmokeTest {
             report["fixture_sha256"] = originalHash
             report["node_and_mesh_backends"] = true
             report["source_preserved"] = true
+            report["source_zip_preserved"] = true
             report["reedit_from_original"] = true
             report["saved_geometry_max_error"] = saveError
             report["rebuilt_geometry_max_error"] = rebuildError

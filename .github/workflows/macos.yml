@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Review app version YYYY.MM.DD[.N]; blank uses today's Korean date"
+        description: "Review app version YYYY.MM.DD[.N]; blank uses macos/VERSION"
         required: false
         default: ""
   pull_request:
@@ -79,12 +79,11 @@ jobs:
           sw_vers >> "$RUNNER_TEMP/macos-evidence/host.txt"
           xcodebuild -version >> "$RUNNER_TEMP/macos-evidence/host.txt"
           python3 - <<'PY'
-          from datetime import datetime
           import os, sys
-          from zoneinfo import ZoneInfo
+          from pathlib import Path
           sys.path.insert(0, 'macos/build')
           from build_app import bundle_versions
-          version = os.environ.get('REQUESTED_VERSION') or datetime.now(ZoneInfo('Asia/Seoul')).strftime('%Y.%m.%d') + '.1'
+          version = os.environ.get('REQUESTED_VERSION') or Path('macos/VERSION').read_text().strip()
           bundle_versions(version)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('version=' + version + '\n')

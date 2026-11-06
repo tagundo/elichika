@@ -147,8 +147,8 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     private func chooseFiles(_ request: NativeRequest) async throws -> [URL] {
         guard let model else { throw NativeError.runtimeUnavailable }
-        if model.smokeDirectory != nil {
-            return [model.resourceDirectory.appendingPathComponent("qa/viewer_persistence.unity")]
+        if let directory = model.smokeDirectory {
+            return [directory.appendingPathComponent("분수 의상.zip")]
         }
         let panel = NSOpenPanel()
         panel.canChooseFiles = true; panel.canChooseDirectories = false

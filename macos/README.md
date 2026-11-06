@@ -55,9 +55,10 @@ or kill unrelated servers by executable name.
 
 The `Build standalone macOS Apple Silicon app` workflow in
 [macos.yml](../.github/workflows/macos.yml) builds the actual reviewed source and
-submodule pin. Its optional `version` input uses the Korean calendar date by
-default. The workflow generates the official server data using the Android
-migration/order/determinism sequence, then packages the private runtime.
+submodule pin. Its optional `version` input overrides the checked-in
+[macOS app version](VERSION), which uses the Korean calendar date. The workflow
+generates the official server data using the Android migration/order/determinism
+sequence, then packages the private runtime.
 
 On an Apple Silicon Mac with Xcode command-line tools, Go 1.22.12 and Python 3.12
 available as build tools, the packaging entry points are:
@@ -66,7 +67,7 @@ available as build tools, the packaging entry points are:
 python3 macos/build/build_payload.py --repo . --output /tmp/elichika-shared
 python3 macos/build/build_app.py --repo . --shared /tmp/elichika-shared \
   --output /tmp/elichika-built/Elichika.app --cache /tmp/elichika-build-cache \
-  --version 2026.11.06.1 --report /tmp/elichika-build.json
+  --version 2026.11.06.2 --report /tmp/elichika-build.json
 ```
 
 The source checkout must first contain initialized, ordered and deterministically
