@@ -85,6 +85,10 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
           python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
           python3 -m unittest discover -s tests -p test_model_edits.py -v
+          python3 -m unittest discover -s tests -p test_viewer_mod_sources.py -v
+          python3 -m unittest discover -s tests -p test_viewer_mod_pair_edits.py -v
+          python3 -m unittest discover -s tests -p test_viewer_mod_package.py -v
+          python3 -m unittest discover -s tests -p test_viewer_mod_flow.py -v
           python3 -m unittest discover -s tests -p test_viewer_body_controls.py -v
           python3 -m unittest discover -s tests -p test_game_models.py -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
@@ -166,6 +170,8 @@ jobs:
           node tests/viewer_quality_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/mod-packages" node tests/viewer_mod_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/minimize" node tests/viewer_minimize_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/body-controls" node tests/viewer_body_controls_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/game-assets" node tests/viewer_game_assets_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/macos" node tests/viewer_macos_browser.js

@@ -218,7 +218,7 @@ class MeshWebViewTest {
             assertEquals("Scrolling back preserves the visible field's unsaved value", pending.getJSONObject("control").getString("value"),
                 returned.getJSONObject("geometry").getJSONObject("control").getString("value"))
             val controls = returned.getJSONObject("hud").getJSONArray("controls")
-            assertEquals("Retain all real viewport HUD controls", 11, controls.length())
+            assertEquals("Retain all real viewport HUD controls", 12, controls.length())
             for (index in 0 until controls.length()) {
                 val target = controls.getJSONObject(index)
                 assertTrue("The returned model HUD must be directly reachable: $target", target.getBoolean("visible") && target.getBoolean("withinViewport") &&

@@ -172,6 +172,7 @@ class ViewerPersistenceTest {
             assertTrue("Repeated save and restore must preserve the original source", source.readBytes().contentEquals(bytes))
             assertTrue("The first completed output must remain available", outputFiles.all { it.isFile && it.length() > 0 })
             assertGameStopped()
+            val modPackage = saveNamedModPackage(context, webView, second, authoring, source, bytes, intended, sourceThigh)
             val report = JSONObject().put("sourceSha256", sha256(bytes)).put("sourcePreserved", true)
                 .put("originalNeutralFixtureSha256", sha256(neutralBytes)).put("unityMemberSha256", sha256(member))
                 .put("fractionalZipValidation", fractionalValidation).put("sourceThighTransform", sourceThigh)
@@ -182,6 +183,7 @@ class ViewerPersistenceTest {
                 .put("animationOrderComparison", true).put("animatedPoseExcludedFromExport", true)
                 .put("baselineVertices", baseline).put("intendedVertices", intended)
                 .put("reloadedVertices", reloaded).put("rebuiltVertices", rebuilt)
+                .put("namedInstallerModPackage", modPackage)
                 .put("gameServerRemainedStopped", true)
             File(context.cacheDir, "viewer-persistence-report.json").writeText(report.toString(2))
             instrumentation.waitForIdleSync()
@@ -324,6 +326,162 @@ class ViewerPersistenceTest {
         }
         return done.getJSONObject("persistence")
     }
+
+    private fun saveNamedModPackage(context: Context, webView: WebView, previousResult: JSONObject,
+        expectedAuthoring: JSONObject, source: File, sourceBytes: ByteArray, intended: JSONArray,
+        sourceThigh: JSONObject): JSONObject {
+        val previous = evaluate(webView, "return JSON.stringify({id:ModelViewer.getState().modelId});").getString("id")
+        clickVisible(webView, "viewer-reedit-original")
+        waitForNewModel(webView, previous, previousResult.getJSONArray("originalPaths"))
+        waitForDom(webView, "the original body edits before packaging") {
+            "var p=ModelViewer.getState().persistence;return JSON.stringify({ok:!p.busy&&p.status==='restored',error:p.error||''});"
+        }
+        assertEquals(expectedAuthoring.getJSONArray("edits").toString(),
+            evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());").getJSONArray("edits").toString())
+        // The neutral fixture has no character identity. Use the real explicit
+        // owner selector, and a long Unicode name which exceeds 255 UTF-8 bytes.
+        val name = "안드로이드 \"분수\" 모드 · " + "가나다라마바사아자차카타파하".repeat(6) + " 🧪"
+        assertTrue(name.length <= 120 && name.toByteArray(Charsets.UTF_8).size > 255)
+        val ownerControl = showModField(webView, "viewer-mod-character")
+        input(webView, "viewer-mod-character", "6")
+        val nameControl = showModField(webView, "viewer-mod-name")
+        input(webView, "viewer-mod-name", name, "input")
+        val form = evaluate(webView, "var p=ModelViewer.getState().persistence;return JSON.stringify({" +
+            "owner:document.getElementById('viewer-mod-character').value,name:p.modName,manual:p.modNameManual});")
+        assertEquals("6", form.getString("owner"))
+        assertEquals(name, form.getString("name"))
+        assertTrue(form.getBoolean("manual"))
+        val clicked = clickVisible(webView, "viewer-save-mod")
+        assertTrue("The real package action must immediately disable duplicate requests",
+            clicked.getBoolean("disabled") && clicked.getJSONObject("state").getJSONObject("persistence").getBoolean("busy"))
+        val done = waitForDom(webView, "a completed installer ZIP from the embedded Python package action", 240) {
+            "var p=ModelViewer.getState().persistence;return JSON.stringify({ok:!p.busy&&p.status==='done'&&!!p.modPackage&&" +
+                "!!p.modPackage.packagePath,error:p.error||'',persistence:p});"
+        }.getJSONObject("persistence")
+        checkOutputs(done, source)
+        val publicPackage = done.getJSONObject("modPackage")
+        assertEquals(6, publicPackage.getInt("characterId"))
+        assertFalse("The UI inspection state must not expose the installation token", publicPackage.has("token"))
+        val packageFile = File(publicPackage.getString("packagePath"))
+        assertTrue(packageFile.isFile && packageFile.length() > 0)
+        assertTrue("The full Unicode display name must fit a portable output filename", packageFile.name.toByteArray(Charsets.UTF_8).size <= 255)
+        run(webView, "window.__viewerNativeModReceipt={done:false};fetch('/api/viewer/edit/result/'+" +
+            "encodeURIComponent(ModelViewer.getState().persistence.jobId)).then(function(response){" +
+            "return response.json().then(function(value){if(!response.ok||value.error)throw new Error(value.error||'Package result failed');return value;});" +
+            "}).then(function(value){window.__viewerNativeModReceipt={done:true,value:value};}," +
+            "function(error){window.__viewerNativeModReceipt={done:true,error:String(error)};});")
+        val full = waitForDom(webView, "the authoritative completed package receipt") {
+            "var r=window.__viewerNativeModReceipt;return JSON.stringify({ok:r.done&&!r.error,error:r.error||'',value:r.value});"
+        }.getJSONObject("value")
+        assertEquals(done.getString("recipePath"), full.getString("recipe_path"))
+        assertEquals(done.getJSONArray("previewPaths").toString(), full.getJSONArray("preview_paths").toString())
+        val receipt = full.getJSONObject("mod_package")
+        assertEquals(packageFile.canonicalPath, File(receipt.getString("package_path")).canonicalPath)
+        assertEquals(name, receipt.getString("display_name"))
+        assertEquals(6, receipt.getInt("character_id"))
+        assertEquals("android", receipt.getString("platform"))
+        assertTrue(receipt.getBoolean("installable"))
+        assertTrue(receipt.getString("token").matches(Regex("[a-f0-9]{32}")))
+        assertEquals(packageFile.length(), receipt.getLong("bytes"))
+        assertEquals(sha256(packageFile.readBytes()), receipt.getString("sha256"))
+        val spec = JSONObject().put("receipt", receipt).put("previewPaths", done.getJSONArray("previewPaths"))
+            .put("recipePath", done.getString("recipePath")).put("state", expectedAuthoring)
+            .put("sourceSha256", sha256(sourceBytes)).put("memberSha256", "d468e330e747001096092e33d8bc8e9191096d5c66b9f5723b9f76792e4c23b3")
+        val python = EmbeddedPython.instance(context)
+        val module = python.getModule("types").callAttr("ModuleType", "_viewer_mod_package_native_qa")
+        python.getModule("builtins").callAttr("exec", packageInspectionScript, module.get("__dict__"))
+        val inspected = JSONObject(module.callAttr("inspect_json", spec.toString()).toString())
+        assertTrue(inspected.getBoolean("safeInstallerArchive"))
+        // Open the installer ZIP itself, then compare its actual serialized skin
+        // with the original intended hybrid result using the existing threshold.
+        open(webView, packageFile.absolutePath)
+        val packagedVertices = vertices(webView)
+        assertTrue("The installer ZIP must reproduce the intended hybrid skin", maxDifference(intended, packagedVertices) < 2e-5)
+        assertThighTransformPreserved(sourceThigh, thighTransform(webView))
+        assertBoneScale(webView, "BreastSize", doubleArrayOf(1.0, 1.0, 1.15))
+        assertTrue("Mod packaging must preserve the original fractional ZIP", source.readBytes().contentEquals(sourceBytes))
+        assertGameStopped()
+        return JSONObject().put("displayName", name).put("explicitOwner", 6).put("ownerControl", ownerControl)
+            .put("nameControl", nameControl).put("inspection", inspected).put("sourcePreserved", true)
+            .put("installerZipReopened", true).put("hybridSkinMaximumDifference", maxDifference(intended, packagedVertices))
+            .put("scope", "Package-only actual WebView/SSE/bundled Python; no game installation or user database writes")
+    }
+
+    private fun showModField(webView: WebView, id: String): JSONObject {
+        run(webView, "var t=document.getElementById(" + JSONObject.quote(id) + ");" +
+            "for(var p=t.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;t.scrollIntoView({block:'center'});")
+        return waitForDom(webView, "the visible explicit mod option $id", 30) {
+            "var t=document.getElementById(" + JSONObject.quote(id) + "),r=t.getBoundingClientRect()," +
+                "top=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);" +
+                "return JSON.stringify({ok:!t.disabled&&r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&" +
+                "(top===t||t.contains(top)),id:t.id,width:r.width,height:r.height,visible:!!t.getClientRects().length,hittable:top===t||t.contains(top)});"
+        }
+    }
+
+    private val packageInspectionScript = """
+        import ast, hashlib, io, json, re, stat, zipfile
+        from pathlib import Path, PurePosixPath
+        from PIL import Image
+
+        def inspect_json(encoded):
+            spec = json.loads(encoded)
+            receipt = spec['receipt']
+            path = Path(receipt['package_path'])
+            data = path.read_bytes()
+            assert hashlib.sha256(data).hexdigest() == receipt['sha256']
+            assert len(data) == receipt['bytes'] and receipt['character_id'] == 6
+            assert receipt['platform'] == 'android' and receipt['installable'] is True
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                infos = archive.infolist()
+                names = [entry.filename for entry in infos]
+                assert len(names) == len(set(name.casefold() for name in names)) == 3
+                for entry in infos:
+                    name = PurePosixPath(entry.filename)
+                    assert not name.is_absolute() and '..' not in name.parts
+                    assert '\\' not in entry.filename and ':' not in entry.filename
+                    assert not stat.S_ISLNK(entry.external_attr >> 16)
+                config = {}
+                for node in ast.parse(archive.read('modinstall.txt').decode('utf-8-sig')).body:
+                    assert isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                    key = node.targets[0].id
+                    assert key not in config
+                    config[key] = ast.literal_eval(node.value)
+                assert config['chara_id'] == 6
+                for key in ['costume_name_en', 'costume_name_ko', 'costume_name_zh', 'costume_name_ja', 'costume_description']:
+                    assert config[key] == receipt['display_name']
+                model = config['costume_file']
+                assert re.fullmatch(r'[a-z0-9]+\.unity', model) and re.search('[a-z]', Path(model).stem)
+                assert set(names) == {model, config['thumbnail_file'], 'modinstall.txt'}
+                model_bytes = archive.read(model)
+                with Image.open(io.BytesIO(archive.read(config['thumbnail_file']))) as image:
+                    assert image.format == 'PNG' and 0 < max(image.size) <= 256
+                    image.verify()
+            assert len(spec['previewPaths']) == 1
+            preview = Path(spec['previewPaths'][0])
+            with zipfile.ZipFile(preview) as saved:
+                members = [entry.filename for entry in saved.infolist() if entry.filename.endswith('.unity')]
+                assert len(members) == 1
+                assert model_bytes == saved.read(members[0])
+            model_sha = hashlib.sha256(model_bytes).hexdigest()
+            assert model_sha != spec['memberSha256']
+            recipe = json.loads(Path(spec['recipePath']).read_text())
+            assert recipe['format'] == 'elichika-viewer-body-edit'
+            assert len(recipe['originals']) == 1 and recipe['originals'][0]['sha256'] == spec['sourceSha256']
+            assert len(recipe['sources']) == 1 and recipe['sources'][0]['sha256'] == spec['memberSha256']
+            expected = {edit['node']: edit for edit in spec['state']['edits']}
+            actual = {edit['node']: edit for edit in recipe['state']['edits']}
+            assert set(actual) == set(expected) and {edit['method'] for edit in actual.values()} == {'node', 'mesh'}
+            for node, edit in expected.items():
+                assert actual[node]['method'] == edit['method']
+                for key in ['scale', 'position', 'rotation']:
+                    if key in edit:
+                        assert len(actual[node][key]) == len(edit[key])
+                        assert max(abs(a-b) for a,b in zip(actual[node][key], edit[key])) <= 1e-8
+            return json.dumps({'safeInstallerArchive': True, 'characterId': 6, 'displayName': receipt['display_name'],
+                'packageSha256': receipt['sha256'], 'packageBytes': len(data), 'members': names,
+                'modelMember': model, 'modelSha256': model_sha, 'modelMatchesFreshPreview': True,
+                'recipeBoundToOriginal': True, 'hybridRecipePreserved': True})
+    """.trimIndent()
 
     private fun checkOutputs(result: JSONObject, source: File): List<File> {
         val outputs = result.getJSONArray("outputs")

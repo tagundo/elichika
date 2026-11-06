@@ -296,6 +296,9 @@ class ModelViewerRigTest {
         assertRestored("Final reset must recover saved-file defaults after context restoration", restoredFileDefault)
         click(webView, "viewer-saved-nodes")
         assertRestored("Opting out must still recover exact authored pixels after context restoration", capture(webView, compare = "rest"))
+        // All original fixed-viewport pixel thresholds have finished before the
+        // intentional minimize/restore layout transition.
+        val minimizedModel = exerciseModelMinimize(session)
         val report = JSONObject().put("scope", "Original serialized Unity rig through real API/GLB/native WebGL")
             .put("verticalViewport", verticalViewport)
             .put("poseControlsWithoutVerifiedPreview", poseControls)
@@ -311,6 +314,7 @@ class ModelViewerRigTest {
             .put("independentPoseAndBodyPanels", independentPanels).put("separateExpressionPanel", expressionPanel)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen).put("highQuality3D", quality)
             .put("afterTab", afterTab).put("afterContext", afterContext)
+            .put("modelMinimize", minimizedModel)
             .put("sourcePreserved", true).put("gameServerRemainedStopped", true)
         persistReport("model-viewer-rig-report.json", report)
         println("MODEL_VIEWER_RIG_REPORT=$report")
@@ -699,11 +703,109 @@ class ModelViewerRigTest {
         }
     }
 
+    private fun exerciseModelMinimize(session: Session): JSONObject {
+        val webView = session.webView
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val original = state(webView)
+        val expanded = original.getJSONObject("layout").getBoolean("expanded")
+        val stage = original.getJSONObject("layout").getJSONObject("stage")
+        if (!original.getJSONObject("rig").getJSONObject("savedNodes").getBoolean("enabled")) click(webView, "viewer-saved-nodes")
+        input(webView, "viewer-motion", "Neutral swing", "change")
+        input(webView, "viewer-time", ".6")
+        input(webView, "viewer-breast-preset", "rin", "change")
+        input(webView, "viewer-expression-value", "40")
+        boneInput(webView, "Head", "rotation", "Z", 35)
+        input(webView, "viewer-save-method", "node", "change")
+        // Prepare non-default actual details state without changing the hidden
+        // expanded viewport. Earlier phases verify real summary interaction.
+        run(webView, "document.getElementById('viewer-adjustments').open=false;document.getElementById('viewer-breast-card').open=false;" + minimizeQaScript)
+        val beforeState = state(webView)
+        val before = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.snapshot());")
+        assertFalse(before.getJSONObject("manualFolds").getBoolean("viewer-adjustments"))
+        assertFalse(before.getJSONObject("manualFolds").getBoolean("viewer-breast-card"))
+        assertTrue("Minimize must retain genuine pending edits", before.getJSONObject("authoring").getJSONArray("edits").length() > 0)
+        fun assertPreserved(observed: JSONObject) {
+            assertRetained(beforeState, state(webView))
+            for (key in listOf("authoring", "manualFolds", "panePreferences")) {
+                assertEquals("Minimize/restore preserves $key", before.getJSONObject(key).toString(), observed.getJSONObject(key).toString())
+            }
+            for (key in listOf("modelId", "selectedNode", "editorGroup")) assertEquals(before.getString(key), observed.getString(key))
+            for (key in listOf("position", "target")) {
+                val left = before.getJSONObject("camera").getJSONArray(key)
+                val right = observed.getJSONObject("camera").getJSONArray(key)
+                for (axis in 0..2) assertEquals("Minimize must not refit the camera", left.getDouble(axis), right.getDouble(axis), 1e-7)
+            }
+            assertEquals(before.getJSONObject("camera").getDouble("fov"), observed.getJSONObject("camera").getDouble("fov"), 1e-7)
+        }
+        val button = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.minimize());")
+        waitForDom(webView, "the loaded model minimized coherently from the expanded phone viewport", 30) {
+            "var s=ModelViewer.getState();return JSON.stringify({ok:s.loaded&&!s.loading&&s.layout.minimized&&" +
+                "s.layout.minimizeDirection==='height'&&!s.layout.expanded&&s.layout.fullscreen==='none'&&!s.layout.fullscreenPending,state:s});"
+        }
+        val hidden = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.snapshot());")
+        assertTrue("Minimize must hide the real model stage", hidden.getBoolean("stageHidden"))
+        assertPreserved(hidden)
+        instrumentation.runOnMainSync { webView.requestFocus() }
+        val restore = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.focusRestore());")
+        assertTrue("The real external restore bar must receive native keyboard focus", restore.getBoolean("focused"))
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+        waitForDom(webView, "native Enter restoring the same loaded model", 30) {
+            "var s=ModelViewer.getState();return JSON.stringify({ok:s.loaded&&!s.loading&&!s.layout.minimized&&" +
+                "s.layout.fullscreen==='none'&&!s.layout.fullscreenPending,state:s});"
+        }
+        val restored = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.snapshot());")
+        assertFalse(restored.getBoolean("stageHidden"))
+        assertPreserved(restored)
+        val rendered = waitForDom(webView, "actual restored model rendering without a reload or refit", 30) {
+            "var p=ModelViewer.renderProbe(33);return JSON.stringify({ok:p.ready&&p.glError===0&&p.nonBackgroundSamples>=3,probe:p});"
+        }
+        if (state(webView).getJSONObject("layout").getBoolean("expanded") != expanded) click(webView, "viewer-expand")
+        waitForDom(webView, "the original expanded geometry after minimize", 30) {
+            "var s=ModelViewer.getState(),r=s.layout.stage;return JSON.stringify({ok:s.layout.expanded===" + expanded +
+                "&&!s.layout.minimized&&Math.abs(r.width-" + stage.getDouble("width") + ")<1&&Math.abs(r.height-" + stage.getDouble("height") + ")<1,state:s});"
+        }
+        val final = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.snapshot());")
+        assertPreserved(final)
+        assertGameStopped()
+        return JSONObject().put("button", button).put("before", before).put("minimized", hidden)
+            .put("restoreBar", restore).put("nativeEnterRestored", true).put("restored", restored)
+            .put("rendered", rendered.getJSONObject("probe")).put("originalExpandedGeometryRestored", true)
+            .put("final", final).put("scope", "After all original pixel thresholds; real minimize target/native Enter restore; no cross-layout pixel comparison")
+    }
+
+    private val minimizeQaScript = """
+        window.ViewerMinimizeNativeQa = (function () {
+          function target(id, minimum) {
+            var element = document.getElementById(id), control = ViewerRigQa.control(element, true);
+            if (control.disabled || !control.visible || !control.withinViewport || !control.hittable || control.width < minimum || control.height < minimum)
+              throw new Error('The real minimize/restore target must remain reachable: ' + JSON.stringify(control));
+            return control;
+          }
+          return {
+            snapshot: function () {
+              var s = ModelViewer.getState(), stage = document.getElementById('viewer-stage'), rect = stage.getBoundingClientRect(), folds = {};
+              ['viewer-adjustments','viewer-body-adjustments','viewer-expression-adjustments','viewer-breast-card','viewer-hips-card','viewer-skirt-card','viewer-common-adjustments','viewer-node-editor'].forEach(function (id) {
+                folds[id] = document.getElementById(id).open;
+              });
+              return { modelId: s.modelId, camera: s.camera, authoring: ModelViewer.getAuthoringState(), selectedNode: s.rig.selectedNode,
+                editorGroup: s.rig.editorGroup, manualFolds: folds, layout: s.layout,
+                stageHidden: stage.getAttribute('aria-hidden') === 'true' && (!rect.width || !rect.height || getComputedStyle(stage).display === 'none'),
+                panePreferences: { files: localStorage.getItem('elichika.viewer.files-width.v1'), panel: localStorage.getItem('elichika.viewer.panel-width.v1') } };
+            },
+            minimize: function () { var control = target('viewer-minimize', 32); document.getElementById('viewer-minimize').click(); return control; },
+            focusRestore: function () {
+              var control = target('viewer-model-restore', 44), element = document.getElementById('viewer-model-restore');
+              element.focus(); control.focused = document.activeElement === element; return control;
+            }
+          };
+        })();
+    """.trimIndent()
+
     private fun assertVerticalHud(webView: WebView, includeGeometry: Boolean = false): JSONObject {
         val observed = evaluate(webView, "return JSON.stringify(ViewerRigQa.verticalViewport($includeGeometry));")
         assertTrue("The APK must use the reviewed visible vertical controls", observed.getBoolean("vertical"))
         val controls = observed.getJSONArray("controls")
-        assertEquals("Retain every original HUD action", 11, controls.length())
+        assertEquals("Retain every viewport HUD action including minimize", 12, controls.length())
         assertEquals("Separate controls must not overlap", 0, observed.getJSONArray("overlapPairs").length())
         for (index in 0 until controls.length()) {
             val target = controls.getJSONObject(index)

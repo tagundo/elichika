@@ -19,6 +19,7 @@ The apps select their own library with SUKUSTA_DIR; ordinary CLI paths remain
 available without pretending that a desktop process is running in Termux.
 """
 import builtins
+import hashlib
 import importlib
 import os
 import shutil
@@ -173,19 +174,33 @@ def _addon_list(raw):
     return []
 
 
-def _install_one(job, key, spec, chosen, do_backup):
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _install_one(job, key, spec, chosen, do_backup, *, source_path=None, expected_sha256=None):
     """Install a single addon file. Returns True on success, False if the file
     couldn't be located (logged and skipped so a batch keeps going)."""
-    src = _locate(key, chosen)
+    # Viewer-created packages are already source-bound. They must never be
+    # resolved again by a basename that another drop folder could shadow.
+    src = source_path if source_path is not None else _locate(key, chosen)
     if not src:
         job.log(f"[{key}] SKIP {chosen}: not found in the drop folders")
         return False
+    if expected_sha256 is not None and _file_sha256(src) != expected_sha256:
+        raise ValueError("The selected costume package changed before installation.")
     scans = _dirs(spec)
     for d in scans:
         os.makedirs(d, exist_ok=True)
         dst = os.path.join(d, chosen)
         if os.path.abspath(src) != os.path.abspath(dst):
             shutil.copy2(src, dst)
+        if expected_sha256 is not None and _file_sha256(dst) != expected_sha256:
+            raise ValueError("The costume installer input does not match the saved Mod ZIP.")
 
     job.log(f"[{key}] installing {chosen}")
     restore_listing = _patched_listing(scans, chosen)
@@ -215,6 +230,8 @@ def _install_one(job, key, spec, chosen, do_backup):
         if installed < planned:
             raise RuntimeError(f"costume installer only installed {installed}/{planned} addons "
                                f"from {chosen}; check the log")
+    if expected_sha256 is not None and _file_sha256(src) != expected_sha256:
+        raise ValueError("The costume package changed during installation. Check the backup before restarting.")
     return True
 
 
@@ -274,6 +291,24 @@ def _run_installer(job, key, params):
 
 def run_costume(job, params):
     return _run_installer(job, "costume", params)
+
+
+def run_costume_file(job, source_path, expected_sha256, *, restart_server=False):
+    """Install exactly a completed viewer package; not a public tool adapter."""
+    source_path = os.path.realpath(source_path)
+    if (not os.path.isfile(source_path) or not source_path.lower().endswith(".zip")
+            or not isinstance(expected_sha256, str) or len(expected_sha256) != 64):
+        raise ValueError("Choose a completed costume Mod ZIP.")
+    ensure_repo_on_path()
+    if job.should_stop():
+        raise ValueError("Costume installation was cancelled before writing.")
+    with installation_server(job.log, stop=True, restart=restart_server) as server:
+        job.progress(0, 1)
+        _install_one(job, "costume", INSTALLERS["costume"], os.path.basename(source_path), True,
+                     source_path=source_path, expected_sha256=expected_sha256)
+        server.restart_allowed = not job.should_stop()
+        job.progress(1, 1)
+    return "Costume added to the game."
 
 
 def run_live(job, params):

@@ -129,6 +129,24 @@ def check_pose_body_report(report):
                 ("production_command_acknowledged", "no_export_started", "invalid_raw_draft_preserved",
                  "valid_draft_restored", "pose_and_body_restored_open", "valid_body_field_focused_before_real_export")),
             "Native Save must reject an invalid body draft and resume export after correcting it")
+    package = report.get("viewer_mod_package_validation", {})
+    require(package.get("status") == "PASS" and all(package.get(key) is True for key in
+                ("automatic_name_checked", "fresh_job", "no_install_requested", "bundled_python"))
+            and package.get("manual_name_characters") == 120 and package.get("character_id") == 6,
+            "Actual WebKit must create a fresh named Mod ZIP without installing it")
+    inspection = package.get("inspection", {})
+    require(inspection.get("status") == "PASS" and all(inspection.get(key) is True for key in
+                ("manifest_names_match", "model_bytes_match", "source_preserved", "thumbnail_png",
+                 "safe_installer_structure")),
+            "The bundled interpreter must verify the actual Mod ZIP and immutable source bytes")
+    minimized = report.get("viewer_minimize_validation", {})
+    restore = minimized.get("restore_target", {})
+    require(minimized.get("status") == "PASS" and minimized.get("direction") == "width"
+            and all(minimized.get(key) is True for key in
+                    ("source_token_selection_folds_preserved", "model_camera_authoring_preserved",
+                     "native_preferences_preserved", "no_additional_prepare", "no_job_mutation"))
+            and restore.get("width", 0) >= 44 and restore.get("height", 0) >= 44,
+            "Actual WebKit must minimize and restore the model without losing edits or native preferences")
 
 
 def launch(app, output, label):
