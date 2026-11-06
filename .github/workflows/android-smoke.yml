@@ -15,6 +15,10 @@ on:
       noop_probe_sha256:
         type: string
         required: true
+      focused_header_diagnostic:
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -97,17 +101,20 @@ jobs:
           path: candidate
 
       - name: Download the same-data APK version-change probe
+        if: ${{ !inputs.focused_header_diagnostic }}
         uses: actions/download-artifact@v4
         with:
           name: elichika-revision-noop-probe-apk
           path: noop-probe
 
       - name: Download the latest official APK
+        if: ${{ !inputs.focused_header_diagnostic }}
         run: >-
           curl --fail --location --retry 2 --output official.apk
           https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk
 
       - name: Test actual APK upgrade, accounts, services and gameplay APIs
+        if: ${{ !inputs.focused_header_diagnostic }}
         run: >-
           python3 -u tests/android_release_smoke.py
           --old official.apk --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
@@ -123,7 +130,65 @@ jobs:
           name: elichika-native-test-apk
           path: instrumentation
 
+      - name: Compare native header policies on the frozen APK
+        if: ${{ inputs.focused_header_diagnostic }}
+        timeout-minutes: 5
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
+          EXPECTED_VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          apks = list(Path('candidate').glob('*.apk'))
+          assert len(apks) == 1 and apks[0].name == 'elichika-' + os.environ['EXPECTED_VERSION_NAME'] + '.apk'
+          with apks[0].open('rb') as stream:
+              actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+          assert actual == os.environ['EXPECTED_CANDIDATE_SHA']
+          Path('evidence/focused-header-diagnostic-mode.json').write_text(json.dumps({
+              'candidate_sha256': actual,
+              'scope': 'Fresh frozen APK; original native header versus test-only public START gravity setter. No product APK rebuild or release validation claim.',
+              'does_not_replace_full_release_qa': True
+          }, indent=2))
+          PY
+          adb -s 127.0.0.1:5555 install "candidate/elichika-${{ inputs.version_name }}.apk"
+          adb -s 127.0.0.1:5555 shell pm grant com.tagundo.elichika android.permission.POST_NOTIFICATIONS
+          adb -s 127.0.0.1:5555 shell appops set com.tagundo.elichika MANAGE_EXTERNAL_STORAGE allow
+          adb -s 127.0.0.1:5555 install -r instrumentation/*.apk
+          adb -s 127.0.0.1:5555 shell wm size | tr -d '\r' > evidence/header-display-before.txt
+          adb -s 127.0.0.1:5555 shell wm density | tr -d '\r' >> evidence/header-display-before.txt
+          previous_size=$(sed -n 's/^Override size: //p' evidence/header-display-before.txt)
+          previous_density=$(sed -n 's/^Override density: //p' evidence/header-display-before.txt)
+          previous_font_scale=$(adb -s 127.0.0.1:5555 shell settings get system font_scale | tr -d '\r')
+          restore_header_display() {
+            qa_exit_code=$?
+            trap - EXIT
+            qa_restore_failed=0
+            if [[ -z "$previous_font_scale" || "$previous_font_scale" == "null" ]]; then
+              adb -s 127.0.0.1:5555 shell settings delete system font_scale || qa_restore_failed=1
+            else
+              adb -s 127.0.0.1:5555 shell settings put system font_scale "$previous_font_scale" || qa_restore_failed=1
+            fi
+            adb -s 127.0.0.1:5555 shell wm density "${previous_density:-reset}" || qa_restore_failed=1
+            adb -s 127.0.0.1:5555 shell wm size "${previous_size:-reset}" || qa_restore_failed=1
+            if (( qa_restore_failed )); then exit 1; fi
+            exit "$qa_exit_code"
+          }
+          trap restore_header_display EXIT
+          adb -s 127.0.0.1:5555 shell wm size 1600x1000
+          adb -s 127.0.0.1:5555 shell wm density 160
+          adb -s 127.0.0.1:5555 shell settings put system font_scale 1.0
+          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
+          adb -s 127.0.0.1:5555 shell am instrument -w \
+            -e requireWideUi true -e headerDiagnosticOnly true -e expectedFontScale 1.0 \
+            -e class com.tagundo.elichika.MeshWebViewTest \
+            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee evidence/native-header-diagnostic.txt
+          python3 -c 'from pathlib import Path; text=Path("evidence/native-header-diagnostic.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
+
       - name: Exercise Python, console, multiwindow and service configuration
+        if: ${{ !inputs.focused_header_diagnostic }}
         run: |
           set -euo pipefail
           adb -s 127.0.0.1:5555 install -r instrumentation/*.apk
@@ -137,6 +202,7 @@ jobs:
           python3 -c 'from pathlib import Path; text=Path("evidence/native-instrumentation.txt").read_text(); assert "OK (22 tests)" in text and "FAILURES" not in text, text'
 
       - name: Exercise the same signed APK in a real wide Android window
+        if: ${{ !inputs.focused_header_diagnostic }}
         timeout-minutes: 5
         run: |
           set -euo pipefail
@@ -189,6 +255,7 @@ jobs:
           done
 
       - name: Exercise normal viewer scrolling in a real tall portrait Android window
+        if: ${{ !inputs.focused_header_diagnostic }}
         timeout-minutes: 5
         run: |
           set -euo pipefail
@@ -239,6 +306,12 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow.png > evidence/header-layout-narrow.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > evidence/header-layout-wide-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > evidence/header-layout-wide.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-failure.png > evidence/header-layout-wide-failure.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-comparison.json > evidence/header-policy-comparison.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-center-report.json > evidence/header-policy-center-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-center-failure.png > evidence/header-policy-center-failure.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-start-report.json > evidence/header-policy-start-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-start.png > evidence/header-policy-start.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll-report.json > evidence/viewer-portrait-scroll-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll.png > evidence/viewer-portrait-scroll.png 2>/dev/null || true
           sudo dmesg | tail -100 > evidence/kernel-tail.txt || true

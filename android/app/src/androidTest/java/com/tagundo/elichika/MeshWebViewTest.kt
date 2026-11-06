@@ -37,6 +37,10 @@ class MeshWebViewTest {
     fun meshEditorLoadsAndWorksInTheInstalledWebView() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
+        if (InstrumentationRegistry.getArguments().getString("headerDiagnosticOnly") == "true") {
+            compareNativeHeaderPolicies()
+            return
+        }
         // Instrumentation runs this test on a worker. Do not copy the payload or
         // initialize Chaquopy on the main thread just to open the editing page.
         AssetInstaller.install(context) {}
@@ -126,6 +130,123 @@ class MeshWebViewTest {
             preferences.edit().apply {
                 if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide")
             }.commit()
+        }
+    }
+
+    /** Explicit QA mode for the frozen APK; bypasses all tool/payload setup. */
+    private fun compareNativeHeaderPolicies() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        assertEquals("The focused comparison needs a real wide Android window", "true",
+            InstrumentationRegistry.getArguments().getString("requireWideUi"))
+        val preferences = context.getSharedPreferences("elichika", Context.MODE_PRIVATE)
+        val hadGuide = preferences.contains("seen_guide")
+        val seenGuide = preferences.getBoolean("seen_guide", false)
+        val comparison = JSONObject().put("status", "RUNNING").put("diagnosticOnly", true).put("nativeGeometryOnly", true)
+        val evidence = File(context.cacheDir, "header-policy-comparison.json")
+        var activity: MainActivity? = null
+        fun copyEvidence(source: String, target: String) {
+            val file = File(context.cacheDir, source)
+            assertTrue("Capture the actual native comparison evidence: $source", file.isFile && file.length() > 0)
+            file.copyTo(File(context.cacheDir, target), overwrite = true)
+        }
+        preferences.edit().putBoolean("seen_guide", true).commit()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+            }
+            val launched = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity
+            activity = launched
+            val firstLayout = CountDownLatch(1)
+            instrumentation.runOnMainSync {
+                val header = launched.findViewById<View>(R.id.app_header)
+                if (header.width > 0 && header.rootView.width > 0 && !header.isLayoutRequested) firstLayout.countDown()
+                else header.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+                    override fun onPreDraw(): Boolean {
+                        if (header.width > 0 && header.rootView.width > 0) {
+                            header.viewTreeObserver.removeOnPreDrawListener(this)
+                            firstLayout.countDown()
+                        }
+                        return true
+                    }
+                })
+            }
+            assertTrue("Wait for the actual native header's initial layout", firstLayout.await(15, TimeUnit.SECONDS))
+            instrumentation.waitForIdleSync()
+            lateinit var header: View
+            lateinit var tabs: TabLayout
+            lateinit var tabViews: List<View>
+            instrumentation.runOnMainSync {
+                val phase = Bus.preparationPhase
+                val initial = JSONObject().put("serverRunning", Bus.serverRunning).put("serverStarting", Bus.serverStarting)
+                    .put("preparationPhase", phase.toString()).put("toolsPreparing", PyServers.isPreparing()).put("toolsStarted", PyServers.isStarted())
+                comparison.put("initial", initial)
+                assertFalse("The focused Console must be stopped: $initial", Bus.serverRunning || Bus.serverStarting)
+                assertFalse("The focused Console must not prepare Python: $initial", PyServers.isPreparing())
+                assertTrue("The focused Console must not prepare payload: $initial", phase !in listOf(
+                    AssetInstaller.PreparationPhase.PREPARING, AssetInstaller.PreparationPhase.UPDATING_GAME_DATA))
+                header = launched.findViewById(R.id.app_header)
+                tabs = launched.findViewById(R.id.tabs)
+                val strip = tabs.getChildAt(0) as ViewGroup
+                tabViews = (0 until strip.childCount).map(strip::getChildAt)
+                comparison.put("baselineGravity", tabs.tabGravity).put("selectedTab", tabs.selectedTabPosition)
+                    .put("history", "Fresh MainActivity Console; no tool tab selected before either measurement phase")
+            }
+            @Suppress("DEPRECATION")
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            comparison.put("versionName", info.versionName).put("versionCode", info.longVersionCode)
+            var observed: AssertionError? = null
+            try {
+                HeaderLayoutNativeQa.exercise(launched, wide = true, retainedWebView = null)
+            } catch (failure: AssertionError) {
+                observed = failure
+            }
+            copyEvidence("header-layout-wide-report.json", "header-policy-center-report.json")
+            val center = JSONObject(File(context.cacheDir, "header-policy-center-report.json").readText())
+            val centerOutcome = JSONObject().put("status", center.getString("status"))
+                .put("observedAssertionFailure", observed != null)
+                .put("error", observed?.toString() ?: JSONObject.NULL)
+                .put("knownInlineBoundsFailure", observed?.message.orEmpty().contains("inline tab"))
+            center.optJSONObject("lastFitInputs")?.let { centerOutcome.put("lastFitInputs", it) }
+            if (observed != null) copyEvidence("header-layout-wide-failure.png", "header-policy-center-failure.png")
+            comparison.put("center", centerOutcome)
+            evidence.writeText(comparison.toString(2))
+            // The sole changed runtime property is this documented public setter.
+            // Production code/resources and all measured views remain untouched.
+            instrumentation.runOnMainSync {
+                assertTrue(header === launched.findViewById<View>(R.id.app_header))
+                assertTrue(tabs === launched.findViewById<TabLayout>(R.id.tabs))
+                tabs.tabGravity = TabLayout.GRAVITY_START
+            }
+            val start = HeaderLayoutNativeQa.exercise(launched, wide = true, retainedWebView = null)
+            assertEquals("PASS", start.getString("status"))
+            assertEquals(24, start.getJSONArray("samples").length())
+            assertEquals(24, start.getJSONArray("measurements").length())
+            copyEvidence("header-layout-wide-report.json", "header-policy-start-report.json")
+            copyEvidence("header-layout-wide.png", "header-policy-start.png")
+            instrumentation.runOnMainSync {
+                val strip = tabs.getChildAt(0) as ViewGroup
+                tabViews.forEachIndexed { index, view -> assertTrue(view === strip.getChildAt(index)) }
+                assertEquals(TabLayout.GRAVITY_START, tabs.tabGravity)
+            }
+            comparison.put("start", JSONObject().put("status", "PASS").put("tabGravity", TabLayout.GRAVITY_START)
+                .put("strictSamples", 24).put("measurements", 24))
+                .put("sameActivityAndNativeViews", true).put("status", "PASS")
+                .put("notExecuted", JSONArray(listOf("toolServers", "payloadInstallation", "narrowTabNavigation", "chromeGoneResize", "webViewRetention")))
+        } catch (failure: Throwable) {
+            comparison.put("status", "FAIL").put("error", failure.toString())
+            throw failure
+        } finally {
+            evidence.writeText(comparison.toString(2))
+            println("HEADER_POLICY_COMPARISON=" + JSONObject().put("status", comparison.optString("status"))
+                .put("error", comparison.optString("error")).put("baselineGravity", comparison.optInt("baselineGravity", -1)))
+            instrumentation.runOnMainSync { activity?.finish() }
+            preferences.edit().apply {
+                if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide")
+            }.commit()
+            instrumentation.waitForIdleSync()
         }
     }
 

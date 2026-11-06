@@ -27,6 +27,11 @@ on:
         description: Original candidate versionCode
         required: true
         default: "2026110603"
+      focused_header_diagnostic:
+        description: Compare native header policies on the frozen APK; does not replace full release QA
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -309,3 +314,4 @@ jobs:
       version_name: ${{ needs.instrumentation.outputs.version_name }}
       version_code: ${{ needs.instrumentation.outputs.version_code }}
       noop_probe_sha256: ${{ needs.instrumentation.outputs.noop_probe_sha256 }}
+      focused_header_diagnostic: ${{ inputs.focused_header_diagnostic || false }}

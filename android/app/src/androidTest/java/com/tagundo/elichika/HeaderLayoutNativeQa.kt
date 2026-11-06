@@ -77,6 +77,7 @@ internal object HeaderLayoutNativeQa {
         }
         val density = activity.resources.displayMetrics.density
         val systemFontScale = activity.resources.configuration.fontScale
+        val diagnosticOnly = InstrumentationRegistry.getArguments().getString("headerDiagnosticOnly") == "true"
         val expectedFontScale = InstrumentationRegistry.getArguments().getString("expectedFontScale")?.let {
             requireNotNull(it.toFloatOrNull()) { "expectedFontScale must be a number" }
         }
@@ -85,7 +86,9 @@ internal object HeaderLayoutNativeQa {
                 kotlin.math.abs(systemFontScale - it) < .02f)
         }
         val samples = JSONArray()
+        val measurements = JSONArray()
         val report = JSONObject().put("wide", wide).put("samples", samples)
+            .put("measurements", measurements).put("diagnosticOnly", diagnosticOnly)
             .put("systemFontScale", systemFontScale)
             .put("expectedFontScale", expectedFontScale ?: JSONObject.NULL)
             .put("fontScaling", "Actual system fontScale and native TextView paints; no test font or private-field overrides")
@@ -119,6 +122,12 @@ internal object HeaderLayoutNativeQa {
         fun check(language: String, scale: Float, state: String, dp: Int): JSONObject {
             lateinit var result: JSONObject
             instrumentation.runOnMainSync {
+                val measured = fitInputs(activity, header, controls, tabs)
+                    .put("requested", JSONObject().put("language", language).put("fontScale", scale)
+                        .put("state", state).put("widthDp", dp).put("widthPx", ceil(dp * density.toDouble()).toInt()))
+                measurements.put(measured)
+                report.put("lastFitInputs", measured)
+                logFitInputs(measured)
                 assertEquals(ceil(dp * density.toDouble()).toInt(), header.width)
                 assertEquals(2, header.childCount)
                 assertEquals("The requested full status must remain under test", expectedStatus, status.text.toString())
@@ -151,21 +160,19 @@ internal object HeaderLayoutNativeQa {
                 val inline = header.orientation == LinearLayout.HORIZONTAL
                 if (dp == 320 && state == "stopped") assertFalse("A narrow stopped header must retain two readable rows", inline)
                 if (language == "ko" && kotlin.math.abs(scale - 1f) < .01f && state == "stopped" && dp in listOf(768, 853)) {
-                    val inputs = fitInputs(activity, header, controls, tabs)
-                    report.put("lastFitInputs", inputs)
-                    logFitInputs(inputs)
                     assertTrue("Korean stopped controls and all five tabs must fit inline at $dp dp", inline)
                 }
-                tabViews.forEach { tab ->
+                tabViews.forEachIndexed { index, tab ->
                     assertTrue("Every native tab needs a 44dp touch target", tab.width + 1 >= 44 * density && tab.height + 1 >= 44 * density)
                     descendants(tab).filterIsInstance<TextView>().filter { it.text.isNotEmpty() }.forEach(::assertReadable)
                     if (inline) {
                         val rect = bounds(header, tab)
-                        assertTrue("All five inline tabs must be fully inside the header", rect.left >= 0 && rect.right <= header.width && rect.top >= 0 && rect.bottom <= header.height)
+                        val target = "tab=$index rect=$rect header=${header.width}x${header.height} navigationScrollX=${tabs.scrollX}"
+                        assertTrue("All five inline tabs must be fully inside the header: $target", rect.left >= 0 && rect.right <= header.width && rect.top >= 0 && rect.bottom <= header.height)
                         val visible = Rect()
-                        assertTrue("Every inline tab must actually be visible in the native window", tab.getGlobalVisibleRect(visible))
-                        assertEquals(tab.width, visible.width())
-                        assertEquals(tab.height, visible.height())
+                        assertTrue("Every inline tab must actually be visible in the native window: $target", tab.getGlobalVisibleRect(visible))
+                        assertEquals("The whole inline tab width must be visible: $target visible=$visible", tab.width, visible.width())
+                        assertEquals("The whole inline tab height must be visible: $target visible=$visible", tab.height, visible.height())
                     }
                 }
                 assertTrue("The full status layout must fit its row", status.height <= controls.height)
@@ -192,6 +199,12 @@ internal object HeaderLayoutNativeQa {
                     configure(language, R.string.status_preparation_failed, false)
                     width(320); check(language, scale, "failed", 320)
                 }
+            }
+            if (diagnosticOnly) {
+                report.put("status", "PASS").put("nativeGeometryOnly", true)
+                    .put("notExecuted", JSONArray(listOf("narrowTabNavigation", "chromeGoneResize", "webViewRetention")))
+                    .put("scope", "All 24 strict native measurement cases; tool-tab navigation is outside the focused comparison")
+                return report
             }
             configure("ko", R.string.status_stopped, false)
             width(320)
@@ -236,6 +249,17 @@ internal object HeaderLayoutNativeQa {
                 .put("status", "PASS")
         } catch (error: Throwable) {
             report.put("status", "FAIL").put("error", error.toString())
+            val prefix = if (wide) "header-layout-wide" else "header-layout-narrow"
+            runCatching {
+                instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+                    File(activity.cacheDir, "$prefix-failure.png").outputStream().use {
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    bitmap.recycle()
+                }
+            }.onFailure { report.put("failureCaptureError", it.toString()) }
+            File(activity.cacheDir, "$prefix-report.json").writeText(report.toString(2))
+            report.optJSONObject("lastFitInputs")?.let { logFitInputs(it, detailed = true) }
             throw error
         } finally {
             mutate {
@@ -254,7 +278,9 @@ internal object HeaderLayoutNativeQa {
                 File(activity.cacheDir, "$prefix.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 bitmap.recycle()
             }
-            println("HEADER_LAYOUT_NATIVE_REPORT=" + report)
+            println("HEADER_LAYOUT_NATIVE_REPORT=" + JSONObject().put("wide", wide).put("status", report.optString("status"))
+                .put("systemFontScale", systemFontScale).put("sampleCount", samples.length())
+                .put("measurementCount", measurements.length()).put("error", report.optString("error")))
         }
         return report
     }
@@ -279,6 +305,10 @@ internal object HeaderLayoutNativeQa {
             ?.let { it.leftMargin + it.rightMargin } ?: 0
         fun describe(view: View): JSONObject {
             val lp = view.layoutParams
+            fun rect(value: Rect) = JSONObject().put("left", value.left).put("top", value.top)
+                .put("right", value.right).put("bottom", value.bottom)
+            val visible = Rect()
+            val globallyVisible = view.getGlobalVisibleRect(visible)
             val ancestors = JSONArray()
             var node = view.parent
             while (node is View) {
@@ -291,10 +321,17 @@ internal object HeaderLayoutNativeQa {
             }
             val data = JSONObject().put("class", view.javaClass.name).put("id", view.id)
                 .put("visibility", view.visibility).put("width", view.width).put("height", view.height)
+                .put("left", view.left).put("top", view.top).put("right", view.right).put("bottom", view.bottom)
+                .put("scrollX", view.scrollX).put("scrollY", view.scrollY)
+                .put("boundsInHeader", rect(if (view === header) Rect(0, 0, view.width, view.height) else bounds(header, view)))
+                .put("globallyVisible", globallyVisible)
+                .put("globalVisibleBounds", rect(visible)).put("globalVisibleWidth", visible.width()).put("globalVisibleHeight", visible.height())
                 .put("layoutWidth", lp.width).put("layoutHeight", lp.height)
                 .put("minimumWidth", view.minimumWidth).put("paddingLeft", view.paddingLeft)
                 .put("paddingRight", view.paddingRight).put("backgroundMinimumWidth", view.background?.minimumWidth ?: 0)
                 .put("margins", margins(view)).put("ancestors", ancestors)
+            if (lp is LinearLayout.LayoutParams) data.put("layoutWeight", lp.weight)
+            if (view is LinearLayout) data.put("gravity", view.gravity)
             if (view is TextView) {
                 val rendered = view.transformationMethod?.getTransformation(view.text, view) ?: view.text
                 data.put("text", view.text.toString()).put("renderedText", rendered.toString())
@@ -328,6 +365,7 @@ internal object HeaderLayoutNativeQa {
         val gap = ceil(8 * activity.resources.displayMetrics.density.toDouble()).toInt()
         val available = header.width - header.paddingLeft - header.paddingRight
         return JSONObject().put("header", describe(header)).put("orientation", header.orientation)
+            .put("tabGravity", tabs.tabGravity).put("tabMode", tabs.tabMode)
             .put("density", activity.resources.displayMetrics.density).put("systemFontScale", activity.resources.configuration.fontScale)
             .put("controls", controlDetails).put("serverRow", describe(controls)).put("tabs", tabDetails)
             .put("navigation", describe(tabs)).put("strip", describe(strip)).put("controlsWidth", controlsWidth)
@@ -335,13 +373,24 @@ internal object HeaderLayoutNativeQa {
             .put("calculatedFits", controlsWidth + gap + tabsWidth <= available)
     }
 
-    private fun logFitInputs(inputs: JSONObject) {
+    private fun logFitInputs(inputs: JSONObject, detailed: Boolean = false) {
         // Individual valid JSON lines stay below Android's log-entry limit.
         // The complete object is also retained in the on-device report file.
         val summary = JSONObject()
-        for (key in listOf("orientation", "density", "systemFontScale", "controlsWidth", "tabsWidth", "gap", "availableWidth", "calculatedFits"))
+        for (key in listOf("orientation", "density", "systemFontScale", "tabGravity", "tabMode", "controlsWidth", "tabsWidth", "gap", "availableWidth", "calculatedFits", "requested"))
             summary.put(key, inputs.get(key))
+        summary.put("navigationScrollX", inputs.getJSONObject("navigation").getInt("scrollX"))
+        val tabBounds = JSONArray()
+        val tabs = inputs.getJSONArray("tabs")
+        for (index in 0 until tabs.length()) {
+            val tab = tabs.getJSONObject(index)
+            tabBounds.put(JSONObject().put("index", index).put("width", tab.getInt("width"))
+                .put("layoutWidth", tab.getInt("layoutWidth")).put("calculatedTabWidth", tab.getInt("calculatedTabWidth"))
+                .put("bounds", tab.getJSONObject("boundsInHeader")).put("visibleWidth", tab.getInt("globalVisibleWidth")))
+        }
+        summary.put("actualTabs", tabBounds)
         println("HEADER_FIT_NATIVE_INPUTS=" + summary)
+        if (!detailed) return
         for (key in listOf("header", "serverRow", "navigation", "strip"))
             println("HEADER_FIT_NATIVE_" + key + "=" + inputs.getJSONObject(key))
         for (key in listOf("controls", "tabs")) {
