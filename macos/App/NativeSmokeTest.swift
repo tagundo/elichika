@@ -407,8 +407,9 @@ final class NativeSmokeTest {
     private func inspectModPackage(_ path: String, edited: String, previous: String, source: URL, sourceHash: String,
                                    expectedName: String, expectedHash: String) async throws -> [String: Any] {
         let code = """
-            import ast,hashlib,io,json,pathlib,sys,zipfile
-            package,edited,previous,source,source_hash,name,package_hash,resources=sys.argv[1:]
+            import ast,base64,hashlib,io,json,pathlib,sys,unicodedata,zipfile
+            package,edited,previous,source,source_hash,name_base64,package_hash,resources=sys.argv[1:]
+            name=base64.b64decode(name_base64,validate=True).decode('utf-8')
             sha=lambda raw:hashlib.sha256(raw).hexdigest()
             runtime=pathlib.Path(resources)/'runtime/arm64/python'
             assert pathlib.Path(sys.prefix).resolve().is_relative_to(runtime.resolve())
@@ -432,19 +433,29 @@ final class NativeSmokeTest {
                 for node in ast.parse(archive.read(manifests[0]).decode('utf-8-sig')).body:
                     assert isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)
                     key=node.targets[0].id;assert key not in values;values[key]=ast.literal_eval(node.value)
-                assert values['chara_id']==6 and len(name)==120
-                assert all(values[key]==name for key in ['costume_name_en','costume_name_ko','costume_name_zh','costume_name_ja','costume_description'])
+                names={key:values.get(key) for key in ['costume_name_en','costume_name_ko','costume_name_zh','costume_name_ja','costume_description']}
+                diagnostic={'owner':values.get('chara_id'),'expected_characters':len(name),
+                    'expected_nfc':unicodedata.normalize('NFC',name)==name,
+                    'manifest_characters':{key:len(value) if isinstance(value,str) else None for key,value in names.items()},
+                    'manifest_names_equal':all(value==name for value in names.values())}
+                assert values['chara_id']==6 and len(name)==120 and unicodedata.normalize('NFC',name)==name,diagnostic
+                assert all(value==name and len(value)==120 and unicodedata.normalize('NFC',value)==value for value in names.values()),diagnostic
                 model=values['costume_file'];assert archive.read(model)==saved
                 thumbnail=values['thumbnail_file'];assert archive.read(thumbnail).startswith(b'\\x89PNG\\r\\n\\x1a\\n')
                 assert not values.get('costume_file_ios') and not values.get('rina_unmask_costume_file')
             assert pathlib.Path(source).read_bytes()==original
             print(json.dumps({'status':'PASS','character_id':6,'name_characters':len(name),'manifest_names_match':True,
                 'model_bytes_match':True,'model_sha256':sha(saved),'source_preserved':True,'thumbnail_png':True,
-                'safe_installer_structure':True,'package_sha256':sha(raw),'package_bytes':len(raw),'python_executable':sys.executable}))
+                'safe_installer_structure':True,'expected_name_transport':'base64-utf8','manifest_names_nfc':True,
+                'package_sha256':sha(raw),'package_bytes':len(raw),'python_executable':sys.executable}))
             """
         let child = Process(), output = Pipe(), errors = Pipe()
         child.executableURL = model.resourceDirectory.appendingPathComponent("runtime/arm64/python/bin/python3")
-        child.arguments = ["-I", "-B", "-c", code, path, edited, previous, source.path, sourceHash, expectedName, expectedHash, model.resourceDirectory.path]
+        // Foundation can use decomposed filesystem representations for argv.
+        // Preserve the exact expected text through an ASCII-only transport;
+        // the inspector compares the actual manifest without normalizing it.
+        let expectedNameArgument = Data(expectedName.utf8).base64EncodedString()
+        child.arguments = ["-I", "-B", "-c", code, path, edited, previous, source.path, sourceHash, expectedNameArgument, expectedHash, model.resourceDirectory.path]
         child.currentDirectoryURL = model.dataDirectory
         var environment = ProcessInfo.processInfo.environment
         for key in Array(environment.keys) where key.hasPrefix("DYLD_") || key == "PYTHONPATH" || key == "PYTHONHOME" { environment.removeValue(forKey: key) }
