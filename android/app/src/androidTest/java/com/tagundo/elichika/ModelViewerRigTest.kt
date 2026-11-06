@@ -894,8 +894,11 @@ class ModelViewerRigTest {
         if (initiallyExpanded) click(webView, "viewer-expand")
         try {
             run(webView, "ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('BreastSize'),'change');")
+            input(webView, "viewer-save-method", "node", "change")
             val nodeCompensationBlocked = evaluate(webView,
-                "return JSON.stringify({disabled:document.getElementById('bone-compensate-children').disabled});")
+                "return JSON.stringify({disabled:document.getElementById('bone-compensate-children').disabled," +
+                    "method:ModelViewer.getState().rig.editingMethods[ViewerRigQa.nodeId('BreastSize')]});")
+            assertEquals("Node restriction requires an explicit Node save method", "node", nodeCompensationBlocked.getString("method"))
             assertTrue("Node export does not currently support child compensation", nodeCompensationBlocked.getBoolean("disabled"))
             input(webView, "viewer-save-method", "mesh", "change")
             assertFalse("Explicit Mesh Baker export enables supported child compensation", evaluate(webView,
