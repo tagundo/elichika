@@ -1,13 +1,6 @@
 name: Retest a frozen signed Android candidate
 
 on:
-  # Temporary recovery trigger while the managed execution environment is unavailable.
-  push:
-    branches:
-      - codex/macos-companion
-    paths:
-      - .github/workflows/android-ui-qa.yml
-      - android/app/src/androidTest/**
   workflow_dispatch:
     inputs:
       candidate_run_id:
