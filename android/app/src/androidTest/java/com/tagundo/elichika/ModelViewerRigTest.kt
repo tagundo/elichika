@@ -432,6 +432,13 @@ class ModelViewerRigTest {
             "if(body.contains(panel)||!expression.contains(panel)||body.parentNode!==expression.parentNode)" +
             "throw new Error('Expressions must be a separate sibling panel outside body editing');" +
             "return JSON.stringify({bodyOpen:body.open,expressionOpen:expression.open,advancedOpen:advanced.open,x:scrollX,y:scrollY});")
+        val originallyExpanded = retained.getJSONObject("layout").getBoolean("expanded")
+        if (originallyExpanded) {
+            click(webView, "viewer-expand")
+            waitForDom(webView, "the visible normal-layout expression controls", 30) {
+                "return JSON.stringify({ok:!ModelViewer.getState().layout.expanded});"
+            }
+        }
         try {
             val controls = evaluate(webView, "document.getElementById('viewer-adjustments').open=false;" +
                 "document.getElementById('viewer-expression-adjustments').open=true;document.getElementById('viewer-expression-advanced').open=true;" +
@@ -442,27 +449,31 @@ class ModelViewerRigTest {
             assertTrue(controls.getBoolean("bodyClosed"))
             assertRetained(retained, state(webView))
             capture(webView, "separateExpressionBefore")
-            input(webView, "viewer-expression-number", "100", "change")
+            input(webView, "viewer-expression-number", "100", "input")
             assertEquals("The separate panel must edit the real Unity morph channel", 1.0,
                 state(webView).getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight"), 1e-9)
             val changed = capture(webView, compare = "separateExpressionBefore")
             assertChanged("Expression controls remain functional while body editing is collapsed", changed)
             input(webView, "viewer-expression-number",
-                (retained.getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight") * 100).toString(), "change")
+                (retained.getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight") * 100).toString(), "input")
             val closed = evaluate(webView, "var expression=document.getElementById('viewer-expression-adjustments'),summary=expression.querySelector('summary');" +
                 "var target=ViewerRigQa.control(summary,true);if(!target.visible||!target.hittable||target.height<44)throw new Error('Expression summary must remain a real 44px touch target');" +
-                "summary.click();return JSON.stringify({open:expression.open,bodyOpen:document.getElementById('viewer-adjustments').open," +
-                "contentHeight:document.getElementById('viewer-expression-panel').getBoundingClientRect().height,summary:target});")
+                "summary.click();var style=getComputedStyle(expression);return JSON.stringify({open:expression.open,bodyOpen:document.getElementById('viewer-adjustments').open," +
+                "sectionHeight:expression.getBoundingClientRect().height,summaryHeight:summary.getBoundingClientRect().height," +
+                "chromeHeight:parseFloat(style.paddingTop)+parseFloat(style.paddingBottom)+parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth),summary:target});")
             assertFalse("The expression panel collapses independently", closed.getBoolean("open"))
             assertFalse("Expression toggling must leave body editing collapsed", closed.getBoolean("bodyOpen"))
-            assertEquals(0.0, closed.getDouble("contentHeight"), 1e-6)
+            // Native details can retain the closed child's last bounding box.
+            // Its actual section must shrink exactly to summary plus border/padding.
+            assertEquals("Collapsed expressions must occupy only their summary and chrome",
+                closed.getDouble("summaryHeight") + closed.getDouble("chromeHeight"), closed.getDouble("sectionHeight"), 1.0)
             assertRetained(retained, state(webView))
             InstrumentationRegistry.getInstrumentation().runOnMainSync { webView.requestFocus() }
             run(webView, "document.querySelector('#viewer-expression-adjustments > summary').focus();")
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
             val reopened = waitForDom(webView, "the independently reopened expression panel", 15) {
-                "return JSON.stringify({ok:document.getElementById('viewer-expression-adjustments').open&&" +
-                    "document.getElementById('viewer-expression-panel').getBoundingClientRect().height>0," +
+                "var section=document.getElementById('viewer-expression-adjustments');return JSON.stringify({ok:section.open&&" +
+                    "section.getBoundingClientRect().height>section.querySelector('summary').getBoundingClientRect().height+40," +
                     "bodyOpen:document.getElementById('viewer-adjustments').open});"
             }
             assertFalse(reopened.getBoolean("bodyOpen"))
@@ -481,6 +492,12 @@ class ModelViewerRigTest {
                 "document.getElementById('viewer-expression-adjustments').open=" + initial.getBoolean("expressionOpen") + ";" +
                 "document.getElementById('viewer-expression-advanced').open=" + initial.getBoolean("advancedOpen") + ";" +
                 "window.scrollTo(" + initial.getDouble("x") + "," + initial.getDouble("y") + ");ViewerRigQa.drop('separateExpressionBefore');")
+            if (state(webView).getJSONObject("layout").getBoolean("expanded") != originallyExpanded) click(webView, "viewer-expand")
+            waitForDom(webView, "the original viewport after expression-panel checks", 30) {
+                "var layout=ModelViewer.getState().layout;return JSON.stringify({ok:layout.expanded===" + originallyExpanded +
+                    "&&Math.abs(layout.stage.width-" + retained.getJSONObject("layout").getJSONObject("stage").getDouble("width") +
+                    ")<1&&Math.abs(layout.stage.height-" + retained.getJSONObject("layout").getJSONObject("stage").getDouble("height") + ")<1});"
+            }
         }
     }
 

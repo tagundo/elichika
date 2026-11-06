@@ -125,7 +125,7 @@ class MeshWebViewTest {
     private fun exerciseWideTools(webView: WebView): JSONObject {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        val directory = File(context.cacheDir, "wide-tools-qa-${System.nanoTime()}")
+        val directory = File(context.filesDir, "wide-tools-qa-${System.nanoTime()}")
         assertTrue("Create only this test's private synthetic output directory", directory.mkdir())
         val source = File(directory, "neutral-rig.unity")
         val fixture = instrumentation.context.assets.open("viewer_rig.unity").use { it.readBytes() }
