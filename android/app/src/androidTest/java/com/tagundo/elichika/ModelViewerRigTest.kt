@@ -539,30 +539,28 @@ class ModelViewerRigTest {
             }
         }
         try {
-            // The common selector belongs to the active Node/Mesh area. The advanced All
-            // filter can select Head while Node is active, so first open its
-            // recommended area instead of expecting every area to repeat it.
-            val shortcutGroup = evaluate(session.webView,
-                "var id=" + JSONObject.quote(selectedBone) + ",metadata=ModelViewer.getEditingMetadata()||{}," +
-                    "target=(metadata.nodes||[]).filter(function(node){return String(node.node)===id;})[0];" +
-                    "return JSON.stringify({group:target&&target.recommendedMethod||ModelViewer.getState().rig.editorGroup});")
-                .getString("group")
+            // Common choices follow the active editing area and effective save methods.
+            // Metadata recommendations may differ from explicitly authored methods.
+            val shortcutGroup = originalGroup
             selectArea(shortcutGroup)
             val commonSelection = evaluate(session.webView, "var id=" + JSONObject.quote(selectedBone) + ";" +
+                "ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('Tip'),'change');" +
                 "ViewerRigQa.input('viewer-node-search','','input');ViewerRigQa.input('viewer-node-filter','tool','change');" +
                 "var select=document.getElementById('viewer-node'),container=document.getElementById('viewer-node-shortcuts');" +
                 "if(document.querySelectorAll('#viewer-node').length!==1||select.tagName!=='SELECT'||!container.contains(select)||" +
                 "container.querySelector('[data-viewer-bone]'))throw new Error('Common body parts must use one real select without shortcut buttons');" +
                 "var options=Array.prototype.filter.call(select.options,function(option){return !!option.value;});" +
-                "if(!options.some(function(option){return option.value===id;}))throw new Error('The selected recommended body part must be available');" +
-                "var alternate=options.filter(function(option){return option.value!==id;})[0];if(!alternate)throw new Error('The neutral rig must exercise a distinct common-part choice');" +
+                "if(!options.length)throw new Error('The actual compact editing area must offer a common body part');" +
+                "var previous=ModelViewer.getState().rig.selectedNode,choice=options.filter(function(option){return option.value!==previous;})[0];" +
+                "if(previous!==String(ViewerRigQa.nodeId('Tip'))||!choice)throw new Error('The compact selector must change the retained advanced selection');" +
                 "var control=ViewerRigQa.control(select,true);if(!control.visible||!control.withinViewport||!control.hittable||control.width<44||control.height<44)" +
                 "throw new Error('The common-part select must be an unobstructed 44px touch target');" +
-                "var authoring=JSON.stringify(ModelViewer.getAuthoringState());select.value=alternate.value;select.dispatchEvent(new Event('change',{bubbles:true}));" +
-                "if(ModelViewer.getState().rig.selectedNode!==alternate.value||!document.getElementById('viewer-node-editor').open)throw new Error('Selecting a common part must open its actual editor');" +
-                "select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));" +
+                "var authoring=JSON.stringify(ModelViewer.getAuthoringState());document.getElementById('viewer-node-editor').open=false;" +
+                "select.value=choice.value;select.dispatchEvent(new Event('change',{bubbles:true}));" +
+                "if(ModelViewer.getState().rig.selectedNode!==choice.value||!document.getElementById('viewer-node-editor').open)throw new Error('Selecting a common part must open its actual editor');" +
+                "ViewerRigQa.input('viewer-node',id,'change');" +
                 "if(JSON.stringify(ModelViewer.getAuthoringState())!==authoring)throw new Error('Choosing body parts must preserve existing authored edits');" +
-                "return JSON.stringify({singleSelect:true,control:control,optionCount:options.length,alternate:alternate.value,restored:id,coarse:matchMedia('(pointer:coarse)').matches});")
+                "return JSON.stringify({singleSelect:true,control:control,optionCount:options.length,previous:previous,chosen:choice.value,distinctChoice:choice.value!==previous,restored:id,coarse:matchMedia('(pointer:coarse)').matches});")
             assertRetained(retained, state(session.webView))
             assertEquals(selectedBone, state(session.webView).getJSONObject("rig").getString("selectedNode"))
             val sections = listOf("viewer-common-adjustments", "viewer-breast-card", "viewer-skirt-card")
