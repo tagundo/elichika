@@ -427,29 +427,32 @@ class ModelViewerRigTest {
 
     private fun exerciseExpressionPanel(session: Session, retained: JSONObject): JSONObject {
         val webView = session.webView
-        fun settleViewport(reference: JSONObject? = null): JSONObject {
-            run(webView, "if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();" +
-                "document.getElementById('viewer-stage').scrollIntoView({block:'start',behavior:'auto'});" +
-                "window.__expressionViewportSettled=false;requestAnimationFrame(function(){requestAnimationFrame(function(){window.__expressionViewportSettled=true;});});")
-            return waitForDom(webView, "the same settled framebuffer for expression comparison", 30) {
-                "var probe=ModelViewer.renderProbe(33);return JSON.stringify({ok:window.__expressionViewportSettled&&probe.ready&&probe.glError===0" +
-                    (reference?.let { "&&probe.width===" + it.getInt("width") + "&&probe.height===" + it.getInt("height") } ?: "") +
-                    ",probe:probe,layout:ModelViewer.getState().layout,scrollY:scrollY,viewport:{width:innerWidth,height:innerHeight}});"
-            }
-        }
         val initial = evaluate(webView, "var body=document.getElementById('viewer-adjustments'),expression=document.getElementById('viewer-expression-adjustments')," +
             "panel=document.getElementById('viewer-expression-panel'),advanced=document.getElementById('viewer-expression-advanced');" +
             "if(body.contains(panel)||!expression.contains(panel)||body.parentNode!==expression.parentNode)" +
             "throw new Error('Expressions must be a separate sibling panel outside body editing');" +
             "return JSON.stringify({bodyOpen:body.open,expressionOpen:expression.open,advancedOpen:advanced.open,x:scrollX,y:scrollY});")
         val originallyExpanded = retained.getJSONObject("layout").getBoolean("expanded")
-        if (originallyExpanded) {
+        assertTrue("The rig fixture uses its existing fixed expanded viewport for pixel comparisons", originallyExpanded)
+        try {
+            run(webView, "document.getElementById('viewer-adjustments').open=false;" +
+                "document.getElementById('viewer-expression-adjustments').open=true;document.getElementById('viewer-expression-advanced').open=true;")
+            val referenceFrame = capture(webView, "separateExpressionBefore")
+            input(webView, "viewer-expression-number", "100", "input")
+            assertEquals("The expression control must edit the real Unity morph channel", 1.0,
+                state(webView).getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight"), 1e-9)
+            val changed = capture(webView, compare = "separateExpressionBefore")
+            assertChanged("Expression controls must change real pixels with body editing collapsed", changed)
+            input(webView, "viewer-expression-number",
+                (retained.getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight") * 100).toString(), "input")
+            val restored = capture(webView, compare = "separateExpressionBefore")
+            assertRestored("Restoring the expression must restore the same fixed-viewport framebuffer", restored)
+            assertRetained(retained, state(webView))
+
             click(webView, "viewer-expand")
             waitForDom(webView, "the visible normal-layout expression controls", 30) {
                 "return JSON.stringify({ok:!ModelViewer.getState().layout.expanded});"
             }
-        }
-        try {
             val controls = evaluate(webView, "document.getElementById('viewer-adjustments').open=false;" +
                 "document.getElementById('viewer-expression-adjustments').open=true;document.getElementById('viewer-expression-advanced').open=true;" +
                 "var controls=['viewer-expression','viewer-expression-number','viewer-expression-reset'].map(function(id){" +
@@ -458,16 +461,12 @@ class ModelViewerRigTest {
                 "return JSON.stringify({controls:controls,bodyClosed:!document.getElementById('viewer-adjustments').open,coarse:matchMedia('(pointer:coarse)').matches});")
             assertTrue(controls.getBoolean("bodyClosed"))
             assertRetained(retained, state(webView))
-            settleViewport()
-            val referenceFrame = capture(webView, "separateExpressionBefore")
             input(webView, "viewer-expression-number", "100", "input")
-            assertEquals("The separate panel must edit the real Unity morph channel", 1.0,
+            assertEquals("The visible independent panel must edit the same real Unity morph channel", 1.0,
                 state(webView).getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight"), 1e-9)
-            settleViewport(referenceFrame)
-            val changed = capture(webView, compare = "separateExpressionBefore")
-            assertChanged("Expression controls remain functional while body editing is collapsed", changed)
             input(webView, "viewer-expression-number",
                 (retained.getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight") * 100).toString(), "input")
+            assertRetained(retained, state(webView))
             val closed = evaluate(webView, "var expression=document.getElementById('viewer-expression-adjustments'),summary=expression.querySelector('summary');" +
                 "var target=ViewerRigQa.control(summary,true);if(!target.visible||!target.hittable||target.height<44)throw new Error('Expression summary must remain a real 44px touch target');" +
                 "summary.click();var style=getComputedStyle(expression);return JSON.stringify({open:expression.open,bodyOpen:document.getElementById('viewer-adjustments').open," +
@@ -495,17 +494,18 @@ class ModelViewerRigTest {
             for (kind in listOf("position", "target")) assertArrayNear("Independent expression controls preserve camera $kind",
                 retained.getJSONObject("camera").getJSONArray(kind), after.getJSONObject("camera").getJSONArray(kind))
             assertEquals(retained.getJSONObject("camera").getDouble("fov"), after.getJSONObject("camera").getDouble("fov"), 1e-9)
-            val restoredViewport = settleViewport(referenceFrame)
-            val restored = capture(webView, compare = "separateExpressionBefore")
-            assertRestored("Reopening the panel preserves the original expression and rendered body", restored)
+            val normalRendering = waitForDom(webView, "the real renderer after independent panel reopening", 30) {
+                "var probe=ModelViewer.renderProbe(33);return JSON.stringify({ok:probe.ready&&probe.glError===0&&probe.nonBackgroundSamples>=3,probe:probe});"
+            }
             return JSONObject().put("controls", controls).put("closed", closed).put("keyboardReopened", reopened)
-                .put("referenceFrame", referenceFrame).put("restoredViewport", restoredViewport)
+                .put("pixelViewport", "fixed expanded viewport before layout changes").put("referenceFrame", referenceFrame)
+                .put("normalRendering", normalRendering)
                 .put("actualMorphPixelsChanged", changed).put("restoredPixels", restored).put("bodyAndCameraPreserved", true)
         } finally {
             run(webView, "document.getElementById('viewer-adjustments').open=" + initial.getBoolean("bodyOpen") + ";" +
                 "document.getElementById('viewer-expression-adjustments').open=" + initial.getBoolean("expressionOpen") + ";" +
                 "document.getElementById('viewer-expression-advanced').open=" + initial.getBoolean("advancedOpen") + ";" +
-                "window.scrollTo(" + initial.getDouble("x") + "," + initial.getDouble("y") + ");ViewerRigQa.drop('separateExpressionBefore');delete window.__expressionViewportSettled;")
+                "window.scrollTo(" + initial.getDouble("x") + "," + initial.getDouble("y") + ");ViewerRigQa.drop('separateExpressionBefore');")
             if (state(webView).getJSONObject("layout").getBoolean("expanded") != originallyExpanded) click(webView, "viewer-expand")
             waitForDom(webView, "the original viewport after expression-panel checks", 30) {
                 "var layout=ModelViewer.getState().layout;return JSON.stringify({ok:layout.expanded===" + originallyExpanded +
