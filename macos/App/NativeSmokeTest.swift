@@ -75,6 +75,7 @@ final class NativeSmokeTest {
             try await loaded(webView)
             report["native_file_bridge_and_authorization"] = true
             try checkpoint("model-rendered")
+            try await checkPoseBodyStructure(webView)
             let panelPreferenceFile = directory.appendingPathComponent("viewer-panel-width-expected.txt")
             let expectedPanelWidth = (try? String(contentsOf: panelPreferenceFile, encoding: .utf8))
                 .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -136,7 +137,7 @@ final class NativeSmokeTest {
                 "scope": "Native preference bridge and relaunch; the file sidebar appears only in a wide viewport"]
             try checkpoint("viewer-files-width-persisted")
             let baseline = try await vertices(webView)
-            _ = try await js(webView, "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-node-editor').open=true;document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.boneInput('LeftUpLeg','scale','X',1.17);ViewerRigQa.boneInput('LeftUpLeg','scale','Y',1.234567);ViewerRigQa.boneInput('LeftUpLeg','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','mesh','change');document.getElementById('viewer-editor-node-tab').click();ViewerRigQa.boneInput('BreastSize','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','node','change');document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('LeftUpLeg'),'change');return true;")
+            _ = try await js(webView, "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-body-adjustments').open=true;document.getElementById('viewer-node-editor').open=true;document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.boneInput('LeftUpLeg','scale','X',1.17);ViewerRigQa.boneInput('LeftUpLeg','scale','Y',1.234567);ViewerRigQa.boneInput('LeftUpLeg','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','mesh','change');document.getElementById('viewer-editor-node-tab').click();ViewerRigQa.boneInput('BreastSize','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','node','change');document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('LeftUpLeg'),'change');return true;")
             let fractionalControls = try await object(webView, """
                 var inputs=Array.from(document.querySelectorAll('#viewer-node-fields input'));
                 function field(kind,axis){return inputs.find(function(input){return input.dataset.viewerNodeKind===kind&&input.dataset.axis===axis;});}
@@ -179,6 +180,8 @@ final class NativeSmokeTest {
             try require(authored.count == 2 && Set(authored.compactMap { $0["method"] as? String }) == Set(["node", "mesh"]), "Both editing backends must receive real edits.")
             let intended = try await vertices(webView)
             try require(try difference(baseline, intended) > 0.01, "The actual skin must change after editing.")
+            try await checkSeparatePoseBodyPanels(webView)
+            try await checkInvalidBodyDraftMenuSave(webView)
             model.perform("saveModel")
             try checkpoint("first-export")
             let first = try await saved(webView, previousJob: "")
@@ -262,6 +265,156 @@ final class NativeSmokeTest {
             try? checkpoint("failed")
             Darwin.exit(1)
         }
+    }
+
+    private func checkPoseBodyStructure(_ webView: WKWebView) async throws {
+        let structure = try await object(webView, """
+            var pose=document.getElementById('viewer-adjustments'),body=document.getElementById('viewer-body-adjustments');
+            var expression=document.getElementById('viewer-expression-adjustments');
+            return JSON.stringify({poseOpen:pose.open,bodyOpen:body.open,
+              siblings:pose.parentElement===body.parentElement&&body.parentElement===expression.parentElement,
+              separate:!pose.contains(body)&&!body.contains(pose)&&!body.contains(expression),
+              motionOwnedByPose:['viewer-motion','viewer-play','viewer-time'].every(function(id){return pose.contains(document.getElementById(id))&&!body.contains(document.getElementById(id));}),
+              editingOwnedByBody:['viewer-editor-tabs','viewer-node-editor'].every(function(id){return body.contains(document.getElementById(id))&&!pose.contains(document.getElementById(id));})});
+            """)
+        report["pose_body_panel_structure"] = structure
+        try checkpoint("pose-body-panel-structure")
+        for key in ["poseOpen", "bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody"] {
+            try require(structure[key] as? Bool == true, "Pose and body must start as open, independent sibling panels with their own controls: " + key)
+        }
+    }
+
+    private func editingSnapshot(_ webView: WKWebView) async throws -> [String: Any] {
+        try await object(webView, """
+            var s=ModelViewer.getState(),r=s.rig,a=ModelViewer.getAuthoringState();
+            return JSON.stringify({modelId:s.modelId,loadedPaths:JSON.stringify(s.loadedPaths),
+              authoring:JSON.stringify(a),authoringEdits:JSON.stringify(a.edits),camera:JSON.stringify(s.camera),
+              rig:JSON.stringify({selectedNode:r.selectedNode,editorGroup:r.editorGroup,editingMethods:r.editingMethods,
+                nodeAdjustments:r.nodeAdjustments,selectedClip:r.selectedClip,playing:r.playing,time:r.time,evaluation:r.evaluation,
+                body:r.body,bodyControls:r.bodyControls,expressions:r.expressions}),
+              persistence:JSON.stringify(s.persistence),saveEnabled:!document.getElementById('viewer-save').disabled,
+              expressionOpen:document.getElementById('viewer-expression-adjustments').open});
+            """)
+    }
+
+    private func requireEditingSnapshot(_ actual: [String: Any], matches expected: [String: Any], invalidDraft: Bool = false) throws {
+        for key in ["modelId", "loadedPaths", "authoringEdits", "camera", "rig", "persistence"] + (invalidDraft ? [] : ["authoring"]) {
+            guard let current = actual[key] as? String, let retained = expected[key] as? String else { throw NativeError.invalidResponse }
+            try require(current == retained, "Independent panel operations must preserve the actual editing state: " + key)
+        }
+        guard let expression = actual["expressionOpen"] as? Bool, let retainedExpression = expected["expressionOpen"] as? Bool else { throw NativeError.invalidResponse }
+        try require(expression == retainedExpression, "Pose/body toggles must preserve the independent expression panel.")
+        if !invalidDraft {
+            guard let enabled = actual["saveEnabled"] as? Bool, let retainedEnabled = expected["saveEnabled"] as? Bool else { throw NativeError.invalidResponse }
+            try require(enabled == retainedEnabled, "Panel collapse must preserve Save availability.")
+        }
+    }
+
+    private func togglePoseBodyPanel(_ webView: WKWebView, body: Bool) async throws -> [String: Any] {
+        try await object(webView, """
+            var panel=document.getElementById('\(body ? "viewer-body-adjustments" : "viewer-adjustments")'),summary=panel.querySelector('summary');
+            summary.scrollIntoView({block:'nearest'});
+            await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var rect=summary.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            if(rect.width<34||rect.height<34||!(hit===summary||summary.contains(hit)))throw new Error('The real panel summary must be a visible native WebKit target');
+            summary.click();await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var style=getComputedStyle(panel);
+            return JSON.stringify({poseOpen:document.getElementById('viewer-adjustments').open,
+              bodyOpen:document.getElementById('viewer-body-adjustments').open,
+              expressionOpen:document.getElementById('viewer-expression-adjustments').open,panelOpen:panel.open,
+              summaryTarget:{width:rect.width,height:rect.height,hittable:true},sectionHeight:panel.getBoundingClientRect().height,
+              summaryHeight:summary.getBoundingClientRect().height,
+              chromeHeight:parseFloat(style.paddingTop)+parseFloat(style.paddingBottom)+parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth)});
+            """)
+    }
+
+    private func checkSeparatePoseBodyPanels(_ webView: WKWebView) async throws {
+        let before = try await editingSnapshot(webView)
+        try require(before["saveEnabled"] as? Bool == true, "The two real edits must be ready before testing independent panels.")
+        var observations: [[String: Any]] = []
+        for body in [false, false, true, true] {
+            let observation = try await togglePoseBodyPanel(webView, body: body)
+            let opening = observations.count % 2 == 1
+            try require(observation[body ? "bodyOpen" : "poseOpen"] as? Bool == opening &&
+                        observation[body ? "poseOpen" : "bodyOpen"] as? Bool == true,
+                        "Toggling one panel must preserve the other open panel.")
+            if !opening {
+                let summary = observation["summaryHeight"] as? Double ?? -1
+                let chrome = observation["chromeHeight"] as? Double ?? -1
+                try require(abs((observation["sectionHeight"] as? Double ?? -100) - summary - chrome) <= 1,
+                            "A collapsed native details panel must occupy only its summary and chrome.")
+            }
+            try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+            observations.append(observation)
+        }
+        report["separate_pose_body_panels"] = ["status": "PASS", "before": before, "toggles": observations,
+            "both_restored_open": true, "model_camera_recipe_and_save_preserved": true,
+            "scope": "Actual native WebKit details summaries and preserved paused fixture state; no motion playback claim"]
+        try checkpoint("separate-pose-body-panels")
+    }
+
+    private func checkInvalidBodyDraftMenuSave(_ webView: WKWebView) async throws {
+        let before = try await editingSnapshot(webView)
+        let originalVertices = try await vertices(webView)
+        _ = try await togglePoseBodyPanel(webView, body: false)
+        let draft = try await object(webView, """
+            var field=document.querySelector('#viewer-node-fields input[data-viewer-node-kind="scale"][data-axis="X"]');
+            field.scrollIntoView({block:'center'});field.focus();var previous=field.value;
+            await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var rect=field.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            if(field.disabled||rect.width<34||rect.height<34||hit!==field)throw new Error('The open body panel must keep its real editable field usable while pose is collapsed');
+            field.value='0';field.dispatchEvent(new Event('input',{bubbles:true}));
+            return JSON.stringify({previous:previous,raw:field.value,focused:document.activeElement===field,
+              poseOpen:document.getElementById('viewer-adjustments').open,bodyOpen:document.getElementById('viewer-body-adjustments').open,
+              invalid:field.validity.customError&&field.getAttribute('aria-invalid')==='true',
+              saveDisabled:document.getElementById('viewer-save').disabled,unsupported:ModelViewer.getAuthoringState().unsupported});
+            """)
+        report["invalid_body_draft_before_menu_save"] = draft
+        try checkpoint("invalid-body-draft-ready")
+        try require(draft["raw"] as? String == "0" && draft["focused"] as? Bool == true &&
+                    draft["invalid"] as? Bool == true && draft["saveDisabled"] as? Bool == true &&
+                    draft["poseOpen"] as? Bool == false && draft["bodyOpen"] as? Bool == true &&
+                    !(draft["unsupported"] as? [String] ?? []).isEmpty,
+                    "A focused invalid body draft must block Save while pose is collapsed.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before, invalidDraft: true)
+        model.perform("saveModel")
+        // The native dispatch is intentionally fire-and-forget. An acknowledged
+        // call to the same production command also proves its guard ran, rather
+        // than treating a delayed or absent native dispatch as a passing no-op.
+        let acknowledged = try await js(webView, "return ElichikaPlatform.perform('saveModel');")
+        try require(acknowledged as? Bool == true, "The real production Save command must handle the invalid draft.")
+        try await Task.sleep(nanoseconds: 250_000_000)
+        let after = try await object(webView, """
+            var field=document.querySelector('#viewer-node-fields input[data-viewer-node-kind="scale"][data-axis="X"]');
+            return JSON.stringify({raw:field.value,focused:document.activeElement===field,invalid:field.validity.customError,
+              poseOpen:document.getElementById('viewer-adjustments').open,bodyOpen:document.getElementById('viewer-body-adjustments').open,
+              saveDisabled:document.getElementById('viewer-save').disabled,unsupported:ModelViewer.getAuthoringState().unsupported});
+            """)
+        report["invalid_body_draft_after_menu_save"] = after
+        try checkpoint("invalid-body-draft-menu-save-observed")
+        try require(after["raw"] as? String == "0" && after["focused"] as? Bool == true &&
+                    after["invalid"] as? Bool == true && after["saveDisabled"] as? Bool == true &&
+                    after["poseOpen"] as? Bool == false && after["bodyOpen"] as? Bool == true &&
+                    !(after["unsupported"] as? [String] ?? []).isEmpty,
+                    "Native menu Save must preserve the invalid draft and refuse to export stale valid values.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before, invalidDraft: true)
+        let unchangedVertices = try await vertices(webView)
+        try require(try difference(originalVertices, unchangedVertices) < 0.000000001,
+                    "An invalid draft must not alter the actual deformed geometry.")
+        guard let previous = draft["previous"] as? String else { throw NativeError.invalidResponse }
+        let quoted = String(decoding: try JSONSerialization.data(withJSONObject: [previous]), as: UTF8.self) + "[0]"
+        _ = try await js(webView, "var field=document.querySelector('#viewer-node-fields input[data-viewer-node-kind=\"scale\"][data-axis=\"X\"]');field.value=" + quoted + ";field.dispatchEvent(new Event('input',{bubbles:true}));field.blur();return true;")
+        let restored = try await togglePoseBodyPanel(webView, body: false)
+        try require(restored["poseOpen"] as? Bool == true && restored["bodyOpen"] as? Bool == true,
+                    "Both independent panels must be restored before the real export.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+        let focused = try await js(webView, "var field=document.querySelector('#viewer-node-fields input[data-viewer-node-kind=\"scale\"][data-axis=\"X\"]');field.focus();return document.activeElement===field;")
+        try require(focused as? Bool == true, "The valid body draft must remain focused before native menu export.")
+        report["invalid_body_draft_native_menu_save"] = ["status": "PASS", "no_export_started": true,
+            "invalid_raw_draft_preserved": true, "valid_draft_restored": true, "pose_and_body_restored_open": true,
+            "valid_body_field_focused_before_real_export": true, "production_command_acknowledged": true,
+            "scope": "Native dispatch plus acknowledged production-command guard; the following valid native export verifies native delivery"]
+        try checkpoint("invalid-body-draft-restored")
     }
 
     private func checkpoint(_ stage: String) throws {

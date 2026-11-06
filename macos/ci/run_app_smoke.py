@@ -114,6 +114,23 @@ def check_zip_edit_report(report, fixture):
             "The real editor must exercise fractional source fields beyond the spinner increments")
 
 
+def check_pose_body_report(report):
+    structure = report.get("pose_body_panel_structure", {})
+    require(all(structure.get(key) is True for key in
+                ("poseOpen", "bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody")),
+            "Actual WebKit must expose independent pose and body panels with their own controls")
+    panels = report.get("separate_pose_body_panels", {})
+    require(panels.get("status") == "PASS" and len(panels.get("toggles", [])) == 4
+            and panels.get("both_restored_open") is True
+            and panels.get("model_camera_recipe_and_save_preserved") is True,
+            "Actual pose/body summary toggles must preserve edits, camera and Save availability")
+    invalid = report.get("invalid_body_draft_native_menu_save", {})
+    require(invalid.get("status") == "PASS" and all(invalid.get(key) is True for key in
+                ("production_command_acknowledged", "no_export_started", "invalid_raw_draft_preserved",
+                 "valid_draft_restored", "pose_and_body_restored_open", "valid_body_field_focused_before_real_export")),
+            "Native Save must reject an invalid body draft and resume export after correcting it")
+
+
 def launch(app, output, label):
     stdout = output / f"{label}.stdout.txt"
     stderr = output / f"{label}.stderr.txt"
@@ -162,12 +179,14 @@ def check(app, output, relocation):
     fixture = prepare_zip_fixture(app, output)
     first = launch(app, output, "first-launch")
     check_zip_edit_report(first, fixture)
+    check_pose_body_report(first)
     require(sha256(Path(fixture["zip"])) == fixture["zip_sha256"], "First app launch changed the input ZIP")
     relocation.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(app), str(relocation))
     require(not app.exists() and relocation.is_dir(), "App relocation must remove the original absolute path")
     second = launch(relocation, output, "relocated-relaunch")
     check_zip_edit_report(second, fixture)
+    check_pose_body_report(second)
     first_panel = first.get("viewer_panel_width_persistence", {})
     second_panel = second.get("viewer_panel_width_persistence", {})
     require(240 <= first_panel.get("committed", 0) <= 640

@@ -4,13 +4,23 @@
   function element(id) { var value = document.getElementById(id); if (!value) throw new Error("Missing portrait control: " + id); return value; }
   function bounds(target) { var r = target.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; }
   function target() { return document.querySelector('[data-viewer-node-kind="scale"][data-axis="X"]'); }
+  function panels() {
+    var pose = element("viewer-adjustments"), body = element("viewer-body-adjustments"), fields = element("viewer-node-fields");
+    var independent = pose !== body && pose.parentNode === body.parentNode && !pose.contains(body) && !body.contains(pose) &&
+      body.contains(fields) && body.contains(element("viewer-node-editor")) && !pose.contains(fields) &&
+      pose.contains(element("viewer-motion")) && !body.contains(element("viewer-motion"));
+    return { independent: independent, poseOpen: pose.open, bodyOpen: body.open, bodyOwnsBoneFields: body.contains(fields) };
+  }
   function snapshot() {
     var state = ModelViewer.getState(), stage = element("viewer-stage"), input = target(), header = document.querySelector("body > header");
+    var sections = panels();
+    if (!sections.independent || sections.poseOpen || !sections.bodyOpen)
+      throw new Error("Portrait body editing must remain independent while Pose is collapsed: " + JSON.stringify(sections));
     var h = header ? bounds(header) : { bottom: 0 }, r = input ? bounds(input) : null;
     var hit = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
     return { viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, coarse: matchMedia("(pointer:coarse)").matches },
       scrollY: scrollY, stage: bounds(stage), stagePosition: getComputedStyle(stage).position, headerBottom: Math.max(0, h.bottom),
-      modelId: state.modelId, camera: state.camera, authoring: ModelViewer.getAuthoringState(), layout: state.layout,
+      modelId: state.modelId, camera: state.camera, authoring: ModelViewer.getAuthoringState(), layout: state.layout, independentPanels: sections,
       selectedNode: state.rig.selectedNode, control: r && { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height,
         value: input.value, disabled: input.disabled, focused: document.activeElement === input,
         visible: r.width > 0 && r.height > 0 && getComputedStyle(input).visibility !== "hidden",
@@ -26,7 +36,8 @@
       var state = ModelViewer.getState();
       if (state.layout.expanded || state.layout.fullscreen !== "none" || state.layout.shortHeight || innerWidth >= 720 || innerHeight < 900)
         throw new Error("Portrait QA requires a real tall normal Android window");
-      element("viewer-adjustments").open = true; element("viewer-node-editor").open = true;
+      if (!panels().independent) throw new Error("Pose and body controls must belong to independent sibling panels");
+      element("viewer-body-adjustments").open = true; element("viewer-adjustments").open = false; element("viewer-node-editor").open = true;
       ViewerRigQa.input("viewer-node", ViewerRigQa.nodeId("BreastSize"), "change");
       ViewerRigQa.input("viewer-save-method", "mesh", "change");
       window.scrollTo(0, 0); return snapshot();

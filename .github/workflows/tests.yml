@@ -158,6 +158,7 @@ jobs:
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/layout" node tests/viewer_layout_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/portrait-scroll" node tests/viewer_portrait_scroll_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/pose-body" node tests/viewer_pose_body_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/vertical" node tests/viewer_vertical_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/framing" node tests/viewer_framing_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/compensation" node tests/viewer_compensation_browser.js

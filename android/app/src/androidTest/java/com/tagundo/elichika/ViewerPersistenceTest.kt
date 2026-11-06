@@ -92,7 +92,7 @@ class ViewerPersistenceTest {
             input(webView, "viewer-edit-evaluation", "authoring")
             waitForBoneScale(webView, "LeftUpLeg", doubleArrayOf(1.3, .9, 1.0))
             input(webView, "viewer-motion", "")
-            run(webView, "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-node-editor').open=true;")
+            run(webView, "document.getElementById('viewer-body-adjustments').open=true;document.getElementById('viewer-node-editor').open=true;")
 
             clickVisible(webView, "viewer-editor-mesh-tab")
             assertEditorGroup(webView, "mesh")
@@ -154,7 +154,7 @@ class ViewerPersistenceTest {
             // Also read the portable recipe from disk and restore it through
             // the real API, after clearing the editor. This checks the saved
             // file rather than only the previous response kept by the UI.
-            run(webView, "document.getElementById('viewer-preview-reset').click();")
+            clickVisible(webView, "viewer-preview-reset")
             assertEquals(0, evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());").getJSONArray("edits").length())
             restore(webView, recipe)
             val restored = evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());")
@@ -224,8 +224,48 @@ class ViewerPersistenceTest {
         assertEquals(1.234567, observed.getDouble("scaleY"), 1e-7)
         assertEquals("Step mismatches alone are valid authoring values", 0, observed.getJSONArray("unsupported").length())
         assertTrue("The real APK must enable Save with only fractional step mismatches", observed.getBoolean("saveEnabled"))
-        return observed
+        return observed.put("invalidBodyValueValidation", invalidBodySaveState(webView))
     }
+
+    private fun invalidBodySaveState(webView: WebView): JSONObject = evaluate(webView, """
+        var pose=document.getElementById('viewer-adjustments'),body=document.getElementById('viewer-body-adjustments'),
+            fields=document.getElementById('viewer-node-fields'),save=document.getElementById('viewer-save'),
+            input=document.querySelector('[data-viewer-node-kind="scale"][data-axis="Y"]');
+        if(!body.contains(fields)||pose.contains(fields)||body.parentNode!==pose.parentNode||!input||!fields.contains(input))
+            throw new Error('The actual bone fields must belong only to the independent Body panel');
+        var poseWasOpen=pose.open,bodyWasOpen=body.open,original=input.value;
+        try {
+            body.open=true;pose.open=false;
+            var control=ViewerRigQa.control(input,true);
+            if(control.disabled||!control.visible||!control.withinViewport||!control.hittable||control.width<44||control.height<44)
+                throw new Error('The actual Body input must be a visible unobstructed 44px target: '+JSON.stringify(control));
+            var before=ModelViewer.getAuthoringState();
+            if(save.disabled||before.unsupported.length||Number(original)!==1.234567)
+                throw new Error('Begin with the exact valid fractional edit and enabled Save');
+            input.focus();input.value='0';input.dispatchEvent(new Event('input',{bubbles:true}));
+            var invalidAuthoring=ModelViewer.getAuthoringState(),invalid={value:input.value,
+                customError:input.validity.customError,stepMismatch:input.validity.stepMismatch,
+                ariaInvalid:input.getAttribute('aria-invalid'),saveEnabled:!save.disabled,
+                unsupported:invalidAuthoring.unsupported,poseOpen:pose.open,bodyOpen:body.open};
+            if(!invalid.customError||invalid.stepMismatch||invalid.ariaInvalid!=='true'||invalid.saveEnabled||
+                !invalid.unsupported.length||invalid.poseOpen||!invalid.bodyOpen)
+                throw new Error('A truly invalid zero scale must disable Save while Pose remains collapsed: '+JSON.stringify(invalid));
+            if(JSON.stringify(invalidAuthoring.edits)!==JSON.stringify(before.edits))
+                throw new Error('An invalid number must preserve the last valid persistent edits');
+            input.value=original;input.dispatchEvent(new Event('input',{bubbles:true}));
+            var restoredAuthoring=ModelViewer.getAuthoringState(),restored={value:input.value,
+                customError:input.validity.customError,saveEnabled:!save.disabled,
+                unsupported:restoredAuthoring.unsupported,poseOpen:pose.open,bodyOpen:body.open};
+            if(restored.value!==original||restored.customError||!restored.saveEnabled||restored.unsupported.length||
+                restored.poseOpen||!restored.bodyOpen||JSON.stringify(restoredAuthoring)!==JSON.stringify(before))
+                throw new Error('Restoring the exact fractional input must reenable Save without changing edits: '+JSON.stringify(restored));
+            return JSON.stringify({control:control,originalValue:original,invalid:invalid,restored:restored,
+                independentBodyPanel:true,lastValidEditsPreserved:true});
+        } finally {
+            if(input.value!==original||input.validity.customError){input.value=original;input.dispatchEvent(new Event('input',{bubbles:true}));}
+            pose.open=poseWasOpen;body.open=bodyWasOpen;
+        }
+    """.trimIndent())
 
     private fun thighTransform(webView: WebView): JSONObject = evaluate(webView,
         "var bone=ModelViewer.getState().rig.bones.filter(function(bone){return bone.name==='LeftUpLeg'||bone.name.slice(-10)==='/LeftUpLeg';})[0];" +
