@@ -1,7 +1,11 @@
 package clientdb
 
 import (
+	"bytes"
+	"elichika/log"
 	"elichika/utils"
+	"io"
+	"regexp"
 
 	"crypto/sha1"
 	"encoding/hex"
@@ -12,30 +16,6 @@ type manifest struct {
 	Version string
 	Lang    string
 	Files   []FileReference
-}
-
-func readBytes(file *os.File, size int) []byte {
-	bytes := make([]byte, size)
-	file.Read(bytes)
-	return bytes
-}
-
-func readPrefixString(file *os.File) string {
-	return string(readBytes(file, readUbyte(file)))
-}
-
-func readUbyte(file *os.File) int {
-	b := readBytes(file, 1)
-	return int(b[0])
-}
-
-func readUint(file *os.File) int {
-	b := readBytes(file, 4)
-	f := int(b[3]) << 8
-	f = (f + int(b[2])) << 8
-	f = (f + int(b[1])) << 7
-	f = (f + int(b[0])) // cursed af
-	return f
 }
 
 func serializeUbyte(b byte) []byte {
@@ -85,24 +65,56 @@ func (m *manifest) serialize() []byte {
 	return buf
 }
 
+var (
+	manifestVersion = regexp.MustCompile(`^[0-9a-f]{16}$`)
+	manifestLocale  = regexp.MustCompile(`^[a-z]{2}$`)
+	manifestDBName  = regexp.MustCompile(`^[A-Za-z0-9_.-]+\.db$`)
+	manifestHash    = regexp.MustCompile(`^[0-9a-f]{40}$`)
+)
+
 func newManifest(file *os.File) *manifest {
-	m := new(manifest)
-	_ = readBytes(file, 20) // sha1hash
-	m.Version = readPrefixString(file)
-	m.Lang = readPrefixString(file)
-
-	m.Files = []FileReference{}
-
-	fileCount := readUbyte(file)
-	for i := 0; i < fileCount; i++ {
-		name := readPrefixString(file)
-		sha := readPrefixString(file)
+	// Refuse corrupt/truncated manifests instead of treating a partial read as
+	// usable metadata during recovery. No installed DB is replaced by this path.
+	data, err := io.ReadAll(io.LimitReader(file, 256*1024+1))
+	utils.CheckErr(err)
+	if len(data) < 23 || len(data) > 256*1024 {
+		log.Panic("invalid client manifest length: " + file.Name())
+	}
+	hash := sha1.Sum(data[20:])
+	if !bytes.Equal(hash[:], data[:20]) {
+		log.Panic("invalid client manifest checksum: " + file.Name())
+	}
+	body := bytes.NewReader(data[20:])
+	read := func(size int) []byte {
+		value := make([]byte, size)
+		_, err := io.ReadFull(body, value)
+		utils.CheckErr(err)
+		return value
+	}
+	prefix := func() string { return string(read(int(read(1)[0]))) }
+	m := &manifest{Version: prefix(), Lang: prefix()}
+	if !manifestVersion.MatchString(m.Version) || !manifestLocale.MatchString(m.Lang) {
+		log.Panic("invalid client manifest version or locale: " + file.Name())
+	}
+	count := int(read(1)[0])
+	seen := map[string]bool{}
+	for i := 0; i < count; i++ {
+		name, sha := prefix(), prefix()
+		if !manifestDBName.MatchString(name) || name == ".db" || seen[name] || !manifestHash.MatchString(sha) {
+			log.Panic("invalid client manifest database reference: " + file.Name())
+		}
+		seen[name] = true
 		m.Files = append(m.Files, makeFileReference(m.Version, name, sha))
 	}
-
+	if count == 0 || body.Len() != count*24 {
+		log.Panic("invalid client manifest file metadata: " + file.Name())
+	}
 	for i := range m.Files {
-		m.Files[i].EncryptedSHA = hex.EncodeToString(readBytes(file, 20))
-		m.Files[i].Size = readUint(file)
+		m.Files[i].EncryptedSHA = hex.EncodeToString(read(20))
+		b := read(4)
+		size := (int(b[3]) << 8) + int(b[2])
+		size = (size << 8) + int(b[1])
+		m.Files[i].Size = (size << 7) + int(b[0])
 	}
 	return m
 }

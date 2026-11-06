@@ -130,6 +130,7 @@ jobs:
           # These service-control checks intentionally require a stopped server.
           adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
           adb -s 127.0.0.1:5555 shell am instrument -w \
+            -e allowPublicFixtureInstall true \
             -e class com.tagundo.elichika.ModelViewerWebViewTest,com.tagundo.elichika.ModelViewerAutoFaceTest,com.tagundo.elichika.ModelViewerRigTest,com.tagundo.elichika.ViewerPersistenceTest,com.tagundo.elichika.NativePythonTest,com.tagundo.elichika.PayloadFileHasherTest,com.tagundo.elichika.PayloadRevisionTest,com.tagundo.elichika.ConsoleLayoutTest,com.tagundo.elichika.WindowBusTest,com.tagundo.elichika.ServerPreparationTest,com.tagundo.elichika.ServerControlTest,com.tagundo.elichika.ServerConfigTest,com.tagundo.elichika.MeshWebViewTest \
             com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
             | tee evidence/native-instrumentation.txt
@@ -143,24 +144,49 @@ jobs:
           adb -s 127.0.0.1:5555 shell wm density | tr -d '\r' >> evidence/wide-display-before.txt
           previous_size=$(sed -n 's/^Override size: //p' evidence/wide-display-before.txt)
           previous_density=$(sed -n 's/^Override density: //p' evidence/wide-display-before.txt)
+          previous_font_scale=$(adb -s 127.0.0.1:5555 shell settings get system font_scale | tr -d '\r')
+          printf '%s\n' "$previous_font_scale" > evidence/wide-font-before.txt
           restore_display() {
-            adb -s 127.0.0.1:5555 shell wm density "${previous_density:-reset}" || true
-            adb -s 127.0.0.1:5555 shell wm size "${previous_size:-reset}" || true
+            qa_exit_code=$?
+            trap - EXIT
+            qa_restore_failed=0
+            if [[ -z "$previous_font_scale" || "$previous_font_scale" == "null" ]]; then
+              adb -s 127.0.0.1:5555 shell settings delete system font_scale || qa_restore_failed=1
+            else
+              adb -s 127.0.0.1:5555 shell settings put system font_scale "$previous_font_scale" || qa_restore_failed=1
+            fi
+            adb -s 127.0.0.1:5555 shell wm density "${previous_density:-reset}" || qa_restore_failed=1
+            adb -s 127.0.0.1:5555 shell wm size "${previous_size:-reset}" || qa_restore_failed=1
+            if (( qa_restore_failed )); then exit 1; fi
+            exit "$qa_exit_code"
           }
           trap restore_display EXIT
           adb -s 127.0.0.1:5555 shell wm size 1600x1000
           adb -s 127.0.0.1:5555 shell wm density 160
           adb -s 127.0.0.1:5555 shell wm size > evidence/wide-display-active.txt
           adb -s 127.0.0.1:5555 shell wm density >> evidence/wide-display-active.txt
-          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-          adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e requireWideUi true \
-            -e class com.tagundo.elichika.MeshWebViewTest \
-            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee evidence/native-wide-ui.txt
-          python3 -c 'from pathlib import Path; text=Path("evidence/native-wide-ui.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools-report.json > evidence/mesh-wide-tools-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools.png > evidence/mesh-wide-tools.png
+          # Fresh instrumentation launches use real Android font scaling. Never
+          # force internal TabLayout paints to imitate the system configuration.
+          for font_scale in 1.0 1.2 2.0; do
+            adb -s 127.0.0.1:5555 shell settings put system font_scale "$font_scale"
+            adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
+            adb -s 127.0.0.1:5555 shell am instrument -w \
+              -e requireWideUi true -e expectedFontScale "$font_scale" \
+              -e class com.tagundo.elichika.MeshWebViewTest \
+              com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+              | tee "evidence/native-wide-ui-font-${font_scale}.txt"
+            python3 -c 'import sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text' "evidence/native-wide-ui-font-${font_scale}.txt"
+            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > "evidence/header-layout-wide-font-${font_scale}.json"
+            python3 -c 'import json,sys; from pathlib import Path; report=json.loads(Path(sys.argv[1]).read_text()); assert abs(report["systemFontScale"]-float(sys.argv[2]))<0.02, report' "evidence/header-layout-wide-font-${font_scale}.json" "$font_scale"
+            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > "evidence/header-layout-wide-font-${font_scale}.png"
+            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools-report.json > "evidence/mesh-wide-tools-font-${font_scale}.json"
+            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools.png > "evidence/mesh-wide-tools-font-${font_scale}.png"
+            if [[ "$font_scale" == "1.0" ]]; then
+              cp "evidence/native-wide-ui-font-${font_scale}.txt" evidence/native-wide-ui.txt
+              cp "evidence/mesh-wide-tools-font-${font_scale}.json" evidence/mesh-wide-tools-report.json
+              cp "evidence/mesh-wide-tools-font-${font_scale}.png" evidence/mesh-wide-tools.png
+            fi
+          done
 
       - name: Exercise normal viewer scrolling in a real tall portrait Android window
         timeout-minutes: 5
@@ -208,6 +234,9 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader-report.json > evidence/model-viewer-shader-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-persistence-report.json > evidence/viewer-persistence-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-persistence.png > evidence/viewer-persistence.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-add-game-report.json > evidence/viewer-add-game-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow-report.json > evidence/header-layout-narrow-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow.png > evidence/header-layout-narrow.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll-report.json > evidence/viewer-portrait-scroll-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll.png > evidence/viewer-portrait-scroll.png 2>/dev/null || true
           sudo dmesg | tail -100 > evidence/kernel-tail.txt || true

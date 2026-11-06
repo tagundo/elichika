@@ -23,6 +23,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -173,6 +175,7 @@ class ViewerPersistenceTest {
             assertTrue("The first completed output must remain available", outputFiles.all { it.isFile && it.length() > 0 })
             assertGameStopped()
             val modPackage = saveNamedModPackage(context, webView, second, authoring, source, bytes, intended, sourceThigh)
+            val installedMod = addToGameAndRestartGo(launched, webView, authoring, source, bytes)
             val report = JSONObject().put("sourceSha256", sha256(bytes)).put("sourcePreserved", true)
                 .put("originalNeutralFixtureSha256", sha256(neutralBytes)).put("unityMemberSha256", sha256(member))
                 .put("fractionalZipValidation", fractionalValidation).put("sourceThighTransform", sourceThigh)
@@ -184,7 +187,8 @@ class ViewerPersistenceTest {
                 .put("baselineVertices", baseline).put("intendedVertices", intended)
                 .put("reloadedVertices", reloaded).put("rebuiltVertices", rebuilt)
                 .put("namedInstallerModPackage", modPackage)
-                .put("gameServerRemainedStopped", true)
+                .put("editingServerRemainedStopped", true)
+                .put("actualAddToGame", installedMod).put("gameServerRemainedStopped", false)
             File(context.cacheDir, "viewer-persistence-report.json").writeText(report.toString(2))
             instrumentation.waitForIdleSync()
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
@@ -417,6 +421,177 @@ class ViewerPersistenceTest {
                 "(top===t||t.contains(top)),id:t.id,width:r.width,height:r.height,visible:!!t.getClientRects().length,hittable:top===t||t.contains(top)});"
         }
     }
+
+    /** Opt-in only: android_release_smoke has just freshly installed public data
+     * and created its synthetic KO account. Never enable this on a user device. */
+    private fun addToGameAndRestartGo(activity: MainActivity, webView: WebView,
+        expectedAuthoring: JSONObject, source: File, sourceBytes: ByteArray): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assertEquals("Real installation requires the disposable public CI fixture", "true",
+            InstrumentationRegistry.getArguments().getString("allowPublicFixtureInstall"))
+        val context = instrumentation.targetContext
+        val oldLocale = ServerConfig.gameDataLocales(context)
+        val report = JSONObject().put("status", "RUNNING").put("fixture", "Fresh public APK data and synthetic CI account")
+        val evidence = File(context.cacheDir, "viewer-add-game-report.json")
+        val name = "Native Add Game ${System.nanoTime()}"
+        try {
+            val previous = evaluate(webView, "return JSON.stringify({id:ModelViewer.getState().modelId,p:ModelViewer.getState().persistence});")
+            clickVisible(webView, "viewer-reedit-original")
+            waitForNewModel(webView, previous.getString("id"), previous.getJSONObject("p").getJSONArray("originalPaths"))
+            waitForDom(webView, "the preserved original restored before real installation") {
+                "var p=ModelViewer.getState().persistence;return JSON.stringify({ok:!p.busy&&p.status==='restored',error:p.error||''});"
+            }
+            assertEquals(expectedAuthoring.getJSONArray("edits").toString(),
+                evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());").getJSONArray("edits").toString())
+            showModField(webView, "viewer-mod-character"); input(webView, "viewer-mod-character", "6")
+            showModField(webView, "viewer-mod-name"); input(webView, "viewer-mod-name", name, "input")
+            val modelBefore = evaluate(webView, "return JSON.stringify({id:ModelViewer.getState().modelId,body:ModelViewer.getAuthoringState()});")
+            // Limit loaded game data to the real Korean user path. Go still
+            // regenerates/verifies every GL/JP platform manifest on startup.
+            ServerConfig.setGameDataLocales(context, "ko")
+            instrumentation.runOnMainSync { activity.findViewById<android.widget.Button>(R.id.btn_toggle).performClick() }
+            val before = waitForRealGo("before Add to game")
+            report.put("before", before).put("displayName", name)
+            evidence.writeText(report.toString(2))
+            val clicked = clickVisible(webView, "viewer-add-to-game")
+            assertTrue(clicked.getBoolean("disabled") && clicked.getJSONObject("state").getJSONObject("persistence").getBoolean("busy"))
+            waitForDom(webView, "real backed-up installation and owned-service restart", 300) {
+                "var p=ModelViewer.getState().persistence;return JSON.stringify({ok:!p.busy&&p.status==='done'&&!!p.modPackage,error:p.error||'',persistence:p});"
+            }
+            run(webView, "window.__nativeInstalledMod={done:false};fetch('/api/viewer/edit/result/'+encodeURIComponent(ModelViewer.getState().persistence.jobId))" +
+                ".then(function(r){return r.json().then(function(v){if(!r.ok||v.error)throw new Error(v.error||'Install failed');return v;});})" +
+                ".then(function(v){window.__nativeInstalledMod={done:true,value:v};},function(e){window.__nativeInstalledMod={done:true,error:String(e)};});")
+            val result = waitForDom(webView, "the actual installation receipt") {
+                "var r=window.__nativeInstalledMod;return JSON.stringify({ok:r.done&&!r.error,error:r.error||'',value:r.value});"
+            }.getJSONObject("value")
+            assertTrue(result.getBoolean("installed"))
+            assertTrue("The native owned controller must observe the real running process", result.getBoolean("was_running"))
+            val receipt = result.getJSONObject("mod_package")
+            assertEquals(6, receipt.getInt("character_id")); assertEquals(name, receipt.getString("display_name"))
+            val installed = File(result.getString("installed_package_path"))
+            assertEquals(receipt.getLong("bytes"), installed.length())
+            assertEquals(receipt.getString("sha256"), sha256(installed.readBytes()))
+            val after = waitForRealGo("after Add to game", before.getString("pid"))
+            report.put("after", after).put("installedPackageSha256", receipt.getString("sha256"))
+            val python = EmbeddedPython.instance(context)
+            val module = python.getModule("types").callAttr("ModuleType", "_native_installed_manifest_qa")
+            python.getModule("builtins").callAttr("exec", goManifestInspectionScript, module.get("__dict__"))
+            val checked = JSONObject(module.callAttr("inspect_json", context.filesDir.absolutePath, name, 6).toString())
+            assertEquals(8, checked.getInt("manifestCount"))
+            assertTrue(checked.getBoolean("allDeclaredDatabasesAndCiphertextsMatch"))
+            assertEquals(6, checked.getInt("characterId"))
+            report.put("manifestsAndInstalledCostume", checked)
+            val modelAfter = evaluate(webView, "return JSON.stringify({id:ModelViewer.getState().modelId,body:ModelViewer.getAuthoringState()});")
+            assertEquals(modelBefore.toString(), modelAfter.toString())
+            assertTrue(source.readBytes().contentEquals(sourceBytes))
+            report.put("sameModelAndPendingEdits", true).put("sourcePreserved", true).put("status", "PASS")
+            return report
+        } catch (failure: Throwable) {
+            report.put("status", "FAIL").put("error", failure.toString()).put("serverLogTail", Bus.snapshot().takeLast(5000))
+            throw failure
+        } finally {
+            instrumentation.runOnMainSync { ServerService.stop(context) }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+            while ((realGoPids().isNotEmpty() || Bus.serverRunning || Bus.serverStarting) && System.nanoTime() < deadline) Thread.sleep(100)
+            ServerConfig.setGameDataLocales(context, oldLocale)
+            report.put("serverStoppedAfterTest", realGoPids().isEmpty() && !Bus.serverRunning && !Bus.serverStarting)
+            evidence.writeText(report.toString(2))
+            assertGameStopped()
+        }
+    }
+
+    private fun realGoPids(): List<String> {
+        val process = ProcessBuilder("/system/bin/pidof", "libelichika.so").redirectErrorStream(true).start()
+        assertTrue(process.waitFor(5, TimeUnit.SECONDS))
+        val output = process.inputStream.bufferedReader().use { it.readText().trim() }
+        return if (process.exitValue() == 0) output.split(Regex("\\s+")).filter { it.matches(Regex("[0-9]+")) } else emptyList()
+    }
+
+    private fun waitForRealGo(phase: String, previousPid: String? = null): JSONObject {
+        val started = System.nanoTime()
+        val deadline = started + TimeUnit.SECONDS.toNanos(240)
+        var last = "No real server process"
+        while (System.nanoTime() < deadline) {
+            val pids = realGoPids()
+            if (pids.size == 1 && pids.single() != previousPid && Bus.serverRunning) {
+                val connection = URL("http://127.0.0.1:8080/webui/admin/").openConnection() as HttpURLConnection
+                try {
+                    connection.connectTimeout = 1500; connection.readTimeout = 1500
+                    val status = connection.responseCode
+                    val size = if (status == 200) connection.inputStream.use { it.readBytes().size } else 0
+                    if (status == 200 && size > 100) return JSONObject().put("pid", pids.single()).put("httpStatus", status)
+                        .put("bodyBytes", size).put("readySeconds", (System.nanoTime() - started) / 1e9)
+                    last = "HTTP $status, $size bytes, PID $pids"
+                } catch (error: Exception) { last = "$pids: ${error.javaClass.simpleName}" }
+                finally { connection.disconnect() }
+            } else last = "PID $pids, running=${Bus.serverRunning}, starting=${Bus.serverStarting}"
+            Thread.sleep(100)
+        }
+        throw AssertionError("Real Go did not become HTTP-ready $phase: $last\n${Bus.snapshot().takeLast(5000)}")
+    }
+
+    private val goManifestInspectionScript = """
+        import hashlib, json, re, sqlite3
+        from pathlib import Path
+
+        def inspect_json(root, display_name, expected_owner):
+            root = Path(root)
+            clear_hashes, cipher_hashes, groups, rows = {}, {}, {}, []
+            for region, languages in [('gl', ['en','ko','zh']), ('jp', ['ja'])]:
+                versions = set()
+                for platform in ['a','i']:
+                    for language in languages:
+                        path = root/'assets/db'/region/('masterdata_'+platform+'_'+language)
+                        raw = path.read_bytes()
+                        assert hashlib.sha1(raw[20:]).digest() == raw[:20]
+                        offset = 20
+                        def prefix():
+                            nonlocal offset
+                            length = raw[offset]; offset += 1
+                            value = raw[offset:offset+length].decode('ascii'); offset += length
+                            return value
+                        version, locale = prefix(), prefix()
+                        assert re.fullmatch('[a-f0-9]{16}', version) and locale == language
+                        versions.add(version)
+                        count = raw[offset]; offset += 1
+                        references = [(prefix(), prefix()) for _ in range(count)]
+                        assert count and len({name for name, _ in references}) == count and len(raw)-offset == count*24
+                        for name, expected in references:
+                            assert Path(name).name == name and name.endswith('.db') and re.fullmatch('[a-f0-9]{40}', expected)
+                            source = path.parent/name
+                            if source not in clear_hashes:
+                                with source.open('rb') as stream:
+                                    assert stream.read(16) == b'SQLite format 3\0'; stream.seek(0)
+                                    clear_hashes[source] = hashlib.file_digest(stream, 'sha1').hexdigest()
+                            assert clear_hashes[source] == expected
+                        for name, _ in references:
+                            expected = raw[offset:offset+20].hex(); encoded_size = raw[offset+20:offset+24]; offset += 24
+                            size = (((encoded_size[3] << 8) + encoded_size[2]) << 8) + encoded_size[1]
+                            size = (size << 7) + encoded_size[0]
+                            cipher = root/'static'/version/name
+                            if cipher not in cipher_hashes:
+                                with cipher.open('rb') as stream: cipher_hashes[cipher] = hashlib.file_digest(stream, 'sha1').hexdigest()
+                            assert cipher.stat().st_size == size and cipher_hashes[cipher] == expected
+                        assert (root/'static'/version/path.name).read_bytes() == raw
+                        rows.append({'region':region, 'platform':platform, 'locale':locale, 'version':version, 'references':count})
+                assert len(versions) == 1
+                groups[region] = next(iter(versions))
+            suits = []
+            for region, language in [('gl','en'),('gl','ko'),('gl','zh'),('jp','ja')]:
+                directory = root/'assets/db'/region
+                with sqlite3.connect('file:'+str(directory/('dictionary_'+language+'_k.db'))+'?mode=ro', uri=True) as db:
+                    keys = db.execute('SELECT id FROM m_dictionary WHERE message=?', (display_name,)).fetchall()
+                assert len(keys) == 1
+                with sqlite3.connect('file:'+str(directory/'masterdata.db')+'?mode=ro', uri=True) as db:
+                    found = db.execute('SELECT id,member_m_id FROM m_suit WHERE name=?', ('k.'+keys[0][0],)).fetchall()
+                assert len(found) == 1 and found[0][1] == expected_owner
+                suits.append(found[0][0])
+            assert len(set(suits)) == 1 and len(rows) == 8
+            return json.dumps({'manifestCount':len(rows), 'manifests':rows, 'versions':groups,
+                'declaredDatabaseChecks':len(clear_hashes), 'ciphertextChecks':len(cipher_hashes),
+                'allDeclaredDatabasesAndCiphertextsMatch':True, 'characterId':expected_owner, 'installedSuitId':suits[0],
+                'allFourCostumeNamesMatch':True, 'scope':'Declared references only; unreferenced Thai/other databases are not assumed to have cipher outputs'})
+    """.trimIndent()
 
     private val packageInspectionScript = """
         import ast, hashlib, io, json, re, stat, zipfile

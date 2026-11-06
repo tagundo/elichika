@@ -115,7 +115,10 @@ class MeshWebViewTest {
             }
             editor.put("existingModelFolderChecked", modelDirectory.isDirectory)
             editor.put("actualViewport", viewport)
-            if (requireWideUi) editor.put("wideTools", exerciseWideTools(webView))
+            if (requireWideUi) {
+                editor.put("nativeHeader", HeaderLayoutNativeQa.exercise(activity, wide = true, retainedWebView = webView))
+                editor.put("wideTools", exerciseWideTools(webView))
+            }
             if (requirePortraitUi) editor.put("portraitViewer", exercisePortraitViewerScroll(activity, webView))
             println("MESH_WEBVIEW_REPORT=" + editor.toString())
         } finally {
