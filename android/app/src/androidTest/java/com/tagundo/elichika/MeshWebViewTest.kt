@@ -13,6 +13,7 @@ import android.webkit.WebView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.material.tabs.TabLayout
+import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.assertEquals
@@ -65,8 +66,10 @@ class MeshWebViewTest {
                     "return JSON.stringify({ok:!!b,ready:document.readyState,title:document.title});"
             }
             val requireWideUi = InstrumentationRegistry.getArguments().getString("requireWideUi") == "true"
+            val requirePortraitUi = InstrumentationRegistry.getArguments().getString("requirePortraitUi") == "true"
             val viewport = waitForDom(webView, "the actual Android WebView viewport") {
                 "return JSON.stringify({ok:document.readyState==='complete'" + (if (requireWideUi) "&&innerWidth>=1200" else "") +
+                    (if (requirePortraitUi) "&&innerWidth<720&&innerHeight>=900" else "") +
                     ",width:innerWidth,height:innerHeight,dpr:devicePixelRatio,coarse:matchMedia('(pointer:coarse)').matches,desktop:document.documentElement.classList.contains('elichika-desktop')});"
             }
             assertFalse("Android must keep its touch UI without the macOS desktop class", viewport.getBoolean("desktop"))
@@ -113,6 +116,7 @@ class MeshWebViewTest {
             editor.put("existingModelFolderChecked", modelDirectory.isDirectory)
             editor.put("actualViewport", viewport)
             if (requireWideUi) editor.put("wideTools", exerciseWideTools(webView))
+            if (requirePortraitUi) editor.put("portraitViewer", exercisePortraitViewerScroll(activity, webView))
             println("MESH_WEBVIEW_REPORT=" + editor.toString())
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
@@ -120,6 +124,118 @@ class MeshWebViewTest {
                 if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide")
             }.commit()
         }
+    }
+
+    private fun exercisePortraitViewerScroll(activity: MainActivity, webView: WebView): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val directory = File(context.filesDir, "portrait-viewer-qa-${System.nanoTime()}")
+        assertTrue("Create only the portrait test's synthetic directory", directory.mkdir())
+        val source = File(directory, "neutral-rig.unity")
+        val fixture = instrumentation.context.assets.open("viewer_rig.unity").use { it.readBytes() }
+        source.writeBytes(fixture)
+        val gestures = JSONArray()
+        fun snapshot() = evaluate(webView, "return JSON.stringify(ViewerPortraitQa.snapshot());")
+        fun assertCamera(reference: JSONObject, actual: JSONObject) {
+            val first = reference.getJSONObject("camera")
+            val second = actual.getJSONObject("camera")
+            var difference = kotlin.math.abs(first.getDouble("fov") - second.getDouble("fov"))
+            for (kind in listOf("position", "target")) for (axis in 0..2) difference = maxOf(difference,
+                kotlin.math.abs(first.getJSONArray(kind).getDouble(axis) - second.getJSONArray(kind).getDouble(axis)))
+            assertTrue("Page scrolling must not substitute a camera move: $difference", difference <= 1e-7)
+        }
+        fun assertPreserved(reference: JSONObject, actual: JSONObject) {
+            assertEquals("Scrolling/focus must retain the actual loaded model", reference.getString("modelId"), actual.getString("modelId"))
+            assertEquals("Scrolling/focus must preserve pending authoring data", reference.getJSONObject("authoring").toString(), actual.getJSONObject("authoring").toString())
+            assertCamera(reference, actual)
+        }
+        fun swipe(delta: Double) {
+            val current = snapshot()
+            val viewport = current.getJSONObject("viewport")
+            val contact = evaluate(webView, "return JSON.stringify(ViewerPortraitQa.scrollContact(" + (delta > 0) + ")); ")
+            val location = IntArray(2)
+            var ratio = 0.0
+            instrumentation.runOnMainSync {
+                webView.getLocationOnScreen(location)
+                ratio = webView.width / viewport.getDouble("width")
+            }
+            val distance = minOf(kotlin.math.abs(delta), viewport.getDouble("height") * .5).coerceAtLeast(24.0)
+            val start = contact.getDouble("y")
+            val end = (start - (if (delta > 0) distance else -distance)).coerceIn(12.0, viewport.getDouble("height") - 12)
+            val x = (location[0] + contact.getDouble("x") * ratio).toInt()
+            val y1 = (location[1] + start * ratio).toInt()
+            val y2 = (location[1] + end * ratio).toInt()
+            val command = "input swipe $x $y1 $x $y2 600"
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command))
+                .bufferedReader().use { assertFalse("The native swipe command must succeed", it.readText().contains("Error")) }
+            gestures.put(JSONObject().put("command", command).put("cssContact", contact).put("cssToPhysical", ratio))
+            evaluate(webView, "window.__portraitLastScroll=null;return JSON.stringify({ok:true});")
+            waitForDom(webView, "the actual page scroll to stop") {
+                "var s=ViewerPortraitQa.snapshot(),last=window.__portraitLastScroll;window.__portraitLastScroll=s.scrollY;" +
+                    "return JSON.stringify({ok:last!==null&&Math.abs(last-s.scrollY)<.5,scrollY:s.scrollY});"
+            }
+        }
+        try {
+            assertFalse("Portrait viewing must leave the game server stopped", Bus.serverRunning || Bus.serverStarting)
+            for (asset in listOf("viewer_rig_qa.js", "viewer_portrait_qa.js")) {
+                val script = instrumentation.context.assets.open(asset).bufferedReader().use { it.readText() }
+                evaluate(webView, script + ";return JSON.stringify({ok:true});")
+            }
+            evaluate(webView, "if(document.getElementById('viewer-auto-face').checked)document.getElementById('viewer-auto-face').click();" +
+                "openModelViewer([" + JSONObject.quote(source.absolutePath) + "]);return JSON.stringify({ok:true});")
+            waitForDom(webView, "the real tall portrait rig") {
+                "var s=ModelViewer.getState();return JSON.stringify({ok:s.loaded&&!s.loading&&s.rig.available&&s.stats.vertices===6&&!s.layout.expanded,error:s.error});"
+            }
+            evaluate(webView, "return JSON.stringify(ViewerPortraitQa.setup());")
+            val initial = waitForDom(webView, "the complete model before portrait page scrolling") {
+                "var s=ViewerPortraitQa.snapshot();return JSON.stringify({ok:s.scrollY===0&&s.stage.height>=100&&s.stage.top>=s.headerBottom-1&&s.stage.bottom<=innerHeight+1,metrics:s});"
+            }.getJSONObject("metrics")
+            assertEquals("The stacked model must use normal page flow", "relative", initial.getString("stagePosition"))
+            var editor = snapshot()
+            for (attempt in 0 until 12) {
+                val control = editor.getJSONObject("control")
+                if (editor.getJSONObject("stage").getDouble("bottom") <= editor.getDouble("headerBottom") &&
+                    control.getBoolean("withinViewport") && control.getBoolean("hittable")) break
+                val height = editor.getJSONObject("viewport").getDouble("height")
+                val header = editor.getDouble("headerBottom")
+                var delta = control.getDouble("top") - (header + (height - header) * .5)
+                if (editor.getJSONObject("stage").getDouble("bottom") > header) delta = maxOf(delta, editor.getJSONObject("stage").getDouble("bottom") - header + 16)
+                swipe(delta)
+                editor = snapshot()
+            }
+            assertTrue("The model must scroll completely above the editor", editor.getJSONObject("stage").getDouble("bottom") <= editor.getDouble("headerBottom"))
+            assertEquals("Page scrolling must not resize the model", initial.getJSONObject("stage").getDouble("height"), editor.getJSONObject("stage").getDouble("height"), 1.0)
+            assertEquals("The stage must move with the page, without pinning", initial.getJSONObject("stage").getDouble("top") - editor.getDouble("scrollY"), editor.getJSONObject("stage").getDouble("top"), 1.0)
+            assertPreserved(initial, editor)
+            val pending = evaluate(webView, "return JSON.stringify(ViewerPortraitQa.edit());")
+            assertEquals(initial.getString("modelId"), pending.getString("modelId"))
+            assertCamera(initial, pending)
+            assertFalse("The visible control must create a real pending change", initial.getJSONObject("authoring").toString() == pending.getJSONObject("authoring").toString())
+            evaluate(webView, "return JSON.stringify(ViewerPortraitQa.blur());")
+            for (attempt in 0 until 16) { val current = snapshot(); if (current.getDouble("scrollY") <= 1) break; swipe(-current.getDouble("scrollY")) }
+            val returned = evaluate(webView, "return JSON.stringify(ViewerPortraitQa.visibleStage());")
+            assertPreserved(pending, returned.getJSONObject("geometry"))
+            assertEquals("Scrolling back preserves the visible field's unsaved value", pending.getJSONObject("control").getString("value"),
+                returned.getJSONObject("geometry").getJSONObject("control").getString("value"))
+            val controls = returned.getJSONObject("hud").getJSONArray("controls")
+            assertEquals("Retain all real viewport HUD controls", 11, controls.length())
+            for (index in 0 until controls.length()) {
+                val target = controls.getJSONObject(index)
+                assertTrue("The returned model HUD must be directly reachable: $target", target.getBoolean("visible") && target.getBoolean("withinViewport") &&
+                    target.getBoolean("hittable") && target.getDouble("width") >= target.getInt("minimumTarget") && target.getDouble("height") >= target.getInt("minimumTarget"))
+            }
+            val probe = returned.getJSONObject("probe")
+            assertTrue("The visible returned model must actually render", probe.getBoolean("ready") && probe.getInt("glError") == 0 && probe.getInt("nonBackgroundSamples") >= 3)
+            assertTrue("Portrait edits preserve the immutable source", source.readBytes().contentEquals(fixture))
+            val report = JSONObject().put("initial", initial).put("editor", editor).put("pendingEdit", pending).put("returnedModel", returned)
+                .put("nativePageGestures", gestures).put("sourcePreserved", true).put("sourceSha256", sha256(fixture))
+                .put("scope", "Real tall Android window and native page swipes; visible DOM editing and unsaved authored edit/camera preservation; no cross-layout pixel comparison")
+            File(context.cacheDir, "viewer-portrait-scroll-report.json").writeText(report.toString(2))
+            val screenshot = instrumentation.uiAutomation.takeScreenshot()
+            assertTrue("Capture the actual returned portrait model", screenshot != null)
+            screenshot?.let { bitmap -> File(context.cacheDir, "viewer-portrait-scroll.png").outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }; bitmap.recycle() }
+            return report
+        } finally { source.delete(); directory.delete() }
     }
 
     private fun exerciseWideTools(webView: WebView): JSONObject {
