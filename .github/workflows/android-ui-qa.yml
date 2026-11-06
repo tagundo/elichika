@@ -1,0 +1,314 @@
+name: Retest a frozen signed Android candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Original Build Android APK run containing the frozen APK and same-data probe
+        required: true
+        default: "42157715535"
+      candidate_source_commit:
+        description: Exact source commit of that original build; current changes must be tests or QA workflows only
+        required: true
+        default: "9637d16d4b5e65d78e10005796e44ce0a2d47a15"
+      candidate_sha256:
+        description: SHA-256 of the extracted original release APK, not the artifact ZIP
+        required: true
+        default: "afa927493a7b12a003b4867a3b9c815ae9582f320fad3981d81c465266c39224"
+      noop_probe_sha256:
+        description: SHA-256 of the extracted original same-data version-change APK
+        required: true
+        default: "2c3686c327d2c55634222df839e85db6b9666999bdd205060cedb4a5d6810416"
+      version_name:
+        description: Original candidate versionName
+        required: true
+        default: "2026.11.06.2"
+      version_code:
+        description: Original candidate versionCode
+        required: true
+        default: "2026110602"
+  # This also registers/runs the helper before it exists on the default branch.
+  # It never runs on fork PRs and never publishes a release.
+  push:
+    branches: [codex/macos-companion]
+    paths:
+      - .github/workflows/android-ui-qa.yml
+      - android/app/src/androidTest/**
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  instrumentation:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      candidate_sha256: ${{ steps.frozen.outputs.candidate_sha256 }}
+      noop_probe_sha256: ${{ steps.frozen.outputs.noop_probe_sha256 }}
+      version_name: ${{ steps.frozen.outputs.version_name }}
+      version_code: ${{ steps.frozen.outputs.version_code }}
+    env:
+      CANDIDATE_RUN: ${{ inputs.candidate_run_id || '42157715535' }}
+      CANDIDATE_SOURCE: ${{ inputs.candidate_source_commit || '9637d16d4b5e65d78e10005796e44ce0a2d47a15' }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha256 || 'afa927493a7b12a003b4867a3b9c815ae9582f320fad3981d81c465266c39224' }}
+      NOOP_SHA: ${{ inputs.noop_probe_sha256 || '2c3686c327d2c55634222df839e85db6b9666999bdd205060cedb4a5d6810416' }}
+      VERSION_NAME: ${{ inputs.version_name || '2026.11.06.2' }}
+      VERSION_CODE: ${{ inputs.version_code || '2026110602' }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bind the original run and require identical product sources
+        id: provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p qa-evidence
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys
+          from pathlib import Path
+          def git(*args, cwd=None):
+              return subprocess.check_output(['git', *args], cwd=cwd, text=True).strip()
+          run, original = os.environ['CANDIDATE_RUN'], os.environ['CANDIDATE_SOURCE']
+          assert re.fullmatch(r'[0-9]+', run) and re.fullmatch(r'[0-9a-f]{40}', original)
+          assert all(re.fullmatch(r'[0-9a-f]{64}', os.environ[key]) for key in ('CANDIDATE_SHA', 'NOOP_SHA'))
+          sys.path.insert(0, 'android/ci')
+          from app_version import calver
+          name, code = calver(os.environ['VERSION_NAME'])
+          assert str(code) == os.environ['VERSION_CODE']
+          repo = os.environ['GITHUB_REPOSITORY']
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}']))
+          source_run = api(f'actions/runs/{run}')
+          assert source_run['head_sha'] == original and source_run['path'] == '.github/workflows/android.yml'
+          artifacts = api(f'actions/runs/{run}/artifacts?per_page=100')['artifacts']
+          chosen = {}
+          for label in ('elichika-release-apk', 'elichika-revision-noop-probe-apk'):
+              matches = [item for item in artifacts if item['name'] == label and not item['expired']]
+              assert len(matches) == 1, f'Expected one retained original artifact: {label}'
+              chosen[label] = {key: matches[0][key] for key in ('id', 'name', 'size_in_bytes', 'digest')}
+          changed = git('diff', '--name-only', original, 'HEAD').splitlines()
+          assert all(path == 'modtools' or path.startswith(('tests/', '.github/workflows/', 'android/app/src/androidTest/'))
+                     for path in changed), f'Product source changed: {changed}'
+          git('submodule', 'update', '--init', '--', 'modtools')
+          def child(commit):
+              return git('ls-tree', commit, 'modtools').split()[2]
+          old_child, current_child = child(original), child('HEAD')
+          git('fetch', '--no-tags', 'origin', old_child, cwd='modtools')
+          child_changes = git('diff', '--name-only', old_child, current_child, cwd='modtools').splitlines()
+          assert all(path.startswith('tests/') for path in child_changes), f'Shared product source changed: {child_changes}'
+          report = {'status': 'PASS_IDENTICAL_PRODUCT_SOURCES', 'original_run': run, 'original_source': original,
+                    'qa_source': git('rev-parse', 'HEAD'), 'original_child': old_child, 'qa_child': current_child,
+                    'parent_changes': changed, 'child_changes': child_changes, 'artifacts': chosen,
+                    'candidate_sha256': os.environ['CANDIDATE_SHA'], 'noop_sha256': os.environ['NOOP_SHA']}
+          Path('qa-evidence/frozen-source.json').write_text(json.dumps(report, indent=2) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"candidate_id={chosen['elichika-release-apk']['id']}\n")
+              output.write(f"noop_id={chosen['elichika-revision-noop-probe-apk']['id']}\n")
+          PY
+
+      - name: Download the original signed candidate bytes
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.provenance.outputs.candidate_id }}
+          run-id: ${{ env.CANDIDATE_RUN }}
+          github-token: ${{ github.token }}
+          path: frozen/candidate
+          merge-multiple: true
+
+      - name: Download the original same-data version-change probe bytes
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.provenance.outputs.noop_id }}
+          run-id: ${{ env.CANDIDATE_RUN }}
+          github-token: ${{ github.token }}
+          path: frozen/noop
+          merge-multiple: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install only the Java Android build tools
+        run: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          echo "$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_PATH"
+
+      - name: Verify both frozen APKs, versions and official signing certificate
+        id: frozen
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tests')
+          from android_payload_noop_probe import sha_file, verify_noop_probe
+          candidates = list(Path('frozen/candidate').glob('*.apk'))
+          assert len(candidates) == 1 and candidates[0].name == 'elichika-' + os.environ['VERSION_NAME'] + '.apk'
+          candidate = candidates[0]
+          assert sha_file(candidate) == os.environ['CANDIDATE_SHA']
+          probe, report = verify_noop_probe(candidate, Path('frozen/noop'), os.environ['NOOP_SHA'], Path('qa-evidence'))
+          for apk, name, code in ((candidate, os.environ['VERSION_NAME'], int(os.environ['VERSION_CODE'])),
+                                  (probe, os.environ['VERSION_NAME'] + '-qa-noop', int(os.environ['VERSION_CODE']) + 1)):
+              badging = subprocess.check_output(['aapt', 'dump', 'badging', str(apk)], text=True)
+              assert re.search(r"^package: name='com\.tagundo\.elichika' versionCode='" + str(code) + r"' versionName='" + re.escape(name) + r"'", badging, re.M)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key, value in {'candidate_sha256': os.environ['CANDIDATE_SHA'], 'noop_probe_sha256': os.environ['NOOP_SHA'],
+                                 'version_name': os.environ['VERSION_NAME'], 'version_code': os.environ['VERSION_CODE']}.items():
+                  output.write(f'{key}={value}\n')
+          PY
+
+      - name: Prepare the same pinned offline wheelhouse for Gradle configuration
+        id: wheels
+        env:
+          WHEELHOUSE_COMMIT: "39b2279db6cf111e2c353cd4880c58e3607837da"
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth 1 origin "$WHEELHOUSE_COMMIT"
+          test "$(git rev-parse FETCH_HEAD)" = "$WHEELHOUSE_COMMIT"
+          prepared="$RUNNER_TEMP/android-qa-python-wheels"
+          mkdir -p "$prepared"
+          git archive "$WHEELHOUSE_COMMIT" manifest.json wheelhouse | tar -x -C "$prepared"
+          python3 android/ci/verify_python_wheelhouse.py "$prepared"
+          echo "path=$prepared/wheelhouse" >> "$GITHUB_OUTPUT"
+
+      - name: Guard an instrumentation-only Gradle task graph
+        working-directory: android
+        env:
+          ELICHIKA_QA_EVIDENCE: ${{ github.workspace }}/qa-evidence
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/instrumentation-only.gradle" <<'GROOVY'
+          gradle.projectsEvaluated {
+            def python = gradle.rootProject.project(':app').extensions.getByName('chaquopy')
+            if (!python.defaultConfig.staticProxy.isEmpty() || python.productFlavors.any { !it.staticProxy.isEmpty() }) {
+              throw new GradleException('Frozen QA requires an empty Python staticProxy configuration')
+            }
+          }
+          gradle.taskGraph.whenReady { graph ->
+            def paths = graph.allTasks.collect { it.path }
+            def blocked = graph.allTasks.findAll {
+              it.name.contains('Python') || it.name in ['assembleRelease', 'packageRelease', 'mergeReleaseAssets', 'mergeReleaseNativeLibs'] ||
+                it.name.toLowerCase().matches('.*(externalnative|cmake|ndk).*')
+            }
+            if (!blocked.isEmpty()) throw new GradleException('Product rebuild is forbidden: ' + blocked*.path)
+            new File(System.getenv('ELICHIKA_QA_EVIDENCE'), 'instrumentation-task-graph.json').text =
+              groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([staticProxyEmpty: true, tasks: paths]))
+          }
+          GROOVY
+          # The empty proxy generator otherwise pulls in main Python pip/assets.
+          # Tests compile against unchanged main Kotlin/R classes; the app installed
+          # on Android is exclusively the frozen, already-signed candidate above.
+          ./gradlew :app:assembleReleaseAndroidTest --dry-run --no-daemon --stacktrace \
+            --init-script "$RUNNER_TEMP/instrumentation-only.gradle" \
+            -x :app:generateReleasePythonProxies -x :app:installReleasePythonRequirements \
+            -x :app:mergeReleasePythonSources -x :app:extractReleasePythonBuildPackages \
+            -PchaquopyWheelhouse="${{ steps.wheels.outputs.path }}" \
+            -PappVersionName="$VERSION_NAME" -PappVersionCode="$VERSION_CODE" \
+            | tee "$GITHUB_WORKSPACE/qa-evidence/instrumentation-dry-run.txt"
+
+      - name: Decode the existing release signer only after provenance and task guards pass
+        id: signer
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          encoded = os.environ.get('RELEASE_KEYSTORE_BASE64', '')
+          assert encoded, 'The official release signer is required for this instrumentation APK'
+          path = Path(os.environ['RUNNER_TEMP']) / 'elichika-qa-release.keystore'
+          path.write_bytes(base64.b64decode(''.join(encoded.split()), validate=True)); path.chmod(0o600)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output: output.write(f'path={path}\n')
+          PY
+
+      - name: Build only the corrected release instrumentation APK
+        working-directory: android
+        env:
+          ELICHIKA_QA_EVIDENCE: ${{ github.workspace }}/qa-evidence
+          RELEASE_KEYSTORE_FILE: ${{ steps.signer.outputs.path }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
+          cp ../tests/android_payload_upgrade_benchmark.py app/src/androidTest/assets/android_payload_upgrade_benchmark.py
+          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
+            --init-script "$RUNNER_TEMP/instrumentation-only.gradle" \
+            -x :app:generateReleasePythonProxies -x :app:installReleasePythonRequirements \
+            -x :app:mergeReleasePythonSources -x :app:extractReleasePythonBuildPackages \
+            -PchaquopyWheelhouse="${{ steps.wheels.outputs.path }}" \
+            -PappVersionName="$VERSION_NAME" -PappVersionCode="$VERSION_CODE"
+          python3 - <<'PY'
+          import re, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, '../tests')
+          from android_payload_noop_probe import apk_signer
+          apks = list(Path('app/build/outputs/apk/androidTest/release').glob('*.apk'))
+          assert len(apks) == 1
+          assert not list(Path('app/build/outputs/apk/release').glob('*.apk')), 'A product APK must never be regenerated'
+          signer = apk_signer(apks[0], Path('../qa-evidence'), 'instrumentation')
+          manifest = subprocess.check_output(['aapt', 'dump', 'xmltree', str(apks[0]), 'AndroidManifest.xml'], text=True)
+          assert re.search(r'(?m)^\s*A: package="com\.tagundo\.elichika\.test"', manifest), 'Unexpected instrumentation application ID'
+          assert re.search(r'android:targetPackage(?:\([^)]*\))?="com\.tagundo\.elichika"', manifest), 'Unexpected instrumentation target'
+          Path('../qa-evidence/instrumentation-manifest.txt').write_text(manifest)
+          PY
+          python3 ../payload_revision.py verify-apk --apk app/build/outputs/apk/androidTest/release/*.apk \
+            --report "$GITHUB_WORKSPACE/qa-evidence/instrumentation-payload-revision-audit.json"
+
+      - name: Recheck frozen APK hashes after instrumentation assembly
+        run: |
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          for directory, expected in [('frozen/candidate', os.environ['CANDIDATE_SHA']), ('frozen/noop', os.environ['NOOP_SHA'])]:
+              choices = list(Path(directory).glob('*.apk')); assert len(choices) == 1
+              with choices[0].open('rb') as stream:
+                  assert hashlib.file_digest(stream, 'sha256').hexdigest() == expected
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elichika-release-apk
+          path: frozen/candidate/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elichika-revision-noop-probe-apk
+          path: frozen/noop/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elichika-native-test-apk
+          path: android/app/build/outputs/apk/androidTest/release/*.apk
+          if-no-files-found: error
+      - name: Upload source, artifact and instrumentation provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-frozen-ui-qa-provenance
+          path: qa-evidence/
+          if-no-files-found: warn
+      - name: Remove the temporary signing file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/elichika-qa-release.keystore"
+
+  android-upgrade:
+    needs: instrumentation
+    uses: ./.github/workflows/android-smoke.yml
+    with:
+      candidate_sha256: ${{ needs.instrumentation.outputs.candidate_sha256 }}
+      version_name: ${{ needs.instrumentation.outputs.version_name }}
+      version_code: ${{ needs.instrumentation.outputs.version_code }}
+      noop_probe_sha256: ${{ needs.instrumentation.outputs.noop_probe_sha256 }}
