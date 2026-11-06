@@ -1,32 +1,39 @@
 name: Retest a frozen signed Android candidate
 
 on:
+  # Temporary recovery trigger while the managed execution environment is unavailable.
+  push:
+    branches:
+      - codex/macos-companion
+    paths:
+      - .github/workflows/android-ui-qa.yml
+      - android/app/src/androidTest/**
   workflow_dispatch:
     inputs:
       candidate_run_id:
         description: Original Build Android APK run containing the frozen APK and same-data probe
         required: true
-        default: "42157715535"
+        default: "42182015423"
       candidate_source_commit:
         description: Exact source commit of that original build; current changes must be tests or QA workflows only
         required: true
-        default: "9637d16d4b5e65d78e10005796e44ce0a2d47a15"
+        default: "c44cebd8649d2ce858870bd7295290498d4dc587"
       candidate_sha256:
         description: SHA-256 of the extracted original release APK, not the artifact ZIP
         required: true
-        default: "afa927493a7b12a003b4867a3b9c815ae9582f320fad3981d81c465266c39224"
+        default: "b9329e54202e200c36fdf2ebdf27d1dfeefc96e4988aa7380c227b982caef03c"
       noop_probe_sha256:
         description: SHA-256 of the extracted original same-data version-change APK
         required: true
-        default: "2c3686c327d2c55634222df839e85db6b9666999bdd205060cedb4a5d6810416"
+        default: "f5f914ca78bb6f2d8b9b8a480cfdc4ebbcb06e1905cd1bb412ba477784dbced1"
       version_name:
         description: Original candidate versionName
         required: true
-        default: "2026.11.06.2"
+        default: "2026.11.06.3"
       version_code:
         description: Original candidate versionCode
         required: true
-        default: "2026110602"
+        default: "2026110603"
 
 permissions:
   contents: read
@@ -43,12 +50,12 @@ jobs:
       version_name: ${{ steps.frozen.outputs.version_name }}
       version_code: ${{ steps.frozen.outputs.version_code }}
     env:
-      CANDIDATE_RUN: ${{ inputs.candidate_run_id || '42157715535' }}
-      CANDIDATE_SOURCE: ${{ inputs.candidate_source_commit || '9637d16d4b5e65d78e10005796e44ce0a2d47a15' }}
-      CANDIDATE_SHA: ${{ inputs.candidate_sha256 || 'afa927493a7b12a003b4867a3b9c815ae9582f320fad3981d81c465266c39224' }}
-      NOOP_SHA: ${{ inputs.noop_probe_sha256 || '2c3686c327d2c55634222df839e85db6b9666999bdd205060cedb4a5d6810416' }}
-      VERSION_NAME: ${{ inputs.version_name || '2026.11.06.2' }}
-      VERSION_CODE: ${{ inputs.version_code || '2026110602' }}
+      CANDIDATE_RUN: ${{ inputs.candidate_run_id || '42182015423' }}
+      CANDIDATE_SOURCE: ${{ inputs.candidate_source_commit || 'c44cebd8649d2ce858870bd7295290498d4dc587' }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha256 || 'b9329e54202e200c36fdf2ebdf27d1dfeefc96e4988aa7380c227b982caef03c' }}
+      NOOP_SHA: ${{ inputs.noop_probe_sha256 || 'f5f914ca78bb6f2d8b9b8a480cfdc4ebbcb06e1905cd1bb412ba477784dbced1' }}
+      VERSION_NAME: ${{ inputs.version_name || '2026.11.06.3' }}
+      VERSION_CODE: ${{ inputs.version_code || '2026110603' }}
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
