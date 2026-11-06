@@ -257,13 +257,17 @@ class MeshWebViewTest {
         }
         val restored = metrics()
         assertEquals(212, restored.getInt("storedFiles")); assertEquals(320, restored.getInt("storedPanel"))
-        evaluate(webView, "var button=document.getElementById('viewer-panel-width-reset');button.scrollIntoView({block:'center'});var r=button.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);" +
-            "if(r.height<44||!(hit===button||button.contains(hit)))throw new Error('Default layout must remain a real 44px Android touch action');button.click();return JSON.stringify({ok:true});")
+        val defaultResetTarget = evaluate(webView, "var button=document.getElementById('viewer-panel-width-reset');button.scrollIntoView({block:'center'});var r=button.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);" +
+            "var coarse=matchMedia('(pointer:coarse)').matches,minimum=coarse?44:34;" +
+            "if(button.disabled||r.width<minimum||r.height<minimum||r.left<0||r.right>innerWidth+1||r.top<0||r.bottom>innerHeight+1||!(hit===button||button.contains(hit)))" +
+            "throw new Error('Default layout must remain visible and meet its actual pointer target policy');button.click();" +
+            "return JSON.stringify({ok:true,coarse:coarse,minimumTarget:minimum,width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom,hittable:true});")
         waitForDom(webView, "Default layout restores both actual widths and clears both preferences") {
             "return JSON.stringify({ok:!localStorage.getItem('elichika.viewer.files-width.v1')&&!localStorage.getItem('elichika.viewer.panel-width.v1')&&" +
                 "Math.abs(document.getElementById('viewer-files-panel').getBoundingClientRect().width-196)<1&&Math.abs(document.getElementById('viewer-control-panel').getBoundingClientRect().width-304)<1});"
         }
         return JSONObject().put("initial", initial).put("actualAndroidKeyboard", changed).put("reloaded", restored).put("defaultReset", metrics())
+            .put("defaultResetTarget", defaultResetTarget)
             .put("source", source.absolutePath).put("scope", "Real wm-sized Android WebView and Android KeyEvent input; touch dragging is covered separately on host")
     }
 
