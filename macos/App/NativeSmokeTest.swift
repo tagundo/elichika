@@ -81,16 +81,28 @@ final class NativeSmokeTest {
                 var inputs=Array.from(document.querySelectorAll('#viewer-node-fields input'));
                 function field(kind,axis){return inputs.find(function(input){return input.dataset.viewerNodeKind===kind&&input.dataset.axis===axis;});}
                 var authored=ModelViewer.getAuthoringState(),s=ModelViewer.getState();
+                var expectedFilename='분수 의상.zip',expectedNode=String(ViewerRigQa.nodeId('LeftUpLeg'));
+                var loadedPaths=s.loadedPaths.slice(),filenames=loadedPaths.map(function(path){return String(path).split('/').pop();});
+                var normalizedFilenames=filenames.map(function(name){return name.normalize('NFC');});
+                var selected=document.getElementById('viewer-node');
                 return JSON.stringify({offGridInputs:inputs.filter(function(input){return input.validity.stepMismatch;}).map(function(input){return {kind:input.dataset.viewerNodeKind,axis:input.dataset.axis,value:input.value,step:input.step};}),
                   saveEnabled:!document.getElementById('viewer-save').disabled,unsupported:authored.unsupported,
-                  selectedLeftUpLeg:String(s.rig.selectedNode)===String(ViewerRigQa.nodeId('LeftUpLeg')),
+                  selectedLeftUpLeg:String(s.rig.selectedNode)===expectedNode,
+                  expectedLeftUpLegNode:expectedNode,actualSelectedNode:String(s.rig.selectedNode),selectedDOMValue:selected.value,
+                  selectedDOMLabel:selected.options[selected.selectedIndex] ? selected.options[selected.selectedIndex].text : '',
                   spinnerStepsPreserved:field('scale','Y').step==='0.001'&&field('position','Y').step==='0.001'&&field('rotation','X').step==='1',
                   originalPositionY:Number(field('position','Y').value),originalRotationX:Number(field('rotation','X').value),
-                  selectedZIP:s.loadedPaths.length===1&&s.loadedPaths[0].endsWith('/분수 의상.zip')});
+                  loadedPaths:loadedPaths,loadedFilenames:filenames,normalizedLoadedFilenames:normalizedFilenames,expectedZIPFilename:expectedFilename,
+                  filenameCodepoints:filenames.map(function(name){return Array.from(name).map(function(character){return character.codePointAt(0).toString(16);});}),
+                  selectedZIP:normalizedFilenames.length===1&&normalizedFilenames[0]===expectedFilename.normalize('NFC')});
                 """)
+            report["fractional_zip_save_validation"] = fractionalControls
+            try checkpoint("fractional-zip-controls-observed")
             let offGrid = fractionalControls["offGridInputs"] as? [[String: Any]] ?? []
-            try require(fractionalControls["selectedZIP"] as? Bool == true && fractionalControls["selectedLeftUpLeg"] as? Bool == true,
-                        "The native file chooser must open the actual ZIP and select LeftUpLeg.")
+            try require(fractionalControls["selectedZIP"] as? Bool == true,
+                        "The native file chooser must open the actual ZIP (Unicode-normalized filename).")
+            try require(fractionalControls["selectedLeftUpLeg"] as? Bool == true,
+                        "The real editing controls must select the LeftUpLeg metadata node.")
             try require(offGrid.contains { $0["kind"] as? String == "position" } && offGrid.contains { $0["kind"] as? String == "rotation" },
                         "The original fractional position and rotation must remain visibly off the spinner grid.")
             try require(offGrid.contains { $0["kind"] as? String == "scale" && $0["value"] as? String == "1.234567" },
@@ -101,7 +113,6 @@ final class NativeSmokeTest {
             try require(abs((fractionalControls["originalPositionY"] as? Double ?? 0) - 0.1234567) < 0.000001 &&
                         abs(abs(fractionalControls["originalRotationX"] as? Double ?? 0) - 12.34567) < 0.0001,
                         "Untouched original fractional TRS values must remain visible without rounding.")
-            report["fractional_zip_save_validation"] = fractionalControls
             try checkpoint("fractional-zip-save-enabled")
             let edits = try await object(webView, "return JSON.stringify(ModelViewer.getAuthoringState());")
             let authored = edits["edits"] as? [[String: Any]] ?? []
