@@ -19,6 +19,10 @@ on:
         type: boolean
         required: false
         default: false
+      focused_header_font_scale:
+        type: string
+        required: false
+        default: "1.0"
 
 permissions:
   contents: read
@@ -136,6 +140,7 @@ jobs:
         env:
           EXPECTED_CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
           EXPECTED_VERSION_NAME: ${{ inputs.version_name }}
+          HEADER_DIAGNOSTIC_FONT_SCALE: ${{ inputs.focused_header_font_scale }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -146,8 +151,10 @@ jobs:
           with apks[0].open('rb') as stream:
               actual = hashlib.file_digest(stream, 'sha256').hexdigest()
           assert actual == os.environ['EXPECTED_CANDIDATE_SHA']
+          assert os.environ['HEADER_DIAGNOSTIC_FONT_SCALE'] in ('1.0', '1.2', '2.0')
           Path('evidence/focused-header-diagnostic-mode.json').write_text(json.dumps({
               'candidate_sha256': actual,
+              'font_scale': float(os.environ['HEADER_DIAGNOSTIC_FONT_SCALE']),
               'scope': 'Fresh frozen APK; original native header versus test-only public START gravity setter. No product APK rebuild or release validation claim.',
               'does_not_replace_full_release_qa': True
           }, indent=2))
@@ -178,10 +185,10 @@ jobs:
           trap restore_header_display EXIT
           adb -s 127.0.0.1:5555 shell wm size 1600x1000
           adb -s 127.0.0.1:5555 shell wm density 160
-          adb -s 127.0.0.1:5555 shell settings put system font_scale 1.0
+          adb -s 127.0.0.1:5555 shell settings put system font_scale "$HEADER_DIAGNOSTIC_FONT_SCALE"
           adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
           adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e requireWideUi true -e headerDiagnosticOnly true -e expectedFontScale 1.0 \
+            -e requireWideUi true -e headerDiagnosticOnly true -e expectedFontScale "$HEADER_DIAGNOSTIC_FONT_SCALE" \
             -e class com.tagundo.elichika.MeshWebViewTest \
             com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
             | tee evidence/native-header-diagnostic.txt

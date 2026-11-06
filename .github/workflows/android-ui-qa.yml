@@ -32,6 +32,12 @@ on:
         type: boolean
         required: false
         default: false
+      focused_header_font_scale:
+        description: Actual Android font scale for the optional focused header diagnostic
+        type: choice
+        required: false
+        default: "1.0"
+        options: ["1.0", "1.2", "2.0"]
 
 permissions:
   contents: read
@@ -315,3 +321,4 @@ jobs:
       version_code: ${{ needs.instrumentation.outputs.version_code }}
       noop_probe_sha256: ${{ needs.instrumentation.outputs.noop_probe_sha256 }}
       focused_header_diagnostic: ${{ inputs.focused_header_diagnostic || false }}
+      focused_header_font_scale: ${{ inputs.focused_header_font_scale || '1.0' }}

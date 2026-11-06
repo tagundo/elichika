@@ -287,12 +287,37 @@ internal object HeaderLayoutNativeQa {
 
     private fun assertReadable(view: TextView) {
         val layout = requireNotNull(view.layout) { "A visible native label needs a real text layout" }
-        assertTrue("Keep full native text height: ${view.text}", layout.height <= view.height - view.compoundPaddingTop - view.compoundPaddingBottom + 1)
+        val metrics = textLayoutMetrics(view)
+        assertTrue("Keep full native text height: ${view.text}; metrics=$metrics", layout.height <= view.height - view.compoundPaddingTop - view.compoundPaddingBottom + 1)
         for (line in 0 until layout.lineCount) {
-            assertEquals("Native labels must not be ellipsized: ${view.text}", 0, layout.getEllipsisCount(line))
-            assertTrue("Native label lines must fit their measured width: ${view.text}",
-                layout.getLineWidth(line) <= view.width - view.compoundPaddingLeft - view.compoundPaddingRight + 1)
+            assertEquals("Native labels must not be ellipsized: ${view.text}; line=$line metrics=$metrics", 0, layout.getEllipsisCount(line))
+            // Android Layout.getLineWidth includes whitespace after a wrapped
+            // line. getLineMax measures its visible extent with the same margin.
+            assertTrue("Native visible label lines must fit their measured width: ${view.text}; line=$line metrics=$metrics",
+                layout.getLineMax(line) <= view.width - view.compoundPaddingLeft - view.compoundPaddingRight + 1)
         }
+    }
+
+    private fun textLayoutMetrics(view: TextView): JSONObject {
+        val data = JSONObject().put("viewWidth", view.width).put("viewHeight", view.height)
+            .put("contentWidth", view.width - view.compoundPaddingLeft - view.compoundPaddingRight)
+            .put("contentHeight", view.height - view.compoundPaddingTop - view.compoundPaddingBottom)
+        val layout = view.layout ?: return data.put("available", false)
+        val lines = JSONArray()
+        for (line in 0 until layout.lineCount) {
+            val start = layout.getLineStart(line)
+            val end = layout.getLineEnd(line)
+            val visibleEnd = layout.getLineVisibleEnd(line)
+            lines.put(JSONObject().put("line", line).put("start", start).put("end", end).put("visibleEnd", visibleEnd)
+                .put("rawLineText", layout.text.subSequence(start, end).toString())
+                .put("visibleLineText", layout.text.subSequence(start, visibleEnd).toString())
+                .put("lineWidth", layout.getLineWidth(line)).put("lineMax", layout.getLineMax(line))
+                .put("lineLeft", layout.getLineLeft(line)).put("lineRight", layout.getLineRight(line))
+                .put("ellipsisStart", layout.getEllipsisStart(line)).put("ellipsisCount", layout.getEllipsisCount(line))
+                .put("top", layout.getLineTop(line)).put("bottom", layout.getLineBottom(line)))
+        }
+        return data.put("available", true).put("layoutWidth", layout.width).put("layoutHeight", layout.height)
+            .put("lineCount", layout.lineCount).put("lines", lines)
     }
 
     /** Read the original APK's calculations without altering any view or paint. */
@@ -335,6 +360,7 @@ internal object HeaderLayoutNativeQa {
             if (view is TextView) {
                 val rendered = view.transformationMethod?.getTransformation(view.text, view) ?: view.text
                 data.put("text", view.text.toString()).put("renderedText", rendered.toString())
+                    .put("textLayout", textLayoutMetrics(view))
                     .put("textSizePx", view.textSize).put("minWidth", view.minWidth).put("minEms", view.minEms)
                     .put("lineHeight", view.lineHeight).put("compoundPaddingLeft", view.compoundPaddingLeft)
                     .put("compoundPaddingRight", view.compoundPaddingRight)
