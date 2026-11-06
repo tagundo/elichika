@@ -253,6 +253,7 @@ class ModelViewerRigTest {
         boneInput(webView, "Head", "rotation", "Z", 35)
         val retainedState = state(webView)
         val retainedHeadWorld = nodeWorld(webView, "Head")
+        val expressionPanel = exerciseExpressionPanel(session, retainedState)
         val sections = exerciseSectionCollapse(session, retainedState)
         val fullscreen = exerciseFullscreen(session, retainedState)
         capture(webView, "retained")
@@ -260,6 +261,7 @@ class ModelViewerRigTest {
             .put("scope", "Strict new-feature milestones captured before the unchanged quality exercise")
             .put("verticalViewport", verticalViewport)
             .put("absoluteSourceValueEdits", absoluteAxes).put("childBoneCompensation", childCompensation)
+            .put("separateExpressionPanel", expressionPanel)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen))
         val quality = ViewerQualityNativeQa.exercise(webView, "neutral-rig-quality", 4, 4)
         val highQualityReference = quality.getString("hqReferenceFrame")
@@ -305,6 +307,7 @@ class ModelViewerRigTest {
             .put("multiAxisHeadQuaternion", multiAxisHead)
             .put("breast", breast).put("savedEntry", saved).put("expression", expression)
             .put("scrub", scrub).put("playing", playing).put("paused", paused)
+            .put("separateExpressionPanel", expressionPanel)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen).put("highQuality3D", quality)
             .put("afterTab", afterTab).put("afterContext", afterContext)
             .put("sourcePreserved", true).put("gameServerRemainedStopped", true)
@@ -422,6 +425,65 @@ class ModelViewerRigTest {
         }
     }
 
+    private fun exerciseExpressionPanel(session: Session, retained: JSONObject): JSONObject {
+        val webView = session.webView
+        val initial = evaluate(webView, "var body=document.getElementById('viewer-adjustments'),expression=document.getElementById('viewer-expression-adjustments')," +
+            "panel=document.getElementById('viewer-expression-panel'),advanced=document.getElementById('viewer-expression-advanced');" +
+            "if(body.contains(panel)||!expression.contains(panel)||body.parentNode!==expression.parentNode)" +
+            "throw new Error('Expressions must be a separate sibling panel outside body editing');" +
+            "return JSON.stringify({bodyOpen:body.open,expressionOpen:expression.open,advancedOpen:advanced.open,x:scrollX,y:scrollY});")
+        try {
+            val controls = evaluate(webView, "document.getElementById('viewer-adjustments').open=false;" +
+                "document.getElementById('viewer-expression-adjustments').open=true;document.getElementById('viewer-expression-advanced').open=true;" +
+                "var controls=['viewer-expression','viewer-expression-number','viewer-expression-reset'].map(function(id){" +
+                "var result=ViewerRigQa.control(id,true);if(result.disabled||!result.visible||!result.withinViewport||!result.hittable||result.width<44||result.height<44)" +
+                "throw new Error('The separate expression panel must keep its actual 44px touch controls: '+JSON.stringify(result));return result;});" +
+                "return JSON.stringify({controls:controls,bodyClosed:!document.getElementById('viewer-adjustments').open,coarse:matchMedia('(pointer:coarse)').matches});")
+            assertTrue(controls.getBoolean("bodyClosed"))
+            assertRetained(retained, state(webView))
+            capture(webView, "separateExpressionBefore")
+            input(webView, "viewer-expression-number", "100", "change")
+            assertEquals("The separate panel must edit the real Unity morph channel", 1.0,
+                state(webView).getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight"), 1e-9)
+            val changed = capture(webView, compare = "separateExpressionBefore")
+            assertChanged("Expression controls remain functional while body editing is collapsed", changed)
+            input(webView, "viewer-expression-number",
+                (retained.getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight") * 100).toString(), "change")
+            val closed = evaluate(webView, "var expression=document.getElementById('viewer-expression-adjustments'),summary=expression.querySelector('summary');" +
+                "var target=ViewerRigQa.control(summary,true);if(!target.visible||!target.hittable||target.height<44)throw new Error('Expression summary must remain a real 44px touch target');" +
+                "summary.click();return JSON.stringify({open:expression.open,bodyOpen:document.getElementById('viewer-adjustments').open," +
+                "contentHeight:document.getElementById('viewer-expression-panel').getBoundingClientRect().height,summary:target});")
+            assertFalse("The expression panel collapses independently", closed.getBoolean("open"))
+            assertFalse("Expression toggling must leave body editing collapsed", closed.getBoolean("bodyOpen"))
+            assertEquals(0.0, closed.getDouble("contentHeight"), 1e-6)
+            assertRetained(retained, state(webView))
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { webView.requestFocus() }
+            run(webView, "document.querySelector('#viewer-expression-adjustments > summary').focus();")
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+            val reopened = waitForDom(webView, "the independently reopened expression panel", 15) {
+                "return JSON.stringify({ok:document.getElementById('viewer-expression-adjustments').open&&" +
+                    "document.getElementById('viewer-expression-panel').getBoundingClientRect().height>0," +
+                    "bodyOpen:document.getElementById('viewer-adjustments').open});"
+            }
+            assertFalse(reopened.getBoolean("bodyOpen"))
+            val after = state(webView)
+            assertRetained(retained, after)
+            assertEquals(retained.getJSONObject("rig").getString("selectedNode"), after.getJSONObject("rig").getString("selectedNode"))
+            for (kind in listOf("position", "target")) assertArrayNear("Independent expression controls preserve camera $kind",
+                retained.getJSONObject("camera").getJSONArray(kind), after.getJSONObject("camera").getJSONArray(kind))
+            assertEquals(retained.getJSONObject("camera").getDouble("fov"), after.getJSONObject("camera").getDouble("fov"), 1e-9)
+            val restored = capture(webView, compare = "separateExpressionBefore")
+            assertRestored("Reopening the panel preserves the original expression and rendered body", restored)
+            return JSONObject().put("controls", controls).put("closed", closed).put("keyboardReopened", reopened)
+                .put("actualMorphPixelsChanged", changed).put("restoredPixels", restored).put("bodyAndCameraPreserved", true)
+        } finally {
+            run(webView, "document.getElementById('viewer-adjustments').open=" + initial.getBoolean("bodyOpen") + ";" +
+                "document.getElementById('viewer-expression-adjustments').open=" + initial.getBoolean("expressionOpen") + ";" +
+                "document.getElementById('viewer-expression-advanced').open=" + initial.getBoolean("advancedOpen") + ";" +
+                "window.scrollTo(" + initial.getDouble("x") + "," + initial.getDouble("y") + ");ViewerRigQa.drop('separateExpressionBefore');")
+        }
+    }
+
     private fun exerciseSectionCollapse(session: Session, retained: JSONObject): JSONArray {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val originallyExpanded = retained.getJSONObject("layout").getBoolean("expanded")
@@ -446,7 +508,7 @@ class ModelViewerRigTest {
             }
         }
         try {
-            // Shortcuts belong to the active Node/Mesh area. The advanced All
+            // The common selector belongs to the active Node/Mesh area. The advanced All
             // filter can select Head while Node is active, so first open its
             // recommended area instead of expecting every area to repeat it.
             val shortcutGroup = evaluate(session.webView,
@@ -455,11 +517,23 @@ class ModelViewerRigTest {
                     "return JSON.stringify({group:target&&target.recommendedMethod||ModelViewer.getState().rig.editorGroup});")
                 .getString("group")
             selectArea(shortcutGroup)
-            run(session.webView, "var id=" + JSONObject.quote(selectedBone) + ";" +
-                "var shortcut=Array.prototype.filter.call(document.querySelectorAll('#viewer-node-shortcuts [data-viewer-bone]'),function(button){return button.dataset.viewerBone===id;})[0];" +
-                "if(!shortcut)throw new Error('The selected frequent bone must have a shortcut in its editing area');" +
-                "var control=ViewerRigQa.control(shortcut,true);" +
-                "if(!control.visible||!control.withinViewport||!control.hittable)throw new Error('The selected shortcut must be visible and unobstructed');shortcut.click();")
+            val commonSelection = evaluate(session.webView, "var id=" + JSONObject.quote(selectedBone) + ";" +
+                "ViewerRigQa.input('viewer-node-search','','input');ViewerRigQa.input('viewer-node-filter','tool','change');" +
+                "var select=document.getElementById('viewer-node'),container=document.getElementById('viewer-node-shortcuts');" +
+                "if(document.querySelectorAll('#viewer-node').length!==1||select.tagName!=='SELECT'||!container.contains(select)||" +
+                "container.querySelector('[data-viewer-bone]'))throw new Error('Common body parts must use one real select without shortcut buttons');" +
+                "var options=Array.prototype.filter.call(select.options,function(option){return !!option.value;});" +
+                "if(!options.some(function(option){return option.value===id;}))throw new Error('The selected recommended body part must be available');" +
+                "var alternate=options.filter(function(option){return option.value!==id;})[0];if(!alternate)throw new Error('The neutral rig must exercise a distinct common-part choice');" +
+                "var control=ViewerRigQa.control(select,true);if(!control.visible||!control.withinViewport||!control.hittable||control.width<44||control.height<44)" +
+                "throw new Error('The common-part select must be an unobstructed 44px touch target');" +
+                "var authoring=JSON.stringify(ModelViewer.getAuthoringState());select.value=alternate.value;select.dispatchEvent(new Event('change',{bubbles:true}));" +
+                "if(ModelViewer.getState().rig.selectedNode!==alternate.value||!document.getElementById('viewer-node-editor').open)throw new Error('Selecting a common part must open its actual editor');" +
+                "select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));" +
+                "if(JSON.stringify(ModelViewer.getAuthoringState())!==authoring)throw new Error('Choosing body parts must preserve existing authored edits');" +
+                "return JSON.stringify({singleSelect:true,control:control,optionCount:options.length,alternate:alternate.value,restored:id,coarse:matchMedia('(pointer:coarse)').matches});")
+            assertRetained(retained, state(session.webView))
+            assertEquals(selectedBone, state(session.webView).getJSONObject("rig").getString("selectedNode"))
             val sections = listOf("viewer-common-adjustments", "viewer-breast-card", "viewer-skirt-card")
             for (id in sections) {
                 // The shared common controls move with their area; breast and
@@ -498,7 +572,9 @@ class ModelViewerRigTest {
                 for (kind in listOf("position", "target")) assertArrayNear("Section toggling preserves camera $kind",
                     retained.getJSONObject("camera").getJSONArray(kind), current.getJSONObject("camera").getJSONArray(kind))
                 assertEquals(retained.getJSONObject("camera").getDouble("fov"), current.getJSONObject("camera").getDouble("fov"), 1e-9)
-                results.put(JSONObject().put("id", id).put("editingArea", sectionGroup).put("closed", closed).put("keyboardReopened", opened))
+                val result = JSONObject().put("id", id).put("editingArea", sectionGroup).put("closed", closed).put("keyboardReopened", opened)
+                if (id == "viewer-common-adjustments") result.put("commonSelection", commonSelection)
+                results.put(result)
             }
             return results
         } finally {

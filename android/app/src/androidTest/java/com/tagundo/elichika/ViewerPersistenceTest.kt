@@ -21,11 +21,13 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.zip.ZipInputStream
 
 /** Real embedded Python, serialized Unity output and native WebGL; original neutral geometry only. */
 @RunWith(AndroidJUnit4::class)
@@ -34,8 +36,9 @@ class ViewerPersistenceTest {
     fun mixedNodeAndMeshEditsSaveReloadAndRebuildWithoutAccumulating() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        val bytes = instrumentation.context.assets.open("viewer_persistence.unity").use { it.readBytes() }
-        val source = File(context.filesDir, "viewer-persistence-qa-${System.nanoTime()}.unity")
+        val neutralBytes = instrumentation.context.assets.open("viewer_persistence.unity").use { it.readBytes() }
+        val bytes = instrumentation.context.assets.open("viewer_persistence_fractional.zip").use { it.readBytes() }
+        val source = File(context.filesDir, "viewer-persistence-qa-${System.nanoTime()}.zip")
         val preferences = context.getSharedPreferences("elichika", Context.MODE_PRIVATE)
         val hadGuide = preferences.contains("seen_guide")
         val seenGuide = preferences.getBoolean("seen_guide", false)
@@ -47,7 +50,17 @@ class ViewerPersistenceTest {
             File(context.cacheDir, "viewer-persistence-report.json").delete()
             File(context.cacheDir, "viewer-persistence.png").delete()
             assertEquals("The APK must package the audited original neutral persistence fixture",
-                "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1", sha256(bytes))
+                "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1", sha256(neutralBytes))
+            assertEquals("Use the fixed separate synthetic fractional ZIP without altering the original Unity fixture",
+                "ed4eab70d111789b90abe2cab1fadf7640afb9610b96c613f5b87ff256275611", sha256(bytes))
+            val member = ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                assertEquals("분수 의상.unity", zip.nextEntry.name)
+                val content = zip.readBytes()
+                assertTrue("The ZIP must contain only its audited neutral Unity model", zip.nextEntry == null)
+                content
+            }
+            assertEquals("The fractional position/rotation must come from the serialized Unity member",
+                "d468e330e747001096092e33d8bc8e9191096d5c66b9f5723b9f76792e4c23b3", sha256(member))
             source.writeBytes(bytes)
             preferences.edit().putBoolean("seen_guide", true).commit()
             val launched = instrumentation.startActivitySync(
@@ -67,6 +80,7 @@ class ViewerPersistenceTest {
             run(webView, helper)
             run(webView, "if(document.getElementById('viewer-auto-face').checked)document.getElementById('viewer-auto-face').click();")
             open(webView, source.absolutePath)
+            val sourceThigh = thighTransform(webView)
             val baseline = vertices(webView)
             assertBoneScale(webView, "LeftUpLeg", doubleArrayOf(1.3, .9, 1.0))
 
@@ -82,7 +96,7 @@ class ViewerPersistenceTest {
 
             clickVisible(webView, "viewer-editor-mesh-tab")
             assertEditorGroup(webView, "mesh")
-            boneInput(webView, "LeftUpLeg", "scale", "Y", 1.2)
+            boneInput(webView, "LeftUpLeg", "scale", "Y", 1.234567)
             input(webView, "viewer-save-method", "mesh")
             val meshEdit = evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());").getJSONArray("edits")
             assertEquals(1, meshEdit.length())
@@ -98,6 +112,9 @@ class ViewerPersistenceTest {
                 authoring.getJSONArray("edits").getJSONObject(it).getString("method")
             }.toSet()
             assertEquals("The native flow must exercise both persistent backends", setOf("mesh", "node"), methods)
+            clickVisible(webView, "viewer-editor-mesh-tab")
+            run(webView, "ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('LeftUpLeg'),'change');")
+            val fractionalValidation = fractionalSaveState(webView)
             val intended = vertices(webView)
             assertTrue("Body editing must change the application's actual deformed skin", maxDifference(baseline, intended) > .01)
 
@@ -116,6 +133,8 @@ class ViewerPersistenceTest {
             assertTrue("The server must write a nonempty portable recipe", recipe.length() > 0)
             assertTrue("Saving must preserve the source bundle byte for byte", source.readBytes().contentEquals(bytes))
             openSaved(webView, first)
+            val savedThigh = thighTransform(webView)
+            assertThighTransformPreserved(sourceThigh, savedThigh)
             val reloaded = vertices(webView)
             assertTrue("The serialized output must reproduce the intended deformed skin",
                 maxDifference(intended, reloaded) < 2e-5)
@@ -146,6 +165,7 @@ class ViewerPersistenceTest {
             assertFalse("Every export must publish a new output rather than overwrite a prior result",
                 first.getJSONArray("previewPaths").toString() == second.getJSONArray("previewPaths").toString())
             openSaved(webView, second)
+            assertThighTransformPreserved(sourceThigh, thighTransform(webView))
             val rebuilt = vertices(webView)
             assertTrue("Rebuilding from the original must not accumulate another mesh transform",
                 maxDifference(reloaded, rebuilt) < 2e-5)
@@ -153,6 +173,9 @@ class ViewerPersistenceTest {
             assertTrue("The first completed output must remain available", outputFiles.all { it.isFile && it.length() > 0 })
             assertGameStopped()
             val report = JSONObject().put("sourceSha256", sha256(bytes)).put("sourcePreserved", true)
+                .put("originalNeutralFixtureSha256", sha256(neutralBytes)).put("unityMemberSha256", sha256(member))
+                .put("fractionalZipValidation", fractionalValidation).put("sourceThighTransform", sourceThigh)
+                .put("savedThighTransform", savedThigh).put("originalPositionAndRotationPreserved", true)
                 .put("firstExport", first).put("secondExport", second).put("recipeRestored", true)
                 .put("nodeAndMeshBackends", true).put("noAccumulation", true)
                 .put("separateEditingAreas", true).put("switchingAreasPreservesEdits", true)
@@ -175,6 +198,45 @@ class ViewerPersistenceTest {
             instrumentation.runOnMainSync { activity?.finish() }
             source.delete()
             preferences.edit().apply { if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide") }.commit()
+        }
+    }
+
+    private fun fractionalSaveState(webView: WebView): JSONObject {
+        val observed = evaluate(webView, "var inputs=Array.prototype.slice.call(document.querySelectorAll('#viewer-node-fields input[type=number]'));" +
+            "var offGrid=inputs.filter(function(input){return input.validity.stepMismatch;}).map(function(input){return {" +
+            "kind:input.dataset.viewerNodeKind,axis:input.dataset.axis,value:input.value,step:input.step};});" +
+            "if(inputs.some(function(input){var v=input.validity;return v.badInput||v.rangeOverflow||v.rangeUnderflow||v.customError||v.valueMissing;}))" +
+            "throw new Error('The fractional regression must contain only spinner step mismatches');" +
+            "var position=document.querySelector('[data-viewer-node-kind=\"position\"][data-axis=\"Y\"]')," +
+            "rotation=document.querySelector('[data-viewer-node-kind=\"rotation\"][data-axis=\"X\"]')," +
+            "scale=document.querySelector('[data-viewer-node-kind=\"scale\"][data-axis=\"Y\"]'),authoring=ModelViewer.getAuthoringState();" +
+            "return JSON.stringify({offGridInputs:offGrid,saveEnabled:!document.getElementById('viewer-save').disabled," +
+            "unsupported:authoring.unsupported,positionY:Number(position.value),rotationX:Number(rotation.value),scaleY:Number(scale.value)," +
+            "positionStep:position.step,rotationStep:rotation.step,scaleStep:scale.step});")
+        val offGrid = observed.getJSONArray("offGridInputs")
+        val kinds = (0 until offGrid.length()).map { offGrid.getJSONObject(it).getString("kind") }.toSet()
+        assertTrue("Real serialized position, rotation and explicit scale must all exceed their spinner increments", kinds.containsAll(listOf("position", "rotation", "scale")))
+        assertEquals("0.001", observed.getString("positionStep"))
+        assertEquals("1", observed.getString("rotationStep"))
+        assertEquals("0.001", observed.getString("scaleStep"))
+        assertEquals("Untouched source positions must not be rounded to the spinner step", .1234567, observed.getDouble("positionY"), 1e-7)
+        assertEquals("Untouched source rotations must retain their fractional precision", 12.34567, kotlin.math.abs(observed.getDouble("rotationX")), 1e-4)
+        assertEquals(1.234567, observed.getDouble("scaleY"), 1e-7)
+        assertEquals("Step mismatches alone are valid authoring values", 0, observed.getJSONArray("unsupported").length())
+        assertTrue("The real APK must enable Save with only fractional step mismatches", observed.getBoolean("saveEnabled"))
+        return observed
+    }
+
+    private fun thighTransform(webView: WebView): JSONObject = evaluate(webView,
+        "var bone=ModelViewer.getState().rig.bones.filter(function(bone){return bone.name==='LeftUpLeg'||bone.name.slice(-10)==='/LeftUpLeg';})[0];" +
+            "return JSON.stringify({position:bone.position,quaternion:bone.quaternion});")
+
+    private fun assertThighTransformPreserved(before: JSONObject, after: JSONObject) {
+        for (kind in listOf("position", "quaternion")) {
+            val left = before.getJSONArray(kind); val right = after.getJSONArray(kind)
+            assertEquals(left.length(), right.length())
+            for (axis in 0 until left.length()) assertEquals("ZIP save/rebuild must preserve untouched source $kind axis $axis",
+                left.getDouble(axis), right.getDouble(axis), 1e-8)
         }
     }
 

@@ -25,6 +25,15 @@ Advanced actions and diagnostic logs start collapsed; expand them when needed.
 Expanded logs have their own bounded scroll area, with Share and Clear controls,
 and incoming log lines do not move the action menu.
 
+The shared asset editor separates expressions from pose/body controls and uses
+a selection list for common body parts. Wide tool pages place files, options and
+results together. Phone layouts retain their touch controls; wider Fold/tablet
+windows can resize the model's adjustment pane. At 1080 CSS pixels wide and 480
+pixels tall, file selection also becomes a resizable sidebar. **Default layout**
+in the file area restores both widths. These choices use the WebView's persistent
+local storage at its fixed tools address; Mac-only compact button styling and
+native preferences are kept separate.
+
 ## Maintainability: how to add features without touching Kotlin
 
 - **New dev/mod tool** → add an entry to `adminui/tools/registry.py` (this repo)
@@ -143,10 +152,9 @@ The Go binary, the bundled data payload and the embedded Python sources are
 - `app/src/main/python/` — `adminui/` and the dev installer scripts (this repo),
   plus `webtools/` and the modding scripts from the **`modtools/` git submodule**
   (SIFAS-MODDING-HELPING-TOOLS), alongside the committed `elichika_launch.py`. CI
-  updates the submodule's tracked `claude/elichika-apk-build-wwkuu3` branch for
-  ordinary development builds. The `codex/console-tools-release` preflight branch,
-  tag builds and runs with `release_tag` keep the exact submodule commit recorded
-  in the server repository. Before publishing, commit
+  uses the exact submodule commit recorded in the server repository for every
+  build, including artifact-only runs. It does not follow a different tools
+  branch during assembly. Before publishing, commit
   and push the modding-tool changes, then commit the updated `modtools` gitlink
   in elichika so the release contains the reviewed tools.
 

@@ -135,6 +135,33 @@ jobs:
             | tee evidence/native-instrumentation.txt
           python3 -c 'from pathlib import Path; text=Path("evidence/native-instrumentation.txt").read_text(); assert "OK (22 tests)" in text and "FAILURES" not in text, text'
 
+      - name: Exercise the same signed APK in a real wide Android window
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          adb -s 127.0.0.1:5555 shell wm size | tr -d '\r' > evidence/wide-display-before.txt
+          adb -s 127.0.0.1:5555 shell wm density | tr -d '\r' >> evidence/wide-display-before.txt
+          previous_size=$(sed -n 's/^Override size: //p' evidence/wide-display-before.txt)
+          previous_density=$(sed -n 's/^Override density: //p' evidence/wide-display-before.txt)
+          restore_display() {
+            adb -s 127.0.0.1:5555 shell wm density "${previous_density:-reset}" || true
+            adb -s 127.0.0.1:5555 shell wm size "${previous_size:-reset}" || true
+          }
+          trap restore_display EXIT
+          adb -s 127.0.0.1:5555 shell wm size 1600x1000
+          adb -s 127.0.0.1:5555 shell wm density 160
+          adb -s 127.0.0.1:5555 shell wm size > evidence/wide-display-active.txt
+          adb -s 127.0.0.1:5555 shell wm density >> evidence/wide-display-active.txt
+          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
+          adb -s 127.0.0.1:5555 shell am instrument -w \
+            -e requireWideUi true \
+            -e class com.tagundo.elichika.MeshWebViewTest \
+            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee evidence/native-wide-ui.txt
+          python3 -c 'from pathlib import Path; text=Path("evidence/native-wide-ui.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools-report.json > evidence/mesh-wide-tools-report.json
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools.png > evidence/mesh-wide-tools.png
+
       - name: Collect Android diagnostics
         if: always()
         run: |
