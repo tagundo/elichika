@@ -27,13 +27,6 @@ on:
         description: Original candidate versionCode
         required: true
         default: "2026110602"
-  # This also registers/runs the helper before it exists on the default branch.
-  # It never runs on fork PRs and never publishes a release.
-  push:
-    branches: [codex/macos-companion]
-    paths:
-      - .github/workflows/android-ui-qa.yml
-      - android/app/src/androidTest/**
 
 permissions:
   contents: read

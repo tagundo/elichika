@@ -893,6 +893,13 @@ class ModelViewerRigTest {
         val initiallyExpanded = start.getJSONObject("layout").getBoolean("expanded")
         if (initiallyExpanded) click(webView, "viewer-expand")
         try {
+            run(webView, "ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('BreastSize'),'change');")
+            val nodeCompensationBlocked = evaluate(webView,
+                "return JSON.stringify({disabled:document.getElementById('bone-compensate-children').disabled});")
+            assertTrue("Node export does not currently support child compensation", nodeCompensationBlocked.getBoolean("disabled"))
+            input(webView, "viewer-save-method", "mesh", "change")
+            assertFalse("Explicit Mesh Baker export enables supported child compensation", evaluate(webView,
+                "return JSON.stringify({disabled:document.getElementById('bone-compensate-children').disabled});").getBoolean("disabled"))
             boneInput(webView, "BreastSize", "position", "X", .05)
             boneInput(webView, "BreastSize", "rotation", "Z", 35)
             boneInput(webView, "Tip", "position", "X", .15)
