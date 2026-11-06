@@ -209,10 +209,13 @@ jobs:
           # The empty proxy generator otherwise pulls in main Python pip/assets.
           # Tests compile against unchanged main Kotlin/R classes; the app installed
           # on Android is exclusively the frozen, already-signed candidate above.
+          # AGP also links the target app's merged JNI output into the test graph;
+          # its native runtime is already supplied by that installed candidate.
           ./gradlew :app:assembleReleaseAndroidTest --dry-run --no-daemon --stacktrace \
             --init-script "$RUNNER_TEMP/instrumentation-only.gradle" \
             -x :app:generateReleasePythonProxies -x :app:installReleasePythonRequirements \
             -x :app:mergeReleasePythonSources -x :app:extractReleasePythonBuildPackages \
+            -x :app:generateReleasePythonJniLibs -x :app:mergeReleaseNativeLibs \
             -PchaquopyWheelhouse="${{ steps.wheels.outputs.path }}" \
             -PappVersionName="$VERSION_NAME" -PappVersionCode="$VERSION_CODE" \
             | tee "$GITHUB_WORKSPACE/qa-evidence/instrumentation-dry-run.txt"
@@ -248,6 +251,7 @@ jobs:
             --init-script "$RUNNER_TEMP/instrumentation-only.gradle" \
             -x :app:generateReleasePythonProxies -x :app:installReleasePythonRequirements \
             -x :app:mergeReleasePythonSources -x :app:extractReleasePythonBuildPackages \
+            -x :app:generateReleasePythonJniLibs -x :app:mergeReleaseNativeLibs \
             -PchaquopyWheelhouse="${{ steps.wheels.outputs.path }}" \
             -PappVersionName="$VERSION_NAME" -PappVersionCode="$VERSION_CODE"
           python3 - <<'PY'
