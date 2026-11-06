@@ -138,6 +138,7 @@ def check_pose_body_report(report):
     require(inspection.get("status") == "PASS" and inspection.get("character_id") == 6
             and inspection.get("name_characters") == 120
             and inspection.get("expected_name_transport") == "base64-utf8"
+            and inspection.get("private_prefix_samefile") is True
             and inspection.get("manifest_names_nfc") is True and all(inspection.get(key) is True for key in
                 ("manifest_names_match", "model_bytes_match", "source_preserved", "thumbnail_png",
                  "safe_installer_structure")),

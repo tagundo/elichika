@@ -412,7 +412,17 @@ final class NativeSmokeTest {
             name=base64.b64decode(name_base64,validate=True).decode('utf-8')
             sha=lambda raw:hashlib.sha256(raw).hexdigest()
             runtime=pathlib.Path(resources)/'runtime/arm64/python'
-            assert pathlib.Path(sys.prefix).resolve().is_relative_to(runtime.resolve())
+            prefix=pathlib.Path(sys.prefix)
+            def filesystem_identity(path):
+                try:
+                    info=path.stat();return {'device':info.st_dev,'inode':info.st_ino}
+                except OSError as error:return {'error':str(error)}
+            prefix_diagnostic={'actual_prefix':str(prefix),'expected_prefix':str(runtime),
+                'actual_identity':filesystem_identity(prefix),'expected_identity':filesystem_identity(runtime)}
+            try:private_prefix_samefile=prefix.samefile(runtime)
+            except OSError as error:
+                private_prefix_samefile=False;prefix_diagnostic['samefile_error']=str(error)
+            assert private_prefix_samefile,prefix_diagnostic
             original=pathlib.Path(source).read_bytes();assert sha(original)==source_hash
             def only_model(path):
                 raw=pathlib.Path(path).read_bytes()
@@ -447,6 +457,7 @@ final class NativeSmokeTest {
             print(json.dumps({'status':'PASS','character_id':6,'name_characters':len(name),'manifest_names_match':True,
                 'model_bytes_match':True,'model_sha256':sha(saved),'source_preserved':True,'thumbnail_png':True,
                 'safe_installer_structure':True,'expected_name_transport':'base64-utf8','manifest_names_nfc':True,
+                'private_prefix_samefile':private_prefix_samefile,
                 'package_sha256':sha(raw),'package_bytes':len(raw),'python_executable':sys.executable}))
             """
         let child = Process(), output = Pipe(), errors = Pipe()
