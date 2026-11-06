@@ -150,8 +150,12 @@ internal object HeaderLayoutNativeQa {
                 }
                 val inline = header.orientation == LinearLayout.HORIZONTAL
                 if (dp == 320 && state == "stopped") assertFalse("A narrow stopped header must retain two readable rows", inline)
-                if (language == "ko" && kotlin.math.abs(scale - 1f) < .01f && state == "stopped" && dp in listOf(768, 853))
+                if (language == "ko" && kotlin.math.abs(scale - 1f) < .01f && state == "stopped" && dp in listOf(768, 853)) {
+                    val inputs = fitInputs(activity, header, controls, tabs)
+                    report.put("lastFitInputs", inputs)
+                    logFitInputs(inputs)
                     assertTrue("Korean stopped controls and all five tabs must fit inline at $dp dp", inline)
+                }
                 tabViews.forEach { tab ->
                     assertTrue("Every native tab needs a 44dp touch target", tab.width + 1 >= 44 * density && tab.height + 1 >= 44 * density)
                     descendants(tab).filterIsInstance<TextView>().filter { it.text.isNotEmpty() }.forEach(::assertReadable)
@@ -262,6 +266,87 @@ internal object HeaderLayoutNativeQa {
             assertEquals("Native labels must not be ellipsized: ${view.text}", 0, layout.getEllipsisCount(line))
             assertTrue("Native label lines must fit their measured width: ${view.text}",
                 layout.getLineWidth(line) <= view.width - view.compoundPaddingLeft - view.compoundPaddingRight + 1)
+        }
+    }
+
+    /** Read the original APK's calculations without altering any view or paint. */
+    private fun fitInputs(activity: MainActivity, header: LinearLayout, controls: LinearLayout, tabs: TabLayout): JSONObject {
+        val textWidth = MainActivity::class.java.getDeclaredMethod("naturalHeaderTextWidth", TextView::class.java)
+            .apply { isAccessible = true }
+        val tabWidth = MainActivity::class.java.getDeclaredMethod("naturalTabWidth", View::class.java)
+            .apply { isAccessible = true }
+        fun margins(view: View): Int = (view.layoutParams as? ViewGroup.MarginLayoutParams)
+            ?.let { it.leftMargin + it.rightMargin } ?: 0
+        fun describe(view: View): JSONObject {
+            val lp = view.layoutParams
+            val ancestors = JSONArray()
+            var node = view.parent
+            while (node is View) {
+                val current = node as View
+                ancestors.put(JSONObject().put("class", current.javaClass.name)
+                    .put("paddingLeft", current.paddingLeft).put("paddingRight", current.paddingRight)
+                    .put("margins", margins(current)).put("width", current.width))
+                if (current === header) break
+                node = current.parent
+            }
+            val data = JSONObject().put("class", view.javaClass.name).put("id", view.id)
+                .put("visibility", view.visibility).put("width", view.width).put("height", view.height)
+                .put("layoutWidth", lp.width).put("layoutHeight", lp.height)
+                .put("minimumWidth", view.minimumWidth).put("paddingLeft", view.paddingLeft)
+                .put("paddingRight", view.paddingRight).put("backgroundMinimumWidth", view.background?.minimumWidth ?: 0)
+                .put("margins", margins(view)).put("ancestors", ancestors)
+            if (view is TextView) {
+                val rendered = view.transformationMethod?.getTransformation(view.text, view) ?: view.text
+                data.put("text", view.text.toString()).put("renderedText", rendered.toString())
+                    .put("textSizePx", view.textSize).put("minWidth", view.minWidth).put("minEms", view.minEms)
+                    .put("lineHeight", view.lineHeight).put("compoundPaddingLeft", view.compoundPaddingLeft)
+                    .put("compoundPaddingRight", view.compoundPaddingRight)
+                    .put("paintDesiredWidth", android.text.Layout.getDesiredWidth(rendered, view.paint))
+                    .put("calculatedTextWidth", (textWidth.invoke(activity, view) as Number).toInt())
+            }
+            return data
+        }
+        val children = (0 until controls.childCount).map(controls::getChildAt)
+        val controlDetails = JSONArray(children.map(::describe))
+        val controlsWidth = controls.paddingLeft + controls.paddingRight + children.sumOf { child ->
+            if (child.visibility == View.GONE) 0 else {
+                val width = if (child is TextView) (textWidth.invoke(activity, child) as Number).toInt()
+                    else maxOf(child.layoutParams.width.coerceAtLeast(0), child.minimumWidth, child.background?.minimumWidth ?: 0)
+                width + margins(child)
+            }
+        }
+        val strip = tabs.getChildAt(0) as ViewGroup
+        val tabDetails = JSONArray()
+        var tabsWidth = tabs.paddingLeft + tabs.paddingRight + strip.paddingLeft + strip.paddingRight
+        for (index in 0 until strip.childCount) {
+            val tab = strip.getChildAt(index)
+            val calculated = (tabWidth.invoke(activity, tab) as Number).toInt()
+            tabsWidth += calculated
+            tabDetails.put(describe(tab).put("index", index).put("calculatedTabWidth", calculated)
+                .put("labels", JSONArray(descendants(tab).filterIsInstance<TextView>().map(::describe).toList())))
+        }
+        val gap = ceil(8 * activity.resources.displayMetrics.density.toDouble()).toInt()
+        val available = header.width - header.paddingLeft - header.paddingRight
+        return JSONObject().put("header", describe(header)).put("orientation", header.orientation)
+            .put("density", activity.resources.displayMetrics.density).put("systemFontScale", activity.resources.configuration.fontScale)
+            .put("controls", controlDetails).put("serverRow", describe(controls)).put("tabs", tabDetails)
+            .put("navigation", describe(tabs)).put("strip", describe(strip)).put("controlsWidth", controlsWidth)
+            .put("tabsWidth", tabsWidth).put("gap", gap).put("availableWidth", available)
+            .put("calculatedFits", controlsWidth + gap + tabsWidth <= available)
+    }
+
+    private fun logFitInputs(inputs: JSONObject) {
+        // Individual valid JSON lines stay below Android's log-entry limit.
+        // The complete object is also retained in the on-device report file.
+        val summary = JSONObject()
+        for (key in listOf("orientation", "density", "systemFontScale", "controlsWidth", "tabsWidth", "gap", "availableWidth", "calculatedFits"))
+            summary.put(key, inputs.get(key))
+        println("HEADER_FIT_NATIVE_INPUTS=" + summary)
+        for (key in listOf("header", "serverRow", "navigation", "strip"))
+            println("HEADER_FIT_NATIVE_" + key + "=" + inputs.getJSONObject(key))
+        for (key in listOf("controls", "tabs")) {
+            val rows = inputs.getJSONArray(key)
+            for (index in 0 until rows.length()) println("HEADER_FIT_NATIVE_" + key + "_" + index + "=" + rows.getJSONObject(index))
         }
     }
 

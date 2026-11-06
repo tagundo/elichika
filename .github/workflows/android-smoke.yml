@@ -237,6 +237,8 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-add-game-report.json > evidence/viewer-add-game-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow-report.json > evidence/header-layout-narrow-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow.png > evidence/header-layout-narrow.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > evidence/header-layout-wide-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > evidence/header-layout-wide.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll-report.json > evidence/viewer-portrait-scroll-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll.png > evidence/viewer-portrait-scroll.png 2>/dev/null || true
           sudo dmesg | tail -100 > evidence/kernel-tail.txt || true
