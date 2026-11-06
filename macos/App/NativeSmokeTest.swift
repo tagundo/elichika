@@ -1,0 +1,755 @@
+import AppKit
+import CryptoKit
+import Foundation
+import WebKit
+import Darwin
+
+/// Runs only when the packaged executable receives an explicit --smoke-test path.
+/// It uses the bundled neutral fixture and the same native bridge and editor as users.
+@MainActor
+final class NativeSmokeTest {
+    private let model: AppModel
+    private var report: [String: Any] = ["status": "RUNNING", "platform": "macOS", "scope": "Actual bundled runtime, native file bridge, WebKit WebGL and saved Unity geometry"]
+    private let startedAt = ProcessInfo.processInfo.systemUptime
+    private var stages: [[String: Any]] = []
+    init(model: AppModel) { self.model = model }
+
+    func run() async {
+        guard let directory = model.smokeDirectory else { return }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            model.smokeEvent = { [weak self] stage in try? self?.checkpoint(stage) }
+            try checkpoint("payload-preparation")
+            try await wait("payload preparation", timeout: 420) { self.model.toolsReady }
+            guard let ready = model.connection, let process = model.process else { throw NativeError.runtimeUnavailable }
+            report["python_pid"] = Int(process.processIdentifier)
+            report["ready_ports"] = [ready.controlURL.port!, ready.adminURL.port!, ready.toolsURL.port!]
+            try checkpoint("payload-prepared")
+            try await checkUnauthorizedControl(ready.controlURL)
+            let network = try JSONDecoder().decode(ServerNetworkConfig.self, from: await model.request("/v1/server/config"))
+            _ = try await model.request("/v1/server/config", method: "POST", body: ["server_address": network.serverAddress, "cdn_server": network.cdnServer])
+            report["native_network_configuration"] = true
+
+            try checkpoint("first-server-start")
+            _ = try await model.request("/v1/server/start", method: "POST")
+            try await wait("the game server", timeout: 120) {
+                await self.model.refresh()
+                return self.model.snapshot.serverRunning && self.model.snapshot.server?.httpReady == true
+            }
+            guard let serverURL = model.goURL(path: "/webui/admin/") else { throw NativeError.invalidResponse }
+            try await wait("the game server HTTP response", timeout: 150) {
+                do {
+                    var request = URLRequest(url: serverURL); request.timeoutInterval = 3
+                    let (_, response) = try await URLSession.shared.data(for: request)
+                    return (response as? HTTPURLResponse)?.statusCode == 200
+                } catch { return false }
+            }
+            report["server_started"] = true
+            report["go_pid"] = model.snapshot.server?.pid
+            try checkpoint("first-server-http-ready")
+            _ = try await model.request("/v1/server/stop", method: "POST")
+            try await wait("the stopped game server", timeout: 15) {
+                await self.model.refresh(); return !self.model.snapshot.serverRunning
+            }
+            report["server_stopped"] = true
+
+            try checkpoint("shared-webui-loading")
+            try await wait("the native asset WebView", timeout: 30) { self.model.assetWebView != nil }
+            guard let webView = model.assetWebView else { throw NativeError.runtimeUnavailable }
+            try await waitJS(webView, "the shared desktop editing UI", timeout: 45, expression:
+                "!!window.ElichikaPlatform&&!!window.ModelViewer&&typeof ModelViewer.getAuthoringState==='function'&&!!document.getElementById('viewer-editor-mesh-tab')")
+            let helperURL = model.resourceDirectory.appendingPathComponent("qa/viewer_rig_qa.js")
+            let helper = try String(contentsOf: helperURL, encoding: .utf8)
+            _ = try await js(webView, helper + ";return true;")
+            let source = model.resourceDirectory.appendingPathComponent("qa/viewer_persistence.unity")
+            let original = try Data(contentsOf: source)
+            let originalHash = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+            try require(originalHash == "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1", "The bundled neutral fixture changed.")
+            let zipSource = directory.appendingPathComponent("분수 의상.zip")
+            let originalZIP = try Data(contentsOf: zipSource)
+            let zipHash = SHA256.hash(data: originalZIP).map { String(format: "%02x", $0) }.joined()
+            report["fixture_sha256"] = originalHash
+            report["source_zip_sha256"] = zipHash
+            try checkpoint("native-open-model")
+            _ = try await js(webView, "return await ElichikaPlatform.perform('openModel');")
+            try await loaded(webView)
+            report["native_file_bridge_and_authorization"] = true
+            try checkpoint("model-rendered")
+            try await checkPoseBodyStructure(webView)
+            let panelPreferenceFile = directory.appendingPathComponent("viewer-panel-width-expected.txt")
+            let expectedPanelWidth = (try? String(contentsOf: panelPreferenceFile, encoding: .utf8))
+                .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            let panelBefore = try await object(webView, """
+                var handle=document.getElementById('viewer-panel-resizer');
+                return JSON.stringify({metadata:ElichikaPlatform.info().viewerPanelWidth,
+                  actual:document.getElementById('viewer-control-panel').getBoundingClientRect().width,
+                  enabled:!!handle&&!handle.hidden,min:Number(handle.getAttribute('aria-valuemin')),
+                  max:Number(handle.getAttribute('aria-valuemax'))});
+                """)
+            report["viewer_panel_before"] = panelBefore
+            try checkpoint("viewer-panel-preference-observed")
+            try require(panelBefore["enabled"] as? Bool == true, "The desktop adjustment panel must be resizable.")
+            if let expectedPanelWidth {
+                try require(panelBefore["metadata"] as? Int == expectedPanelWidth &&
+                            UserDefaults.standard.integer(forKey: "viewerPanelWidth") == expectedPanelWidth &&
+                            abs((panelBefore["actual"] as? Double ?? 0) - Double(expectedPanelWidth)) < 1,
+                            "The adjustment panel width must survive an ordinary quit and relocated relaunch.")
+            }
+            let currentPanelWidth = Int((panelBefore["actual"] as? Double ?? 0).rounded())
+            let maximumPanelWidth = panelBefore["max"] as? Int ?? 0
+            let direction = currentPanelWidth + 16 <= maximumPanelWidth ? "ArrowLeft" : "ArrowRight"
+            let requestedPanelWidth = currentPanelWidth + (direction == "ArrowLeft" ? 16 : -16)
+            _ = try await js(webView, "var handle=document.getElementById('viewer-panel-resizer');handle.focus();handle.dispatchEvent(new KeyboardEvent('keydown',{key:'\(direction)',bubbles:true,cancelable:true}));return true;")
+            try await waitJS(webView, "the resized adjustment panel", timeout: 10, expression:
+                "Math.abs(document.getElementById('viewer-control-panel').getBoundingClientRect().width-\(requestedPanelWidth))<1")
+            try await wait("the native panel width preference", timeout: 10) {
+                UserDefaults.standard.integer(forKey: "viewerPanelWidth") == requestedPanelWidth
+            }
+            try String(requestedPanelWidth).write(to: panelPreferenceFile, atomically: true, encoding: .utf8)
+            report["viewer_panel_width_persistence"] = ["previous_expected": expectedPanelWidth ?? 0,
+                "restored_on_relaunch": expectedPanelWidth != nil, "committed": requestedPanelWidth,
+                "native_stored": UserDefaults.standard.integer(forKey: "viewerPanelWidth")]
+            try checkpoint("viewer-panel-width-persisted")
+            let filesPreferenceFile = directory.appendingPathComponent("viewer-files-width-expected.txt")
+            let expectedFilesWidth = (try? String(contentsOf: filesPreferenceFile, encoding: .utf8))
+                .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            let filePanelBefore = try await object(webView, """
+                var handle=document.getElementById('viewer-files-resizer');
+                return JSON.stringify({metadata:ElichikaPlatform.info().viewerFilesWidth,
+                  resizerVisible:!!handle&&!handle.hidden,viewportWidth:window.innerWidth});
+                """)
+            report["viewer_files_before"] = filePanelBefore
+            try checkpoint("viewer-files-preference-observed")
+            if let expectedFilesWidth {
+                try require(filePanelBefore["metadata"] as? Int == expectedFilesWidth &&
+                            UserDefaults.standard.integer(forKey: "viewerFilesWidth") == expectedFilesWidth,
+                            "The file selection width must survive a fresh private WebView and app relocation.")
+            }
+            let requestedFilesWidth = expectedFilesWidth == 224 ? 240 : 224
+            _ = try await js(webView, "await ElichikaPlatform.request('setViewerFilesWidth',{width:\(requestedFilesWidth)});return true;")
+            try await wait("the native file panel width preference", timeout: 10) {
+                UserDefaults.standard.integer(forKey: "viewerFilesWidth") == requestedFilesWidth
+            }
+            try String(requestedFilesWidth).write(to: filesPreferenceFile, atomically: true, encoding: .utf8)
+            report["viewer_files_width_persistence"] = ["previous_expected": expectedFilesWidth ?? 0,
+                "restored_on_relaunch": expectedFilesWidth != nil, "committed": requestedFilesWidth,
+                "native_stored": UserDefaults.standard.integer(forKey: "viewerFilesWidth"),
+                "scope": "Native preference bridge and relaunch; the file sidebar appears only in a wide viewport"]
+            try checkpoint("viewer-files-width-persisted")
+            let baseline = try await vertices(webView)
+            _ = try await js(webView, "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-body-adjustments').open=true;for(var parent=document.getElementById('viewer-node-editor');parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;}document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.boneInput('LeftUpLeg','scale','X',1.17);ViewerRigQa.boneInput('LeftUpLeg','scale','Y',1.234567);ViewerRigQa.boneInput('LeftUpLeg','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','mesh','change');document.getElementById('viewer-editor-node-tab').click();ViewerRigQa.boneInput('BreastSize','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','node','change');document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('LeftUpLeg'),'change');return true;")
+            let fractionalControls = try await object(webView, """
+                var inputs=Array.from(document.querySelectorAll('#viewer-node-fields input'));
+                function field(kind,axis){return inputs.find(function(input){return input.dataset.viewerNodeKind===kind&&input.dataset.axis===axis;});}
+                var authored=ModelViewer.getAuthoringState(),s=ModelViewer.getState();
+                var expectedFilename='분수 의상.zip',expectedNode=String(ViewerRigQa.nodeId('LeftUpLeg'));
+                var loadedPaths=s.loadedPaths.slice(),filenames=loadedPaths.map(function(path){return String(path).split('/').pop();});
+                var normalizedFilenames=filenames.map(function(name){return name.normalize('NFC');});
+                var selected=document.getElementById('viewer-node');
+                return JSON.stringify({offGridInputs:inputs.filter(function(input){return input.validity.stepMismatch;}).map(function(input){return {kind:input.dataset.viewerNodeKind,axis:input.dataset.axis,value:input.value,step:input.step};}),
+                  saveEnabled:!document.getElementById('viewer-save').disabled,unsupported:authored.unsupported,
+                  selectedLeftUpLeg:String(s.rig.selectedNode)===expectedNode,
+                  expectedLeftUpLegNode:expectedNode,actualSelectedNode:String(s.rig.selectedNode),selectedDOMValue:selected.value,
+                  selectedDOMLabel:selected.options[selected.selectedIndex] ? selected.options[selected.selectedIndex].text : '',
+                  spinnerStepsPreserved:field('scale','Y').step==='0.001'&&field('position','Y').step==='0.001'&&field('rotation','X').step==='1',
+                  originalPositionY:Number(field('position','Y').value),originalRotationX:Number(field('rotation','X').value),
+                  loadedPaths:loadedPaths,loadedFilenames:filenames,normalizedLoadedFilenames:normalizedFilenames,expectedZIPFilename:expectedFilename,
+                  filenameCodepoints:filenames.map(function(name){return Array.from(name).map(function(character){return character.codePointAt(0).toString(16);});}),
+                  selectedZIP:normalizedFilenames.length===1&&normalizedFilenames[0]===expectedFilename.normalize('NFC')});
+                """)
+            report["fractional_zip_save_validation"] = fractionalControls
+            try checkpoint("fractional-zip-controls-observed")
+            let offGrid = fractionalControls["offGridInputs"] as? [[String: Any]] ?? []
+            try require(fractionalControls["selectedZIP"] as? Bool == true,
+                        "The native file chooser must open the actual ZIP (Unicode-normalized filename).")
+            try require(fractionalControls["selectedLeftUpLeg"] as? Bool == true,
+                        "The real editing controls must select the LeftUpLeg metadata node.")
+            try require(offGrid.contains { $0["kind"] as? String == "position" } && offGrid.contains { $0["kind"] as? String == "rotation" },
+                        "The original fractional position and rotation must remain visibly off the spinner grid.")
+            try require(offGrid.contains { $0["kind"] as? String == "scale" && $0["value"] as? String == "1.234567" },
+                        "An explicit precise scale must remain finer than the spinner increment.")
+            try require(fractionalControls["spinnerStepsPreserved"] as? Bool == true && fractionalControls["saveEnabled"] as? Bool == true &&
+                        (fractionalControls["unsupported"] as? [String]) == [],
+                        "Finite fractional ZIP edits must enable Save without changing the existing spinner increments.")
+            try require(abs((fractionalControls["originalPositionY"] as? Double ?? 0) - 0.1234567) < 0.000001 &&
+                        abs(abs(fractionalControls["originalRotationX"] as? Double ?? 0) - 12.34567) < 0.0001,
+                        "Untouched original fractional TRS values must remain visible without rounding.")
+            try checkpoint("fractional-zip-save-enabled")
+            let edits = try await object(webView, "return JSON.stringify(ModelViewer.getAuthoringState());")
+            let authored = edits["edits"] as? [[String: Any]] ?? []
+            try require(authored.count == 2 && Set(authored.compactMap { $0["method"] as? String }) == Set(["node", "mesh"]), "Both editing backends must receive real edits.")
+            let intended = try await vertices(webView)
+            try require(try difference(baseline, intended) > 0.01, "The actual skin must change after editing.")
+            try await checkSeparatePoseBodyPanels(webView)
+            try await checkInvalidBodyDraftMenuSave(webView)
+            model.perform("saveModel")
+            try checkpoint("first-export")
+            let first = try await saved(webView, previousJob: "")
+            try checkFiles(first)
+            try checkpoint("first-export-saved")
+            _ = try await js(webView, "document.getElementById('viewer-open-saved').click();return true;")
+            try await loaded(webView, reviewing: true)
+            let reloaded = try await vertices(webView)
+            let saveError = try difference(intended, reloaded)
+            try require(saveError < 0.00002, "The saved Unity geometry differs from the edited target.")
+            try checkpoint("first-export-reloaded")
+            _ = try await js(webView, "document.getElementById('viewer-reedit-original').click();return true;")
+            try await waitJS(webView, "restored edits from the preserved original", timeout: 90, expression:
+                "ModelViewer.getState().loaded&&!ModelViewer.getState().loading&&!ModelViewer.getState().persistence.busy&&ModelViewer.getAuthoringState().edits.length===2&&!ModelViewer.getState().persistence.reviewingSaved")
+            model.perform("saveModel")
+            try checkpoint("second-export")
+            let second = try await saved(webView, previousJob: first["jobId"] as? String ?? "")
+            try checkFiles(second)
+            try require((first["previewPaths"] as? [String]) != (second["previewPaths"] as? [String]), "Every save must publish a distinct output folder.")
+            try checkpoint("second-export-saved")
+            _ = try await js(webView, "document.getElementById('viewer-open-saved').click();return true;")
+            try await loaded(webView, reviewing: true)
+            let rebuilt = try await vertices(webView)
+            let rebuildError = try difference(reloaded, rebuilt)
+            try require(rebuildError < 0.00002, "Rebuilding must not accumulate mesh deformation.")
+            try require(try Data(contentsOf: source) == original, "Source bundle bytes must remain unchanged.")
+            try require(try Data(contentsOf: zipSource) == originalZIP, "Source ZIP bytes must remain unchanged.")
+            _ = try await js(webView, "document.getElementById('viewer-fit').click();return true;")
+            try await Task.sleep(nanoseconds: 250_000_000)
+            let probe = try await object(webView, "return JSON.stringify(ModelViewer.renderProbe(33));")
+            try require((probe["glError"] as? Int) == 0 && (probe["nonBackgroundSamples"] as? Int ?? 0) >= 3, "Native WebKit must render the saved geometry.")
+            try await snapshot(webView, directory.appendingPathComponent("saved-model.png"))
+            report["fixture_sha256"] = originalHash
+            report["node_and_mesh_backends"] = true
+            report["source_preserved"] = true
+            report["source_zip_preserved"] = true
+            report["reedit_from_original"] = true
+            report["saved_geometry_max_error"] = saveError
+            report["rebuilt_geometry_max_error"] = rebuildError
+            report["framebuffer"] = probe
+            report["first_export"] = first
+            report["second_export"] = second
+            try checkpoint("saved-model-snapshot")
+            try await checkModPackage(webView, sourceZIP: zipSource, sourceZIPHash: zipHash, previousExport: second)
+            let preservedSource = try Data(contentsOf: source), preservedZIP = try Data(contentsOf: zipSource)
+            try require(preservedSource == original && preservedZIP == originalZIP,
+                        "Saving the installer ZIP must preserve both original fixture files.")
+            try await checkMinimizedViewer(webView)
+            _ = try await model.request("/v1/server/start", method: "POST")
+            try checkpoint("quit-server-start-requested")
+            try await wait("the game server before quitting", timeout: 120) {
+                await self.model.refresh(); return self.model.snapshot.serverRunning && self.model.snapshot.server?.httpReady == true
+            }
+            report["go_pid_at_quit"] = model.snapshot.server?.pid
+            report["server_running_when_quit_requested"] = true
+            try checkpoint("quit-server-http-ready")
+            try await wait("the running server HTTP endpoint before quitting", timeout: 120) {
+                do {
+                    var request = URLRequest(url: serverURL); request.timeoutInterval = 3
+                    let (_, response) = try await URLSession.shared.data(for: request)
+                    return (response as? HTTPURLResponse)?.statusCode == 200
+                } catch { return false }
+            }
+            let runtimePID = process.processIdentifier
+            try checkpoint("ordinary-native-quit-requested")
+            model.smokeQuitObserver = {
+                try? self.checkpoint("ordinary-native-quit-runtime-stopped")
+                let deadline = Date().addingTimeInterval(2)
+                while Darwin.kill(-runtimePID, 0) == 0 && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
+                let terminated = Darwin.kill(-runtimePID, 0) != 0 && self.model.process?.isRunning != true
+                self.report["runtime_terminated"] = terminated
+                self.report["normal_app_quit_with_running_server"] = terminated
+                self.report["status"] = terminated ? "PASS" : "FAIL"
+                do { try self.checkpoint(terminated ? "passed" : "runtime-termination-failed") } catch { Darwin.exit(1) }
+                if !terminated { Darwin.exit(1) }
+            }
+            // Match the normal AppKit menu event and let this actor job return
+            // before starting the application's termination handshake.
+            DispatchQueue.main.async { NSApplication.shared.terminate(nil) }
+        } catch {
+            report["status"] = "FAIL"
+            report["error"] = error.localizedDescription
+            report["console_tail"] = Array(model.console.suffix(100))
+            await model.stopRuntime()
+            report["runtime_terminated"] = model.process?.isRunning != true
+            try? checkpoint("failed")
+            Darwin.exit(1)
+        }
+    }
+
+    private func checkMinimizedViewer(_ webView: WKWebView) async throws {
+        let prefs = ["panel": UserDefaults.standard.integer(forKey: "viewerPanelWidth"),
+                     "files": UserDefaults.standard.integer(forKey: "viewerFilesWidth")]
+        let before = try await editingSnapshot(webView)
+        let originalVertices = try await vertices(webView)
+        let observe = """
+            var state=ModelViewer.getState(),metadata=ModelViewer.getEditingMetadata();
+            return JSON.stringify({minimized:state.layout.minimized,direction:state.layout.minimizeDirection,
+              expanded:state.layout.expanded,fullscreen:state.layout.fullscreen,shortHeight:state.layout.shortHeight,
+              token:metadata.token,selection:JSON.stringify(state.loadedPaths),
+              folds:JSON.stringify(Array.from(document.querySelectorAll('#viewer-control-panel details')).map(function(element,index){return [element.id||String(index),element.open];})),
+              editorWidth:document.getElementById('viewer-control-panel').getBoundingClientRect().width,
+              modelWidth:document.querySelector('.viewer-model-panel').getBoundingClientRect().width,
+              prepareRequests:performance.getEntriesByType('resource').filter(function(entry){return new URL(entry.name).pathname==='/api/viewer/prepare';}).length});
+            """
+        let initial = try await object(webView, observe)
+        try require(initial["minimized"] as? Bool == false && initial["direction"] as? String == "width" &&
+                    initial["expanded"] as? Bool == false && initial["fullscreen"] as? String == "none" && initial["shortHeight"] as? Bool == false,
+                    "The native minimize test must use the ordinary unchanged Mac window.")
+        guard let token = initial["token"] as? String, !token.isEmpty,
+              let initialPrepares = initial["prepareRequests"] as? Int else { throw NativeError.invalidResponse }
+        _ = try await js(webView, """
+            var button=document.getElementById('viewer-minimize');button.scrollIntoView({block:'nearest'});
+            await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var rect=button.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            if(button.disabled||rect.width<32||rect.height<32||!(hit===button||button.contains(hit)))throw new Error('The real minimize control must be a visible native WebKit target');
+            button.click();return true;
+            """)
+        try await waitJS(webView, "the minimized native model rail", timeout: 10, expression: "ModelViewer.getState().layout.minimized===true")
+        _ = try await js(webView, "await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});return true;")
+        let minimized = try await object(webView, observe)
+        try require(minimized["direction"] as? String == "width" &&
+                    (minimized["editorWidth"] as? Double ?? 0) > (initial["editorWidth"] as? Double ?? 0) + 100 &&
+                    (minimized["modelWidth"] as? Double ?? 1000) <= 60,
+                    "The ordinary Mac rail must release real width for editing.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+        let restore = try await object(webView, """
+            var button=document.getElementById('viewer-model-restore');button.scrollIntoView({block:'nearest'});
+            await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var rect=button.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            if(button.hidden||rect.width<44||rect.height<44||!(hit===button||button.contains(hit)))throw new Error('The actual model restore rail must expose a 44px target');
+            var target={width:rect.width,height:rect.height,hittable:true};button.click();return JSON.stringify(target);
+            """)
+        try await waitJS(webView, "the restored retained native model", timeout: 10, expression:
+            "!ModelViewer.getState().layout.minimized&&(function(){var p=ModelViewer.renderProbe(33);return p.ready&&p.glError===0&&p.nonBackgroundSamples>=3;})()")
+        _ = try await js(webView, "await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});return true;")
+        let restored = try await object(webView, observe)
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+        for observation in [minimized, restored] {
+            for key in ["token", "selection", "folds"] {
+                guard let retained = initial[key] as? String, let actual = observation[key] as? String else { throw NativeError.invalidResponse }
+                try require(actual == retained, "Minimize and restore must preserve the active source and manual folds: " + key)
+            }
+            guard let actualPrepares = observation["prepareRequests"] as? Int else { throw NativeError.invalidResponse }
+            try require(actualPrepares == initialPrepares,
+                        "Minimize must retain the existing model without another prepare request.")
+        }
+        try require(restored["minimized"] as? Bool == false &&
+                    abs((restored["editorWidth"] as? Double ?? 0) - (initial["editorWidth"] as? Double ?? 0)) < 1 &&
+                    prefs["panel"] == UserDefaults.standard.integer(forKey: "viewerPanelWidth") &&
+                    prefs["files"] == UserDefaults.standard.integer(forKey: "viewerFilesWidth"),
+                    "Restoring the model must recover the editor width and preserve native width preferences.")
+        let restoredVertices = try await vertices(webView)
+        try require(try difference(originalVertices, restoredVertices) < 0.00002, "Minimize must not change the actual skin geometry.")
+        report["viewer_minimize_validation"] = ["status": "PASS", "direction": "width", "restore_target": restore,
+            "editor_width_before": initial["editorWidth"] ?? 0, "editor_width_minimized": minimized["editorWidth"] ?? 0,
+            "editor_width_restored": restored["editorWidth"] ?? 0, "rail_width": minimized["modelWidth"] ?? 0,
+            "source_token_selection_folds_preserved": true, "model_camera_authoring_preserved": true,
+            "native_preferences_preserved": true, "no_additional_prepare": true, "no_job_mutation": true,
+            "restore_method": "Actual native WebKit restore button click; native keyboard Enter is not exercised"]
+        try checkpoint("native-model-minimize-restored")
+    }
+
+    private func checkModPackage(_ webView: WKWebView, sourceZIP: URL, sourceZIPHash: String, previousExport: [String: Any]) async throws {
+        _ = try await js(webView, "document.getElementById('viewer-reedit-original').click();return true;")
+        try await waitJS(webView, "the preserved source and both body edits before Mod ZIP packaging", timeout: 90, expression:
+            "ModelViewer.getState().loaded&&!ModelViewer.getState().loading&&!ModelViewer.getState().persistence.busy&&!ModelViewer.getState().persistence.reviewingSaved&&ModelViewer.getAuthoringState().edits.length===2")
+        let expectedName = String(repeating: "맥의상", count: 40)
+        let quotedName = String(decoding: try JSONSerialization.data(withJSONObject: [expectedName]), as: UTF8.self) + "[0]"
+        let setup = try await object(webView, """
+            function expose(element){for(var parent=element;parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;}element.scrollIntoView({block:'center'});}
+            performance.clearResourceTimings();performance.setResourceTimingBufferSize(4096);
+            var name=document.getElementById('viewer-mod-name'),owner=document.getElementById('viewer-mod-character');
+            expose(name);var automatic=name.value,automaticLength=automatic.length;
+            if(ModelViewer.getState().persistence.modNameManual||!automatic.normalize('NFC').includes('분수')||automaticLength<1||automaticLength>120||name.maxLength!==120)throw new Error('The actual edited costume must suggest a bounded Unicode name');
+            name.value=\(quotedName);name.dispatchEvent(new Event('input',{bubbles:true}));
+            document.getElementById('viewer-mod-name-auto').click();
+            if(name.value!==automatic||ModelViewer.getState().persistence.modNameManual)throw new Error('Automatic name must restore the real edit-based suggestion');
+            name.value=\(quotedName);name.dispatchEvent(new Event('input',{bubbles:true}));
+            expose(owner);owner.value='6';owner.dispatchEvent(new Event('change',{bubbles:true}));
+            var button=document.getElementById('viewer-save-mod');expose(button);
+            await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var rect=button.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            if(button.disabled||rect.width<34||rect.height<34||!(hit===button||button.contains(hit))||name.value.length!==120||owner.value!=='6')throw new Error('The actual Save mod ZIP button and explicit owner must be usable');
+            return JSON.stringify({automaticName:automatic,automaticLength:automaticLength,manualName:name.value,manualLength:name.value.length,characterId:Number(owner.value),
+              oldJob:ModelViewer.getState().persistence.jobId,buttonTarget:{width:rect.width,height:rect.height,hittable:true},
+              installRequests:performance.getEntriesByType('resource').filter(function(entry){return entry.name.includes('/api/viewer/edit/install');}).length});
+            """)
+        report["viewer_mod_package_controls"] = setup
+        try checkpoint("mod-package-controls-ready")
+        try require(setup["manualName"] as? String == expectedName && setup["manualLength"] as? Int == 120 && setup["characterId"] as? Int == 6,
+                    "The new package form must retain the exact Unicode 120-character name and explicit owner.")
+        let before = try await vertices(webView)
+        _ = try await js(webView, "document.getElementById('viewer-save-mod').click();return true;")
+        let packaged = try await saved(webView, previousJob: setup["oldJob"] as? String ?? "")
+        try require((packaged["modPackage"] as? [String: Any])?["characterId"] as? Int == 6,
+                    "Save mod ZIP must complete a fresh real package job.")
+        let response = try await object(webView, """
+            var state=ModelViewer.getState().persistence,response=await fetch('/api/viewer/edit/result/'+state.jobId);
+            if(!response.ok)throw new Error('The completed package receipt was not available');
+            var result=await response.json();result.installRequests=performance.getEntriesByType('resource').filter(function(entry){return entry.name.includes('/api/viewer/edit/install');}).length;
+            return JSON.stringify(result);
+            """)
+        guard let receipt = response["mod_package"] as? [String: Any], let packagePath = receipt["package_path"] as? String,
+              let digest = receipt["sha256"] as? String, let previews = response["preview_paths"] as? [String], previews.count == 1,
+              let previous = previousExport["previewPaths"] as? [String], previous.count == 1,
+              let beforeInstalls = setup["installRequests"] as? Int, let afterInstalls = response["installRequests"] as? Int else { throw NativeError.invalidResponse }
+        try require(response["installed"] == nil && beforeInstalls == 0 && afterInstalls == 0 &&
+                    receipt["display_name"] as? String == expectedName && receipt["character_id"] as? Int == 6 && receipt["installable"] as? Bool == true,
+                    "Save mod ZIP must preserve its receipt and must not request installation.")
+        try checkFiles(["outputs": response["output_paths"] ?? [], "recipePath": response["recipe_path"] ?? ""])
+        let after = try await vertices(webView)
+        try require(try difference(before, after) < 0.00002, "Creating a Mod ZIP must preserve the actual edited preview geometry.")
+        let inspected = try await inspectModPackage(packagePath, edited: previews[0], previous: previous[0], source: sourceZIP,
+                                                   sourceHash: sourceZIPHash, expectedName: expectedName, expectedHash: digest)
+        report["viewer_mod_package_validation"] = ["status": "PASS", "automatic_name_checked": true, "fresh_job": true,
+            "manual_name_characters": 120, "character_id": 6, "no_install_requested": true, "bundled_python": true,
+            "receipt_sha256": digest, "package_path": packagePath, "inspection": inspected,
+            "scope": "Actual native WebKit Save mod ZIP and bundled Python inspection; Add to game is not invoked"]
+        try checkpoint("mod-package-inspected")
+    }
+
+    private func inspectModPackage(_ path: String, edited: String, previous: String, source: URL, sourceHash: String,
+                                   expectedName: String, expectedHash: String) async throws -> [String: Any] {
+        let code = """
+            import ast,base64,hashlib,io,json,pathlib,sys,unicodedata,zipfile
+            package,edited,previous,source,source_hash,name_base64,package_hash,resources=sys.argv[1:]
+            name=base64.b64decode(name_base64,validate=True).decode('utf-8')
+            sha=lambda raw:hashlib.sha256(raw).hexdigest()
+            runtime=pathlib.Path(resources)/'runtime/arm64/python'
+            prefix=pathlib.Path(sys.prefix)
+            def filesystem_identity(path):
+                try:
+                    info=path.stat();return {'device':info.st_dev,'inode':info.st_ino}
+                except OSError as error:return {'error':str(error)}
+            prefix_diagnostic={'actual_prefix':str(prefix),'expected_prefix':str(runtime),
+                'actual_identity':filesystem_identity(prefix),'expected_identity':filesystem_identity(runtime)}
+            try:private_prefix_samefile=prefix.samefile(runtime)
+            except OSError as error:
+                private_prefix_samefile=False;prefix_diagnostic['samefile_error']=str(error)
+            assert private_prefix_samefile,prefix_diagnostic
+            original=pathlib.Path(source).read_bytes();assert sha(original)==source_hash
+            def only_model(path):
+                raw=pathlib.Path(path).read_bytes()
+                if not zipfile.is_zipfile(io.BytesIO(raw)):return raw
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    files=[item for item in archive.infolist() if not item.is_dir()]
+                    assert len(files)==1,'The neutral fixture must contain exactly one model'
+                    return archive.read(files[0])
+            saved=only_model(edited);prior=only_model(previous);assert saved==prior and saved!=only_model(source)
+            raw=pathlib.Path(package).read_bytes();assert sha(raw)==package_hash
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                entries=archive.namelist();assert len(entries)==len(set(entries))
+                assert all(not pathlib.PurePosixPath(item).is_absolute() and '..' not in pathlib.PurePosixPath(item).parts for item in entries)
+                manifests=[item for item in entries if pathlib.PurePosixPath(item).name=='modinstall.txt'];assert len(manifests)==1
+                assert [item for item in entries if item.lower().endswith('.txt')]==manifests
+                assert not any(item.lower().endswith('.zip') for item in entries)
+                values={}
+                for node in ast.parse(archive.read(manifests[0]).decode('utf-8-sig')).body:
+                    assert isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)
+                    key=node.targets[0].id;assert key not in values;values[key]=ast.literal_eval(node.value)
+                names={key:values.get(key) for key in ['costume_name_en','costume_name_ko','costume_name_zh','costume_name_ja','costume_description']}
+                diagnostic={'owner':values.get('chara_id'),'expected_characters':len(name),
+                    'expected_nfc':unicodedata.normalize('NFC',name)==name,
+                    'manifest_characters':{key:len(value) if isinstance(value,str) else None for key,value in names.items()},
+                    'manifest_names_equal':all(value==name for value in names.values())}
+                assert values['chara_id']==6 and len(name)==120 and unicodedata.normalize('NFC',name)==name,diagnostic
+                assert all(value==name and len(value)==120 and unicodedata.normalize('NFC',value)==value for value in names.values()),diagnostic
+                model=values['costume_file'];assert archive.read(model)==saved
+                thumbnail=values['thumbnail_file'];assert archive.read(thumbnail).startswith(b'\\x89PNG\\r\\n\\x1a\\n')
+                assert not values.get('costume_file_ios') and not values.get('rina_unmask_costume_file')
+            assert pathlib.Path(source).read_bytes()==original
+            print(json.dumps({'status':'PASS','character_id':6,'name_characters':len(name),'manifest_names_match':True,
+                'model_bytes_match':True,'model_sha256':sha(saved),'source_preserved':True,'thumbnail_png':True,
+                'safe_installer_structure':True,'expected_name_transport':'base64-utf8','manifest_names_nfc':True,
+                'private_prefix_samefile':private_prefix_samefile,
+                'package_sha256':sha(raw),'package_bytes':len(raw),'python_executable':sys.executable}))
+            """
+        let child = Process(), output = Pipe(), errors = Pipe()
+        child.executableURL = model.resourceDirectory.appendingPathComponent("runtime/arm64/python/bin/python3")
+        // Foundation can use decomposed filesystem representations for argv.
+        // Preserve the exact expected text through an ASCII-only transport;
+        // the inspector compares the actual manifest without normalizing it.
+        let expectedNameArgument = Data(expectedName.utf8).base64EncodedString()
+        child.arguments = ["-I", "-B", "-c", code, path, edited, previous, source.path, sourceHash, expectedNameArgument, expectedHash, model.resourceDirectory.path]
+        child.currentDirectoryURL = model.dataDirectory
+        var environment = ProcessInfo.processInfo.environment
+        for key in Array(environment.keys) where key.hasPrefix("DYLD_") || key == "PYTHONPATH" || key == "PYTHONHOME" { environment.removeValue(forKey: key) }
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"; environment["PYTHONNOUSERSITE"] = "1"
+        child.environment = environment; child.standardInput = FileHandle.nullDevice
+        child.standardOutput = output; child.standardError = errors
+        try child.run()
+        do { try await wait("bundled Python installer ZIP inspection", timeout: 30) { !child.isRunning } }
+        catch {
+            if child.isRunning { child.terminate() }
+            let deadline = Date().addingTimeInterval(2)
+            while child.isRunning && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
+            if child.isRunning { Darwin.kill(child.processIdentifier, SIGKILL) }
+            throw error
+        }
+        let result = output.fileHandleForReading.readDataToEndOfFile()
+        let failure = errors.fileHandleForReading.readDataToEndOfFile()
+        try require(child.terminationStatus == 0, "The bundled Python Mod ZIP inspection failed: " + String(decoding: failure.prefix(2048), as: UTF8.self))
+        guard let decoded = try JSONSerialization.jsonObject(with: result) as? [String: Any], decoded["status"] as? String == "PASS" else { throw NativeError.invalidResponse }
+        return decoded
+    }
+
+    private func checkPoseBodyStructure(_ webView: WKWebView) async throws {
+        let structure = try await object(webView, """
+            var pose=document.getElementById('viewer-adjustments'),body=document.getElementById('viewer-body-adjustments');
+            var expression=document.getElementById('viewer-expression-adjustments');
+            return JSON.stringify({poseOpen:pose.open,bodyOpen:body.open,
+              siblings:pose.parentElement===body.parentElement&&body.parentElement===expression.parentElement,
+              separate:!pose.contains(body)&&!body.contains(pose)&&!body.contains(expression),
+              motionOwnedByPose:['viewer-motion','viewer-play','viewer-time'].every(function(id){return pose.contains(document.getElementById(id))&&!body.contains(document.getElementById(id));}),
+              editingOwnedByBody:['viewer-editor-tabs','viewer-node-editor'].every(function(id){return body.contains(document.getElementById(id))&&!pose.contains(document.getElementById(id));})});
+            """)
+        report["pose_body_panel_structure"] = structure
+        try checkpoint("pose-body-panel-structure")
+        for key in ["poseOpen", "bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody"] {
+            try require(structure[key] as? Bool == true, "Pose and body must start as open, independent sibling panels with their own controls: " + key)
+        }
+    }
+
+    private func editingSnapshot(_ webView: WKWebView) async throws -> [String: Any] {
+        try await object(webView, """
+            var s=ModelViewer.getState(),r=s.rig,a=ModelViewer.getAuthoringState();
+            return JSON.stringify({modelId:s.modelId,loadedPaths:JSON.stringify(s.loadedPaths),
+              authoring:JSON.stringify(a),authoringEdits:JSON.stringify(a.edits),camera:JSON.stringify(s.camera),
+              rig:JSON.stringify({selectedNode:r.selectedNode,editorGroup:r.editorGroup,editingMethods:r.editingMethods,
+                nodeAdjustments:r.nodeAdjustments,selectedClip:r.selectedClip,playing:r.playing,time:r.time,evaluation:r.evaluation,
+                body:r.body,bodyControls:r.bodyControls,expressions:r.expressions}),
+              persistence:JSON.stringify(s.persistence),saveEnabled:!document.getElementById('viewer-save').disabled,
+              expressionOpen:document.getElementById('viewer-expression-adjustments').open});
+            """)
+    }
+
+    private func requireEditingSnapshot(_ actual: [String: Any], matches expected: [String: Any], invalidDraft: Bool = false) throws {
+        for key in ["modelId", "loadedPaths", "authoringEdits", "camera", "rig", "persistence"] + (invalidDraft ? [] : ["authoring"]) {
+            guard let current = actual[key] as? String, let retained = expected[key] as? String else { throw NativeError.invalidResponse }
+            try require(current == retained, "Independent panel operations must preserve the actual editing state: " + key)
+        }
+        guard let expression = actual["expressionOpen"] as? Bool, let retainedExpression = expected["expressionOpen"] as? Bool else { throw NativeError.invalidResponse }
+        try require(expression == retainedExpression, "Pose/body toggles must preserve the independent expression panel.")
+        if !invalidDraft {
+            guard let enabled = actual["saveEnabled"] as? Bool, let retainedEnabled = expected["saveEnabled"] as? Bool else { throw NativeError.invalidResponse }
+            try require(enabled == retainedEnabled, "Panel collapse must preserve Save availability.")
+        }
+    }
+
+    private func togglePoseBodyPanel(_ webView: WKWebView, body: Bool) async throws -> [String: Any] {
+        try await object(webView, """
+            var panel=document.getElementById('\(body ? "viewer-body-adjustments" : "viewer-adjustments")'),summary=panel.querySelector('summary');
+            summary.scrollIntoView({block:'nearest'});
+            await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var rect=summary.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            if(rect.width<34||rect.height<34||!(hit===summary||summary.contains(hit)))throw new Error('The real panel summary must be a visible native WebKit target');
+            summary.click();await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var style=getComputedStyle(panel);
+            return JSON.stringify({poseOpen:document.getElementById('viewer-adjustments').open,
+              bodyOpen:document.getElementById('viewer-body-adjustments').open,
+              expressionOpen:document.getElementById('viewer-expression-adjustments').open,panelOpen:panel.open,
+              summaryTarget:{width:rect.width,height:rect.height,hittable:true},sectionHeight:panel.getBoundingClientRect().height,
+              summaryHeight:summary.getBoundingClientRect().height,
+              chromeHeight:parseFloat(style.paddingTop)+parseFloat(style.paddingBottom)+parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth)});
+            """)
+    }
+
+    private func checkSeparatePoseBodyPanels(_ webView: WKWebView) async throws {
+        let before = try await editingSnapshot(webView)
+        try require(before["saveEnabled"] as? Bool == true, "The two real edits must be ready before testing independent panels.")
+        var observations: [[String: Any]] = []
+        for body in [false, false, true, true] {
+            let observation = try await togglePoseBodyPanel(webView, body: body)
+            let opening = observations.count % 2 == 1
+            try require(observation[body ? "bodyOpen" : "poseOpen"] as? Bool == opening &&
+                        observation[body ? "poseOpen" : "bodyOpen"] as? Bool == true,
+                        "Toggling one panel must preserve the other open panel.")
+            if !opening {
+                let summary = observation["summaryHeight"] as? Double ?? -1
+                let chrome = observation["chromeHeight"] as? Double ?? -1
+                try require(abs((observation["sectionHeight"] as? Double ?? -100) - summary - chrome) <= 1,
+                            "A collapsed native details panel must occupy only its summary and chrome.")
+            }
+            try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+            observations.append(observation)
+        }
+        report["separate_pose_body_panels"] = ["status": "PASS", "before": before, "toggles": observations,
+            "both_restored_open": true, "model_camera_recipe_and_save_preserved": true,
+            "scope": "Actual native WebKit details summaries and preserved paused fixture state; no motion playback claim"]
+        try checkpoint("separate-pose-body-panels")
+    }
+
+    private func checkInvalidBodyDraftMenuSave(_ webView: WKWebView) async throws {
+        let before = try await editingSnapshot(webView)
+        let originalVertices = try await vertices(webView)
+        _ = try await togglePoseBodyPanel(webView, body: false)
+        let draft = try await object(webView, """
+            var field=document.querySelector('#viewer-node-fields input[data-viewer-node-kind="scale"][data-axis="X"]');
+            for(var parent=field;parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;}
+            field.scrollIntoView({block:'center'});field.focus();var previous=field.value;
+            await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            var rect=field.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            if(field.disabled||rect.width<34||rect.height<34||hit!==field)throw new Error('The open body panel must keep its real editable field usable while pose is collapsed');
+            field.value='0';field.dispatchEvent(new Event('input',{bubbles:true}));
+            return JSON.stringify({previous:previous,raw:field.value,focused:document.activeElement===field,
+              poseOpen:document.getElementById('viewer-adjustments').open,bodyOpen:document.getElementById('viewer-body-adjustments').open,
+              invalid:field.validity.customError&&field.getAttribute('aria-invalid')==='true',
+              saveDisabled:document.getElementById('viewer-save').disabled,unsupported:ModelViewer.getAuthoringState().unsupported});
+            """)
+        report["invalid_body_draft_before_menu_save"] = draft
+        try checkpoint("invalid-body-draft-ready")
+        try require(draft["raw"] as? String == "0" && draft["focused"] as? Bool == true &&
+                    draft["invalid"] as? Bool == true && draft["saveDisabled"] as? Bool == true &&
+                    draft["poseOpen"] as? Bool == false && draft["bodyOpen"] as? Bool == true &&
+                    !(draft["unsupported"] as? [String] ?? []).isEmpty,
+                    "A focused invalid body draft must block Save while pose is collapsed.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before, invalidDraft: true)
+        model.perform("saveModel")
+        // The native dispatch is intentionally fire-and-forget. An acknowledged
+        // call to the same production command also proves its guard ran, rather
+        // than treating a delayed or absent native dispatch as a passing no-op.
+        let acknowledged = try await js(webView, "return ElichikaPlatform.perform('saveModel');")
+        try require(acknowledged as? Bool == true, "The real production Save command must handle the invalid draft.")
+        try await Task.sleep(nanoseconds: 250_000_000)
+        let after = try await object(webView, """
+            var field=document.querySelector('#viewer-node-fields input[data-viewer-node-kind="scale"][data-axis="X"]');
+            return JSON.stringify({raw:field.value,focused:document.activeElement===field,invalid:field.validity.customError,
+              poseOpen:document.getElementById('viewer-adjustments').open,bodyOpen:document.getElementById('viewer-body-adjustments').open,
+              saveDisabled:document.getElementById('viewer-save').disabled,unsupported:ModelViewer.getAuthoringState().unsupported});
+            """)
+        report["invalid_body_draft_after_menu_save"] = after
+        try checkpoint("invalid-body-draft-menu-save-observed")
+        try require(after["raw"] as? String == "0" && after["focused"] as? Bool == true &&
+                    after["invalid"] as? Bool == true && after["saveDisabled"] as? Bool == true &&
+                    after["poseOpen"] as? Bool == false && after["bodyOpen"] as? Bool == true &&
+                    !(after["unsupported"] as? [String] ?? []).isEmpty,
+                    "Native menu Save must preserve the invalid draft and refuse to export stale valid values.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before, invalidDraft: true)
+        let unchangedVertices = try await vertices(webView)
+        try require(try difference(originalVertices, unchangedVertices) < 0.000000001,
+                    "An invalid draft must not alter the actual deformed geometry.")
+        guard let previous = draft["previous"] as? String else { throw NativeError.invalidResponse }
+        let quoted = String(decoding: try JSONSerialization.data(withJSONObject: [previous]), as: UTF8.self) + "[0]"
+        _ = try await js(webView, "var field=document.querySelector('#viewer-node-fields input[data-viewer-node-kind=\"scale\"][data-axis=\"X\"]');field.value=" + quoted + ";field.dispatchEvent(new Event('input',{bubbles:true}));field.blur();return true;")
+        let restored = try await togglePoseBodyPanel(webView, body: false)
+        try require(restored["poseOpen"] as? Bool == true && restored["bodyOpen"] as? Bool == true,
+                    "Both independent panels must be restored before the real export.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+        let focused = try await js(webView, "var field=document.querySelector('#viewer-node-fields input[data-viewer-node-kind=\"scale\"][data-axis=\"X\"]');field.focus();return document.activeElement===field;")
+        try require(focused as? Bool == true, "The valid body draft must remain focused before native menu export.")
+        report["invalid_body_draft_native_menu_save"] = ["status": "PASS", "no_export_started": true,
+            "invalid_raw_draft_preserved": true, "valid_draft_restored": true, "pose_and_body_restored_open": true,
+            "valid_body_field_focused_before_real_export": true, "production_command_acknowledged": true,
+            "scope": "Native dispatch plus acknowledged production-command guard; the following valid native export verifies native delivery"]
+        try checkpoint("invalid-body-draft-restored")
+    }
+
+    private func checkpoint(_ stage: String) throws {
+        guard let directory = model.smokeDirectory else { return }
+        let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+        stages.append(["stage": stage, "elapsed_seconds": elapsed])
+        report["stage"] = stage
+        report["elapsed_seconds"] = elapsed
+        report["stages"] = stages
+        report["console_tail"] = Array(model.console.suffix(100))
+        report["runtime_process_running"] = model.process?.isRunning == true
+        report["server_running"] = model.snapshot.serverRunning
+        if let pid = model.process?.processIdentifier { report["python_pid"] = Int(pid) }
+        if let pid = model.snapshot.server?.pid { report["current_go_pid"] = pid }
+        try writeReport(directory)
+        // FileHandle writes immediately even when CI redirects stdout to a file.
+        FileHandle.standardOutput.write(Data(String(format: "ELICHIKA_SMOKE %.3fs %@\n", elapsed, stage).utf8))
+    }
+
+    private func writeReport(_ directory: URL) throws {
+        try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+            .write(to: directory.appendingPathComponent("native-smoke.json"), options: .atomic)
+    }
+
+    private func checkUnauthorizedControl(_ url: URL) async throws {
+        let endpoint = URL(string: "/v1/state", relativeTo: url)!.absoluteURL
+        let config = URLSessionConfiguration.ephemeral
+        config.httpCookieAcceptPolicy = .never; config.httpShouldSetCookies = false
+        let (_, response) = try await URLSession(configuration: config).data(from: endpoint)
+        try require([401, 403].contains((response as? HTTPURLResponse)?.statusCode ?? 0), "Control API must refuse unauthenticated requests.")
+        report["unauthenticated_control_refused"] = true
+    }
+
+    private func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
+        guard try condition() else { throw NativeError.service(message) }
+    }
+
+    private func wait(_ stage: String, timeout: TimeInterval, condition: () async throws -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if try await condition() { return }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        throw NativeError.timeout(stage)
+    }
+
+    private func js(_ webView: WKWebView, _ source: String) async throws -> Any {
+        try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(source, arguments: [:], in: nil, in: .page) { continuation.resume(with: $0) }
+        }
+    }
+
+    private func object(_ webView: WKWebView, _ source: String) async throws -> [String: Any] {
+        let value = try await js(webView, source)
+        guard let string = value as? String,
+              let decoded = try JSONSerialization.jsonObject(with: Data(string.utf8)) as? [String: Any] else { throw NativeError.invalidResponse }
+        return decoded
+    }
+
+    private func waitJS(_ webView: WKWebView, _ stage: String, timeout: TimeInterval, expression: String) async throws {
+        try await wait(stage, timeout: timeout) {
+            do { return (try await self.js(webView, "return !!(" + expression + ");")) as? Bool == true }
+            catch { return false }
+        }
+    }
+
+    private func loaded(_ webView: WKWebView, reviewing: Bool = false) async throws {
+        let review = reviewing ? "&&s.persistence.reviewingSaved" : ""
+        try await waitJS(webView, "the actual Unity skin and native framebuffer", timeout: 120, expression:
+            "(function(){var s=ModelViewer.getState(),p=s.loaded?ModelViewer.renderProbe(33):{ready:false};return s.loaded&&!s.loading&&!s.contextLost&&s.rig&&s.rig.available&&s.stats.meshes===1&&s.stats.vertices===6&&s.stats.triangles===4&&p.ready&&p.glError===0&&p.nonBackgroundSamples>=3&&document.getElementById('viewer-busy').hidden" + review + ";})()")
+    }
+
+    private func saved(_ webView: WKWebView, previousJob: String) async throws -> [String: Any] {
+        let quotedJob = String(decoding: try JSONSerialization.data(withJSONObject: [previousJob]), as: UTF8.self) + "[0]"
+        try await waitJS(webView, "real Python export and completed SSE", timeout: 120, expression:
+            "(function(){var p=ModelViewer.getState().persistence;return p&&!p.busy&&!p.error&&p.jobId&&p.jobId!==" + quotedJob + "&&p.outputs.length>=2&&p.previewPaths.length===1&&!!p.recipePath;})()")
+        return try await object(webView, "return JSON.stringify(ModelViewer.getState().persistence);")
+    }
+
+    private func checkFiles(_ result: [String: Any]) throws {
+        guard let outputs = result["outputs"] as? [String], outputs.count >= 2,
+              let recipe = result["recipePath"] as? String, outputs.contains(recipe) else { throw NativeError.invalidResponse }
+        for path in outputs {
+            try require(path.hasPrefix(model.libraryDirectory + "/"), "Saved output escaped the chosen library.")
+            let size = try FileManager.default.attributesOfItem(atPath: path)[.size] as? NSNumber
+            try require((size?.intValue ?? 0) > 0, "The export contains an empty or missing output.")
+        }
+    }
+
+    private func vertices(_ webView: WKWebView) async throws -> [[Double]] {
+        let result = try await object(webView, "return JSON.stringify(ViewerRigQa.deformedVertices());")
+        guard let values = result["vertices"] as? [[Double]], values.count == 6 else { throw NativeError.invalidResponse }
+        return values
+    }
+
+    private func difference(_ left: [[Double]], _ right: [[Double]]) throws -> Double {
+        try require(left.count == right.count && left.allSatisfy { $0.count == 3 } && right.allSatisfy { $0.count == 3 }, "Skin vertex topology changed.")
+        return zip(left, right).flatMap { zip($0.0, $0.1).map { abs($0.0 - $0.1) } }.max() ?? 0
+    }
+
+    private func snapshot(_ webView: WKWebView, _ destination: URL) async throws {
+        let configuration = WKSnapshotConfiguration()
+        configuration.afterScreenUpdates = true
+        let image: NSImage = try await withCheckedThrowingContinuation { continuation in
+            webView.takeSnapshot(with: configuration) { image, error in
+                if let error { continuation.resume(throwing: error) }
+                else if let image { continuation.resume(returning: image) }
+                else { continuation.resume(throwing: NativeError.invalidResponse) }
+            }
+        }
+        guard let bytes = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: bytes),
+              let png = bitmap.representation(using: .png, properties: [:]) else { throw NativeError.invalidResponse }
+        try png.write(to: destination)
+    }
+}

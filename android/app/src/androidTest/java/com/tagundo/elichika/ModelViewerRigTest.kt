@@ -253,6 +253,8 @@ class ModelViewerRigTest {
         boneInput(webView, "Head", "rotation", "Z", 35)
         val retainedState = state(webView)
         val retainedHeadWorld = nodeWorld(webView, "Head")
+        val independentPanels = exerciseIndependentPoseAndBodyPanels(session, retainedState)
+        val expressionPanel = exerciseExpressionPanel(session, retainedState)
         val sections = exerciseSectionCollapse(session, retainedState)
         val fullscreen = exerciseFullscreen(session, retainedState)
         capture(webView, "retained")
@@ -260,6 +262,7 @@ class ModelViewerRigTest {
             .put("scope", "Strict new-feature milestones captured before the unchanged quality exercise")
             .put("verticalViewport", verticalViewport)
             .put("absoluteSourceValueEdits", absoluteAxes).put("childBoneCompensation", childCompensation)
+            .put("independentPoseAndBodyPanels", independentPanels).put("separateExpressionPanel", expressionPanel)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen))
         val quality = ViewerQualityNativeQa.exercise(webView, "neutral-rig-quality", 4, 4)
         val highQualityReference = quality.getString("hqReferenceFrame")
@@ -293,6 +296,9 @@ class ModelViewerRigTest {
         assertRestored("Final reset must recover saved-file defaults after context restoration", restoredFileDefault)
         click(webView, "viewer-saved-nodes")
         assertRestored("Opting out must still recover exact authored pixels after context restoration", capture(webView, compare = "rest"))
+        // All original fixed-viewport pixel thresholds have finished before the
+        // intentional minimize/restore layout transition.
+        val minimizedModel = exerciseModelMinimize(session)
         val report = JSONObject().put("scope", "Original serialized Unity rig through real API/GLB/native WebGL")
             .put("verticalViewport", verticalViewport)
             .put("poseControlsWithoutVerifiedPreview", poseControls)
@@ -305,8 +311,10 @@ class ModelViewerRigTest {
             .put("multiAxisHeadQuaternion", multiAxisHead)
             .put("breast", breast).put("savedEntry", saved).put("expression", expression)
             .put("scrub", scrub).put("playing", playing).put("paused", paused)
+            .put("independentPoseAndBodyPanels", independentPanels).put("separateExpressionPanel", expressionPanel)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen).put("highQuality3D", quality)
             .put("afterTab", afterTab).put("afterContext", afterContext)
+            .put("modelMinimize", minimizedModel)
             .put("sourcePreserved", true).put("gameServerRemainedStopped", true)
         persistReport("model-viewer-rig-report.json", report)
         println("MODEL_VIEWER_RIG_REPORT=$report")
@@ -359,7 +367,7 @@ class ModelViewerRigTest {
         println("MODEL_VIEWER_SHADER_REPORT=$report")
     }
 
-    private data class Session(val activity: MainActivity, val webView: WebView)
+    private data class Session(val activity: MainActivity, val webView: WebView, val defaultPanels: JSONObject)
 
     private fun withRig(check: (Session) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -402,16 +410,23 @@ class ModelViewerRigTest {
                     "s.stats.textures===1&&s.rig.clipNames.indexOf('Neutral swing')>=0&&s.rig.expressions.length===1," +
                     "error:s.error,state:s});"
             }
+            val defaultPanels = evaluate(browser,
+                "var pose=document.getElementById('viewer-adjustments'),body=document.getElementById('viewer-body-adjustments'),expression=document.getElementById('viewer-expression-adjustments');" +
+                    "if(!pose||!body||!expression||!pose.open||!body.open||!expression.open||pose.parentNode!==body.parentNode||body.parentNode!==expression.parentNode||" +
+                    "!pose.contains(document.getElementById('viewer-motion'))||body.contains(document.getElementById('viewer-motion'))||" +
+                    "!body.contains(document.getElementById('viewer-node-fields'))||pose.contains(document.getElementById('viewer-node-fields')))" +
+                    "throw new Error('Pose, body and expressions must default to independent open sibling panels with their actual controls');" +
+                    "return JSON.stringify({poseOpen:pose.open,bodyOpen:body.open,expressionOpen:expression.open,distinctControlOwners:true});")
             run(browser, "document.getElementById('viewer-expand').click();" +
                 "document.querySelector('[data-viewer-view=\"front\"]').click();document.getElementById('viewer-fit').click();" +
-                "document.getElementById('viewer-adjustments').open=true;document.querySelector('.viewer-node-editor').open=true;" +
+                "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-body-adjustments').open=true;document.querySelector('.viewer-node-editor').open=true;" +
                 "document.querySelector('.viewer-camera-actions').scrollIntoView({block:'end'});")
             waitForDom(browser, "actual neutral rig framebuffer pixels") {
                 "var p=ModelViewer.renderProbe(33);return JSON.stringify({ok:p.ready&&p.sourceTriangles===4&&p.triangles>=4&&" +
                     "p.nonBackgroundSamples>=3&&p.chromaticSamples>=3&&p.glError===0,probe:p});"
             }
             assertGameStopped()
-            check(Session(launched, browser))
+            check(Session(launched, browser, defaultPanels))
             assertTrue("All rig, shader and scaling operations must preserve the source bytes", source.readBytes().contentEquals(fixture))
             assertGameStopped()
         } finally {
@@ -419,6 +434,168 @@ class ModelViewerRigTest {
             instrumentation.runOnMainSync { activity?.finish() }
             source.delete()
             preferences.edit().apply { if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide") }.commit()
+        }
+    }
+
+    private fun exerciseIndependentPoseAndBodyPanels(session: Session, retained: JSONObject): JSONObject {
+        val webView = session.webView
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val initial = evaluate(webView, "return JSON.stringify({poseOpen:document.getElementById('viewer-adjustments').open," +
+            "bodyOpen:document.getElementById('viewer-body-adjustments').open,expressionOpen:document.getElementById('viewer-expression-adjustments').open,x:scrollX,y:scrollY,authoring:ModelViewer.getAuthoringState()});")
+        val expanded = retained.getJSONObject("layout").getBoolean("expanded")
+        val worlds = JSONObject()
+        for (name in listOf("Move", "BreastSize", "Tip", "Head", "Neck_Hair")) worlds.put(name, nodeWorld(webView, name))
+        fun assertPreserved(): JSONObject {
+            val current = state(webView)
+            assertRetained(retained, current)
+            for (field in listOf("selectedNode", "editorGroup")) assertEquals(retained.getJSONObject("rig").getString(field), current.getJSONObject("rig").getString(field))
+            val authoring = evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());")
+            assertEquals("Panel toggles must preserve every pending export edit", initial.getJSONObject("authoring").toString(), authoring.toString())
+            var cameraDifference = kotlin.math.abs(retained.getJSONObject("camera").getDouble("fov") - current.getJSONObject("camera").getDouble("fov"))
+            for (kind in listOf("position", "target")) for (axis in 0..2) cameraDifference = maxOf(cameraDifference,
+                kotlin.math.abs(retained.getJSONObject("camera").getJSONArray(kind).getDouble(axis) - current.getJSONObject("camera").getJSONArray(kind).getDouble(axis)))
+            assertTrue("Panel toggles must not move the actual camera", cameraDifference <= 1e-7)
+            var worldDifference = 0.0
+            for (name in listOf("Move", "BreastSize", "Tip", "Head", "Neck_Hair")) {
+                val before = worlds.getJSONObject(name).getJSONArray("matrix")
+                val after = nodeWorld(webView, name).getJSONArray("matrix")
+                assertArrayNear("Panel toggles must preserve the full $name world matrix", before, after)
+                for (axis in 0 until before.length()) worldDifference = maxOf(worldDifference, kotlin.math.abs(before.getDouble(axis) - after.getDouble(axis)))
+            }
+            return JSONObject().put("cameraMaximumDifference", cameraDifference).put("worldMaximumDifference", worldDifference)
+                .put("selectedNode", current.getJSONObject("rig").getString("selectedNode")).put("editorGroup", current.getJSONObject("rig").getString("editorGroup"))
+                .put("selectedClip", current.getJSONObject("rig").getString("selectedClip")).put("time", current.getJSONObject("rig").getDouble("time"))
+                .put("playing", current.getJSONObject("rig").getBoolean("playing")).put("authoringPreserved", true);
+        }
+        val toggles = JSONArray()
+        try {
+            if (expanded) click(webView, "viewer-expand")
+            run(webView, "['viewer-adjustments','viewer-body-adjustments','viewer-expression-adjustments'].forEach(function(id){document.getElementById(id).open=true;});")
+            for (id in listOf("viewer-adjustments", "viewer-body-adjustments")) {
+                val closed = evaluate(webView, "var section=document.getElementById(" + JSONObject.quote(id) + "),summary=section.querySelector('summary'),target=ViewerRigQa.control(summary,true);" +
+                    "if(!section.open||!target.visible||!target.withinViewport||!target.hittable||target.width<44||target.height<44)throw new Error('The real independent panel summary must be an open visible 44px target');" +
+                    "summary.click();var peer=ViewerRigQa.control(section.id==='viewer-adjustments'?'viewer-node':'viewer-motion',true);" +
+                    "if(peer.disabled||!peer.visible||!peer.withinViewport||!peer.hittable||peer.width<44||peer.height<44)throw new Error('The other independent panel must retain a real visible 44px control');" +
+                    "var style=getComputedStyle(section);return JSON.stringify({id:section.id,open:section.open,target:target,peerControl:peer,height:section.getBoundingClientRect().height,summaryHeight:summary.getBoundingClientRect().height," +
+                    "chrome:parseFloat(style.paddingTop)+parseFloat(style.paddingBottom)+parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth)," +
+                    "othersOpen:['viewer-adjustments','viewer-body-adjustments','viewer-expression-adjustments'].every(function(other){return other===section.id||document.getElementById(other).open;})});")
+                assertFalse("Each top-level panel must collapse independently", closed.getBoolean("open"))
+                assertTrue("Closing one panel keeps the other two open", closed.getBoolean("othersOpen"))
+                assertEquals("A collapsed panel keeps only its summary and chrome", closed.getDouble("summaryHeight") + closed.getDouble("chrome"), closed.getDouble("height"), 1.0)
+                val closedState = assertPreserved()
+                instrumentation.runOnMainSync { webView.requestFocus() }
+                run(webView, "var summary=document.querySelector('#" + id + " > summary');summary.focus();if(document.activeElement!==summary)throw new Error('The real panel summary must own native keyboard focus');")
+                instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+                val reopened = waitForDom(webView, "native Enter reopens $id", 15) {
+                    "var section=document.getElementById(" + JSONObject.quote(id) + ");return JSON.stringify({ok:section.open&&section.getBoundingClientRect().height>section.querySelector('summary').getBoundingClientRect().height+40," +
+                        "open:section.open,othersOpen:['viewer-adjustments','viewer-body-adjustments','viewer-expression-adjustments'].every(function(other){return other===section.id||document.getElementById(other).open;})});"
+                }
+                assertTrue("Keyboard reopening keeps the other panels open", reopened.getBoolean("othersOpen"))
+                toggles.put(JSONObject().put("id", id).put("closed", closed).put("closedState", closedState).put("nativeEnterReopened", reopened).put("reopenedState", assertPreserved()))
+            }
+            return JSONObject().put("defaultsBeforeSetup", session.defaultPanels).put("toggles", toggles).put("preservedPausedPoseAndBodyEdits", true)
+                .put("scope", "Normal-layout real panel summaries and native Enter input; state/world matrices retained; no cross-layout pixel comparison")
+        } finally {
+            run(webView, "document.getElementById('viewer-adjustments').open=" + initial.getBoolean("poseOpen") + ";document.getElementById('viewer-body-adjustments').open=" + initial.getBoolean("bodyOpen") +
+                ";document.getElementById('viewer-expression-adjustments').open=" + initial.getBoolean("expressionOpen") + ";window.scrollTo(" + initial.getDouble("x") + "," + initial.getDouble("y") + ");")
+            if (state(webView).getJSONObject("layout").getBoolean("expanded") != expanded) click(webView, "viewer-expand")
+            waitForDom(webView, "the original fixed viewport after independent panels", 30) {
+                "var s=ModelViewer.getState();return JSON.stringify({ok:s.layout.expanded===" + expanded + "&&Math.abs(s.layout.stage.width-" + retained.getJSONObject("layout").getJSONObject("stage").getDouble("width") +
+                    ")<1&&Math.abs(s.layout.stage.height-" + retained.getJSONObject("layout").getJSONObject("stage").getDouble("height") + ")<1});"
+            }
+            assertPreserved()
+        }
+    }
+
+    private fun exerciseExpressionPanel(session: Session, retained: JSONObject): JSONObject {
+        val webView = session.webView
+        val initial = evaluate(webView, "var body=document.getElementById('viewer-body-adjustments'),pose=document.getElementById('viewer-adjustments'),expression=document.getElementById('viewer-expression-adjustments')," +
+            "panel=document.getElementById('viewer-expression-panel'),advanced=document.getElementById('viewer-expression-advanced');" +
+            "if(body.contains(panel)||pose.contains(panel)||!expression.contains(panel)||body.parentNode!==expression.parentNode||pose.parentNode!==body.parentNode)" +
+            "throw new Error('Expressions must be a separate sibling panel outside body editing');" +
+            "return JSON.stringify({bodyOpen:body.open,poseOpen:pose.open,expressionOpen:expression.open,advancedOpen:advanced.open,x:scrollX,y:scrollY});")
+        val originallyExpanded = retained.getJSONObject("layout").getBoolean("expanded")
+        assertTrue("The rig fixture uses its existing fixed expanded viewport for pixel comparisons", originallyExpanded)
+        try {
+            run(webView, "document.getElementById('viewer-body-adjustments').open=false;document.getElementById('viewer-adjustments').open=false;" +
+                "document.getElementById('viewer-expression-adjustments').open=true;document.getElementById('viewer-expression-advanced').open=true;")
+            val referenceFrame = capture(webView, "separateExpressionBefore")
+            input(webView, "viewer-expression-number", "100", "input")
+            assertEquals("The expression control must edit the real Unity morph channel", 1.0,
+                state(webView).getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight"), 1e-9)
+            val changed = capture(webView, compare = "separateExpressionBefore")
+            assertChanged("Expression controls must change real pixels with body editing collapsed", changed)
+            input(webView, "viewer-expression-number",
+                (retained.getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight") * 100).toString(), "input")
+            val restored = capture(webView, compare = "separateExpressionBefore")
+            assertRestored("Restoring the expression must restore the same fixed-viewport framebuffer", restored)
+            assertRetained(retained, state(webView))
+
+            click(webView, "viewer-expand")
+            waitForDom(webView, "the visible normal-layout expression controls", 30) {
+                "return JSON.stringify({ok:!ModelViewer.getState().layout.expanded});"
+            }
+            val controls = evaluate(webView, "document.getElementById('viewer-body-adjustments').open=false;document.getElementById('viewer-adjustments').open=false;" +
+                "document.getElementById('viewer-expression-adjustments').open=true;document.getElementById('viewer-expression-advanced').open=true;" +
+                "var controls=['viewer-expression','viewer-expression-number','viewer-expression-reset'].map(function(id){" +
+                "var result=ViewerRigQa.control(id,true);if(result.disabled||!result.visible||!result.withinViewport||!result.hittable||result.width<44||result.height<44)" +
+                "throw new Error('The separate expression panel must keep its actual 44px touch controls: '+JSON.stringify(result));return result;});" +
+                "return JSON.stringify({controls:controls,bodyClosed:!document.getElementById('viewer-body-adjustments').open,poseClosed:!document.getElementById('viewer-adjustments').open,coarse:matchMedia('(pointer:coarse)').matches});")
+            assertTrue(controls.getBoolean("bodyClosed")); assertTrue(controls.getBoolean("poseClosed"))
+            assertRetained(retained, state(webView))
+            input(webView, "viewer-expression-number", "100", "input")
+            assertEquals("The visible independent panel must edit the same real Unity morph channel", 1.0,
+                state(webView).getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight"), 1e-9)
+            input(webView, "viewer-expression-number",
+                (retained.getJSONObject("rig").getJSONArray("expressions").getJSONObject(0).getDouble("weight") * 100).toString(), "input")
+            assertRetained(retained, state(webView))
+            val closed = evaluate(webView, "var expression=document.getElementById('viewer-expression-adjustments'),summary=expression.querySelector('summary');" +
+                "var target=ViewerRigQa.control(summary,true);if(!target.visible||!target.hittable||target.height<44)throw new Error('Expression summary must remain a real 44px touch target');" +
+                "summary.click();var style=getComputedStyle(expression);return JSON.stringify({open:expression.open,bodyOpen:document.getElementById('viewer-body-adjustments').open,poseOpen:document.getElementById('viewer-adjustments').open," +
+                "sectionHeight:expression.getBoundingClientRect().height,summaryHeight:summary.getBoundingClientRect().height," +
+                "chromeHeight:parseFloat(style.paddingTop)+parseFloat(style.paddingBottom)+parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth),summary:target});")
+            assertFalse("The expression panel collapses independently", closed.getBoolean("open"))
+            assertFalse("Expression toggling must leave body editing collapsed", closed.getBoolean("bodyOpen"))
+            assertFalse("Expression toggling must leave pose editing collapsed", closed.getBoolean("poseOpen"))
+            // Native details can retain the closed child's last bounding box.
+            // Its actual section must shrink exactly to summary plus border/padding.
+            assertEquals("Collapsed expressions must occupy only their summary and chrome",
+                closed.getDouble("summaryHeight") + closed.getDouble("chromeHeight"), closed.getDouble("sectionHeight"), 1.0)
+            assertRetained(retained, state(webView))
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { webView.requestFocus() }
+            run(webView, "document.querySelector('#viewer-expression-adjustments > summary').focus();")
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+            val reopened = waitForDom(webView, "the independently reopened expression panel", 15) {
+                "var section=document.getElementById('viewer-expression-adjustments');return JSON.stringify({ok:section.open&&" +
+                    "section.getBoundingClientRect().height>section.querySelector('summary').getBoundingClientRect().height+40," +
+                    "bodyOpen:document.getElementById('viewer-body-adjustments').open,poseOpen:document.getElementById('viewer-adjustments').open});"
+            }
+            assertFalse(reopened.getBoolean("bodyOpen")); assertFalse(reopened.getBoolean("poseOpen"))
+            val after = state(webView)
+            assertRetained(retained, after)
+            assertEquals(retained.getJSONObject("rig").getString("selectedNode"), after.getJSONObject("rig").getString("selectedNode"))
+            for (kind in listOf("position", "target")) assertArrayNear("Independent expression controls preserve camera $kind",
+                retained.getJSONObject("camera").getJSONArray(kind), after.getJSONObject("camera").getJSONArray(kind))
+            assertEquals(retained.getJSONObject("camera").getDouble("fov"), after.getJSONObject("camera").getDouble("fov"), 1e-9)
+            val normalRendering = waitForDom(webView, "the real renderer after independent panel reopening", 30) {
+                "var probe=ModelViewer.renderProbe(33);return JSON.stringify({ok:probe.ready&&probe.glError===0&&probe.nonBackgroundSamples>=3,probe:probe});"
+            }
+            return JSONObject().put("controls", controls).put("closed", closed).put("keyboardReopened", reopened)
+                .put("pixelViewport", "fixed expanded viewport before layout changes").put("referenceFrame", referenceFrame)
+                .put("normalRendering", normalRendering)
+                .put("actualMorphPixelsChanged", changed).put("restoredPixels", restored).put("bodyAndCameraPreserved", true)
+        } finally {
+            run(webView, "document.getElementById('viewer-body-adjustments').open=" + initial.getBoolean("bodyOpen") + ";" +
+                "document.getElementById('viewer-adjustments').open=" + initial.getBoolean("poseOpen") + ";" +
+                "document.getElementById('viewer-expression-adjustments').open=" + initial.getBoolean("expressionOpen") + ";" +
+                "document.getElementById('viewer-expression-advanced').open=" + initial.getBoolean("advancedOpen") + ";" +
+                "window.scrollTo(" + initial.getDouble("x") + "," + initial.getDouble("y") + ");ViewerRigQa.drop('separateExpressionBefore');")
+            if (state(webView).getJSONObject("layout").getBoolean("expanded") != originallyExpanded) click(webView, "viewer-expand")
+            waitForDom(webView, "the original viewport after expression-panel checks", 30) {
+                "var layout=ModelViewer.getState().layout;return JSON.stringify({ok:layout.expanded===" + originallyExpanded +
+                    "&&Math.abs(layout.stage.width-" + retained.getJSONObject("layout").getJSONObject("stage").getDouble("width") +
+                    ")<1&&Math.abs(layout.stage.height-" + retained.getJSONObject("layout").getJSONObject("stage").getDouble("height") + ")<1});"
+            }
         }
     }
 
@@ -446,20 +623,30 @@ class ModelViewerRigTest {
             }
         }
         try {
-            // Shortcuts belong to the active Node/Mesh area. The advanced All
-            // filter can select Head while Node is active, so first open its
-            // recommended area instead of expecting every area to repeat it.
-            val shortcutGroup = evaluate(session.webView,
-                "var id=" + JSONObject.quote(selectedBone) + ",metadata=ModelViewer.getEditingMetadata()||{}," +
-                    "target=(metadata.nodes||[]).filter(function(node){return String(node.node)===id;})[0];" +
-                    "return JSON.stringify({group:target&&target.recommendedMethod||ModelViewer.getState().rig.editorGroup});")
-                .getString("group")
+            // Common choices follow the active editing area and effective save methods.
+            // Metadata recommendations may differ from explicitly authored methods.
+            val shortcutGroup = originalGroup
             selectArea(shortcutGroup)
-            run(session.webView, "var id=" + JSONObject.quote(selectedBone) + ";" +
-                "var shortcut=Array.prototype.filter.call(document.querySelectorAll('#viewer-node-shortcuts [data-viewer-bone]'),function(button){return button.dataset.viewerBone===id;})[0];" +
-                "if(!shortcut)throw new Error('The selected frequent bone must have a shortcut in its editing area');" +
-                "var control=ViewerRigQa.control(shortcut,true);" +
-                "if(!control.visible||!control.withinViewport||!control.hittable)throw new Error('The selected shortcut must be visible and unobstructed');shortcut.click();")
+            val commonSelection = evaluate(session.webView, "var id=" + JSONObject.quote(selectedBone) + ";" +
+                "ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('Tip'),'change');" +
+                "ViewerRigQa.input('viewer-node-search','','input');ViewerRigQa.input('viewer-node-filter','tool','change');" +
+                "var select=document.getElementById('viewer-node'),container=document.getElementById('viewer-node-shortcuts');" +
+                "if(document.querySelectorAll('#viewer-node').length!==1||select.tagName!=='SELECT'||!container.contains(select)||" +
+                "container.querySelector('[data-viewer-bone]'))throw new Error('Common body parts must use one real select without shortcut buttons');" +
+                "var options=Array.prototype.filter.call(select.options,function(option){return !!option.value;});" +
+                "if(!options.length)throw new Error('The actual compact editing area must offer a common body part');" +
+                "var previous=ModelViewer.getState().rig.selectedNode,choice=options.filter(function(option){return option.value!==previous;})[0];" +
+                "if(previous!==String(ViewerRigQa.nodeId('Tip'))||!choice)throw new Error('The compact selector must change the retained advanced selection');" +
+                "var control=ViewerRigQa.control(select,true);if(!control.visible||!control.withinViewport||!control.hittable||control.width<44||control.height<44)" +
+                "throw new Error('The common-part select must be an unobstructed 44px touch target');" +
+                "var authoring=JSON.stringify(ModelViewer.getAuthoringState());document.getElementById('viewer-node-editor').open=false;" +
+                "select.value=choice.value;select.dispatchEvent(new Event('change',{bubbles:true}));" +
+                "if(ModelViewer.getState().rig.selectedNode!==choice.value||!document.getElementById('viewer-node-editor').open)throw new Error('Selecting a common part must open its actual editor');" +
+                "ViewerRigQa.input('viewer-node',id,'change');" +
+                "if(JSON.stringify(ModelViewer.getAuthoringState())!==authoring)throw new Error('Choosing body parts must preserve existing authored edits');" +
+                "return JSON.stringify({singleSelect:true,control:control,optionCount:options.length,previous:previous,chosen:choice.value,distinctChoice:choice.value!==previous,restored:id,coarse:matchMedia('(pointer:coarse)').matches});")
+            assertRetained(retained, state(session.webView))
+            assertEquals(selectedBone, state(session.webView).getJSONObject("rig").getString("selectedNode"))
             val sections = listOf("viewer-common-adjustments", "viewer-breast-card", "viewer-skirt-card")
             for (id in sections) {
                 // The shared common controls move with their area; breast and
@@ -498,7 +685,9 @@ class ModelViewerRigTest {
                 for (kind in listOf("position", "target")) assertArrayNear("Section toggling preserves camera $kind",
                     retained.getJSONObject("camera").getJSONArray(kind), current.getJSONObject("camera").getJSONArray(kind))
                 assertEquals(retained.getJSONObject("camera").getDouble("fov"), current.getJSONObject("camera").getDouble("fov"), 1e-9)
-                results.put(JSONObject().put("id", id).put("editingArea", sectionGroup).put("closed", closed).put("keyboardReopened", opened))
+                val result = JSONObject().put("id", id).put("editingArea", sectionGroup).put("closed", closed).put("keyboardReopened", opened)
+                if (id == "viewer-common-adjustments") result.put("commonSelection", commonSelection)
+                results.put(result)
             }
             return results
         } finally {
@@ -514,11 +703,109 @@ class ModelViewerRigTest {
         }
     }
 
+    private fun exerciseModelMinimize(session: Session): JSONObject {
+        val webView = session.webView
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val original = state(webView)
+        val expanded = original.getJSONObject("layout").getBoolean("expanded")
+        val stage = original.getJSONObject("layout").getJSONObject("stage")
+        if (!original.getJSONObject("rig").getJSONObject("savedNodes").getBoolean("enabled")) click(webView, "viewer-saved-nodes")
+        input(webView, "viewer-motion", "Neutral swing", "change")
+        input(webView, "viewer-time", ".6")
+        input(webView, "viewer-breast-preset", "rin", "change")
+        input(webView, "viewer-expression-value", "40")
+        boneInput(webView, "Head", "rotation", "Z", 35)
+        input(webView, "viewer-save-method", "node", "change")
+        // Prepare non-default actual details state without changing the hidden
+        // expanded viewport. Earlier phases verify real summary interaction.
+        run(webView, "document.getElementById('viewer-adjustments').open=false;document.getElementById('viewer-breast-card').open=false;" + minimizeQaScript)
+        val beforeState = state(webView)
+        val before = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.snapshot());")
+        assertFalse(before.getJSONObject("manualFolds").getBoolean("viewer-adjustments"))
+        assertFalse(before.getJSONObject("manualFolds").getBoolean("viewer-breast-card"))
+        assertTrue("Minimize must retain genuine pending edits", before.getJSONObject("authoring").getJSONArray("edits").length() > 0)
+        fun assertPreserved(observed: JSONObject) {
+            assertRetained(beforeState, state(webView))
+            for (key in listOf("authoring", "manualFolds", "panePreferences")) {
+                assertEquals("Minimize/restore preserves $key", before.getJSONObject(key).toString(), observed.getJSONObject(key).toString())
+            }
+            for (key in listOf("modelId", "selectedNode", "editorGroup")) assertEquals(before.getString(key), observed.getString(key))
+            for (key in listOf("position", "target")) {
+                val left = before.getJSONObject("camera").getJSONArray(key)
+                val right = observed.getJSONObject("camera").getJSONArray(key)
+                for (axis in 0..2) assertEquals("Minimize must not refit the camera", left.getDouble(axis), right.getDouble(axis), 1e-7)
+            }
+            assertEquals(before.getJSONObject("camera").getDouble("fov"), observed.getJSONObject("camera").getDouble("fov"), 1e-7)
+        }
+        val button = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.minimize());")
+        waitForDom(webView, "the loaded model minimized coherently from the expanded phone viewport", 30) {
+            "var s=ModelViewer.getState();return JSON.stringify({ok:s.loaded&&!s.loading&&s.layout.minimized&&" +
+                "s.layout.minimizeDirection==='height'&&!s.layout.expanded&&s.layout.fullscreen==='none'&&!s.layout.fullscreenPending,state:s});"
+        }
+        val hidden = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.snapshot());")
+        assertTrue("Minimize must hide the real model stage", hidden.getBoolean("stageHidden"))
+        assertPreserved(hidden)
+        instrumentation.runOnMainSync { webView.requestFocus() }
+        val restore = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.focusRestore());")
+        assertTrue("The real external restore bar must receive native keyboard focus", restore.getBoolean("focused"))
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+        waitForDom(webView, "native Enter restoring the same loaded model", 30) {
+            "var s=ModelViewer.getState();return JSON.stringify({ok:s.loaded&&!s.loading&&!s.layout.minimized&&" +
+                "s.layout.fullscreen==='none'&&!s.layout.fullscreenPending,state:s});"
+        }
+        val restored = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.snapshot());")
+        assertFalse(restored.getBoolean("stageHidden"))
+        assertPreserved(restored)
+        val rendered = waitForDom(webView, "actual restored model rendering without a reload or refit", 30) {
+            "var p=ModelViewer.renderProbe(33);return JSON.stringify({ok:p.ready&&p.glError===0&&p.nonBackgroundSamples>=3,probe:p});"
+        }
+        if (state(webView).getJSONObject("layout").getBoolean("expanded") != expanded) click(webView, "viewer-expand")
+        waitForDom(webView, "the original expanded geometry after minimize", 30) {
+            "var s=ModelViewer.getState(),r=s.layout.stage;return JSON.stringify({ok:s.layout.expanded===" + expanded +
+                "&&!s.layout.minimized&&Math.abs(r.width-" + stage.getDouble("width") + ")<1&&Math.abs(r.height-" + stage.getDouble("height") + ")<1,state:s});"
+        }
+        val final = evaluate(webView, "return JSON.stringify(ViewerMinimizeNativeQa.snapshot());")
+        assertPreserved(final)
+        assertGameStopped()
+        return JSONObject().put("button", button).put("before", before).put("minimized", hidden)
+            .put("restoreBar", restore).put("nativeEnterRestored", true).put("restored", restored)
+            .put("rendered", rendered.getJSONObject("probe")).put("originalExpandedGeometryRestored", true)
+            .put("final", final).put("scope", "After all original pixel thresholds; real minimize target/native Enter restore; no cross-layout pixel comparison")
+    }
+
+    private val minimizeQaScript = """
+        window.ViewerMinimizeNativeQa = (function () {
+          function target(id, minimum) {
+            var element = document.getElementById(id), control = ViewerRigQa.control(element, true);
+            if (control.disabled || !control.visible || !control.withinViewport || !control.hittable || control.width < minimum || control.height < minimum)
+              throw new Error('The real minimize/restore target must remain reachable: ' + JSON.stringify(control));
+            return control;
+          }
+          return {
+            snapshot: function () {
+              var s = ModelViewer.getState(), stage = document.getElementById('viewer-stage'), rect = stage.getBoundingClientRect(), folds = {};
+              ['viewer-adjustments','viewer-body-adjustments','viewer-expression-adjustments','viewer-breast-card','viewer-hips-card','viewer-skirt-card','viewer-common-adjustments','viewer-node-editor'].forEach(function (id) {
+                folds[id] = document.getElementById(id).open;
+              });
+              return { modelId: s.modelId, camera: s.camera, authoring: ModelViewer.getAuthoringState(), selectedNode: s.rig.selectedNode,
+                editorGroup: s.rig.editorGroup, manualFolds: folds, layout: s.layout,
+                stageHidden: stage.getAttribute('aria-hidden') === 'true' && (!rect.width || !rect.height || getComputedStyle(stage).display === 'none'),
+                panePreferences: { files: localStorage.getItem('elichika.viewer.files-width.v1'), panel: localStorage.getItem('elichika.viewer.panel-width.v1') } };
+            },
+            minimize: function () { var control = target('viewer-minimize', 32); document.getElementById('viewer-minimize').click(); return control; },
+            focusRestore: function () {
+              var control = target('viewer-model-restore', 44), element = document.getElementById('viewer-model-restore');
+              element.focus(); control.focused = document.activeElement === element; return control;
+            }
+          };
+        })();
+    """.trimIndent()
+
     private fun assertVerticalHud(webView: WebView, includeGeometry: Boolean = false): JSONObject {
         val observed = evaluate(webView, "return JSON.stringify(ViewerRigQa.verticalViewport($includeGeometry));")
         assertTrue("The APK must use the reviewed visible vertical controls", observed.getBoolean("vertical"))
         val controls = observed.getJSONArray("controls")
-        assertEquals("Retain every original HUD action", 11, controls.length())
+        assertEquals("Retain every viewport HUD action including minimize", 12, controls.length())
         assertEquals("Separate controls must not overlap", 0, observed.getJSONArray("overlapPairs").length())
         for (index in 0 until controls.length()) {
             val target = controls.getJSONObject(index)
@@ -786,6 +1073,16 @@ class ModelViewerRigTest {
         val initiallyExpanded = start.getJSONObject("layout").getBoolean("expanded")
         if (initiallyExpanded) click(webView, "viewer-expand")
         try {
+            run(webView, "ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('BreastSize'),'change');")
+            input(webView, "viewer-save-method", "node", "change")
+            val nodeCompensationBlocked = evaluate(webView,
+                "return JSON.stringify({disabled:document.getElementById('bone-compensate-children').disabled," +
+                    "method:ModelViewer.getState().rig.editingMethods[ViewerRigQa.nodeId('BreastSize')]});")
+            assertEquals("Node restriction requires an explicit Node save method", "node", nodeCompensationBlocked.getString("method"))
+            assertTrue("Node export does not currently support child compensation", nodeCompensationBlocked.getBoolean("disabled"))
+            input(webView, "viewer-save-method", "mesh", "change")
+            assertFalse("Explicit Mesh Baker export enables supported child compensation", evaluate(webView,
+                "return JSON.stringify({disabled:document.getElementById('bone-compensate-children').disabled});").getBoolean("disabled"))
             boneInput(webView, "BreastSize", "position", "X", .05)
             boneInput(webView, "BreastSize", "rotation", "Z", 35)
             boneInput(webView, "Tip", "position", "X", .15)

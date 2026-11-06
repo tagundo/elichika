@@ -1,0 +1,204 @@
+name: Build standalone macOS Apple Silicon app
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Review app version YYYY.MM.DD[.N]; blank uses macos/VERSION"
+        required: false
+        default: ""
+  pull_request:
+    paths:
+      - 'macos/**'
+      - 'adminui/**'
+      - '*.py'
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'assets'
+      - 'modtools'
+      - 'webui/**'
+      - '.github/workflows/macos.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'macos/**'
+      - 'adminui/**'
+      - '*.py'
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'assets'
+      - 'modtools'
+      - 'webui/**'
+      - '.github/workflows/macos.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apple-silicon:
+    # Explicit standard ARM64 label; macos-14 retired in November 2026.
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - name: Check out exact reviewed source and shared tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go build tool
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
+
+      - name: Set up host Python build tool
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Record native build host and app version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          mkdir -p "$RUNNER_TEMP/macos-evidence" "$RUNNER_TEMP/macos-delivery"
+          uname -a > "$RUNNER_TEMP/macos-evidence/host.txt"
+          sw_vers >> "$RUNNER_TEMP/macos-evidence/host.txt"
+          xcodebuild -version >> "$RUNNER_TEMP/macos-evidence/host.txt"
+          python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'macos/build')
+          from build_app import bundle_versions
+          version = os.environ.get('REQUESTED_VERSION') or Path('macos/VERSION').read_text().strip()
+          bundle_versions(version)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('version=' + version + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('ELICHIKA_MAC_VERSION=' + version + '\n')
+          PY
+
+      - name: Test portable build and shared platform contracts
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s macos/ci -p 'test_*.py' -v
+          python3 -m unittest discover -s tests -p test_sukusta_paths.py -v
+          python3 -m unittest discover -s tests -p 'test_macos_runtime*.py' -v
+          swift test --package-path macos --scratch-path "$RUNNER_TEMP/elichika-swift-tests" \
+            > "$RUNNER_TEMP/macos-evidence/swift-tests.txt" 2>&1
+
+      - name: Validate and initialize the same official server data as Android
+        run: |
+          set -euo pipefail
+          python3 assets/tests/validate_shooting_star.py
+          python3 assets/tests/validate_localization.py
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/elichika-data-builder" .
+          "$RUNNER_TEMP/elichika-data-builder" rebuild_assets
+          python3 tests/validate_runtime.py .
+          python3 assets/tests/validate_localization.py --runtime .
+          python3 bin/fix_outfit_order.py
+          "$RUNNER_TEMP/elichika-data-builder" rebuild_assets
+          python3 tests/validate_runtime.py .
+          python3 android/ci/build_deterministic_serverdata.py \
+            --runtime . --binary "$RUNNER_TEMP/elichika-data-builder" --build-only \
+            --report "$RUNNER_TEMP/macos-evidence/deterministic-serverdata.json"
+          python3 tests/validate_runtime.py .
+          python3 assets/tests/validate_localization.py --runtime .
+          python3 macos/build/build_payload.py --repo . --output "$RUNNER_TEMP/elichika-macos-shared"
+
+      - name: Build self-contained signed app with private Python and executables
+        run: |
+          set -euo pipefail
+          python3 macos/build/build_app.py --repo . \
+            --shared "$RUNNER_TEMP/elichika-macos-shared" \
+            --output "$RUNNER_TEMP/elichika-macos-built/Elichika.app" \
+            --cache "$RUNNER_TEMP/elichika-macos-build-cache" \
+            --version "$ELICHIKA_MAC_VERSION" \
+            --report "$RUNNER_TEMP/macos-evidence/app-build.json"
+          cp "$RUNNER_TEMP/elichika-macos-built/Elichika.app/Contents/Resources/bundle-provenance.json" \
+            "$RUNNER_TEMP/macos-evidence/bundle-provenance.json"
+          python3 macos/ci/audit_bundle.py \
+            --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" --arch arm64 \
+            --report "$RUNNER_TEMP/macos-evidence/bundle-before-launch.json"
+
+      - name: Test bundled interpreter, native codecs and HTTPS without runtime installation
+        run: |
+          python3 macos/ci/verify_runtime.py \
+            --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" --network \
+            --report "$RUNNER_TEMP/macos-evidence/private-runtime.json"
+
+      - name: Run every desktop runtime integration test with the bundled interpreter
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess, sys
+          sys.path.insert(0, 'macos/ci')
+          from verify_runtime import private_environment
+          temporary = pathlib.Path(os.environ['RUNNER_TEMP'])
+          resources = temporary / 'elichika-macos-built/Elichika.app/Contents/Resources'
+          executable = resources / 'runtime/arm64/python/bin/python3'
+          result = subprocess.run([str(executable), '-I', '-B', '-m', 'unittest', 'discover',
+              '-s', 'tests', '-p', 'test_macos_runtime*.py', '-v'],
+              env=private_environment(resources), text=True, capture_output=True, timeout=300)
+          evidence = result.stdout + result.stderr
+          (temporary / 'macos-evidence/bundled-runtime-tests.txt').write_text(evidence)
+          print(evidence, end='')
+          if result.returncode or 'skipped=' in evidence or "... skipped " in evidence:
+              raise SystemExit('Bundled runtime tests must all pass without skipped integrations')
+          PY
+
+      - name: Exercise actual app, shared 3D editing, clean quit and relocated relaunch
+        run: |
+          python3 macos/ci/run_app_smoke.py \
+            --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" \
+            --evidence "$RUNNER_TEMP/macos-evidence" \
+            --relocation "$RUNNER_TEMP/이동한 Elichika 앱/Elichika.app"
+          python3 macos/ci/audit_bundle.py \
+            --app "$RUNNER_TEMP/이동한 Elichika 앱/Elichika.app" --arch arm64 \
+            --report "$RUNNER_TEMP/macos-evidence/bundle-after-relaunch.json"
+
+      - name: Package the exact validated Apple Silicon app
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          sys.path.insert(0, 'macos/build')
+          from common import archive_app, write_json
+          temporary = pathlib.Path(os.environ['RUNNER_TEMP'])
+          app = temporary / '이동한 Elichika 앱/Elichika.app'
+          destination = temporary / 'macos-delivery'
+          name = 'Elichika-' + os.environ['ELICHIKA_MAC_VERSION'] + '-AppleSilicon.app.zip'
+          receipt = archive_app(app, destination / name)
+          (destination / 'SHA256SUMS').write_text(receipt['sha256'] + '  ' + name + '\n')
+          write_json(temporary / 'macos-evidence/app-archive.json', receipt)
+          PY
+
+      - name: Upload validated standalone app
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-macos-apple-silicon
+          path: ${{ runner.temp }}/macos-delivery/
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload macOS execution and packaging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-macos-evidence
+          path: |
+            ${{ runner.temp }}/macos-evidence/
+            !${{ runner.temp }}/macos-evidence/native-app-data/application-support/**
+            !${{ runner.temp }}/macos-evidence/native-app-data/sukusta/**
+          if-no-files-found: warn

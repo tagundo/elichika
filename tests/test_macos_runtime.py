@@ -1,0 +1,651 @@
+"""Desktop ownership, request isolation and real shared payload transactions."""
+from contextlib import closing
+import http.client
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import importlib.util
+import json
+import os
+from pathlib import Path
+import select
+import shlex
+import shutil
+import signal
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "macos/runtime"))
+from elichika_macos import AuthorizedPaths, LogBuffer, Runtime, secure_ui_handler
+from elichika_macos_lifecycle import ServerController
+from elichika_macos_payload import ensure_config, install_payload, install_tool_data
+from adminui import serverctl
+from database_maintenance import BusyError, guard
+
+
+def unused_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+class Echo(BaseHTTPRequestHandler):
+    def log_message(self, *_args):
+        pass
+
+    def do_GET(self):
+        body = b'{"ok":true}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_POST = do_GET
+
+
+class StubRuntime(Runtime):
+    def _prepare_data(self):
+        ensure_config(self.data, self.sukusta, self.language)
+
+    def _load_tools(self):
+        self._servers["admin"].RequestHandlerClass = secure_ui_handler(Echo, self)
+        self._servers["tools"].RequestHandlerClass = secure_ui_handler(Echo, self)
+
+
+class RuntimeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="elichika-mac-test-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve()
+        self.resources = self.root / "Example.app/Contents/Resources"
+        self.resources.mkdir(parents=True)
+        self.data = self.root / "Application Support/Elichika"
+        self.sukusta = self.data / "sukusta"
+
+    def start(self):
+        runtime = StubRuntime(self.resources, self.data, self.sukusta)
+        self.addCleanup(runtime.close)
+        ready = runtime.start()
+        deadline = time.monotonic() + 3
+        while not runtime.state()["prepared"] and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue(runtime.state()["prepared"], runtime.state())
+        return runtime, ready
+
+    def request(self, url, path="/", *, method="GET", headers=None, body=None):
+        from urllib.parse import urlsplit
+        parsed = urlsplit(url)
+        connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
+        try:
+            connection.request(method, path, body=body, headers=headers or {})
+            response = connection.getresponse()
+            return response.status, dict(response.getheaders()), response.read()
+        finally:
+            connection.close()
+
+    def test_all_writable_paths_are_rejected_anywhere_inside_application_bundle(self):
+        bundle = self.resources.parents[1]
+        for destination in (bundle, bundle / "Contents", bundle / "Contents/MacOS/new-library"):
+            with self.subTest(destination=destination):
+                with self.assertRaisesRegex(ValueError, "outside"):
+                    Runtime(self.resources, self.data, destination)
+                with self.assertRaisesRegex(ValueError, "outside"):
+                    Runtime(self.resources, destination, self.sukusta)
+                with self.assertRaisesRegex(ValueError, "outside"):
+                    Runtime(self.resources, self.data, self.sukusta, state_file=destination / "state.json")
+        self.assertFalse(self.data.exists())
+
+    def test_control_secrets_are_separate_and_no_foreign_host_or_origin_can_write(self):
+        runtime, ready = self.start()
+        url = ready["control_url"]
+        self.assertNotEqual(ready["token"], ready["ui_token"])
+        status, _, _ = self.request(url, "/v1/state")
+        self.assertEqual(status, 401)
+        auth = {"Authorization": "Bearer " + ready["token"]}
+        status, _, raw = self.request(url, "/v1/state", headers=auth)
+        self.assertEqual(status, 200)
+        self.assertNotIn(ready["token"], raw.decode())
+        self.assertNotIn(ready["ui_token"], raw.decode())
+        self.assertEqual(self.request(url, "/v1/state", headers={"Authorization":"Bearer " + ready["ui_token"]})[0], 401)
+        self.assertEqual(self.request(url, "/v1/state", headers=dict(auth, Host="evil.example"))[0], 403)
+        self.assertEqual(self.request(url, "/v1/state", headers=dict(auth, Origin="https://evil.example"))[0], 403)
+        status, _, _ = self.request(url, "/v1/server/stop", method="POST",
+                                    headers=dict(auth, **{"Content-Type":"application/json"}), body=b'{"unexpected":true}')
+        self.assertEqual(status, 400)
+        self.assertFalse(runtime.controller.is_running())
+
+    def test_ui_reads_cookie_and_all_writes_require_same_origin(self):
+        runtime, ready = self.start()
+        for name in ("admin_url", "tools_url"):
+            url = ready[name]
+            with self.subTest(name=name):
+                self.assertEqual(self.request(url)[0], 401)
+                self.assertEqual(self.request(url, headers={"X-Elichika-Session":ready["token"]})[0], 401)
+                status, headers, raw = self.request(url, headers={"X-Elichika-Session":ready["ui_token"]})
+                self.assertEqual(status, 200)
+                self.assertIn("HttpOnly", headers["Set-Cookie"])
+                self.assertIn("SameSite=Strict", headers["Set-Cookie"])
+                cookie = headers["Set-Cookie"].split(";", 1)[0]
+                self.assertEqual(self.request(url, headers={"Cookie":cookie})[0], 200)
+                self.assertEqual(self.request(url, headers={"Cookie":cookie,"Host":"attacker.invalid"})[0], 403)
+                common = {"Cookie":cookie,"Content-Type":"application/json"}
+                self.assertEqual(self.request(url, method="POST", headers=common, body=b"{}")[0], 403)
+                self.assertEqual(self.request(url, method="POST", headers=dict(common, Origin="https://evil.example"), body=b"{}")[0], 403)
+                self.assertEqual(self.request(url, method="POST", headers=dict(common, Origin=url), body=b"{}")[0], 200)
+
+    def test_native_path_grants_a_file_without_implicitly_granting_its_siblings(self):
+        runtime, ready = self.start()
+        picked = self.root / "Native selected file.unity"
+        sibling = self.root / "not selected.unity"
+        picked.write_bytes(b"UnityFS\0original")
+        sibling.write_bytes(b"other")
+        self.assertFalse(runtime.paths.allows(picked))
+        auth = {"Authorization":"Bearer " + ready["token"],"Content-Type":"application/json"}
+        status, _, raw = self.request(ready["control_url"], "/v1/files/authorize", method="POST",
+                                     headers=auth, body=json.dumps({"paths":[str(picked)]}).encode())
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw), {"paths":[str(picked.resolve())]})
+        self.assertTrue(runtime.paths.allows(picked))
+        self.assertFalse(runtime.paths.allows(sibling))
+        self.assertFalse(runtime.paths.allows(Path.home()))
+        folder = self.root / "selected folder"
+        folder.mkdir()
+        (folder / "nested").mkdir()
+        runtime.paths.authorize([str(folder)])
+        self.assertTrue(runtime.paths.allows(folder / "nested"))
+
+    def test_another_runtime_cannot_take_the_same_data_folder(self):
+        runtime, _ = self.start()
+        other = StubRuntime(self.resources, self.data, self.sukusta)
+        self.addCleanup(other.close)
+        with self.assertRaisesRegex(RuntimeError, "Another Elichika"):
+            other.start()
+        self.assertTrue(runtime.state()["prepared"])
+
+    def test_optional_state_file_and_logs_never_contain_session_secrets(self):
+        runtime, ready = self.start()
+        runtime.state_file = self.root / "state.json"
+        runtime.logs.write("never " + ready["token"] + " or " + ready["ui_token"])
+        runtime._write_state()
+        self.assertNotIn(ready["token"], runtime.state_file.read_text())
+        self.assertNotIn(ready["ui_token"], runtime.state_file.read_text())
+        logs = json.dumps(runtime.logs.after(0))
+        self.assertNotIn(ready["token"], logs)
+        self.assertNotIn(ready["ui_token"], logs)
+        runtime.logs.write("2026 AdminPassword : should not appear")
+        self.assertNotIn("should not appear", json.dumps(runtime.logs.after(0)))
+
+
+class LifecycleTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="elichika-mac-child-")
+        self.addCleanup(self.temporary.cleanup)
+        self.data = Path(self.temporary.name).resolve()
+        self.port = unused_port()
+        (self.data / "config.json").write_text(json.dumps({"server_address":f"127.0.0.1:{self.port}"}))
+        self.binary = self.data / "elichika"
+        fake = ("import http.server,json,pathlib;" +
+                "import os;pathlib.Path('go-env.json').write_text(json.dumps({k:os.environ.get(k) for k in ['HOME','PYTHONPATH','PYTHONNOUSERSITE','PYTHONSAFEPATH']}));" +
+                "port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1]);" +
+                "http.server.HTTPServer(('127.0.0.1',port),http.server.BaseHTTPRequestHandler).serve_forever()")
+        self.binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -B -c " + shlex.quote(fake) + "\n")
+        self.binary.chmod(0o755)
+        self.controller = ServerController(self.binary, self.data, log=lambda _:None)
+        self.addCleanup(self.controller.close)
+        previous = serverctl._controller
+        serverctl.register_controller(self.controller)
+        self.addCleanup(serverctl.register_controller, previous)
+
+    def test_manual_stop_cancels_a_workers_deferred_restart_after_guard_release(self):
+        self.controller.manual_start()
+        stopped, resume = threading.Event(), threading.Event()
+        errors, result = [], []
+        def work():
+            try:
+                with serverctl.whole_job_server() as job:
+                    with guard(self.data):
+                        with serverctl.installation_server(stop=True, restart=True) as install:
+                            self.assertTrue(install.was_running)
+                            stopped.set()
+                            self.assertTrue(resume.wait(3))
+                    job.successful = True
+                result.append(job.restarted)
+            except BaseException as error:
+                errors.append(error)
+        thread = threading.Thread(target=work)
+        thread.start()
+        self.assertTrue(stopped.wait(3))
+        self.assertFalse(self.controller.is_running())
+        with self.assertRaises(BusyError):
+            self.controller.manual_start()
+        self.controller.manual_stop()
+        resume.set()
+        thread.join(4)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(result, [False])
+        self.assertFalse(self.controller.is_running())
+        self.assertFalse(self.controller.busy())
+
+    def test_successful_install_restarts_and_initially_stopped_install_stays_off(self):
+        with serverctl.whole_job_server() as job:
+            with guard(self.data):
+                with serverctl.installation_server(stop=True, restart=True) as install:
+                    self.assertFalse(install.was_running)
+            job.successful = True
+        self.assertFalse(self.controller.is_running())
+        self.controller.manual_start()
+        original = self.controller.state()["pid"]
+        with serverctl.whole_job_server() as job:
+            with guard(self.data):
+                with serverctl.installation_server(stop=True, restart=True):
+                    self.assertFalse(self.controller.is_running())
+            job.successful = True
+        self.assertTrue(job.restarted)
+        self.assertTrue(self.controller.is_running())
+        self.assertNotEqual(original, self.controller.state()["pid"])
+
+    def test_failed_tool_keeps_server_stopped_and_releases_ownership(self):
+        self.controller.manual_start()
+        with self.assertRaisesRegex(ValueError, "synthetic"):
+            with serverctl.whole_job_server():
+                with guard(self.data):
+                    with serverctl.installation_server(stop=True, restart=True):
+                        raise ValueError("synthetic write failure")
+        self.assertFalse(self.controller.is_running())
+        self.assertFalse(self.controller.busy())
+        self.controller.manual_start()
+        self.assertTrue(self.controller.is_running())
+
+    def test_port_conflict_does_not_kill_existing_listener(self):
+        listener = socket.socket()
+        self.addCleanup(listener.close)
+        listener.bind(("127.0.0.1", self.port))
+        listener.listen()
+        with self.assertRaisesRegex(RuntimeError, "already in use"):
+            self.controller.manual_start()
+        self.controller.close()
+        with socket.create_connection(("127.0.0.1", self.port), timeout=1):
+            pass
+
+    def test_network_settings_require_stopped_unreserved_server_and_preserve_other_fields(self):
+        path = self.data / "config.json"
+        value = json.loads(path.read_text())
+        value["owner_mod_setting"] = "retain"
+        path.write_text(json.dumps(value))
+        updated = {"server_address":"0.0.0.0:" + str(self.port),
+                   "cdn_server":"http://192.168.1.20:" + str(self.port) + "/static"}
+        self.assertEqual(self.controller.update_network_config(updated), updated)
+        self.assertEqual(json.loads(path.read_text())["owner_mod_setting"], "retain")
+        self.assertEqual(self.controller.network_config(), updated)
+        self.assertEqual(self.controller.state()["url"], f"http://127.0.0.1:{self.port}")
+        self.assertTrue(self.controller.begin_job())
+        with self.assertRaises(BusyError):
+            self.controller.update_network_config(updated)
+        self.controller.finish_job(True)
+        self.controller.manual_start()
+        with self.assertRaises(BusyError):
+            self.controller.update_network_config(updated)
+        self.controller.manual_stop()
+        for address, cdn in [("127.0.0.1:0", "https://example.org/static"),
+                             ("attacker.invalid:8080", "https://example.org/static"),
+                             ("0.0.0.0:8080", "file:///etc/passwd"),
+                             ("0.0.0.0:8080", "https://user:secret@example.org/static"),
+                             ("0.0.0.0:8080", "http://example.org:99999/static"),
+                             ("0.0.0.0:8080", "https://example.org/static?token=secret")]:
+            with self.subTest(address=address, cdn=cdn), self.assertRaises(ValueError):
+                self.controller.update_network_config({"server_address":address,"cdn_server":cdn})
+
+
+class PayloadTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="macos-payload-")
+        self.addCleanup(self.temporary.cleanup)
+        self.base = Path(self.temporary.name).resolve()
+        self.resources = self.base / "Example.app/Contents/Resources"
+        self.payload = self.resources / "payload"
+        spec = importlib.util.spec_from_file_location("macos_config_fixture", ROOT / "android/ci/generate_server_config_payload.py")
+        fixture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fixture)
+        fixture.generate(self.payload)
+        (self.payload / "config.json").unlink()
+        (self.payload / fixture.MARKER).unlink()
+        self.data = self.base / "data"
+        self.data.mkdir()
+        self.update_manifest()
+
+    def update_manifest(self):
+        import payload_revision
+        self.manifest = payload_revision.build_manifest(self.payload)
+        (self.resources / "payload_revision.json").write_text(json.dumps(self.manifest))
+
+    def test_library_change_follows_recorded_default_without_moving_existing_files(self):
+        old, new = self.base / "old library", self.base / "new library"
+        (old / "packs").mkdir(parents=True)
+        marker = old / "packs/existing.pack"
+        marker.write_bytes(b"keep old cache")
+        original = ensure_config(self.data, old, "ko")
+        original["owner_setting"] = "preserved"
+        (self.data / "config.json").write_text(json.dumps(original))
+        updated = ensure_config(self.data, new, "ja")
+        self.assertEqual(updated["cdn_cache_dir"], str(new / "packs"))
+        self.assertEqual(updated["owner_setting"], "preserved")
+        self.assertEqual(updated["webui_language"], "ko")
+        self.assertEqual(marker.read_bytes(), b"keep old cache")
+        self.assertFalse((new / "packs").exists())
+        self.assertEqual(json.loads((self.data / ".macos-library.json").read_text())["sukusta_dir"], str(new))
+
+    def test_library_change_preserves_custom_cache_and_missing_receipt(self):
+        old, new = self.base / "old library", self.base / "new library"
+        value = ensure_config(self.data, old, "en")
+        value["cdn_cache_dir"] = str(self.base / "custom-cache")
+        (self.data / "config.json").write_text(json.dumps(value))
+        self.assertEqual(ensure_config(self.data, new, "ko")["cdn_cache_dir"], value["cdn_cache_dir"])
+        (self.data / ".macos-library.json").unlink()
+        value["cdn_cache_dir"] = str(old / "packs")
+        (self.data / "config.json").write_text(json.dumps(value))
+        self.assertEqual(ensure_config(self.data, new, "ko")["cdn_cache_dir"], str(old / "packs"))
+        for invalid in ("null", "[]", "{broken"):
+            with self.subTest(receipt=invalid):
+                (self.data / ".macos-library.json").write_text(invalid)
+                self.assertEqual(ensure_config(self.data, new, "ko")["cdn_cache_dir"], str(old / "packs"))
+
+    def test_real_fresh_same_data_and_mod_preserving_update_reuse_shared_engine(self):
+        first = install_payload(self.resources, self.data)
+        self.assertEqual(first["action"], "fresh")
+        master = self.data / "assets/db/gl/masterdata.db"
+        with closing(sqlite3.connect(master)) as db:
+            db.execute("UPDATE fixture_catalog SET value='owner edit' WHERE id=1")
+            db.commit()
+        (self.data / "config.json").write_text('{"owner":"keep"}')
+        before = master.read_bytes()
+        self.assertEqual(install_payload(self.resources, self.data)["action"], "skip")
+        self.assertEqual(master.read_bytes(), before)
+        with closing(sqlite3.connect(self.payload / "assets/db/gl/masterdata.db")) as db:
+            db.execute("INSERT INTO fixture_catalog(id,value) VALUES(90,'new official row')")
+            db.commit()
+        self.update_manifest()
+        self.assertEqual(install_payload(self.resources, self.data)["action"], "upgrade")
+        with closing(sqlite3.connect(master)) as db:
+            self.assertEqual(db.execute("SELECT value FROM fixture_catalog WHERE id=1").fetchone()[0], "owner edit")
+            self.assertEqual(db.execute("SELECT value FROM fixture_catalog WHERE id=90").fetchone()[0], "new official row")
+        self.assertEqual((self.data / "config.json").read_text(), '{"owner":"keep"}')
+
+    def test_support_text_dictionaries_update_only_unedited_copies(self):
+        support = self.resources / "tool-data"
+        support.mkdir()
+        source = support / "dictionary_skill_en.txt"
+        source.write_text("first")
+        install_tool_data(self.resources, self.data)
+        target = self.data / source.name
+        self.assertEqual(target.read_text(), "first")
+        source.write_text("second")
+        install_tool_data(self.resources, self.data)
+        self.assertEqual(target.read_text(), "second")
+        target.write_text("owner edit")
+        source.write_text("third")
+        install_tool_data(self.resources, self.data)
+        self.assertEqual(target.read_text(), "owner edit")
+
+    def test_readonly_bundle_payload_installs_as_owner_writable_live_data(self):
+        originals = {path.relative_to(self.payload):path.stat().st_mode for path in self.payload.rglob("*")}
+        try:
+            for path in self.payload.rglob("*"):
+                path.chmod(0o555 if path.is_dir() else 0o444)
+            install_payload(self.resources, self.data)
+            master = self.data / "assets/db/gl/masterdata.db"
+            self.assertTrue(master.stat().st_mode & 0o200)
+            with closing(sqlite3.connect(master)) as db:
+                db.execute("UPDATE fixture_catalog SET value='owner writable' WHERE id=1")
+                db.commit()
+            self.assertEqual((self.payload / "assets/db/gl/masterdata.db").stat().st_mode & 0o222, 0)
+        finally:
+            for relative, mode in originals.items():
+                (self.payload / relative).chmod(mode & 0o777)
+
+
+@unittest.skipUnless(importlib.util.find_spec("UnityPy") and importlib.util.find_spec("numpy") and importlib.util.find_spec("certifi"),
+                     "Pinned model dependencies and certifi are required for real launcher integration")
+class IntegrationTests(unittest.TestCase):
+    def _cli_fixture(self):
+        directory = tempfile.TemporaryDirectory(prefix="한국어 Mac runtime ")
+        self.addCleanup(directory.cleanup)
+        base = Path(directory.name).resolve()
+        resources = base / "Relocated Elichika.app/Contents/Resources"
+        app = resources / "python-app"
+        app.mkdir(parents=True)
+        for source in (ROOT / "macos/runtime").glob("*.py"):
+            shutil.copyfile(source, app / source.name)
+        for source in ROOT.glob("*.py"):
+            if not (app / source.name).exists():
+                (app / source.name).symlink_to(source)
+        (app / "adminui").symlink_to(ROOT / "adminui", target_is_directory=True)
+        (app / "webtools").symlink_to(ROOT / "modtools/webtools", target_is_directory=True)
+        if (ROOT / "modtools/live_timeline").is_dir():
+            (app / "live_timeline").symlink_to(ROOT / "modtools/live_timeline", target_is_directory=True)
+        for source in (ROOT / "modtools").glob("*.py"):
+            if not (app / source.name).exists():
+                (app / source.name).symlink_to(source)
+        # Fixture-only links emulate already bundled dependencies. The real app
+        # is audited on macOS with physical, signed in-bundle distributions.
+        for name in ("numpy", "PIL", "UnityPy", "certifi"):
+            spec = importlib.util.find_spec(name)
+            source = Path(next(iter(spec.submodule_search_locations)))
+            if not (app / name).exists():
+                (app / name).symlink_to(source, target_is_directory=True)
+            for adjacent in ("numpy.libs", "pillow.libs"):
+                extra = source.parent / adjacent
+                if extra.is_dir() and not (app / adjacent).exists():
+                    (app / adjacent).symlink_to(extra, target_is_directory=True)
+        spec = importlib.util.spec_from_file_location("cli_fixture", ROOT / "android/ci/generate_server_config_payload.py")
+        fixture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fixture)
+        payload = resources / "payload"
+        fixture.generate(payload)
+        (payload / "config.json").unlink()
+        (payload / fixture.MARKER).unlink()
+        import payload_revision
+        (resources / "payload_revision.json").write_text(json.dumps(payload_revision.build_manifest(payload)))
+        machine = __import__("platform").machine().lower()
+        arch = "arm64" if machine in ("arm64", "aarch64") else "x86_64"
+        binaries = resources / "runtime" / arch / "bin"
+        binaries.mkdir(parents=True)
+        go = binaries / "elichika"
+        fake = ("import http.server,json,pathlib;" +
+                "import os;pathlib.Path('go-env.json').write_text(json.dumps({k:os.environ.get(k) for k in ['HOME','PYTHONPATH','PYTHONNOUSERSITE','PYTHONSAFEPATH']}));" +
+                "port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1]);" +
+                "http.server.HTTPServer(('127.0.0.1',port),http.server.BaseHTTPRequestHandler).serve_forever()")
+        go.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -B -c " + shlex.quote(fake) + "\n")
+        go.chmod(0o755)
+        data = base / "Library/Application Support/Elichika"
+        data.mkdir(parents=True)
+        (data / "config.json").write_text(json.dumps({"server_address":f"127.0.0.1:{unused_port()}"}))
+        (data / "json.py").write_text("raise RuntimeError('Mutable cwd was imported')\n")
+        return base, resources, data
+
+    def _read_ready(self, process):
+        readable, _, _ = select.select([process.stdout], [], [], 12)
+        self.assertTrue(readable, "The isolated runtime did not report socket readiness")
+        line = process.stdout.readline()
+        if not line.startswith("ELICHIKA_READY "):
+            self.fail("Runtime did not start: " + line + process.stderr.read())
+        return json.loads(line[len("ELICHIKA_READY "):])
+
+    def _control(self, ready, path, value=None):
+        import urllib.request
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        raw = json.dumps(value).encode() if value is not None else None
+        request = urllib.request.Request(ready["control_url"] + path, data=raw,
+            headers={"Authorization":"Bearer " + ready["token"],"Content-Type":"application/json"})
+        with opener.open(request, timeout=3) as response:
+            return json.load(response)
+
+    def _prepared(self, ready):
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            state = self._control(ready, "/v1/state")
+            if state["prepared"]:
+                return state
+            self.assertNotEqual(state["phase"], "error", state)
+            time.sleep(.03)
+        self.fail("The real isolated Python runtime did not finish preparation")
+
+    @staticmethod
+    def _terminate_owned(process):
+        if process.poll() is None:
+            try:
+                if os.getpgid(process.pid) == process.pid:
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+        try:
+            process.communicate(timeout=4)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate(timeout=4)
+
+    def test_isolated_cli_readiness_start_stop_and_shutdown_leave_bundle_unchanged(self):
+        base, resources, data = self._cli_fixture()
+        launcher = resources / "python-app/elichika_macos.py"
+        before = {path.relative_to(resources):path.stat().st_size for path in resources.rglob("*") if path.is_file() and not path.is_symlink()}
+        env = dict(os.environ, PYTHONPATH=str(base / "untrusted packages"), PYTHONHOME=str(base / "untrusted prefix"))
+        # -I ignores the hostile user Python settings before our bootstrap runs.
+        process = subprocess.Popen([sys.executable,"-I","-B",str(launcher),"--resources",str(resources),
+            "--data-dir",str(data),"--sukusta-dir",str(data / "sukusta"),"--parent-pid",str(os.getpid())],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=env,cwd=base)
+        self.addCleanup(self._terminate_owned, process)
+        ready = self._read_ready(process)
+        self.assertEqual(os.getpgid(process.pid), process.pid)
+        self._prepared(ready)
+        started = self._control(ready,"/v1/server/start",{})
+        server_pid = started["server"]["pid"]
+        self.assertTrue(started["server_running"])
+        self.assertEqual(os.getpgid(server_pid),process.pid)
+        deadline=time.monotonic()+5
+        while not self._control(ready,"/v1/state")["server"]["http_ready"] and time.monotonic()<deadline:
+            time.sleep(.03)
+        self.assertTrue(self._control(ready,"/v1/state")["server"]["http_ready"])
+        child_environment=json.loads((data / "go-env.json").read_text())
+        self.assertEqual(child_environment["HOME"],os.environ.get("HOME"))
+        self.assertEqual(child_environment["PYTHONPATH"],str(resources / "python-app"))
+        self.assertEqual(child_environment["PYTHONNOUSERSITE"],"1")
+        self.assertEqual(child_environment["PYTHONSAFEPATH"],"1")
+        self._control(ready,"/v1/shutdown",{})
+        output, errors = process.communicate(timeout=10)
+        self.assertEqual(process.returncode,0,errors)
+        self.assertNotIn(ready["token"],output+errors)
+        self.assertNotIn(ready["ui_token"],output+errors)
+        with self.assertRaises(ProcessLookupError):os.kill(server_pid,0)
+        after = {path.relative_to(resources):path.stat().st_size for path in resources.rglob("*") if path.is_file() and not path.is_symlink()}
+        self.assertEqual(before,after)
+        self.assertFalse(any(path.name=="__pycache__" for path in resources.rglob("*")))
+
+    def test_parent_crash_stops_the_isolated_runtime_and_owned_go(self):
+        base, resources, data = self._cli_fixture()
+        launcher = resources / "python-app/elichika_macos.py"
+        parent_script = """import os,subprocess,sys,time
+p=subprocess.Popen([sys.executable,'-I','-B',sys.argv[1],'--resources',sys.argv[2],'--data-dir',sys.argv[3],'--sukusta-dir',sys.argv[3]+'/sukusta','--parent-pid',str(os.getpid())],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+print(p.stdout.readline().strip(),flush=True)
+while True:time.sleep(1)
+"""
+        parent = subprocess.Popen([sys.executable,"-c",parent_script,str(launcher),str(resources),str(data)],
+                                  stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,cwd=base)
+        self.addCleanup(self._terminate_owned,parent)
+        ready = self._read_ready(parent)
+        self._prepared(ready)
+        started = self._control(ready,"/v1/server/start",{})
+        go_pid = started["server"]["pid"]
+        runtime_pid = self._control(ready,"/v1/state")["runtime"]["pid"]
+        parent.kill();parent.communicate(timeout=4)
+        deadline=time.monotonic()+10
+        while time.monotonic()<deadline:
+            try:os.kill(go_pid,0)
+            except ProcessLookupError:break
+            time.sleep(.05)
+        else:
+            try:os.killpg(runtime_pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            self.fail("The Go child outlived the crashed native host")
+        # A container's PID1 may retain a terminal adopted zombie temporarily;
+        # no executable process or listening socket may remain.
+        deadline=time.monotonic()+8
+        state=""
+        while time.monotonic()<deadline:
+            state=subprocess.run(["/bin/ps","-o","stat=","-p",str(runtime_pid)],capture_output=True,text=True).stdout.strip()
+            if not state or state.startswith("Z"):break
+            time.sleep(.05)
+        self.assertTrue(not state or state.startswith("Z"),state)
+
+    def test_real_authenticated_runtime_saves_and_reloads_shared_node_mesh_output(self):
+        script = r'''
+import http.cookiejar, importlib.util, json, pathlib, sys, tempfile, time, urllib.error, urllib.request
+from elichika_macos import Runtime
+import payload_revision
+root=pathlib.Path(sys.argv[1])
+spec=importlib.util.spec_from_file_location('fixture',root/'android/ci/generate_server_config_payload.py')
+fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
+with tempfile.TemporaryDirectory(prefix='real-mac-runtime-') as directory:
+    base=pathlib.Path(directory).resolve(); resources=base/'Elichika.app/Contents/Resources'; payload=resources/'payload'
+    fixture.generate(payload);(payload/'config.json').unlink();(payload/fixture.MARKER).unlink()
+    (resources/'payload_revision.json').write_text(json.dumps(payload_revision.build_manifest(payload)))
+    data=base/'Application Support/Elichika';library=data/'sukusta'
+    runtime=Runtime(resources,data,library,'ko');ready=runtime.start()
+    try:
+        deadline=time.monotonic()+25
+        while not runtime.state()['prepared'] and runtime.state()['phase']!='error' and time.monotonic()<deadline:time.sleep(.02)
+        assert runtime.state()['prepared'],runtime.state()
+        assert not runtime.controller.is_running()
+        jar=http.cookiejar.CookieJar();opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPCookieProcessor(jar))
+        tools=ready['tools_url']
+        with opener.open(urllib.request.Request(tools,headers={'X-Elichika-Session':ready['ui_token']}),timeout=5) as response:assert response.status==200
+        def request(path,value=None):
+            raw=json.dumps(value).encode() if value is not None else None
+            with opener.open(urllib.request.Request(tools+path,data=raw,headers={'Content-Type':'application/json','Origin':tools}),timeout=20) as response:return json.load(response)
+        selected=base/'한국어 selected.unity';original=(root/'modtools/tests/fixtures/viewer_persistence.unity').read_bytes();selected.write_bytes(original)
+        try: request('/api/viewer/prepare',{'paths':[str(selected)],'auto_face':False,'rigged':True})
+        except urllib.error.HTTPError as error: assert error.code==403
+        else:raise AssertionError('Unselected files must remain unavailable')
+        control=urllib.request.Request(ready['control_url']+'/v1/files/authorize',data=json.dumps({'paths':[str(selected)]}).encode(),headers={'Authorization':'Bearer '+ready['token'],'Content-Type':'application/json'})
+        with opener.open(control,timeout=5) as response:assert json.load(response)['paths']==[str(selected)]
+        prepared=request('/api/viewer/prepare',{'paths':[str(selected)],'auto_face':False,'rigged':True})
+        editing=prepared['editing'];nodes={row['name']:row['node'] for row in editing['nodes']}
+        state={'version':1,'savedSettingsEnabled':True,'edits':[
+            {'node':nodes['LeftUpLeg'],'method':'mesh','scale':[1.3,1.2,1.0],'compensate':False},
+            {'node':nodes['BreastSize'],'method':'node','scale':[1.0,1.0,1.15],'compensate':False}]}
+        job=request('/api/viewer/edit/export',{'token':editing['token'],'state':state})
+        with opener.open(tools+'/api/jobs/'+job['job_id']+'/events',timeout=20) as response:
+            events=[json.loads(line[5:].strip()) for line in response.read().decode().splitlines() if line.startswith('data:')]
+        done=next(row for row in reversed(events) if row.get('type')=='done');assert done['status']=='done',done
+        result=request('/api/viewer/edit/result/'+job['job_id']);assert len(done['output_paths'])==2
+        assert done['output_paths']==result['output_paths']
+        assert selected.read_bytes()==original
+        reload=request('/api/viewer/prepare',{'paths':result['preview_paths'],'auto_face':False,'rigged':True})
+        assert reload['stats']['vertices']==6
+        recipe=json.loads(pathlib.Path(result['recipe_path']).read_text());restored=request('/api/viewer/edit/restore',{'token':editing['token'],'recipe':recipe})
+        assert len(restored['state']['edits'])==2
+        assert not runtime.controller.is_running() and not runtime.controller.busy()
+        print(json.dumps({'real_payload':True,'authenticated_UI':True,'native_file_grant':True,'hybrid_saved':True,'recipe_restored':True,'serialized_vertices':6,'source_preserved':True}))
+    finally:runtime.close()
+'''
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join((str(ROOT), str(ROOT / "modtools"), str(ROOT / "macos/runtime"), env.get("PYTHONPATH", "")))
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        result = subprocess.run([sys.executable, "-c", script, str(ROOT)], cwd=ROOT,
+                                env=env, text=True, capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(result.stdout.splitlines()[-1])
+        self.assertTrue(report["hybrid_saved"] and report["authenticated_UI"] and report["source_preserved"])
+
+
+if __name__ == "__main__":
+    unittest.main()

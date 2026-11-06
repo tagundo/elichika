@@ -25,7 +25,7 @@ _STOP = {"name": "stop_server", "label": "Stop the elichika server first", "type
          "default": True, "help": "Recommended: these tools modify the server's database files."}
 _RESTART = {"name": "restart_server", "label": "Automatically restart the server after installation",
             "type": "checkbox", "default": False, "persist": True,
-            "help": "Android app: stop a running server before installing and restart it after all files "
+            "help": "In the app: stop a running server before installing and restart it after all files "
                     "succeed. A stopped server stays off. Failed or cancelled installs stay stopped."}
 
 # Character pickers — built once from each tool's name table so a beginner can
@@ -42,12 +42,12 @@ def _addon(folder, multi=False):
     picker becomes a multi-select so several files can be installed in one run."""
     f = {"name": "addon", "label": "File to install", "type": "dynamic_select",
          "source": "addon", "required": True,
-         "help": "Files in Download/sukusta/{folder} and …/addons appear here.",
+         "help": "Files in sukusta/{folder} and …/addons appear here.",
          "help_folder": folder}
     if multi:
         f["multi"] = True
         f["label"] = "Files to install"
-        f["help"] = ("Files in Download/sukusta/{folder} and …/addons appear here. "
+        f["help"] = ("Files in sukusta/{folder} and …/addons appear here. "
                      "Hold Ctrl/Cmd (or drag) to select several — they install one after another.")
     return f
 
@@ -78,7 +78,7 @@ TOOLS = [
     {
         "id": "clear_packs",
         "label": "Clear Pack Cache",
-        "description": ("Delete downloaded game packs (Download/sukusta/packs) to free storage. "
+        "description": ("Delete downloaded game packs (sukusta/packs) to free storage. "
                         "Missing packs re-download when you play."),
         "run": run_clear_packs,
         "fields": [_STOP],
@@ -154,7 +154,7 @@ TOOLS = [
         "id": "install_costume",
         "label": "Install Costume (zip)",
         "description": ("Install a costume add-on zip into the server database. Drop the zip into "
-                        "Download/sukusta/suit (or use the file picker), then pick it."),
+                        "sukusta/suit (or use the file picker), then pick it."),
         "run": run_costume,
         "options": options_for("costume"),
         "fields": [_addon("suit", multi=True), _BACKUP, _STOP, _RESTART],
@@ -163,7 +163,7 @@ TOOLS = [
         "id": "install_live",
         "label": "Install Live / Song (zip)",
         "description": ("Install a live (song) add-on zip into the server database. Drop the zip "
-                        "into Download/sukusta/live."),
+                        "into sukusta/live."),
         "run": run_live,
         "options": options_for("live"),
         "fields": [_addon("live"), _BACKUP, _STOP],
@@ -172,7 +172,7 @@ TOOLS = [
         "id": "install_card",
         "label": "Install Card (zip)",
         "description": ("Install a card add-on zip into the server database. Drop the zip into "
-                        "Download/sukusta/card."),
+                        "sukusta/card."),
         "run": run_card,
         "options": options_for("card"),
         "fields": [_addon("card"), _BACKUP, _STOP],
@@ -180,7 +180,7 @@ TOOLS = [
     {
         "id": "install_tower",
         "label": "Install Tower / DLP (zip)",
-        "description": "Install a tower / DLP add-on zip. Drop the zip into Download/sukusta/tower.",
+        "description": "Install a tower / DLP add-on zip. Drop the zip into sukusta/tower.",
         "run": run_tower,
         "options": options_for("tower"),
         "fields": [_addon("tower"), _BACKUP, _STOP],
@@ -189,7 +189,7 @@ TOOLS = [
         "id": "install_camera",
         "label": "Replace Live Camera Timeline (zip)",
         "description": ("Install a live camera / timeline add-on zip. Drop the zip into "
-                        "Download/sukusta/livetimeline."),
+                        "sukusta/livetimeline."),
         "run": run_camera,
         "options": options_for("camera"),
         "fields": [_addon("livetimeline", multi=True), _BACKUP, _STOP],
@@ -198,7 +198,7 @@ TOOLS = [
         "id": "install_db",
         "label": "Import DB SQL (.sql)",
         "description": ("Import a .sql patch into the master / user databases (advanced). Drop the "
-                        "file into Download/sukusta/sql."),
+                        "file into sukusta/sql."),
         "run": run_db,
         "options": options_for("db"),
         "fields": [_addon("sql"), _BACKUP, _STOP],

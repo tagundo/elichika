@@ -7,6 +7,7 @@ import random
 import sys
 import shutil
 import hashlib
+from sukusta_paths import installer_scan_path
 
 def clear_terminal():
     system = platform.system()
@@ -22,7 +23,7 @@ print("Specifically: outdated code, method creating dlp is copy paste not custom
 print("")
 confirm_script_card = input("Press Enter to Continue")
 
-modding_elichika_path = "assets/data/"
+modding_elichika_path = installer_scan_path("tower", "assets/data/")
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)

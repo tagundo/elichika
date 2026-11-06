@@ -6,6 +6,7 @@
 # reuses this script's exact encryption and SQL). Guide: docs/dance_live_timeline.md
 # This original script still works as-is for a single-timeline swap.
 import sqlite3
+from sukusta_paths import installer_scan_path, termux_storage_missing, use_cli_picker
 import os
 import zipfile
 import io
@@ -86,16 +87,10 @@ if not os.path.exists(check_json_config):
 def is_termux():
     return 'com.termux' in os.getenv('PREFIX', '')
 
-# Set folder path based on environment
-if is_termux():
-    modding_elichika_path = os.path.expanduser('~/storage/downloads/sukusta/livetimeline/')
-    termux_storage_chc = os.path.expanduser('~/storage/')
-    if not os.path.exists(termux_storage_chc):
-        print('Path is missing, please execute termux-setup-storage command and allow it')
-        sys.exit(1)
-else:
-    # Set a default or other path if not in Termux
-    modding_elichika_path = "assets/package/livetimeline/"
+modding_elichika_path = installer_scan_path("livetimeline", "assets/package/livetimeline/")
+if termux_storage_missing():
+    print('Path is missing, please execute termux-setup-storage command and allow it')
+    sys.exit(1)
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)
@@ -201,7 +196,7 @@ nested_path_batch = "assets/package/.nested/"
 shutil.rmtree(nested_path_batch, ignore_errors=True)
 
 # List all files in the directory with a ".zip" extension
-if is_termux():
+if use_cli_picker():
     zip_files = []
     for root, dirs, files in os.walk(modding_elichika_path):
         for file in files:
@@ -264,7 +259,7 @@ else:
     elif response is None:  # User clicked "Cancel"
         sys.exit(1)
 
-if is_termux():
+if use_cli_picker():
     zip_file_paths = [zip_file_path] # fix termux
     for zip_file_path_batch in zip_file_paths:
         open_and_check_zip(zip_file_path_batch)

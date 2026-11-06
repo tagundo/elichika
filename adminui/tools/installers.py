@@ -1,6 +1,6 @@
 """Adapters that run the interactive Developer-Menu tools (costume / live / card /
 tower / camera-timeline / db installers, and the JP dictionary swap) from the web
-UI **without modifying them**.
+UI through their numbered-file flows.
 
 These tools run their whole flow at module top level with input() prompts and
 exit(). Rather than refactor them, we drive them as-is:
@@ -15,9 +15,11 @@ exit(). Rather than refactor them, we drive them as-is:
   * a prompt-aware fake input() answers the rest (proceed / backup / platform);
   * the module is (re)imported so it executes end to end, stdout captured.
 
-This keeps the Termux CLI of each tool untouched.
+The apps select their own library with SUKUSTA_DIR; ordinary CLI paths remain
+available without pretending that a desktop process is running in Termux.
 """
 import builtins
+import hashlib
 import importlib
 import os
 import shutil
@@ -25,6 +27,7 @@ import sys
 
 from adminui.serverctl import installation_server, stop_server
 from adminui.tools.common import capture_stdout, ensure_repo_on_path
+from sukusta_paths import CLI_MODE_ENV, configured_root, library_path, resolve_library_alias
 
 # Shared, user-visible drop folder (the in-app file picker copies imports here).
 DROP_DIR = os.path.expanduser("~/storage/downloads/sukusta/addons")
@@ -49,13 +52,17 @@ INSTALLERS = {
 
 
 def _dirs(spec):
-    return [os.path.abspath(os.path.expanduser(s)) for s in spec["scans"]]
+    return [resolve_library_alias(s) for s in spec["scans"]]
 
 
 def _candidate_dirs(key):
     """Every folder a chosen file might already sit in: the shared addons drop
     folder plus the installer's own per-type folders (suit / live / ...)."""
-    return [os.path.abspath(os.path.expanduser(DROP_DIR))] + _dirs(INSTALLERS[key])
+    # An explicit app library wins even when the module was imported before the
+    # launcher selected it. DROP_DIR remains the legacy, patchable fallback.
+    drop = (library_path("addons") if configured_root() is not None
+            else os.path.abspath(os.path.expanduser(DROP_DIR)))
+    return [drop] + _dirs(INSTALLERS[key])
 
 
 def _locate(key, name):
@@ -142,21 +149,17 @@ def _reload(module_name):
     return importlib.import_module(module_name)
 
 
-def _force_termux_mode():
-    """These installers branch on is_termux() (== 'com.termux' in $PREFIX). Off
-    Termux they take a desktop path that `import tkinter` (absent in the app) and
-    pops a file dialog. We drive the Termux/CLI path instead (folder scan + fake
-    input), so spoof $PREFIX for the duration of the run. Returns a restore fn."""
-    had = "PREFIX" in os.environ
-    old = os.environ.get("PREFIX", "")
-    if "com.termux" not in old:
-        os.environ["PREFIX"] = "/data/data/com.termux/files/usr"
+def _force_cli_mode():
+    """Use numbered-file selection without spoofing an operating system."""
+    had = CLI_MODE_ENV in os.environ
+    old = os.environ.get(CLI_MODE_ENV, "")
+    os.environ[CLI_MODE_ENV] = "cli"
 
     def restore():
         if had:
-            os.environ["PREFIX"] = old
+            os.environ[CLI_MODE_ENV] = old
         else:
-            os.environ.pop("PREFIX", None)
+            os.environ.pop(CLI_MODE_ENV, None)
 
     return restore
 
@@ -171,23 +174,37 @@ def _addon_list(raw):
     return []
 
 
-def _install_one(job, key, spec, chosen, do_backup):
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _install_one(job, key, spec, chosen, do_backup, *, source_path=None, expected_sha256=None):
     """Install a single addon file. Returns True on success, False if the file
     couldn't be located (logged and skipped so a batch keeps going)."""
-    src = _locate(key, chosen)
+    # Viewer-created packages are already source-bound. They must never be
+    # resolved again by a basename that another drop folder could shadow.
+    src = source_path if source_path is not None else _locate(key, chosen)
     if not src:
         job.log(f"[{key}] SKIP {chosen}: not found in the drop folders")
         return False
+    if expected_sha256 is not None and _file_sha256(src) != expected_sha256:
+        raise ValueError("The selected costume package changed before installation.")
     scans = _dirs(spec)
     for d in scans:
         os.makedirs(d, exist_ok=True)
         dst = os.path.join(d, chosen)
         if os.path.abspath(src) != os.path.abspath(dst):
             shutil.copy2(src, dst)
+        if expected_sha256 is not None and _file_sha256(dst) != expected_sha256:
+            raise ValueError("The costume installer input does not match the saved Mod ZIP.")
 
     job.log(f"[{key}] installing {chosen}")
     restore_listing = _patched_listing(scans, chosen)
-    restore_env = _force_termux_mode()
+    restore_env = _force_cli_mode()
     real_input = builtins.input
     builtins.input = _Answers(do_backup)
     module = None
@@ -213,6 +230,8 @@ def _install_one(job, key, spec, chosen, do_backup):
         if installed < planned:
             raise RuntimeError(f"costume installer only installed {installed}/{planned} addons "
                                f"from {chosen}; check the log")
+    if expected_sha256 is not None and _file_sha256(src) != expected_sha256:
+        raise ValueError("The costume package changed during installation. Check the backup before restarting.")
     return True
 
 
@@ -274,6 +293,24 @@ def run_costume(job, params):
     return _run_installer(job, "costume", params)
 
 
+def run_costume_file(job, source_path, expected_sha256, *, restart_server=False):
+    """Install exactly a completed viewer package; not a public tool adapter."""
+    source_path = os.path.realpath(source_path)
+    if (not os.path.isfile(source_path) or not source_path.lower().endswith(".zip")
+            or not isinstance(expected_sha256, str) or len(expected_sha256) != 64):
+        raise ValueError("Choose a completed costume Mod ZIP.")
+    ensure_repo_on_path()
+    if job.should_stop():
+        raise ValueError("Costume installation was cancelled before writing.")
+    with installation_server(job.log, stop=True, restart=restart_server) as server:
+        job.progress(0, 1)
+        _install_one(job, "costume", INSTALLERS["costume"], os.path.basename(source_path), True,
+                     source_path=source_path, expected_sha256=expected_sha256)
+        server.restart_allowed = not job.should_stop()
+        job.progress(1, 1)
+    return "Costume added to the game."
+
+
 def run_live(job, params):
     return _run_installer(job, "live", params)
 
@@ -309,7 +346,7 @@ def run_dictionary(job, params):
     if params.get("stop_server", True):
         stop_server(job.log)
     job.log(f"[dictionary] swapping JP client text to: {lang}")
-    restore_env = _force_termux_mode()
+    restore_env = _force_cli_mode()
     real_input = builtins.input
     builtins.input = _Answers(False, lang=num)
     try:

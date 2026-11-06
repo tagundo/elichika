@@ -300,40 +300,63 @@ def _extract_one_to(x, resolver, staging, model_path, mm_row, label):
     return None
 
 
-def _composite_recolour(base_bundle, variant_bundle, out_path):
-    """Import the variant bundle's _cN textures onto the base model (keeping each
-    base texture's format). Returns the count imported. Prints (captured)."""
+def _composite_recolour(base_bundle, variant_bundle, out_path, *, attach_key=None, log=print):
+    """Composite original variant textures; optionally select an exact game key.
+
+    The Server-content caller retains its existing all-colour behavior. The 3D
+    game picker supplies m_suit_attach.attach_key and a bounded set of source
+    bundles, so another _cN can never silently replace the selected colour.
+    """
     _ensure_modtools_on_path()
+    base_bundle, out_path = map(os.fspath, (base_bundle, out_path))
+    variants = variant_bundle if isinstance(variant_bundle, (list, tuple)) else [variant_bundle]
     from webtools.tools.texture import ensure_astc_cli
     from webtools.core.tkstub import ensure_tk_stub
     ensure_astc_cli()
     ensure_tk_stub()
+    import hashlib
     import re
     import tempfile
     import shutil
     import UnityPy
     import texture_importer as ti
     cn = re.compile(r"_c\d+$", re.IGNORECASE)
-    env = UnityPy.load(variant_bundle)
+    if attach_key is not None and not re.fullmatch(r"c[1-9][0-9]{0,2}", attach_key):
+        raise ValueError("Invalid costume colour attachment.")
     tmp = tempfile.mkdtemp(prefix="irochi_tex_")
-    mapping = {}
+    mapping, signatures = {}, {}
     try:
-        for obj in env.objects:
-            if obj.type.name != "Texture2D":
-                continue
-            data = obj.read()
-            nm = getattr(data, "m_Name", "") or ""
-            png = os.path.join(tmp, cn.sub("", nm) + ".png")
-            try:
-                data.image.save(png)
-                mapping[cn.sub("", nm)] = png
-            except Exception as exc:  # noqa: BLE001
-                print(f"  ! variant texture {nm}: {exc}")
+        for variant in variants:
+            env = UnityPy.load(os.fspath(variant))
+            for obj in env.objects:
+                if obj.type.name != "Texture2D":
+                    continue
+                data = obj.read()
+                nm = getattr(data, "m_Name", "") or ""
+                if attach_key is not None and not nm.lower().endswith("_" + attach_key):
+                    continue
+                # Texture names are identifiers, not paths. Keep temporary PNGs
+                # inside their directory even for an edited/custom game pack.
+                png = os.path.join(tmp, hashlib.sha256(nm.encode("utf-8")).hexdigest() + ".png")
+                try:
+                    image = data.image
+                    key = cn.sub("", nm)
+                    signature = (image.size, hashlib.sha256(image.convert("RGBA").tobytes()).digest())
+                    if attach_key is not None and key in signatures and signatures[key] != signature:
+                        raise ValueError("The selected costume colour has conflicting textures.")
+                    image.save(png)
+                    mapping[key], signatures[key] = png, signature
+                except Exception as exc:  # noqa: BLE001
+                    if attach_key is not None:
+                        raise ValueError("A selected costume colour texture could not be decoded.") from exc
+                    log(f"  ! variant texture {nm}: {exc}")
         if not mapping:
             return 0
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
         imported, _skipped, _errors = ti.process_bundle(
-            base_bundle, out_path, lambda n: mapping.get(n), "Keep Original", print)
+            base_bundle, out_path, lambda n: mapping.get(n), "Keep Original", log)
+        if attach_key is not None and _errors:
+            raise ValueError("A selected costume colour texture could not be saved.")
         return imported
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

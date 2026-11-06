@@ -10,11 +10,13 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.text.Layout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -32,6 +34,7 @@ import androidx.webkit.WebViewFeature
 import com.google.android.material.tabs.TabLayout
 import org.json.JSONObject
 import java.io.File
+import kotlin.math.ceil
 
 /**
  * Thin shell UI. Everything the user can do is either a service action declared
@@ -62,6 +65,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var offlineAction: Button
     private var tabLayout: TabLayout? = null
     private var currentTab = 0
+    private var adaptiveHeader: LinearLayout? = null
+    private var serverControls: LinearLayout? = null
+    private var inlineHeader = false
+    private var headerReflowPending = false
+    private var headerDisposed = false
+    private var headerLayoutObserver: ViewTreeObserver.OnGlobalLayoutListener? = null
     // Bus also owns pending-start state, shared across resized/recreated windows.
 
     // Lazily-created WebViews for the three local web UIs.
@@ -137,6 +146,7 @@ class MainActivity : AppCompatActivity() {
             states.keySet().forEach { url -> states.getBundle(url)?.let { savedWebViews[url] = it } }
         }
         setupTabs(savedInstanceState?.getInt("current_tab", 0) ?: 0)
+        setupAdaptiveHeader()
         toggle.setOnClickListener { onToggle() }
 
         updateRunning(Bus.serverRunning)
@@ -277,6 +287,7 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         viewerFullscreen.reapply()
+        scheduleHeaderReflow()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -293,6 +304,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        headerDisposed = true
+        headerLayoutObserver?.let { observer ->
+            adaptiveHeader?.viewTreeObserver?.takeIf { it.isAlive }
+                ?.removeOnGlobalLayoutListener(observer)
+        }
+        headerLayoutObserver = null
         Bus.removeListener(this)
         viewerFullscreen.dispose()
         webViews.values.forEach { webView ->
@@ -335,6 +352,7 @@ class MainActivity : AppCompatActivity() {
         }
         preparationProgress.visibility = if (preparing ||
             (Bus.serverStarting && phase != AssetInstaller.PreparationPhase.FAILED)) View.VISIBLE else View.GONE
+        scheduleHeaderReflow()
         // If a web tab is showing the offline overlay and the server just came up,
         // swap the overlay for the (now reachable) page.
         if ((running || (currentTab >= 3 && PyServers.isStarted())) &&
@@ -515,6 +533,125 @@ class MainActivity : AppCompatActivity() {
         val index = selectedTab.coerceIn(tabs.indices)
         tl.getTabAt(index)?.select()
         showTab(index)
+    }
+
+    /** Keep both chrome views stable; only their measured arrangement changes. */
+    private fun setupAdaptiveHeader() {
+        val header = findViewById<LinearLayout>(R.id.app_header)
+        val navigation = requireNotNull(tabLayout)
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPaddingRelative(header.paddingStart, header.paddingTop, header.paddingEnd, header.paddingBottom)
+        }
+        // Preserve the server strip's contrast without putting the original
+        // tab labels/selected indicator on the primary-colored background.
+        val serverBackground = header.background
+        header.background = null
+        controls.background = serverBackground
+        val originalControls = (0 until header.childCount).map(header::getChildAt)
+        header.removeAllViews()
+        originalControls.forEach { controls.addView(it) }
+        (navigation.parent as ViewGroup).removeView(navigation)
+        header.setPadding(0, 0, 0, 0)
+        header.orientation = LinearLayout.VERTICAL
+        header.gravity = Gravity.CENTER_VERTICAL
+        header.addView(controls, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        header.addView(navigation, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        toggle.minimumHeight = maxOf(toggle.minimumHeight, headerDp(44))
+        navigation.minimumHeight = maxOf(navigation.minimumHeight, headerDp(44))
+        val strip = navigation.getChildAt(0) as? ViewGroup
+        strip?.let { group ->
+            for (index in 0 until group.childCount) {
+                val tab = group.getChildAt(index)
+                tab.minimumHeight = maxOf(tab.minimumHeight, headerDp(44))
+            }
+        }
+        adaptiveHeader = header
+        serverControls = controls
+        headerLayoutObserver = ViewTreeObserver.OnGlobalLayoutListener { scheduleHeaderReflow() }
+            .also { header.viewTreeObserver.addOnGlobalLayoutListener(it) }
+        scheduleHeaderReflow()
+    }
+
+    private fun headerDp(value: Int): Int = ceil(value * resources.displayMetrics.density.toDouble()).toInt()
+
+    private fun horizontalMargins(view: View): Int =
+        (view.layoutParams as? ViewGroup.MarginLayoutParams)?.let { it.leftMargin + it.rightMargin } ?: 0
+
+    private fun naturalHeaderTextWidth(view: TextView): Int {
+        val text = view.transformationMethod?.getTransformation(view.text, view) ?: view.text
+        val label = ceil(Layout.getDesiredWidth(text, view.paint).toDouble()).toInt() +
+            view.compoundPaddingLeft + view.compoundPaddingRight
+        val emMinimum = if (view.minEms > 0) view.minEms * view.lineHeight else 0
+        return maxOf(label, view.minimumWidth, view.minWidth.coerceAtLeast(0), emMinimum,
+            view.background?.minimumWidth ?: 0)
+    }
+
+    private fun headerTextViews(view: View): Sequence<TextView> = sequence {
+        if (view is TextView && view.visibility != View.GONE) yield(view)
+        if (view is ViewGroup) for (index in 0 until view.childCount) yieldAll(headerTextViews(view.getChildAt(index)))
+    }
+
+    private fun naturalTabWidth(tab: View): Int {
+        val label = headerTextViews(tab).firstOrNull { it.text.isNotEmpty() }
+            ?: return maxOf(headerDp(44), tab.minimumWidth, tab.measuredWidth)
+        var width = naturalHeaderTextWidth(label) + horizontalMargins(label)
+        var ancestor = label.parent
+        while (ancestor is View && ancestor !== tab) {
+            width += ancestor.paddingLeft + ancestor.paddingRight + horizontalMargins(ancestor)
+            ancestor = (ancestor as View).parent
+        }
+        return maxOf(headerDp(44), tab.minimumWidth,
+            width + tab.paddingLeft + tab.paddingRight) + horizontalMargins(tab)
+    }
+
+    private fun scheduleHeaderReflow() {
+        val header = adaptiveHeader ?: return
+        if (headerReflowPending || headerDisposed) return
+        headerReflowPending = true
+        header.postOnAnimation {
+            headerReflowPending = false
+            if (headerDisposed || isFinishing || isDestroyed) return@postOnAnimation
+            val navigation = tabLayout ?: return@postOnAnimation
+            val controls = serverControls ?: return@postOnAnimation
+            // ViewerFullscreen owns visibility. A resize must never restore or
+            // rearrange hidden chrome while its WebView fills the window.
+            if (header.visibility != View.VISIBLE || navigation.visibility != View.VISIBLE || header.width <= 0) return@postOnAnimation
+            val strip = navigation.getChildAt(0) as? ViewGroup ?: return@postOnAnimation
+            if (strip.childCount != tabs.size) return@postOnAnimation
+            val controlsWidth = controls.paddingLeft + controls.paddingRight +
+                (0 until controls.childCount).sumOf { index ->
+                    val child = controls.getChildAt(index)
+                    if (child.visibility == View.GONE) 0 else {
+                        val width = if (child is TextView) naturalHeaderTextWidth(child)
+                            else maxOf(child.layoutParams.width.coerceAtLeast(0), child.minimumWidth,
+                                child.background?.minimumWidth ?: 0)
+                        width + horizontalMargins(child)
+                    }
+                }
+            val tabsWidth = navigation.paddingLeft + navigation.paddingRight + strip.paddingLeft + strip.paddingRight +
+                (0 until strip.childCount).sumOf { naturalTabWidth(strip.getChildAt(it)) }
+            val gap = headerDp(8)
+            val fits = controlsWidth + gap + tabsWidth <= header.width - header.paddingLeft - header.paddingRight
+            if (fits == inlineHeader) return@postOnAnimation
+            inlineHeader = fits
+            header.orientation = if (fits) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            controls.layoutParams = LinearLayout.LayoutParams(
+                if (fits) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+            statusText.layoutParams = (statusText.layoutParams as LinearLayout.LayoutParams).apply {
+                width = if (fits) ViewGroup.LayoutParams.WRAP_CONTENT else 0
+                weight = if (fits) 0f else 1f
+            }
+            navigation.layoutParams = LinearLayout.LayoutParams(
+                if (fits) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, if (fits) 1f else 0f).apply {
+                marginStart = if (fits) gap else 0
+            }
+        }
     }
 
     private fun showTab(index: Int) {

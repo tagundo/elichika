@@ -187,7 +187,7 @@
   function verticalViewport(readPixels) {
     if (!parsedModel) throw new Error("The application's real loaded scene is unavailable");
     var selectors = ["#viewer-pose-basic", "#viewer-pose-preview", ".viewer-quality-choice",
-      "#viewer-expand", "#viewer-fullscreen", '[data-viewer-view="front"]', '[data-viewer-view="back"]',
+      "#viewer-expand", "#viewer-fullscreen", "#viewer-minimize", '[data-viewer-view="front"]', '[data-viewer-view="back"]',
       '[data-viewer-view="left"]', '[data-viewer-view="right"]', "#viewer-fit", "#viewer-info > summary"];
     var controls = selectors.map(function (selector) {
       var target = document.querySelector(selector);

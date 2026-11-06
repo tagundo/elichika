@@ -46,6 +46,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:tabMode="scrollable"
+        app:tabMinWidth="44dp"
+        app:tabGravity="start"
         xmlns:app="http://schemas.android.com/apk/res-auto" />
 
     <FrameLayout
