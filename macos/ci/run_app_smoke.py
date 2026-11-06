@@ -168,12 +168,28 @@ def check(app, output, relocation):
     require(not app.exists() and relocation.is_dir(), "App relocation must remove the original absolute path")
     second = launch(relocation, output, "relocated-relaunch")
     check_zip_edit_report(second, fixture)
+    first_panel = first.get("viewer_panel_width_persistence", {})
+    second_panel = second.get("viewer_panel_width_persistence", {})
+    require(240 <= first_panel.get("committed", 0) <= 640
+            and first_panel.get("native_stored") == first_panel["committed"]
+            and second_panel.get("restored_on_relaunch") is True
+            and second_panel.get("previous_expected") == first_panel["committed"],
+            "Adjustment panel width must persist through a fresh native WebView and relocated app relaunch")
+    first_files = first.get("viewer_files_width_persistence", {})
+    second_files = second.get("viewer_files_width_persistence", {})
+    require(160 <= first_files.get("committed", 0) <= 360
+            and first_files.get("native_stored") == first_files["committed"]
+            and second_files.get("restored_on_relaunch") is True
+            and second_files.get("previous_expected") == first_files["committed"],
+            "File selection width must persist across native WebView origins and app relocation")
     require(sha256(Path(fixture["zip"])) == fixture["zip_sha256"], "Relocated relaunch changed the input ZIP")
     value = {"status": "PASS_FINAL_APP_LAUNCH_RELOCATION_AND_RELAUNCH",
              "app": str(relocation), "no_host_python_or_homebrew_path": True,
              "readonly_app_signature_preserved": True,
              "original_app_path_removed": True,
              "fractional_zip_input": fixture,
+             "viewer_panel_width_persisted_across_relaunch": True,
+             "viewer_files_width_persisted_across_relaunch": True,
              "space_and_unicode_path": " " in str(relocation) and any(ord(char) > 127 for char in str(relocation)),
              "first": first, "relocated": second}
     require(value["space_and_unicode_path"], "Relocation test needs spaces and a non-ASCII path")

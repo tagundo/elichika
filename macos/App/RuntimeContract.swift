@@ -120,7 +120,7 @@ enum IPAddress {
 }
 
 struct NativeRequest: Decodable {
-    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage }
+    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth }
     let id: String
     let action: Action
     let multiple: Bool?
@@ -129,6 +129,7 @@ struct NativeRequest: Decodable {
     let path: String?
     let enabled: Bool?
     let language: String?
+    let width: Int?
 
     static func parse(_ body: Any) throws -> NativeRequest {
         guard JSONSerialization.isValidJSONObject(body) else { throw NativeError.invalidMessage }
@@ -139,6 +140,11 @@ struct NativeRequest: Decodable {
               request.id.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_:.")).contains($0) }),
               (request.extensions?.count ?? 0) <= 32, (request.title?.utf8.count ?? 0) <= 1024,
               (request.path?.utf8.count ?? 0) <= 16_384 else { throw NativeError.invalidMessage }
+        if request.action == .setViewerPanelWidth {
+            guard let width = request.width, width == 0 || (240...640).contains(width) else { throw NativeError.invalidMessage }
+        } else if request.action == .setViewerFilesWidth {
+            guard let width = request.width, width == 0 || (160...360).contains(width) else { throw NativeError.invalidMessage }
+        }
         return request
     }
 }

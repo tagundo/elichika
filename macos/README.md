@@ -48,6 +48,13 @@ retains the same Node Scaling / Mesh Baker methods and source-bound recipe
 format on both platforms. Saved result inspection and re-editing from preserved
 originals are shared implementations.
 
+Pose/body and expression controls have separate collapsible panels. Common body
+parts use a selection list. In a wide window, drag either boundary beside the 3D
+preview to share the width between file selection, the model and its controls.
+Both boundaries support left/right arrow keys. Home or **Default layout** in the
+file selection area restores both widths. macOS remembers the chosen widths
+across app launches independently of the private WebKit session.
+
 Quitting the app stops its owned Python runtime and Go child. It does not find
 or kill unrelated servers by executable name.
 

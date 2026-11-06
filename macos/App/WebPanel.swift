@@ -82,8 +82,12 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     }
 
     private static func platformScript(language: String) -> WKUserScript {
+        let storedWidth = UserDefaults.standard.integer(forKey: "viewerPanelWidth")
+        let storedFilesWidth = UserDefaults.standard.integer(forKey: "viewerFilesWidth")
         let metadata: [String: Any] = ["platform": "macos", "version": 1,
-            "capabilities": ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage"], "language": language]
+            "capabilities": ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage", "setViewerPanelWidth", "setViewerFilesWidth"],
+            "language": language, "viewerPanelWidth": (240...640).contains(storedWidth) ? storedWidth : 0,
+            "viewerFilesWidth": (160...360).contains(storedFilesWidth) ? storedFilesWidth : 0]
         let json = String(decoding: try! JSONSerialization.data(withJSONObject: metadata), as: UTF8.self)
         return WKUserScript(source: "window.ElichikaDesktop=" + json + ";", injectionTime: .atDocumentStart, forMainFrameOnly: true)
     }
@@ -129,6 +133,16 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
                 case .setLanguage:
                     guard let language = request.language, ["en", "ko", "ja"].contains(language) else { throw NativeError.invalidMessage }
                     model.setLanguage(language); result = ["language": language]
+                case .setViewerPanelWidth:
+                    guard let width = request.width else { throw NativeError.invalidMessage }
+                    if width == 0 { UserDefaults.standard.removeObject(forKey: "viewerPanelWidth") }
+                    else { UserDefaults.standard.set(width, forKey: "viewerPanelWidth") }
+                    result = ["width": width]
+                case .setViewerFilesWidth:
+                    guard let width = request.width else { throw NativeError.invalidMessage }
+                    if width == 0 { UserDefaults.standard.removeObject(forKey: "viewerFilesWidth") }
+                    else { UserDefaults.standard.set(width, forKey: "viewerFilesWidth") }
+                    result = ["width": width]
                 }
                 reply(id: request.id, result: result)
             } catch { reply(id: request.id, error: error.localizedDescription) }

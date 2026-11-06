@@ -75,6 +75,66 @@ final class NativeSmokeTest {
             try await loaded(webView)
             report["native_file_bridge_and_authorization"] = true
             try checkpoint("model-rendered")
+            let panelPreferenceFile = directory.appendingPathComponent("viewer-panel-width-expected.txt")
+            let expectedPanelWidth = (try? String(contentsOf: panelPreferenceFile, encoding: .utf8))
+                .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            let panelBefore = try await object(webView, """
+                var handle=document.getElementById('viewer-panel-resizer');
+                return JSON.stringify({metadata:ElichikaPlatform.info().viewerPanelWidth,
+                  actual:document.getElementById('viewer-control-panel').getBoundingClientRect().width,
+                  enabled:!!handle&&!handle.hidden,min:Number(handle.getAttribute('aria-valuemin')),
+                  max:Number(handle.getAttribute('aria-valuemax'))});
+                """)
+            report["viewer_panel_before"] = panelBefore
+            try checkpoint("viewer-panel-preference-observed")
+            try require(panelBefore["enabled"] as? Bool == true, "The desktop adjustment panel must be resizable.")
+            if let expectedPanelWidth {
+                try require(panelBefore["metadata"] as? Int == expectedPanelWidth &&
+                            UserDefaults.standard.integer(forKey: "viewerPanelWidth") == expectedPanelWidth &&
+                            abs((panelBefore["actual"] as? Double ?? 0) - Double(expectedPanelWidth)) < 1,
+                            "The adjustment panel width must survive an ordinary quit and relocated relaunch.")
+            }
+            let currentPanelWidth = Int((panelBefore["actual"] as? Double ?? 0).rounded())
+            let maximumPanelWidth = panelBefore["max"] as? Int ?? 0
+            let direction = currentPanelWidth + 16 <= maximumPanelWidth ? "ArrowLeft" : "ArrowRight"
+            let requestedPanelWidth = currentPanelWidth + (direction == "ArrowLeft" ? 16 : -16)
+            _ = try await js(webView, "var handle=document.getElementById('viewer-panel-resizer');handle.focus();handle.dispatchEvent(new KeyboardEvent('keydown',{key:'\(direction)',bubbles:true,cancelable:true}));return true;")
+            try await waitJS(webView, "the resized adjustment panel", timeout: 10, expression:
+                "Math.abs(document.getElementById('viewer-control-panel').getBoundingClientRect().width-\(requestedPanelWidth))<1")
+            try await wait("the native panel width preference", timeout: 10) {
+                UserDefaults.standard.integer(forKey: "viewerPanelWidth") == requestedPanelWidth
+            }
+            try String(requestedPanelWidth).write(to: panelPreferenceFile, atomically: true, encoding: .utf8)
+            report["viewer_panel_width_persistence"] = ["previous_expected": expectedPanelWidth ?? 0,
+                "restored_on_relaunch": expectedPanelWidth != nil, "committed": requestedPanelWidth,
+                "native_stored": UserDefaults.standard.integer(forKey: "viewerPanelWidth")]
+            try checkpoint("viewer-panel-width-persisted")
+            let filesPreferenceFile = directory.appendingPathComponent("viewer-files-width-expected.txt")
+            let expectedFilesWidth = (try? String(contentsOf: filesPreferenceFile, encoding: .utf8))
+                .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            let filePanelBefore = try await object(webView, """
+                var handle=document.getElementById('viewer-files-resizer');
+                return JSON.stringify({metadata:ElichikaPlatform.info().viewerFilesWidth,
+                  resizerVisible:!!handle&&!handle.hidden,viewportWidth:window.innerWidth});
+                """)
+            report["viewer_files_before"] = filePanelBefore
+            try checkpoint("viewer-files-preference-observed")
+            if let expectedFilesWidth {
+                try require(filePanelBefore["metadata"] as? Int == expectedFilesWidth &&
+                            UserDefaults.standard.integer(forKey: "viewerFilesWidth") == expectedFilesWidth,
+                            "The file selection width must survive a fresh private WebView and app relocation.")
+            }
+            let requestedFilesWidth = expectedFilesWidth == 224 ? 240 : 224
+            _ = try await js(webView, "await ElichikaPlatform.request('setViewerFilesWidth',{width:\(requestedFilesWidth)});return true;")
+            try await wait("the native file panel width preference", timeout: 10) {
+                UserDefaults.standard.integer(forKey: "viewerFilesWidth") == requestedFilesWidth
+            }
+            try String(requestedFilesWidth).write(to: filesPreferenceFile, atomically: true, encoding: .utf8)
+            report["viewer_files_width_persistence"] = ["previous_expected": expectedFilesWidth ?? 0,
+                "restored_on_relaunch": expectedFilesWidth != nil, "committed": requestedFilesWidth,
+                "native_stored": UserDefaults.standard.integer(forKey: "viewerFilesWidth"),
+                "scope": "Native preference bridge and relaunch; the file sidebar appears only in a wide viewport"]
+            try checkpoint("viewer-files-width-persisted")
             let baseline = try await vertices(webView)
             _ = try await js(webView, "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-node-editor').open=true;document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.boneInput('LeftUpLeg','scale','X',1.17);ViewerRigQa.boneInput('LeftUpLeg','scale','Y',1.234567);ViewerRigQa.boneInput('LeftUpLeg','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','mesh','change');document.getElementById('viewer-editor-node-tab').click();ViewerRigQa.boneInput('BreastSize','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','node','change');document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('LeftUpLeg'),'change');return true;")
             let fractionalControls = try await object(webView, """
