@@ -344,6 +344,136 @@
                 }
             }
         }
+        // Separate typed scroll observations. Existing widget geometry and hit
+        // testing above stay unchanged; these are not button aliases.
+        function collectScrollViews() {
+            report.scrollViews = [];
+            report.scrollDiagnostics = {schema: 1, status: "UNAVAILABLE",
+                limitation: "Structural geometry only; native raycast/occlusion and successful scrolling are not asserted"};
+            const owned = [];
+            const isType = (cls, name) => {
+                for (let depth = 0; cls != null && depth < 64; depth++, cls = cls.parent) if (cls.fullName === name) return true;
+                return false;
+            };
+            const present = object => nullable(object) != null;
+            const goActive = component => call(call(component, "get_gameObject"), "get_activeInHierarchy") === true;
+            const get = (component, cls) => nullable(call(component, "get_gameObject").method("GetComponent", 1).overload("System.Type").invoke(cls.type.object));
+            const keep = array => {
+                owned.push(new Il2Cpp.Object(array.handle).ref(false));
+                return array;
+            };
+            const finite = values => values.every(value => typeof value === "number" && Number.isFinite(value));
+            try {
+                const scrollClass = findClass("UnityEngine.UI.ScrollRect"), barClass = findClass("UnityEngine.UI.Scrollbar");
+                const graphicClass = findClass("UnityEngine.UI.Graphic"), groupClass = findClass("UnityEngine.CanvasGroup");
+                const maskClasses = [findClass("UnityEngine.UI.Mask"), findClass("UnityEngine.UI.RectMask2D")];
+                if (![scrollClass, barClass, graphicClass, groupClass, ...maskClasses].every(Boolean)) throw Error("Missing scroll metadata");
+                const modalOwners = [], modalIds = new Set();
+                for (const name of ["LLAS.Scene.FilterSorter.FilterSorterPopup", "LLAS.Scene.FilterSorter.CardFilterSorterPopup", "LLAS.SuitChangePopup"]) {
+                    const cls = findClass(name);
+                    if (cls == null || !isType(cls, "UnityEngine.MonoBehaviour")) continue;
+                    const owners = keep(find(cls));
+                    if (owners.length > 64) throw Error("Modal bound exceeded");
+                    for (let i = 0; i < owners.length; i++) {
+                        const owner = owners.get(i);
+                        if (!active(owner) || modalIds.has(id(owner))) continue;
+                        modalIds.add(id(owner));
+                        modalOwners.push({id: id(owner), gameObjectId: id(call(owner, "get_gameObject")), class: owner.class.fullName});
+                    }
+                }
+                function identity(transform) {
+                    if (!present(transform) || !isType(transform.class, "UnityEngine.RectTransform")) throw Error("RectTransform required");
+                    const go = call(transform, "get_gameObject"), canvas = parentComponent(go, Canvas);
+                    if (canvas == null) throw Error("Canvas required");
+                    const rootCanvas = call(canvas, "get_rootCanvas");
+                    return {id: id(transform), gameObjectId: id(go), ancestorIds: ancestors(transform),
+                        active: goActive(transform), canvasId: id(rootCanvas)};
+                }
+                function clipping(transform) {
+                    const masks = [], groups = [];
+                    let current = transform, ignoreGroups = false;
+                    for (let depth = 0; present(current) && depth < 64; depth++) {
+                        for (const cls of maskClasses) {
+                            const mask = get(current, cls);
+                            if (mask != null && active(mask)) masks.push({id: id(mask), class: cls.fullName, geometry: geometry(mask)});
+                        }
+                        const group = get(current, groupClass);
+                        if (!ignoreGroups && group != null && active(group)) {
+                            const alpha = call(group, "get_alpha");
+                            if (!finite([alpha])) throw Error("Invalid group alpha");
+                            const item = {id: id(group), alpha, interactable: call(group, "get_interactable"),
+                                blocksRaycasts: call(group, "get_blocksRaycasts"), ignoreParentGroups: call(group, "get_ignoreParentGroups")};
+                            groups.push(item);
+                            if (item.ignoreParentGroups === true) ignoreGroups = true;
+                        }
+                        current = nullable(call(current, "get_parent"));
+                    }
+                    if (present(current)) throw Error("Clipping ancestor bound exceeded");
+                    return {verified: true, masks, groups};
+                }
+                function visibleRect(transform) {
+                    return {...identity(transform), geometry: geometry(transform), clipping: clipping(transform)};
+                }
+                const scrolls = keep(find(scrollClass));
+                if (scrolls.length > 128) throw Error("Scroll view bound exceeded");
+                for (let i = 0; i < scrolls.length; i++) {
+                    const scroll = scrolls.get(i);
+                    if (!active(scroll)) continue;
+                    const row = {id: id(scroll), class: scroll.class.fullName, nativeType: "UnityEngine.UI.ScrollRect",
+                        active: true, gameObjectId: id(call(scroll, "get_gameObject")),
+                        ancestorIds: ancestors(call(scroll, "get_transform")), scrollbars: []};
+                    report.scrollViews.push(row);
+                    try {
+                        row.horizontal = call(scroll, "get_horizontal");
+                        row.vertical = call(scroll, "get_vertical");
+                        row.movementType = number(call(scroll, "get_movementType"));
+                        const viewport = call(scroll, "get_viewport"), content = call(scroll, "get_content");
+                        row.viewport = visibleRect(viewport);
+                        row.content = identity(content);
+                        row.content.localRect = rect(call(content, "get_rect"));
+                        if (!finite(row.content.localRect) || row.content.localRect[2] <= 0 || row.content.localRect[3] <= 0) throw Error("Invalid content rect");
+                        const anchored = content.tryMethod("get_anchoredPosition", 0);
+                        if (anchored != null) {
+                            const value = anchored.invoke();
+                            row.content.anchoredPosition = ["x", "y"].map(axis => Number(value.field(axis).value));
+                            if (!finite(row.content.anchoredPosition)) throw Error("Invalid content position");
+                        }
+                        row.modalOwners = modalOwners.filter(owner => row.gameObjectId === owner.gameObjectId || row.ancestorIds.includes(owner.gameObjectId));
+                        for (const [binding, getter] of [["verticalScrollbar", "get_verticalScrollbar"], ["horizontalScrollbar", "get_horizontalScrollbar"]]) {
+                            const bar = nullable(call(scroll, getter));
+                            if (bar == null) continue;
+                            const item = {id: id(bar), class: bar.class.fullName, nativeType: "UnityEngine.UI.Scrollbar",
+                                ownerScrollRectId: row.id, binding, active: active(bar)};
+                            row.scrollbars.push(item);
+                            try {
+                                if (!isType(bar.class, "UnityEngine.UI.Scrollbar")) throw Error("Unexpected scrollbar type");
+                                item.gameObjectId = id(call(bar, "get_gameObject"));
+                                item.ancestorIds = ancestors(call(bar, "get_transform"));
+                                item.geometry = geometry(bar);
+                                item.interactable = call(bar, "IsInteractable");
+                                item.direction = number(call(bar, "get_direction"));
+                                item.value = call(bar, "get_value");
+                                item.size = call(bar, "get_size");
+                                const handle = call(bar, "get_handleRect");
+                                item.handle = visibleRect(handle);
+                                const track = nullable(call(handle, "get_parent"));
+                                item.track = visibleRect(track);
+                                item.handle.parentTransformId = id(track);
+                                const graphic = get(handle, graphicClass);
+                                if (graphic == null) throw Error("Handle graphic absent");
+                                item.handle.graphic = {id: id(graphic), class: graphic.class.fullName, nativeType: "UnityEngine.UI.Graphic", gameObjectId: id(call(graphic, "get_gameObject")),
+                                    active: active(graphic), raycastTarget: call(graphic, "get_raycastTarget"), geometry: geometry(graphic)};
+                                item.verified = true;
+                            } catch (_) { item.refusal = "SCROLLBAR_PROOF_UNAVAILABLE"; }
+                        }
+                        row.verified = true;
+                    } catch (_) { row.refusal = "SCROLL_VIEW_PROOF_UNAVAILABLE"; }
+                }
+                report.scrollDiagnostics.status = "CAPTURED";
+            } catch (_) { report.scrollDiagnostics.refusal = "SCROLL_METADATA_OR_GEOMETRY_UNAVAILABLE"; }
+            finally { for (const handle of owned.reverse()) handle.free(); }
+        }
+        collectScrollViews();
         // Exact UI-reference fields from the original GL APK metadata. Read-only:
         // no navigation methods, UI callbacks, setters, model or account fields.
         function attachSemanticReferences() {

@@ -1,4 +1,4 @@
-# Original-game scene validation, second lane
+# Original-game scene validation with measured scrollbar input
 
 This QA branch does not publish a release or implement the three-role mod format in the product. The frozen public Rina bundles and publication adapter remain unchanged.
 
@@ -14,6 +14,10 @@ Use normal input and freshly measured widgets throughout:
 4. Enter the real Custom MV deck, verify type 2 and Rina member 209 at position 1 using split suit `912093017`. Use normal popup confirmation for board view 1 and bare view 2. Run both actual MVs, then the board comparison suit `912093018`, and return to HOME.
 5. Retain actual route timestamps, fresh UI, safe synthetic state and native initialization/delayed snapshots. The strict scene auditor still requires every target case and the baseline initialization-cache comparison. Do not substitute another song, cast, current fixture label or prefab co-load for these cases.
 
+Run `42342653830` verified strict provider onboarding and an actual bright HOME with the active Rina model at the target scales. It ended with `HOST_STOP`, no observer errors, the same owned game PID alive and no owned crash captured. MV remained incomplete: two normal button-endpoint swipes (400ms and 200ms) left the filter geometry unchanged, and the reader exposed no scrollbar input target. An 800ms gesture was not tested. Static drag method names do not establish the cause of the failed scrolling.
+
+This isolated branch adds typed, read-only ScrollRect and Scrollbar geometry and a bounded normal ADB handle drag. Use only the current owner's actual visible handle and track after strict identity, ancestry, interactability, raycast, canvas, clipping and overlap checks. Top and bottom refer to the physical track on the screen; report the native direction separately. Refuse missing or ambiguous references and handles with no travel. Do not write scroll positions or preferences, invoke native event handlers, invent button aliases or relax the existing button geometry checks.
+
 The earlier tutorial-popup SIGSEGV remains unresolved. This lane captures only the owned reference-game PID/package during its launch window: UTC logcat plus at most four bounded text tombstones, 64 total frames, safe library basenames including `memfd:frida-agent-64.so`, and relative PC offsets. Raw logs, registers, memory dumps, authentication data and arbitrary paths are not persisted. Per-round reports and the final check distinguish incomplete capture, an owned crash, a restarted PID and unrelated system failures.
 
-The observer, UI reader, model bytes and scene/physics checks remain frozen; the auditor's only changed literal is the approved provider APK hash. Android13 execution does not establish iOS runtime behavior or a complete physics trajectory.
+The observer, model bytes and scene/physics checks remain frozen. The UI reader and input protocol gain only the separately reviewed scrollbar coverage. The auditor's only change from the original APK10 lane remains the approved provider APK hash. Android13 execution does not establish iOS runtime behavior or a complete physics trajectory.

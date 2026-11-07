@@ -18,9 +18,9 @@ def main():
     parser.add_argument("--bridge", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--stop-marker", type=Path, required=True)
-    parser.add_argument("--seconds", type=int, default=3300)
+    parser.add_argument("--seconds", type=int, default=5400)
     args = parser.parse_args()
-    assert 30 <= args.seconds <= 3300
+    assert 30 <= args.seconds <= 5400
     args.output.mkdir(parents=True, exist_ok=True)
     assert not any((args.output / name).exists() for name in ("ready.json", "summary.json", "events.jsonl")), "Observer requires fresh owned evidence paths"
     assert not args.stop_marker.exists(), "Observer stop marker already exists"

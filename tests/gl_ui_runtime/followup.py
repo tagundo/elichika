@@ -69,6 +69,7 @@ def validate_command(command, run_id, sequence):
     action = command.get("action")
     base = {"run_id", "sequence", "action"}
     allowed = {"capture": base, "close": base, "back": base, "repair_scene_fixture": base,
+               "drag_scrollbar": base | {"scroll_rect_id", "scrollbar_id", "expected_viewport_bounds", "expected_handle_bounds", "expected_track_bounds", "towards", "duration_ms"},
                "swipe_widgets": base | {"from_widget", "to_widget", "duration_ms"},
                "tap_widget": base | {"widget_id", "expected_class", "expected_bounds", "expected_label"}}
     if not isinstance(action, str) or action not in allowed or set(command) - allowed[action]:
@@ -76,6 +77,13 @@ def validate_command(command, run_id, sequence):
     required = allowed[action] - {"expected_label"}
     if not required <= set(command):
         raise Refused("missing_command_field")
+    if action == "drag_scrollbar":
+        if any(type(command[key]) is not int or command[key] == 0 for key in ("scroll_rect_id", "scrollbar_id")):
+            raise Refused("invalid_scroll_identity")
+        for key in ("expected_viewport_bounds", "expected_handle_bounds", "expected_track_bounds"):
+            rectangle(command[key])
+        if command["towards"] not in ("top", "bottom") or type(command["duration_ms"]) is not int or not 200 <= command["duration_ms"] <= 800:
+            raise Refused("invalid_scroll_drag")
     if action == "swipe_widgets":
         if type(command["duration_ms"]) is not int or not 200 <= command["duration_ms"] <= 800:
             raise Refused("invalid_swipe_duration")
@@ -256,6 +264,148 @@ def select_widget(tree, command):
         result.update(triangle_proof_kind=area["verifiedTriangleHitPoint"]["kind"],
                       shape_verification_only=True, proof_original_raycast_invoked=False, proof_ancestor_filters_checked=False)
     return result
+
+
+def scroll_objects(tree, scroll_id, scrollbar_id):
+    if not isinstance(tree.get("scrollViews"), list) or len(tree["scrollViews"]) > 128 or any(not isinstance(row, dict) or not isinstance(row.get("scrollbars"), list) for row in tree["scrollViews"]):
+        raise Refused("typed_scroll_views_unavailable")
+    rows = [row for row in tree.get("scrollViews", []) if row.get("id") == scroll_id]
+    if len(rows) != 1:
+        raise Refused("scroll_owner_not_unique")
+    bars = [bar for row in tree.get("scrollViews", []) for bar in row.get("scrollbars", []) if bar.get("id") == scrollbar_id]
+    if len(bars) != 1 or bars[0].get("ownerScrollRectId") != scroll_id or bars[0] not in rows[0].get("scrollbars", []):
+        raise Refused("scrollbar_owner_not_unique")
+    return rows[0], bars[0]
+
+
+def scroll_state(tree, scroll_id, scrollbar_id):
+    if not isinstance(tree, dict) or tree.get("status") != "SNAPSHOT" or tree.get("game_apk_sha256") != smoke.GAME_SHA:
+        raise Refused("fresh_snapshot_unverified")
+    row, bar = scroll_objects(tree, scroll_id, scrollbar_id)
+    if row.get("verified") is not True or bar.get("verified") is not True or type(bar.get("value")) not in (int, float) or not math.isfinite(bar["value"]):
+        raise Refused("scroll_state_unavailable")
+    return {"scroll_rect_id": row["id"], "scrollbar_id": bar["id"], "value": bar.get("value"),
+            "handle_bounds": rectangle(bar.get("handle", {}).get("geometry", {}).get("bounds")),
+            "content_anchored_position": row.get("content", {}).get("anchoredPosition")}
+
+
+def select_scrollbar(tree, command):
+    """Normal captured-handle drag toward the physical screen track top/bottom."""
+    if tree.get("status") != "SNAPSHOT" or tree.get("game_apk_sha256") != smoke.GAME_SHA:
+        raise Refused("fresh_snapshot_unverified")
+    row, bar = scroll_objects(tree, command["scroll_rect_id"], command["scrollbar_id"])
+    if (row.get("nativeType") != "UnityEngine.UI.ScrollRect" or row.get("verified") is not True or row.get("refusal") or row.get("active") is not True
+            or row.get("vertical") is not True or bar.get("nativeType") != "UnityEngine.UI.Scrollbar"
+            or bar.get("verified") is not True or bar.get("refusal") or bar.get("active") is not True or bar.get("interactable") is not True
+            or bar.get("binding") != "verticalScrollbar" or bar.get("direction") not in (2, 3)):
+        raise Refused("typed_scrollbar_unavailable")
+    if any(type(bar.get(key)) not in (int, float) or not math.isfinite(bar[key]) for key in ("size", "value")) or not 0 < bar["size"] < 1 or not 0 <= bar["value"] <= 1:
+        raise Refused("scrollbar_has_no_handle_travel")
+    view = rectangle(tree.get("gameViewBounds"))
+    viewport, content, handle, track = (row.get("viewport", {}), row.get("content", {}), bar.get("handle", {}), bar.get("track", {}))
+    if any(not isinstance(part, dict) or type(part.get("id")) is not int or not part["id"] or type(part.get("gameObjectId")) is not int or not part["gameObjectId"]
+           or not isinstance(part.get("ancestorIds"), list) or len(part["ancestorIds"]) > 64
+           or any(type(value) is not int for value in part["ancestorIds"]) for part in (row, content, viewport, bar, handle, track)):
+        raise Refused("scroll_part_identity_invalid")
+    modal = row.get("modalOwners", [])
+    if not isinstance(modal, list) or len(modal) != 1 or not isinstance(modal[0], dict) or modal[0].get("class") not in {"LLAS.Scene.FilterSorter.FilterSorterPopup", "LLAS.Scene.FilterSorter.CardFilterSorterPopup", "LLAS.SuitChangePopup"}:
+        raise Refused("scroll_modal_owner_unverified")
+    owner = modal[0].get("gameObjectId")
+    if type(owner) is not int or not owner:
+        raise Refused("scroll_modal_owner_unverified")
+
+    def belongs(part, object_id):
+        return part.get("gameObjectId") == object_id or object_id in part.get("ancestorIds", [])
+
+    if any(not belongs(part, owner) for part in (row, viewport, content, bar, handle, track)):
+        raise Refused("scroll_part_outside_modal")
+    canvas = viewport.get("canvasId")
+    if type(canvas) is not int or not canvas or any(part.get("canvasId", part.get("geometry", {}).get("canvasId")) != canvas for part in (content, handle, track, bar)):
+        raise Refused("scroll_canvas_mismatch")
+    if content.get("active") is not True or handle.get("parentTransformId") != track.get("id") or not belongs(handle, track.get("gameObjectId")) or not belongs(track, bar.get("gameObjectId")):
+        raise Refused("scroll_handle_track_unowned")
+
+    def contains(outer, inner):
+        return outer[0] - .1 <= inner[0] and outer[1] - .1 <= inner[1] and inner[2] <= outer[2] + .1 and inner[3] <= outer[3] + .1
+
+    def measured(part):
+        geometry = part.get("geometry", {})
+        if not isinstance(geometry, dict):
+            raise Refused("scroll_geometry_unavailable")
+        bounds = rectangle(geometry.get("bounds"))
+        if geometry.get("canvasId") != canvas or geometry.get("clampedToGameView") is not False or not contains(view, bounds):
+            raise Refused("scroll_part_clipped")
+        return bounds
+
+    def checked(part):
+        bounds = measured(part)
+        proof = part.get("clipping", {})
+        if part.get("active") is not True or not isinstance(proof, dict) or proof.get("verified") is not True or any(not isinstance(proof.get(key), list) or len(proof[key]) > 128 for key in ("masks", "groups")):
+            raise Refused("scroll_clip_proof_unavailable")
+        for mask in proof.get("masks", []):
+            if not isinstance(mask, dict) or not contains(measured(mask), bounds):
+                raise Refused("scroll_part_masked")
+        for group in proof.get("groups", []):
+            if not isinstance(group, dict) or group.get("interactable") is not True or group.get("blocksRaycasts") is not True or type(group.get("alpha")) not in (int, float) or not math.isfinite(group["alpha"]) or not 0 < group["alpha"] <= 1:
+                raise Refused("scroll_canvas_group_blocks_input")
+        return bounds
+
+    viewport_bounds, handle_bounds, track_bounds = checked(viewport), checked(handle), checked(track)
+    measured(bar)
+    if not contains(track_bounds, handle_bounds):
+        raise Refused("scroll_handle_outside_track")
+    graphic = handle.get("graphic", {})
+    if not isinstance(graphic, dict) or graphic.get("nativeType") != "UnityEngine.UI.Graphic" or graphic.get("active") is not True or graphic.get("raycastTarget") is not True or graphic.get("gameObjectId") != handle.get("gameObjectId") or any(abs(a - b) > .1 for a, b in zip(measured(graphic), handle_bounds)):
+        raise Refused("scroll_handle_raycast_unverified")
+    for actual, key in ((viewport_bounds, "expected_viewport_bounds"), (handle_bounds, "expected_handle_bounds"), (track_bounds, "expected_track_bounds")):
+        if any(abs(a - b) > 1 for a, b in zip(actual, command[key])):
+            raise Refused("scroll_geometry_changed")
+    start = [round((handle_bounds[0] + handle_bounds[2]) / 2), round((handle_bounds[1] + handle_bounds[3]) / 2)]
+    half_handle = (handle_bounds[3] - handle_bounds[1]) / 2
+    end = [start[0], math.ceil(track_bounds[1] + half_handle + 1) if command["towards"] == "top" else math.floor(track_bounds[3] - half_handle - 1)]
+
+    def inside(point, bounds):
+        return bounds[0] < point[0] < bounds[2] and bounds[1] < point[1] < bounds[3]
+
+    if not inside(start, handle_bounds) or not inside(start, track_bounds) or not inside(end, track_bounds) or abs(end[1] - start[1]) < 44:
+        raise Refused("scroll_drag_has_insufficient_travel")
+    for other_row in tree.get("scrollViews", []):
+        for other in other_row.get("scrollbars", []):
+            if other.get("id") == bar["id"] or other.get("active") is not True:
+                continue
+            bounds = other.get("handle", {}).get("geometry", {}).get("bounds")
+            if bounds is not None and any(inside(point, rectangle(bounds)) for point in (start, end)):
+                raise Refused("scroll_drag_overlaps_other_handle")
+    for widget in tree.get("widgets", []):
+        area = widget.get("inputDiagnostics", {}).get("raycastArea", {})
+        if not isinstance(area, dict) or widget.get("active") is not True or area.get("active") is not True or area.get("raycastTarget") is not True:
+            continue
+        bounds = area.get("geometry", {}).get("bounds") if isinstance(area.get("geometry"), dict) else None
+        if bounds is not None and any(inside(point, rectangle(bounds)) for point in (start, end)):
+            raise Refused("scroll_drag_overlaps_button")
+    return {"scroll_rect_id": row["id"], "scrollbar_id": bar["id"], "direction": bar["direction"],
+            "towards": command["towards"], "towards_semantics": "physical screen track top/bottom, not content direction",
+            "start": start, "end": end, "duration_ms": command["duration_ms"],
+            "before": scroll_state(tree, row["id"], bar["id"]), "scroll_change_observed": "unknown",
+            "source": "typed assigned Scrollbar actual handle and parent track; normal captured-handle ADB drag",
+            "native_value_write": False, "native_raycast_invoked": False, "occlusion_proven": False}
+
+
+def record_scroll_change(tree, drag):
+    try:
+        after = scroll_state(tree, drag["scroll_rect_id"], drag["scrollbar_id"])
+        drag["after"] = after
+        before = drag["before"]
+        comparisons = [abs(a - b) for a, b in zip(before["handle_bounds"], after["handle_bounds"])]
+        if all(type(value) in (int, float) and math.isfinite(value) for value in (before["value"], after["value"])):
+            comparisons.append(abs(before["value"] - after["value"]))
+        positions = before["content_anchored_position"], after["content_anchored_position"]
+        if all(isinstance(value, list) and len(value) == 2 and all(type(n) in (int, float) and math.isfinite(n) for n in value) for value in positions):
+            comparisons.extend(abs(a - b) for a, b in zip(*positions))
+        drag["scroll_change_observed"] = any(value > 1e-6 for value in comparisons)
+        drag["comparison_scope"] = "Observed numeric change only; no causation or target-reached assertion"
+    except (Refused, KeyError, TypeError, AttributeError):
+        drag["scroll_change_observed"] = "unknown"
 
 
 def snapshot(android, args, report, phase, required=True):
@@ -444,6 +594,12 @@ def execute(command, args, state, report):
             seconds = observation_seconds(tree, command["widget_id"])
             report["observation_seconds"] = seconds
             smoke.observe_live_ui(android, args, report, "after-tap", seconds=seconds)
+        elif action == "drag_scrollbar":
+            drag = select_scrollbar(tree, command)
+            report["scrollbar_drag"] = drag
+            android.shell("input", "touchscreen", "swipe", *map(str, drag["start"] + drag["end"]), str(drag["duration_ms"]))
+            drag["performed"] = True
+            smoke.observe_live_ui(android, args, report, "after-scrollbar-drag", seconds=20)
         elif action == "swipe_widgets":
             first = select_widget(tree, command["from_widget"])
             last = select_widget(tree, command["to_widget"])
@@ -508,7 +664,9 @@ def execute(command, args, state, report):
             report["diagnostic_error"] = type(error).__name__
         try:
             if primary_error is None:
-                snapshot(android, args, report, "after")
+                after_tree = snapshot(android, args, report, "after")
+                if action == "drag_scrollbar" and "scrollbar_drag" in report:
+                    record_scroll_change(after_tree, report["scrollbar_drag"])
             else:
                 snapshot(android, args, report, "after", required=False)
         except Exception as error:

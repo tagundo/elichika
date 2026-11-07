@@ -10,7 +10,7 @@ permissions:
 jobs:
   original-unity:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
         with:
