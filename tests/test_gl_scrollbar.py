@@ -14,6 +14,7 @@ SPEC = importlib.util.spec_from_file_location("scroll_followup", TESTS / "gl_ui_
 followup = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(followup)
 RETAINED = Path("/dev/shm/elichika-rina-scenes-42342653830/followup-12/extracted/after-ui/unity-ui-tree.json")
+NATIVE_FILTER = TESTS / "gl_ui_runtime/fixtures/scrollbar-native-filter-20261107.json"
 
 
 def geometry(bounds):
@@ -56,6 +57,19 @@ def command():
             "expected_track_bounds": [1060, 100, 1074, 600], "towards": "bottom", "duration_ms": 400}
 
 
+def native_filter_fixture():
+    return json.loads(NATIVE_FILTER.read_text())["snapshot"]
+
+
+def native_command(tree):
+    row = next(row for row in tree["scrollViews"] if row.get("modalOwners"))
+    bar = row["scrollbars"][0]
+    return dict(command(), scroll_rect_id=row["id"], scrollbar_id=bar["id"],
+                expected_viewport_bounds=row["viewport"]["geometry"]["bounds"],
+                expected_handle_bounds=bar["handle"]["geometry"]["bounds"],
+                expected_track_bounds=bar["track"]["geometry"]["bounds"], duration_ms=800)
+
+
 class ScrollbarTests(unittest.TestCase):
     def select(self, tree=None, requested=None):
         requested = requested or command()
@@ -65,6 +79,42 @@ class ScrollbarTests(unittest.TestCase):
     def refused(self, tree, requested=None):
         with self.assertRaises(followup.Refused):
             self.select(tree, requested)
+
+    def test_actual_native_wider_thumb_allows_safe_axis_drag(self):
+        tree = native_filter_fixture()
+        requested = native_command(tree)
+        handle, track = requested["expected_handle_bounds"], requested["expected_track_bounds"]
+        self.assertLess(handle[0], track[0])
+        self.assertGreater(handle[2], track[2])
+        result = self.select(tree, requested)
+        self.assertEqual(result["start"], [1068, 223])
+        self.assertEqual(result["end"], [1068, 482])
+        self.assertFalse(result["native_value_write"])
+        self.assertEqual(result["scroll_change_observed"], "unknown")
+
+    def test_actual_native_thumb_outside_movement_axis_refused(self):
+        tree = native_filter_fixture()
+        bar = tree["scrollViews"][0]["scrollbars"][0]
+        bar["handle"]["geometry"]["bounds"][1] -= 1
+        bar["handle"]["graphic"]["geometry"]["bounds"][1] -= 1
+        self.refused(tree, native_command(tree))
+
+    def test_actual_native_perpendicular_center_outside_track_refused(self):
+        tree = native_filter_fixture()
+        bar = tree["scrollViews"][0]["scrollbars"][0]
+        for part in (bar["handle"], bar["handle"]["graphic"]):
+            part["geometry"]["bounds"][0] += 10
+            part["geometry"]["bounds"][2] += 10
+        self.refused(tree, native_command(tree))
+
+    def test_actual_native_thumb_already_at_requested_end_refused(self):
+        tree = native_filter_fixture()
+        self.refused(tree, dict(native_command(tree), towards="top"))
+
+    def test_actual_native_clipped_viewport_still_refused(self):
+        tree = native_filter_fixture()
+        tree["scrollViews"][0]["viewport"]["geometry"]["clampedToGameView"] = True
+        self.refused(tree, native_command(tree))
 
     def test_external_sibling_bar_belongs_to_actual_shared_modal(self):
         tree = fixture()

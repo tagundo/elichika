@@ -352,7 +352,12 @@ def select_scrollbar(tree, command):
 
     viewport_bounds, handle_bounds, track_bounds = checked(viewport), checked(handle), checked(track)
     measured(bar)
-    if not contains(track_bounds, handle_bounds):
+    # A vertical thumb can intentionally be wider than its track. Its moving
+    # extent must fit vertically, while the perpendicular hit center must stay
+    # inside the actual track; the complete thumb still passed clipping above.
+    handle_center_x = (handle_bounds[0] + handle_bounds[2]) / 2
+    if not (track_bounds[1] - .1 <= handle_bounds[1] and handle_bounds[3] <= track_bounds[3] + .1
+            and track_bounds[0] < handle_center_x < track_bounds[2]):
         raise Refused("scroll_handle_outside_track")
     graphic = handle.get("graphic", {})
     if not isinstance(graphic, dict) or graphic.get("nativeType") != "UnityEngine.UI.Graphic" or graphic.get("active") is not True or graphic.get("raycastTarget") is not True or graphic.get("gameObjectId") != handle.get("gameObjectId") or any(abs(a - b) > .1 for a, b in zip(measured(graphic), handle_bounds)):

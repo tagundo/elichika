@@ -20,7 +20,7 @@ runs:
           --live-python "$RUNNER_TEMP/qa-python/bin/python" \
           --output "evidence/followup-$FOLLOWUP_SEQUENCE" \
           --state evidence/gl/gl-visual-smoke.json --qa-language en \
-          --command-ref codex/rina-scene-scroll-qa-20261107 \
+          --command-ref codex/rina-scroll-axis-qa-20261107 \
           --repository "$GITHUB_REPOSITORY"
         "$RUNNER_TEMP/qa-python/bin/python" tests/rina_scene_qa/request_snapshot.py \
           --observer-dir evidence/scene-observer --label "followup-$FOLLOWUP_SEQUENCE"
