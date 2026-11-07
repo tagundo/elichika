@@ -12,7 +12,7 @@ import run
 import publish
 
 
-RECEIPT = {"members": [209, 1, 2, 3, 4, 5, 6, 7, 8],
+RECEIPT = {"members": [209, 209, 209, 3, 4, 5, 6, 7, 8],
            "suits": [320913, 900001, 900002, 300032001, 300042002, 400052001, 400062002, 300072002, 300082002]}
 
 
@@ -66,7 +66,7 @@ class OracleTests(unittest.TestCase):
         self.assertFalse(audit.stopped_contexts(tree))
 
     def test_all_nine_actual_member_suit_position_pairs_required(self):
-        for key, value in (("memberId", 209), ("suitId", 123), ("position", 1), ("liveId", 12008)):
+        for key, value in (("memberId", 1), ("suitId", 123), ("position", 1), ("liveId", 12008)):
             tree = deck_tree()
             tree["semanticState"]["mvSlots"][1][key] = value
             with self.subTest(key=key), self.assertRaises(AssertionError):
@@ -116,6 +116,27 @@ class OwnershipTests(unittest.TestCase):
         for parts in (["devices"], ["-s", "another-device", "shell", "id"], ["connect", "192.168.1.2:5555"], ["shell", "id"]):
             with self.subTest(parts=parts), self.assertRaises(ValueError):
                 ownership.adb_args(parts)
+
+
+class SameMemberPublicationTests(unittest.TestCase):
+    def test_two_private_suits_are_precloned_onto_the_source_owner(self):
+        producer = Mock(side_effect=(900001, 900002))
+        self.assertEqual(list(publish.same_owner_clones(producer)), [900001, 900002])
+        self.assertEqual(producer.call_count, 2)
+        self.assertEqual([call.args for call in producer.call_args_list], [(209, 320913, 209)] * 2)
+        self.assertEqual([call.kwargs for call in producer.call_args_list], [{"do_backup": False}] * 2)
+        self.assertEqual(publish.CAST_MEMBERS, RECEIPT["members"])
+
+    def test_duplicate_members_preserve_all_nine_position_and_suit_pairs(self):
+        value = audit.deck(deck_tree(), RECEIPT)
+        self.assertEqual(len(value["slots"]), 9)
+        self.assertEqual([row["memberId"] for row in value["slots"][:3]], [209, 209, 209])
+        self.assertEqual([row["position"] for row in value["slots"]], list(range(1, 10)))
+        self.assertEqual([row["suitId"] for row in value["slots"][:3]], [320913, 900001, 900002])
+        self.assertTrue(audit.validate_attempt(attempt_fixture(), 77, RECEIPT)["visual_review_required"])
+        normalized = deck_tree()
+        normalized["semanticState"]["mvSlots"][1]["memberId"] = 1
+        with self.assertRaises(AssertionError): audit.deck(normalized, RECEIPT)
 
 
 class CleanupTests(unittest.TestCase):

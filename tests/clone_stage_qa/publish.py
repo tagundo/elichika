@@ -11,6 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCER = "ba0dc86c5dc8f3a612234bfba0d12ce2cd642dda"
 SOURCE_SUIT, SOURCE_MEMBER, LIVE = 320913, 209, 10001
+CAST_MEMBERS = [SOURCE_MEMBER, SOURCE_MEMBER, SOURCE_MEMBER, 3, 4, 5, 6, 7, 8]
 SOURCES = {
     "costume_clone.py": "5a85251fe49218182df48e959c90a393d66a4aa520b9dc8b038c26b861f864e5",
     "costume_clone_assets.py": "0f9a42540bd99624c11e1b40ec0f309170de8ada69f23a982bd60868ef6c1cca",
@@ -43,6 +44,12 @@ def sha(path):
 
 def read_db(path):
     return sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
+
+
+def same_owner_clones(clone_costume):
+    """Prepare fixture suits only; this does not implement interactive cloning."""
+    for _ in range(2):
+        yield clone_costume(SOURCE_MEMBER, SOURCE_SUIT, SOURCE_MEMBER, do_backup=False)
 
 
 def publish(source, destination):
@@ -86,8 +93,8 @@ def publish(source, destination):
     try:
         os.chdir(destination)
         clone_ids = []
-        for target in (1, 2):
-            clone_ids.append(costume_clone.clone_costume(SOURCE_MEMBER, SOURCE_SUIT, target, do_backup=False))
+        for clone_id in same_owner_clones(costume_clone.clone_costume):
+            clone_ids.append(clone_id)
             observed = {}
             for pack, expected_size in source_packs.items():
                 path = destination / "static" / pack
@@ -127,11 +134,15 @@ def publish(source, destination):
         live = master.execute("SELECT music_id,is_2d_live,live_member_mapping_id FROM m_live WHERE live_id=?", (LIVE,)).fetchone()
         assert live == (1, 0, 10001)
         assert master.execute("SELECT count(*) FROM m_live_member_mapping WHERE mapping_id=10001").fetchone()[0] == 9
-        members = [209, 1, 2, 3, 4, 5, 6, 7, 8]
+        members = list(CAST_MEMBERS)
         suits = [SOURCE_SUIT, *clone_ids, 300032001, 300042002, 400052001, 400062002, 300072002, 300082002]
         for member, suit in zip(members, suits):
             assert master.execute("SELECT member_m_id FROM m_suit WHERE id=?", (suit,)).fetchone() == (member,)
-        assert len(set(members)) == 9
+        assert members[:3] == [SOURCE_MEMBER] * 3 and len(members) == 9 and len(set(members)) == 7
+        assert len(set(suits[:3])) == 3
+    with read_db(destination / MASTERS[1]) as master:
+        for member, suit in zip(members, suits):
+            assert master.execute("SELECT member_m_id FROM m_suit WHERE id=?", (suit,)).fetchone() == (member,)
     outputs = {name: {"bytes": (destination / name).stat().st_size, "sha256": sha(destination / name)} for name in REQUIRED}
     for path in sorted((destination / "static").glob("cc*")):
         assert path.is_file() and not path.is_symlink()
@@ -139,6 +150,9 @@ def publish(source, destination):
     assert all(sha(source / name) == expected for name, expected in inputs.items())
     assert not (destination / "userdata.db").exists()
     return {"status": "PASS_PRIVATE_CLONE_PUBLICATION", "producer_commit": PRODUCER,
+            "case": "same-member209-source-and-two-private-suits-live10001",
+            "fixture_precloned": True, "interactive_auto_clone_implemented": False,
+            "clone_owner_member_ids": [SOURCE_MEMBER, SOURCE_MEMBER], "rina_uniform_view_status": 1,
             "source_files": SOURCES, "source_suit_id": SOURCE_SUIT, "clone_ids": clone_ids,
             "live_id": LIVE, "deck_type": 2, "members": members, "suits": suits,
             "input_sha256": inputs, "source_packs": fetched_packs,
@@ -146,7 +160,7 @@ def publish(source, destination):
             "source_pack_receipt_scope": "Actual full encrypted bytes and sizes recorded; only the separately listed nine decrypted sections are golden-pinned",
             "catalogs": catalogs, "outputs": outputs,
             "account_created": False, "original_game_apk_modified": False,
-            "scope": "Candidate-only public pre-account publication; no real-stage or lighting verdict"}
+            "scope": "Pre-cloned same-member runtime fixture only; no interactive feature implementation or real-stage/lighting verdict"}
 
 
 def main():
