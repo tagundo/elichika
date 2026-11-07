@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           git rev-parse HEAD > evidence/qa-source.txt
-          mapfile -t qa_apks < <(rg --files candidate | rg '\.apk$')
+          mapfile -t qa_apks < <(python3 -c 'from pathlib import Path; print("\n".join(str(p) for p in Path("candidate").rglob("*.apk") if p.is_file()))')
           test "${#qa_apks[@]}" = 1
           "$RUNNER_TEMP/qa-python/bin/python" -u tests/rina_scene_qa/scene_bootstrap.py \
             --candidate "${qa_apks[0]}" --game "$RUNNER_TEMP/LLAS_GL_LOCAL.apk" \
