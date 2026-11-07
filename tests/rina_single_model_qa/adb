@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""PATH wrapper: even unchanged nested UI readers must pass the ownership gate."""
+import os
+import sys
+from ownership import adb_args, verify
+
+verify()
+arguments = adb_args(sys.argv[1:])
+if os.environ.get("ELICHIKA_SINGLE_MODEL_REAL_ADB") != "/usr/bin/adb":
+    raise ValueError("PINNED_SYSTEM_ADB_REQUIRED")
+os.execv("/usr/bin/adb", ["/usr/bin/adb", *arguments])

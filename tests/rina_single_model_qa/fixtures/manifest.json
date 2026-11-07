@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "game_sha256": "8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e",
+  "producer_manifest_sha256": "b5631f47cd8f3f00c3144c5e879e728a33c8e85da286567efb0c4a4d6f475d7c",
+  "event_contract": {
+    "functionName": "ApplyScale",
+    "floatParameter": 1.0,
+    "eventTime": 0.01,
+    "require_native_clip_length_at_least": 0.01,
+    "receiver": "same GameObject as the original NodeScaling",
+    "no_game_method_called_by_generator": true,
+    "new_scripts": 0
+  },
+  "scope": "Serialized-only legacy Animation autoplay experiment. Natural engine frames; no forced NodeScaling Initialize/Apply or Animation.Play. No originalscene claim.",
+  "fixtures": [
+    {
+      "id": "android_baseline",
+      "sha256": "315d63969b01a94ae430df0add69c58611f4c6e0bc592b475c81c5bdedf2c38f",
+      "expectedRootPrefabName": "ch9999_co0040_member",
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      },
+      "authored_scales": {
+        "BreastSize": [
+          0.6100000143051147,
+          0.9100000262260437,
+          0.8500000238418579
+        ],
+        "HipsSize": [
+          1.0,
+          0.949999988079071,
+          0.949999988079071
+        ]
+      },
+      "expected_event": false,
+      "eventtargetNativeMethod": "LLAS.Scene.Live.Components.LiveCoreMemberNodeScaling.ApplyScale(System.Single)",
+      "event_float": 1.0,
+      "event_time": null,
+      "file": "android_baseline.unity",
+      "role": "baseline",
+      "native_target": 13,
+      "source_SHA": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+      "authoring_proof": null,
+      "assetRootGameObjectId": "-7833135086370531853",
+      "assetRootTransformId": "-8244517351168715319",
+      "assetNodeScalingId": "2738797360404300200"
+    },
+    {
+      "id": "android_candidate",
+      "sha256": "f69c4cd6fe39646d9c547ca25a989d7c4ad97aed965829ad1d4a9cfab77c70b6",
+      "expectedRootPrefabName": "ch9999_co0040_member",
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      },
+      "authored_scales": {
+        "BreastSize": [
+          0.6100000143051147,
+          0.9100000262260437,
+          0.8500000238418579
+        ],
+        "HipsSize": [
+          1.0,
+          0.949999988079071,
+          0.949999988079071
+        ]
+      },
+      "expected_event": true,
+      "eventtargetNativeMethod": "LLAS.Scene.Live.Components.LiveCoreMemberNodeScaling.ApplyScale(System.Single)",
+      "event_float": 1.0,
+      "event_time": 0.01,
+      "file": "android_candidate.unity",
+      "role": "candidate",
+      "native_target": 13,
+      "source_SHA": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+      "authoring_proof": {
+        "root_game_object_id": "-7833135086370531853",
+        "root_transform_id": "-8244517351168715319",
+        "expectedRootPrefabName": "ch9999_co0040_member",
+        "root_components": [
+          "Transform",
+          "Animator",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "Animation"
+        ],
+        "same_root_animator_present": true,
+        "node_scaling_component_id": "2738797360404300200",
+        "animation_component_id": "849207111000000001",
+        "clip_id": "849207074000000001",
+        "root_export_container": "assets/llas/resources/characters/models/ch9999/ch9999_co0040_member.prefab",
+        "root_export_asset": {
+          "m_FileID": 0,
+          "m_PathID": -7833135086370531853
+        },
+        "preload_count_before": 567,
+        "preload_count_after": 569,
+        "owned_component_and_clip_referenced": true,
+        "animation": {
+          "m_GameObject": {
+            "m_FileID": 0,
+            "m_PathID": -7833135086370531853
+          },
+          "m_Enabled": 1,
+          "m_Animation": {
+            "m_FileID": 0,
+            "m_PathID": 849207074000000001
+          },
+          "m_Animations": [
+            {
+              "m_FileID": 0,
+              "m_PathID": 849207074000000001
+            }
+          ],
+          "m_WrapMode": 1,
+          "m_PlayAutomatically": true,
+          "m_AnimatePhysics": false,
+          "m_CullingType": 0
+        },
+        "clip": {
+          "name": "Elichika_Rina_NodeApply_Once_v1",
+          "legacy": true,
+          "sampleRate": 60.0,
+          "wrapMode": 1,
+          "declared_stop_time": 0.05000000074505806,
+          "muscleClipSize": 452,
+          "events": [
+            {
+              "time": 0.009999999776482582,
+              "functionName": "ApplyScale",
+              "data": "",
+              "objectReferenceParameter": {
+                "m_FileID": 0,
+                "m_PathID": 0
+              },
+              "floatParameter": 1.0,
+              "intParameter": 0,
+              "messageOptions": 0
+            }
+          ],
+          "all_curves_empty": true,
+          "native_length": "UNMEASURED_REQUIRE_AT_LEAST_EVENT_TIME"
+        },
+        "original_activation_ancestry": [
+          {
+            "transform_id": "-8244517351168715319",
+            "game_object_id": "-7833135086370531853",
+            "name": "ch9999_co0040_member",
+            "active_self": true
+          }
+        ],
+        "original_objects": 564,
+        "candidate_objects": 566,
+        "original_objects_raw_preserved_except_declared_root_and_preload": true,
+        "original_node_scaling_raw_preserved": true,
+        "all_original_transforms_mesh_physics_and_stream_bytes_preserved": true
+      },
+      "assetRootGameObjectId": "-7833135086370531853",
+      "assetRootTransformId": "-8244517351168715319",
+      "assetNodeScalingId": "2738797360404300200"
+    },
+    {
+      "id": "android_disabled_event",
+      "sha256": "b3d4213823c9b25a619afb8fbc7a4cc8dab1647b4d352eb31d11d2614f0b43b6",
+      "expectedRootPrefabName": "ch9999_co0040_member",
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      },
+      "authored_scales": {
+        "BreastSize": [
+          0.6100000143051147,
+          0.9100000262260437,
+          0.8500000238418579
+        ],
+        "HipsSize": [
+          1.0,
+          0.949999988079071,
+          0.949999988079071
+        ]
+      },
+      "expected_event": false,
+      "eventtargetNativeMethod": "LLAS.Scene.Live.Components.LiveCoreMemberNodeScaling.ApplyScale(System.Single)",
+      "event_float": 1.0,
+      "event_time": null,
+      "file": "android_disabled_event.unity",
+      "role": "disabled_event",
+      "native_target": 13,
+      "source_SHA": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+      "authoring_proof": {
+        "root_game_object_id": "-7833135086370531853",
+        "root_transform_id": "-8244517351168715319",
+        "expectedRootPrefabName": "ch9999_co0040_member",
+        "root_components": [
+          "Transform",
+          "Animator",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "MonoBehaviour",
+          "Animation"
+        ],
+        "same_root_animator_present": true,
+        "node_scaling_component_id": "2738797360404300200",
+        "animation_component_id": "849207111000000001",
+        "clip_id": "849207074000000001",
+        "root_export_container": "assets/llas/resources/characters/models/ch9999/ch9999_co0040_member.prefab",
+        "root_export_asset": {
+          "m_FileID": 0,
+          "m_PathID": -7833135086370531853
+        },
+        "preload_count_before": 567,
+        "preload_count_after": 569,
+        "owned_component_and_clip_referenced": true,
+        "animation": {
+          "m_GameObject": {
+            "m_FileID": 0,
+            "m_PathID": -7833135086370531853
+          },
+          "m_Enabled": 1,
+          "m_Animation": {
+            "m_FileID": 0,
+            "m_PathID": 849207074000000001
+          },
+          "m_Animations": [
+            {
+              "m_FileID": 0,
+              "m_PathID": 849207074000000001
+            }
+          ],
+          "m_WrapMode": 1,
+          "m_PlayAutomatically": true,
+          "m_AnimatePhysics": false,
+          "m_CullingType": 0
+        },
+        "clip": {
+          "name": "Elichika_Rina_NodeApply_Once_v1",
+          "legacy": true,
+          "sampleRate": 60.0,
+          "wrapMode": 1,
+          "declared_stop_time": 0.05000000074505806,
+          "muscleClipSize": 452,
+          "events": [],
+          "all_curves_empty": true,
+          "native_length": "UNMEASURED_REQUIRE_AT_LEAST_EVENT_TIME"
+        },
+        "original_activation_ancestry": [
+          {
+            "transform_id": "-8244517351168715319",
+            "game_object_id": "-7833135086370531853",
+            "name": "ch9999_co0040_member",
+            "active_self": true
+          }
+        ],
+        "original_objects": 564,
+        "candidate_objects": 566,
+        "original_objects_raw_preserved_except_declared_root_and_preload": true,
+        "original_node_scaling_raw_preserved": true,
+        "all_original_transforms_mesh_physics_and_stream_bytes_preserved": true
+      },
+      "assetRootGameObjectId": "-7833135086370531853",
+      "assetRootTransformId": "-8244517351168715319",
+      "assetNodeScalingId": "2738797360404300200"
+    }
+  ]
+}
