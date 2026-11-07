@@ -1,0 +1,909 @@
+{
+  "format": "elichika-rina-runtime-fixtures",
+  "version": 1,
+  "costume_id": 320913,
+  "region": "GL",
+  "diagnostic_desired_absolute_scales": {
+    "BreastSize": [
+      0.8,
+      1.1,
+      1.2
+    ],
+    "HipsSize": [
+      1.25,
+      1.05,
+      1.15
+    ]
+  },
+  "fixtures": [
+    {
+      "id": "android_mv_board",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_mv_board.unity",
+      "file_name": "android_mv_board.unity",
+      "sha256": "082cfc83170cb83e3eb3e4e6344c6933a77bc9d81b42db6204b0d72ff22866cd",
+      "bytes": 983798,
+      "platform": "android",
+      "native_target": 13,
+      "role": "mv_board",
+      "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/a_board-node-diagnostic.unity",
+      "golden_mv_sha256": "082cfc83170cb83e3eb3e4e6344c6933a77bc9d81b42db6204b0d72ff22866cd",
+      "raw_MV_unchanged": true,
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    },
+    {
+      "id": "android_mv_unmasked",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_mv_unmasked.unity",
+      "file_name": "android_mv_unmasked.unity",
+      "sha256": "a74286ca34ee90f63d5df4bd2084a105524987469154480eaabf3bacb06523f7",
+      "bytes": 885560,
+      "platform": "android",
+      "native_target": 13,
+      "role": "mv_unmasked",
+      "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/a_unmasked-node-diagnostic.unity",
+      "golden_mv_sha256": "a74286ca34ee90f63d5df4bd2084a105524987469154480eaabf3bacb06523f7",
+      "raw_MV_unchanged": true,
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    },
+    {
+      "id": "android_navi_board",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_navi_board.unity",
+      "file_name": "android_navi_board.unity",
+      "sha256": "67879649a75e99f6a4eb17c51948f6d18dd63798f5e59e9aa321f68e93bc8af1",
+      "bytes": 983764,
+      "platform": "android",
+      "native_target": 13,
+      "role": "navi_board",
+      "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/a_board-board-only-sync-candidate.unity",
+      "rebase": {
+        "old_CAB": "CAB-6f4c2513a80b89e4091e6522bed13a85",
+        "new_CAB": "CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2",
+        "bundle_metadata_name_changed": true,
+        "modified_objects": [
+          {
+            "path_id": "-3491203248311235535",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "-2987597370888856324",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "1",
+            "type": "AssetBundle"
+          },
+          {
+            "path_id": "4982532548146426178",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "5609750517724392692",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "6232632178296590464",
+            "type": "Texture2D"
+          }
+        ],
+        "owned_stream_refs_rewritten": 5,
+        "external_references_preserved": true,
+        "prefab_container_paths_preserved": true,
+        "all_texture_decoded_pixels_preserved": true,
+        "all_raw_resource_and_mip_bytes_preserved": true,
+        "resource_sha256": "9121a75ca5a4742691575d20ca7ecf00d225cdf317988ec67c35230e7748fe7d",
+        "textures": {
+          "-3491203248311235535": {
+            "name": "ch9999_co0040_head_rim",
+            "width": 128,
+            "height": 128,
+            "format": 65,
+            "pixels_sha256": "f7800d5dca59a0429e5bcb4e4ec8e628383ac1434e441a91c001f9dfdf3a8e9e",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 0,
+              "size": 9161,
+              "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+            }
+          },
+          "-2987597370888856324": {
+            "name": "dropshadow",
+            "width": 128,
+            "height": 128,
+            "format": 34,
+            "pixels_sha256": "c90dfcbd6a10665d7930c40beb32b3cdc8c48e0eefd496400274d8a6d27c9663",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 9164,
+              "size": 8192,
+              "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+            }
+          },
+          "4982532548146426178": {
+            "name": "ch9999_co0040_body",
+            "width": 1024,
+            "height": 1024,
+            "format": 56,
+            "pixels_sha256": "7a39968afd19637bb5941f1e62881c9c1aab875b30453a1098821c5c156e9e50",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 17356,
+              "size": 626288,
+              "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+            }
+          },
+          "5609750517724392692": {
+            "name": "ch9999_co0040_body_rim",
+            "width": 512,
+            "height": 512,
+            "format": 65,
+            "pixels_sha256": "ae13e27d3dd6ec9d644b78ce764f1aad7a44dcaabe23e7b32ef0ff93104e2d55",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 643644,
+              "size": 65233,
+              "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+            }
+          },
+          "6232632178296590464": {
+            "name": "ch9999_co0040_head",
+            "width": 1024,
+            "height": 1024,
+            "format": 56,
+            "pixels_sha256": "64bb490f1154eadb177c581c3a7f3967f03260ae7027dc7f7ef0fd407a694a51",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 708880,
+              "size": 626288,
+              "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+            }
+          }
+        },
+        "all_mesh_transform_script_and_other_objects_preserved_during_rebase": true
+      },
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    },
+    {
+      "id": "android_original_board",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_original_board.unity",
+      "file_name": "android_original_board.unity",
+      "sha256": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+      "bytes": 991966,
+      "platform": "android",
+      "native_target": 13,
+      "role": "control",
+      "control": "original_same_CAB_negative",
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    },
+    {
+      "id": "android_shared_cab_ui",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_shared_cab_ui.unity",
+      "file_name": "android_shared_cab_ui.unity",
+      "sha256": "2ce53bab20b7fdf6fedfd01eafef2b1de59087cac8d97fac1f10425f633a14ab",
+      "bytes": 983119,
+      "platform": "android",
+      "native_target": 13,
+      "role": "control",
+      "control": "changed_same_CAB_negative",
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    },
+    {
+      "id": "android_navi_cab_only",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_navi_cab_only.unity",
+      "file_name": "android_navi_cab_only.unity",
+      "sha256": "0b758bc9a8cd7de55cde6fcec72a8a93d612338230fa4e8858eb74a62781b29b",
+      "bytes": 983496,
+      "platform": "android",
+      "native_target": 13,
+      "role": "control",
+      "control": "unique_CAB_original_bundle_metadata",
+      "rebase": {
+        "old_CAB": "CAB-6f4c2513a80b89e4091e6522bed13a85",
+        "new_CAB": "CAB-d41a38a0301d78f80d2bdb561ab69d47",
+        "bundle_metadata_name_changed": false,
+        "modified_objects": [
+          {
+            "path_id": "-3491203248311235535",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "-2987597370888856324",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "4982532548146426178",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "5609750517724392692",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "6232632178296590464",
+            "type": "Texture2D"
+          }
+        ],
+        "owned_stream_refs_rewritten": 5,
+        "external_references_preserved": true,
+        "prefab_container_paths_preserved": true,
+        "all_texture_decoded_pixels_preserved": true,
+        "all_raw_resource_and_mip_bytes_preserved": true,
+        "resource_sha256": "9121a75ca5a4742691575d20ca7ecf00d225cdf317988ec67c35230e7748fe7d",
+        "textures": {
+          "-3491203248311235535": {
+            "name": "ch9999_co0040_head_rim",
+            "width": 128,
+            "height": 128,
+            "format": 65,
+            "pixels_sha256": "f7800d5dca59a0429e5bcb4e4ec8e628383ac1434e441a91c001f9dfdf3a8e9e",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 0,
+              "size": 9161,
+              "path": "archive:/CAB-d41a38a0301d78f80d2bdb561ab69d47/CAB-d41a38a0301d78f80d2bdb561ab69d47.resS"
+            }
+          },
+          "-2987597370888856324": {
+            "name": "dropshadow",
+            "width": 128,
+            "height": 128,
+            "format": 34,
+            "pixels_sha256": "c90dfcbd6a10665d7930c40beb32b3cdc8c48e0eefd496400274d8a6d27c9663",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 9164,
+              "size": 8192,
+              "path": "archive:/CAB-d41a38a0301d78f80d2bdb561ab69d47/CAB-d41a38a0301d78f80d2bdb561ab69d47.resS"
+            }
+          },
+          "4982532548146426178": {
+            "name": "ch9999_co0040_body",
+            "width": 1024,
+            "height": 1024,
+            "format": 56,
+            "pixels_sha256": "7a39968afd19637bb5941f1e62881c9c1aab875b30453a1098821c5c156e9e50",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 17356,
+              "size": 626288,
+              "path": "archive:/CAB-d41a38a0301d78f80d2bdb561ab69d47/CAB-d41a38a0301d78f80d2bdb561ab69d47.resS"
+            }
+          },
+          "5609750517724392692": {
+            "name": "ch9999_co0040_body_rim",
+            "width": 512,
+            "height": 512,
+            "format": 65,
+            "pixels_sha256": "ae13e27d3dd6ec9d644b78ce764f1aad7a44dcaabe23e7b32ef0ff93104e2d55",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 643644,
+              "size": 65233,
+              "path": "archive:/CAB-d41a38a0301d78f80d2bdb561ab69d47/CAB-d41a38a0301d78f80d2bdb561ab69d47.resS"
+            }
+          },
+          "6232632178296590464": {
+            "name": "ch9999_co0040_head",
+            "width": 1024,
+            "height": 1024,
+            "format": 56,
+            "pixels_sha256": "64bb490f1154eadb177c581c3a7f3967f03260ae7027dc7f7ef0fd407a694a51",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 708880,
+              "size": 626288,
+              "path": "archive:/CAB-d41a38a0301d78f80d2bdb561ab69d47/CAB-d41a38a0301d78f80d2bdb561ab69d47.resS"
+            }
+          }
+        },
+        "all_mesh_transform_script_and_other_objects_preserved_during_rebase": true
+      },
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    },
+    {
+      "id": "ios_mv_board",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/ios_mv_board.unity",
+      "file_name": "ios_mv_board.unity",
+      "sha256": "fba4a12c03854437d62a38f58ac8681611e93872c4921e1f579c24c04d7e42f2",
+      "bytes": 959101,
+      "platform": "ios",
+      "native_target": 9,
+      "role": "mv_board",
+      "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/i_board-node-diagnostic.unity",
+      "golden_mv_sha256": "fba4a12c03854437d62a38f58ac8681611e93872c4921e1f579c24c04d7e42f2",
+      "raw_MV_unchanged": true,
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    },
+    {
+      "id": "ios_mv_unmasked",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/ios_mv_unmasked.unity",
+      "file_name": "ios_mv_unmasked.unity",
+      "sha256": "9a2ecbc2a4d6133536fbf672e0d1ba28b526bb25bc2925bc9b661d82fa5cce04",
+      "bytes": 861631,
+      "platform": "ios",
+      "native_target": 9,
+      "role": "mv_unmasked",
+      "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/i_unmasked-node-diagnostic.unity",
+      "golden_mv_sha256": "9a2ecbc2a4d6133536fbf672e0d1ba28b526bb25bc2925bc9b661d82fa5cce04",
+      "raw_MV_unchanged": true,
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    },
+    {
+      "id": "ios_navi_board",
+      "path": "/dev/shm/elichika-rina-validation-v1/artifacts/ios_navi_board.unity",
+      "file_name": "ios_navi_board.unity",
+      "sha256": "1d95b9e2218913e2670480bbf7f137b6946c3175c551766172f025803dff3d37",
+      "bytes": 959149,
+      "platform": "ios",
+      "native_target": 9,
+      "role": "navi_board",
+      "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/i_board-board-only-sync-candidate.unity",
+      "rebase": {
+        "old_CAB": "CAB-6f4c2513a80b89e4091e6522bed13a85",
+        "new_CAB": "CAB-6e24efd91cfb7fd7276cd1a53f094641",
+        "bundle_metadata_name_changed": true,
+        "modified_objects": [
+          {
+            "path_id": "-3491203248311235535",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "-2987597370888856324",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "1",
+            "type": "AssetBundle"
+          },
+          {
+            "path_id": "4982532548146426178",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "5609750517724392692",
+            "type": "Texture2D"
+          },
+          {
+            "path_id": "6232632178296590464",
+            "type": "Texture2D"
+          }
+        ],
+        "owned_stream_refs_rewritten": 5,
+        "external_references_preserved": true,
+        "prefab_container_paths_preserved": true,
+        "all_texture_decoded_pixels_preserved": true,
+        "all_raw_resource_and_mip_bytes_preserved": true,
+        "resource_sha256": "0b199fa45e336935ecafa891a06892f61a724a2db0f31da2bc312210ba270086",
+        "textures": {
+          "-3491203248311235535": {
+            "name": "ch9999_co0040_head_rim",
+            "width": 128,
+            "height": 128,
+            "format": 56,
+            "pixels_sha256": "9ddf7f16786a5d9eb36bd3667beb6a646c4f5a86527b52730f809fa38f2c0262",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 0,
+              "size": 10512,
+              "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+            }
+          },
+          "-2987597370888856324": {
+            "name": "dropshadow",
+            "width": 128,
+            "height": 128,
+            "format": 32,
+            "pixels_sha256": "52d115f7583e40455379e583df93f0b41fa64ae3247de2b4c171111af8aaebac",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 10512,
+              "size": 8192,
+              "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+            }
+          },
+          "4982532548146426178": {
+            "name": "ch9999_co0040_body",
+            "width": 1024,
+            "height": 1024,
+            "format": 56,
+            "pixels_sha256": "7a39968afd19637bb5941f1e62881c9c1aab875b30453a1098821c5c156e9e50",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 18704,
+              "size": 626288,
+              "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+            }
+          },
+          "5609750517724392692": {
+            "name": "ch9999_co0040_body_rim",
+            "width": 512,
+            "height": 512,
+            "format": 56,
+            "pixels_sha256": "d87024b0bfb3869d09d75baadab67f909553afebd429dcfb79d3cdff755aed9f",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 644992,
+              "size": 158432,
+              "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+            }
+          },
+          "6232632178296590464": {
+            "name": "ch9999_co0040_head",
+            "width": 1024,
+            "height": 1024,
+            "format": 56,
+            "pixels_sha256": "64bb490f1154eadb177c581c3a7f3967f03260ae7027dc7f7ef0fd407a694a51",
+            "image_mode": "RGBA",
+            "stream": {
+              "offset": 803424,
+              "size": 626288,
+              "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+            }
+          }
+        },
+        "all_mesh_transform_script_and_other_objects_preserved_during_rebase": true
+      },
+      "expected_scales": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      }
+    }
+  ],
+  "model_roles": {
+    "android": {
+      "mv_board": {
+        "id": "android_mv_board",
+        "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_mv_board.unity",
+        "file_name": "android_mv_board.unity",
+        "sha256": "082cfc83170cb83e3eb3e4e6344c6933a77bc9d81b42db6204b0d72ff22866cd",
+        "bytes": 983798,
+        "platform": "android",
+        "native_target": 13,
+        "role": "mv_board",
+        "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/a_board-node-diagnostic.unity",
+        "golden_mv_sha256": "082cfc83170cb83e3eb3e4e6344c6933a77bc9d81b42db6204b0d72ff22866cd",
+        "raw_MV_unchanged": true,
+        "expected_scales": {
+          "BreastSize": [
+            0.8,
+            1.1,
+            1.2
+          ],
+          "HipsSize": [
+            1.25,
+            1.05,
+            1.15
+          ]
+        }
+      },
+      "mv_unmasked": {
+        "id": "android_mv_unmasked",
+        "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_mv_unmasked.unity",
+        "file_name": "android_mv_unmasked.unity",
+        "sha256": "a74286ca34ee90f63d5df4bd2084a105524987469154480eaabf3bacb06523f7",
+        "bytes": 885560,
+        "platform": "android",
+        "native_target": 13,
+        "role": "mv_unmasked",
+        "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/a_unmasked-node-diagnostic.unity",
+        "golden_mv_sha256": "a74286ca34ee90f63d5df4bd2084a105524987469154480eaabf3bacb06523f7",
+        "raw_MV_unchanged": true,
+        "expected_scales": {
+          "BreastSize": [
+            0.8,
+            1.1,
+            1.2
+          ],
+          "HipsSize": [
+            1.25,
+            1.05,
+            1.15
+          ]
+        }
+      },
+      "navi_board": {
+        "id": "android_navi_board",
+        "path": "/dev/shm/elichika-rina-validation-v1/artifacts/android_navi_board.unity",
+        "file_name": "android_navi_board.unity",
+        "sha256": "67879649a75e99f6a4eb17c51948f6d18dd63798f5e59e9aa321f68e93bc8af1",
+        "bytes": 983764,
+        "platform": "android",
+        "native_target": 13,
+        "role": "navi_board",
+        "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/a_board-board-only-sync-candidate.unity",
+        "rebase": {
+          "old_CAB": "CAB-6f4c2513a80b89e4091e6522bed13a85",
+          "new_CAB": "CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2",
+          "bundle_metadata_name_changed": true,
+          "modified_objects": [
+            {
+              "path_id": "-3491203248311235535",
+              "type": "Texture2D"
+            },
+            {
+              "path_id": "-2987597370888856324",
+              "type": "Texture2D"
+            },
+            {
+              "path_id": "1",
+              "type": "AssetBundle"
+            },
+            {
+              "path_id": "4982532548146426178",
+              "type": "Texture2D"
+            },
+            {
+              "path_id": "5609750517724392692",
+              "type": "Texture2D"
+            },
+            {
+              "path_id": "6232632178296590464",
+              "type": "Texture2D"
+            }
+          ],
+          "owned_stream_refs_rewritten": 5,
+          "external_references_preserved": true,
+          "prefab_container_paths_preserved": true,
+          "all_texture_decoded_pixels_preserved": true,
+          "all_raw_resource_and_mip_bytes_preserved": true,
+          "resource_sha256": "9121a75ca5a4742691575d20ca7ecf00d225cdf317988ec67c35230e7748fe7d",
+          "textures": {
+            "-3491203248311235535": {
+              "name": "ch9999_co0040_head_rim",
+              "width": 128,
+              "height": 128,
+              "format": 65,
+              "pixels_sha256": "f7800d5dca59a0429e5bcb4e4ec8e628383ac1434e441a91c001f9dfdf3a8e9e",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 0,
+                "size": 9161,
+                "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+              }
+            },
+            "-2987597370888856324": {
+              "name": "dropshadow",
+              "width": 128,
+              "height": 128,
+              "format": 34,
+              "pixels_sha256": "c90dfcbd6a10665d7930c40beb32b3cdc8c48e0eefd496400274d8a6d27c9663",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 9164,
+                "size": 8192,
+                "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+              }
+            },
+            "4982532548146426178": {
+              "name": "ch9999_co0040_body",
+              "width": 1024,
+              "height": 1024,
+              "format": 56,
+              "pixels_sha256": "7a39968afd19637bb5941f1e62881c9c1aab875b30453a1098821c5c156e9e50",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 17356,
+                "size": 626288,
+                "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+              }
+            },
+            "5609750517724392692": {
+              "name": "ch9999_co0040_body_rim",
+              "width": 512,
+              "height": 512,
+              "format": 65,
+              "pixels_sha256": "ae13e27d3dd6ec9d644b78ce764f1aad7a44dcaabe23e7b32ef0ff93104e2d55",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 643644,
+                "size": 65233,
+                "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+              }
+            },
+            "6232632178296590464": {
+              "name": "ch9999_co0040_head",
+              "width": 1024,
+              "height": 1024,
+              "format": 56,
+              "pixels_sha256": "64bb490f1154eadb177c581c3a7f3967f03260ae7027dc7f7ef0fd407a694a51",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 708880,
+                "size": 626288,
+                "path": "archive:/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2/CAB-5e443c09e7eb11ae8a431a8b1dcc8ed2.resS"
+              }
+            }
+          },
+          "all_mesh_transform_script_and_other_objects_preserved_during_rebase": true
+        },
+        "expected_scales": {
+          "BreastSize": [
+            0.8,
+            1.1,
+            1.2
+          ],
+          "HipsSize": [
+            1.25,
+            1.05,
+            1.15
+          ]
+        }
+      }
+    },
+    "ios": {
+      "mv_board": {
+        "id": "ios_mv_board",
+        "path": "/dev/shm/elichika-rina-validation-v1/artifacts/ios_mv_board.unity",
+        "file_name": "ios_mv_board.unity",
+        "sha256": "fba4a12c03854437d62a38f58ac8681611e93872c4921e1f579c24c04d7e42f2",
+        "bytes": 959101,
+        "platform": "ios",
+        "native_target": 9,
+        "role": "mv_board",
+        "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/i_board-node-diagnostic.unity",
+        "golden_mv_sha256": "fba4a12c03854437d62a38f58ac8681611e93872c4921e1f579c24c04d7e42f2",
+        "raw_MV_unchanged": true,
+        "expected_scales": {
+          "BreastSize": [
+            0.8,
+            1.1,
+            1.2
+          ],
+          "HipsSize": [
+            1.25,
+            1.05,
+            1.15
+          ]
+        }
+      },
+      "mv_unmasked": {
+        "id": "ios_mv_unmasked",
+        "path": "/dev/shm/elichika-rina-validation-v1/artifacts/ios_mv_unmasked.unity",
+        "file_name": "ios_mv_unmasked.unity",
+        "sha256": "9a2ecbc2a4d6133536fbf672e0d1ba28b526bb25bc2925bc9b661d82fa5cce04",
+        "bytes": 861631,
+        "platform": "ios",
+        "native_target": 9,
+        "role": "mv_unmasked",
+        "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/i_unmasked-node-diagnostic.unity",
+        "golden_mv_sha256": "9a2ecbc2a4d6133536fbf672e0d1ba28b526bb25bc2925bc9b661d82fa5cce04",
+        "raw_MV_unchanged": true,
+        "expected_scales": {
+          "BreastSize": [
+            0.8,
+            1.1,
+            1.2
+          ],
+          "HipsSize": [
+            1.25,
+            1.05,
+            1.15
+          ]
+        }
+      },
+      "navi_board": {
+        "id": "ios_navi_board",
+        "path": "/dev/shm/elichika-rina-validation-v1/artifacts/ios_navi_board.unity",
+        "file_name": "ios_navi_board.unity",
+        "sha256": "1d95b9e2218913e2670480bbf7f137b6946c3175c551766172f025803dff3d37",
+        "bytes": 959149,
+        "platform": "ios",
+        "native_target": 9,
+        "role": "navi_board",
+        "source_path": "/dev/shm/elichika-rina-navi-investigation/suit320913/i_board-board-only-sync-candidate.unity",
+        "rebase": {
+          "old_CAB": "CAB-6f4c2513a80b89e4091e6522bed13a85",
+          "new_CAB": "CAB-6e24efd91cfb7fd7276cd1a53f094641",
+          "bundle_metadata_name_changed": true,
+          "modified_objects": [
+            {
+              "path_id": "-3491203248311235535",
+              "type": "Texture2D"
+            },
+            {
+              "path_id": "-2987597370888856324",
+              "type": "Texture2D"
+            },
+            {
+              "path_id": "1",
+              "type": "AssetBundle"
+            },
+            {
+              "path_id": "4982532548146426178",
+              "type": "Texture2D"
+            },
+            {
+              "path_id": "5609750517724392692",
+              "type": "Texture2D"
+            },
+            {
+              "path_id": "6232632178296590464",
+              "type": "Texture2D"
+            }
+          ],
+          "owned_stream_refs_rewritten": 5,
+          "external_references_preserved": true,
+          "prefab_container_paths_preserved": true,
+          "all_texture_decoded_pixels_preserved": true,
+          "all_raw_resource_and_mip_bytes_preserved": true,
+          "resource_sha256": "0b199fa45e336935ecafa891a06892f61a724a2db0f31da2bc312210ba270086",
+          "textures": {
+            "-3491203248311235535": {
+              "name": "ch9999_co0040_head_rim",
+              "width": 128,
+              "height": 128,
+              "format": 56,
+              "pixels_sha256": "9ddf7f16786a5d9eb36bd3667beb6a646c4f5a86527b52730f809fa38f2c0262",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 0,
+                "size": 10512,
+                "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+              }
+            },
+            "-2987597370888856324": {
+              "name": "dropshadow",
+              "width": 128,
+              "height": 128,
+              "format": 32,
+              "pixels_sha256": "52d115f7583e40455379e583df93f0b41fa64ae3247de2b4c171111af8aaebac",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 10512,
+                "size": 8192,
+                "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+              }
+            },
+            "4982532548146426178": {
+              "name": "ch9999_co0040_body",
+              "width": 1024,
+              "height": 1024,
+              "format": 56,
+              "pixels_sha256": "7a39968afd19637bb5941f1e62881c9c1aab875b30453a1098821c5c156e9e50",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 18704,
+                "size": 626288,
+                "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+              }
+            },
+            "5609750517724392692": {
+              "name": "ch9999_co0040_body_rim",
+              "width": 512,
+              "height": 512,
+              "format": 56,
+              "pixels_sha256": "d87024b0bfb3869d09d75baadab67f909553afebd429dcfb79d3cdff755aed9f",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 644992,
+                "size": 158432,
+                "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+              }
+            },
+            "6232632178296590464": {
+              "name": "ch9999_co0040_head",
+              "width": 1024,
+              "height": 1024,
+              "format": 56,
+              "pixels_sha256": "64bb490f1154eadb177c581c3a7f3967f03260ae7027dc7f7ef0fd407a694a51",
+              "image_mode": "RGBA",
+              "stream": {
+                "offset": 803424,
+                "size": 626288,
+                "path": "archive:/CAB-6e24efd91cfb7fd7276cd1a53f094641/CAB-6e24efd91cfb7fd7276cd1a53f094641.resS"
+              }
+            }
+          },
+          "all_mesh_transform_script_and_other_objects_preserved_during_rebase": true
+        },
+        "expected_scales": {
+          "BreastSize": [
+            0.8,
+            1.1,
+            1.2
+          ],
+          "HipsSize": [
+            1.25,
+            1.05,
+            1.15
+          ]
+        }
+      }
+    }
+  },
+  "scope": "Test fixtures only. No product source, installed DB or private user data changed."
+}
