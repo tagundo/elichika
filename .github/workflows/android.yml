@@ -220,13 +220,15 @@ jobs:
           # The mandatory installer must be our reviewed module, even if a tools
           # checkout happens to ship a module with the same name.
           cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py \
-            costume_management.py costume_scene_installer.py "$PY/"
+            costume_management.py costume_scene_installer.py costume_scene_clones.py costume_scene_sources.py "$PY/"
           cmp payload_db_upgrade.py "$PY/payload_db_upgrade.py"
           cmp database_maintenance.py "$PY/database_maintenance.py"
           cmp payload_file_hash.py "$PY/payload_file_hash.py"
           cmp payload_revision.py "$PY/payload_revision.py"
           cmp costume_management.py "$PY/costume_management.py"
           cmp costume_scene_installer.py "$PY/costume_scene_installer.py"
+          cmp costume_scene_clones.py "$PY/costume_scene_clones.py"
+          cmp costume_scene_sources.py "$PY/costume_scene_sources.py"
           # drop the host build artifact if it landed in python/
           rm -f "$PY/elichika_host"
           # Vendor UnityPy so the bundle-editing tools import it instantly instead

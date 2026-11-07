@@ -193,13 +193,14 @@ class AndroidJUnit4: Runner() {
 
 
 class PackagingTests(unittest.TestCase):
-    def test_updater_and_lock_are_copied_after_optional_tool_modules(self):
+    def test_mandatory_parent_sources_follow_optional_tool_modules(self):
         workflow = (ROOT / '.github/workflows/android.yml').read_text()
         optional = workflow.index('cp modtools/*.py')
         mandatory = workflow.index('cp payload_db_upgrade.py database_maintenance.py')
         self.assertLess(optional, mandatory)
-        for module in ('payload_db_upgrade.py', 'database_maintenance.py', 'payload_file_hash.py', 'payload_revision.py'):
-            self.assertTrue((ROOT / module).is_file(), f'Missing canonical updater source: {module}')
+        for module in ('payload_db_upgrade.py', 'database_maintenance.py', 'payload_file_hash.py', 'payload_revision.py',
+                       'costume_scene_clones.py', 'costume_scene_sources.py'):
+            self.assertTrue((ROOT / module).is_file(), f'Missing canonical parent runtime source: {module}')
             self.assertIn(f'cmp {module} "$PY/{module}"', workflow)
 
     def test_new_logs_exist_in_default_and_korean_resources(self):

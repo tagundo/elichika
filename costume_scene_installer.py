@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import ast
 from contextlib import closing
+import copy
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import shutil
 import sqlite3
@@ -143,8 +145,8 @@ def _fresh_suit(dbs, forbidden=()):
     raise ValueError("Could not allocate an unused costume ID.")
 
 
-def _display(db):
-    rows = db.execute("SELECT display_order FROM m_suit WHERE member_m_id=209").fetchall()
+def _display(db, member_id=209):
+    rows = db.execute("SELECT display_order FROM m_suit WHERE member_m_id=?", (member_id,)).fetchall()
     # Match the existing installer's catalogue direction, not physical row order.
     launch = db.execute("SELECT display_order FROM m_suit WHERE id=100011001").fetchone()
     median = db.execute("SELECT display_order FROM m_suit ORDER BY display_order LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m_suit)").fetchone()
@@ -233,6 +235,11 @@ class ScenePlan:
         self.install_key = uuid.uuid4().hex
         self.rows, self.files, self.db_paths, self.shared_updates = [], {}, set(), []
         self.suit_id, self.model_paths = None, {}
+        self.target_member_id, self.default_variant = 209, "primary"
+        self.main_model_path = None
+        self.runtime_model_paths, self.canonical_model_paths = {}, {}
+        self.graph_model_paths = {}
+        self.authoring_face_reuse = []
 
     def add(self, db, table, row):
         self.rows.append({"db": db, "table": table, "row": row})
@@ -272,12 +279,173 @@ def _check_source_provenance(manifest, source_models, region, platform, db):
             raise ValueError("The source costume catalogue fingerprint changed before installation.")
 
 
+def _routing_contract(manifest):
+    """Keep v1 routing unchanged; v2 aliases an explicitly shared board member."""
+    if type(manifest.get("character_id")) is not int or manifest["character_id"] != 209:
+        raise ValueError("Scene authoring currently supports Rina only.")
+    version = manifest.get("version", 1)
+    if type(version) is not int or version not in (1, 2):
+        raise ValueError("The scene routing version is unsupported.")
+    shared = version == 2
+    if shared:
+        target, variant = manifest.get("target_member_id"), manifest.get("default_variant")
+        if (manifest.get("requires") != ["rina-shared-board-v2"]
+                or type(target) is not int or not 0 < target < 2**31
+                or variant not in ("primary", "unmasked") or target == 209 and variant != "primary"):
+            raise ValueError("The shared-board target/default routing contract is invalid.")
+    else:
+        target, variant = 209, "primary"
+        if manifest.get("target_member_id", 209) != 209 or manifest.get("default_variant", "primary") != "primary":
+            raise ValueError("Version1 scene costumes retain their original Rina routing.")
+    platforms = manifest.get("platforms")
+    if not isinstance(platforms, dict) or not platforms or not set(platforms) <= set(PLATFORM_CODES):
+        raise ValueError("The scene native platforms are unsupported.")
+    aliases = {role: role for role in ROLES}
+    if shared:
+        aliases["mv_board"] = "navi_board"
+    for refs in platforms.values():
+        if (not isinstance(refs, dict) or set(refs) != set(ROLES)
+                or any(not isinstance(refs[role], dict) for role in ROLES)):
+            raise ValueError("The scene role family is incomplete.")
+        members = [refs[role].get("member") for role in ROLES]
+        if any(not isinstance(member, str) or not member for member in members):
+            raise ValueError("The scene physical role member is invalid.")
+        if shared:
+            if refs["navi_board"] != refs["mv_board"] or members[0] == members[2]:
+                raise ValueError("The shared board must use one exact member and a separate bare member.")
+        elif len(set(members)) != 3:
+            raise ValueError("Version1 scene costumes require three distinct role members.")
+    return shared, target, variant, aliases
+
+
+def _graph_contract(manifest):
+    """Bound the already codec-validated execution graph before catalogue use."""
+    graph = manifest.get("execution_model_graph")
+    if graph is None:
+        return None
+    if manifest.get("version") != 2 or not isinstance(graph, dict) or set(graph) != set(manifest["platforms"]):
+        raise ValueError("The execution graph has unsupported or incomplete native platforms.")
+    for platform, family in graph.items():
+        if not isinstance(family, dict) or set(family) != {"nodes", "role_bindings"}:
+            raise ValueError("The execution graph family is invalid.")
+        nodes, bindings = family["nodes"], family["role_bindings"]
+        if (not isinstance(nodes, dict) or not 2 <= len(nodes) <= 32
+                or any(not isinstance(key, str) or re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", key) is None for key in nodes)
+                or not isinstance(bindings, dict) or set(bindings) != set(ROLES)
+                or any(not isinstance(key, str) or key not in nodes for key in bindings.values())
+                or not bindings["navi_board"] == bindings["mv_board"] != bindings["mv_unmasked"]):
+            raise ValueError("The execution graph node identities or role bindings are invalid.")
+        members = set()
+        for node in nodes.values():
+            if not isinstance(node, dict) or set(node) != {"resource", "model_dependencies", "shared_shader_dependencies"}:
+                raise ValueError("An execution graph node is invalid.")
+            ref, dependencies, shaders = node["resource"], node["model_dependencies"], node["shared_shader_dependencies"]
+            if (not isinstance(ref, dict) or not isinstance(ref.get("member"), str)
+                    or ref["member"] in members or not isinstance(dependencies, list) or len(dependencies) > 32
+                    or any(not isinstance(key, str) or key not in nodes for key in dependencies)
+                    or len(set(dependencies)) != len(dependencies)
+                    or not isinstance(shaders, list) or len(shaders) > 32
+                    or any(not isinstance(key, str) or not 0 < len(key) <= 512
+                           or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in key) for key in shaders)
+                    or len(set(shaders)) != len(shaders)):
+                raise ValueError("An execution graph resource or dependency is invalid.")
+            members.add(ref["member"])
+        for role, key in bindings.items():
+            if nodes[key]["resource"] != manifest["platforms"][platform][role]:
+                raise ValueError("An execution graph root differs from its scene role.")
+        visiting, visited = set(), set()
+        def visit(key):
+            if key in visiting:
+                raise ValueError("The execution graph is cyclic.")
+            if key in visited:
+                return
+            visiting.add(key)
+            for dependency in nodes[key]["model_dependencies"]:
+                visit(dependency)
+            visiting.remove(key)
+            visited.add(key)
+        for key in bindings.values():
+            visit(key)
+        if visited != set(nodes):
+            raise ValueError("The execution graph contains unreachable models.")
+    return graph
+
+
+def _resource_members(value):
+    if isinstance(value, dict):
+        if {"member", "sha256", "bytes"} <= set(value):
+            yield value["member"]
+        else:
+            for child in value.values():
+                yield from _resource_members(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _resource_members(child)
+
+
+def _rebase_execution_graph(decoded, namespace):
+    """Rebase every owned CAB/external together, preserving authoring inputs.
+
+    A clone archive may already be installed under a clone receipt. Merely
+    giving its unchanged bytes new pack names would alias Unity's CAB cache.
+    The owned canonical archive therefore records the newly executed bytes.
+    """
+    graph = _graph_contract(decoded["manifest"])
+    if graph is None:
+        return decoded
+    from costume_clone_assets import _cab_names, _cab_mapping, _runtime_names, isolate_bundle
+    codec = _codec()
+    manifest, files = copy.deepcopy(decoded["manifest"]), dict(decoded["files"])
+    protected = set(_resource_members({key: value for key, value in manifest.items()
+                                      if key not in ("platforms", "execution_model_graph")}))
+    old_members = set(_resource_members(graph))
+    for platform, family in graph.items():
+        per_platform = namespace + ":execution:" + platform
+        names, runtime_names = [], {}
+        for node in family["nodes"].values():
+            raw = files[node["resource"]["member"]]
+            current = _cab_names(raw)
+            if {value.lower() for value in current}.intersection(value.lower() for value in names):
+                raise ValueError("Execution models contain ambiguous CAB identities.")
+            names.extend(current)
+            for old, new in _runtime_names(raw, per_platform).items():
+                if old in runtime_names and runtime_names[old] != new:
+                    raise ValueError("Execution models contain ambiguous runtime bundle names.")
+                runtime_names[old] = new
+        identities = _cab_mapping(names, per_platform)
+        rewritten = manifest["execution_model_graph"][platform]
+        for key, node in family["nodes"].items():
+            raw = isolate_bundle(files[node["resource"]["member"]], per_platform,
+                                 _identities=identities, _bundle_names=runtime_names)
+            member = "execution-installed/" + namespace + "/" + platform + "/" + key + ".unity"
+            if member in protected:
+                raise ValueError("Execution resources cannot replace canonical authoring inputs.")
+            files[member] = raw
+            rewritten["nodes"][key]["resource"] = codec.reference(member, raw, platform)
+        for role, key in family["role_bindings"].items():
+            manifest["platforms"][platform][role] = copy.deepcopy(rewritten["nodes"][key]["resource"])
+    # Remove obsolete execution members only; shared authoring data is immutable.
+    live_members = set(_resource_members(manifest))
+    for member in old_members - protected - live_members:
+        files.pop(member, None)
+    raw = codec.encode_package(manifest, files)
+    return {**decoded, "manifest": manifest, "files": files, "raw": raw, "sha256": _sha(raw),
+            "producer_package_sha256": decoded.get("producer_package_sha256", decoded["sha256"]),
+            "execution_identity_rebased": True}
+
+
 def prepare_package(decoded, root="."):
     """Pure catalogue preflight; no pack, database or journal is written here."""
     manifest, files = decoded["manifest"], decoded["files"]
-    if manifest.get("character_id") != 209:
-        raise ValueError("Scene costume routing currently supports Rina only.")
+    shared, target, variant, aliases = _routing_contract(manifest)
+    graph = _graph_contract(manifest)
     plan = ScenePlan(root, decoded)
+    if graph:
+        decoded = _rebase_execution_graph(decoded, plan.install_key)
+        plan.decoded = decoded
+        manifest, files = decoded["manifest"], decoded["files"]
+        graph = _graph_contract(manifest)
+    plan.target_member_id, plan.default_variant = target, variant
     historical_ids = set()
     for receipt_path in (plan.root / ".costume-management" / "receipts").glob("*.json"):
         _safe_file(receipt_path)
@@ -285,7 +453,9 @@ def prepare_package(decoded, root="."):
             raise ValueError("An installed costume receipt exceeds its size limit.")
         previous = json.loads(receipt_path.read_text(encoding="utf-8"))
         historical_ids.update(value for value in previous.get("suit_ids", []) if type(value) is int)
-        if previous.get("kind") == "scene" and previous.get("state") == "committed" and previous.get("source", {}).get("package_sha256") == decoded["sha256"]:
+        if (previous.get("kind") == "scene" and previous.get("state") == "committed"
+                and decoded.get("producer_package_sha256", decoded["sha256"]) in
+                (previous.get("source", {}).get("package_sha256"), previous.get("source", {}).get("producer_package_sha256"))):
             raise ValueError("This exact scene costume package is already installed.")
     defaults = _defaults()
     master_connections = []
@@ -297,13 +467,33 @@ def prepare_package(decoded, root="."):
             master_connections.append(_connect(path, readonly=True))
         plan.suit_id = _fresh_suit(master_connections, historical_ids)
         key = "suit_name_" + str(plan.suit_id)
-        plan.model_paths = {role: "scene" + uuid.uuid4().hex for role in ROLES}
+        physical_paths = {}
+        for role in ROLES:
+            physical_paths.setdefault(aliases[role], "scene" + uuid.uuid4().hex)
+        plan.model_paths = {role: physical_paths[aliases[role]] for role in ROLES}
+        plan.main_model_path = plan.model_paths["mv_unmasked"] if shared and variant == "unmasked" else plan.model_paths["navi_board"]
+        view1 = plan.main_model_path if shared else plan.model_paths["mv_board"]
+        plan.runtime_model_paths = {"navi_board": plan.main_model_path, "mv_board": view1,
+                                    "mv_unmasked": plan.model_paths["mv_unmasked"]}
+        plan.canonical_model_paths = {region: {"primary": plan.model_paths["mv_board"],
+                                              "unmasked": plan.model_paths["mv_unmasked"]}
+                                      for region in REGION_LANGUAGES}
+        graph_paths = {}
+        if graph:
+            for platform, family in graph.items():
+                bindings = family["role_bindings"]
+                roots = {bindings["mv_board"]: plan.model_paths["mv_board"],
+                         bindings["mv_unmasked"]: plan.model_paths["mv_unmasked"]}
+                graph_paths[platform] = {key: roots.get(key) or "scene" + uuid.uuid4().hex for key in family["nodes"]}
+            plan.graph_model_paths = {region: graph_paths for region in REGION_LANGUAGES}
         face_path = "scene" + uuid.uuid4().hex
         thumbnail_path = "scene" + uuid.uuid4().hex if manifest.get("thumbnail") else defaults["DEFAULT_THUMBNAILS"][209]
         name = manifest["display_name"]
         source_suit = manifest.get("source_suit_id")
         source_models = {}
         for relative, db in zip(MASTER_DBS, master_connections):
+            if shared and db.execute("SELECT count(*) FROM m_member WHERE id=?", (target,)).fetchone()[0] != 1:
+                raise ValueError("The shared-board target character is missing or ambiguous in a regional master.")
             if source_suit is None:
                 candidate = db.execute("SELECT id FROM m_suit WHERE member_m_id=209 ORDER BY id LIMIT 1").fetchone()
                 if not candidate:
@@ -322,14 +512,14 @@ def prepare_package(decoded, root="."):
                     "mv_board": board[0][0] if board else source["model_asset_path"],
                     "mv_unmasked": bare["model_asset_path"]}
             row = dict(source)
-            row.update(id=plan.suit_id, member_m_id=209, name="k." + key,
-                       model_asset_path=plan.model_paths["navi_board"],
-                       thumbnail_image_asset_path=thumbnail_path, display_order=_display(db),
+            row.update(id=plan.suit_id, member_m_id=target, name="k." + key,
+                       model_asset_path=plan.main_model_path,
+                       thumbnail_image_asset_path=thumbnail_path, display_order=_display(db, target),
                        suit_release_route=2, suit_release_value=0)
             plan.add(relative, "m_suit", row)
             for status, role in ((1, "mv_board"), (2, "mv_unmasked")):
                 plan.add(relative, "m_suit_view", {"suit_master_id": plan.suit_id,
-                    "view_status": status, "model_asset_path": plan.model_paths[role]})
+                    "view_status": status, "model_asset_path": plan.runtime_model_paths[role]})
         for region, languages in REGION_LANGUAGES.items():
             for language in languages:
                 relative = f"assets/db/{region}/dictionary_{language}_k.db"
@@ -342,14 +532,23 @@ def prepare_package(decoded, root="."):
         destination = _pack_destination(plan.root)
         pack_records = {}
         for platform, role_refs in manifest["platforms"].items():
-            values = {role: role_refs[role] for role in ROLES}
-            face = manifest.get("dependencies", {}).get(platform, {}).get("facedynamic")
+            values = ({"graph:" + key: node["resource"] for key, node in graph[platform]["nodes"].items()}
+                      if graph else {role: role_refs[role] for role in ROLES})
+            # In graph mode the private runtime face is a graph node. The
+            # separate facedynamic resource remains canonical authoring input.
+            authoring_face = manifest.get("dependencies", {}).get(platform, {}).get("facedynamic")
+            face_reuse = authoring_face if shared and not graph else None
+            face = None if graph or face_reuse else authoring_face
             if face:
                 values["facedynamic"] = face
             if manifest.get("thumbnail"):
                 values["thumbnail"] = manifest["thumbnail"]
             pack_records[platform] = {}
             for role, ref in values.items():
+                # Only v2's exact shared member aliases. Never deduplicate v1
+                # roles by byte hash: equal bytes may have distinct identities.
+                if role in aliases and aliases[role] != role:
+                    continue
                 raw = files[ref["member"]]
                 namespace = plan.install_key + ":" + ("thumbnail" if role == "thumbnail" else platform + ":" + role)
                 pack_name, encrypted = _pack(raw, namespace)
@@ -366,12 +565,20 @@ def prepare_package(decoded, root="."):
                         raise ValueError("Missing game asset catalogue: " + relative)
                     with closing(_connect(path, readonly=True)) as db:
                         _check_source_provenance(manifest, source_models, region, platform, db)
+                        reused_face = None
+                        if face_reuse:
+                            from costume_scene_sources import face_preflight
+                            proof = face_preflight(db, files[face_reuse["member"]], root=plan.root,
+                                                   platform=platform, region=region, source_suit_id=source_suit)
+                            reused_face = proof["asset_path"]
+                            plan.authoring_face_reuse.append({"database": relative, **proof})
                         package_key = "suit:" + str(plan.suit_id)
                         mapping = {}
                         for role, (pack_name, size) in pack_records[platform].items():
                             if db.execute("SELECT 1 FROM m_asset_pack WHERE pack_name=?", (pack_name,)).fetchone():
                                 raise ValueError("This scene pack is already installed.")
-                            logical = thumbnail_path if role == "thumbnail" else face_path if role == "facedynamic" else plan.model_paths[role]
+                            logical = (thumbnail_path if role == "thumbnail" else face_path if role == "facedynamic"
+                                       else graph_paths[platform][role[6:]] if role.startswith("graph:") else plan.model_paths[role])
                             table = "texture" if role == "thumbnail" else "member_model"
                             if db.execute(f"SELECT 1 FROM {table} WHERE asset_path=?", (logical,)).fetchone():
                                 raise ValueError("The new scene model identity is occupied.")
@@ -383,7 +590,7 @@ def prepare_package(decoded, root="."):
                                 "category": 8 if role == "thumbnail" else 3}
                         main = {row[0] for row in db.execute("SELECT pack_name FROM m_asset_package_mapping WHERE package_key='main'")}
                         dependencies = {}
-                        for role in ROLES:
+                        for role in (() if graph else ROLES):
                             if source_suit is not None:
                                 outgoing = [row[0] for row in db.execute(
                                     "SELECT dependency FROM member_model_dependency WHERE asset_path=?",
@@ -395,11 +602,28 @@ def prepare_package(decoded, root="."):
                                 outgoing = [value for _, target, value in defaults["DEPENDENCIES"][209] if target == label]
                             if role == "mv_unmasked" and face:
                                 outgoing = [value for value in outgoing if value != "Z$"] + [face_path]
-                            dependencies[role] = list(dict.fromkeys(outgoing))
-                            for dependency in dependencies[role]:
+                            elif role == "mv_unmasked" and reused_face:
+                                outgoing = [value for value in outgoing if value != "Z$"] + [reused_face]
+                            logical = plan.model_paths[role]
+                            dependencies.setdefault(logical, [])
+                            for dependency in outgoing:
+                                if dependency not in dependencies[logical]:
+                                    dependencies[logical].append(dependency)
+                        if graph:
+                            for key, node in graph[platform]["nodes"].items():
+                                logical = graph_paths[platform][key]
+                                outgoing = [graph_paths[platform][dependency] for dependency in node["model_dependencies"]]
+                                for shader in node["shared_shader_dependencies"]:
+                                    table, _ = _descriptor(db, shader)
+                                    if table != "shader":
+                                        raise ValueError("An execution shared dependency must resolve to a shader.")
+                                    outgoing.append(shader)
+                                dependencies[logical] = outgoing
+                        for logical, outgoing in dependencies.items():
+                            for dependency in outgoing:
                                 plan.add(relative, "member_model_dependency", {
-                                    "asset_path": plan.model_paths[role], "dependency": dependency})
-                                if dependency == face_path:
+                                    "asset_path": logical, "dependency": dependency})
+                                if dependency == face_path or graph and dependency in graph_paths[platform].values():
                                     continue
                                 for companion in _closure(db, [dependency]):
                                     if companion not in main and companion not in mapping:
@@ -476,7 +700,9 @@ def install_package(path, expected_sha256=None, *, root=".", do_backup=True, log
     root = Path(root).resolve()
     with guard(root):
         decoded = read_package(path, expected_sha256)
+        producer_package_sha256 = decoded["sha256"]
         plan = prepare_package(decoded, root)
+        decoded = plan.decoded
         if do_backup:
             if root != Path.cwd().resolve():
                 raise ValueError("Run the scene installer from its game server folder before backing up.")
@@ -493,8 +719,16 @@ def install_package(path, expected_sha256=None, *, root=".", do_backup=True, log
             source_archive = plan.files["source_archive"]["path"]
             receipt = begin_install(kind="scene", label=decoded["manifest"]["display_name"],
                 source={"package_sha256": decoded["sha256"], "archive_path": str(source_archive),
+                        "producer_package_sha256": producer_package_sha256,
                         "manifest": decoded["manifest"], "createdSuitFamily": [plan.suit_id],
-                        "runtime_model_paths": plan.model_paths,
+                        "runtime_model_paths": plan.runtime_model_paths,
+                        "canonical_model_paths": plan.canonical_model_paths,
+                        "graph_model_paths": plan.graph_model_paths,
+                        "role_model_paths": plan.model_paths,
+                        "target_member_id": plan.target_member_id, "default_variant": plan.default_variant,
+                        "main_model_path": plan.main_model_path,
+                        "authoring_face_reuse": plan.authoring_face_reuse,
+                        "execution_identity_rebased": decoded.get("execution_identity_rebased", False),
                         "rollback_directory": str(stage), "publication": "staged-databases-v1"},
                 owned_rows=[item for item in plan.rows if item["db"] != "userdata.db"],
                 owned_files=[{key: (str(value[key]) if key == "path" else value[key])
@@ -524,14 +758,18 @@ def install_package(path, expected_sha256=None, *, root=".", do_backup=True, log
                         replaced.append((sidecar, saved))
                 os.replace(stage / "new" / relative, original)
                 _sync_directory(original.parent)
-            if _hash_file(_safe_file(path)) != decoded["sha256"]:
+            if _hash_file(_safe_file(path)) != producer_package_sha256:
                 raise ValueError("The scene package changed during installation.")
             receipt.commit()
             complete = True
             log("Rina scene costume installed: " + str(plan.suit_id))
             return {"installed": True, "suit_id": plan.suit_id,
                     "receipt_path": str(receipt.path), "package_sha256": decoded["sha256"],
-                    "source_archive": str(source_archive), "model_paths": plan.model_paths}
+                    "producer_package_sha256": producer_package_sha256,
+                    "source_archive": str(source_archive), "model_paths": plan.runtime_model_paths,
+                    "canonical_model_paths": plan.canonical_model_paths,
+                    "graph_model_paths": plan.graph_model_paths,
+                    "target_member_id": plan.target_member_id, "default_variant": plan.default_variant}
         except BaseException as error:
             if complete:
                 # An output/logging error cannot undo durable committed state.
@@ -583,7 +821,7 @@ def installed_scene_source(suit_id, *, root="."):
     if not receipts.exists():
         return None
     from costume_management import _read_receipt, _connect as management_connect, _selected
-    matches = []
+    matches, clone_candidate = [], False
     for path in receipts.glob("*.json"):
         _safe_file(path)
         if path.stat().st_size > 4 * 1024 * 1024:
@@ -591,9 +829,16 @@ def installed_scene_source(suit_id, *, root="."):
         receipt = _read_receipt(root, path.stem)
         if receipt.get("kind") == "scene" and suit_id in receipt.get("suit_ids", []):
             matches.append(receipt)
+        if receipt.get("kind") == "clone" and suit_id in receipt.get("suit_ids", []):
+            clone_candidate = True
     if not matches:
+        if clone_candidate:
+            # The clone helper owns canonical archive publication and validation;
+            # ordinary clones without that authority still return None.
+            from costume_scene_clones import resolve_canonical_clone_source
+            return resolve_canonical_clone_source(suit_id, root=root)
         return None
-    if len(matches) != 1 or matches[0].get("state") != "committed":
+    if clone_candidate or len(matches) != 1 or matches[0].get("state") != "committed":
         raise ValueError("This scene costume has incomplete or ambiguous installation provenance.")
     receipt = matches[0]
     source = receipt["source"]
@@ -612,6 +857,19 @@ def installed_scene_source(suit_id, *, root="."):
     decoded = read_package(archive, source["package_sha256"])
     if decoded["manifest"] != source["manifest"]:
         raise ValueError("The preserved scene costume metadata changed.")
+    shared, target, variant, _ = _routing_contract(decoded["manifest"])
+    runtime_paths = dict(source["runtime_model_paths"])
+    canonical_paths = source.get("canonical_model_paths")
+    if canonical_paths is None:
+        if shared:
+            raise ValueError("The shared-board archive has no verified physical model authority.")
+        canonical_paths = {region: {"primary": runtime_paths["mv_board"],
+                                     "unmasked": runtime_paths["mv_unmasked"]}
+                           for region in REGION_LANGUAGES}
     return {"archive_path": str(archive), "sha256": decoded["sha256"],
             "install_id": receipt["install_id"], "suit_id": suit_id,
-            "runtime_model_paths": dict(source["runtime_model_paths"])}
+            "runtime_model_paths": runtime_paths, "canonical_model_paths": canonical_paths,
+            "graph_model_paths": source.get("graph_model_paths", {}),
+            "target_member_id": target, "default_variant": variant,
+            "main_model_path": runtime_paths["navi_board"],
+            "manifest_version": decoded["manifest"].get("version", 1)}

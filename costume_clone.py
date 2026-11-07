@@ -100,14 +100,15 @@ def list_costumes(md_conn, dict_conn, chara_id):
     excluding already-cloned suits, newest costume first. Read-only; no printing."""
     cur = md_conn.cursor()
     dcur = dict_conn.cursor()
-    where = " AND ".join("name NOT LIKE ?" for _ in _CLONE_SUFFIXES)
+    from costume_scene_clones import canonical_clone_candidates
+    canonical = canonical_clone_candidates()
     direction = _newest_first_dir(md_conn)
     cur.execute(
-        "SELECT id, name FROM m_suit WHERE member_m_id = ? AND " + where
-        + f" ORDER BY display_order {direction}",
-        (int(chara_id), *(f"%{s}" for s in _CLONE_SUFFIXES)),
+        "SELECT id, name FROM m_suit WHERE member_m_id = ?"
+        + f" ORDER BY display_order {direction}", (int(chara_id),),
     )
-    return [(cid, key, get_real_costume_name(dcur, key)) for cid, key in cur.fetchall()]
+    return [(cid, key, get_real_costume_name(dcur, key)) for cid, key in cur.fetchall()
+            if cid in canonical or not any(key.casefold().endswith(suffix.casefold()) for suffix in _CLONE_SUFFIXES)]
 
 
 def dict_path_for_lang(lang=None):
@@ -239,22 +240,41 @@ def _source_metadata(conn, costume_id, src_id):
 
 
 def _validate_source_format(metadata):
-    """Do not flatten a three-role HOME/MV source into the legacy clone model."""
-    message = ("Cloning scene-specific HOME/MV costumes is not supported yet. "
-               "Choose an ordinary costume; no clone was written.")
+    """Only verified shared-board scenes have canonical clone authority."""
+    message = ("Cloning scene-specific HOME/MV costumes requires a verified shared-board v2 export. "
+               "Re-export the source costume first; no clone was written.")
     source_ids = set()
+    distinct = False
     for suits, _, views in metadata.values():
         source_ids.update(suits)
         for sid, suit in suits.items():
             if any(row.get("view_status") == 1 and row.get("model_asset_path")
                    and row["model_asset_path"] != suit["model_asset_path"] for row in views[sid]):
-                raise ValueError(message)
+                distinct = True
     # A tracked scene with changed/missing routes must fail verification rather
     # than silently fall back to the currently installed Navi model.
     from costume_scene_installer import installed_scene_source
-    for sid in sorted(source_ids):
-        if sid > 0 and installed_scene_source(sid, root=".") is not None:
+    scenes = [info for sid in sorted(source_ids) if sid > 0 and
+              (info := installed_scene_source(sid, root=".")) is not None]
+    if not scenes:
+        if distinct:
             raise ValueError(message)
+        return None
+    if distinct or len(scenes) != 1 or len(source_ids) != 1 or scenes[0].get("manifest_version") != 2:
+        raise ValueError(message)
+    scene = scenes[0]
+    for suits, attachments, views in metadata.values():
+        sid = next(iter(suits))
+        if attachments or scene.get("target_member_id") != suits[sid]["member_m_id"] or {
+                row.get("view_status"): row.get("model_asset_path") for row in views[sid]} != {
+                    1: scene.get("main_model_path"), 2: scene.get("runtime_model_paths", {}).get("mv_unmasked")}:
+            raise ValueError("The shared-board source routes do not match its canonical archive.")
+    return scene
+
+
+def _validate_scene_targets(scene, targets, use_no_mask):
+    if scene is not None and use_no_mask and 209 in targets:
+        raise ValueError("A shared-board Rina costume must use its board default; choose the board option.")
 
 
 def clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_backup=True,
@@ -291,6 +311,7 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
     dict_conns = []
     user_conn = None
     assets = None
+    canonical_archive = None
     receipt = None
     data_committed = False
     operation_error = None
@@ -299,7 +320,8 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
         jp = sqlite3.connect(MASTERDATA_JP)
         metadata = {region: _source_metadata(conn, costume_id, src_id)
                     for region, conn in (("gl", gl), ("jp", jp))}
-        _validate_source_format(metadata)
+        scene_source = _validate_source_format(metadata)
+        _validate_scene_targets(scene_source, [tgt_id], use_no_mask)
         name_key = metadata["gl"][0][costume_id]["name"]
         real_name = _resolve_real_name(name_key)
         # Colour variants need a corresponding private base suit. They reference
@@ -311,7 +333,7 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
         for original_id in [costume_id] + sorted(original_ids - {costume_id}):
             while True:
                 candidate = generate_unique_costume_id(gl.cursor(), jp.cursor())
-                if candidate not in id_map.values():
+                if candidate not in id_map.values() and (scene_source is None or candidate > 0):
                     break
             id_map[original_id] = candidate
         new_id = id_map[costume_id]
@@ -322,6 +344,12 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
         region_models = {}
         primary_models = {}
         for region, (suits, _, views) in metadata.items():
+            if scene_source is not None:
+                physical = scene_source["canonical_model_paths"][region]
+                selected = physical["unmasked" if use_no_mask else "primary"]
+                primary_models[region] = {sid: selected for sid in suits}
+                region_models[region] = set(physical.values())
+                continue
             no_mask = None
             if use_no_mask:
                 source_conn = gl if region == "gl" else jp
@@ -335,9 +363,15 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
             region_models[region] = set(primary_models[region].values())
             region_models[region].update(row["model_asset_path"] for rows in views.values()
                                           for row in rows if row.get("model_asset_path"))
+        canonical_options = dict(shared_roots=scene_source["canonical_model_paths"],
+            retained_textures={region: {row["thumbnail_image_asset_path"] for row in value[0].values()
+                if row.get("thumbnail_image_asset_path")} for region, value in metadata.items()}) if scene_source is not None else {}
         assets = prepare_clone_assets(region_models, new_id,
             {region: {sid: id_map[sid] for sid in value[0]}
-             for region, value in metadata.items()}, log=log)
+             for region, value in metadata.items()}, log=log, **canonical_options)
+        if scene_source is not None:
+            from costume_scene_clones import prepare_canonical_clone
+            canonical_archive = prepare_canonical_clone(scene_source, assets, tgt_id, use_no_mask)
         displays = {"gl": _safe_display_order(gl, tgt_id), "jp": _safe_display_order(jp, tgt_id)}
         if before_write is not None:
             before_write()
@@ -359,7 +393,9 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
                 for original_view in views[sid]:
                     view = dict(original_view)
                     view["suit_master_id"] = id_map[sid]
-                    view["model_asset_path"] = assets.models[region, view["model_asset_path"]]
+                    old_model = (primary_models[region][sid] if scene_source is not None and
+                                 view["view_status"] == 1 else view["model_asset_path"])
+                    view["model_asset_path"] = assets.models[region, old_model]
                     master_rows.append((conn, path, "m_suit_view", view))
                 if sid in attachments:
                     attached = dict(attachments[sid])
@@ -398,12 +434,16 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
                 owned_files.append(dict(path=str(path), size=len(data), sha256=hashlib.sha256(data).hexdigest()))
         donor_metadata = {region: dict(suits=suits, attachments=attachments, views=views)
                           for region, (suits, attachments, views) in metadata.items()}
+        source_receipt = dict(member_id=src_id, suit_id=costume_id, target_member_id=tgt_id,
+                use_no_mask=bool(use_no_mask), source_suit_ids=sorted(original_ids),
+                metadata_sha256=hashlib.sha256(json.dumps(donor_metadata, sort_keys=True).encode()).hexdigest())
+        if canonical_archive is not None:
+            source_receipt["canonical_scene"] = canonical_archive.source
+            owned_files.append(canonical_archive.descriptor())
         from costume_management import begin_install
         receipt = begin_install(kind="clone", label=f"{real_name} → {CHARACTER_NAMES[tgt_id]}",
             owned_rows=owned_rows, owned_files=owned_files,
-            source=dict(member_id=src_id, suit_id=costume_id, target_member_id=tgt_id,
-                use_no_mask=bool(use_no_mask), source_suit_ids=sorted(original_ids),
-                metadata_sha256=hashlib.sha256(json.dumps(donor_metadata, sort_keys=True).encode()).hexdigest()),
+            source=source_receipt,
             references=dict(source_model_paths={region: sorted(paths) for region, paths in region_models.items()},
                             reused_files=reused_files))
 
@@ -411,6 +451,8 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
             _insert(conn, table, row)
 
         assets.publish()
+        if canonical_archive is not None:
+            canonical_archive.publish()
         assets.register()
         for conn, _, table, row in master_rows:
             _insert(conn, table, row)
@@ -445,6 +487,11 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
         _cleanup_connections([gl, jp, user_conn, *dict_conns], "rollback")
         if assets is not None:
             assets.rollback()
+        if canonical_archive is not None:
+            try:
+                canonical_archive.rollback(retain=assets is not None and assets.commit_started)
+            except Exception:
+                pass
         if receipt is not None:
             try:
                 receipt.incomplete(error)
@@ -491,7 +538,7 @@ def normalize_target_ids(target_ids):
     return result
 
 
-def validate_clone_batch(src_id, costume_id, target_ids):
+def validate_clone_batch(src_id, costume_id, target_ids, *, use_no_mask=False):
     """Read-only request validation, usable before pausing the server."""
     source = _validate_char_id("source character id", src_id)
     targets = normalize_target_ids(target_ids)
@@ -508,7 +555,8 @@ def validate_clone_batch(src_id, costume_id, target_ids):
             metadata[region] = _source_metadata(conn, costume, source)
         finally:
             conn.close()
-    _validate_source_format(metadata)
+    scene = _validate_source_format(metadata)
+    _validate_scene_targets(scene, targets, use_no_mask)
     return source, costume, targets
 
 
@@ -526,7 +574,7 @@ def clone_costumes(src_id, costume_id, target_ids, use_no_mask=False, log=print,
                    do_backup=True, *, progress=None, should_stop=None):
     """Validate the full request, then hold one mutation guard for the batch."""
     from database_maintenance import guard
-    source, costume, targets = validate_clone_batch(src_id, costume_id, target_ids)
+    source, costume, targets = validate_clone_batch(src_id, costume_id, target_ids, use_no_mask=use_no_mask)
     with guard("."):
         return _clone_costumes(source, costume, targets, use_no_mask=use_no_mask, log=log,
             do_backup=do_backup, progress=progress, should_stop=should_stop)
@@ -541,7 +589,7 @@ def _clone_costumes(src_id, costume_id, target_ids, use_no_mask=False, log=print
     CloneBatchError.result describes completed, failed and unattempted targets.
     Cancellation is checked between complete single-target operations.
     """
-    source, costume, targets = validate_clone_batch(src_id, costume_id, target_ids)
+    source, costume, targets = validate_clone_batch(src_id, costume_id, target_ids, use_no_mask=use_no_mask)
     result = {"source_id": source, "source_suit_id": costume, "target_ids": targets,
               "status": "completed", "completed": 0, "backup_created": False, "results": []}
     if progress is not None:

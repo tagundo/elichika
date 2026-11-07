@@ -45,7 +45,7 @@ def copy_python_sources(repo, destination):
     # The app's managed installation and path helpers always come from parent.
     for name in ("payload_db_upgrade.py", "database_maintenance.py", "payload_file_hash.py",
                  "payload_revision.py", "sukusta_paths.py", "costume_management.py",
-                 "costume_scene_installer.py"):
+                 "costume_scene_installer.py", "costume_scene_clones.py", "costume_scene_sources.py"):
         shutil.copy2(repo / name, destination / name)
     runtime = repo / "macos/runtime"
     require((runtime / "elichika_macos.py").is_file(), "The desktop runtime entry point is missing")

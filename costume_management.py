@@ -827,8 +827,8 @@ def _all_game_dbs(root):
 def _scene_donor_dependencies(root,install_id,suit_ids):
     """Installed scene archives still need their donor when reinstalled.
 
-    Clones have independent model graphs: their source ids are informational.
-    This is authoring provenance, distinct from runtime SQL/pack references.
+    Plain clones have independent model graphs. Canonical shared-board clones
+    retain the original authoring donor; their immediate clone source is informational.
     """
     directory=root/STATE_DIR/"receipts"
     proof,reasons=[],[]
@@ -847,12 +847,25 @@ def _scene_donor_dependencies(root,install_id,suit_ids):
             other=_read_receipt(root,path.stem)
             if other.get("state") in ("deleted","rolled_back"):
                 continue
-            if other.get("kind") in ("clone","costume"):
-                continue
-            if other.get("kind")!="scene":
-                raise ManagementError("Unknown installation provenance")
             source=other.get("source")
-            manifest=source.get("manifest") if isinstance(source,dict) else None
+            if other.get("kind")=="costume":
+                continue
+            if other.get("kind")=="clone":
+                if not isinstance(source,dict):
+                    raise ManagementError("Unverifiable clone provenance")
+                if "canonical_scene" not in source:
+                    continue
+                canonical=source["canonical_scene"]
+                if not isinstance(canonical,dict) or canonical.get("version")!=2:
+                    raise ManagementError("Unverifiable canonical clone donor")
+                manifest=canonical.get("manifest")
+                if (not isinstance(manifest,dict) or manifest.get("version")!=2 or
+                        manifest.get("requires")!=["rina-shared-board-v2"] or manifest.get("character_id")!=209):
+                    raise ManagementError("Unverifiable canonical clone authoring manifest")
+            elif other.get("kind")=="scene":
+                manifest=source.get("manifest") if isinstance(source,dict) else None
+            else:
+                raise ManagementError("Unknown installation provenance")
             if not isinstance(manifest,dict) or "source_suit_id" not in manifest:
                 raise ManagementError("Unverifiable scene donor")
             donor=manifest["source_suit_id"]

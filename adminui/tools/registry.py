@@ -116,7 +116,7 @@ TOOLS = [
                         "Pick a character, then press ↻ to list their costumes."),
             {"name": "costume", "label": "Costume to clone", "type": "dynamic_select",
              "source": "costume", "depends_on": "src_id", "required": True},
-            {"name": "mask", "label": "Rina version (character 209 only)", "type": "select",
+            {"name": "mask", "label": "Rina board / bare face", "type": "select",
              "options": ["1 (with mask)", "2 (no mask)"], "default": "1 (with mask)"},
             _char_field("tgt_ids", "Target characters",
                         "Select every character to receive a clone. Each receives independent model assets.",

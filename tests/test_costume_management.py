@@ -500,6 +500,11 @@ class CostumeManagementTests(unittest.TestCase):
         fixture=module.SceneInstallerTests("runTest")
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
+        originals={}
+        for relative in cm.MASTERS:
+            with sqlite3.connect(fixture.root/relative) as conn:
+                originals[relative]=(conn.execute("SELECT id FROM m_suit ORDER BY id").fetchall(),
+                    conn.execute("SELECT suit_master_id,view_status FROM m_suit_view ORDER BY suit_master_id,view_status").fetchall())
         result=fixture.install()
         root=fixture.root
         receipt=json.loads(Path(result["receipt_path"]).read_text())
@@ -513,8 +518,8 @@ class CostumeManagementTests(unittest.TestCase):
             cm.delete_install(receipt["install_id"],expected_token=plan["review_token"],root=root,log=lambda _:None)
         for relative in cm.MASTERS:
             with sqlite3.connect(root/relative) as conn:
-                self.assertEqual(conn.execute("SELECT id FROM m_suit").fetchall(),[(320913,)])
-                self.assertEqual(conn.execute("SELECT suit_master_id,view_status FROM m_suit_view").fetchall(),[(320913,2)])
+                self.assertEqual(conn.execute("SELECT id FROM m_suit ORDER BY id").fetchall(),originals[relative][0])
+                self.assertEqual(conn.execute("SELECT suit_master_id,view_status FROM m_suit_view ORDER BY suit_master_id,view_status").fetchall(),originals[relative][1])
         for relative in cm.REQUIRED_CATALOGS:
             with sqlite3.connect(root/relative) as conn:
                 for path in result["model_paths"].values():
@@ -823,12 +828,16 @@ class CostumeManagementTests(unittest.TestCase):
         with self.assertRaises(cm.ManagementError):
             cm.inventory(self.root,include_original="true")
 
-    def lineage_child(self,donor=900,*,kind="scene",publish=True):
+    def lineage_child(self,donor=900,*,kind="scene",publish=True,canonical=False):
         rows=[dict(db=relative,table="m_suit",row=dict(id=901,member_m_id=2,
             name="k.child_scene",model_asset_path="stockmodel",thumbnail_image_asset_path="stockthumb"))
             for relative in cm.MASTERS]
+        source={"manifest":{"source_suit_id":donor}}
+        if canonical:
+            source={"suit_id":777,"canonical_scene":{"version":2,"manifest":{
+                "version":2,"requires":["rina-shared-board-v2"],"character_id":209,"source_suit_id":donor}}}
         receipt=cm.begin_install(kind=kind,label="Child Scene",owned_rows=rows,
-            source={"manifest":{"source_suit_id":donor}},root=self.root)
+            source=source,root=self.root)
         if publish:
             for row in rows:
                 self.execute(row["db"],"INSERT INTO m_suit(id,member_m_id,name,model_asset_path,thumbnail_image_asset_path) VALUES(901,2,'k.child_scene','stockmodel','stockthumb')")
@@ -879,6 +888,37 @@ class CostumeManagementTests(unittest.TestCase):
         plan=self.preview(donor)
         self.assertTrue(plan["deletable"],plan["blocked_reasons"])
         self.assertFalse(plan["scene_donor_dependencies"])
+
+    def test_canonical_clone_keeps_original_authoring_donor_but_not_immediate_source(self):
+        donor=self.install()
+        child=self.lineage_child(kind="clone",canonical=True)
+        plan=self.preview(donor)
+        self.assertFalse(plan["deletable"])
+        proof=plan["scene_donor_dependencies"][0]
+        self.assertEqual((proof["install_id"],proof["source_suit_id"]),(child.install_id,900))
+        self.assertEqual(proof["receipt_sha256"],hashlib.sha256(child.path.read_bytes()).hexdigest())
+        self.assertEqual(cm._scene_donor_dependencies(self.root,"other-install",[777]),([],[]))
+        self.delete(child)
+        self.assertTrue(self.preview(donor)["deletable"])
+
+    def test_pending_canonical_clone_keeps_donor_until_verified_rollback(self):
+        donor=self.install()
+        child=self.lineage_child(kind="clone",canonical=True,publish=False)
+        self.assertFalse(self.preview(donor)["deletable"])
+        child.incomplete(OSError())
+        self.assertFalse(self.preview(donor)["deletable"])
+        child.rolled_back()
+        self.assertTrue(self.preview(donor)["deletable"])
+
+    def test_malformed_canonical_clone_claim_fails_donor_review_closed(self):
+        donor=self.install()
+        child=self.lineage_child(kind="clone",canonical=True)
+        value=json.loads(child.path.read_text())
+        value["source"]["canonical_scene"]["manifest"].pop("source_suit_id")
+        child.path.write_text(json.dumps(value))
+        plan=self.preview(donor)
+        self.assertFalse(plan["deletable"])
+        self.assertEqual(plan["scene_donor_dependencies"][0]["status"],"unverifiable")
 
     def test_unverifiable_other_receipt_fails_closed_without_claiming_donor(self):
         donor=self.install()

@@ -174,6 +174,9 @@ class CloneAssets:
         self.connections = []
         self.catalogs = []
         self.packs = {}
+        self.plain_packs = {}
+        self.copied_source_packs = {}
+        self.required_source_packs = {}
         self.created = []
         self.commit_started = False
         self.destination = _pack_directory()
@@ -203,6 +206,10 @@ class CloneAssets:
                 for row in _rows(conn, "m_asset_package_mapping", "package_key", "suit:" + str(source_id)):
                     row["package_key"] = "suit:" + str(new_id)
                     mapping.setdefault(row["pack_name"], row)
+            # Canonical descendants own the copied models. Keep old packs only
+            # when a shared shader or retained thumbnail still requires them.
+            for pack in self.copied_source_packs.get(conn, set()) - self.required_source_packs.get(conn, set()):
+                mapping.pop(pack, None)
             for old_path, new_path, pack, size in records:
                 rows.append((conn, "member_model", dict(asset_path=new_path, pack_name=pack,
                     head="0", size=size, key1="0", key2="0")))
@@ -247,7 +254,8 @@ class CloneAssets:
         _cleanup_connections(self.connections, "close")
 
 
-def prepare_clone_assets(region_models, new_id, source_ids, log=print):
+def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared_roots=None,
+                         retained_textures=None):
     """Resolve/validate native bundles before publishing clone packs or mutating DBs.
 
     Source pack resolution may populate the local download cache during this
@@ -283,10 +291,21 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print):
                         raise ValueError("invalid clone asset catalog " + str(path) + ": " + table)
                 catalogs.append((region, path, conn, _model_closure(conn, models, path)))
         # Logical model identities agree across the platform/language catalogs.
+        shared_keys = {}
+        if shared_roots is not None:
+            if set(shared_roots) != set(region_models) or any(
+                    set(family) != {"primary", "unmasked"} or
+                    len(set(family.values())) != 2 or not set(family.values()) <= region_models[region]
+                    for region, family in shared_roots.items()):
+                raise ValueError("invalid canonical clone physical model family")
         for region in region_models:
             models = {model for item_region, _, _, closure in catalogs if item_region == region
                       for model in closure}
             for old in sorted(models):
+                role = next((role for role, path in shared_roots[region].items() if path == old), None) if shared_roots else None
+                if role in shared_keys:
+                    plan.models[region, old] = shared_keys[role]
+                    continue
                 while True:
                     candidate = uuid.uuid4().hex[:8]
                     if candidate not in plan.models.values() and all(not conn.execute(
@@ -294,6 +313,8 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print):
                         for conn in plan.connections):
                         break
                 plan.models[region, old] = candidate
+                if role is not None:
+                    shared_keys[role] = candidate
 
         roots = extractor.build_pack_roots(os.getcwd(), [str(plan.destination)],
             [p for p, status in extractor.detect_game_candidates() if status == "found"])
@@ -301,6 +322,31 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print):
         for region, path, conn, models in catalogs:
             resolver = extractor.PackResolver(roots, str(plan.destination), extractor.DEFAULT_CDN_BASE, conn)
             originals = {}
+            if shared_roots is not None:
+                plan.copied_source_packs[conn] = {
+                    row["pack_name"] for old in models for row in _rows(conn, "member_model", "asset_path", old)}
+                required = set()
+                if "pack_name" in _columns(conn, "shader"):
+                    pending = []
+                    for old in models:
+                        for edge in _rows(conn, "member_model_dependency", "asset_path", old):
+                            if _rows(conn, "shader", "asset_path", edge["dependency"]):
+                                pending.append(edge["dependency"])
+                    seen_shaders = set()
+                    while pending:
+                        shader = pending.pop()
+                        if shader in seen_shaders:
+                            continue
+                        seen_shaders.add(shader)
+                        rows = _rows(conn, "shader", "asset_path", shader)
+                        if len(rows) != 1:
+                            raise ValueError("missing or ambiguous shared shader dependency")
+                        required.add(rows[0]["pack_name"])
+                        pending.extend(row["dependency"] for row in _rows(conn, "shader_dependency", "asset_path", shader))
+                if retained_textures and "pack_name" in _columns(conn, "texture"):
+                    for texture in retained_textures.get(region, ()):
+                        required.update(row["pack_name"] for row in _rows(conn, "texture", "asset_path", texture))
+                plan.required_source_packs[conn] = required
             for old in models:
                 row = conn.execute("SELECT pack_name,head,size,key1,key2 FROM member_model WHERE asset_path=?", (old,)).fetchone()
                 if not row:
@@ -326,8 +372,17 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print):
             ambiguous_cabs = set()
             bundle_names = {}
             ambiguous_names = set()
+            model_namespaces = {old: namespace + ":" + (
+                hashlib.sha256(data).hexdigest() if shared_roots else region + ":" + old)
+                for old, data in originals.items()}
+            seen_cabs = set()
             for old, data in originals.items():
-                model_namespace = namespace + ":" + region + ":" + old
+                model_namespace = model_namespaces[old]
+                if shared_roots:
+                    owned_cabs = {name.lower() for name in _cab_names(data)}
+                    if seen_cabs.intersection(owned_cabs):
+                        raise ValueError("canonical clone has ambiguous duplicate physical model CABs")
+                    seen_cabs.update(owned_cabs)
                 for original, renamed in _cab_mapping(_cab_names(data), model_namespace).items():
                     if original in identities and identities[original] != renamed:
                         ambiguous_cabs.add(original)
@@ -355,11 +410,14 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print):
                                 raise ValueError("ambiguous private model bundle dependency")
             records = []
             for old, data in originals.items():
-                cloned = bytearray(isolate_bundle(data, namespace + ":" + region + ":" + old,
+                cloned = bytearray(isolate_bundle(data, model_namespaces[old],
                                                   identities, bundle_names))
+                plain = bytes(cloned) if shared_roots else None
                 extractor.decrypt_section(cloned, extractor.FIXED_KEY0, 0, 0)
                 pack = "cc" + hashlib.sha256(cloned).hexdigest()[:30]
                 plan.packs[pack] = bytes(cloned)
+                if shared_roots:
+                    plan.plain_packs[pack] = plain
                 records.append((old, plan.models[region, old], pack, len(cloned)))
             plan.catalogs.append((conn, records, source_ids[region], new_id))
             log("prepared independent costume models: " + str(path))

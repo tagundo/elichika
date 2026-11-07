@@ -62,12 +62,15 @@ class SceneInstallerTests(unittest.TestCase):
         for relative in scene.MASTER_DBS:
             with closing(self.connect(relative)) as db:
                 db.executescript("""
+                  CREATE TABLE m_member(id INTEGER PRIMARY KEY);
+                  INSERT INTO m_member VALUES(209),(109);
                   CREATE TABLE m_suit(id INTEGER PRIMARY KEY,member_m_id INTEGER,name TEXT,
                     thumbnail_image_asset_path TEXT,suit_release_route INTEGER,suit_release_value INTEGER,
                     model_asset_path TEXT,display_order INTEGER,untouched TEXT DEFAULT 'template');
                   CREATE TABLE m_suit_view(suit_master_id INTEGER,view_status INTEGER,model_asset_path TEXT,
                     PRIMARY KEY(suit_master_id,view_status));
                   INSERT INTO m_suit VALUES(320913,209,'k.source','thumb',2,0,'board',5,'keep-template');
+                  INSERT INTO m_suit VALUES(10900001,109,'k.target','target-thumb',2,0,'target-existing',70,'keep-target');
                   INSERT INTO m_suit_view VALUES(320913,2,'bare');
                 """)
                 db.commit()
@@ -138,6 +141,237 @@ class SceneInstallerTests(unittest.TestCase):
                             for variant, path in (("primary", "board"), ("unmasked", "bare"))}
             manifest["source_provenance"] = provenance
         return {"manifest": manifest, "files": files}
+
+    def shared_document(self, *, target=209, default="primary", source=True):
+        document = self.document_for(self.platforms, thumbnail=False, source=source)
+        manifest = document["manifest"]
+        manifest.update(version=2, requires=["rina-shared-board-v2"],
+                        target_member_id=target, default_variant=default)
+        for refs in manifest["platforms"].values():
+            unused = refs["mv_board"]["member"]
+            refs["mv_board"] = copy.deepcopy(refs["navi_board"])
+            del document["files"][unused]
+        return document
+
+    def graph_document(self):
+        document = self.shared_document(target=109, default="unmasked")
+        graph = {}
+        shader = next(value for _, _, value in scene._defaults()["DEPENDENCIES"][209] if value.startswith("§"))
+        for platform, roles in document["manifest"]["platforms"].items():
+            def resource(name, raw):
+                member = platform + "/" + name + ".unity"
+                document["files"][member] = raw
+                return {"member": member, "sha256": digest(raw), "bytes": len(raw),
+                        "target_platform": 13 if platform == "android" else 9}
+            original_face = resource("original-face", (platform + ":original-face").encode())
+            document["manifest"]["dependencies"][platform] = {"facedynamic": original_face}
+            graph[platform] = {"role_bindings": {"navi_board": "board", "mv_board": "board", "mv_unmasked": "bare"},
+                "nodes": {"board": {"resource": roles["mv_board"], "model_dependencies": ["face"], "shared_shader_dependencies": []},
+                          "bare": {"resource": roles["mv_unmasked"], "model_dependencies": ["face"], "shared_shader_dependencies": []},
+                          "face": {"resource": resource("private-face", (platform + ":private-face").encode()),
+                                   "model_dependencies": ["animation"], "shared_shader_dependencies": []},
+                          "animation": {"resource": resource("private-animation", (platform + ":private-animation").encode()),
+                                        "model_dependencies": [], "shared_shader_dependencies": [shader]}}}
+        document["manifest"]["execution_model_graph"] = graph
+        return document
+
+    def test_graph_sql_publication_keeps_private_face_animation_and_authoring_face_separate(self):
+        self.document = self.graph_document()
+        # Native identity rebasing is exercised by the generated-bundle interop
+        # suite. Here the validated identity boundary isolates real SQL/rollback.
+        with patch.object(scene, "_rebase_execution_graph", side_effect=lambda decoded, _: decoded):
+            result = self.install()
+        self.assertEqual(len(list((self.root / "custom-packs").iterdir())), 8)
+        for region, languages in scene.REGION_LANGUAGES.items():
+            for platform, code in scene.PLATFORM_CODES.items():
+                paths = result["graph_model_paths"][region][platform]
+                self.assertEqual(set(paths), {"board", "bare", "face", "animation"})
+                for language in languages:
+                    with closing(self.connect(f"assets/db/{region}/asset_{code}_{language}.db")) as db:
+                        self.assertEqual(db.execute("SELECT dependency FROM member_model_dependency WHERE asset_path=?", (paths["bare"],)).fetchall(), [(paths["face"],)])
+                        self.assertEqual(db.execute("SELECT dependency FROM member_model_dependency WHERE asset_path=?", (paths["face"],)).fetchall(), [(paths["animation"],)])
+                        self.assertEqual(db.execute("SELECT count(*) FROM member_model WHERE asset_path LIKE 'scene%'").fetchone()[0], 4)
+        receipt = json.loads(Path(result["receipt_path"]).read_text())
+        self.assertEqual(receipt["source"]["manifest"]["dependencies"], self.document["manifest"]["dependencies"])
+        self.assertEqual(scene.installed_scene_source(result["suit_id"])["graph_model_paths"], result["graph_model_paths"])
+
+    def test_graph_invalid_closure_and_shader_kind_are_refused_without_publication(self):
+        changes = (
+            lambda g: g["nodes"]["animation"]["model_dependencies"].append("bare"),
+            lambda g: g["nodes"]["face"]["model_dependencies"].append("missing"),
+            lambda g: g["role_bindings"].update(mv_board="bare"),
+            lambda g: g["nodes"]["animation"].update(shared_shader_dependencies=["ID"]),
+            lambda g: g["nodes"]["animation"].update(shared_shader_dependencies=["bad\u0085shader"]),
+        )
+        for change in changes:
+            self.document = self.graph_document()
+            change(self.document["manifest"]["execution_model_graph"]["android"])
+            before = self.snapshots()
+            with patch.object(scene, "_rebase_execution_graph", side_effect=lambda decoded, _: decoded):
+                with self.subTest(change=change), self.assertRaises(ValueError):
+                    self.install()
+            self.assertEqual(before, self.snapshots())
+        self.assertFalse((self.root / "custom-packs").exists())
+
+    def test_plain_v2_reuses_verified_original_face_with_recursive_model_closure(self):
+        self.document = self.shared_document(target=109, default="unmasked")
+        for platform in self.platforms:
+            raw = (platform + ":original-face").encode()
+            member = platform + "/authoring-face.unity"
+            self.document["files"][member] = raw
+            self.document["manifest"]["dependencies"][platform] = {"facedynamic": {
+                "member": member, "sha256": digest(raw), "bytes": len(raw),
+                "target_platform": 13 if platform == "android" else 9}}
+        for region, languages in scene.REGION_LANGUAGES.items():
+            for language in languages:
+                for platform, code in scene.PLATFORM_CODES.items():
+                    with closing(self.connect(f"assets/db/{region}/asset_{code}_{language}.db")) as db:
+                        pack = platform[0] + "sourceanimation"
+                        db.execute("INSERT INTO m_asset_pack VALUES(?,0)", (pack,))
+                        db.execute("INSERT INTO member_model VALUES('source-animation',?,0,10,0,0)", (pack,))
+                        db.execute("INSERT INTO member_model_dependency VALUES('Z$','source-animation')")
+                        db.execute("INSERT INTO m_asset_package_mapping VALUES('suit:320913',?,10,NULL,0,3)", (pack,))
+                        db.commit()
+        def verified(_db, raw, **_kwargs):
+            return {"asset_path": "Z$", "sha256": digest(raw), "native_cabs": ["CAB-original-face"]}
+        with patch("costume_scene_sources.face_preflight", side_effect=verified) as preflight:
+            result = self.install()
+        self.assertEqual(preflight.call_count, 8)
+        self.assertEqual(len(list((self.root / "custom-packs").iterdir())), 4)
+        for region, languages in scene.REGION_LANGUAGES.items():
+            for language in languages:
+                for platform, code in scene.PLATFORM_CODES.items():
+                    with closing(self.connect(f"assets/db/{region}/asset_{code}_{language}.db")) as db:
+                        self.assertEqual(db.execute("SELECT dependency FROM member_model_dependency WHERE asset_path=?", (result["model_paths"]["mv_unmasked"],)).fetchall(), [("Z$",)])
+                        mapped = {row[0] for row in db.execute("SELECT pack_name FROM m_asset_package_mapping WHERE package_key=?", ("suit:" + str(result["suit_id"]),))}
+                        self.assertIn(platform[0] + "sourceanimation", mapped)
+        self.assertEqual(len(json.loads(Path(result["receipt_path"]).read_text())["source"]["authoring_face_reuse"]), 8)
+
+    def test_v2_shared_board_is_registered_once_and_reopens_its_canonical_archive(self):
+        self.document = self.shared_document()
+        result = self.install()
+        sid, paths = result["suit_id"], result["model_paths"]
+        self.assertEqual(paths["navi_board"], paths["mv_board"])
+        self.assertNotEqual(paths["mv_board"], paths["mv_unmasked"])
+        self.assertEqual(len(list((self.root / "custom-packs").iterdir())), 4)
+        for platform, code in scene.PLATFORM_CODES.items():
+            for region, languages in scene.REGION_LANGUAGES.items():
+                for language in languages:
+                    with closing(self.connect(f"assets/db/{region}/asset_{code}_{language}.db")) as db:
+                        models = db.execute("SELECT asset_path,pack_name FROM member_model WHERE asset_path LIKE 'scene%'").fetchall()
+                        self.assertEqual(len(models), 2)
+                        self.assertEqual(len({row[1] for row in models}), 2)
+                        self.assertEqual(db.execute("SELECT dependency FROM member_model_dependency WHERE asset_path=?", (paths["mv_board"],)).fetchall(), [("ID",)])
+        source = scene.installed_scene_source(sid)
+        self.assertEqual(source["manifest_version"], 2)
+        self.assertEqual(source["target_member_id"], 209)
+        self.assertEqual(source["default_variant"], "primary")
+        self.assertEqual(source["runtime_model_paths"], paths)
+        self.assertEqual(source["canonical_model_paths"]["gl"], {"primary": paths["mv_board"], "unmasked": paths["mv_unmasked"]})
+        receipt = json.loads(Path(result["receipt_path"]).read_text())
+        self.assertEqual(len(receipt["owned_files"]), 5)  # two OS × two physical roles + archive
+
+    def test_v1_equal_bytes_keep_three_distinct_physical_role_identities(self):
+        for refs in self.document["manifest"]["platforms"].values():
+            for ref in refs.values():
+                raw = b"equal prevalidated model contents"
+                self.document["files"][ref["member"]] = raw
+                ref.update(sha256=digest(raw), bytes=len(raw))
+        result = self.install()
+        self.assertEqual(len(set(result["model_paths"].values())), 3)
+        # Six model packs plus the independently owned thumbnail.
+        self.assertEqual(len(list((self.root / "custom-packs").iterdir())), 7)
+
+    def test_v2_shared_board_unions_and_deduplicates_both_source_dependency_routes(self):
+        for relative in scene.MASTER_DBS:
+            with closing(self.connect(relative)) as db:
+                db.execute("INSERT INTO m_suit_view VALUES(320913,1,'board-mv')")
+                db.commit()
+        for region, languages in scene.REGION_LANGUAGES.items():
+            for language in languages:
+                for platform, code in scene.PLATFORM_CODES.items():
+                    with closing(self.connect(f"assets/db/{region}/asset_{code}_{language}.db")) as db:
+                        pack = platform[0] + "alternateboard"
+                        db.execute("INSERT INTO m_asset_pack VALUES(?,0)", (pack,))
+                        db.execute("INSERT INTO member_model VALUES('board-mv',?,0,10,0,0)", (pack,))
+                        db.execute("INSERT INTO member_model_dependency VALUES('board-mv','ID'),('board-mv','Z$')")
+                        db.execute("INSERT INTO m_asset_package_mapping VALUES('main',?,10,NULL,0,3)", (pack,))
+                        db.commit()
+        self.document = self.shared_document()
+        for region, languages in scene.REGION_LANGUAGES.items():
+            for platform, code in scene.PLATFORM_CODES.items():
+                with closing(self.connect(f"assets/db/{region}/asset_{code}_{languages[0]}.db")) as db:
+                    self.document["manifest"]["source_provenance"][region][platform]["primary"] = scene._descriptor(db, "board-mv")[1]
+        result = self.install()
+        for region, languages in scene.REGION_LANGUAGES.items():
+            for language in languages:
+                for code in scene.PLATFORM_CODES.values():
+                    with closing(self.connect(f"assets/db/{region}/asset_{code}_{language}.db")) as db:
+                        self.assertEqual(db.execute("SELECT dependency FROM member_model_dependency WHERE asset_path=? ORDER BY dependency", (result["model_paths"]["mv_board"],)).fetchall(), [("ID",), ("Z$",)])
+
+    def test_v2_target_owner_display_order_thumbnail_and_grant_keep_rina_donor(self):
+        self.document = self.shared_document(target=109)
+        before = self.snapshots()
+        result = self.install()
+        for relative in scene.MASTER_DBS:
+            with closing(self.connect(relative)) as db:
+                self.assertEqual(db.execute("SELECT member_m_id,display_order,thumbnail_image_asset_path,untouched FROM m_suit WHERE id=?", (result["suit_id"],)).fetchone(),
+                                 (109, 71, scene._defaults()["DEFAULT_THUMBNAILS"][209], "keep-template"))
+                self.assertEqual(db.execute("SELECT member_m_id FROM m_suit WHERE id=320913").fetchone(), (209,))
+        with closing(self.connect("userdata.db")) as db:
+            self.assertEqual(db.execute("SELECT suit_master_id FROM u_member").fetchone(), (320913,))
+            self.assertEqual(db.execute("SELECT user_id FROM u_suit WHERE suit_master_id=?", (result["suit_id"],)).fetchall(), [(7,)])
+        receipt = json.loads(Path(result["receipt_path"]).read_text())
+        self.assertEqual(receipt["source"]["manifest"]["character_id"], 209)
+        self.assertEqual(receipt["source"]["manifest"]["source_suit_id"], 320913)
+        self.assertEqual(receipt["source"]["target_member_id"], 109)
+        self.assertNotEqual(before, self.snapshots())
+
+    def test_v2_bare_default_keeps_unselected_board_authority_and_both_physical_roles(self):
+        self.document = self.shared_document(target=109, default="unmasked")
+        result = self.install()
+        sid, runtime = result["suit_id"], result["model_paths"]
+        self.assertEqual(len(set(runtime.values())), 1)
+        physical = result["canonical_model_paths"]["gl"]
+        self.assertNotEqual(physical["primary"], physical["unmasked"])
+        self.assertEqual(runtime["navi_board"], physical["unmasked"])
+        for relative in scene.MASTER_DBS:
+            with closing(self.connect(relative)) as db:
+                self.assertEqual(db.execute("SELECT member_m_id,model_asset_path FROM m_suit WHERE id=?", (sid,)).fetchone(), (109, physical["unmasked"]))
+                self.assertEqual(db.execute("SELECT model_asset_path FROM m_suit_view WHERE suit_master_id=? ORDER BY view_status", (sid,)).fetchall(), [(physical["unmasked"],), (physical["unmasked"],)])
+        source = scene.installed_scene_source(sid)
+        self.assertEqual(source["default_variant"], "unmasked")
+        self.assertEqual(source["canonical_model_paths"], result["canonical_model_paths"])
+        self.assertEqual(len(list((self.root / "custom-packs").iterdir())), 4)
+
+    def test_v2_target_must_exist_in_both_regional_masters(self):
+        self.document = self.shared_document(target=109)
+        with closing(self.connect(scene.MASTER_DBS[1])) as db:
+            db.execute("DELETE FROM m_member WHERE id=109")
+            db.commit()
+        before = self.snapshots()
+        with self.assertRaisesRegex(ValueError, "target character"):
+            self.install()
+        self.assertEqual(before, self.snapshots())
+        self.assertFalse((self.root / ".costume-management").exists())
+
+    def test_malformed_v2_routing_is_refused_without_publication(self):
+        for change in (lambda m: m.update(target_member_id=True), lambda m: m.update(target_member_id=0),
+                       lambda m: m.update(target_member_id=2**31), lambda m: m.pop("target_member_id"),
+                       lambda m: m.pop("default_variant"), lambda m: m.update(default_variant="unmasked"),
+                       lambda m: m.update(requires=["rina-scene-routing-v1"]),
+                       lambda m: m["platforms"]["android"]["mv_board"].update(member="another.unity")):
+            self.document = self.shared_document()
+            change(self.document["manifest"])
+            before = self.snapshots()
+            with self.subTest(manifest=self.document["manifest"]), self.assertRaises(ValueError):
+                self.install()
+            self.assertEqual(before, self.snapshots())
+        self.assertFalse((self.root / "custom-packs").exists())
+
+    def test_v2_shared_publication_fault_rolls_back_all_deduplicated_outputs(self):
+        self.document = self.shared_document(target=109, default="unmasked")
+        self.test_mid_database_publication_fault_restores_every_db_and_owned_file()
 
     def snapshots(self):
         return {str(path.relative_to(self.root)): path.read_bytes() for path in self.root.rglob("*.db")}

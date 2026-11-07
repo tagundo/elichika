@@ -46,7 +46,7 @@ def run_costume_clone(job, params):
     mask = str(params.get("mask") or "1").strip()[:1] or "1"
     # Validate every selection, including donor ownership, before stopping the
     # server. The core checks again after the maintenance pause.
-    src_id, costume_id, targets = cc.validate_clone_batch(src_id, costume_id, targets)
+    src_id, costume_id, targets = cc.validate_clone_batch(src_id, costume_id, targets, use_no_mask=(mask == "2"))
 
     if params.get("stop_server", True):
         stop_server(job.log)

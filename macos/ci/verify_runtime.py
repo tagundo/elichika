@@ -53,7 +53,7 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'costume_transplant','costume_part_transplant','lower_body_swap',
          'unity_costumemod_packer','skin_tone_changer','texture_importer',
          'assetbundle_IosApk_batch_import_plus','fix_sifas_bundle_export',
-         'database_backup','database_restore',
+         'database_backup','database_restore','costume_scene_installer','costume_scene_clones','costume_scene_sources',
          'llas_asset_extractor','elichika_macos']
 for name in modules: importlib.import_module(name)
 # These original installer CLIs deliberately execute their interaction/job at
