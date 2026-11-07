@@ -1,4 +1,4 @@
-name: Rina original Unity scene-model QA
+name: Clone original Unity material A-B QA
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ permissions:
 jobs:
   original-unity:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,18 +25,21 @@ jobs:
             sudo apt-get install -y "linux-modules-extra-$(uname -r)"
             sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
           fi
-          mkdir -p evidence "$RUNNER_TEMP/android-data"
+          mkdir -p evidence "$RUNNER_TEMP/clone-material-data"
           uname -a > evidence/host.txt
           getconf PAGESIZE >> evidence/host.txt
           docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
           docker image inspect redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa --format '{{json .RepoDigests}} {{.Architecture}}' >> evidence/host.txt
-          docker run --detach --privileged --name rina-unity-qa \
+          docker run --detach --privileged --name clone-material-unity-qa \
+            --label "elichika.qa.scope=clone-material" \
+            --label "elichika.qa.run=$GITHUB_RUN_ID" \
             --publish 127.0.0.1:5555:5555 \
-            --volume "$RUNNER_TEMP/android-data:/data" \
+            --volume "$RUNNER_TEMP/clone-material-data:/data" \
             redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
             androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 androidboot.redroid_height=1280 \
             androidboot.redroid_fps=10 ro.secure=0
+          python3 tests/clone_material_qa/ownership.py > evidence/target-ownership.json
           ready=0
           for attempt in $(seq 1 120); do
             adb connect 127.0.0.1:5555 >/dev/null || true
@@ -57,36 +60,44 @@ jobs:
           curl --fail --location --retry 2 --output "$RUNNER_TEMP/LLAS_GL_LOCAL.apk" \
             https://github.com/arina999999997/elichika/releases/download/clients/LLAS_GL_LOCAL.apk
           printf '%s  %s\n' 8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e "$RUNNER_TEMP/LLAS_GL_LOCAL.apk" | sha256sum --check
+          python3 tests/clone_material_qa/ownership.py > evidence/install-ownership.json
           adb -s 127.0.0.1:5555 install -r -g "$RUNNER_TEMP/LLAS_GL_LOCAL.apk"
           adb -s 127.0.0.1:5555 shell dumpsys package com.klab.lovelive.allstars.global > evidence/game-package.txt
 
       - name: Prepare pinned late-attach tooling
-        run: >-
-          bash tests/rina_scene_qa/prepare_tools.sh
-          "$RUNNER_TEMP/qa-python" "$RUNNER_TEMP/qa-tools"
-          127.0.0.1:5555 evidence/tools.json
+        run: |
+          set -euo pipefail
+          python3 tests/clone_material_qa/ownership.py > evidence/tooling-ownership.json
+          bash tests/rina_scene_qa/prepare_tools.sh \
+            "$RUNNER_TEMP/qa-python" "$RUNNER_TEMP/qa-tools" \
+            127.0.0.1:5555 evidence/tools.json
 
-      - name: Exercise original Unity bundle isolation and native scaler
+      - name: Exercise original Unity shared-material control and private-bundle isolation
         run: |
           set -euo pipefail
           git rev-parse HEAD > evidence/qa-source.txt
-          "$RUNNER_TEMP/qa-python/bin/python" -u tests/rina_scene_qa/run.py \
-            --manifest tests/rina_scene_qa/fixtures/manifest.json \
+          "$RUNNER_TEMP/qa-python/bin/python" -u tests/clone_material_qa/run.py \
+            --manifest tests/clone_material_qa/fixtures/manifest.json \
             --bridge "$RUNNER_TEMP/qa-tools/package/dist/index.js" \
-            --output evidence/coload
+            --output evidence/material-ab
 
       - name: Collect original Unity diagnostics
         if: always()
         run: |
           mkdir -p evidence
-          docker logs rina-unity-qa > evidence/container.log 2>&1 || true
-          adb -s 127.0.0.1:5555 logcat -d > evidence/logcat.txt 2>&1 || true
-          adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
-          docker rm --force rina-unity-qa || true
+          if python3 tests/clone_material_qa/ownership.py > evidence/cleanup-ownership.json 2> evidence/cleanup-ownership-error.txt; then
+            docker logs clone-material-unity-qa > evidence/container.log 2>&1 || true
+            adb -s 127.0.0.1:5555 logcat -d > evidence/logcat.txt 2>&1 || true
+            adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
+            docker rm --force clone-material-unity-qa || true
+          else
+            # Foreign/stale ownership never authorizes device queries or removal.
+            docker inspect clone-material-unity-qa > evidence/unowned-container.json 2>&1 || true
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: rina-original-unity-evidence
+          name: clone-original-unity-material-evidence
           path: evidence
           retention-days: 14

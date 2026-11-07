@@ -1,0 +1,377 @@
+{
+  "source_catalog": "/dev/shm/elichika-manifest-recovery-fixture/runtime/assets/db/gl/asset_a_en.db",
+  "source_catalog_sha256": "9ea3c6d42b729653098bb0d8c055f190075347d2aede4f15c284b143f406b3ea",
+  "source_cdn": "https://llsifas.imsofucking.gay/static/",
+  "unitypy": "1.25.0",
+  "roots": [
+    "WrU",
+    "8d|"
+  ],
+  "topological_assets": [
+    "ID",
+    "wS",
+    "§n8#",
+    "§y7",
+    "§~+",
+    "§M|",
+    "§Vr",
+    ";k",
+    "Z$",
+    "xU",
+    "§?D#",
+    "§j^"
+  ],
+  "nodes": [
+    {
+      "asset_path": "WrU",
+      "table": "member_model",
+      "descriptor": {
+        "pack_name": "bt56ya",
+        "head": 896810,
+        "size": 991966,
+        "key1": 1240471782,
+        "key2": 95137967
+      },
+      "dependencies": [
+        "ID",
+        "wS",
+        "§M|",
+        "§Vr",
+        "§n8#",
+        "§y7",
+        "§~+"
+      ],
+      "supplied_original": true
+    },
+    {
+      "asset_path": "ID",
+      "table": "member_model",
+      "descriptor": {
+        "pack_name": "x6viy3",
+        "head": 388384,
+        "size": 4358,
+        "key1": 1542159958,
+        "key2": 1564933904
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/member_model_3843971dcfdee508.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/x6viy3",
+      "encrypted_pack_sha256": "6283ced9cedd016c2f878e70312e7a3432fb703f0cfe46d0ef14ce4909f345aa",
+      "plain_sha256": "3c8215d64ac08e2390eca1ebcfa6102cea2c43634617878f51ac79df3213dd43",
+      "serialized_files": [
+        "CAB-2e1a3f0ca191d0978983aa87761680e3"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "ch9999_membereyeanimationdata.unity3d"
+      ]
+    },
+    {
+      "asset_path": "wS",
+      "table": "member_model",
+      "descriptor": {
+        "pack_name": "p889br",
+        "head": 4358,
+        "size": 4338,
+        "key1": 691010665,
+        "key2": 1923229450
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/member_model_ff10921d8c70adb8.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/p889br",
+      "encrypted_pack_sha256": "21fcef1fdafab635c35ae4142a8ec28b14dcd06a122d7b607903bc80fed24b22",
+      "plain_sha256": "17005e1f98127e2834bc05f1d0570b143db31c3378cebb634f4f677fbdb0e0aa",
+      "serialized_files": [
+        "CAB-eab63759f8fcd724b99e9665fdc52064"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "ch9999_membermouthanimationdata.unity3d"
+      ]
+    },
+    {
+      "asset_path": "§M|",
+      "table": "shader",
+      "descriptor": {
+        "pack_name": "pxzhsm",
+        "head": 71390,
+        "size": 5879,
+        "key1": -1443623531,
+        "key2": 1305470041
+      },
+      "dependencies": [
+        "§n8#",
+        "§y7",
+        "§~+"
+      ],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/shader_29f8a22768a3f257.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/pxzhsm",
+      "encrypted_pack_sha256": "a993a6930e1a6df2e38af0f88892985c969966cf368c52c4c43cc6a48d5b452c",
+      "plain_sha256": "70c454eb4ce024ea86e0a12db1cdd7c3f2467a91209e81d47b49cc4c6e5319b9",
+      "serialized_files": [
+        "CAB-9382ea964987eceddd567506a3b21312"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "asmember.shader.unity3d"
+      ]
+    },
+    {
+      "asset_path": "§n8#",
+      "table": "shader",
+      "descriptor": {
+        "pack_name": "72syqz",
+        "head": 0,
+        "size": 5608,
+        "key1": 992480685,
+        "key2": 260635450
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/shader_6a1a430d2cc5a70e.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/72syqz",
+      "encrypted_pack_sha256": "d957182245cd1eacd630db1dfc2e2300ce77b17edeb6c73e4612a7e5087571fd",
+      "plain_sha256": "001c21b3e9d8e7b5c04a87b22573a0875f6851309e8b819b38b677219245cbf5",
+      "serialized_files": [
+        "CAB-ba2d019e7e0e5784c3fb39e9ca67638f"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "_asmemberdepth.shader.unity3d"
+      ]
+    },
+    {
+      "asset_path": "§y7",
+      "table": "shader",
+      "descriptor": {
+        "pack_name": "72syqz",
+        "head": 12003,
+        "size": 5663,
+        "key1": -975643407,
+        "key2": -1926602544
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/shader_b0a0c28231d6cc40.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/72syqz",
+      "encrypted_pack_sha256": "d957182245cd1eacd630db1dfc2e2300ce77b17edeb6c73e4612a7e5087571fd",
+      "plain_sha256": "b1164b85145de453943a5e7b4aa3c1de9fa9f9db4fda0809dc1ce14e0af37246",
+      "serialized_files": [
+        "CAB-65fd326ab7097283d24131e230a328f8"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "_asmemberoutline.shader.unity3d"
+      ]
+    },
+    {
+      "asset_path": "§~+",
+      "table": "shader",
+      "descriptor": {
+        "pack_name": "pxzhsm",
+        "head": 56097,
+        "size": 7573,
+        "key1": 2067638009,
+        "key2": 1194008561
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/shader_686041f4e4452adb.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/pxzhsm",
+      "encrypted_pack_sha256": "a993a6930e1a6df2e38af0f88892985c969966cf368c52c4c43cc6a48d5b452c",
+      "plain_sha256": "27b1cc044ab5d0cab641e7124375ed7f5ef1fa60771c932fab6659d63f4457fb",
+      "serialized_files": [
+        "CAB-78fa21c39b3d1e9839b1310477fae858"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "_asmembermain.shader.unity3d"
+      ]
+    },
+    {
+      "asset_path": "§Vr",
+      "table": "shader",
+      "descriptor": {
+        "pack_name": "ebw8c8",
+        "head": 51373,
+        "size": 7209,
+        "key1": 219649940,
+        "key2": -925080878
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/shader_31ea3584da2a72c0.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/ebw8c8",
+      "encrypted_pack_sha256": "3d28b8e9c20df16fddefd239d344c7f4f7cf3bfdebaf1bb95058caac93d1aa8d",
+      "plain_sha256": "4adae48d9063bc5f254ece2c730ac1c797895b4f98151a9252685dba0d71f13f",
+      "serialized_files": [
+        "CAB-adf9ba7b61bd035c754bf74ae44927cb"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "asgeneraltransparent.shader.unity3d"
+      ]
+    },
+    {
+      "asset_path": "8d|",
+      "table": "member_model",
+      "descriptor": {
+        "pack_name": "bt56ya",
+        "head": 0,
+        "size": 896810,
+        "key1": 1319662447,
+        "key2": -822554471
+      },
+      "dependencies": [
+        ";k",
+        "Z$",
+        "xU",
+        "§?D#",
+        "§M|",
+        "§Vr",
+        "§j^",
+        "§n8#",
+        "§y7",
+        "§~+"
+      ],
+      "supplied_original": true
+    },
+    {
+      "asset_path": ";k",
+      "table": "member_model",
+      "descriptor": {
+        "pack_name": "24ezo4",
+        "head": 388867,
+        "size": 4140,
+        "key1": -1665172031,
+        "key2": -321944538
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/member_model_6fa0e56e5935f231.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/24ezo4",
+      "encrypted_pack_sha256": "ed7736796a449f8f885f841657e7a76afdb81ee0ebd7f5be9e1265ddfa624274",
+      "plain_sha256": "d2edd1f857f26c3a12640e62bcf85591111409ee3eec4ef3c0fbff45cfaaa242",
+      "serialized_files": [
+        "CAB-e39f41546157d0966753bc07a240f09f"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "ch0209_membermouthanimationdata.unity3d"
+      ]
+    },
+    {
+      "asset_path": "Z$",
+      "table": "member_model",
+      "descriptor": {
+        "pack_name": "x6viy3",
+        "head": 0,
+        "size": 383015,
+        "key1": 2053939359,
+        "key2": -130367896
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/member_model_e44459b2289713e5.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/x6viy3",
+      "encrypted_pack_sha256": "6283ced9cedd016c2f878e70312e7a3432fb703f0cfe46d0ef14ce4909f345aa",
+      "plain_sha256": "be51eca045964b51ecdc98feeb75ccef3ecf4c4fdfdc5dd57eddc84f3a763744",
+      "serialized_files": [
+        "CAB-7995e06bfc9f26eb5e909401efa06a29"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "ch0209_co0000_facedynamic.prefab.unity3d"
+      ]
+    },
+    {
+      "asset_path": "xU",
+      "table": "member_model",
+      "descriptor": {
+        "pack_name": "x6viy3",
+        "head": 383015,
+        "size": 5369,
+        "key1": 846590498,
+        "key2": 1781930650
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/member_model_7a9a0ad9d9b1c197.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/x6viy3",
+      "encrypted_pack_sha256": "6283ced9cedd016c2f878e70312e7a3432fb703f0cfe46d0ef14ce4909f345aa",
+      "plain_sha256": "8b2862a5d5f64213162ceff2db1cbbab50af8cad2bf859676c7dbcdf2b5f8d19",
+      "serialized_files": [
+        "CAB-dac4455f736be6cb88f936d125e8b267"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "ch0209_membereyeanimationdata.unity3d"
+      ]
+    },
+    {
+      "asset_path": "§?D#",
+      "table": "shader",
+      "descriptor": {
+        "pack_name": "huxh2i",
+        "head": 0,
+        "size": 4798,
+        "key1": 46742813,
+        "key2": 409432834
+      },
+      "dependencies": [],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/shader_4314b6c382e22066.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/huxh2i",
+      "encrypted_pack_sha256": "5e133c45599acee2579d37285155481edc7853a9df18be8cf62cdc3c49ad5039",
+      "plain_sha256": "fa84f15b8abc49ed53cfcb8705e8b342b8dfb1ded1dd81ab858b6e1cc94df293",
+      "serialized_files": [
+        "CAB-fda7280599c32675465cf28e3a46c3ba"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "_asdepth.shader.unity3d"
+      ]
+    },
+    {
+      "asset_path": "§j^",
+      "table": "shader",
+      "descriptor": {
+        "pack_name": "huxh2i",
+        "head": 59713,
+        "size": 6759,
+        "key1": 1786444300,
+        "key2": 1343988803
+      },
+      "dependencies": [
+        "§?D#"
+      ],
+      "path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/shader_11c0d7612fe9d07f.unity",
+      "pack_path": "/dev/shm/elichika-clone-material-ab-bundles/dependencies/encrypted-packs/huxh2i",
+      "encrypted_pack_sha256": "5e133c45599acee2579d37285155481edc7853a9df18be8cf62cdc3c49ad5039",
+      "plain_sha256": "4f70c46a96dee063ff0bb68ceed16afaa055901c7bc9dd9224a6c354a2153864",
+      "serialized_files": [
+        "CAB-618a998abe328b9a2b05b370a5907b3e"
+      ],
+      "platforms": [
+        13
+      ],
+      "runtime_names": [
+        "asgeneralopaque.shader.unity3d"
+      ]
+    }
+  ]
+}

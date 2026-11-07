@@ -1,0 +1,704 @@
+{
+  "schema": 1,
+  "scope": "owned-original-unity-material-ab",
+  "game_sha256": "8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e",
+  "properties": [
+    "_AmbientColor",
+    "_RimlightColor"
+  ],
+  "producer_manifest_sha256": "c8bd155c0fb056a6bfb0a2108f5f04003b0fbab8f155332652f7e1a37c9f5168",
+  "dependency_manifest_sha256": "84de79d5eb0e84acac95ce3c266992ce0a9bb23cf86c48f8176316c4b615a4f6",
+  "catalog_sha256": "9ea3c6d42b729653098bb0d8c055f190075347d2aede4f15c284b143f406b3ea",
+  "source_cdn": "https://llsifas.imsofucking.gay/static/",
+  "producer_source_commit": "33982a194cd621da7ad051c23d7f7a88163df771",
+  "producer_implementation_file_sha256": "36a0645370caacdc12890f650919f90e83afa18ec129053c27cf0eabb645b8e2",
+  "producer_isolation_function_sha256": "5fe812b3ed67f43704bcb173dd6e26d7db04cb78fe598e581a725ead5a81c704",
+  "native_dependency_assets": [
+    "ID",
+    "wS",
+    "§n8#",
+    "§y7",
+    "§~+",
+    "§Vr",
+    ";k",
+    "xU",
+    "§?D#",
+    "§M|",
+    "§j^",
+    "Z$"
+  ],
+  "fixtures": [
+    {
+      "id": "dependency_0",
+      "kind": "dependency",
+      "asset_path": "ID",
+      "file": "dependency_0.unity",
+      "sha256": "3c8215d64ac08e2390eca1ebcfa6102cea2c43634617878f51ac79df3213dd43",
+      "descriptor": {
+        "pack_name": "x6viy3",
+        "head": 388384,
+        "size": 4358,
+        "key1": 1542159958,
+        "key2": 1564933904
+      },
+      "encrypted_pack_sha256": "6283ced9cedd016c2f878e70312e7a3432fb703f0cfe46d0ef14ce4909f345aa",
+      "cab": "CAB-2e1a3f0ca191d0978983aa87761680e3",
+      "platform": 13,
+      "externals": [],
+      "shaders": [],
+      "bytes": 4358
+    },
+    {
+      "id": "dependency_1",
+      "kind": "dependency",
+      "asset_path": "wS",
+      "file": "dependency_1.unity",
+      "sha256": "17005e1f98127e2834bc05f1d0570b143db31c3378cebb634f4f677fbdb0e0aa",
+      "descriptor": {
+        "pack_name": "p889br",
+        "head": 4358,
+        "size": 4338,
+        "key1": 691010665,
+        "key2": 1923229450
+      },
+      "encrypted_pack_sha256": "21fcef1fdafab635c35ae4142a8ec28b14dcd06a122d7b607903bc80fed24b22",
+      "cab": "CAB-eab63759f8fcd724b99e9665fdc52064",
+      "platform": 13,
+      "externals": [],
+      "shaders": [],
+      "bytes": 4338
+    },
+    {
+      "id": "dependency_2",
+      "kind": "dependency",
+      "asset_path": "§n8#",
+      "file": "dependency_2.unity",
+      "sha256": "001c21b3e9d8e7b5c04a87b22573a0875f6851309e8b819b38b677219245cbf5",
+      "descriptor": {
+        "pack_name": "72syqz",
+        "head": 0,
+        "size": 5608,
+        "key1": 992480685,
+        "key2": 260635450
+      },
+      "encrypted_pack_sha256": "d957182245cd1eacd630db1dfc2e2300ce77b17edeb6c73e4612a7e5087571fd",
+      "cab": "CAB-ba2d019e7e0e5784c3fb39e9ca67638f",
+      "platform": 13,
+      "externals": [],
+      "shaders": [
+        "-3813991308837910498"
+      ],
+      "bytes": 5608
+    },
+    {
+      "id": "dependency_3",
+      "kind": "dependency",
+      "asset_path": "§y7",
+      "file": "dependency_3.unity",
+      "sha256": "b1164b85145de453943a5e7b4aa3c1de9fa9f9db4fda0809dc1ce14e0af37246",
+      "descriptor": {
+        "pack_name": "72syqz",
+        "head": 12003,
+        "size": 5663,
+        "key1": -975643407,
+        "key2": -1926602544
+      },
+      "encrypted_pack_sha256": "d957182245cd1eacd630db1dfc2e2300ce77b17edeb6c73e4612a7e5087571fd",
+      "cab": "CAB-65fd326ab7097283d24131e230a328f8",
+      "platform": 13,
+      "externals": [],
+      "shaders": [
+        "1593042379742816654"
+      ],
+      "bytes": 5663
+    },
+    {
+      "id": "dependency_4",
+      "kind": "dependency",
+      "asset_path": "§~+",
+      "file": "dependency_4.unity",
+      "sha256": "27b1cc044ab5d0cab641e7124375ed7f5ef1fa60771c932fab6659d63f4457fb",
+      "descriptor": {
+        "pack_name": "pxzhsm",
+        "head": 56097,
+        "size": 7573,
+        "key1": 2067638009,
+        "key2": 1194008561
+      },
+      "encrypted_pack_sha256": "a993a6930e1a6df2e38af0f88892985c969966cf368c52c4c43cc6a48d5b452c",
+      "cab": "CAB-78fa21c39b3d1e9839b1310477fae858",
+      "platform": 13,
+      "externals": [],
+      "shaders": [
+        "44896306225227252"
+      ],
+      "bytes": 7573
+    },
+    {
+      "id": "dependency_5",
+      "kind": "dependency",
+      "asset_path": "§Vr",
+      "file": "dependency_5.unity",
+      "sha256": "4adae48d9063bc5f254ece2c730ac1c797895b4f98151a9252685dba0d71f13f",
+      "descriptor": {
+        "pack_name": "ebw8c8",
+        "head": 51373,
+        "size": 7209,
+        "key1": 219649940,
+        "key2": -925080878
+      },
+      "encrypted_pack_sha256": "3d28b8e9c20df16fddefd239d344c7f4f7cf3bfdebaf1bb95058caac93d1aa8d",
+      "cab": "CAB-adf9ba7b61bd035c754bf74ae44927cb",
+      "platform": 13,
+      "externals": [],
+      "shaders": [
+        "-4641275457647839130",
+        "7151384334892346267"
+      ],
+      "bytes": 7209
+    },
+    {
+      "id": "dependency_6",
+      "kind": "dependency",
+      "asset_path": ";k",
+      "file": "dependency_6.unity",
+      "sha256": "d2edd1f857f26c3a12640e62bcf85591111409ee3eec4ef3c0fbff45cfaaa242",
+      "descriptor": {
+        "pack_name": "24ezo4",
+        "head": 388867,
+        "size": 4140,
+        "key1": -1665172031,
+        "key2": -321944538
+      },
+      "encrypted_pack_sha256": "ed7736796a449f8f885f841657e7a76afdb81ee0ebd7f5be9e1265ddfa624274",
+      "cab": "CAB-e39f41546157d0966753bc07a240f09f",
+      "platform": 13,
+      "externals": [],
+      "shaders": [],
+      "bytes": 4140
+    },
+    {
+      "id": "dependency_7",
+      "kind": "dependency",
+      "asset_path": "xU",
+      "file": "dependency_7.unity",
+      "sha256": "8b2862a5d5f64213162ceff2db1cbbab50af8cad2bf859676c7dbcdf2b5f8d19",
+      "descriptor": {
+        "pack_name": "x6viy3",
+        "head": 383015,
+        "size": 5369,
+        "key1": 846590498,
+        "key2": 1781930650
+      },
+      "encrypted_pack_sha256": "6283ced9cedd016c2f878e70312e7a3432fb703f0cfe46d0ef14ce4909f345aa",
+      "cab": "CAB-dac4455f736be6cb88f936d125e8b267",
+      "platform": 13,
+      "externals": [],
+      "shaders": [],
+      "bytes": 5369
+    },
+    {
+      "id": "dependency_8",
+      "kind": "dependency",
+      "asset_path": "§?D#",
+      "file": "dependency_8.unity",
+      "sha256": "fa84f15b8abc49ed53cfcb8705e8b342b8dfb1ded1dd81ab858b6e1cc94df293",
+      "descriptor": {
+        "pack_name": "huxh2i",
+        "head": 0,
+        "size": 4798,
+        "key1": 46742813,
+        "key2": 409432834
+      },
+      "encrypted_pack_sha256": "5e133c45599acee2579d37285155481edc7853a9df18be8cf62cdc3c49ad5039",
+      "cab": "CAB-fda7280599c32675465cf28e3a46c3ba",
+      "platform": 13,
+      "externals": [],
+      "shaders": [
+        "5577347056548421851"
+      ],
+      "bytes": 4798
+    },
+    {
+      "id": "dependency_9",
+      "kind": "dependency",
+      "asset_path": "§M|",
+      "file": "dependency_9.unity",
+      "sha256": "70c454eb4ce024ea86e0a12db1cdd7c3f2467a91209e81d47b49cc4c6e5319b9",
+      "descriptor": {
+        "pack_name": "pxzhsm",
+        "head": 71390,
+        "size": 5879,
+        "key1": -1443623531,
+        "key2": 1305470041
+      },
+      "encrypted_pack_sha256": "a993a6930e1a6df2e38af0f88892985c969966cf368c52c4c43cc6a48d5b452c",
+      "cab": "CAB-9382ea964987eceddd567506a3b21312",
+      "platform": 13,
+      "externals": [
+        "cab-65fd326ab7097283d24131e230a328f8",
+        "cab-78fa21c39b3d1e9839b1310477fae858",
+        "cab-ba2d019e7e0e5784c3fb39e9ca67638f"
+      ],
+      "shaders": [
+        "-1512467570639130089",
+        "8291131735116688333"
+      ],
+      "bytes": 5879
+    },
+    {
+      "id": "dependency_10",
+      "kind": "dependency",
+      "asset_path": "§j^",
+      "file": "dependency_10.unity",
+      "sha256": "4f70c46a96dee063ff0bb68ceed16afaa055901c7bc9dd9224a6c354a2153864",
+      "descriptor": {
+        "pack_name": "huxh2i",
+        "head": 59713,
+        "size": 6759,
+        "key1": 1786444300,
+        "key2": 1343988803
+      },
+      "encrypted_pack_sha256": "5e133c45599acee2579d37285155481edc7853a9df18be8cf62cdc3c49ad5039",
+      "cab": "CAB-618a998abe328b9a2b05b370a5907b3e",
+      "platform": 13,
+      "externals": [
+        "cab-fda7280599c32675465cf28e3a46c3ba"
+      ],
+      "shaders": [
+        "-1512467570639130089",
+        "8330475765356442367"
+      ],
+      "bytes": 6759
+    },
+    {
+      "id": "dependency_11",
+      "kind": "dependency",
+      "asset_path": "Z$",
+      "file": "dependency_11.unity",
+      "sha256": "be51eca045964b51ecdc98feeb75ccef3ecf4c4fdfdc5dd57eddc84f3a763744",
+      "descriptor": {
+        "pack_name": "x6viy3",
+        "head": 0,
+        "size": 383015,
+        "key1": 2053939359,
+        "key2": -130367896
+      },
+      "encrypted_pack_sha256": "6283ced9cedd016c2f878e70312e7a3432fb703f0cfe46d0ef14ce4909f345aa",
+      "cab": "CAB-7995e06bfc9f26eb5e909401efa06a29",
+      "platform": 13,
+      "externals": [
+        "cab-dac4455f736be6cb88f936d125e8b267",
+        "cab-e39f41546157d0966753bc07a240f09f",
+        "cab-618a998abe328b9a2b05b370a5907b3e"
+      ],
+      "shaders": [],
+      "bytes": 383015
+    },
+    {
+      "id": "source_board",
+      "kind": "model",
+      "role": "board",
+      "file": "source_board.unity",
+      "sha256": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+      "cab": "CAB-6f4c2513a80b89e4091e6522bed13a85",
+      "platform": 13,
+      "externals": [
+        "cab-9382ea964987eceddd567506a3b21312",
+        "cab-2e1a3f0ca191d0978983aa87761680e3",
+        "cab-adf9ba7b61bd035c754bf74ae44927cb",
+        "cab-eab63759f8fcd724b99e9665fdc52064"
+      ],
+      "materials": [
+        {
+          "name": "ch9999_co0040_head",
+          "path_id": "-8037352288635103007",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        },
+        {
+          "name": "ch9999_co0040_body",
+          "path_id": "-9022484079447239526",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        }
+      ],
+      "bytes": 991966
+    },
+    {
+      "id": "clone_a_board",
+      "kind": "model",
+      "role": "board",
+      "file": "clone_a_board.unity",
+      "sha256": "3de5f202fa3f42d2c2d0d3b9bb2d51e97b31ef89fd6088bc137b8bf0e6f7455f",
+      "source_sha256": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+      "reproduction_namespace": "2bfbc876701a835c8cb8710569b5dbf6",
+      "cab": "CAB-e553b0bcb926ae96beca194555980530",
+      "platform": 13,
+      "externals": [
+        "cab-9382ea964987eceddd567506a3b21312",
+        "cab-2e1a3f0ca191d0978983aa87761680e3",
+        "cab-adf9ba7b61bd035c754bf74ae44927cb",
+        "cab-eab63759f8fcd724b99e9665fdc52064"
+      ],
+      "materials": [
+        {
+          "name": "ch9999_co0040_head",
+          "path_id": "-8037352288635103007",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        },
+        {
+          "name": "ch9999_co0040_body",
+          "path_id": "-9022484079447239526",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        }
+      ],
+      "bytes": 1365822
+    },
+    {
+      "id": "clone_b_board",
+      "kind": "model",
+      "role": "board",
+      "file": "clone_b_board.unity",
+      "sha256": "b605edac3f87efdaed90d6d6bedfd351a09f5d04ad5425621f27f62da665827e",
+      "source_sha256": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+      "reproduction_namespace": "18111c7891a5a27d6f849858a67d2e74",
+      "cab": "CAB-a4dfd429b689fbf92a654bb9ddf191ef",
+      "platform": 13,
+      "externals": [
+        "cab-9382ea964987eceddd567506a3b21312",
+        "cab-2e1a3f0ca191d0978983aa87761680e3",
+        "cab-adf9ba7b61bd035c754bf74ae44927cb",
+        "cab-eab63759f8fcd724b99e9665fdc52064"
+      ],
+      "materials": [
+        {
+          "name": "ch9999_co0040_head",
+          "path_id": "-8037352288635103007",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        },
+        {
+          "name": "ch9999_co0040_body",
+          "path_id": "-9022484079447239526",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        }
+      ],
+      "bytes": 1365822
+    },
+    {
+      "id": "source_unmasked",
+      "kind": "model",
+      "role": "unmasked",
+      "file": "source_unmasked.unity",
+      "sha256": "96476b6f689350cb96453589897758059377aae6563b51358faac54df45045ed",
+      "cab": "CAB-16c3dd98dc3f420a83a0b34f649516d6",
+      "platform": 13,
+      "externals": [
+        "cab-7995e06bfc9f26eb5e909401efa06a29",
+        "cab-9382ea964987eceddd567506a3b21312",
+        "cab-adf9ba7b61bd035c754bf74ae44927cb"
+      ],
+      "materials": [
+        {
+          "name": "ch0209_co0040_head",
+          "path_id": "4599831269039969654",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        },
+        {
+          "name": "ch0209_co0040_body",
+          "path_id": "-6913672213703112058",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        }
+      ],
+      "bytes": 896810
+    },
+    {
+      "id": "clone_a_unmasked",
+      "kind": "model",
+      "role": "unmasked",
+      "file": "clone_a_unmasked.unity",
+      "sha256": "7c766f4cf425087b2d5a152a6a1ef989e44b42ee20cc7a64e59c7844488af56d",
+      "source_sha256": "96476b6f689350cb96453589897758059377aae6563b51358faac54df45045ed",
+      "reproduction_namespace": "3a196764070ced1a4face64ea841beb1",
+      "cab": "CAB-ebd3f318773399797583215a910232ca",
+      "platform": 13,
+      "externals": [
+        "cab-7995e06bfc9f26eb5e909401efa06a29",
+        "cab-9382ea964987eceddd567506a3b21312",
+        "cab-adf9ba7b61bd035c754bf74ae44927cb"
+      ],
+      "materials": [
+        {
+          "name": "ch0209_co0040_head",
+          "path_id": "4599831269039969654",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        },
+        {
+          "name": "ch0209_co0040_body",
+          "path_id": "-6913672213703112058",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        }
+      ],
+      "bytes": 1216741
+    },
+    {
+      "id": "clone_b_unmasked",
+      "kind": "model",
+      "role": "unmasked",
+      "file": "clone_b_unmasked.unity",
+      "sha256": "135612f819e8541b23cc4e8994eebe9a43de6b1a56a8a356ede07b9d3f48476d",
+      "source_sha256": "96476b6f689350cb96453589897758059377aae6563b51358faac54df45045ed",
+      "reproduction_namespace": "96c0d272fdccad33c5eaba3e0ae6d5f7",
+      "cab": "CAB-e9f79197661b4adcfa00021f5452760e",
+      "platform": 13,
+      "externals": [
+        "cab-7995e06bfc9f26eb5e909401efa06a29",
+        "cab-9382ea964987eceddd567506a3b21312",
+        "cab-adf9ba7b61bd035c754bf74ae44927cb"
+      ],
+      "materials": [
+        {
+          "name": "ch0209_co0040_head",
+          "path_id": "4599831269039969654",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        },
+        {
+          "name": "ch0209_co0040_body",
+          "path_id": "-6913672213703112058",
+          "colors": {
+            "_AmbientColor": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "_RimlightColor": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "shader_cab": "cab-9382ea964987eceddd567506a3b21312",
+          "shader_path_id": "8291131735116688333"
+        }
+      ],
+      "bytes": 1216742
+    }
+  ],
+  "cases": [
+    {
+      "id": "board_shared_control",
+      "expect": "shared",
+      "sequence": [
+        "source_board"
+      ]
+    },
+    {
+      "id": "board_private_forward",
+      "expect": "isolated",
+      "sequence": [
+        "source_board",
+        "clone_a_board",
+        "clone_b_board"
+      ]
+    },
+    {
+      "id": "board_private_reverse",
+      "expect": "isolated",
+      "sequence": [
+        "clone_b_board",
+        "clone_a_board",
+        "source_board"
+      ]
+    },
+    {
+      "id": "unmasked_shared_control",
+      "expect": "shared",
+      "sequence": [
+        "source_unmasked"
+      ]
+    },
+    {
+      "id": "unmasked_private_forward",
+      "expect": "isolated",
+      "sequence": [
+        "source_unmasked",
+        "clone_a_unmasked",
+        "clone_b_unmasked"
+      ]
+    },
+    {
+      "id": "unmasked_private_reverse",
+      "expect": "isolated",
+      "sequence": [
+        "clone_b_unmasked",
+        "clone_a_unmasked",
+        "source_unmasked"
+      ]
+    }
+  ]
+}
