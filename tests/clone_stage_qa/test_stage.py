@@ -143,5 +143,44 @@ class CleanupTests(unittest.TestCase):
         self.assertTrue(all(publish.sha(publish.ROOT / name) == value for name, value in publish.SOURCES.items()))
 
 
+class ObservedLanguageRegressionTests(unittest.TestCase):
+    def flow(self):
+        result = run.Flow(SimpleNamespace(), {}, Mock())
+        result.tap = Mock()
+        return result
+
+    def test_English_choice_then_bound_confirmation_without_background_replay(self):
+        flow = self.flow()
+        picker = {"texts": [{"label": "English"}, {"label": "한국어"}],
+                  "widgets": [{"active": True, "class": "LLAS.Components.UI.ProductButton"}] * 3}
+        self.assertTrue(flow.common_dialog(picker))
+        flow.tap.assert_called_once_with(picker, label="English")
+        confirmation = {"texts": [{"label": text} for text in ("Select Language", "OK", "Cancel", "English", "한국어")],
+                        "widgets": [{"active": True, "semantic_refs": ["LLAS.BasicPopupFrame.positiveButton"], "labels": ["OK"]}]}
+        self.assertTrue(flow.common_dialog(confirmation))
+        flow.tap.assert_called_with(confirmation, ref="LLAS.BasicPopupFrame.positiveButton", label="OK")
+        self.assertTrue(flow.language_choice_completed)
+        self.assertFalse(flow.common_dialog(picker))
+        self.assertEqual(flow.tap.call_count, 2)
+
+    def test_unrelated_OK_popup_cannot_confirm_language_or_replayEnglish(self):
+        flow = self.flow()
+        flow.language_choice_requested = True
+        other = {"texts": [{"label": text} for text in ("OK", "Cancel", "English", "한국어")]}
+        with self.assertRaisesRegex(AssertionError, "Unrecognized active language confirmation"):
+            flow.common_dialog(other)
+        flow.tap.assert_not_called()
+        self.assertFalse(flow.language_choice_completed)
+
+    def test_unknown_popup_blocks_backgroundEnglish_and_title(self):
+        flow = self.flow()
+        other = {"texts": [{"label": text} for text in ("OK", "Cancel", "English", "한국어", "Tap to Start")],
+                 "widgets": [{"active": True, "semantic_refs": ["LLAS.BasicPopupFrame.positiveButton"], "labels": ["OK"]}]}
+        with self.assertRaisesRegex(AssertionError, "Unrecognized active popup"):
+            flow.common_dialog(other)
+        flow.tap.assert_not_called()
+        self.assertFalse(flow.language_choice_requested)
+
+
 if __name__ == "__main__":
     unittest.main()

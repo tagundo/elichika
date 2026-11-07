@@ -19,9 +19,10 @@
     "original_sha256": "deca6381e1aa4b0dd7c7437417d75d61debf9137e4a919c56a68a3994df96658",
     "additions": [
       "Download Song",
-      "Song Download Confirmation"
+      "Song Download Confirmation",
+      "Select Language"
     ],
-    "sha256": "0ba7fa28d5fcd75af3de777e9e8fdf2807e3792f7b5d3144c7f3d19c7aef8cb5"
+    "sha256": "c7a32d7be28f35b65ffd488dfd3c7ffebe1356ed8f06ea87e00fbeac286eb07b"
   },
   "additional_frozen_sources": {
     "tests/clone_stage_qa/crash_capture.py": "261767c8317f685c321c1ed5f7f83dbe8477a1d4426074f99d75fd429b561775"

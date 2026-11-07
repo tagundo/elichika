@@ -92,6 +92,8 @@ class Flow:
     def __init__(self, args, report, android):
         self.args, self.report, self.android = args, report, android
         self.sequence = 0
+        self.language_choice_requested = False
+        self.language_choice_completed = False
 
     def save(self):
         temporary = self.args.evidence / ".stage-report.pending"
@@ -137,14 +139,34 @@ class Flow:
 
     def common_dialog(self, tree):
         labels = {row.get("label") for row in tree.get("texts", [])}
+        popups = [row for row in tree.get("widgets", []) if row.get("active") is True
+                  and "LLAS.BasicPopupFrame.positiveButton" in row.get("semantic_refs", [])]
+        if self.language_choice_requested and not self.language_choice_completed:
+            # In 42354099457 the background language-picker surface remained
+            # visible behind the confirmation. Never tap its English row again.
+            if {"Select Language", "OK", "Cancel", "English", "한국어"} <= labels and len(popups) == 1:
+                self.tap(tree, ref="LLAS.BasicPopupFrame.positiveButton", label="OK")
+                self.language_choice_completed = True
+                self.report["language_selection"] = {"normal_English_choice": True,
+                    "normal_confirmation_OK": True, "direct_PlayerPrefs_write": False}
+                return True
+            if popups or {"OK", "Cancel"} <= labels:
+                raise AssertionError("Unrecognized active language confirmation; background input refused")
+            return False
         if {"Agree", "No"} <= labels:
             self.tap(tree, label="Agree")
         elif {"Song Download Confirmation", "OK", "Cancel"} <= labels or {"Download Confirmation", "OK", "Cancel"} <= labels:
             self.tap(tree, label="OK")
         elif "Download Complete" in labels and any("Close" in row.get("labels", []) for row in tree.get("widgets", [])):
             self.tap(tree, label="Close")
-        elif "English" in labels and any("English" in row.get("labels", []) for row in tree.get("widgets", [])):
+        elif popups:
+            raise AssertionError("Unrecognized active popup; background language/title input refused")
+        elif (not self.language_choice_requested and not self.language_choice_completed
+              and {"English", "한국어"} <= labels and not {"OK", "Cancel"}.intersection(labels)
+              and len([row for row in tree.get("widgets", []) if row.get("active") is True
+                       and row.get("class") == "LLAS.Components.UI.ProductButton"]) == 3):
             self.tap(tree, label="English")
+            self.language_choice_requested = True
         elif labels.intersection(smoke.TITLE_LABELS):
             # Reuse the existing independently measured three-control title input.
             assert smoke.tap_ready_title(self.android, self.args, self.report, phase=f"stage-{self.sequence}")
