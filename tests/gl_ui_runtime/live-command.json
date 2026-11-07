@@ -1,13 +1,13 @@
 {
   "run_id": "42350210082",
-  "sequence": 29,
+  "sequence": 30,
   "action": "tap_widget",
-  "widget_id": 292744,
+  "widget_id": 296596,
   "expected_class": "LLAS.Components.UI.ProductButton",
   "expected_bounds": [
-    775.4842529296875,
-    622.9085388183594,
-    929.0075073242188,
-    691.9940032958984
+    578.5906982421875,
+    509.68516540527344,
+    701.4093017578125,
+    632.5037460327148
   ]
 }
