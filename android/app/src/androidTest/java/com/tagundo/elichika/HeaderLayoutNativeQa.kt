@@ -3,6 +3,7 @@ package com.tagundo.elichika
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.graphics.drawable.ColorDrawable
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -11,6 +12,8 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.core.graphics.ColorUtils
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.tabs.TabLayout
 import org.json.JSONArray
 import org.json.JSONObject
@@ -96,6 +99,16 @@ internal object HeaderLayoutNativeQa {
             .put("expectedFontScale", expectedFontScale ?: JSONObject.NULL)
             .put("fontScaling", "Actual system fontScale and native TextView paints; no test font or private-field overrides")
             .put("statusStateScope", "Translated stopped/running/preparing/updating/failed text, Start/Stop labels and progress on actual views; no server state changes")
+        val night = (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        InstrumentationRegistry.getArguments().getString("expectedNightMode")?.let { expected ->
+            assertTrue("expectedNightMode must be yes or no", expected in listOf("yes", "no"))
+            assertEquals("Use the requested actual Android night mode", expected == "yes", night)
+        }
+        val surface = MaterialColors.getColor(header, com.google.android.material.R.attr.colorSurface)
+        val onSurface = MaterialColors.getColor(header, com.google.android.material.R.attr.colorOnSurface)
+        val primary = MaterialColors.getColor(header, com.google.android.material.R.attr.colorPrimary)
+        val theme = JSONObject().put("night", night).put("surface", surface).put("onSurface", onSurface).put("primary", primary)
+        report.put("theme", theme)
         var expectedStatus = originalStatus.toString()
         var expectedProgress = originalProgress
         var expectedToggle = originalToggle.toString()
@@ -175,6 +188,25 @@ internal object HeaderLayoutNativeQa {
                         bounds(controls, visibleControls[first]), bounds(controls, visibleControls[second])))
                 }
                 val inline = header.orientation == LinearLayout.HORIZONTAL
+                for (view in listOf(header, controls, tabs)) {
+                    assertEquals("Both header groups and their gap must use the actual theme surface",
+                        surface, (view.background as? ColorDrawable)?.color)
+                }
+                assertEquals("Status text must use the theme's readable foreground", onSurface, status.currentTextColor)
+                assertEquals("The server action must use the theme's readable foreground", onSurface, toggle.currentTextColor)
+                assertEquals("The server action keeps its shape on the shared surface", surface,
+                    toggle.backgroundTintList?.getColorForState(toggle.drawableState, surface))
+                val spinnerColor = requireNotNull(progress.indeterminateTintList).getColorForState(progress.drawableState, onSurface)
+                assertEquals("The spinner must contrast with the shared surface", onSurface, spinnerColor)
+                assertTrue("Full status text must retain 4.5:1 contrast", ColorUtils.calculateContrast(status.currentTextColor, surface) >= 4.5)
+                assertTrue("The server action must retain 4.5:1 contrast", ColorUtils.calculateContrast(toggle.currentTextColor, surface) >= 4.5)
+                assertTrue("The preparation indicator must retain 3:1 contrast", ColorUtils.calculateContrast(spinnerColor, surface) >= 3.0)
+                assertEquals("Unselected tabs remain readable on the shared surface", onSurface, tabs.tabTextColors?.defaultColor)
+                assertEquals("Keep the selected-tab primary accent", primary,
+                    tabs.tabTextColors?.getColorForState(intArrayOf(android.R.attr.state_selected), onSurface))
+                theme.put("statusContrast", ColorUtils.calculateContrast(status.currentTextColor, surface))
+                    .put("actionContrast", ColorUtils.calculateContrast(toggle.currentTextColor, surface))
+                    .put("spinnerContrast", ColorUtils.calculateContrast(spinnerColor, surface))
                 if (dp == 320 && state == "stopped") assertFalse("A narrow stopped header must retain two readable rows", inline)
                 if (language == "ko" && kotlin.math.abs(scale - 1f) < .01f && state == "stopped" && dp in listOf(768, 853)) {
                     assertTrue("Korean stopped controls and all five tabs must fit inline at $dp dp", inline)

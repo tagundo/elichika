@@ -53,7 +53,9 @@ Options: `--host 0.0.0.0` (LAN), `--port 8772`, `--no-browser`.
   Original game costumes are hidden unless the advanced option is checked and
   require an additional confirmation popup. Game-required defaults, card/reward
   references and other unresolved dependencies remain protected even then.
-  Unknown/shared files and dictionaries are retained. Legacy custom costumes
+  Unknown/shared files and dictionaries are retained. An installed scene's
+  donor costume also stays protected until that scene is removed, so later
+  re-editing does not lose its source. Legacy custom costumes
   require the stock index packaged from the clean initialized build; never
   generate that index from an installed, modded database.
 - Rina's corrected HOME scaling uses a scene Mod ZIP with separate HOME,

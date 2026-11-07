@@ -32,6 +32,7 @@ import androidx.core.widget.NestedScrollView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.color.MaterialColors
 import org.json.JSONObject
 import java.io.File
 import kotlin.math.ceil
@@ -544,11 +545,12 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPaddingRelative(header.paddingStart, header.paddingTop, header.paddingEnd, header.paddingBottom)
         }
-        // Preserve the server strip's contrast without putting the original
-        // tab labels/selected indicator on the primary-colored background.
-        val serverBackground = header.background
-        header.background = null
-        controls.background = serverBackground
+        // Both groups share the same day/night surface, including their gap.
+        // The theme's primary color remains the selected-tab accent.
+        val surface = MaterialColors.getColor(header, com.google.android.material.R.attr.colorSurface)
+        header.setBackgroundColor(surface)
+        controls.setBackgroundColor(surface)
+        navigation.setBackgroundColor(surface)
         val originalControls = (0 until header.childCount).map(header::getChildAt)
         header.removeAllViews()
         originalControls.forEach { controls.addView(it) }

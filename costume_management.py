@@ -190,7 +190,7 @@ def _read_receipt(root, install_id):
     if path.is_symlink():
         raise ManagementError("Unsafe receipt")
     receipt = json.loads(path.read_text(encoding="utf-8"))
-    if receipt.get("schema") != 1 or receipt.get("install_id") != install_id:
+    if not isinstance(receipt, dict) or receipt.get("schema") != 1 or receipt.get("install_id") != install_id:
         raise ManagementError("Unsupported receipt")
     return receipt
 
@@ -824,6 +824,58 @@ def _all_game_dbs(root):
     return list(dict.fromkeys(required + extra))
 
 
+def _scene_donor_dependencies(root,install_id,suit_ids):
+    """Installed scene archives still need their donor when reinstalled.
+
+    Clones have independent model graphs: their source ids are informational.
+    This is authoring provenance, distinct from runtime SQL/pack references.
+    """
+    directory=root/STATE_DIR/"receipts"
+    proof,reasons=[],[]
+    if not directory.exists() and not directory.is_symlink():
+        return proof,reasons
+    if directory.is_symlink() or not directory.is_dir():
+        return [dict(status="unverifiable_receipts_directory")],["Installation provenance cannot be verified before deletion"]
+    for path in sorted(directory.glob("*.json")):
+        if path.stem==install_id:
+            continue
+        digest=None
+        try:
+            if path.is_symlink() or not path.is_file() or path.stat().st_size>8*1024*1024:
+                raise ManagementError("Unverifiable receipt")
+            digest=_hash_file(path)
+            other=_read_receipt(root,path.stem)
+            if other.get("state") in ("deleted","rolled_back"):
+                continue
+            if other.get("kind") in ("clone","costume"):
+                continue
+            if other.get("kind")!="scene":
+                raise ManagementError("Unknown installation provenance")
+            source=other.get("source")
+            manifest=source.get("manifest") if isinstance(source,dict) else None
+            if not isinstance(manifest,dict) or "source_suit_id" not in manifest:
+                raise ManagementError("Unverifiable scene donor")
+            donor=manifest["source_suit_id"]
+            if donor is not None and (not isinstance(donor,int) or isinstance(donor,bool) or not 0<donor<10**12):
+                raise ManagementError("Unverifiable scene donor")
+            if other.get("state") not in ("committed","intent","incomplete"):
+                raise ManagementError("Unknown scene installation state")
+            if donor not in suit_ids:
+                continue
+            ids=other.get("suit_ids")
+            label=other.get("label")
+            if not isinstance(ids,list) or not ids or any(not isinstance(sid,int) or isinstance(sid,bool) for sid in ids) or not isinstance(label,str):
+                raise ManagementError("Unverifiable installed scene identity")
+            proof.append(dict(install_id=other["install_id"],label=label,suit_ids=ids,
+                source_suit_id=donor,state=other["state"],receipt_sha256=digest))
+            reasons.append("Installed scene '"+label+"' (costumes "+", ".join(str(sid) for sid in ids)
+                +") requires donor costume "+str(donor)+" for re-editing. Remove that scene first or recover its interrupted installation.")
+        except (OSError,ValueError,KeyError,ManagementError):
+            proof.append(dict(receipt_file=path.name,receipt_sha256=digest,status="unverifiable"))
+            reasons.append("Another installation receipt cannot be verified; recover its provenance before deleting costumes")
+    return proof,reasons
+
+
 def plan_delete(install_id, root=".", *, replace_in_use=False,allow_original=False):
     """Read-only review, including references across every installed catalog/user."""
     root = _root(root)
@@ -842,6 +894,9 @@ def plan_delete(install_id, root=".", *, replace_in_use=False,allow_original=Fal
     if receipt.get("state") not in ("committed", "legacy","builtin"):
         blockers.append("Installation has no verified completed ownership receipt")
     ids = set(receipt["suit_ids"])
+    dependencies,dependency_blockers=_scene_donor_dependencies(root,install_id,ids)
+    result["scene_donor_dependencies"]=dependencies
+    blockers+=dependency_blockers
     baseline = _baseline(root)
     result["stock_index_sha256"]=_digest(baseline) if baseline else None
     is_original=bool(baseline and any(ids.intersection(baseline["regions"][r]["suit_ids"]) for r in ("gl", "jp")))

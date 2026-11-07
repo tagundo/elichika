@@ -823,6 +823,81 @@ class CostumeManagementTests(unittest.TestCase):
         with self.assertRaises(cm.ManagementError):
             cm.inventory(self.root,include_original="true")
 
+    def lineage_child(self,donor=900,*,kind="scene",publish=True):
+        rows=[dict(db=relative,table="m_suit",row=dict(id=901,member_m_id=2,
+            name="k.child_scene",model_asset_path="stockmodel",thumbnail_image_asset_path="stockthumb"))
+            for relative in cm.MASTERS]
+        receipt=cm.begin_install(kind=kind,label="Child Scene",owned_rows=rows,
+            source={"manifest":{"source_suit_id":donor}},root=self.root)
+        if publish:
+            for row in rows:
+                self.execute(row["db"],"INSERT INTO m_suit(id,member_m_id,name,model_asset_path,thumbnail_image_asset_path) VALUES(901,2,'k.child_scene','stockmodel','stockthumb')")
+            receipt.commit()
+        return receipt
+
+    def test_committed_scene_authoring_donor_blocks_with_receipt_proof_and_label(self):
+        donor=self.install()
+        before=self.preview(donor)
+        child=self.lineage_child()
+        plan=self.preview(donor)
+        self.assertFalse(plan["deletable"])
+        self.assertNotEqual(before["review_token"],plan["review_token"])
+        self.assertTrue(any("Child Scene" in r and "901" in r and "900" in r for r in plan["blocked_reasons"]))
+        proof=plan["scene_donor_dependencies"][0]
+        self.assertEqual(proof["install_id"],child.install_id)
+        self.assertEqual(proof["receipt_sha256"],hashlib.sha256(child.path.read_bytes()).hexdigest())
+
+    def test_removing_child_scene_unblocks_its_independent_donor(self):
+        donor=self.install()
+        child=self.lineage_child()
+        self.assertFalse(self.preview(donor)["deletable"])
+        self.delete(child)
+        self.assertTrue(self.preview(donor)["deletable"])
+        self.assertFalse(self.preview(donor)["scene_donor_dependencies"])
+
+    def test_rolled_back_scene_has_no_live_authoring_dependency(self):
+        donor=self.install()
+        child=self.lineage_child(publish=False)
+        child.incomplete(ValueError())
+        self.assertFalse(self.preview(donor)["deletable"])
+        child.rolled_back()
+        self.assertTrue(self.preview(donor)["deletable"])
+        self.assertEqual(json.loads(cm.startup_check_json(self.root)),{"status":"CLEAN"})
+
+    def test_pending_scene_dependency_stays_blocked_and_startup_refuses(self):
+        donor=self.install()
+        child=self.lineage_child(publish=False)
+        for incomplete in (False,True):
+            if incomplete:
+                child.incomplete(OSError())
+            self.assertFalse(self.preview(donor)["deletable"])
+            self.assertEqual(json.loads(cm.startup_check_json(self.root))["reason"],"COSTUME_RECOVERY_REQUIRED")
+
+    def test_independent_clone_source_information_is_not_a_live_dependency(self):
+        donor=self.install()
+        self.lineage_child(kind="clone")
+        plan=self.preview(donor)
+        self.assertTrue(plan["deletable"],plan["blocked_reasons"])
+        self.assertFalse(plan["scene_donor_dependencies"])
+
+    def test_unverifiable_other_receipt_fails_closed_without_claiming_donor(self):
+        donor=self.install()
+        path=donor.path.parent/("c"*32+".json")
+        for raw in ("invalid receipt", "null", "[]", "17"):
+            with self.subTest(receipt=raw):
+                path.write_text(raw)
+                plan=self.preview(donor)
+                self.assertFalse(plan["deletable"])
+                self.assertEqual(plan["scene_donor_dependencies"][0]["status"],"unverifiable")
+
+    def test_original_allow_and_home_replacement_cannot_bypass_scene_lineage(self):
+        self.unreferenced_original()
+        self.lineage_child(donor=300)
+        for replace in (False,True):
+            plan=cm.plan_delete("builtin:300",self.root,allow_original=True,replace_in_use=replace)
+            self.assertFalse(plan["deletable"])
+            self.assertTrue(any("requires donor costume 300" in r for r in plan["blocked_reasons"]))
+
 
 if __name__ == "__main__":
     unittest.main()
