@@ -79,61 +79,20 @@ def _runtime_names(data, namespace):
 
 
 def isolate_bundle(data, namespace, _identities=None, _bundle_names=None):
-    """Copy a model without sharing its serialized assets or streamed resources.
-
-    Only CAB identities and AssetBundle runtime names change. Object/path ids,
-    prefab load paths, meshes, materials and animation data are preserved. CABs
-    have a fixed width, so resource paths can be replaced without deserializing
-    unknown MonoBehaviours or changing any binary field sizes/offsets.
-    """
-    _, bundle, serialized = _bundle(data)
-    identities = dict(_identities or {})
-    identities.update(_cab_mapping([f.name for f in serialized], namespace))
-
-    def rename(value):
-        # Archive paths can use lower-case CAB names while the directory uses
-        # upper-case CAB. Do not rename external shared dependencies.
-        for old, new in identities.items():
-            value = re.sub(re.escape(old), lambda match: (
-                new.lower() if match.group().startswith("cab-") else new), value,
-                flags=re.IGNORECASE)
-        return value
-
-    found_bundle = False
-    for sf in serialized:
-        for external in sf.externals:
-            external.path = rename(external.path)
-        for obj in sf.objects.values():
-            raw = obj.get_raw_data()
-            updated = raw
-            for old, new in identities.items():
-                updated = re.sub(re.escape(old.encode()), lambda match: (
-                    new.lower().encode() if match.group().startswith(b"cab-") else new.encode()),
-                    updated, flags=re.IGNORECASE)
-            if updated != raw:
-                obj.set_raw_data(updated)
-            if obj.type.name == "AssetBundle":
-                tree = obj.read_typetree()
-                for field in ("m_Name", "m_AssetBundleName"):
-                    if field in tree:
-                        tree[field] = _runtime_name(namespace, sf.name, tree[field])
-                if _bundle_names:
-                    tree["m_Dependencies"] = [_bundle_names.get(name, name)
-                                               for name in tree.get("m_Dependencies", [])]
-                obj.save_typetree(tree)
-                found_bundle = True
-        sf.name = rename(sf.name)
-        sf.mark_changed()
-    if not found_bundle:
-        raise ValueError("costume model has no AssetBundle metadata")
-    bundle.files = {rename(name): value for name, value in bundle.files.items()}
-    result = bundle.save(packer="lz4")
-    # Parse again before registering anything; malformed outputs must never
-    # become downloadable models. No texture decoding/recompression is needed.
-    _, _, copied = _bundle(result)
-    if sorted(len(f.objects) for f in copied) != sorted(len(f.objects) for f in serialized):
-        raise ValueError("costume bundle object count changed while isolating it")
-    return result
+    """Use the same identity-only isolation as scene exports on both platforms."""
+    try:
+        from webtools.core.bundle_identity import isolate_bundle as shared_isolate
+    except ModuleNotFoundError as exc:
+        if exc.name not in ("webtools", "webtools.core", "webtools.core.bundle_identity"):
+            raise
+        # Source checkout CLI: packaged apps already put webtools on sys.path.
+        source_tools = Path(__file__).resolve().parent / "modtools"
+        if not (source_tools / "webtools/core/bundle_identity.py").is_file():
+            raise RuntimeError("Initialize the pinned modtools submodule before cloning") from exc
+        sys.path.insert(0, str(source_tools))
+        from webtools.core.bundle_identity import isolate_bundle as shared_isolate
+    return shared_isolate(data, namespace, _identities=_identities,
+                          _bundle_names=_bundle_names)
 
 
 def _columns(conn, table):
@@ -218,6 +177,7 @@ class CloneAssets:
         self.created = []
         self.commit_started = False
         self.destination = _pack_directory()
+        self._registration_rows = None
 
     def publish(self):
         self.destination.mkdir(parents=True, exist_ok=True)
@@ -232,7 +192,11 @@ class CloneAssets:
                 if path.read_bytes() != data:
                     raise ValueError("clone pack name collides with an existing file")
 
-    def register(self):
+    def registration_rows(self):
+        """Freeze exact planned inserts once, including package versions."""
+        if self._registration_rows is not None:
+            return self._registration_rows
+        rows = []
         for conn, records, source_ids, new_id in self.catalogs:
             mapping = {}
             for source_id in source_ids:
@@ -240,13 +204,13 @@ class CloneAssets:
                     row["package_key"] = "suit:" + str(new_id)
                     mapping.setdefault(row["pack_name"], row)
             for old_path, new_path, pack, size in records:
-                _insert(conn, "member_model", dict(asset_path=new_path, pack_name=pack,
-                    head="0", size=size, key1="0", key2="0"))
-                _insert(conn, "m_asset_pack", dict(pack_name=pack, auto_delete="0"))
+                rows.append((conn, "member_model", dict(asset_path=new_path, pack_name=pack,
+                    head="0", size=size, key1="0", key2="0")))
+                rows.append((conn, "m_asset_pack", dict(pack_name=pack, auto_delete="0")))
                 for row in _rows(conn, "member_model_dependency", "asset_path", old_path):
                     row["asset_path"] = new_path
                     row["dependency"] = dict((a, b) for a, b, _, _ in records).get(row["dependency"], row["dependency"])
-                    _insert(conn, "member_model_dependency", row)
+                    rows.append((conn, "member_model_dependency", row))
                 mapping[pack] = dict(package_key="suit:" + str(new_id), pack_name=pack,
                     file_size=size, metapack_name=None, metapack_offset="0", category="3")
             # Attached colour suits can ask the client to load their private
@@ -255,9 +219,15 @@ class CloneAssets:
             for target_id in sorted(target_ids):
                 package_key = "suit:" + str(target_id)
                 for row in mapping.values():
-                    _insert(conn, "m_asset_package_mapping", dict(row, package_key=package_key))
-                _insert(conn, "m_asset_package", dict(package_key=package_key,
-                    version=hashlib.sha1(uuid.uuid4().bytes).hexdigest(), pack_num=str(len(mapping))))
+                    rows.append((conn, "m_asset_package_mapping", dict(row, package_key=package_key)))
+                rows.append((conn, "m_asset_package", dict(package_key=package_key,
+                    version=hashlib.sha1(uuid.uuid4().bytes).hexdigest(), pack_num=str(len(mapping)))))
+        self._registration_rows = rows
+        return rows
+
+    def register(self):
+        for conn, table, row in self.registration_rows():
+            _insert(conn, table, row)
 
     def commit(self):
         self.commit_started = True

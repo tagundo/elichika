@@ -40,24 +40,44 @@ def costume_options(params):
 
 def run_costume_clone(job, params):
     cc = _module()
-    src_id = (params.get("src_id") or "").strip()
-    costume_id = (params.get("costume") or "").strip()
-    tgt_id = (params.get("tgt_id") or "").strip()
-    mask = (params.get("mask") or "1").strip()[:1] or "1"
-    if not (src_id and costume_id and tgt_id):
-        raise ValueError("source ID, costume, and target ID are all required")
+    src_id = str(params.get("src_id") or "").strip()
+    costume_id = str(params.get("costume") or "").strip()
+    targets = params.get("tgt_ids") if "tgt_ids" in params else params.get("tgt_id")
+    mask = str(params.get("mask") or "1").strip()[:1] or "1"
+    # Validate every selection, including donor ownership, before stopping the
+    # server. The core checks again after the maintenance pause.
+    src_id, costume_id, targets = cc.validate_clone_batch(src_id, costume_id, targets)
 
     if params.get("stop_server", True):
         stop_server(job.log)
 
-    job.progress(0, 1)
-    # clone_costume validates the ids and that the costume belongs to src_id.
     with capture_stdout(job):
-        new_id = cc.clone_costume(
-            src_id, costume_id, tgt_id,
-            use_no_mask=(mask == "2"),
-            log=job.log,
-            do_backup=bool(params.get("backup", True)))
-    job.progress(1, 1)
-    return (f"costume clone complete (new suit id {new_id}; "
-            "restart the server to see it in-game)")
+        try:
+            result = cc.clone_costumes(src_id, costume_id, targets, use_no_mask=(mask == "2"),
+                log=job.log, do_backup=bool(params.get("backup", True)),
+                progress=job.progress, should_stop=job.should_stop)
+        except cc.CloneBatchError as error:
+            _log_results(job, error.result)
+            raise
+    _log_results(job, result)
+    completed = result["completed"]
+    total = len(result["target_ids"])
+    if result["status"] == "cancelled":
+        return (f"costume clone cancelled after {completed}/{total} targets; "
+                "completed clones were retained. Restart the server to apply them.")
+    return (f"costume clone complete ({completed}/{total} targets); "
+            "restart the server to see the new costumes in-game")
+
+
+def _log_results(job, result):
+    for row in result["results"]:
+        target = row["target_id"]
+        if row["status"] == "completed":
+            job.log(f"target {target}: completed (new suit id {row['suit_id']})")
+        elif row["status"] == "failed":
+            job.log(f"target {target}: failed ({row['error']}); inspect the backup before recovery")
+            if row.get("install_id"):
+                job.log(f"  ownership record {row['install_id']}; planned suit id {row.get('suit_id')}; "
+                        f"database commits completed: {bool(row.get('data_committed'))}")
+        else:
+            job.log(f"target {target}: not started")

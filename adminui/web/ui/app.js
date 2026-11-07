@@ -1,6 +1,6 @@
 "use strict";
 
-const state = { tools: [], currentTool: null, es: null, jobId: null, lang: null, languages: [] };
+const state = { tools: [], currentTool: null, es: null, jobId: null, lang: null, languages: [], deleteReview: null, formGeneration: 0 };
 const $ = (s) => document.querySelector(s);
 
 // append ?lang=/&lang= to a URL when a language is explicitly chosen (else the
@@ -105,6 +105,8 @@ function selectTool(id) {
 }
 
 function renderForm() {
+  state.formGeneration += 1;
+  state.deleteReview = null;
   const tool = state.currentTool;
   const panel = $("#tool-panel");
   panel.innerHTML = "";
@@ -113,12 +115,21 @@ function renderForm() {
 
   const form = el("form", { id: "tool-form", onsubmit: (e) => { e.preventDefault(); runTool(); } });
   for (const field of tool.fields) form.appendChild(renderField(field));
-  form.appendChild(el("button", { class: "run-btn", type: "submit", text: T("Run") }));
+  form.appendChild(el("button", { class: "run-btn", type: "submit",
+    text: T(tool.id === "costume_delete" ? "Review removal" : "Run") }));
+  if (tool.id === "costume_delete") {
+    form.addEventListener("change", () => {
+      state.formGeneration += 1;
+      state.deleteReview = null;
+      const review = $("#delete-review");
+      if (review) review.remove();
+    });
+  }
   panel.appendChild(form);
 
   // auto-load dynamic selects that don't depend on another field
   for (const field of tool.fields) {
-    if (field.type === "dynamic_select" && !field.depends_on) loadOptions(field);
+    if (field.type === "dynamic_select" && (!field.depends_on || tool.id === "costume_delete")) loadOptions(field);
   }
 }
 
@@ -145,6 +156,7 @@ function renderField(field) {
     wrap.appendChild(el("label", { for: id, text: field.label }));
     const sel = el("select", { id });
     sel.dataset.name = field.name; sel.dataset.ftype = "select";
+    if (field.multi) sel.multiple = true;
     for (const opt of field.options || []) {
       // options may be plain strings (value == label) or {value, label} objects
       const value = (opt && typeof opt === "object") ? opt.value : opt;
@@ -153,7 +165,23 @@ function renderField(field) {
       if (value === field.default) o.selected = true;
       sel.appendChild(o);
     }
-    wrap.appendChild(sel);
+    if (field.multi) {
+      // Touch-friendly checkboxes also work without keyboard modifiers on Mac.
+      // Keep one canonical select for the existing parameter/dependency code.
+      sel.hidden = true;
+      const choices = el("div", { class: "multi-choices", role: "group", "aria-label": field.label });
+      for (const option of sel.options) {
+        const check = el("input", { type: "checkbox" });
+        check.checked = option.selected;
+        check.addEventListener("change", () => {
+          option.selected = check.checked;
+          sel.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        choices.appendChild(el("label", {}, [check, document.createTextNode(option.textContent)]));
+      }
+      wrap.appendChild(sel);
+      wrap.appendChild(choices);
+    } else wrap.appendChild(sel);
   } else if (field.type === "dynamic_select") {
     wrap.appendChild(el("label", { for: id, text: field.label }));
     const sel = el("select", { id });
@@ -204,6 +232,11 @@ function dependsList(field) {
 async function loadOptions(field) {
   const sel = document.querySelector(`#tool-form [data-name="${field.name}"]`);
   if (!sel) return;
+  const toolId = state.currentTool.id;
+  const request = String((Number(sel.dataset.optionsRequest) || 0) + 1);
+  sel.dataset.optionsRequest = request;
+  const isCurrent = () => sel.isConnected && sel.dataset.optionsRequest === request &&
+    state.currentTool && state.currentTool.id === toolId;
   const params = collectParams();
   const deps = dependsList(field);
   const qs = deps.length
@@ -211,13 +244,15 @@ async function loadOptions(field) {
     : "";
   sel.innerHTML = "<option value=''>" + T("loading…") + "</option>";
   try {
-    const data = await (await fetch(withLang("/api/options/" + state.currentTool.id + qs))).json();
+    const data = await (await fetch(withLang("/api/options/" + toolId + qs))).json();
+    if (!isCurrent()) return;
     sel.innerHTML = "";
     const opts = data.options || [];
     if (!opts.length) sel.appendChild(el("option", { value: "", text: T("— none —") }));
     for (const o of opts) sel.appendChild(el("option", { value: o.value, text: o.label }));
     if (data.error) sel.appendChild(el("option", { value: "", text: "(error: " + data.error + ")" }));
   } catch (e) {
+    if (!isCurrent()) return;
     sel.innerHTML = "<option value=''>(error: " + e + ")</option>";
   }
 }
@@ -232,15 +267,25 @@ function collectParams() {
   return params;
 }
 
-async function runTool() {
+async function runTool(overrides = null) {
   const tool = state.currentTool;
-  const params = collectParams();
+  const params = Object.assign(collectParams(), overrides || {});
+  if (tool.id === "costume_delete") {
+    params.action = params.action || "preview";
+    if (params.action === "delete" && (!state.deleteReview ||
+        state.deleteReview.install_id !== params.installation ||
+        state.deleteReview.review_token !== params.review_token)) return;
+    state.deleteReview = null;
+    const review = $("#delete-review");
+    if (review) review.remove();
+  }
   const missing = [];
   for (const f of tool.fields) {
     if (f.required && !String(params[f.name] ?? "").trim()) missing.push(f.label);
   }
   if (missing.length) return alert(T("Please fill in: ") + missing.join(", "));
 
+  const generation = ++state.formGeneration;
   openConsole(tool.label);
   let resp;
   try {
@@ -249,23 +294,116 @@ async function runTool() {
     })).json();
   } catch (e) { appendLog(T("ERROR: ") + e); finishConsole("error"); return; }
   if (resp.error) { appendLog(T("ERROR: ") + resp.error); finishConsole("error"); return; }
-  streamJob(resp.job_id);
+  streamJob(resp.job_id, { toolId: tool.id, params, generation });
 }
 
-function streamJob(jobId) {
+function streamJob(jobId, context) {
   state.jobId = jobId;
   const es = new EventSource("/api/jobs/" + jobId + "/events");
   state.es = es;
+  let removalReview = null;
   es.onmessage = (ev) => {
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === "log") appendLog(msg.line);
+    if (msg.type === "log") {
+      appendLog(msg.line);
+      if (context.toolId === "costume_delete" && context.params.action === "preview") {
+        try {
+          const value = JSON.parse(msg.line);
+          if (value.event === "costume-delete-review" && value.install_id === context.params.installation)
+            removalReview = value;
+        } catch {}
+      }
+    }
     else if (msg.type === "progress") setProgress(msg.done, msg.total);
     else if (msg.type === "done") {
       if (msg.summary) appendLog("\n" + msg.summary);
       finishConsole(msg.status); es.close(); state.es = null;
+      if (msg.status === "done" && context.toolId === "costume_delete" &&
+          state.formGeneration === context.generation &&
+          state.currentTool && state.currentTool.id === context.toolId &&
+          collectParams().installation === context.params.installation) {
+        if (removalReview) showRemovalReview(removalReview);
+        else if (context.params.action === "delete") {
+          const field = state.currentTool.fields.find((f) => f.name === "installation");
+          if (field) loadOptions(field);
+        }
+      }
     }
   };
   es.onerror = () => {};
+}
+
+function confirmOriginalRemoval(plan) {
+  // The server-content WebViews do not all provide native JS confirm panels.
+  // A shared modal keeps the same explicit, cancellable consent in both apps.
+  return new Promise((resolve) => {
+    const dialog = el("dialog", { class: "original-confirm", "aria-labelledby": "original-confirm-title" });
+    if (typeof dialog.showModal !== "function") { resolve(false); return; }
+    const previousFocus = document.activeElement;
+    let finished = false;
+    const finish = (accepted) => {
+      if (finished) return;
+      finished = true;
+      if (dialog.open) dialog.close();
+      dialog.remove();
+      if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+      resolve(accepted);
+    };
+    dialog.appendChild(el("h3", { id: "original-confirm-title", text: T("Remove a built-in costume?") }));
+    dialog.appendChild(el("p", { text: T("Remove this built-in costume? A backup will be kept. This affects every account. Continue?") }));
+    dialog.appendChild(el("p", { text: plan.label || "" }));
+    dialog.appendChild(el("p", { text: T("Costume IDs: ") + (plan.suit_ids || []).join(", ") }));
+    const cancel = el("button", { type: "button", autofocus: "", text: T("Cancel"), onclick: () => finish(false) });
+    const confirm = el("button", { type: "button", class: "danger", text: T("Remove built-in costume"), onclick: () => finish(true) });
+    dialog.appendChild(el("div", { class: "original-confirm-actions" }, [cancel, confirm]));
+    dialog.addEventListener("cancel", (event) => { event.preventDefault(); finish(false); });
+    dialog.addEventListener("close", () => finish(false));
+    document.body.appendChild(dialog);
+    try { dialog.showModal(); cancel.focus(); } catch { finish(false); }
+  });
+}
+
+function showRemovalReview(plan) {
+  state.deleteReview = plan;
+  const old = $("#delete-review");
+  if (old) old.remove();
+  const panel = el("section", { id: "delete-review", class: "removal-review", "aria-live": "polite" });
+  panel.appendChild(el("h3", { text: T("Removal review") }));
+  if (plan.is_original) panel.appendChild(el("p", { class: "original-warning",
+    text: T("Built-in costume: ") + (plan.label || "") }));
+  panel.appendChild(el("p", { text: T("Costume IDs: ") + (plan.suit_ids || []).join(", ") }));
+  if (plan.deletable) {
+    panel.appendChild(el("p", { text: T("Database rows: ") + plan.row_count + " · " + T("Owned files: ") + plan.file_count }));
+    panel.appendChild(el("p", { text: T("The server will stop. A recovery backup is kept; user progress and shared assets are preserved.") }));
+    if ((plan.preserved_assets || []).length || String(plan.install_id).startsWith("legacy:"))
+      panel.appendChild(el("p", { text: T("Assets without proven ownership remain cached.") }));
+    const replacements = plan.reference_replacements || [];
+    if (replacements.length) {
+      panel.appendChild(el("p", { text: T("Used costumes will change to each character's default: ") + replacements.length }));
+      const list = el("ul", { class: "removal-replacements" });
+      for (const item of replacements) list.appendChild(el("li", {
+        text: item.table + "." + item.column + ": " + item.old_suit_id + " → " + item.new_suit_id,
+      }));
+      panel.appendChild(list);
+    }
+    panel.appendChild(el("button", { type: "button", class: "run-btn danger",
+      text: T("Back up and remove this costume / clone"), onclick: async () => {
+        if (plan.is_original && (!collectParams().allow_original || !(await confirmOriginalRemoval(plan)))) return;
+        runTool({
+          installation: plan.install_id, action: "delete", review_token: plan.review_token,
+          replace_in_use: plan.replace_in_use === true,
+          allow_original: plan.allow_original === true,
+          original_confirmed: plan.is_original === true,
+        });
+      } }));
+  } else {
+    panel.appendChild(el("p", { text: T("Removal blocked. Change outfits or MV teams that use this costume, then review again.") }));
+    for (const reason of plan.blocked_reasons || []) panel.appendChild(el("p", { text: reason }));
+  }
+  $("#tool-panel").appendChild(panel);
+  // The review and explicit second action must be visible above the log sheet.
+  $("#console").classList.add("hidden");
+  panel.scrollIntoView({ block: "nearest" });
 }
 
 async function cancelRun() {

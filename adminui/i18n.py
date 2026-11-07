@@ -48,6 +48,37 @@ def all_strings(lang):
 # _TABLES[lang] maps an English source string -> its translation.
 _TABLES = {
     "ko": {
+        "Remove Costume / Clone": "의상/복제 삭제",
+        "Review and remove installed costumes or clones. Original game costumes and costumes currently in use are protected. A recovery backup is always kept.":
+            "설치한 의상이나 복제를 확인한 뒤 삭제합니다. 원본 의상과 사용 중인 의상은 보호되며, 복구용 백업을 반드시 남깁니다.",
+        "Installed costume or clone": "설치된 의상 또는 복제",
+        "Show and allow removal of built-in costumes (advanced)": "기본 제공 의상 표시 및 삭제 허용 (고급)",
+        "Built-in costumes require an additional confirmation popup. Game-required references stay protected.":
+            "기본 제공 의상은 별도 확인 팝업에 동의해야 삭제됩니다. 게임에서 필수로 참조하는 의상은 계속 보호합니다.",
+        "Built-in costume: ": "기본 제공 의상: ",
+        "Remove a built-in costume?": "기본 제공 의상을 삭제할까요?",
+        "Remove built-in costume": "기본 제공 의상 삭제",
+        "Remove this built-in costume? A backup will be kept. This affects every account. Continue?":
+            "이 기본 제공 의상을 삭제할까요? 복구용 백업을 남기며, 모든 계정에 적용됩니다. 삭제를 진행하시겠습니까?",
+        "Change used costumes to the character's default before removing": "사용 중인 의상을 캐릭터의 기본 의상으로 변경 후 삭제",
+        "Review the HOME and MV slots that will change before confirming removal.": "삭제를 확정하기 전에 변경될 홈·MV 편성 항목을 확인합니다.",
+        "Used costumes will change to each character's default: ": "기본 의상으로 변경할 사용 항목: ",
+        "Copy a costume to several characters at once (adds a separate clone for each selected character).":
+            "선택한 여러 캐릭터에게 의상을 한 번에 복제합니다. 대상마다 독립된 모델을 만듭니다.",
+        "Target characters": "대상 캐릭터 (여러 명 선택)",
+        "Select every character to receive a clone. Each receives independent model assets.":
+            "복제할 대상 캐릭터를 모두 체크하세요. 대상마다 독립된 모델 에셋을 사용합니다.",
+        "Review removal": "삭제 내용 확인",
+        "Removal review": "삭제 전 확인",
+        "Costume IDs: ": "의상 ID: ",
+        "Database rows: ": "DB 항목: ",
+        "Owned files: ": "전용 파일: ",
+        "The server will stop. A recovery backup is kept; user progress and shared assets are preserved.":
+            "서버를 중지하고 복구용 백업을 만든 뒤 삭제합니다. 유저 진행 상황과 공유 에셋은 유지됩니다.",
+        "Assets without proven ownership remain cached.": "소유 관계가 확인되지 않은 에셋은 캐시에 남겨 둡니다.",
+        "Back up and remove this costume / clone": "백업 후 이 의상/복제 삭제",
+        "Removal blocked. Change outfits or MV teams that use this costume, then review again.":
+            "삭제할 수 없습니다. 이 의상을 사용하는 홈 의상·MV 편성 등을 변경한 뒤 다시 확인하세요.",
         # static UI chrome (client-side, app.js / index.html)
         "elichika · Database Admin": "elichika · 데이터베이스 관리",
         "Pick a tool on the left.": "왼쪽에서 도구를 선택하세요.",
@@ -153,6 +184,37 @@ _TABLES = {
             "sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다. Ctrl/Cmd를 누른 채(또는 드래그) 여러 개를 선택하면 차례로 설치됩니다.",
     },
     "ja": {
+        "Remove Costume / Clone": "衣装・クローンの削除",
+        "Review and remove installed costumes or clones. Original game costumes and costumes currently in use are protected. A recovery backup is always kept.":
+            "追加した衣装やクローンを確認して削除します。元の衣装と使用中の衣装は保護され、復旧用バックアップを必ず保存します。",
+        "Installed costume or clone": "追加済みの衣装・クローン",
+        "Show and allow removal of built-in costumes (advanced)": "初期収録衣装の表示・削除を許可（上級）",
+        "Built-in costumes require an additional confirmation popup. Game-required references stay protected.":
+            "初期収録衣装は追加の確認ダイアログへの同意が必要です。ゲームで必須の参照がある衣装は保護されます。",
+        "Built-in costume: ": "初期収録衣装: ",
+        "Remove a built-in costume?": "初期収録衣装を削除しますか？",
+        "Remove built-in costume": "初期収録衣装を削除",
+        "Remove this built-in costume? A backup will be kept. This affects every account. Continue?":
+            "この初期収録衣装を削除しますか？復旧用バックアップを保存します。全アカウントに適用されます。続行しますか？",
+        "Change used costumes to the character's default before removing": "使用中の衣装を各キャラクターの初期衣装に変更して削除",
+        "Review the HOME and MV slots that will change before confirming removal.": "削除を確定する前に、変更されるホーム・MV編成を確認します。",
+        "Used costumes will change to each character's default: ": "初期衣装に変更する使用箇所: ",
+        "Copy a costume to several characters at once (adds a separate clone for each selected character).":
+            "選択した複数のキャラクターに衣装を一括複製します。それぞれ独立したモデルを作成します。",
+        "Target characters": "対象キャラクター（複数選択）",
+        "Select every character to receive a clone. Each receives independent model assets.":
+            "複製先をすべて選択してください。各対象に独立したモデルアセットを作成します。",
+        "Review removal": "削除内容を確認",
+        "Removal review": "削除前の確認",
+        "Costume IDs: ": "衣装ID: ",
+        "Database rows: ": "DB項目: ",
+        "Owned files: ": "専用ファイル: ",
+        "The server will stop. A recovery backup is kept; user progress and shared assets are preserved.":
+            "サーバーを停止して復旧用バックアップを保存します。進行状況と共有アセットは維持されます。",
+        "Assets without proven ownership remain cached.": "所有関係を確認できないアセットはキャッシュに残します。",
+        "Back up and remove this costume / clone": "バックアップしてこの衣装・クローンを削除",
+        "Removal blocked. Change outfits or MV teams that use this costume, then review again.":
+            "削除できません。この衣装を使用するホーム衣装・MV編成などを変更し、再度確認してください。",
         # static UI chrome (client-side, app.js / index.html)
         "elichika · Database Admin": "elichika · データベース管理",
         "Pick a tool on the left.": "左からツールを選んでください。",

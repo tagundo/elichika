@@ -37,6 +37,12 @@ class ServerProcess(private val ctx: Context) {
     @Synchronized
     private fun start(args: List<String>, workDir: File, onExit: (Int) -> Unit): Boolean {
         if (isAlive()) return false
+        try {
+            PayloadUpgrade.checkCostumeStartup(ctx, workDir)
+        } catch (error: IllegalStateException) {
+            Bus.log(error.message.orEmpty())
+            return false
+        }
         val bin = binary()
         if (!bin.exists()) {
             Bus.log(ctx.getString(R.string.log_error_missing_binary, bin.absolutePath))

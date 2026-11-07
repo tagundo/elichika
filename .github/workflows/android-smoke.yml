@@ -219,10 +219,14 @@ jobs:
           previous_density=$(sed -n 's/^Override density: //p' evidence/wide-display-before.txt)
           previous_font_scale=$(adb -s 127.0.0.1:5555 shell settings get system font_scale | tr -d '\r')
           printf '%s\n' "$previous_font_scale" > evidence/wide-font-before.txt
+          adb -s 127.0.0.1:5555 shell cmd uimode night | tr -d '\r' > evidence/wide-theme-before.txt
+          previous_night_mode=$(sed -n 's/^Night mode: //p' evidence/wide-theme-before.txt)
+          case "$previous_night_mode" in auto|no|yes|custom) ;; *) echo 'Could not read Android night mode'; exit 1 ;; esac
           restore_display() {
             qa_exit_code=$?
             trap - EXIT
             qa_restore_failed=0
+            adb -s 127.0.0.1:5555 shell cmd uimode night "$previous_night_mode" || qa_restore_failed=1
             if [[ -z "$previous_font_scale" || "$previous_font_scale" == "null" ]]; then
               adb -s 127.0.0.1:5555 shell settings delete system font_scale || qa_restore_failed=1
             else
@@ -240,11 +244,12 @@ jobs:
           adb -s 127.0.0.1:5555 shell wm density >> evidence/wide-display-active.txt
           # Fresh instrumentation launches use real Android font scaling. Never
           # force internal TabLayout paints to imitate the system configuration.
+          adb -s 127.0.0.1:5555 shell cmd uimode night no
           for font_scale in 1.0 1.2 2.0; do
             adb -s 127.0.0.1:5555 shell settings put system font_scale "$font_scale"
             adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
             adb -s 127.0.0.1:5555 shell am instrument -w \
-              -e requireWideUi true -e expectedFontScale "$font_scale" \
+              -e requireWideUi true -e expectedFontScale "$font_scale" -e expectedNightMode no \
               -e class com.tagundo.elichika.MeshWebViewTest \
               com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
               | tee "evidence/native-wide-ui-font-${font_scale}.txt"
@@ -252,6 +257,10 @@ jobs:
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > "evidence/header-layout-wide-font-${font_scale}.json"
             python3 -c 'import json,sys; from pathlib import Path; report=json.loads(Path(sys.argv[1]).read_text()); assert abs(report["systemFontScale"]-float(sys.argv[2]))<0.02, report' "evidence/header-layout-wide-font-${font_scale}.json" "$font_scale"
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > "evidence/header-layout-wide-font-${font_scale}.png"
+            for header_state in stopped running preparing; do
+              adb -s 127.0.0.1:5555 exec-out cat "/data/user/0/com.tagundo.elichika/cache/header-layout-state-${header_state}.png" \
+                > "evidence/header-layout-state-${header_state}-font-${font_scale}.png"
+            done
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools-report.json > "evidence/mesh-wide-tools-font-${font_scale}.json"
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools.png > "evidence/mesh-wide-tools-font-${font_scale}.png"
             if [[ "$font_scale" == "1.0" ]]; then
@@ -259,6 +268,25 @@ jobs:
               cp "evidence/mesh-wide-tools-font-${font_scale}.json" evidence/mesh-wide-tools-report.json
               cp "evidence/mesh-wide-tools-font-${font_scale}.png" evidence/mesh-wide-tools.png
             fi
+          done
+
+          # Keep all 117 light geometry cases, then exercise the same existing
+          # method once with an actual dark Android configuration at font 1.0.
+          adb -s 127.0.0.1:5555 shell settings put system font_scale 1.0
+          adb -s 127.0.0.1:5555 shell cmd uimode night yes
+          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
+          adb -s 127.0.0.1:5555 shell am instrument -w \
+            -e requireWideUi true -e expectedFontScale 1.0 -e expectedNightMode yes \
+            -e class com.tagundo.elichika.MeshWebViewTest \
+            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee evidence/native-wide-ui-night-font-1.0.txt
+          python3 -c 'from pathlib import Path; text=Path("evidence/native-wide-ui-night-font-1.0.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > evidence/header-layout-wide-night-font-1.0.json
+          python3 -c 'import json; from pathlib import Path; report=json.loads(Path("evidence/header-layout-wide-night-font-1.0.json").read_text()); assert report["theme"]["night"] is True and abs(report["systemFontScale"]-1.0)<0.02, report'
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > evidence/header-layout-wide-night-font-1.0.png
+          for header_state in stopped running preparing; do
+            adb -s 127.0.0.1:5555 exec-out cat "/data/user/0/com.tagundo.elichika/cache/header-layout-state-${header_state}.png" \
+              > "evidence/header-layout-state-${header_state}-night-font-1.0.png"
           done
 
       - name: Exercise normal viewer scrolling in a real tall portrait Android window

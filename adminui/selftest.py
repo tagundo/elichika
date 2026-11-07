@@ -98,7 +98,11 @@ def test_costume(root):
         def __init__(self, models, new_id, source_ids, log):
             self.models = {(region, old): f"selftest/{new_id}/{region}/{old}"
                            for region, paths in models.items() for old in paths}
+            from pathlib import Path
+            self.packs = {}
+            self.destination = Path("static")
 
+        def registration_rows(self): return []
         def publish(self): pass
         def register(self): pass
         def commit(self): pass

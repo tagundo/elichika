@@ -32,6 +32,7 @@ import androidx.core.widget.NestedScrollView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.color.MaterialColors
 import org.json.JSONObject
 import java.io.File
 import kotlin.math.ceil
@@ -544,11 +545,12 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPaddingRelative(header.paddingStart, header.paddingTop, header.paddingEnd, header.paddingBottom)
         }
-        // Preserve the server strip's contrast without putting the original
-        // tab labels/selected indicator on the primary-colored background.
-        val serverBackground = header.background
-        header.background = null
-        controls.background = serverBackground
+        // Both groups share the same day/night surface, including their gap.
+        // The theme's primary color remains the selected-tab accent.
+        val surface = MaterialColors.getColor(header, com.google.android.material.R.attr.colorSurface)
+        header.setBackgroundColor(surface)
+        controls.setBackgroundColor(surface)
+        navigation.setBackgroundColor(surface)
         val originalControls = (0 until header.childCount).map(header::getChildAt)
         header.removeAllViews()
         originalControls.forEach { controls.addView(it) }
@@ -639,16 +641,18 @@ class MainActivity : AppCompatActivity() {
             if (fits == inlineHeader) return@postOnAnimation
             inlineHeader = fits
             header.orientation = if (fits) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            // Keep the whole tab group at the end of a wide header. The server
+            // row absorbs spare width as its status and progress change.
             controls.layoutParams = LinearLayout.LayoutParams(
-                if (fits) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT)
+                if (fits) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, if (fits) 1f else 0f)
             statusText.layoutParams = (statusText.layoutParams as LinearLayout.LayoutParams).apply {
-                width = if (fits) ViewGroup.LayoutParams.WRAP_CONTENT else 0
-                weight = if (fits) 0f else 1f
+                width = 0
+                weight = 1f
             }
             navigation.layoutParams = LinearLayout.LayoutParams(
-                if (fits) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, if (fits) 1f else 0f).apply {
+                if (fits) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginStart = if (fits) gap else 0
             }
         }

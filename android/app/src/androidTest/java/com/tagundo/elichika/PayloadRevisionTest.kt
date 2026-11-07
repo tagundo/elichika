@@ -126,6 +126,33 @@ class PayloadRevisionTest {
                 f.python("interrupt", f.root.absolutePath, stage.absolutePath, String(manifest))
             }
             assertTrue(File(f.root, ".payload-upgrade/journal.json").isFile)
+            val journal = File(f.root, ".payload-upgrade/journal.json")
+            val journalBytes = journal.readBytes()
+            val pending = File(f.root, ".costume-management/receipts/unknown.json").apply {
+                parentFile.mkdirs(); writeText("""{"state":"prepared"}""")
+            }
+            val pendingBytes = pending.readBytes()
+            val beforeSettings = f.settingsRuns
+            val beforeOpens = f.source.opened.toList()
+            for (reset in listOf(false, true)) {
+                assertTrue(failure { f.prepare("synthetic-apk-costume-pending", reset) }.contains("COSTUME_RECOVERY_REQUIRED"))
+                assertTrue(journalBytes.contentEquals(journal.readBytes()))
+                assertTrue(pendingBytes.contentEquals(pending.readBytes()))
+                assertTrue(File(f.root, ".payload-incoming").exists())
+                assertEquals(beforeSettings, f.settingsRuns)
+                assertEquals(beforeOpens, f.source.opened)
+            }
+            val native = ServerProcess(f.context)
+            try {
+                assertFalse(native.startServer(f.root) {})
+                assertFalse(native.runOnce(listOf("reset_accounts"), f.root) {})
+                assertFalse(native.runOnce(listOf("rebuild_assets"), f.root) {})
+            } finally { ServerProcess.awaitStopped(native.stop()) }
+            assertTrue(journalBytes.contentEquals(journal.readBytes()))
+            assertTrue(pendingBytes.contentEquals(pending.readBytes()))
+            // Only this disposable malformed test input is removed. Production
+            // startup never clears an uncertain costume or deletion receipt.
+            assertTrue(pending.delete())
             if (missing) f.source.files.remove("payload_revision.json")
             else f.source.files["payload_revision.json"] = "{".toByteArray()
             val settings = f.settingsRuns
@@ -139,7 +166,7 @@ class PayloadRevisionTest {
         }
         f.prepare("synthetic-apk-recovered")
         assertEquals(revision, File(f.root, "installed_version").readText())
-        println("ANDROID_PAYLOAD_REVISION_RECOVERY_PASS recovery_before_manifest=true missing_refused=true malformed_refused=true owner_mod_preserved=true")
+        println("ANDROID_PAYLOAD_REVISION_RECOVERY_PASS recovery_before_manifest=true missing_refused=true malformed_refused=true owner_mod_preserved=true pending_costume_blocks_prep_reset_and_native_cli=true")
     }
 
     private class Source(val files: MutableMap<String, ByteArray>) : PayloadFiles.Source {

@@ -89,6 +89,25 @@ class ServerService : Service() {
                         }
                     }
                 }
+            } catch (error: PayloadUpgrade.CostumeRecoveryRequired) {
+                main.post {
+                    if (current !== this || destroyed) return@post
+                    // Only the recovery tools may reserve this unprepared root.
+                    // ServerProcess still requires a CLEAN check for every Go/CLI launch.
+                    workDir = appContext.filesDir
+                    initializing = false
+                    isReady = true
+                    Bus.log(error.message.orEmpty())
+                    Bus.setRunning(false)
+                    val holds = pendingCommands.filter { it.action == ACTION_PREPARE_INSTALL }
+                    pendingCommands.clear()
+                    if (stopWhenReady) finishService() else {
+                        holds.forEach(::dispatchCommand)
+                        main.postDelayed({
+                            if (current === this && !installing && !maintenance && !Bus.serverRunning) finishService()
+                        }, 30_000L)
+                    }
+                }
             } catch (error: Exception) {
                 main.post {
                     if (current !== this || destroyed) return@post

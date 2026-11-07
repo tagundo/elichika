@@ -117,6 +117,8 @@ class ServerController:
             return True
         if not self.binary.is_file() or not os.access(self.binary, os.X_OK):
             raise RuntimeError("Bundled server executable is unavailable.")
+        from costume_management import assert_safe_to_start
+        assert_safe_to_start(self.data)
         host, port = self._address()
         family = socket.AF_INET6 if ":" in host else socket.AF_INET
         with socket.socket(family, socket.SOCK_STREAM) as reservation:

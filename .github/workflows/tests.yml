@@ -44,6 +44,9 @@ jobs:
           python3 -m unittest discover -s tests -p test_admin_install_restart.py -v
           python3 -m unittest discover -s tests -p test_sukusta_paths.py -v
           python3 -m unittest discover -s tests -p test_android_python_launch.py -v
+          python3 -m unittest discover -s tests -p test_costume_management.py -v
+          python3 -m unittest discover -s tests -p test_costume_scene_installer.py -v
+          python3 -m unittest discover -s tests -p test_costume_stock_build.py -v
           python3 -m adminui.selftest
 
       - name: Check mod-preserving payload updates and recovery
@@ -86,6 +89,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
           python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
           python3 -m unittest discover -s tests -p test_model_edits.py -v
+          python3 -m unittest discover -s tests -p 'test_viewer_scene*.py' -v
           python3 -m unittest discover -s tests -p test_viewer_mod_sources.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_pair_edits.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_package.py -v
