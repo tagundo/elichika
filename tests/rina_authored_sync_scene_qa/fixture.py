@@ -74,7 +74,7 @@ def safe_state(android, expected_uid, expected_suits):
     with memory_db(android, "userdata.db") as db:
         owned, _ = checked_account(db, expected_uid)
         favorite = db.execute("SELECT favorite_member_id FROM u_status WHERE user_id=?", (expected_uid,)).fetchone()
-        require(favorite == (OWNER,), "Favorite_member_readback_mismatch")
+        require(favorite is not None and tuple(favorite) == (OWNER,), "Favorite_member_readback_mismatch")
         member = db.execute("SELECT suit_master_id,view_status FROM u_member WHERE user_id=? AND member_master_id=?",
                             (expected_uid, OWNER)).fetchone()
         require(member is not None and member[0] == SINGLE and member[1] in (1, 2),
@@ -136,7 +136,7 @@ def prepare(android, expected_uid, *, require_provider_onboarding=True):
     with memory_db(android, "userdata.db") as db:
         member = db.execute("SELECT custom_background_master_id FROM u_member WHERE user_id=? AND member_master_id=?",
                             (expected_uid, OWNER)).fetchone()
-        require(member == (background,), "Prepared_background_readback_mismatch")
+        require(member is not None and tuple(member) == (background,), "Prepared_background_readback_mismatch")
         story = db.execute("SELECT is_new FROM u_story_member WHERE user_id=? AND story_member_master_id=?",
                            (expected_uid, STORY)).fetchone()
         require(story is not None and story[0] == 0, "Rina_board_unlock_story_readback_mismatch")
