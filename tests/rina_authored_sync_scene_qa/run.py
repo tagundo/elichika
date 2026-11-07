@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import traceback
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tests"))
@@ -36,6 +37,13 @@ def write(path, value):
     pending = path.with_suffix(path.suffix + ".pending")
     pending.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
     pending.replace(path)
+
+
+def verify_normal_live(db):
+    # The shared database reader intentionally uses sqlite3.Row, whose object
+    # equality differs from tuple equality even when the selected value is0.
+    row = db.execute("SELECT is_2d_live FROM m_live WHERE live_id=10001").fetchone()
+    assert row is not None and tuple(row) == (0,), "Normal_live10001_must_have_actual_3D_master_row"
 
 
 def preview_context(tree):
@@ -221,7 +229,7 @@ def main():
         print(json.dumps({"milestone": "public_models_published", "accounts": 0,
                           "outputs": 26, "main_and_view1_share_board": True}), flush=True)
         with closing(smoke.database_from_bytes(android.read(FILES + "/assets/db/gl/masterdata.db"))) as db:
-            assert db.execute("SELECT is_2d_live FROM m_live WHERE live_id=10001").fetchone() == (0,)
+            verify_normal_live(db)
         assert "Success" in android.adb("install", "-r", "-g", str(args.game), timeout=240)
         component = android.shell("cmd", "package", "resolve-activity", "--brief", smoke.GAME).splitlines()[-1]
         assert component.startswith(smoke.GAME + "/")
@@ -283,6 +291,15 @@ def main():
     except Exception as error:
         report["status"] = "INCOMPLETE_OR_REFUSED"
         report["failure"] = {"type": type(error).__name__, "reason": str(error)[:300]}
+        # Source location only; no traceback locals, memory or authentication.
+        frames = traceback.extract_tb(error.__traceback__)
+        if frames:
+            frame = frames[-1]
+            try:
+                file = str(Path(frame.filename).resolve().relative_to(ROOT))
+            except ValueError:
+                file = "outside_checkout"
+            report["failure"]["source"] = {"file": file, "line": frame.lineno, "function": frame.name}
     finally:
         def attempt(name, fn):
             try:
