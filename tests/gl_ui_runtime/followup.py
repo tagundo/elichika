@@ -224,6 +224,67 @@ def verified_triangle_point(area, node_geometry, actual, view, canvas):
     return list(point)
 
 
+def verified_square_point(area, node_geometry, actual, view, canvas):
+    """Strict interior subset of the original four-edge-Lerp hit polygon."""
+    proof = area.get("verifiedSquareHitPoint")
+    if (not isinstance(proof, dict) or
+            proof.get("kind") != "SquareRayCastArea.local-corners-pivot.strict-interior.v1" or
+            proof.get("strictInsideQuadrilateral") is not True or
+            proof.get("outerEdgeMarginPx") != .25 or
+            proof.get("originalRaycastInvoked") is not False or proof.get("ancestorFiltersChecked") is not False):
+        raise Refused("square_shape_proof_unavailable")
+    measured = area["geometry"]
+    area_camera, node_camera = measured.get("camera"), node_geometry.get("camera")
+    camera_id = proof.get("cameraId")
+    if (type(proof.get("canvasId")) is not int or proof["canvasId"] != canvas or
+            type(measured.get("canvasId")) is not int or measured["canvasId"] != canvas or
+            type(camera_id) is not int or not camera_id or
+            not isinstance(area_camera, dict) or not isinstance(node_camera, dict) or
+            type(area_camera.get("id")) is not int or type(node_camera.get("id")) is not int or
+            area_camera["id"] != camera_id or node_camera["id"] != camera_id or
+            area_camera.get("orthographic") is not True or node_camera.get("orthographic") is not True or
+            type(measured.get("renderMode")) is not int or measured["renderMode"] != 1 or
+            type(node_geometry.get("renderMode")) is not int or node_geometry["renderMode"] != 1):
+        raise Refused("square_canvas_or_camera_changed")
+    point = proof.get("point")
+    if not isinstance(point, list) or len(point) != 2 or not all(type(n) is int for n in point):
+        raise Refused("square_integer_point_unavailable")
+    if any(not (bounds[0] < point[0] < bounds[2] and bounds[1] < point[1] < bounds[3]) for bounds in (actual, view)):
+        raise Refused("square_point_outside_measured_bounds")
+    vertices = proof.get("quadrilateralVertices")
+    try:
+        valid = (isinstance(vertices, list) and len(vertices) == 4 and
+                 all(isinstance(v, list) and len(v) == 2 and
+                     all(type(n) in (int, float) and math.isfinite(n) for n in v) for v in vertices))
+    except (OverflowError, TypeError):
+        valid = False
+    if not valid:
+        raise Refused("square_vertices_unavailable")
+    vertices = [[float(n) for n in vertex] for vertex in vertices]
+    if any(not (actual[0] - .1 <= v[0] <= actual[2] + .1 and actual[1] - .1 <= v[1] <= actual[3] + .1)
+           for v in vertices):
+        raise Refused("square_vertices_outside_measured_bounds")
+
+    def cross(a, b, p):
+        return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+
+    lengths = [math.hypot(vertices[(i + 1) % 4][0] - vertices[i][0],
+                          vertices[(i + 1) % 4][1] - vertices[i][1]) for i in range(4)]
+    if not all(math.isfinite(n) and n > 1e-6 for n in lengths):
+        raise Refused("square_degenerate_or_nonconvex")
+    tolerance = max(1e-6, max(lengths) ** 2 * 1e-9)
+    turns = [cross(vertices[i], vertices[(i + 1) % 4], vertices[(i + 2) % 4]) for i in range(4)]
+    if not (all(math.isfinite(n) and n > tolerance for n in turns) or
+            all(math.isfinite(n) and n < -tolerance for n in turns)):
+        raise Refused("square_degenerate_or_nonconvex")
+    sides = [cross(vertices[i], vertices[(i + 1) % 4], point) for i in range(4)]
+    direction = 1 if turns[0] > 0 else -1
+    if not all(math.isfinite(n) and n * direction > max(tolerance, length * .25)
+               for n, length in zip(sides, lengths)):
+        raise Refused("square_point_not_strictly_inside")
+    return list(point)
+
+
 def select_widget(tree, command):
     if tree.get("status") != "SNAPSHOT" or tree.get("game_apk_sha256") != smoke.GAME_SHA:
         raise Refused("fresh_snapshot_unverified")
@@ -254,14 +315,22 @@ def select_widget(tree, command):
     if type(canvas) is not int or not canvas or area["geometry"].get("canvasId") != canvas:
         raise Refused("raycast_canvas_changed")
     triangle = area.get("class") == "LLAS.Components.TriangleRaycastArea"
-    point = verified_triangle_point(area, node["geometry"], actual, view, canvas) if triangle else [
-        round((actual[0] + actual[2]) / 2), round((actual[1] + actual[3]) / 2)]
+    square = area.get("class") == "LLAS.Components.SquareRayCastArea"
+    if triangle:
+        point = verified_triangle_point(area, node["geometry"], actual, view, canvas)
+    elif square:
+        point = verified_square_point(area, node["geometry"], actual, view, canvas)
+    else:
+        point = [round((actual[0] + actual[2]) / 2), round((actual[1] + actual[3]) / 2)]
     if not actual[0] <= point[0] < actual[2] or not actual[1] <= point[1] < actual[3]:
         raise Refused("raycast_has_no_safe_integer_center")
     result = {"widget_id": node["id"], "class": node["class"], "bounds": actual, "coordinates": point,
               "duration_ms": 240, "source": "fresh actual raycast UI geometry"}
     if triangle:
         result.update(triangle_proof_kind=area["verifiedTriangleHitPoint"]["kind"],
+                      shape_verification_only=True, proof_original_raycast_invoked=False, proof_ancestor_filters_checked=False)
+    if square:
+        result.update(square_proof_kind=area["verifiedSquareHitPoint"]["kind"],
                       shape_verification_only=True, proof_original_raycast_invoked=False, proof_ancestor_filters_checked=False)
     return result
 

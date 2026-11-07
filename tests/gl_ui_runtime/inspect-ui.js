@@ -102,6 +102,53 @@
         }
         return null;
     }
+    // Exact SquareRayCastArea edge construction, distinct from the full rect.
+    // These pure helpers never invoke the native cache-writing hit predicate.
+    function squareLocalVertices(corners, pivotX) {
+        if (!Number.isFinite(pivotX) || !Array.isArray(corners) || corners.length !== 4 ||
+            !corners.every(v => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite))) return null;
+        const t = Math.max(0, Math.min(1, pivotX));
+        return corners.map((a, index) => {
+            const b = corners[(index + 1) % 4];
+            return a.map((value, axis) => value + t * (b[axis] - value));
+        });
+    }
+    function strictQuadrilateralContains(vertices, point) {
+        if (!Array.isArray(vertices) || vertices.length !== 4 ||
+            !vertices.every(v => Array.isArray(v) && v.length === 2 && v.every(Number.isFinite)) ||
+            !Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite)) return false;
+        const cross = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        const lengths = vertices.map((a, i) => Math.hypot(vertices[(i + 1) % 4][0] - a[0], vertices[(i + 1) % 4][1] - a[1]));
+        if (!lengths.every(length => Number.isFinite(length) && length > 1e-6)) return false;
+        const tolerance = Math.max(1e-6, Math.max(...lengths) ** 2 * 1e-9);
+        const turns = vertices.map((a, i) => cross(a, vertices[(i + 1) % 4], vertices[(i + 2) % 4]));
+        const direction = Math.sign(turns[0]);
+        if (direction === 0 || !turns.every(turn => Number.isFinite(turn) && turn * direction > tolerance)) return false;
+        // The native rectangle is two inclusive triangles sharing a diagonal.
+        // Accept that internal diagonal, but require a conservative quarter-pixel
+        // distance from every outer edge after adb's integer rounding.
+        return vertices.every((a, i) => {
+            const side = cross(a, vertices[(i + 1) % 4], point) * direction;
+            return Number.isFinite(side) && side > Math.max(tolerance, lengths[i] * 0.25);
+        });
+    }
+    function selectSquareHitCandidate(vertices, bounds, gameViewBounds) {
+        const validBounds = b => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite) && b[2] > b[0] && b[3] > b[1];
+        if (!validBounds(bounds) || !validBounds(gameViewBounds) ||
+            !Array.isArray(vertices) || vertices.length !== 4 ||
+            !vertices.every(v => Array.isArray(v) && v.length === 2 && v.every(Number.isFinite))) return null;
+        const centroid = [0, 1].map(axis => vertices.reduce((sum, v) => sum + v[axis], 0) / 4);
+        const candidates = [
+            {point: centroid.map(Math.round), source: "projected-quadrilateral-centroid-rounded"},
+            {point: [Math.round((bounds[0] + bounds[2]) / 2), Math.round((bounds[1] + bounds[3]) / 2)], source: "measured-rectangle-center-rounded"}
+        ];
+        const inside = (point, b) => point[0] > b[0] && point[0] < b[2] && point[1] > b[1] && point[1] < b[3];
+        for (const candidate of candidates) {
+            if (inside(candidate.point, bounds) && inside(candidate.point, gameViewBounds) &&
+                strictQuadrilateralContains(vertices, candidate.point)) return {...candidate, centroid};
+        }
+        return null;
+    }
     function inspect(expectedThread) {
         if (Il2Cpp.currentThread.id !== expectedThread) throw Error("Not on verified main Unity thread");
         const contextClass = Il2Cpp.corlib.class("System.Threading.SynchronizationContext");
@@ -254,6 +301,51 @@
                 verification: "JS-barycentric-strict-interior-subset-of-native-triangle-shape",
                 originalRaycastInvoked: false, ancestorFiltersChecked: false};
         }
+        function verifiedSquareHitPoint(area, measured) {
+            // Original GL predicate 0x26e3b5c writes area.localCorners and can
+            // populate Graphic caches. Read only the current transform/camera;
+            // GetLocalCorners and ValueType writes target our new temporaries.
+            if (area.class.fullName !== "LLAS.Components.SquareRayCastArea" || !active(area) ||
+                measured == null || measured.renderMode !== 1 || measured.camera == null) throw Error("Square camera geometry unavailable");
+            const transform = call(area, "get_transform");
+            if (transform.class.fullName !== "UnityEngine.RectTransform") throw Error("Square RectTransform unavailable");
+            const canvas = parentComponent(call(area, "get_gameObject"), Canvas);
+            if (canvas == null || !active(canvas)) throw Error("Square Canvas unavailable");
+            const root = call(canvas, "get_rootCanvas");
+            if (!active(root) || id(root) !== measured.canvasId || number(call(root, "get_renderMode")) !== 1 ||
+                call(root, "get_targetDisplay") !== 0) throw Error("Square Canvas mismatch");
+            const camera = nullable(call(root, "get_worldCamera"));
+            if (camera == null || !active(camera) || id(camera) !== measured.camera.id ||
+                !call(camera, "get_orthographic") || call(camera, "get_targetDisplay") !== 0 ||
+                nullable(call(camera, "get_targetTexture")) != null) throw Error("Square assigned camera mismatch");
+            const ownedCorners = Il2Cpp.array(Vector3, 4);
+            transform.method("GetLocalCorners", 1).invoke(ownedCorners);
+            const corners = [0, 1, 2, 3].map(i => vec(ownedCorners.get(i)));
+            const pivotX = Number(call(transform, "get_pivot").field("x").value);
+            const localQuadrilateral = squareLocalVertices(corners, pivotX);
+            if (localQuadrilateral == null) throw Error("Square local geometry invalid");
+            const makeOwnedVector3 = values => {
+                const value = new Il2Cpp.ValueType(Memory.alloc(Vector3.valueTypeSize), Vector3.type);
+                ["x", "y", "z"].forEach((key, i) => { value.field(key).value = values[i]; });
+                return value;
+            };
+            const transformPoint = transform.method("TransformPoint", 1).overload("UnityEngine.Vector3");
+            const project = camera.method("WorldToScreenPoint", 1).overload("UnityEngine.Vector3");
+            const quadrilateral = localQuadrilateral.map(v => {
+                const screen = vec(project.invoke(transformPoint.invoke(makeOwnedVector3(v))));
+                if (!screen.every(Number.isFinite) || !(screen[2] > 0)) throw Error("Square projection invalid");
+                return [left + screen[0], top + h - screen[1]];
+            });
+            const hit = selectSquareHitCandidate(quadrilateral, measured.bounds, opt.gameViewBounds);
+            if (hit == null) throw Error("No strict interior square pixel");
+            return {kind: "SquareRayCastArea.local-corners-pivot.strict-interior.v1", point: hit.point,
+                candidate: hit.source, strictInsideQuadrilateral: true, quadrilateralVertices: quadrilateral,
+                centroid: hit.centroid, localCorners: corners, localQuadrilateralVertices: localQuadrilateral,
+                geometrySource: "inspector-owned-GetLocalCorners+Clamp01-pivot-edge-Lerp+TransformPoint+assigned-orthographic-WorldToScreenPoint",
+                canvasId: measured.canvasId, cameraId: id(camera), pivotX, clampedPivotX: Math.max(0, Math.min(1, pivotX)),
+                verification: "JS-convex-outer-edge-strict-interior-subset-of-native-rectangle-shape",
+                outerEdgeMarginPx: 0.25, originalRaycastInvoked: false, ancestorFiltersChecked: false};
+        }
         const report = {schema: 1, status: "SNAPSHOT", mainThreadId: expectedThread,
             screen: [w, h], gameViewBounds: opt.gameViewBounds, classes: [], widgets: [], texts: [],
             environment: {
@@ -263,7 +355,7 @@
                 "Application.isFocused": optionalStaticValue("UnityEngine.Application", "get_isFocused"),
                 ...eventSystemValues()
             },
-            limitations: ["Occlusion, ancestor raycast filters, non-Triangle custom hit testing, and animation stability are not asserted", "Non-allowlisted display text and object names are omitted"]};
+            limitations: ["Occlusion, ancestor raycast filters, custom shapes other than verified Triangle/Square, and animation stability are not asserted", "Non-allowlisted display text and object names are omitted"]};
         const specs = [
             ["UnityEngine.UI.Button", "button", null],
             ["LLAS.Components.UI.ProductButton", "button", null],
@@ -324,7 +416,8 @@
                                 const details = {present: true, class: area.class.fullName};
                                 item.inputDiagnostics.raycastArea = details;
                                 if (area.class.fullName === "Jigbox.Components.RaycastArea" ||
-                                    area.class.fullName === "LLAS.Components.TriangleRaycastArea") {
+                                    area.class.fullName === "LLAS.Components.TriangleRaycastArea" ||
+                                    area.class.fullName === "LLAS.Components.SquareRayCastArea") {
                                     details.active = active(area);
                                     const target = area.tryMethod("get_raycastTarget", 0);
                                     details.raycastTarget = target == null ? "unavailable" : target.invoke();
@@ -335,6 +428,12 @@
                                         details.geometry != null && typeof details.geometry === "object") {
                                         try { details.verifiedTriangleHitPoint = verifiedTriangleHitPoint(area, details.geometry); }
                                         catch (_) { details.triangleHitRefusal = "strict_triangle_geometry_unavailable"; }
+                                    }
+                                    if (area.class.fullName === "LLAS.Components.SquareRayCastArea" &&
+                                        details.active === true && details.raycastTarget === true &&
+                                        details.geometry != null && typeof details.geometry === "object") {
+                                        try { details.verifiedSquareHitPoint = verifiedSquareHitPoint(area, details.geometry); }
+                                        catch (_) { details.squareHitRefusal = "strict_square_geometry_unavailable"; }
                                     }
                                 }
                             }

@@ -134,6 +134,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("candidate", "game", "temporary", "evidence", "live-python", "bridge"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--preview-only", action="store_true",
+                        help="Separate HOME/Preview/HOME proof; does not claim the four MV cases")
     args = parser.parse_args()
     args.serial, args.interval, args.qa_language, args.qa_download_mode = "127.0.0.1:5555", 5, "en", "light"
     args.evidence.mkdir(parents=True, exist_ok=False)
@@ -142,6 +144,7 @@ def main():
     ownership = verify()
     assert sha(args.candidate) == PROVIDER_SHA and sha(args.game) == smoke.GAME_SHA and sha(args.bridge) == BRIDGE_SHA
     report = {"status": "RUNNING", "ownership": ownership, "candidate_sha256": PROVIDER_SHA,
+              "execution_scope": "preview_only" if args.preview_only else "full_seven_cases",
               "game_sha256": smoke.GAME_SHA, "game_pid": None, "bootstrap": {}, "captures": [],
               "checkpoints": [], "inputs": [], "attempts": [], "cleanup": [],
               "scope": "Actual original GL3.12 normal UI scenes on one disposable account; no native/gameplay mutations or production publication"}
@@ -273,16 +276,17 @@ def main():
         home = flow.home("observed-home")
         flow.expect_deck(report["prepared"]["suits"])
         home = checkpoint("home_initial")
-        flow.get_deck("sync-board-deck", home)
-        flow.select_rina(SINGLE, 1, "sync-board-select")
-        flow.play("sync-board")
-        checkpoint("sync_board")
-        for suit, view, case in ((SINGLE, 2, "sync_bare"), (BASELINE, 1, "node_board"), (ORIGINAL, 1, "original_board")):
-            flow.warm_deck(case + "-deck")
-            flow.select_rina(suit, view, case + "-select")
-            flow.play(case.replace("_", "-"))
-            checkpoint(case)
-        home = flow.return_home("mv-return-home")
+        if not args.preview_only:
+            flow.get_deck("sync-board-deck", home)
+            flow.select_rina(SINGLE, 1, "sync-board-select")
+            flow.play("sync-board")
+            checkpoint("sync_board")
+            for suit, view, case in ((SINGLE, 2, "sync_bare"), (BASELINE, 1, "node_board"), (ORIGINAL, 1, "original_board")):
+                flow.warm_deck(case + "-deck")
+                flow.select_rina(suit, view, case + "-select")
+                flow.play(case.replace("_", "-"))
+                checkpoint(case)
+            home = flow.return_home("mv-return-home")
         enter_preview(flow, home)
         checkpoint("costume_preview")
         preview_to_home(flow)

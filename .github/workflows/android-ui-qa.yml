@@ -1,4 +1,4 @@
-name: Rina same-board authored-scale original scenes
+name: Rina actual costume preview with passive Square hit proof
 
 on:
   workflow_dispatch:
@@ -94,8 +94,10 @@ jobs:
           mkdir -p tests/gl_ui_runtime/package/dist
           cp "$RUNNER_TEMP/qa-tools/package/dist/index.js" tests/gl_ui_runtime/package/dist/index.js
           python3 -m unittest discover -s tests/rina_authored_sync_scene_qa -p 'test_*.py' -v
+          node --check tests/gl_ui_runtime/inspect-ui.js
+          node tests/gl_ui_runtime/test_square_hit.js
 
-      - name: Publish disposable models and traverse actual normal scenes
+      - name: Publish disposable models and traverse actual HOME, Preview and HOME
         run: |
           set -euo pipefail
           git rev-parse HEAD > evidence/qa-source.txt
@@ -105,12 +107,12 @@ jobs:
             --candidate "${qa_apks[0]}" --game "$RUNNER_TEMP/LLAS_GL_LOCAL.apk" \
             --temporary "$RUNNER_TEMP/authored-sync-scenes" --evidence evidence/authored-sync \
             --live-python "$RUNNER_TEMP/qa-python/bin/python" \
-            --bridge "$RUNNER_TEMP/qa-tools/package/dist/index.js"
+            --bridge "$RUNNER_TEMP/qa-tools/package/dist/index.js" --preview-only
 
-      - name: Audit bound HOME, preview, four MVs, motion and initialization
+      - name: Audit separate actual HOME, selected Preview and HOME proof
         if: always()
         run: |
-          python3 tests/rina_authored_sync_scene_qa/audit_scenes.py --evidence evidence
+          python3 tests/rina_authored_sync_scene_qa/audit_preview.py --evidence evidence
 
       - name: Collect diagnostics and stop only the owned Android
         if: always()
@@ -128,6 +130,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: rina-authored-sync-original-scene-evidence
+          name: rina-preview-only-original-scene-evidence
           path: evidence
           retention-days: 14

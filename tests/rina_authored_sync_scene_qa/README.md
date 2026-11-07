@@ -1,5 +1,12 @@
 # Shared authored-scale board: original-game scene QA
 
+This branch's workflow explicitly uses `--preview-only`: initial HOME, the
+selected costume preview, and final HOME, with two native snapshots per case.
+Its separate `audit_preview.py` cannot claim an MV or full seven-case pass.
+The four MV cases captured by run42396817217/source28368ae remain independent
+evidence from another PID; that run's incomplete seven-case verdict is retained.
+The original full-flow mode and its strict auditor remain available unchanged.
+
 This manual-only isolated workflow uses the unchanged public Android GL3.12
 player and frozen signed tutorial provider7.1. No application, native method,
 PlayerPrefs, personal account or production branch is changed.

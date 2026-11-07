@@ -1,0 +1,2034 @@
+{
+  "schema": 1,
+  "status": "SNAPSHOT",
+  "mainThreadId": 15037,
+  "screen": [
+    1280,
+    720
+  ],
+  "gameViewBounds": [
+    0,
+    0,
+    1280,
+    720
+  ],
+  "classes": [
+    {
+      "name": "UnityEngine.UI.Button",
+      "present": true,
+      "parent": "UnityEngine.UI.Selectable"
+    },
+    {
+      "name": "LLAS.Components.UI.ProductButton",
+      "present": true,
+      "parent": "Jigbox.Components.BasicButton"
+    },
+    {
+      "name": "Jigbox.Components.BasicButton",
+      "present": true,
+      "parent": "Jigbox.Components.ButtonBase"
+    },
+    {
+      "name": "UnityEngine.UI.Text",
+      "present": true,
+      "parent": "UnityEngine.UI.MaskableGraphic"
+    },
+    {
+      "name": "TMPro.TMP_Text",
+      "present": true,
+      "parent": "UnityEngine.UI.MaskableGraphic"
+    },
+    {
+      "name": "LLAS.Components.UI.ProductTextView",
+      "present": true,
+      "parent": "Jigbox.Components.TextView"
+    }
+  ],
+  "widgets": [
+    {
+      "id": 370248,
+      "gameObjectId": 368630,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        368934,
+        368848,
+        368800,
+        368776,
+        368824
+      ],
+      "active": true,
+      "geometryRefusal": "Error: Partially clipped UI rectangle unsupported",
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "Jigbox.Components.RaycastArea",
+          "active": true,
+          "raycastTarget": true,
+          "geometry": "unavailable"
+        }
+      },
+      "semantic_refs": [
+        "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.menuButton"
+      ],
+      "labels": [
+        "Menu"
+      ]
+    },
+    {
+      "id": 371268,
+      "gameObjectId": 369198,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        368914,
+        368800,
+        368776,
+        368824
+      ],
+      "active": true,
+      "geometryRefusal": "Error: Partially clipped UI rectangle unsupported",
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "Jigbox.Components.RaycastArea",
+          "active": true,
+          "raycastTarget": true,
+          "geometry": "unavailable"
+        }
+      },
+      "semantic_refs": [
+        "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.backButton"
+      ],
+      "labels": []
+    },
+    {
+      "id": 382284,
+      "gameObjectId": 378214,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378202,
+        378776,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          1065.0673828125,
+          408.9355163574219,
+          1247.376220703125,
+          591.2444000244141
+        ],
+        "rawBounds": [
+          1065.0673828125,
+          408.9355163574219,
+          1247.376220703125,
+          591.2444000244141
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "LLAS.Components.SquareRayCastArea"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 382352,
+      "gameObjectId": 378232,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378566,
+        378792,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          857.8111572265625,
+          408.9355163574219,
+          1040.119873046875,
+          591.2444000244141
+        ],
+        "rawBounds": [
+          857.8111572265625,
+          408.9355163574219,
+          1040.119873046875,
+          591.2444000244141
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "LLAS.Components.SquareRayCastArea"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 382364,
+      "gameObjectId": 378236,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378774,
+        378744,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          961.4392700195312,
+          512.563720703125,
+          1143.7481689453125,
+          694.8725719451904
+        ],
+        "rawBounds": [
+          961.4392700195312,
+          512.563720703125,
+          1143.7481689453125,
+          694.8725719451904
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "LLAS.Components.SquareRayCastArea"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 382466,
+      "gameObjectId": 378282,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378540,
+        378470,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          261.94903564453125,
+          484.7376251220703,
+          392.44378662109375,
+          615.2323760986328
+        ],
+        "rawBounds": [
+          261.94903564453125,
+          484.7376251220703,
+          392.44378662109375,
+          615.2323760986328
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "LLAS.Components.SquareRayCastArea"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 382666,
+      "gameObjectId": 378400,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378676,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometryRefusal": "Error: Partially clipped UI rectangle unsupported",
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "Jigbox.Components.RaycastArea",
+          "active": true,
+          "raycastTarget": true,
+          "geometry": "unavailable"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 382782,
+      "gameObjectId": 378468,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378346,
+        378814,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          185.18740844726562,
+          407.97601318359375,
+          315.68218994140625,
+          538.4707794189453
+        ],
+        "rawBounds": [
+          185.18740844726562,
+          407.97601318359375,
+          315.68218994140625,
+          538.4707794189453
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "LLAS.Components.SquareRayCastArea"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 382928,
+      "gameObjectId": 378550,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378334,
+        378438,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          108.42578887939453,
+          484.7376251220703,
+          238.92056274414062,
+          615.2323760986328
+        ],
+        "rawBounds": [
+          108.42578887939453,
+          484.7376251220703,
+          238.92056274414062,
+          615.2323760986328
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "LLAS.Components.SquareRayCastArea"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 383122,
+      "gameObjectId": 378650,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378706,
+        378300,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          185.18740844726562,
+          561.4992523193359,
+          315.68218994140625,
+          691.9940032958984
+        ],
+        "rawBounds": [
+          185.18740844726562,
+          561.4992523193359,
+          315.68218994140625,
+          691.9940032958984
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "LLAS.Components.SquareRayCastArea"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 383260,
+      "gameObjectId": 378718,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378662,
+        378544,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          1056.4317626953125,
+          297.63116455078125,
+          1209.9549560546875,
+          351.36431884765625
+        ],
+        "rawBounds": [
+          1056.4317626953125,
+          297.63116455078125,
+          1209.9549560546875,
+          351.36431884765625
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "Jigbox.Components.RaycastArea",
+          "active": true,
+          "raycastTarget": true,
+          "geometry": {
+            "bounds": [
+              1056.4317626953125,
+              297.63116455078125,
+              1209.9549560546875,
+              351.36431884765625
+            ],
+            "rawBounds": [
+              1056.4317626953125,
+              297.63116455078125,
+              1209.9549560546875,
+              351.36431884765625
+            ],
+            "clipTolerancePx": 0.1,
+            "clampedToGameView": false,
+            "canvasId": 380814,
+            "renderMode": 1,
+            "canvasViewport": {
+              "source": "Camera.pixelRect",
+              "rect": [
+                0,
+                0,
+                1280,
+                720
+              ]
+            },
+            "camera": {
+              "id": 235588,
+              "orthographic": true,
+              "pixelRect": [
+                0,
+                0,
+                1280,
+                720
+              ],
+              "viewportSource": "Camera.pixelRect"
+            },
+            "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+          }
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 383416,
+      "gameObjectId": 378794,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378746,
+        378656,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          31.664161682128906,
+          407.97601318359375,
+          162.158935546875,
+          538.4707794189453
+        ],
+        "rawBounds": [
+          31.664161682128906,
+          407.97601318359375,
+          162.158935546875,
+          538.4707794189453
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "LLAS.Components.SquareRayCastArea"
+        }
+      },
+      "semantic_refs": [
+        "LLAS.Scene.CommunicationMemberDetail.CommunicationMemberDetailTopMenu.themeListButton"
+      ],
+      "labels": []
+    },
+    {
+      "id": 383440,
+      "gameObjectId": 378810,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378676,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometryRefusal": "Error: Partially clipped UI rectangle unsupported",
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "Jigbox.Components.RaycastArea",
+          "active": true,
+          "raycastTarget": true,
+          "geometry": "unavailable"
+        }
+      },
+      "labels": []
+    },
+    {
+      "id": 383712,
+      "gameObjectId": 379030,
+      "class": "LLAS.Components.UI.ProductButton",
+      "ancestorIds": [
+        378390,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          28.78559112548828,
+          558.8006134033203,
+          109.38533782958984,
+          639.4003067016602
+        ],
+        "rawBounds": [
+          28.78559112548828,
+          558.8006134033203,
+          109.38533782958984,
+          639.4003067016602
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "interactable": null,
+      "clickable": true,
+      "inputDiagnostics": {
+        "colleague": {
+          "present": true,
+          "class": "Jigbox.UIControl.SubmitColleague",
+          "isEnable": false
+        },
+        "raycastArea": {
+          "present": true,
+          "class": "Jigbox.Components.RaycastArea",
+          "active": true,
+          "raycastTarget": true,
+          "geometry": {
+            "bounds": [
+              28.78559112548828,
+              558.8006134033203,
+              109.38533782958984,
+              639.4003067016602
+            ],
+            "rawBounds": [
+              28.78559112548828,
+              558.8006134033203,
+              109.38533782958984,
+              639.4003067016602
+            ],
+            "clipTolerancePx": 0.1,
+            "clampedToGameView": false,
+            "canvasId": 380814,
+            "renderMode": 1,
+            "canvasViewport": {
+              "source": "Camera.pixelRect",
+              "rect": [
+                0,
+                0,
+                1280,
+                720
+              ]
+            },
+            "camera": {
+              "id": 235588,
+              "orthographic": true,
+              "pixelRect": [
+                0,
+                0,
+                1280,
+                720
+              ],
+              "viewportSource": "Camera.pixelRect"
+            },
+            "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+          }
+        }
+      },
+      "labels": []
+    }
+  ],
+  "texts": [
+    {
+      "id": 368274,
+      "gameObjectId": 367692,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        367762,
+        367722,
+        367728,
+        367702,
+        367752
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          34.54273223876953,
+          21.10943603515625,
+          395.32232666015625,
+          61.4093017578125
+        ],
+        "rawBounds": [
+          34.54273223876953,
+          21.10943603515625,
+          395.32232666015625,
+          61.4093017578125
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 367984,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "label": "Member Details"
+    },
+    {
+      "id": 370286,
+      "gameObjectId": 368652,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        368630,
+        368934,
+        368848,
+        368800,
+        368776,
+        368824
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          1187.8466796875,
+          682.8085327148438,
+          1264.61181640625,
+          705.8372497558594
+        ],
+        "rawBounds": [
+          1187.8466796875,
+          682.8085327148438,
+          1264.61181640625,
+          705.8372497558594
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 369632,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 369210,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "label": "Menu"
+    },
+    {
+      "id": 382310,
+      "gameObjectId": 378222,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378764,
+        378334,
+        378438,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          114.18292999267578,
+          517.3613128662109,
+          229.32533264160156,
+          578.7706298828125
+        ],
+        "rawBounds": [
+          114.18292999267578,
+          517.3613128662109,
+          229.32533264160156,
+          578.7706298828125
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 382414,
+      "gameObjectId": 378256,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378718,
+        378662,
+        378544,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          1064.10791015625,
+          312.02398681640625,
+          1202.2789306640625,
+          335.0524597167969
+        ],
+        "rawBounds": [
+          1064.10791015625,
+          312.02398681640625,
+          1202.2789306640625,
+          335.0524597167969
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 382428,
+      "gameObjectId": 378258,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378618,
+        378746,
+        378656,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          37.4212646484375,
+          440.5997009277344,
+          152.56370544433594,
+          502.0090026855469
+        ],
+        "rawBounds": [
+          37.4212646484375,
+          440.5997009277344,
+          152.56370544433594,
+          502.0090026855469
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "label": "Visuals"
+    },
+    {
+      "id": 382472,
+      "gameObjectId": 378284,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378616,
+        378566,
+        378792,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          868.3657836914062,
+          484.7376251220703,
+          1029.5653076171875,
+          561.4992523193359
+        ],
+        "rawBounds": [
+          868.3657836914062,
+          484.7376251220703,
+          1029.5653076171875,
+          561.4992523193359
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 382522,
+      "gameObjectId": 378318,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378430,
+        378572,
+        378662,
+        378544,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          914.4227294921875,
+          312.02398681640625,
+          1029.565185546875,
+          335.0524597167969
+        ],
+        "rawBounds": [
+          914.4227294921875,
+          312.02398681640625,
+          1029.565185546875,
+          335.0524597167969
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 382624,
+      "gameObjectId": 378384,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378520,
+        378846,
+        378544,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          899.0704345703125,
+          209.35528564453125,
+          1206.116943359375,
+          236.22186279296875
+        ],
+        "rawBounds": [
+          899.0704345703125,
+          209.35528564453125,
+          1206.116943359375,
+          236.22186279296875
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 382698,
+      "gameObjectId": 378428,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378446,
+        378846,
+        378544,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          975.5443115234375,
+          247.352294921875,
+          1203.9100341796875,
+          270.38079833984375
+        ],
+        "rawBounds": [
+          975.5443115234375,
+          247.352294921875,
+          1203.9100341796875,
+          270.38079833984375
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 382858,
+      "gameObjectId": 378506,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378458,
+        378706,
+        378300,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          190.94451904296875,
+          594.1229400634766,
+          306.08697509765625,
+          655.5322265625
+        ],
+        "rawBounds": [
+          190.94451904296875,
+          594.1229400634766,
+          306.08697509765625,
+          655.5322265625
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 383290,
+      "gameObjectId": 378726,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378246,
+        378544,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          923.0584716796875,
+          115.322265625,
+          1182.12890625,
+          192.08392333984375
+        ],
+        "rawBounds": [
+          923.0584716796875,
+          115.322265625,
+          1182.12890625,
+          192.08392333984375
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 383304,
+      "gameObjectId": 378730,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378296,
+        378202,
+        378776,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          1075.6221923828125,
+          484.7376251220703,
+          1236.821533203125,
+          561.4992523193359
+        ],
+        "rawBounds": [
+          1075.6221923828125,
+          484.7376251220703,
+          1236.821533203125,
+          561.4992523193359
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 383460,
+      "gameObjectId": 378818,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378638,
+        378346,
+        378814,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          190.94451904296875,
+          440.5997009277344,
+          306.08697509765625,
+          502.0090026855469
+        ],
+        "rawBounds": [
+          190.94451904296875,
+          440.5997009277344,
+          306.08697509765625,
+          502.0090026855469
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 383532,
+      "gameObjectId": 378850,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378378,
+        378540,
+        378470,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          267.7061767578125,
+          517.3613128662109,
+          382.84857177734375,
+          578.7706298828125
+        ],
+        "rawBounds": [
+          267.7061767578125,
+          517.3613128662109,
+          382.84857177734375,
+          578.7706298828125
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    },
+    {
+      "id": 383542,
+      "gameObjectId": 378852,
+      "class": "LLAS.Components.UI.ProductTextView",
+      "ancestorIds": [
+        378276,
+        378774,
+        378744,
+        378280,
+        378366,
+        378742,
+        378760,
+        378410,
+        378786
+      ],
+      "active": true,
+      "geometry": {
+        "bounds": [
+          971.9940185546875,
+          588.3658294677734,
+          1133.1934814453125,
+          665.1274337768555
+        ],
+        "rawBounds": [
+          971.9940185546875,
+          588.3658294677734,
+          1133.1934814453125,
+          665.1274337768555
+        ],
+        "clipTolerancePx": 0.1,
+        "clampedToGameView": false,
+        "canvasId": 380814,
+        "renderMode": 1,
+        "canvasViewport": {
+          "source": "Camera.pixelRect",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        },
+        "camera": {
+          "id": 235588,
+          "orthographic": true,
+          "pixelRect": [
+            0,
+            0,
+            1280,
+            720
+          ],
+          "viewportSource": "Camera.pixelRect"
+        },
+        "algorithm": "canvas-worldCamera-GetWorldCorners-WorldToScreenPoint"
+      },
+      "labelRedacted": true
+    }
+  ],
+  "environment": {
+    "Input.touchSupported": true,
+    "Input.mousePresent": false,
+    "Input.touchCount": 0,
+    "Application.isFocused": "unavailable",
+    "EventSystem.isFocused": true,
+    "EventSystem.currentInputModule.class": "LLAS.Components.ProductInputModule",
+    "EventSystem.currentInputModule.enabled": true
+  },
+  "limitations": [
+    "Occlusion, ancestor raycast filters, non-Triangle custom hit testing, and animation stability are not asserted",
+    "Non-allowlisted display text and object names are omitted"
+  ],
+  "scrollViews": [],
+  "scrollDiagnostics": {
+    "schema": 1,
+    "status": "CAPTURED",
+    "limitation": "Structural geometry only; native raycast/occlusion and successful scrolling are not asserted"
+  },
+  "semanticState": {
+    "schema": 1,
+    "sceneContexts": [
+      {
+        "className": "LLAS.Scene.EntryPoint.HomeScene",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.EntryPoint.CostumePreviewScene",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.Home.HomeMenu",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.Home.HomeMenuButtonsController",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.LiveMusicSelect.LiveMusicSelectController",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.LiveMvDeckSelect.LiveMvDeckSelectRoot",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.EntryPoint.LiveMvScene",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.Live.Mv.LiveMvCoreScene",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.Live.Mv.LiveMvManager",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.Live.Mv.LiveMvMovieScene",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      },
+      {
+        "className": "LLAS.Scene.EntryPoint.LiveScene",
+        "activeOwners": 0,
+        "status": "COUNTED"
+      }
+    ],
+    "costumePreview": {
+      "status": "NOT_ACTIVE"
+    },
+    "musicSelect": [],
+    "songCells": [],
+    "mvDeck": [],
+    "mvSlots": [],
+    "suitPopup": [],
+    "suitCells": [],
+    "refusals": []
+  },
+  "semanticReferences": {
+    "schema": 1,
+    "source": "original-GL-APK-metadata-8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e",
+    "metadataSha256": "c1ac82ff0b68351ffb3a58fce275b940c26316da64cdfc8201413382afdec14f",
+    "libSha256": "39c2eed48009be7632be5aaf910d76b9316cd8c98f118e180c593b5615dd022e",
+    "references": [
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.menuButton",
+        "activeOwners": 1,
+        "matchedWidgets": 1,
+        "status": "MATCHED"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.backButton",
+        "activeOwners": 1,
+        "matchedWidgets": 1,
+        "status": "MATCHED"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.communicationButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.liveButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.homeButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.cardButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.accessoryButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.communicationMemberSelectButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.communicationMemberDetailButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.deckLiveEditButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.basicLiveButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController.accessoryListButton",
+        "activeOwners": 1,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_WIDGET"
+      },
+      {
+        "ref": "LLAS.Scene.CommunicationMemberDetail.CommunicationMemberDetailTopMenu.themeListButton",
+        "activeOwners": 1,
+        "matchedWidgets": 1,
+        "status": "MATCHED"
+      },
+      {
+        "ref": "LLAS.Scene.CommunicationMemberDetail.CommunicationMemberDetailThemeList.costumePreviewButton",
+        "activeOwners": 0,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_OWNER"
+      },
+      {
+        "ref": "LLAS.Scene.LiveMusicSelect.LiveMusicSelectController.enableMvBtn",
+        "activeOwners": 0,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_OWNER"
+      },
+      {
+        "ref": "LLAS.Scene.LiveMusicSelect.LiveMusicSelectController.jumpButton",
+        "activeOwners": 0,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_OWNER"
+      },
+      {
+        "ref": "LLAS.Scene.LiveMusicSelect.LiveMusicSelectController.sortBtn",
+        "activeOwners": 0,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_OWNER"
+      },
+      {
+        "ref": "LLAS.Scene.LiveMusicSelect.LiveMusicSelectJumpGroup.nijiJumpButton",
+        "activeOwners": 0,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_OWNER"
+      },
+      {
+        "ref": "LLAS.Scene.LiveMvDeckSelect.LiveMvDeckSelectRoot.playButton",
+        "activeOwners": 0,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_OWNER"
+      },
+      {
+        "ref": "LLAS.BasicPopupFrame.positiveButton",
+        "activeOwners": 0,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_OWNER"
+      },
+      {
+        "ref": "LLAS.SuitChangePopup.toggle",
+        "activeOwners": 0,
+        "matchedWidgets": 0,
+        "status": "NO_ACTIVE_OWNER"
+      }
+    ],
+    "limitations": [
+      "References identify buttons, not occlusion or navigation success",
+      "Multiple matched active widgets are ambiguous and require refusal by the driver",
+      "Song-cell descendant references are not proof of a declared song button; missing/ambiguous descendants remain refused",
+      "Public numeric UI state is supporting identity only; it never invokes scene navigation or changes deck/model/account state",
+      "Active scene/controller counts do not assert that retained scenes cannot coexist; shared Navi models are not Home scene identity"
+    ]
+  },
+  "game_apk_sha256": "8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e",
+  "frida_version": "17.25.2",
+  "bridge_version": "0.14.0",
+  "bridge_sha256": "2f22205e47ab2992dd484cdc40991a76c2530e9243f8f0c73443b07a2544aa1c",
+  "captured_utc": "2026-11-07T18:05:41Z",
+  "snapshot_elapsed_seconds": 0.211
+}

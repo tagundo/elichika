@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "tests/gl_ui_runtime"))
 import android_gl_visual_smoke as smoke
-from gl_ui_runtime.followup import snapshot, select_widget, rectangle
+from gl_ui_runtime.followup import snapshot, select_widget, rectangle, Refused
 
 LIVE = 10001
 MEMBERS = [209, 1, 2, 3, 4, 5, 6, 7, 8]
@@ -93,8 +93,12 @@ def choose(tree, *, ref=None, label=None):
         candidates = products
     assert len(candidates) == 1, "Fresh normal input target is missing or ambiguous"
     row = candidates[0]
+    diagnostics = row.get("inputDiagnostics")
+    area = diagnostics.get("raycastArea") if isinstance(diagnostics, dict) else None
+    if not isinstance(area, dict) or not isinstance(area.get("geometry"), dict):
+        raise Refused("raycast_target_unverified")
     command = {"widget_id": row["id"], "expected_class": row["class"],
-               "expected_bounds": row["inputDiagnostics"]["raycastArea"]["geometry"]["bounds"]}
+               "expected_bounds": rectangle(area["geometry"].get("bounds"))}
     if label:
         command["expected_label"] = label
     return select_widget(tree, command)
