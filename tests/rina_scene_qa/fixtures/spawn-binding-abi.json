@@ -1,0 +1,314 @@
+{
+  "status": "PASS_STATIC_METADATA_ELF_ONLY",
+  "scope": "Exact unchanged original GL3.12 ARM64 metadata and file-backed ELF method pointers. No device or native invocation; not actual-scene coverage.",
+  "metadata_sha256": "c1ac82ff0b68351ffb3a58fce275b940c26316da64cdfc8201413382afdec14f",
+  "lib_sha256": "39c2eed48009be7632be5aaf910d76b9316cd8c98f118e180c593b5615dd022e",
+  "observer_base_commit": "7d278186a9c16a3cafed23265f0f81780fc96ac3",
+  "method_count": 16,
+  "exact_methods": [
+    {
+      "class": "LLAS.Scene.Live.LiveMemberPrefabSpawner",
+      "method": "Spawn",
+      "method_definition_index": 91089,
+      "native_method_index": 103466,
+      "flags": "0x96",
+      "static": true,
+      "parameters": [
+        {
+          "name": "member",
+          "type": "LLAS.Scene.Live.Components.LiveCoreMember"
+        },
+        {
+          "name": "prefab",
+          "type": "UnityEngine.GameObject"
+        },
+        {
+          "name": "usePrefab",
+          "type": "System.Boolean"
+        }
+      ],
+      "return": "UnityEngine.GameObject",
+      "native_address": "0x2926bd8"
+    },
+    {
+      "class": "UnityEngine.GameObject",
+      "method": "GetComponentInParent",
+      "method_definition_index": 21671,
+      "native_method_index": 19078,
+      "flags": "0x86",
+      "static": false,
+      "parameters": [
+        {
+          "name": "type",
+          "type": "System.Type"
+        }
+      ],
+      "return": "UnityEngine.Component",
+      "native_address": "0x34a188c"
+    },
+    {
+      "class": "UnityEngine.Component",
+      "method": "get_gameObject",
+      "method_definition_index": 21547,
+      "native_method_index": 18817,
+      "flags": "0x886",
+      "static": false,
+      "parameters": [],
+      "return": "UnityEngine.GameObject",
+      "native_address": "0x42b6c5c"
+    },
+    {
+      "class": "UnityEngine.Component",
+      "method": "get_transform",
+      "method_definition_index": 21546,
+      "native_method_index": 18816,
+      "flags": "0x886",
+      "static": false,
+      "parameters": [],
+      "return": "UnityEngine.Transform",
+      "native_address": "0x42b6bf0"
+    },
+    {
+      "class": "UnityEngine.Object",
+      "method": "GetInstanceID",
+      "method_definition_index": 23244,
+      "native_method_index": 19766,
+      "flags": "0x86",
+      "static": false,
+      "parameters": [],
+      "return": "System.Int32",
+      "native_address": "0x34b4264"
+    },
+    {
+      "class": "UnityEngine.Object",
+      "method": "get_name",
+      "method_definition_index": 23251,
+      "native_method_index": 19773,
+      "flags": "0x886",
+      "static": false,
+      "parameters": [],
+      "return": "System.String",
+      "native_address": "0x34b01a0"
+    },
+    {
+      "class": "UnityEngine.Transform",
+      "method": "get_parent",
+      "method_definition_index": 24109,
+      "native_method_index": 21024,
+      "flags": "0x886",
+      "static": false,
+      "parameters": [],
+      "return": "UnityEngine.Transform",
+      "native_address": "0x4408d5c"
+    },
+    {
+      "class": "UnityEngine.Resources",
+      "method": "FindObjectsOfTypeAll",
+      "method_definition_index": 22887,
+      "native_method_index": 20380,
+      "flags": "0x96",
+      "static": true,
+      "parameters": [
+        {
+          "name": "type",
+          "type": "System.Type"
+        }
+      ],
+      "return": "UnityEngine.Object[]",
+      "native_address": "0x40f4848"
+    },
+    {
+      "class": "LLAS.Scene.Live.Components.LiveCoreMemberNodeScaling",
+      "method": "Initialize",
+      "method_definition_index": 94469,
+      "native_method_index": 100260,
+      "flags": "0x86",
+      "static": false,
+      "parameters": [],
+      "return": "System.Void",
+      "native_address": "0x2f64d9c"
+    },
+    {
+      "class": "LLAS.Scene.Live.Components.LiveCoreMemberNodeScaling",
+      "method": "ApplyScale",
+      "method_definition_index": 94471,
+      "native_method_index": 100262,
+      "flags": "0x86",
+      "static": false,
+      "parameters": [
+        {
+          "name": "t",
+          "type": "System.Single"
+        }
+      ],
+      "return": "System.Void",
+      "native_address": "0x2f64f8c"
+    },
+    {
+      "class": "LLAS.Components.Members.SwingBone",
+      "method": "Initialize",
+      "method_definition_index": 96469,
+      "native_method_index": 49422,
+      "flags": "0x86",
+      "static": false,
+      "parameters": [],
+      "return": "System.Void",
+      "native_address": "0x2c97150"
+    },
+    {
+      "class": "LLAS.Components.Navi.NaviMember",
+      "method": "Initialize",
+      "method_definition_index": 95745,
+      "native_method_index": 49716,
+      "flags": "0xc6",
+      "static": false,
+      "parameters": [
+        {
+          "name": "memberId",
+          "type": "System.Int32"
+        },
+        {
+          "name": "attachKey",
+          "type": "System.String"
+        },
+        {
+          "name": "needCullingOff",
+          "type": "System.Boolean"
+        }
+      ],
+      "return": "System.Void",
+      "native_address": "0x2ca6a98"
+    },
+    {
+      "class": "LLAS.Components.Members.CommonCoreMember",
+      "method": "Initialize",
+      "method_definition_index": 96247,
+      "native_method_index": 49181,
+      "flags": "0x1c6",
+      "static": false,
+      "parameters": [
+        {
+          "name": "memberId",
+          "type": "System.Int32"
+        },
+        {
+          "name": "attachKey",
+          "type": "System.String"
+        },
+        {
+          "name": "needCullingOff",
+          "type": "System.Boolean"
+        }
+      ],
+      "return": "System.Void",
+      "native_address": "0x27c1190"
+    },
+    {
+      "class": "LLAS.Scene.Live.Components.LiveCoreMember",
+      "method": "Initialize",
+      "method_definition_index": 94389,
+      "native_method_index": 100180,
+      "flags": "0x86",
+      "static": false,
+      "parameters": [
+        {
+          "name": "componentReferer",
+          "type": "LLAS.Scene.Live.Timeline.ILiveCoreComponentReferer"
+        },
+        {
+          "name": "memberPosition",
+          "type": "System.Int32"
+        },
+        {
+          "name": "memberInfo",
+          "type": "LLAS.Scene.Live.LiveMemberInfo"
+        },
+        {
+          "name": "memberProp",
+          "type": "UnityEngine.Transform"
+        },
+        {
+          "name": "enableSwingBoneLod",
+          "type": "System.Boolean"
+        },
+        {
+          "name": "enableSkinMerge",
+          "type": "System.Boolean"
+        }
+      ],
+      "return": "System.Void",
+      "native_address": "0x2f64160"
+    },
+    {
+      "class": "UnityEngine.GameObject",
+      "method": "get_activeInHierarchy",
+      "method_definition_index": 21704,
+      "native_method_index": 19100,
+      "flags": "0x886",
+      "static": false,
+      "parameters": [],
+      "return": "System.Boolean",
+      "native_address": "0x34a22d0"
+    },
+    {
+      "class": "UnityEngine.Behaviour",
+      "method": "get_enabled",
+      "method_definition_index": 21213,
+      "native_method_index": 18462,
+      "flags": "0x886",
+      "static": false,
+      "parameters": [],
+      "return": "System.Boolean",
+      "native_address": "0x42add44"
+    }
+  ],
+  "spawn_native_contract": {
+    "argument_indices": {
+      "member": 0,
+      "prefab": 1,
+      "usePrefab": 2
+    },
+    "member_asset_getter_rva": "0x27c40b8",
+    "direct_caller_rva": "0x2926694",
+    "call_address": "0x2926858",
+    "usePrefab_false_address": "0x2926854",
+    "set_actual_name_Model_call": "0x2926c64",
+    "returned_type": "UnityEngine.GameObject",
+    "binding_id_type": "UnityEngine.Transform.GetInstanceID",
+    "no_global_name_hook": true
+  },
+  "limits": [
+    "Static method availability does not establish runtime hook order or actor identity.",
+    "Original Node/Swing hooks and invocation counter/target values remain unchanged.",
+    "The next actual-scene run must produce its own valid Spawn binding before Model can be audited."
+  ],
+  "exact_owner_type_preflight": {
+    "status": "PASS_EXACT_OWNER_TYPE_STATIC_PREFLIGHT",
+    "scope": "Pinned original GL3.12 ARM64 metadata and ELF only; no native invocation/device.",
+    "metadata_sha256": "c1ac82ff0b68351ffb3a58fce275b940c26316da64cdfc8201413382afdec14f",
+    "lib_sha256": "39c2eed48009be7632be5aaf910d76b9316cd8c98f118e180c593b5615dd022e",
+    "class": "LLAS.Scene.Live.Components.LiveCoreMember",
+    "type_definition_index": 14825,
+    "flags": "0x100001",
+    "sealed": false,
+    "abstract": false,
+    "generic_container": -1,
+    "parent_type": "LLAS.Components.Members.CommonCoreMember",
+    "metadata_type_count": 18996,
+    "parent_records": 18402,
+    "no_parent_records": 594,
+    "parent_kind_counts": {
+      "0x1c": 11011,
+      "0x12": 5381,
+      "0x15": 2010
+    },
+    "parent_decoding": {
+      "0x12": "Il2CppType.data.klassIndex",
+      "0x15": "Il2CppGenericClass.typeDefinitionIndex firstint32",
+      "0x1c": "System.Object type388, verified for all11011 entries"
+    },
+    "direct_derived_types_including_generic_parent_forms": [],
+    "derivation_chain_argument": "An indirect subclass needs a direct subclass as the first link. None of all18996 original metadata types directly inherit this nongeneric type.",
+    "runtime_boundary": "Exact class guard retained for pinned original IL2CPP app only; no arbitrary type registration or replacement is performed by this observer. Does not generalize to another client/build."
+  }
+}

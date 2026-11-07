@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+from spawn_audit import SpawnBindingAudit, SpawnEvidenceError, matching_initializations, matching_scene_root
 
 GAME_SHA = "8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e"
 APK_SHA = "6f8998c12e459b82d878ba93db2660693ced20b442dd3f093d7d7513735ac690"
@@ -159,6 +160,11 @@ def run(evidence):
                             "EVENT_UNVERIFIED_UNITY_CONTEXT")
                 events.append(event)
         require(len(events) == counters["events"], "OBSERVER_EVENT_COUNT_MISMATCH")
+        spawn_audit = SpawnBindingAudit(ready["payload"], events)
+        for event in events:
+            if event.get("kind") in ("node-scaling", "swing-initialize"):
+                spawn_audit.validate_root(event.get("root"), event.get("sequence"), event_time(event))
+        checks["renamed_model_requires_current_verified_spawn_binding"] = True
         initializes = [event for event in events if event.get("method") == NODE + "Initialize" and event.get("phase") == "leave"]
         require(initializes, "NO_ORIGINAL_SCENE_NODE_INITIALIZATION")
 
@@ -186,18 +192,19 @@ def run(evidence):
                     and result.get("mainThreadId") == ready["payload"]["mainThreadId"]
                     and not result.get("readErrors"), "DELAYED_SNAPSHOT_FAILED")
             when = timestamp(result["timestampUtc"])
+            require(type(result.get("lastEventSequence")) is int, "SNAPSHOT_EVENT_SEQUENCE_MISSING")
             require(wrapper.get("safe_state_stable_before_after") is True, "SELECTION_CHANGED_DURING_SNAPSHOT")
             state = wrapper.get("safe_state", {})
             require(state.get("rina_view_status") in (1, 2), "SNAPSHOT_ACTUAL_RINA_STATUS_MISSING")
             near_ui = sorted((item for item in ui if abs(item["time"] - when) <= 90), key=lambda item: abs(item["time"] - when))
             require(near_ui, "SNAPSHOT_WITHOUT_FRESH_UI")
             for sample in result.get("samples", []):
+                spawn_audit.validate_root(sample.get("root"), result["lastEventSequence"], when, snapshot=True)
                 if sample.get("activeInHierarchy") is not True:
                     continue
                 component = sample["componentInstanceId"]
                 root_id = sample["root"]["instanceId"]
-                matched = [event for event in initializes if event.get("componentInstanceId") == component
-                           and event.get("root", {}).get("instanceId") == root_id and event_time(event) <= when]
+                matched = matching_initializations(sample, initializes, when, result["lastEventSequence"])
                 require(matched, "ACTIVE_MODEL_HAS_NO_MATCHING_INITIALIZATION")
                 init = max(matched, key=event_time)
                 kind = context(init)
@@ -250,7 +257,8 @@ def run(evidence):
         physics = {}
         for name, item in chosen.items():
             init = item["init"]
-            enters = [event for event in events if event.get("invocation") == init["invocation"] and event.get("phase") == "enter"]
+            enters = [event for event in events if event.get("invocation") == init["invocation"] and event.get("phase") == "enter"
+                      and matching_scene_root(event.get("root"), init.get("root"))]
             require(len(enters) == 1, "NODE_INITIALIZATION_ENTER_LEAVE_PAIR_MISSING")
             origin = TARGET if name.startswith("home") else BARE_ORIGIN if name == "split_bare" else BOARD_ORIGIN
             require(scales_match(enters[0].get("values", {}), origin), "AUTHORED_SCENE_ORIGIN_CHANGED")
@@ -259,6 +267,7 @@ def run(evidence):
                 item["enclosing_live_invocation"] = enclosing
                 applied = [event for event in events if event.get("method") == NODE + "ApplyScale" and event.get("phase") == "leave"
                            and event.get("componentInstanceId") == item["component_id"] and context(event) == "live"
+                           and matching_scene_root(event.get("root"), init.get("root"))
                            and live_invocation(event) == enclosing
                            and item["initialization_time"] <= event_time(event) <= item["time"]]
                 require(applied and scales_match(applied[-1].get("values", {}), TARGET), "ORIGINAL_LIVE_FINAL_APPLY_NOT_DESIRED_VALUE")
@@ -267,6 +276,7 @@ def run(evidence):
                 for event in events:
                     if (event.get("method") == SWING and event.get("phase") == "leave" and context(event) == "live"
                             and event.get("root", {}).get("instanceId") == item["root_id"]
+                            and matching_scene_root(event.get("root"), init.get("root"))
                             and live_invocation(event) == enclosing
                             and item["initialization_time"] <= event_time(event) <= item["time"]):
                         require(event.get("bone") not in breast and event.get("componentInstanceId") not in breast_components,
@@ -307,7 +317,7 @@ def run(evidence):
         checks["optional_baseline_bare_seen"] = bool(candidates["baseline_bare"])
         report["status"] = "PASS_ACTUAL_ANDROID_SCENES_AND_MV_INITIALIZATION_COMPARISON"
     except (Incomplete, KeyError, TypeError, ValueError, OSError) as error:
-        report["failure"] = str(error) if isinstance(error, Incomplete) else type(error).__name__
+        report["failure"] = str(error) if isinstance(error, (Incomplete, SpawnEvidenceError)) else type(error).__name__
     report["input_sha256"] = evidence.inputs
     return report
 

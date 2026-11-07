@@ -43,7 +43,9 @@ def main():
     device = frida.get_device_manager().add_remote_device("127.0.0.1:27043")
     session = device.attach(int(pid))
     events_path = args.output / "events.jsonl"
-    source = args.bridge.read_text() + "\nconst RINA_SCENE_OBSERVER_OPTIONS={maxEvents:4096};\n" + Path(__file__).with_suffix(".js").read_text()
+    source = (args.bridge.read_text() + "\n" + Path(__file__).with_name("spawn_bindings.js").read_text()
+              + "\nconst RINA_SCENE_OBSERVER_OPTIONS={maxEvents:4096};\n"
+              + Path(__file__).with_suffix(".js").read_text())
     script = session.create_script(source, name="rina-read-only-scene-observer", runtime="v8")
     failures = []
     detached = []

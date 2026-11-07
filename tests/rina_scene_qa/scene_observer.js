@@ -14,6 +14,9 @@
     const maxApplySamples = bounded(opt.maxApplySamplesPerComponent, 12, 1, 100);
     const snapshotTimeoutMs = bounded(opt.snapshotTimeoutMs, 10000, 1000, 30000);
     const roots = new Set(["ch9999_co0040_member", "ch0209_co0040_member"]);
+    const spawnMethod = "LLAS.Scene.Live.LiveMemberPrefabSpawner.Spawn";
+    const spawnRva = "0x2926bd8";
+    const ownerClassName = "LLAS.Scene.Live.Components.LiveCoreMember";
     const controlled = new Set(["BreastSize", "HipsSize"]);
     const breastBones = new Set(["LeftBreast_Dyna", "RightBreast_Dyna"]);
     const started = Date.now();
@@ -21,7 +24,7 @@
     const methods = [], counters = {events: 0, readErrors: 0, offMainThread: 0,
         contextRejected: 0, verifiedCallbacks: 0, applySamplesSuppressed: 0, snapshotsRequested: 0};
     let main, stopped = false, stopReason = null, invocation = 0, ready = false;
-    let findAllScalers, scalerTypeObject, pendingSnapshot = null;
+    let findAllScalers, scalerTypeObject, pendingSnapshot = null, ownerTypeObject, spawnBindings, spawnInvocation = 0;
     const scope = "Read-only original Android GL3.12 initialization and component caches; no scene-routing, rendering, texture, physics-trajectory, or iOS assertion";
     const call = (object, name, ...args) => object.method(name, args.length).invoke(...args);
     const nullable = object => object == null || object.handle.isNull() ? null : object;
@@ -45,6 +48,7 @@
             for (const listener of listeners) listener.detach();
             stack.length = 0;
             applySamples.clear();
+            if (spawnBindings != null) spawnBindings.clear();
         }
         return summary();
     }
@@ -94,9 +98,97 @@
             const canonical = canonicalRoot(name);
             if (canonical != null) return {transform, publicInfo: {...canonical,
                 instanceId: number(call(transform, "GetInstanceID"))}};
+            if (name === "Model" && spawnBindings != null) {
+                const identity = modelIdentity(transform, true);
+                const binding = spawnBindings.lookup(identity);
+                if (binding != null) return {transform, publicInfo: {name: "Model", clone: false,
+                    instanceId: identity.rootTransformId, gameObjectInstanceId: identity.rootGameObjectId,
+                    spawnBinding: {...binding}}};
+            }
             transform = nullable(call(transform, "get_parent"));
         }
         return null;
+    }
+    function ownerIdentity(owner) {
+        require(nullable(owner) != null && owner.class.fullName === ownerClassName, "SPAWN_OWNER_TYPE_MISMATCH");
+        const gameObject = call(owner, "get_gameObject"), transform = call(owner, "get_transform");
+        return {typedOwnerVerified: true, ownerComponentId: number(call(owner, "GetInstanceID")),
+            ownerGameObjectId: number(call(gameObject, "GetInstanceID")),
+            ownerTransformId: number(call(transform, "GetInstanceID"))};
+    }
+    function modelIdentity(transform, withOwner) {
+        const gameObject = call(transform, "get_gameObject"), parent = nullable(call(transform, "get_parent"));
+        const identity = {contextVerified: true, name: call(transform, "get_name").content,
+            rootTransformId: number(call(transform, "GetInstanceID")),
+            rootGameObjectId: number(call(gameObject, "GetInstanceID")),
+            parentTransformId: parent == null ? null : number(call(parent, "GetInstanceID"))};
+        if (withOwner) {
+            const owner = nullable(gameObject.method("GetComponentInParent", 1).overload("System.Type").invoke(ownerTypeObject));
+            if (owner != null && owner.class.fullName === ownerClassName) Object.assign(identity, ownerIdentity(owner));
+        }
+        return identity;
+    }
+    function invalidationEvents(bindings, phase, currentSpawnInvocation) {
+        for (const binding of bindings) emit({kind: "spawn-binding-invalidated", method: spawnMethod, phase,
+            spawnInvocation: currentSpawnInvocation, mainThreadId: main.id,
+            unitySynchronizationContextVerified: true, binding: {...binding}});
+    }
+    function attachSpawn(module) {
+        const cls = findClass("LLAS.Scene.Live.LiveMemberPrefabSpawner");
+        const method = cls.method("Spawn", 3).overload(ownerClassName, "UnityEngine.GameObject", "System.Boolean");
+        require(method.isStatic && method.returnType.name === "UnityEngine.GameObject", "SPAWN_ABI_MISMATCH");
+        require(method.parameters.map(parameter => parameter.type.name).join("|") ===
+            [ownerClassName, "UnityEngine.GameObject", "System.Boolean"].join("|"), "SPAWN_PARAMETER_TYPES_MISMATCH");
+        const address = method.virtualAddress;
+        require(!address.isNull() && address.equals(module.base.add(spawnRva)), "SPAWN_METHOD_ADDRESS_MISMATCH");
+        require(!methods.some(entry => entry.rva === spawnRva), "ALIASED_HOOK_ADDRESS");
+        methods.push({method: spawnMethod, managedParameters: 3, rva: spawnRva, kind: "spawn-binding", static: true});
+        const listener = Interceptor.attach(address, {
+            onEnter(args) {
+                if (stopped || !onMainThread(spawnMethod)) return;
+                this.rinaSpawnObserved = true;
+                this.rinaSpawnInvocation = ++spawnInvocation;
+                try {
+                    require(!args[0].isNull(), "SPAWN_OWNER_NULL");
+                    const owner = new Il2Cpp.Object(args[0]), ownerInfo = ownerIdentity(owner);
+                    // Evict this typed owner's old provenance BEFORE any prefab
+                    // read can fail. This provisional frame never qualifies.
+                    const provisional = spawnBindings.begin({...ownerInfo, contextVerified: true,
+                        typedPrefabVerified: false, spawnInvocation: this.rinaSpawnInvocation});
+                    this.rinaSpawnFrame = provisional.frame;
+                    invalidationEvents(provisional.invalidated, "enter", this.rinaSpawnInvocation);
+                    require(!args[1].isNull(), "SPAWN_PREFAB_NULL");
+                    const prefab = new Il2Cpp.Object(args[1]);
+                    require(prefab.class.fullName === "UnityEngine.GameObject", "SPAWN_PREFAB_TYPE_MISMATCH");
+                    const flag = args[2].toInt32();
+                    require(flag === 0 || flag === 1, "SPAWN_BOOLEAN_INVALID");
+                    const value = spawnBindings.begin({...ownerInfo, contextVerified: true,
+                        typedPrefabVerified: true, prefabId: number(call(prefab, "GetInstanceID")),
+                        prefabName: call(prefab, "get_name").content, usePrefab: flag === 1,
+                        spawnInvocation: this.rinaSpawnInvocation});
+                    this.rinaSpawnFrame = value.frame; // Numeric-only immutable JS provenance, never Unity refs.
+                    invalidationEvents(value.invalidated, "enter", value.frame.spawnInvocation);
+                } catch (_) { diagnostic(spawnMethod, "enter", "SPAWN_BINDING_READ_FAILED"); }
+            },
+            onLeave(retval) {
+                const frame = this.rinaSpawnFrame;
+                this.rinaSpawnFrame = null;
+                if (!this.rinaSpawnObserved || stopped || !onMainThread(spawnMethod)) return;
+                try {
+                    require(!retval.isNull(), "SPAWN_RETURN_NULL");
+                    const model = new Il2Cpp.Object(retval);
+                    require(model.class.fullName === "UnityEngine.GameObject", "SPAWN_RESULT_TYPE_MISMATCH");
+                    const identity = modelIdentity(call(model, "get_transform"), frame != null && frame.accepted);
+                    const value = spawnBindings.complete(frame, {...identity, typedResultVerified: true});
+                    invalidationEvents(value.invalidated, "leave", this.rinaSpawnInvocation);
+                    if (value.binding != null) emit({kind: "spawn-binding", method: spawnMethod, phase: "leave",
+                        spawnInvocation: frame.spawnInvocation, mainThreadId: main.id,
+                        unitySynchronizationContextVerified: true, binding: {...value.binding}});
+                    else if (frame != null && frame.accepted) diagnostic(spawnMethod, "leave", "SPAWN_BOUND_ROOT_REJECTED");
+                } catch (_) { diagnostic(spawnMethod, "leave", "SPAWN_BINDING_READ_FAILED"); }
+            }
+        });
+        listeners.push(listener);
     }
     function transformValues(transform) {
         return {instanceId: number(call(transform, "GetInstanceID")),
@@ -158,6 +250,13 @@
         return true;
     }
     function eventFor(frame, phase) {
+        if (frame.root.publicInfo.name === "Model") {
+            const current = modelIdentity(frame.root.transform, true);
+            const binding = spawnBindings.lookup(current);
+            require(binding != null && current.rootTransformId === frame.root.publicInfo.instanceId &&
+                JSON.stringify(binding) === JSON.stringify(frame.root.publicInfo.spawnBinding),
+                "SPAWN_BOUND_ROOT_CHANGED");
+        }
         return {kind: frame.kind, method: frame.method, phase, invocation: frame.invocation,
             mainThreadId: main.id, unitySynchronizationContextVerified: true,
             markerStack: currentMarkers(), root: frame.root.publicInfo,
@@ -292,7 +391,7 @@
             return {status: "SNAPSHOT", timestampUtc: new Date().toISOString(), elapsedMs: Date.now() - started,
                 snapshotIndex: index, mainThreadId: main.id, unitySynchronizationContextVerified: true,
                 registeredComponentIds: registered, enumeratedCount: count, samples,
-                staleComponentIds: registered.filter(id => !found.has(id)), readErrors};
+                staleComponentIds: registered.filter(id => !found.has(id)), readErrors, lastEventSequence: counters.events};
         } finally {
             handle.free();
         }
@@ -361,6 +460,12 @@
             findAllScalers = resources.method("FindObjectsOfTypeAll", 1).overload("System.Type");
             require(findAllScalers.isStatic && findAllScalers.virtualAddress.equals(module.base.add("0x40f4848")), "RESOURCES_METHOD_MISMATCH");
             scalerTypeObject = findClass("LLAS.Scene.Live.Components.LiveCoreMemberNodeScaling").type.object;
+            ownerTypeObject = findClass(ownerClassName).type.object;
+            const ownerLookup = findClass("UnityEngine.GameObject").method("GetComponentInParent", 1).overload("System.Type");
+            require(!ownerLookup.isStatic && ownerLookup.returnType.name === "UnityEngine.Component" &&
+                ownerLookup.virtualAddress.equals(module.base.add("0x34a188c")), "SPAWN_OWNER_LOOKUP_ABI_MISMATCH");
+            require(typeof globalThis.RinaSpawnBindings === "function", "SPAWN_BINDING_POLICY_UNAVAILABLE");
+            spawnBindings = new globalThis.RinaSpawnBindings({allowedNames: [...roots], maxBindings: 32});
             const swing = findClass("LLAS.Components.Members.SwingBone");
             for (const [name, type] of [["child", "UnityEngine.Transform"], ["springLength", "System.Single"],
                 ["isInitialized", "System.Boolean"], ["currentTipPosition", "UnityEngine.Vector3"], ["previousTipPosition", "UnityEngine.Vector3"]]) {
@@ -378,6 +483,7 @@
                 if (stopped) break;
                 attach(definition, module);
             }
+            if (!stopped) attachSpawn(module);
         }, "free");
         if (!stopped) {
             ready = true;
@@ -385,6 +491,10 @@
             rootNames: [...roots], allowedCloneSuffix: "(Clone)", breastBones: [...breastBones],
             scaleArgumentRead: false, unityContextPolicy: "Verify actual thread ID and current UnitySynchronizationContext in each hook before Unity object reads",
             snapshotMethodRva: "0x40f4848", snapshotScope: "Previously observed NodeInitialized Rina components; active/inactive state reported, scene verdict belongs to the driver",
+            spawnBindingPolicy: {policy: "prefab-owner-root-v1", method: spawnMethod, rva: spawnRva,
+                static: true, parameterTypes: [ownerClassName, "UnityEngine.GameObject", "System.Boolean"],
+                returnType: "UnityEngine.GameObject", requireUsePrefab: false, maxBindings: 32,
+                rootIdKind: "UnityEngine.Transform", actualRootName: "Model"},
             clock: "wall-clock UTC and elapsed wall-clock milliseconds"});
         }
     }
