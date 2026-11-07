@@ -75,7 +75,7 @@ func TestLegacyRankExpRepairsLoginAndPersistsAwardWithoutChangingProgress(t *tes
 			original := client.UserStatus{
 				Rank: 320, Exp: oldExp, GameMoney: 1234, CardExp: 56,
 				LessonResumeStatus: enum.TopPriorityProcessStatusNone,
-				LiveMaxScore:       382840, LiveMaxCombo: 70, TutorialPhase: 99,
+				LiveMaxScore:       382840, LiveMaxCombo: 70, TutorialPhase: 99, TutorialEndAt: 123456,
 				ActivityPointCount: 3, LastLoginAt: time.Now().Unix(),
 			}
 			original.Name.DotUnderText = "Existing account"
