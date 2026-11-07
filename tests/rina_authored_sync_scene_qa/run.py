@@ -57,7 +57,7 @@ def preview_context(tree):
 
 def enter_preview(flow, home):
     tree = home
-    opened_global_menu = False
+    opened_communication_menu = False
     refs = [GLOBAL + "communicationMemberDetailButton",
             "LLAS.Scene.CommunicationMemberDetail.CommunicationMemberDetailTopMenu.themeListButton",
             "LLAS.Scene.CommunicationMemberDetail.CommunicationMemberDetailThemeList.costumePreviewButton"]
@@ -70,14 +70,14 @@ def enter_preview(flow, home):
             except AssertionError:
                 assert time.monotonic() < until, "Proven normal preview input unavailable"
                 if tree is not None:
-                    if index == 0 and not opened_global_menu:
+                    if index == 0 and not opened_communication_menu:
                         try:
-                            flow.tap(tree, ref=GLOBAL + "menuButton")
+                            flow.tap(tree, ref=GLOBAL + "communicationButton")
                         except AssertionError:
                             pass
                         else:
-                            opened_global_menu = True
-                            tree = flow.capture("preview-global-menu")
+                            opened_communication_menu = True
+                            tree = flow.capture("preview-communication-menu")
                             continue
                     flow.common_dialog(tree)
                 time.sleep(2)
@@ -273,9 +273,6 @@ def main():
         home = flow.home("observed-home")
         flow.expect_deck(report["prepared"]["suits"])
         home = checkpoint("home_initial")
-        enter_preview(flow, home)
-        checkpoint("costume_preview")
-        home = preview_to_home(flow)
         flow.get_deck("sync-board-deck", home)
         flow.select_rina(SINGLE, 1, "sync-board-select")
         flow.play("sync-board")
@@ -285,7 +282,10 @@ def main():
             flow.select_rina(suit, view, case + "-select")
             flow.play(case.replace("_", "-"))
             checkpoint(case)
-        flow.return_home("final-home")
+        home = flow.return_home("mv-return-home")
+        enter_preview(flow, home)
+        checkpoint("costume_preview")
+        preview_to_home(flow)
         checkpoint("home_final")
         report["status"] = "COMPLETE"
     except Exception as error:
