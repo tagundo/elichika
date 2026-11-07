@@ -74,6 +74,7 @@ def validate_attempt(attempt, expected_pid, receipt):
     assert attempt["play_unix_seconds"] - 15 <= attempt["deck_capture"]["received_unix_seconds"] <= attempt["play_unix_seconds"]
     assert attempt["play_unix_seconds"] <= attempt["first_context_capture"]["captured_unix_seconds"] + 2
     assert attempt["frames"][-1]["unix_seconds"] <= attempt["after_frames_capture"]["received_unix_seconds"]
+    assert 0 <= attempt["after_frames_capture"]["received_unix_seconds"] - attempt["first_context_capture"]["received_unix_seconds"] <= 90
     return {"status": "PASS_BOUND_NORMAL_STAGE_ENTRY_EVIDENCE", "visual_review_required": True,
             "limits": ["Active context counts can precede asset completion; inspect actual frames for nine actors and playback",
                        "Pixel changes do not independently establish animation or correct lighting",

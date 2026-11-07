@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 import sys
@@ -15,7 +16,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "tests/gl_ui_runtime"))
 import android_gl_visual_smoke as smoke
 from android_release_smoke import Android, FILES
-from gl_ui_runtime.followup import snapshot, select_widget
+from gl_ui_runtime.followup import snapshot, select_widget, rectangle
 from ownership import verify
 from fixture import prepare, safe_state
 from publish import REQUIRED, sha
@@ -53,6 +54,40 @@ def choose(tree, *, ref=None, label=None):
     if label:
         command["expected_label"] = label
     return select_widget(tree, command)
+
+
+def choose_settings_light(tree, label):
+    """Use the visible public label; the observed full-button center is masked."""
+    selected = choose(tree, label=label)
+    button = next(row for row in tree["widgets"] if row.get("id") == selected["widget_id"])
+    texts = [row for row in tree.get("texts", []) if row.get("label") == label and row.get("active") is True
+             and button.get("gameObjectId") in row.get("ancestorIds", [])]
+    assert len(texts) == 1, "Settings Light label ancestry is missing or ambiguous"
+    text = texts[0]
+    assert not text.get("geometryRefusal") and isinstance(text.get("geometry"), dict)
+    scrolls = [row for row in tree.get("scrollViews", []) if row.get("active") is True and row.get("verified") is True
+               and row.get("viewport", {}).get("gameObjectId") in button.get("ancestorIds", [])
+               and row.get("viewport", {}).get("gameObjectId") in text.get("ancestorIds", [])]
+    assert len(scrolls) == 1, "Settings Light verified viewport ancestry is missing or ambiguous"
+    viewport = scrolls[0]["viewport"]
+    clip = viewport.get("clipping", {})
+    assert viewport.get("active") is True and clip.get("verified") is True
+    masks, groups = clip.get("masks"), clip.get("groups")
+    assert isinstance(masks, list) and len(masks) == 1 and masks[0].get("class") == "UnityEngine.UI.RectMask2D"
+    assert isinstance(groups, list) and groups and all(group.get("alpha") == 1 and group.get("interactable") is True and group.get("blocksRaycasts") is True for group in groups)
+    canvas = button["geometry"]["canvasId"]
+    geometries = [text["geometry"], viewport["geometry"], masks[0]["geometry"]]
+    assert all(geometry.get("canvasId") == canvas for geometry in geometries), "Settings Light label canvas differs"
+    bounds = rectangle(text["geometry"].get("bounds"))
+    containers = [selected["bounds"], rectangle(tree.get("gameViewBounds")),
+                  *(rectangle(geometry.get("bounds")) for geometry in geometries[1:])]
+    assert all(outer[0] <= bounds[0] < bounds[2] <= outer[2] and outer[1] <= bounds[1] < bounds[3] <= outer[3] for outer in containers), "Settings Light public label is outside its button or known mask"
+    point = [round((bounds[0] + bounds[2]) / 2), round((bounds[1] + bounds[3]) / 2)]
+    assert all(outer[0] <= point[0] < outer[2] and outer[1] <= point[1] < outer[3] for outer in [bounds, *containers])
+    selected.update(coordinates=point, source="fresh public settings label center within button and verified ancestor mask",
+        public_label_bounds=bounds, verified_viewport_id=viewport["id"], known_mask_ids=[masks[0]["id"]],
+        descendant_masks_exhaustively_enumerated=False, original_raycast_invoked=False)
+    return selected
 
 
 def cleanup(android, args, flow, report, game_pid):
@@ -94,6 +129,9 @@ class Flow:
         self.sequence = 0
         self.language_choice_requested = False
         self.language_choice_completed = False
+        self.download_settings_choice = None
+        self.download_settings_choice_tree = None
+        self.download_settings_completed = False
 
     def save(self):
         temporary = self.args.evidence / ".stage-report.pending"
@@ -126,9 +164,9 @@ class Flow:
         self.save()
         return tree
 
-    def tap(self, tree, *, ref=None, label=None):
+    def tap(self, tree, *, ref=None, label=None, settings_light=False):
         assert tree is self.last_tree and self.last_reference and time.time() - self.last_reference["received_unix_seconds"] <= 15
-        selection = choose(tree, ref=ref, label=label)
+        selection = choose_settings_light(tree, label) if settings_light else choose(tree, ref=ref, label=label)
         point = list(map(str, selection["coordinates"]))
         self.android.shell("input", "touchscreen", "swipe", *(point + point), "240")
         self.report.setdefault("inputs", []).append({"selection": selection, "semantic_ref": ref,
@@ -153,6 +191,38 @@ class Flow:
             if popups or {"OK", "Cancel"} <= labels:
                 raise AssertionError("Unrecognized active language confirmation; background input refused")
             return False
+        if "Data Download Settings" in labels:
+            # Exact observed 42357055166 settings surface. The standard Light
+            # radio is visible; its separate auto-delete option is clipped.
+            assert {"OK", "Cancel"} <= labels and len(popups) == 1
+            assert not self.download_settings_completed, "Download settings confirmation was already sent"
+            modes = {}
+            for mode in ("Full", "Light"):
+                rows = [row for row in tree.get("widgets", []) if row.get("active") is True
+                        and row.get("class") == "LLAS.Components.UI.ProductButton"
+                        and len(row.get("labels", [])) == 1
+                        and re.fullmatch(mode + r" Download \([0-9]{1,12}(?:\.[0-9]{1,3})? MB\)", row["labels"][0])
+                        and row["labels"][0] in labels]
+                assert len(rows) == 1, "Observed standard download radio is missing or ambiguous"
+                row = rows[0]
+                modes[mode] = row
+            light, full = modes["Light"], modes["Full"]
+            if self.download_settings_choice is None:
+                assert light.get("clickable") is True and full.get("clickable") is False
+                self.tap(tree, label=light["labels"][0], settings_light=True)
+                self.download_settings_choice = {"mode": "Light Download", "light_label": light["labels"][0],
+                    "full_label": full["labels"][0], "choice_snapshot": self.last_reference,
+                    "normal_UI": True, "direct_PlayerPrefs_write": False}
+                self.download_settings_choice_tree = tree
+                self.report["download_settings_selection"] = self.download_settings_choice
+            else:
+                assert tree is not self.download_settings_choice_tree, "Download radio confirmation requires a fresh tree"
+                assert light["labels"][0] == self.download_settings_choice["light_label"] and full["labels"][0] == self.download_settings_choice["full_label"]
+                assert light.get("clickable") is False and full.get("clickable") is True, "Normal Light download radio selection did not flip"
+                self.tap(tree, ref="LLAS.BasicPopupFrame.positiveButton", label="OK")
+                self.download_settings_completed = True
+                self.download_settings_choice.update(radio_flip_observed=True, confirmation_snapshot=self.last_reference)
+            return True
         if {"Agree", "No"} <= labels:
             self.tap(tree, label="Agree")
         elif {"Song Download Confirmation", "OK", "Cancel"} <= labels or {"Download Confirmation", "OK", "Cancel"} <= labels:
@@ -260,14 +330,18 @@ class Flow:
                 # Only known download dialogs are accepted during the entry wait.
                 self.common_dialog(current)
         assert "contexts_before_frames" in attempt, "Normal MV context did not become active"
-        for index in range(3):
+        # Contexts may become active while assets are still loading. Keep early
+        # evidence and bounded later frames for manual rendered-stage review.
+        attempt["frame_schedule_relative_seconds"] = [0, 5, 10, 30, 35]
+        attempt["frame_purpose"] = "Manual rendered-stage review; changing loading screens do not prove playback"
+        for index, pause in enumerate((0, 5, 5, 20, 5)):
+            if pause:
+                time.sleep(pause)
             frame = self.args.evidence / f"{name}-frame-{index}.png"
             data = self.android.adb("exec-out", "screencap", "-p", raw=True)
             assert data.startswith(b"\x89PNG\r\n\x1a\n")
             frame.write_bytes(data)
             attempt["frames"].append({"file": frame.name, "sha256": hashlib.sha256(data).hexdigest(), "unix_seconds": time.time()})
-            if index < 2:
-                time.sleep(5)
         after_tree = self.capture(name + "-after-frames")
         attempt["contexts_after_frames"] = contexts(after_tree)
         attempt["after_frames_capture"] = self.last_reference

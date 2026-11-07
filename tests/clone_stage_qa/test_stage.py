@@ -1,5 +1,6 @@
 """Pure regression checks: no Docker, ADB, game, network or account is accessed."""
 from copy import deepcopy
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -72,7 +73,7 @@ class OracleTests(unittest.TestCase):
                 audit.deck(tree, RECEIPT)
 
     def test_route200_alone_stale_capture_pid_change_and_truthy_context_do_not_pass(self):
-        for mutation in ("route", "stale", "pid", "contexts", "frames", "cast"):
+        for mutation in ("route", "stale", "pid", "contexts", "frames", "cast", "late_frame_window"):
             attempt = attempt_fixture()
             if mutation == "route": attempt["normal_start_route_times"] = [50]
             if mutation == "stale": attempt["deck_capture"]["received_unix_seconds"] = 20
@@ -80,6 +81,8 @@ class OracleTests(unittest.TestCase):
             if mutation == "contexts": attempt["contexts_after_frames"] = {"anything": True}
             if mutation == "frames": attempt["frames"] = attempt["frames"][:1]
             if mutation == "cast": attempt["ui_deck"]["slots"][1]["suitId"] = 123
+            if mutation == "late_frame_window":
+                attempt["after_frames_capture"].update(requested_unix_seconds=210, captured_unix_seconds=211, received_unix_seconds=212)
             with self.subTest(mutation=mutation), self.assertRaises(AssertionError):
                 audit.validate_attempt(attempt, 77, RECEIPT)
 
@@ -180,6 +183,89 @@ class ObservedLanguageRegressionTests(unittest.TestCase):
             flow.common_dialog(other)
         flow.tap.assert_not_called()
         self.assertFalse(flow.language_choice_requested)
+
+
+class ObservedDownloadSettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.tree = json.loads(Path(__file__).with_name("download-settings-observed.json").read_text())
+        self.light = "Light Download (10079.99 MB)"
+        self.full = "Full Download (21825.60 MB)"
+        self.flow = run.Flow(SimpleNamespace(), {}, Mock())
+        self.flow.tap = Mock(side_effect=lambda tree, **kw: run.choose_settings_light(tree, kw["label"])
+                             if kw.get("settings_light") else run.choose(tree, ref=kw.get("ref"), label=kw.get("label")))
+        self.flow.last_reference = {"file": "actual-006", "sha256": self.tree["provenance"]["source_sha256"]}
+
+    def flip(self, tree):
+        for row in tree["widgets"]:
+            if self.light in row.get("labels", []): row["clickable"] = False
+            if self.full in row.get("labels", []): row["clickable"] = True
+
+    def test_actual_public_settings_projection_has_measured_Light_and_OK(self):
+        viewport = self.tree["scrollViews"][0]["viewport"]["geometry"]["bounds"]
+        old_center = run.choose(self.tree, label=self.light)["coordinates"]
+        self.assertEqual(old_center, [640, 609])
+        self.assertGreater(old_center[1], viewport[3])
+        selected = run.choose_settings_light(self.tree, self.light)
+        self.assertEqual(selected["widget_id"], -4838)
+        self.assertEqual(selected["coordinates"], [664, 550])
+        self.assertLess(selected["coordinates"][1], viewport[3])
+        self.assertFalse(selected["descendant_masks_exhaustively_enumerated"])
+        positive = run.choose(self.tree, ref="LLAS.BasicPopupFrame.positiveButton", label="OK")
+        self.assertEqual(positive["widget_id"], -4614)
+        self.assertEqual(positive["coordinates"], [870, 653])
+
+    def test_settings_require_a_fresh_actual_radio_flip_before_exact_OK(self):
+        self.assertTrue(self.flow.common_dialog(self.tree))
+        self.flow.tap.assert_called_once_with(self.tree, label=self.light, settings_light=True)
+        with self.assertRaisesRegex(AssertionError, "fresh tree"):
+            self.flow.common_dialog(self.tree)
+        next_tree = deepcopy(self.tree)
+        with self.assertRaisesRegex(AssertionError, "did not flip"):
+            self.flow.common_dialog(next_tree)
+        self.assertEqual(self.flow.tap.call_count, 1)
+        self.flip(next_tree)
+        self.flow.last_reference = {"file": "fresh-after-radio-selection", "sha256": "a" * 64}
+        self.assertTrue(self.flow.common_dialog(next_tree))
+        self.flow.tap.assert_called_with(next_tree, ref="LLAS.BasicPopupFrame.positiveButton", label="OK")
+        self.assertTrue(self.flow.download_settings_completed)
+        self.assertEqual(self.flow.report["download_settings_selection"]["mode"], "Light Download")
+        self.assertFalse(self.flow.report["download_settings_selection"]["direct_PlayerPrefs_write"])
+        self.assertTrue(self.flow.report["download_settings_selection"]["radio_flip_observed"])
+
+    def test_clipped_or_wrong_auto_delete_only_Light_is_refused(self):
+        for mutation in ("clipped", "auto_delete"):
+            tree = deepcopy(self.tree)
+            light = next(row for row in tree["widgets"] if self.light in row.get("labels", []))
+            if mutation == "clipped": light["geometryRefusal"] = "Partially clipped UI rectangle unsupported"
+            if mutation == "auto_delete": light["labels"] = ["Light Download (Auto-delete story data) [10079.99 MB]"]
+            self.flow.tap.reset_mock()
+            with self.subTest(mutation=mutation), self.assertRaises((AssertionError, ValueError)):
+                self.flow.common_dialog(tree)
+            self.assertFalse(self.flow.download_settings_choice)
+
+    def test_Light_label_ancestry_canvas_rect_and_ambiguity_are_bound(self):
+        for mutation in ("ancestry", "canvas", "rect", "duplicate"):
+            tree = deepcopy(self.tree)
+            text = next(row for row in tree["texts"] if row.get("label") == self.light)
+            if mutation == "ancestry": text["ancestorIds"] = []
+            if mutation == "canvas": text["geometry"]["canvasId"] = 999
+            if mutation == "rect": text["geometry"]["bounds"][3] = 610
+            if mutation == "duplicate": tree["texts"].append(deepcopy(text))
+            with self.subTest(mutation=mutation), self.assertRaises(AssertionError):
+                run.choose_settings_light(tree, self.light)
+
+    def test_Full_radio_is_read_only_state_without_a_Full_geometry_requirement(self):
+        full = next(row for row in self.tree["widgets"] if self.full in row.get("labels", []))
+        full["geometryRefusal"] = "Clipped Full row is not an input target"
+        self.assertTrue(self.flow.common_dialog(self.tree))
+        self.flow.tap.assert_called_once_with(self.tree, label=self.light, settings_light=True)
+
+    def test_background_settings_behind_another_modal_is_refused(self):
+        tree = deepcopy(self.tree)
+        tree["widgets"].append({"active": True, "labels": ["OK"],
+                                "semantic_refs": ["LLAS.BasicPopupFrame.positiveButton"]})
+        with self.assertRaises(AssertionError): self.flow.common_dialog(tree)
+        self.flow.tap.assert_not_called()
 
 
 if __name__ == "__main__":
