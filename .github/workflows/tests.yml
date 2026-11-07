@@ -67,6 +67,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python3 -m pip install "numpy==1.26.2" "Pillow==11.0.0" "UnityPy==1.25.0"
+          python3 -m unittest discover -s ../tests -p 'test_costume_clone*.py' -v
           python3 -c 'import hashlib, sys; from pathlib import Path; from UnityPy.helpers import TypeTreeHelper; actual = hashlib.sha256(Path(TypeTreeHelper.__file__).read_bytes()).hexdigest(); actual == "355179e62b14d2f638947e057979d15815a9cadd3a3d868d8b809455193a290b" or sys.exit("Expected pristine UnityPy1.25.0 TypeTreeHelper, got " + actual)'
           # Exercise the real guarded Android launcher after model dependencies are installed.
           python3 -m unittest discover -s ../tests -p test_android_python_launch.py -v

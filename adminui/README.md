@@ -36,9 +36,11 @@ Options: `--host 0.0.0.0` (LAN), `--port 8772`, `--no-browser`.
 - **Costume Clone** imports `costume_clone.py` and calls its `list_costumes` /
   `clone_costume` functions directly (the script is import-safe; its interactive
   CLI lives under `__main__`), so the behaviour matches the CLI. The clone
-  validates the ids, takes a backup first, and stages all writes so a failure
-  leaves nothing committed.
-- These are **offline DB operations**: keep "Stop the elichika server first" on,
+  gives each copy independent model assets and preserves the source's platform,
+  mask views and colour attachments. It resolves source packs locally or from
+  the CDN, validates them before changing databases, then backs up and stages
+  the writes. A database backup covers recovery from a partial commit failure.
+- These tools write installation data: keep "Stop the elichika server first" on,
   and restart the server afterwards. Install Costume in the Android app also
   offers automatic restart after a successful batch. This option stops the
   server even if the separate stop checkbox is off, and restarts only a server

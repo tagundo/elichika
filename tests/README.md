@@ -73,3 +73,15 @@ python3 -m adminui.selftest
 The extraction fixtures exercise real pack decryption and model filenames for
 search results spanning several owners. Installer tests cover batch stop/restart,
 an initially stopped server, failed or cancelled installs, and manual Stop.
+
+Costume cloning also has generated Unity bundle fixtures, requiring the same
+UnityPy version bundled in the apps:
+
+```sh
+python3 -m pip install UnityPy==1.25.0
+python3 -m unittest discover -s tests -p 'test_costume_clone*.py' -v
+```
+
+These check independent bundle/material asset identities, unchanged source
+objects and streamed texture data, native Android/iOS and GL/JP payloads,
+mask/colour metadata, package dependencies, and rollback. They use no game data.
