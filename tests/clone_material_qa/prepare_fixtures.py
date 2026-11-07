@@ -53,6 +53,18 @@ def inspect(path, model=False):
         result['materials'] = materials
     else:
         result['shaders'] = [str(obj.path_id) for obj in objects.values() if obj.type.name == 'Shader']
+        exports = []
+        for key, pointer in env.container.items():
+            if pointer.type.name != 'Shader':
+                continue
+            assert pointer.m_FileID == 0 and str(pointer.path_id) in result['shaders']
+            tree = pointer.read_typetree()
+            name = tree.get('m_Name') or tree.get('m_ParsedForm', {}).get('m_Name')
+            assert isinstance(name, str) and name
+            exports.append({'container_key': key, 'file_id': 0, 'path_id': str(pointer.path_id),
+                            'class': 'UnityEngine.Shader', 'name': name, 'named_asset_count': 1})
+        assert len(exports) == (1 if result['shaders'] else 0), 'Expected exact public Shader container export'
+        result['shader_exports'] = exports
     return result
 
 
@@ -116,6 +128,7 @@ def main():
         for material in base['materials']:
             assert material['shader_cab'] in loaded_cabs, 'Missing exact controlled shader dependency'
             assert material['shader_path_id'] in loaded_cabs[material['shader_cab']]['shaders']
+            assert any(export['path_id'] == material['shader_path_id'] for export in loaded_cabs[material['shader_cab']]['shader_exports']), 'Controlled shader must bind exact container export'
         assert all(external in loaded_cabs for external in base['externals']), 'Incomplete native externals'
         copy_item(source, {'id': 'source_' + role, 'kind': 'model', 'role': role,
             'file': 'source_' + role + '.unity', 'sha256': originals[0]['source_sha256'], **base})

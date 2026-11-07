@@ -71,7 +71,7 @@
             return keep(item).target;
         });
     }
-    async function load(fixture, bundleType) {
+    async function load(fixture, bundleType, shaderType) {
         send({type: "clone-material-phase", fixture: fixture.id, phase: "load"});
         const request = await onMain(() => keep(bundleType.method("LoadFromFileAsync", 1)
             .invoke(Il2Cpp.string(fixture.device_path))));
@@ -108,9 +108,36 @@
                 }
             }
             if (fixture.kind === "model") require(entry.roots.length === 1, "Expected one model prefab");
-            return {id: fixture.id, kind: fixture.kind, bundle: info(bundle.target), assets};
+            return {id: fixture.id, kind: fixture.kind, bundle: info(bundle.target), assets, exportedShaders: []};
         });
         report.loads.push(result);
+        for (const expected of fixture.shader_exports || []) {
+            require(expected.class === "UnityEngine.Shader" && expected.file_id === 0, "Invalid pinned Shader export");
+            // Exact retained GL3.12 API: LoadAllAssetsAsync itself calls this
+            // method with an empty name. The documented LoadAssetAsync/get_asset
+            // APIs are stripped, so do not dynamically fall back to them.
+            const namedRequest = await onMain(() => keep(bundle.target.method("LoadAssetWithSubAssetsAsync_Internal", 2)
+                .overload("System.String", "System.Type").invoke(Il2Cpp.string(expected.container_key), shaderType.type.object)));
+            require(namedRequest != null, "Null exact Shader asset request");
+            const pendingShader = {fixture: fixture.id, kind: "LoadAssetWithSubAssetsAsync_Internal<Shader>", container_key: expected.container_key, state: "pending"};
+            report.requests.push(pendingShader);
+            await complete(namedRequest);
+            const bound = await onMain(() => {
+                const namedAssets = call(namedRequest.target, "get_allAssets");
+                keep(namedAssets);
+                require(expected.named_asset_count === 1 && namedAssets.length === expected.named_asset_count, "Exact named public Shader result count mismatch");
+                const shader = nullable(namedAssets.get(0));
+                require(shader != null, "Pinned Shader export returned null");
+                keep(shader);
+                const metadata = info(shader);
+                require(metadata.type === expected.class && metadata.name === expected.name, "Exact Shader export class/name mismatch");
+                const exported = result.assets.filter(asset => asset.type === expected.class && asset.instanceId === metadata.instanceId);
+                require(exported.length === 1, "Named Shader export does not match loaded public asset identity");
+                return {...metadata, container_key: expected.container_key, static_path_id: expected.path_id};
+            });
+            result.exportedShaders.push(bound);
+            pendingShader.state = "complete";
+        }
         return entry;
     }
     function inspectActor(entry, instance, ambientType, rimType, rendererType, shadersByCab, propertyIds) {
@@ -206,17 +233,19 @@
                 const ambientType = findClass("LLAS.Scene.Live.Components.LiveCoreMemberAmbient");
                 const rimType = findClass("LLAS.Scene.Live.Components.LiveCoreMemberRimlight");
                 const rendererType = findClass("UnityEngine.Renderer");
-                for (const fixture of opt.fixtures.filter(item => item.kind === "dependency")) await load(fixture, bundleType);
+                for (const fixture of opt.fixtures.filter(item => item.kind === "dependency")) await load(fixture, bundleType, shaderType);
                 const shadersByCab = new Map();
                 for (const item of report.loads.filter(item => item.kind === "dependency")) {
                     const fixture = opt.fixtures.find(fixture => fixture.id === item.id);
-                    const ids = new Set(item.assets.filter(asset => asset.type === "UnityEngine.Shader").map(asset => asset.instanceId));
-                    require(ids.size === fixture.shaders.length, "Pinned shader asset count changed");
+                    const ids = new Set(item.exportedShaders.map(asset => asset.instanceId));
+                    const allExportIds = new Set(item.assets.filter(asset => asset.type === "UnityEngine.Shader").map(asset => asset.instanceId));
+                    require(ids.size === fixture.shader_exports.length && allExportIds.size === fixture.shader_exports.length, "Pinned public Shader export count changed");
+                    require([...ids].every(id => allExportIds.has(id)), "Exact named Shader exports differ from LoadAllAssets identities");
                     shadersByCab.set(fixture.cab.toLowerCase(), ids);
                 }
                 require([...shadersByCab.values()].some(ids => ids.size > 0), "No pinned native shaders loaded: INCOMPLETE");
                 const entries = [];
-                for (const id of opt.case.sequence) entries.push(await load(opt.fixtures.find(item => item.id === id), bundleType));
+                for (const id of opt.case.sequence) entries.push(await load(opt.fixtures.find(item => item.id === id), bundleType, shaderType));
                 report.instances = await onMain(() => {
                     parent = keep(gameObjectType.alloc());
                     parent.target.method(".ctor", 1).overload("System.String").invoke(Il2Cpp.string("CloneMaterialQA_OwnedInactive"));

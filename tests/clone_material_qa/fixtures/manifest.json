@@ -46,6 +46,7 @@
       "platform": 13,
       "externals": [],
       "shaders": [],
+      "shader_exports": [],
       "bytes": 4358
     },
     {
@@ -66,6 +67,7 @@
       "platform": 13,
       "externals": [],
       "shaders": [],
+      "shader_exports": [],
       "bytes": 4338
     },
     {
@@ -87,6 +89,16 @@
       "externals": [],
       "shaders": [
         "-3813991308837910498"
+      ],
+      "shader_exports": [
+        {
+          "container_key": "assets/llas/shaders/as/hiddens/_asmemberdepth.shader",
+          "file_id": 0,
+          "path_id": "-3813991308837910498",
+          "class": "UnityEngine.Shader",
+          "name": "Hidden/AS/Member/Depth",
+          "named_asset_count": 1
+        }
       ],
       "bytes": 5608
     },
@@ -110,6 +122,16 @@
       "shaders": [
         "1593042379742816654"
       ],
+      "shader_exports": [
+        {
+          "container_key": "assets/llas/shaders/as/hiddens/_asmemberoutline.shader",
+          "file_id": 0,
+          "path_id": "1593042379742816654",
+          "class": "UnityEngine.Shader",
+          "name": "Hidden/AS/Member/Outline",
+          "named_asset_count": 1
+        }
+      ],
       "bytes": 5663
     },
     {
@@ -131,6 +153,16 @@
       "externals": [],
       "shaders": [
         "44896306225227252"
+      ],
+      "shader_exports": [
+        {
+          "container_key": "assets/llas/shaders/as/hiddens/_asmembermain.shader",
+          "file_id": 0,
+          "path_id": "44896306225227252",
+          "class": "UnityEngine.Shader",
+          "name": "Hidden/AS/Member/Main",
+          "named_asset_count": 1
+        }
       ],
       "bytes": 7573
     },
@@ -155,6 +187,16 @@
         "-4641275457647839130",
         "7151384334892346267"
       ],
+      "shader_exports": [
+        {
+          "container_key": "assets/llas/shaders/as/common/asgeneraltransparent.shader",
+          "file_id": 0,
+          "path_id": "7151384334892346267",
+          "class": "UnityEngine.Shader",
+          "name": "AS/General/Transparent",
+          "named_asset_count": 1
+        }
+      ],
       "bytes": 7209
     },
     {
@@ -175,6 +217,7 @@
       "platform": 13,
       "externals": [],
       "shaders": [],
+      "shader_exports": [],
       "bytes": 4140
     },
     {
@@ -195,6 +238,7 @@
       "platform": 13,
       "externals": [],
       "shaders": [],
+      "shader_exports": [],
       "bytes": 5369
     },
     {
@@ -216,6 +260,16 @@
       "externals": [],
       "shaders": [
         "5577347056548421851"
+      ],
+      "shader_exports": [
+        {
+          "container_key": "assets/llas/shaders/as/hiddens/_asdepth.shader",
+          "file_id": 0,
+          "path_id": "5577347056548421851",
+          "class": "UnityEngine.Shader",
+          "name": "Hidden/AS/Depth",
+          "named_asset_count": 1
+        }
       ],
       "bytes": 4798
     },
@@ -244,6 +298,16 @@
         "-1512467570639130089",
         "8291131735116688333"
       ],
+      "shader_exports": [
+        {
+          "container_key": "assets/llas/shaders/as/common/asmember.shader",
+          "file_id": 0,
+          "path_id": "8291131735116688333",
+          "class": "UnityEngine.Shader",
+          "name": "AS/Member",
+          "named_asset_count": 1
+        }
+      ],
       "bytes": 5879
     },
     {
@@ -269,6 +333,16 @@
         "-1512467570639130089",
         "8330475765356442367"
       ],
+      "shader_exports": [
+        {
+          "container_key": "assets/llas/shaders/as/common/asgeneralopaque.shader",
+          "file_id": 0,
+          "path_id": "8330475765356442367",
+          "class": "UnityEngine.Shader",
+          "name": "AS/General/Opaque",
+          "named_asset_count": 1
+        }
+      ],
       "bytes": 6759
     },
     {
@@ -293,6 +367,7 @@
         "cab-618a998abe328b9a2b05b370a5907b3e"
       ],
       "shaders": [],
+      "shader_exports": [],
       "bytes": 383015
     },
     {
