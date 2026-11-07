@@ -457,7 +457,7 @@ def main():
         except Exception as e:
             print(f"❌ clone failed: {e}")
             if do_backup:
-                print("   no changes were committed; your databases are unchanged.")
+                print("   If this attempt created a backup, use it to recover from any partial database commit.")
             sys.exit(1)
     finally:
         md.close()

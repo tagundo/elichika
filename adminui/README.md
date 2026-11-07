@@ -36,8 +36,9 @@ Options: `--host 0.0.0.0` (LAN), `--port 8772`, `--no-browser`.
 - **Costume Clone** imports `costume_clone.py` and calls its `list_costumes` /
   `clone_costume` functions directly (the script is import-safe; its interactive
   CLI lives under `__main__`), so the behaviour matches the CLI. The clone
-  gives each copy independent model assets and preserves the source's platform,
-  mask views and colour attachments. It resolves source packs locally or from
+  gives each copy independent model assets, including its face and animation
+  model dependencies, and preserves the source's platform, mask views and colour
+  attachments. Shader dependencies remain shared. It resolves source packs locally or from
   the CDN, validates them before changing databases, then backs up and stages
   the writes. A database backup covers recovery from a partial commit failure.
 - These tools write installation data: keep "Stop the elichika server first" on,

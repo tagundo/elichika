@@ -307,6 +307,8 @@ class CloneIntegrationTests(unittest.TestCase):
                           head INTEGER,size INTEGER,key1 INTEGER,key2 INTEGER);
                         CREATE TABLE member_model_dependency(asset_path TEXT,dependency TEXT,
                           PRIMARY KEY(asset_path,dependency));
+                        CREATE TABLE shader(asset_path TEXT PRIMARY KEY);
+                        INSERT INTO shader VALUES('shared-face');
                         CREATE TABLE m_asset_pack(pack_name TEXT PRIMARY KEY,auto_delete INTEGER);
                         CREATE TABLE m_asset_package(package_key TEXT PRIMARY KEY,version TEXT,pack_num INTEGER);
                         CREATE TABLE m_asset_package_mapping(package_key TEXT,pack_name TEXT,
@@ -380,6 +382,55 @@ class CloneIntegrationTests(unittest.TestCase):
             db.execute("UPDATE member_model SET size=? WHERE asset_path=?", (len(data), model))
             db.execute("UPDATE m_asset_package_mapping SET file_size=? WHERE pack_name=?", (len(content), pack))
         self.source_hashes[path] = hashlib.sha256(content).hexdigest()
+
+    def add_source_model(self, catalog, model, data, dependencies=("shared-face",)):
+        """Add an encrypted generated dependency with its source package rows."""
+        pack = "dep" + hashlib.sha256((str(catalog) + model).encode()).hexdigest()[:20]
+        encrypted = bytearray(data)
+        decrypt_section(encrypted, 12345, 17, 23)
+        content = b"model-prefix" + encrypted + b"model-suffix"
+        path = self.packs / pack
+        path.write_bytes(content)
+        self.source_hashes[path] = hashlib.sha256(content).hexdigest()
+        with sqlite3.connect(catalog) as db:
+            db.execute("INSERT INTO member_model VALUES(?,?,?,?,17,23)",
+                       (model, pack, len(b"model-prefix"), len(data)))
+            db.executemany("INSERT INTO member_model_dependency VALUES(?,?)",
+                           [(model, dependency) for dependency in dependencies])
+            db.execute("INSERT INTO m_asset_pack VALUES(?,0)", (pack,))
+            for suit in (5001, 5002):
+                db.execute("INSERT INTO m_asset_package_mapping VALUES(?,?,?,NULL,0,3)",
+                           (f"suit:{suit}", pack, len(content)))
+                db.execute("UPDATE m_asset_package SET pack_num=pack_num+1 WHERE package_key=?",
+                           (f"suit:{suit}",))
+        return path
+
+    def add_model_graph(self):
+        """Two roots share a face -> animation graph, all with local materials."""
+        for region, kind, catalog in self.catalogs:
+            platform = 13 if kind == "a" else 9
+            face, animation = region + "/face", region + "/animation"
+            cab = lambda name: "CAB-" + hashlib.sha256((region + kind + name).encode()).hexdigest()[:32]
+            self.add_source_model(catalog, animation, fixture_bundle(platform, region + "_animation",
+                cab=cab("animation"), bundle_name="animation_model"))
+            self.add_source_model(catalog, face, fixture_bundle(platform, region + "_face",
+                cab=cab("face"), bundle_name="face_model",
+                model_dependency=(cab("animation"), "animation_model")), ("shared-face", animation))
+            for variant, model in zip(("board", "unmasked"), self.source_models[region]):
+                self.replace_source(catalog, model, fixture_bundle(platform, region + "_" + variant,
+                    cab=cab(variant), bundle_name=variant + "_model",
+                    model_dependency=(cab("face"), "face_model")))
+                with sqlite3.connect(catalog) as db:
+                    db.execute("INSERT INTO member_model_dependency VALUES(?,?)", (model, face))
+
+    def assert_preflight_failure_changes_nothing(self, exception, message):
+        databases = list((self.root / "assets/db").rglob("*.db")) + [self.root / "userdata.db"]
+        before = {path: path.read_bytes() for path in databases}
+        published_before = set(self.packs.iterdir())
+        with self.assertRaisesRegex(exception, message):
+            self.clone()
+        self.assertEqual({path: path.read_bytes() for path in databases}, before)
+        self.assertEqual(set(self.packs.iterdir()), published_before)
 
     def assert_package_closure(self, catalog, original, cloned):
         with sqlite3.connect(catalog) as db:
@@ -544,6 +595,142 @@ class CloneIntegrationTests(unittest.TestCase):
             self.assertNotIn(self.source_models[region][1], deps)
             self.assert_package_closure(catalog, 5001, cloned)
         self.assert_source_unchanged()
+
+    def test_recursive_model_graph_is_private_for_each_clone_and_platform(self):
+        self.add_model_graph()
+        source_rows = {}
+        for _, _, catalog in self.catalogs:
+            with sqlite3.connect(catalog) as db:
+                source_rows[catalog] = {table: set(db.execute("SELECT * FROM " + table))
+                                       for table in ("member_model", "member_model_dependency", "shader")}
+        first, second = self.clone(target=101), self.clone(target=102)
+        for region, kind, catalog in self.catalogs:
+            originals = {*self.source_models[region], region + "/face", region + "/animation"}
+            copies = []
+            for suit in (first, second):
+                root = self.primary(region, suit)
+                with sqlite3.connect(f"assets/db/{region}/masterdata.db") as db:
+                    view = db.execute("SELECT model_asset_path FROM m_suit_view WHERE suit_master_id=?",
+                                      (suit,)).fetchone()[0]
+                with sqlite3.connect(catalog) as db:
+                    dependencies = lambda model: {row[0] for row in db.execute(
+                        "SELECT dependency FROM member_model_dependency WHERE asset_path=?", (model,))}
+                    face = (dependencies(root) - {"shared-face"}).pop()
+                    animation = (dependencies(face) - {"shared-face"}).pop()
+                    self.assertEqual(dependencies(view), {"shared-face", face})
+                    self.assertEqual(dependencies(animation), {"shared-face"})
+                    self.assertEqual(dependencies(region + "/face"), {"shared-face", region + "/animation"})
+                mapping = dict(zip((*self.source_models[region], region + "/face", region + "/animation"),
+                                   (root, view, face, animation)))
+                self.assertTrue(originals.isdisjoint(mapping.values()))
+                copies.append(mapping)
+                for source, copied in mapping.items():
+                    source_data = self.read_asset(catalog, source)[1]
+                    cloned_data = self.read_asset(catalog, copied)[1]
+                    original = inspect_bundle(source_data)
+                    private = inspect_bundle(cloned_data)
+                    self.assertEqual(private[1]._m_target_platform, 13 if kind == "a" else 9)
+                    self.assertEqual(private[3]["Material"], original[3]["Material"])
+                    self.assertEqual(private[3]["AssetBundle"]["m_Container"], original[3]["AssetBundle"]["m_Container"])
+                    self.assertEqual(private[3]["AssetBundle"]["m_PreloadTable"], original[3]["AssetBundle"]["m_PreloadTable"])
+                    self.assertEqual(private[1].externals[0].path, original[1].externals[0].path)
+                    texture = next(obj.read() for obj in private[0].objects if obj.type.name == "Texture2D")
+                    self.assertEqual(texture.get_image_data(), RESOURCE)
+                    source_dependency = region + ("/animation" if source.endswith("/face") else "/face")
+                    if source_dependency in mapping and not source.endswith("/animation"):
+                        target = inspect_bundle(self.read_asset(catalog, mapping[source_dependency])[1])
+                        self.assertEqual(private[1].externals[1].path,
+                                         "archive:/" + target[1].name + "/" + target[1].name)
+                        self.assertEqual(private[3]["AssetBundle"]["m_Dependencies"],
+                                         ["shared_shader", target[3]["AssetBundle"]["m_AssetBundleName"]])
+                self.assert_package_closure(catalog, 5001, suit)
+            self.assertTrue(set(copies[0].values()).isdisjoint(copies[1].values()))
+            identities, runtime_names = [], []
+            for mapping in ({model: model for model in originals}, *copies):
+                names, bundles = set(), set()
+                for model in mapping.values():
+                    _, sf, _, trees = inspect_bundle(self.read_asset(catalog, model)[1])
+                    names.add(sf.name)
+                    bundles.add(trees["AssetBundle"]["m_AssetBundleName"])
+                self.assertEqual(len(names), 4)
+                self.assertEqual(len(bundles), 4)
+                identities.append(names)
+                runtime_names.append(bundles)
+            self.assertTrue(all(identities[i].isdisjoint(identities[j])
+                                for i in range(3) for j in range(i)))
+            self.assertTrue(all(runtime_names[i].isdisjoint(runtime_names[j])
+                                for i in range(3) for j in range(i)))
+            with sqlite3.connect(catalog) as db:
+                for table, rows in source_rows[catalog].items():
+                    current = set(db.execute("SELECT * FROM " + table))
+                    self.assertTrue(rows.issubset(current))
+                    if table == "shader":
+                        self.assertEqual(rows, current)
+        self.assert_source_unchanged()
+
+    def test_model_graph_is_resolved_from_each_catalog(self):
+        region, _, catalog = self.catalogs[0]
+        extra = region + "/catalog-only"
+        self.add_source_model(catalog, extra, fixture_bundle(cab="CAB-" + "c" * 32,
+                              bundle_name="catalog_only"))
+        with sqlite3.connect(catalog) as db:
+            db.execute("INSERT INTO member_model_dependency VALUES(?,?)", (self.source_models[region][0], extra))
+        cloned = self.clone()
+        for item_region, _, path in self.catalogs:
+            with sqlite3.connect(path) as db:
+                count = db.execute("SELECT COUNT(*) FROM member_model").fetchone()[0]
+                dependencies = {row[0] for row in db.execute("SELECT dependency FROM member_model_dependency WHERE asset_path=?",
+                                                           (self.primary(item_region, cloned),))}
+                self.assertEqual(count, 6 if path == catalog else 4)
+                self.assertEqual(len(dependencies), 2 if path == catalog else 1)
+        self.assert_source_unchanged()
+
+    def test_missing_or_ambiguous_model_dependency_fails_before_publication(self):
+        region, _, catalog = self.catalogs[0]
+        root, view = self.source_models[region]
+        with sqlite3.connect(catalog) as db:
+            db.execute("INSERT INTO member_model_dependency VALUES(?,'unknown-model')", (root,))
+        self.assert_preflight_failure_changes_nothing(ValueError, "missing or ambiguous model dependency")
+        with sqlite3.connect(catalog) as db:
+            db.execute("DELETE FROM member_model_dependency WHERE dependency='unknown-model'")
+            db.execute("INSERT INTO shader VALUES(?)", (view,))
+            db.execute("INSERT INTO member_model_dependency VALUES(?,?)", (root, view))
+        self.assert_preflight_failure_changes_nothing(ValueError, "missing or ambiguous model dependency")
+
+    def test_cyclic_model_dependency_fails_before_publication(self):
+        region, _, catalog = self.catalogs[0]
+        root, view = self.source_models[region]
+        with sqlite3.connect(catalog) as db:
+            db.executemany("INSERT INTO member_model_dependency VALUES(?,?)", [(root, view), (view, root)])
+        self.assert_preflight_failure_changes_nothing(ValueError, "cyclic model dependency")
+
+    def test_missing_dependency_pack_fails_before_publication(self):
+        self.add_model_graph()
+        region, _, catalog = self.catalogs[0]
+        with sqlite3.connect(catalog) as db:
+            pack = db.execute("SELECT pack_name FROM member_model WHERE asset_path=?", (region + "/face",)).fetchone()[0]
+        (self.packs / pack).unlink()
+        self.assert_preflight_failure_changes_nothing(FileNotFoundError, "source model pack is unavailable")
+
+    def test_ambiguous_model_cab_dependency_fails_before_publication(self):
+        region, kind, catalog = self.catalogs[0]
+        root, view = self.source_models[region]
+        # Both model rows own CAB, so the external CAB cannot identify a target.
+        self.replace_source(catalog, root, fixture_bundle(model_dependency=(CAB, "view_model")))
+        self.replace_source(catalog, view, fixture_bundle(bundle_name="view_model"))
+        with sqlite3.connect(catalog) as db:
+            db.execute("INSERT INTO member_model_dependency VALUES(?,?)", (root, view))
+        self.assert_preflight_failure_changes_nothing(ValueError, "ambiguous private model CAB dependency")
+
+    def test_ambiguous_model_runtime_name_fails_before_publication(self):
+        region, _, catalog = self.catalogs[0]
+        root, view = self.source_models[region]
+        view_cab = "CAB-" + "c" * 32
+        self.replace_source(catalog, root, fixture_bundle(model_dependency=(view_cab, "character_model")))
+        self.replace_source(catalog, view, fixture_bundle(cab=view_cab))
+        with sqlite3.connect(catalog) as db:
+            db.execute("INSERT INTO member_model_dependency VALUES(?,?)", (root, view))
+        self.assert_preflight_failure_changes_nothing(ValueError, "ambiguous private model bundle dependency")
 
     def assert_no_new_suits_or_grants(self):
         for region in ("gl", "jp"):

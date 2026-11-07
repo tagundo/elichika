@@ -84,4 +84,7 @@ python3 -m unittest discover -s tests -p 'test_costume_clone*.py' -v
 
 These check independent bundle/material asset identities, unchanged source
 objects and streamed texture data, native Android/iOS and GL/JP payloads,
-mask/colour metadata, package dependencies, and rollback. They use no game data.
+mask/colour metadata, recursive model dependencies with shared shaders, package
+closures, missing/cyclic/ambiguous dependency rejection, and rollback. They use
+no game data. The native Python checks also run the clone serializer on the
+bundled preview animation without changing its animation bytes.

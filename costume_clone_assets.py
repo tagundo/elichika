@@ -2,7 +2,8 @@
 
 A new suit id does not give the client a new model: its loaders/cache use the
 model asset path. Each clone therefore needs its own model path and Unity bundle
-identity. Shared shaders/facial data stay shared, just as for ordinary costumes.
+identity. Model dependencies are private too, since face/animation bundles can
+contain mutable materials. Shader dependencies remain shared.
 """
 import hashlib
 import json
@@ -154,6 +155,38 @@ def _insert(conn, table, row):
                  tuple(row[c] for c in columns))
 
 
+def _model_closure(conn, roots, catalog):
+    """Return dependency-first models; shared shader edges keep their identity."""
+    ordered, states = [], {}
+
+    def visit(model, depth=0):
+        if states.get(model) == "visiting":
+            raise ValueError("cyclic model dependency in " + str(catalog) + ": " + model)
+        if states.get(model) == "done":
+            return
+        if depth > 256:
+            raise ValueError("model dependency graph is too deep in " + str(catalog))
+        if len(_rows(conn, "member_model", "asset_path", model)) != 1:
+            raise ValueError("model " + model + " is missing or ambiguous in " + str(catalog))
+        states[model] = "visiting"
+        for row in sorted(_rows(conn, "member_model_dependency", "asset_path", model),
+                          key=lambda item: item["dependency"]):
+            dependency = row["dependency"]
+            models = _rows(conn, "member_model", "asset_path", dependency)
+            shaders = _rows(conn, "shader", "asset_path", dependency)
+            if len(models) + len(shaders) != 1:
+                raise ValueError("missing or ambiguous model dependency in " + str(catalog) +
+                                 ": " + model + " -> " + str(dependency))
+            if models:
+                visit(dependency, depth + 1)
+        states[model] = "done"
+        ordered.append(model)
+
+    for root in sorted(roots):
+        visit(root)
+    return ordered
+
+
 def _pack_directory():
     # Go's localPath/getPackUrl consult the configured directory even when
     # cdn_cache is false. Writing directly there also avoids static-to-cache
@@ -272,14 +305,17 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print):
                 for table, required in (
                     ("member_model", {"asset_path", "pack_name", "head", "size", "key1", "key2"}),
                     ("member_model_dependency", {"asset_path", "dependency"}),
+                    ("shader", {"asset_path"}),
                     ("m_asset_pack", {"pack_name", "auto_delete"}),
                     ("m_asset_package", {"package_key", "version", "pack_num"}),
                     ("m_asset_package_mapping", {"package_key", "pack_name", "file_size", "metapack_name", "metapack_offset", "category"})):
                     if not required.issubset(_columns(conn, table)):
                         raise ValueError("invalid clone asset catalog " + str(path) + ": " + table)
-                catalogs.append((region, path, conn, models))
+                catalogs.append((region, path, conn, _model_closure(conn, models, path)))
         # Logical model identities agree across the platform/language catalogs.
-        for region, models in region_models.items():
+        for region in region_models:
+            models = {model for item_region, _, _, closure in catalogs if item_region == region
+                      for model in closure}
             for old in sorted(models):
                 while True:
                     candidate = uuid.uuid4().hex[:8]
@@ -295,7 +331,7 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print):
         for region, path, conn, models in catalogs:
             resolver = extractor.PackResolver(roots, str(plan.destination), extractor.DEFAULT_CDN_BASE, conn)
             originals = {}
-            for old in sorted(models):
+            for old in models:
                 row = conn.execute("SELECT pack_name,head,size,key1,key2 FROM member_model WHERE asset_path=?", (old,)).fetchone()
                 if not row:
                     raise ValueError("model " + old + " is missing from " + str(path))
@@ -317,23 +353,32 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print):
                     cache[descriptor] = bytes(data)
                 originals[old] = cache[descriptor]
             identities = {}
+            ambiguous_cabs = set()
             bundle_names = {}
             ambiguous_names = set()
             for old, data in originals.items():
                 model_namespace = namespace + ":" + region + ":" + old
-                identities.update(_cab_mapping(_cab_names(data), model_namespace))
+                for original, renamed in _cab_mapping(_cab_names(data), model_namespace).items():
+                    if original in identities and identities[original] != renamed:
+                        ambiguous_cabs.add(original)
+                    identities[original] = renamed
                 for original, renamed in _runtime_names(data, model_namespace).items():
                     if original in bundle_names and bundle_names[original] != renamed:
                         ambiguous_names.add(original)
                     bundle_names[original] = renamed
             for original in ambiguous_names:
                 del bundle_names[original]
+            for original in ambiguous_cabs:
+                del identities[original]
             # Generic duplicate bundle names can be harmless in standalone
             # inputs. A dependency on such a name cannot be resolved safely.
-            if ambiguous_names:
+            if ambiguous_names or ambiguous_cabs:
                 for data in originals.values():
                     _, _, files = _bundle(data)
                     for sf in files:
+                        if any(any(cab in external.path.lower() for cab in ambiguous_cabs)
+                               for external in sf.externals):
+                            raise ValueError("ambiguous private model CAB dependency")
                         for obj in sf.objects.values():
                             if obj.type.name == "AssetBundle" and ambiguous_names.intersection(
                                     obj.read_typetree().get("m_Dependencies", [])):
