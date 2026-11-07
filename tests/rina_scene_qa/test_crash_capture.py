@@ -14,6 +14,7 @@ capture = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(capture)
 PID = 3375
 GAME = capture.GAME
+APK_PATH = "/data/app/~~coPS_fixture==/" + GAME + "-publicFixture==/base.apk"
 
 
 def tombstone(pid=PID, package=GAME, thread="gum-js-loop", frames=None):
@@ -102,9 +103,9 @@ class FakeAdb:
         if args == ("shell", "id"):
             return b"uid=0(root)\n"
         if args[:3] == ("shell", "pm", "path"):
-            return b"package:/data/app/public/base.apk\n"
+            return ("package:" + APK_PATH + "\n").encode()
         if args[:2] == ("shell", "sha256sum"):
-            return (capture.GAME_SHA + "  /data/app/public/base.apk\n").encode()
+            return (capture.GAME_SHA + "  " + APK_PATH + "\n").encode()
         if args == ("shell", "pidof -s " + GAME + " || true"):
             if isinstance(self.running_pid, Exception):
                 raise self.running_pid
@@ -170,6 +171,7 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(report["status"], "CAPTURED")
         self.assertIs(report["expected_pid_matches_running_pid"], True)
         self.assertEqual(report["running_pid"], PID)
+        self.assertIn(("shell", "sha256sum", APK_PATH), adb.calls)
         self.assertEqual(len(report["events"]), 1)
         self.assertEqual(report["source_counts"], {"logcat": 1, "tombstones": 1})
         self.assertEqual(adb.calls[-1], ("shell", "pidof -s " + GAME + " || true"))
@@ -225,6 +227,19 @@ class CollectorTests(unittest.TestCase):
         report = capture.collect(WrongGame(), self.state)
         self.assertEqual(report["status"], "REFUSED")
         self.assertEqual(report["events"], [])
+        for path in ("/data/app/../" + GAME + "/base.apk", APK_PATH.replace("fixture", "fixture space"),
+                     APK_PATH.replace("fixture", "fixture\tspace")):
+            with self.subTest(invalid_path=path):
+                class InvalidPath(FakeAdb):
+                    def run(self, *args, **kwargs):
+                        if args[:3] == ("shell", "pm", "path"):
+                            return ("package:" + path + "\n").encode()
+                        return super().run(*args, **kwargs)
+                adb = InvalidPath()
+                refused = capture.collect(adb, self.state)
+                self.assertEqual(refused["status"], "REFUSED")
+                self.assertEqual(refused["events"], [])
+                self.assertFalse(any(args[:2] == ("shell", "sha256sum") or (args and args[0] == "logcat") for args in adb.calls))
 
     def test_different_or_dead_pid_still_collects_the_expected_crash(self):
         for running, wanted in ((b"4444\n", 4444), (b"", None)):

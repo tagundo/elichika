@@ -241,7 +241,7 @@ def collect(adb, state_path):
         package = fetch(adb, "shell", "pm", "path", GAME, limit=4096).decode().strip().splitlines()
         require(len(package) == 1 and package[0].startswith("package:"), "GAME_PACKAGE_INVALID")
         apk = package[0][8:]
-        require(re.fullmatch(r"/data/app/[A-Za-z0-9_./=+\-]+\.apk", apk) and ".." not in Path(apk).parts, "GAME_PACKAGE_INVALID")
+        require(re.fullmatch(r"/data/app/[A-Za-z0-9_./=+~\-]+\.apk", apk) and ".." not in Path(apk).parts, "GAME_PACKAGE_INVALID")
         require(fetch(adb, "shell", "sha256sum", apk, limit=4096).decode().split()[0] == GAME_SHA, "GAME_SHA_MISMATCH")
         try:
             report["events"].extend(parse_crashes(fetch(adb, "logcat", "-b", "crash", "-d", "-v", "threadtime", "-v", "UTC", "-t", "2000"), pid))
