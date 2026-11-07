@@ -13,6 +13,9 @@ internal object PayloadPreparation {
         report(AssetInstaller.PreparationPhase.PREPARING)
         try {
             val result = PayloadUpgrade.withMaintenance(context, root) {
+                // A costume transaction may have partially changed game data.
+                // Preserve its recovery inputs before any payload recovery or reset.
+                PayloadUpgrade.checkCostumeStartup(context, root)
                 // Pending journal inputs must survive until recovery completes,
                 // even when this APK's mandatory manifest is missing or malformed.
                 PayloadUpgrade.recover(context, root, log)

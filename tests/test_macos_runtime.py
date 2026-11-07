@@ -103,6 +103,21 @@ class RuntimeTests(unittest.TestCase):
                     Runtime(self.resources, self.data, self.sukusta, state_file=destination / "state.json")
         self.assertFalse(self.data.exists())
 
+    def test_interrupted_costume_keeps_restore_tools_available_without_preparing_data(self):
+        from costume_management import ManagementError
+        runtime = StubRuntime(self.resources, self.data, self.sukusta)
+        self.addCleanup(runtime.close)
+        with patch.object(runtime, "_prepare_data", side_effect=ManagementError("COSTUME_RECOVERY_REQUIRED")):
+            ready = runtime.start()
+            deadline = time.monotonic() + 3
+            while runtime.state()["phase"] != "error" and time.monotonic() < deadline:
+                time.sleep(.01)
+        self.assertEqual(runtime.state()["phase"], "error")
+        self.assertTrue(runtime.state()["prepared"])
+        self.assertFalse(runtime.controller.is_running())
+        for name in ("admin_url", "tools_url"):
+            self.assertEqual(self.request(ready[name], headers={"X-Elichika-Session": ready["ui_token"]})[0], 200)
+
     def test_control_secrets_are_separate_and_no_foreign_host_or_origin_can_write(self):
         runtime, ready = self.start()
         url = ready["control_url"]
@@ -203,6 +218,16 @@ class LifecycleTests(unittest.TestCase):
         previous = serverctl._controller
         serverctl.register_controller(self.controller)
         self.addCleanup(serverctl.register_controller, previous)
+
+    def test_interrupted_costume_blocks_every_managed_server_spawn(self):
+        pending = self.data / ".costume-management/receipts" / ("a" * 32 + ".json")
+        pending.parent.mkdir(parents=True)
+        pending.write_text('{"schema":1,"state":"intent"}')
+        with patch("elichika_macos_lifecycle.subprocess.Popen") as spawn:
+            with self.assertRaisesRegex(RuntimeError, "^COSTUME_RECOVERY_REQUIRED$"):
+                self.controller.manual_start()
+        spawn.assert_not_called()
+        self.assertFalse(self.controller.is_running())
 
     def test_manual_stop_cancels_a_workers_deferred_restart_after_guard_release(self):
         self.controller.manual_start()
@@ -327,6 +352,18 @@ class PayloadTests(unittest.TestCase):
         self.manifest = payload_revision.build_manifest(self.payload)
         (self.resources / "payload_revision.json").write_text(json.dumps(self.manifest))
 
+    def test_interrupted_costume_is_never_merged_as_a_normal_mod(self):
+        pending = self.data / ".costume-management/receipts" / ("a" * 32 + ".json")
+        pending.parent.mkdir(parents=True)
+        pending.write_text('{"schema":1,"state":"intent"}')
+        before = pending.read_bytes()
+        with patch("payload_db_upgrade.recover_upgrade") as recover:
+            with self.assertRaisesRegex(RuntimeError, "^COSTUME_RECOVERY_REQUIRED$"):
+                install_payload(self.resources, self.data)
+        recover.assert_not_called()
+        self.assertEqual(pending.read_bytes(), before)
+        self.assertFalse((self.data / "assets").exists())
+
     def test_library_change_follows_recorded_default_without_moving_existing_files(self):
         old, new = self.base / "old library", self.base / "new library"
         (old / "packs").mkdir(parents=True)
@@ -434,14 +471,23 @@ class IntegrationTests(unittest.TestCase):
         for source in (ROOT / "modtools").glob("*.py"):
             if not (app / source.name).exists():
                 (app / source.name).symlink_to(source)
-        # Fixture-only links emulate already bundled dependencies. The real app
-        # is audited on macOS with physical, signed in-bundle distributions.
-        for name in ("numpy", "PIL", "UnityPy", "certifi"):
+        # Fixture-only links emulate the pinned app's import closure. -I omits
+        # user-site/--target installs, so linking UnityPy alone is insufficient
+        # when e.g. fsspec or codecs live beside that local installation. The
+        # real Mac vendor lock contains these complete distributions physically;
+        # never expose an entire external site-packages directory to the child.
+        for name in ("numpy", "PIL", "UnityPy", "certifi", "fsspec", "attrs", "attr",
+                     "lz4", "brotli", "_brotli", "texture2ddecoder", "etcpak",
+                     "astc_encoder", "fmod_toolkit", "pyfmodex", "archspec"):
             spec = importlib.util.find_spec(name)
-            source = Path(next(iter(spec.submodule_search_locations)))
-            if not (app / name).exists():
-                (app / name).symlink_to(source, target_is_directory=True)
-            for adjacent in ("numpy.libs", "pillow.libs"):
+            self.assertIsNotNone(spec, "Required isolated fixture dependency is missing: " + name)
+            package = bool(spec.submodule_search_locations)
+            source = Path(next(iter(spec.submodule_search_locations))) if package else Path(spec.origin)
+            target = app / (name if package else source.name)
+            if not target.exists():
+                target.symlink_to(source, target_is_directory=package)
+            distribution = {"PIL":"pillow", "astc_encoder":"astc_encoder_py", "_brotli":"brotli"}.get(name,name)
+            for adjacent in (distribution + ".libs",):
                 extra = source.parent / adjacent
                 if extra.is_dir() and not (app / adjacent).exists():
                     (app / adjacent).symlink_to(extra, target_is_directory=True)

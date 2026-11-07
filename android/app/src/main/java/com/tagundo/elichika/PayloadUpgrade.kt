@@ -13,6 +13,8 @@ internal object PayloadUpgrade {
         val requiresUpdate: Boolean get() = action != "skip"
     }
 
+    class CostumeRecoveryRequired : IllegalStateException("Game-data update refused (COSTUME_RECOVERY_REQUIRED)")
+
     fun <T> withMaintenance(context: Context, root: File, action: () -> T): T {
         val lease = invoke(context, "database_maintenance", "begin_maintenance_json", root.absolutePath)
         requireStatus(lease, setOf("ACQUIRED"))
@@ -25,6 +27,14 @@ internal object PayloadUpgrade {
             requireStatus(invoke(context, "database_maintenance", "end_maintenance_json",
                 root.absolutePath, token), setOf("RELEASED"))
         }
+    }
+
+    fun checkCostumeStartup(context: Context, root: File) {
+        val result = invoke(context, "costume_management", "startup_check_json", root.absolutePath)
+        if (result.optString("status") == "REFUSED" && result.optString("reason") == "COSTUME_RECOVERY_REQUIRED") {
+            throw CostumeRecoveryRequired()
+        }
+        requireStatus(result, setOf("CLEAN"))
     }
 
     fun recover(context: Context, root: File, log: (String) -> Unit) {

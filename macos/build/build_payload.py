@@ -37,6 +37,14 @@ def stage(repo, output):
     for name in ("dictionary_skill_en.txt", "dictionary_live_en.txt"):
         require((tools / name).is_file(), f"Required tool dictionary is missing: {name}")
     sys.path.insert(0, str(repo))
+    # Freeze the clean official suit set before packaging mutable game data.
+    # The same file is bundled on Android; legacy deletion never infers stock
+    # membership from IDs or translated names in the user's live databases.
+    from costume_management import write_stock_index
+    import subprocess
+    assets_commit = subprocess.check_output(
+        ["git", "-C", str(repo / "assets"), "rev-parse", "HEAD"], text=True).strip()
+    write_stock_index(repo / "assets", payload / "assets/costume-stock-index.json", assets_commit)
     import payload_revision
     manifest = payload_revision.build_manifest(str(payload))
     write_json(output / "payload_revision.json", manifest)

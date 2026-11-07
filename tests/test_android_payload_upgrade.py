@@ -77,7 +77,7 @@ open class AssetManager(val files: MutableMap<String,String>) {
 package android.content.pm
 class PackageInfo(var versionName: String="new", var versionCode: Int=2)
 class PackageManager(val info: PackageInfo=PackageInfo()) { fun getPackageInfo(name: String, flags: Int)=info }
-class ApplicationInfo { val nativeLibraryDir="/nonexistent-synthetic-native" }
+class ApplicationInfo { var nativeLibraryDir="/nonexistent-synthetic-native" }
 ''',
     'Environment.kt': r'''
 package android.os
@@ -139,16 +139,17 @@ object R { object string {
     const val log_setup_downloads_link=4; const val log_setup_link_failed=5; const val log_setup_config_created=6
     const val log_setup_cdn_dir=7; const val log_setup_cdn_on=8; const val log_setup_preserving_mods=9
     const val log_setup_upgrade_recovered=10; const val log_pyservers_started=11; const val log_pyservers_failed=12
+    const val log_error_missing_binary=13; const val log_error_exec_failed=14
 } }
 object Lang { var writes=0; fun effective(ctx: Context)="en"; fun writeWebuiLanguage(ctx: Context,root: File) { writes++ } }
 object Bus {
     var serverRunning=false
-    fun log(value: String) {}; fun toolsStateChanged() {}
+    val logs=mutableListOf<String>()
+    fun log(value: String) { logs.add(value) }; fun toolsStateChanged() {}
     fun setRunning(value: Boolean) { serverRunning=value }
     fun setStarting(value: Boolean) {}
     fun setPreparationPhase(value: AssetInstaller.PreparationPhase) {}
 }
-class ServerProcess { companion object { fun awaitStopped(process: java.lang.Process?)=true } }
 class ServerService {
     companion object {
         var current: ServerService?=null
@@ -207,6 +208,36 @@ class PackagingTests(unittest.TestCase):
             names = {node.get('name') for node in tree.getroot()}
             self.assertTrue({'log_setup_preserving_mods', 'log_setup_upgrade_recovered'} <= names)
 
+    def test_costume_admission_precedes_preparation_and_every_native_spawn(self):
+        preparation = (KOTLIN / 'PayloadPreparation.kt').read_text()
+        gate = preparation.index('PayloadUpgrade.checkCostumeStartup(context, root)')
+        for operation in ('PayloadUpgrade.recover(', 'PayloadFiles.clearStages(',
+                          'PayloadFiles.revisionManifest(', 'settings()'):
+            self.assertLess(gate, preparation.index(operation), operation)
+        process = (KOTLIN / 'ServerProcess.kt').read_text()
+        self.assertEqual(process.count('ProcessBuilder('), 1)
+        self.assertEqual(process.count('pb.start()'), 1)
+        self.assertLess(process.index('PayloadUpgrade.checkCostumeStartup(ctx, workDir)'),
+                        process.index('ProcessBuilder('))
+        self.assertIn('start(emptyList(), workDir)', process)
+        self.assertIn('start(args, workDir, onExit)', process)
+
+    def test_cold_recovery_tools_are_limited_to_the_typed_refusal(self):
+        bridge = (KOTLIN / 'PayloadUpgrade.kt').read_text()
+        self.assertIn('result.optString("status") == "REFUSED" && result.optString("reason") == "COSTUME_RECOVERY_REQUIRED"', bridge)
+        self.assertIn('requireStatus(result, setOf("CLEAN"))', bridge)
+        tools = (KOTLIN / 'PyServers.kt').read_text()
+        known = tools.split('catch (error: PayloadUpgrade.CostumeRecoveryRequired)', 1)[1]
+        specific, generic = known.split('catch (error: Throwable)', 1)
+        self.assertIn('ensureStarted(appContext, appContext.filesDir)', specific)
+        self.assertNotIn('ensureStarted(', generic.split('fun ensureStarted', 1)[0])
+        service = (KOTLIN / 'ServerService.kt').read_text()
+        specific = service.split('catch (error: PayloadUpgrade.CostumeRecoveryRequired)', 1)[1].split('catch (error: Exception)', 1)[0]
+        self.assertIn('pendingCommands.filter { it.action == ACTION_PREPARE_INSTALL }', specific)
+        self.assertIn('Bus.setRunning(false)', specific)
+        self.assertNotIn('startServer(', specific)
+        self.assertNotIn('runAction(', specific)
+
 
 class KotlinInstallerTests(unittest.TestCase):
     def test_staging_recovery_preservation_and_shared_interpreter_contract(self):
@@ -226,7 +257,7 @@ class KotlinInstallerTests(unittest.TestCase):
                 path = temporary / name
                 path.write_text(content)
                 sources.append(str(path))
-            sources += [str(KOTLIN / name) for name in ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt', 'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt')]
+            sources += [str(KOTLIN / name) for name in ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt', 'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerProcess.kt')]
             sources.append(str(ROOT / 'android/app/src/androidTest/java/com/tagundo/elichika/NativePythonTest.kt'))
             sources.append(str(ROOT / 'tests/kotlin_payload_upgrade/HostChecks.kt'))
             output = temporary / 'checks.jar'

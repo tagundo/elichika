@@ -30,6 +30,11 @@ object PyServers {
             try {
                 val directory = AssetInstaller.install(appContext, Bus::setPreparationPhase) { Bus.log(it) }
                 ensureStarted(appContext, directory)
+            } catch (error: PayloadUpgrade.CostumeRecoveryRequired) {
+                // Recovery tools must remain reachable without resuming payload
+                // writes or launching Go while a costume transaction is pending.
+                Bus.log(error.message.orEmpty())
+                ensureStarted(appContext, appContext.filesDir)
             } catch (error: Throwable) {
                 preparationError = error
                 Bus.log(appContext.getString(R.string.log_pyservers_failed, error.message ?: ""))

@@ -41,6 +41,8 @@ def install_payload(resources: Path, data: Path, progress=lambda *_: None) -> di
         raise ValueError("BUNDLED_PAYLOAD_SYMLINK")
     manifest = payload_revision.parse_manifest(manifest_path.read_bytes())
     with guard(data):
+        from costume_management import assert_safe_to_start
+        assert_safe_to_start(data)
         progress("recovering", 0, 1)
         payload_db_upgrade.recover_upgrade(data)
         decision = payload_revision.decide(data, manifest)

@@ -190,6 +190,10 @@ jobs:
           # Its source timestamp must not advance the data revision.
           find "$PAY/assets" -type d -name '__pycache__' -prune -exec rm -rf {} +
           find "$PAY/assets" -type f -name '*.pyc' -delete
+          # Protect official IDs when removing legacy mods without receipts.
+          # Build from this clean initialized checkout, never the installed DBs.
+          python3 bin/build_costume_stock_index.py --repo . \
+            --output "$PAY/assets/costume-stock-index.json"
           python3 payload_revision.py create --payload "$PAY" \
             --output android/app/src/main/assets/payload_revision.json
           python3 payload_revision.py verify --payload "$PAY" \
@@ -215,11 +219,14 @@ jobs:
           [ -d modtools/live_timeline ] && cp -r modtools/live_timeline "$PY/" || true
           # The mandatory installer must be our reviewed module, even if a tools
           # checkout happens to ship a module with the same name.
-          cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py "$PY/"
+          cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py \
+            costume_management.py costume_scene_installer.py "$PY/"
           cmp payload_db_upgrade.py "$PY/payload_db_upgrade.py"
           cmp database_maintenance.py "$PY/database_maintenance.py"
           cmp payload_file_hash.py "$PY/payload_file_hash.py"
           cmp payload_revision.py "$PY/payload_revision.py"
+          cmp costume_management.py "$PY/costume_management.py"
+          cmp costume_scene_installer.py "$PY/costume_scene_installer.py"
           # drop the host build artifact if it landed in python/
           rm -f "$PY/elichika_host"
           # Vendor UnityPy so the bundle-editing tools import it instantly instead

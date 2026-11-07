@@ -87,14 +87,21 @@ internal object HeaderLayoutNativeQa {
         }
         val samples = JSONArray()
         val measurements = JSONArray()
+        val inlinePositionComparisons = JSONArray()
+        val inlineTabPositions = mutableMapOf<String, Pair<String, List<Rect>>>()
         val report = JSONObject().put("wide", wide).put("samples", samples)
             .put("measurements", measurements).put("diagnosticOnly", diagnosticOnly)
+            .put("inlinePositionComparisons", inlinePositionComparisons)
             .put("systemFontScale", systemFontScale)
             .put("expectedFontScale", expectedFontScale ?: JSONObject.NULL)
             .put("fontScaling", "Actual system fontScale and native TextView paints; no test font or private-field overrides")
-            .put("statusStateScope", "Translated stopped/updating/failed text and progress on actual views; no server state changes")
+            .put("statusStateScope", "Translated stopped/running/preparing/updating/failed text, Start/Stop labels and progress on actual views; no server state changes")
         var expectedStatus = originalStatus.toString()
         var expectedProgress = originalProgress
+        var expectedToggle = originalToggle.toString()
+        fun rightMargin(view: View) = (view.layoutParams as? ViewGroup.MarginLayoutParams)?.rightMargin ?: 0
+        fun rectJson(rect: Rect) = JSONObject().put("left", rect.left).put("top", rect.top)
+            .put("right", rect.right).put("bottom", rect.bottom)
         fun mutate(action: () -> Unit) {
             val latch = CountDownLatch(1)
             instrumentation.runOnMainSync {
@@ -108,10 +115,11 @@ internal object HeaderLayoutNativeQa {
         fun width(dp: Int) = mutate {
             header.layoutParams = header.layoutParams.apply { width = ceil(dp * density.toDouble()).toInt() }
         }
-        fun configure(language: String, statusId: Int, busy: Boolean) = mutate {
+        fun configure(language: String, statusId: Int, busy: Boolean, stopAction: Boolean = false) = mutate {
             val configuration = Configuration(activity.resources.configuration).apply { setLocale(Locale(language)) }
             val strings = activity.createConfigurationContext(configuration).resources
-            toggle.text = strings.getString(R.string.start_server)
+            expectedToggle = strings.getString(if (stopAction) R.string.stop_server else R.string.start_server)
+            toggle.text = expectedToggle
             expectedStatus = strings.getString(statusId)
             status.text = expectedStatus
             expectedProgress = if (busy) View.VISIBLE else View.GONE
@@ -122,20 +130,29 @@ internal object HeaderLayoutNativeQa {
         fun check(language: String, scale: Float, state: String, dp: Int): JSONObject {
             lateinit var result: JSONObject
             instrumentation.runOnMainSync {
+                val strip = tabs.getChildAt(0) as ViewGroup
+                val tabRects = tabViews.map { bounds(header, it) }
+                val expectedGroupRight = header.width - header.paddingRight - rightMargin(tabs) -
+                    tabs.paddingRight - rightMargin(strip) - strip.paddingRight - rightMargin(tabViews.last())
+                val groupGeometry = JSONObject().put("left", tabRects.first().left)
+                    .put("right", tabRects.last().right).put("expectedRight", expectedGroupRight)
+                    .put("edgeInset", header.width - tabRects.last().right)
+                    .put("tabRects", JSONArray(tabRects.map(::rectJson)))
                 val measured = fitInputs(activity, header, controls, tabs)
                     .put("requested", JSONObject().put("language", language).put("fontScale", scale)
                         .put("state", state).put("widthDp", dp).put("widthPx", ceil(dp * density.toDouble()).toInt()))
+                    .put("tabGroup", groupGeometry)
                 measurements.put(measured)
                 report.put("lastFitInputs", measured)
                 logFitInputs(measured)
                 assertEquals(ceil(dp * density.toDouble()).toInt(), header.width)
                 assertEquals(2, header.childCount)
                 assertEquals("The requested full status must remain under test", expectedStatus, status.text.toString())
+                assertEquals("The requested Start/Stop action must remain under test", expectedToggle, toggle.text.toString())
                 assertEquals("The requested busy spinner state must remain under test", expectedProgress, progress.visibility)
                 assertSame(controls, header.getChildAt(0))
                 assertSame(tabs, header.getChildAt(1))
                 assertEquals("Reflow must retain the selected tab", selected, tabs.selectedTabPosition)
-                val strip = tabs.getChildAt(0) as ViewGroup
                 tabObjects.forEachIndexed { index, tab ->
                     assertSame("Keep each existing tab and its click handler", tab, tabs.getTabAt(index))
                     assertSame("Keep each existing native tab view", tabViews[index], strip.getChildAt(index))
@@ -162,6 +179,23 @@ internal object HeaderLayoutNativeQa {
                 if (language == "ko" && kotlin.math.abs(scale - 1f) < .01f && state == "stopped" && dp in listOf(768, 853)) {
                     assertTrue("Korean stopped controls and all five tabs must fit inline at $dp dp", inline)
                 }
+                if (inline) {
+                    assertEquals("The actual five-tab group must end at the padded header edge: $groupGeometry",
+                        expectedGroupRight, tabRects.last().right)
+                    val key = JSONArray().put(language).put(scale.toDouble()).put(header.width)
+                        .put(JSONArray(tabObjects.map { it.text.toString() })).toString()
+                    val reference = inlineTabPositions.getOrPut(key) { state to tabRects.map { Rect(it) } }
+                    inlinePositionComparisons.put(JSONObject().put("language", language).put("fontScale", scale)
+                        .put("widthDp", dp).put("referenceState", reference.first).put("state", state)
+                        .put("referenceTabRects", JSONArray(reference.second.map(::rectJson)))
+                        .put("actualTabRects", JSONArray(tabRects.map(::rectJson))))
+                    tabRects.forEachIndexed { index, rect ->
+                        val message = "Status changes must retain each inline tab X position: $language/$scale/$dp " +
+                            "${reference.first}->$state tab=$index reference=${reference.second[index]} actual=$rect"
+                        assertEquals(message, reference.second[index].left, rect.left)
+                        assertEquals(message, reference.second[index].right, rect.right)
+                    }
+                }
                 tabViews.forEachIndexed { index, tab ->
                     assertTrue("Every native tab needs a 44dp touch target", tab.width + 1 >= 44 * density && tab.height + 1 >= 44 * density)
                     descendants(tab).filterIsInstance<TextView>().filter { it.text.isNotEmpty() }.forEach(::assertReadable)
@@ -180,8 +214,21 @@ internal object HeaderLayoutNativeQa {
                     .put("widthDp", dp).put("measuredWidth", header.width).put("height", header.height)
                     .put("inline", inline).put("status", status.text).put("statusLines", status.layout.lineCount)
                     .put("statusTextSizePx", status.textSize).put("progressVisible", progress.visibility == View.VISIBLE)
+                    .put("toggle", toggle.text).put("tabGroup", groupGeometry)
                     .put("tabCount", tabs.tabCount).put("selectedTab", tabs.selectedTabPosition)
                     .put("tabTextSizesPx", JSONArray(tabViews.map { tab -> descendants(tab).filterIsInstance<TextView>().first { it.text.isNotEmpty() }.textSize }))
+            }
+            if (wide && language == "ko" && dp == 853 && state in listOf("stopped", "running", "preparing")) {
+                val name = "header-layout-state-$state.png"
+                val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot()) {
+                    "Capture the actual $state header before changing its status"
+                }
+                try {
+                    File(activity.cacheDir, name).outputStream().use {
+                        assertTrue("Write the actual $state header screenshot", bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                    }
+                } finally { bitmap.recycle() }
+                result.put("screenshot", name)
             }
             samples.put(result)
             return result
@@ -195,15 +242,23 @@ internal object HeaderLayoutNativeQa {
                 if (wide || language == "ko") {
                     configure(language, R.string.status_updating_game_data, true)
                     width(320); check(language, scale, "updating", 320)
-                    if (wide) { width(853); check(language, scale, "updating", 853) }
+                    if (wide) {
+                        for (dp in listOf(853, 1600)) { width(dp); check(language, scale, "updating", dp) }
+                    }
                     configure(language, R.string.status_preparation_failed, false)
                     width(320); check(language, scale, "failed", 320)
+                }
+                if (wide) {
+                    configure(language, R.string.status_running, false, stopAction = true)
+                    for (dp in listOf(853, 1600)) { width(dp); check(language, scale, "running", dp) }
+                    configure(language, R.string.status_preparing, true)
+                    for (dp in listOf(853, 1600)) { width(dp); check(language, scale, "preparing", dp) }
                 }
             }
             if (diagnosticOnly) {
                 report.put("status", "PASS").put("nativeGeometryOnly", true)
                     .put("notExecuted", JSONArray(listOf("narrowTabNavigation", "chromeGoneResize", "webViewRetention")))
-                    .put("scope", "All 24 strict native measurement cases; tool-tab navigation is outside the focused comparison")
+                    .put("scope", "All ${samples.length()} strict native measurement cases; tool-tab navigation is outside the focused comparison")
                 return report
             }
             configure("ko", R.string.status_stopped, false)

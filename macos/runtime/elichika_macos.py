@@ -472,6 +472,15 @@ class Runtime:
                 self._progress = {"completed": 1, "total": 1}
             self.logs.write("[setup] Ready. The game server is stopped.")
         except Exception as error:
+            # Keep the database restore/backup tools available while refusing
+            # to merge or launch interrupted costume changes as normal data.
+            if str(error) == "COSTUME_RECOVERY_REQUIRED" and not self.stop_event.is_set():
+                try:
+                    self._load_tools()
+                    with self._lock:
+                        self._prepared = True
+                except Exception as tools_error:
+                    self.logs.write("[setup] " + str(tools_error))
             with self._lock:
                 self._phase, self._error = "error", self.logs.redact(error)
                 self._detail = "Server preparation failed."

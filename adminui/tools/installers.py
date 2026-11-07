@@ -193,6 +193,17 @@ def _install_one(job, key, spec, chosen, do_backup, *, source_path=None, expecte
         return False
     if expected_sha256 is not None and _file_sha256(src) != expected_sha256:
         raise ValueError("The selected costume package changed before installation.")
+    if key == "costume":
+        from costume_scene_installer import is_scene_package, install_package
+        if is_scene_package(src):
+            # Never copy a scene envelope into the legacy text-executing path.
+            # The same source-bound file and digest reach the strict installer.
+            result = install_package(src, expected_sha256, do_backup=do_backup, log=job.log)
+            job.scene_install_result = result
+            add_output = getattr(job, "add_output", None)
+            if callable(add_output):
+                add_output(result["receipt_path"])
+            return True
     scans = _dirs(spec)
     for d in scans:
         os.makedirs(d, exist_ok=True)

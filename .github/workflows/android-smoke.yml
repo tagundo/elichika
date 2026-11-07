@@ -252,6 +252,10 @@ jobs:
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > "evidence/header-layout-wide-font-${font_scale}.json"
             python3 -c 'import json,sys; from pathlib import Path; report=json.loads(Path(sys.argv[1]).read_text()); assert abs(report["systemFontScale"]-float(sys.argv[2]))<0.02, report' "evidence/header-layout-wide-font-${font_scale}.json" "$font_scale"
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > "evidence/header-layout-wide-font-${font_scale}.png"
+            for header_state in stopped running preparing; do
+              adb -s 127.0.0.1:5555 exec-out cat "/data/user/0/com.tagundo.elichika/cache/header-layout-state-${header_state}.png" \
+                > "evidence/header-layout-state-${header_state}-font-${font_scale}.png"
+            done
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools-report.json > "evidence/mesh-wide-tools-font-${font_scale}.json"
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools.png > "evidence/mesh-wide-tools-font-${font_scale}.png"
             if [[ "$font_scale" == "1.0" ]]; then

@@ -639,16 +639,18 @@ class MainActivity : AppCompatActivity() {
             if (fits == inlineHeader) return@postOnAnimation
             inlineHeader = fits
             header.orientation = if (fits) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            // Keep the whole tab group at the end of a wide header. The server
+            // row absorbs spare width as its status and progress change.
             controls.layoutParams = LinearLayout.LayoutParams(
-                if (fits) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT)
+                if (fits) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, if (fits) 1f else 0f)
             statusText.layoutParams = (statusText.layoutParams as LinearLayout.LayoutParams).apply {
-                width = if (fits) ViewGroup.LayoutParams.WRAP_CONTENT else 0
-                weight = if (fits) 0f else 1f
+                width = 0
+                weight = 1f
             }
             navigation.layoutParams = LinearLayout.LayoutParams(
-                if (fits) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, if (fits) 1f else 0f).apply {
+                if (fits) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginStart = if (fits) gap else 0
             }
         }

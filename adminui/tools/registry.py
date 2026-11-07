@@ -15,6 +15,7 @@ from adminui.tools.assets_extract import run_extract
 from adminui.tools.backup import run_backup
 from adminui.tools.reset import run_clear_packs
 from adminui.tools.costume_clone import character_choices, costume_options, run_costume_clone
+from adminui.tools.costume_delete import costume_delete_options, run_costume_delete
 from adminui.tools.installers import (
     options_for, run_camera, run_card, run_costume, run_db, run_dictionary, run_live, run_tower,
 )
@@ -52,7 +53,7 @@ def _addon(folder, multi=False):
     return f
 
 
-def _char_field(name, label, help_text=None, choices=None, required=True):
+def _char_field(name, label, help_text=None, choices=None, required=True, multi=False):
     """A character field: a dropdown when the names table loaded, else plain text."""
     opts = _CHARACTERS if choices is None else choices
     f = {"name": name, "label": label}
@@ -60,6 +61,8 @@ def _char_field(name, label, help_text=None, choices=None, required=True):
         f["required"] = True
     if opts:
         f.update({"type": "select", "options": opts})
+        if multi:
+            f["multi"] = True
     else:
         f["type"] = "text"
     if help_text:
@@ -105,7 +108,7 @@ TOOLS = [
     {
         "id": "costume_clone",
         "label": "Costume Clone",
-        "description": "Copy a costume from one character to another (adds a cloned suit for every user).",
+        "description": "Copy a costume to several characters at once (adds a separate clone for each selected character).",
         "run": run_costume_clone,
         "options": costume_options,
         "fields": [
@@ -115,10 +118,30 @@ TOOLS = [
              "source": "costume", "depends_on": "src_id", "required": True},
             {"name": "mask", "label": "Rina version (character 209 only)", "type": "select",
              "options": ["1 (with mask)", "2 (no mask)"], "default": "1 (with mask)"},
-            _char_field("tgt_id", "Target character"),
+            _char_field("tgt_ids", "Target characters",
+                        "Select every character to receive a clone. Each receives independent model assets.",
+                        multi=True),
             {"name": "backup", "label": "Back up databases first", "type": "checkbox",
              "default": True, "help": "Recommended: a full DB backup is taken before the clone."},
             _STOP,
+        ],
+    },
+    {
+        "id": "costume_delete",
+        "label": "Remove Costume / Clone",
+        "description": ("Review and remove installed costumes or clones. Original game costumes and "
+                        "costumes currently in use are protected. A recovery backup is always kept."),
+        "run": run_costume_delete,
+        "options": costume_delete_options,
+        "fields": [
+            {"name": "allow_original", "label": "Show and allow removal of built-in costumes (advanced)",
+             "type": "checkbox", "default": False,
+             "help": "Built-in costumes require an additional confirmation popup. Game-required references stay protected."},
+            {"name": "installation", "label": "Installed costume or clone", "type": "dynamic_select",
+             "source": "installation", "depends_on": "allow_original", "required": True},
+            {"name": "replace_in_use", "label": "Change used costumes to the character's default before removing",
+             "type": "checkbox", "default": False,
+             "help": "Review the HOME and MV slots that will change before confirming removal."},
         ],
     },
     {
