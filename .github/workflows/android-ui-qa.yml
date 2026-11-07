@@ -244,6 +244,102 @@ jobs:
         with:
           sequence: '24'
 
+      - name: Scoped original-game follow-up 25
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '25'
+
+      - name: Scoped original-game follow-up 26
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '26'
+
+      - name: Scoped original-game follow-up 27
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '27'
+
+      - name: Scoped original-game follow-up 28
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '28'
+
+      - name: Scoped original-game follow-up 29
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '29'
+
+      - name: Scoped original-game follow-up 30
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '30'
+
+      - name: Scoped original-game follow-up 31
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '31'
+
+      - name: Scoped original-game follow-up 32
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '32'
+
+      - name: Scoped original-game follow-up 33
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '33'
+
+      - name: Scoped original-game follow-up 34
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '34'
+
+      - name: Scoped original-game follow-up 35
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '35'
+
+      - name: Scoped original-game follow-up 36
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '36'
+
+      - name: Scoped original-game follow-up 37
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '37'
+
+      - name: Scoped original-game follow-up 38
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '38'
+
+      - name: Scoped original-game follow-up 39
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '39'
+
+      - name: Scoped original-game follow-up 40
+        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
+        uses: ./.github/actions/rina-scene-followup
+        with:
+          sequence: '40'
+
       - name: Stop read-only observer and audit actual scene evidence
         if: always()
         run: |

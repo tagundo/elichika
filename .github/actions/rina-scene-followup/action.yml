@@ -24,6 +24,10 @@ runs:
           --repository "$GITHUB_REPOSITORY"
         "$RUNNER_TEMP/qa-python/bin/python" tests/rina_scene_qa/request_snapshot.py \
           --observer-dir evidence/scene-observer --label "followup-$FOLLOWUP_SEQUENCE"
+        cp "evidence/scene-observer/snapshot-followup-$FOLLOWUP_SEQUENCE.json" \
+          "evidence/followup-$FOLLOWUP_SEQUENCE/native-snapshot.json"
+        cp evidence/scene-observer/ready.json "evidence/followup-$FOLLOWUP_SEQUENCE/native-ready.json"
+        cp evidence/scene-observer/events.jsonl "evidence/followup-$FOLLOWUP_SEQUENCE/native-events.jsonl"
     - name: Upload scoped scene evidence
       if: always()
       uses: actions/upload-artifact@v4

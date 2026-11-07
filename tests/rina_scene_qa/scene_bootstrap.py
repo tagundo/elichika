@@ -27,45 +27,13 @@ def digest(path):
 
 
 def prepare_rina(android, before):
-    # Stop the game before taking ownership of its command sequence; keys stay
-    # in memory and are never serialized. Only this newly-created account is used.
+    # Exactly the original game's newly created disposable account. No account
+    # or secret from a command document is accepted by the normal-API helper.
     android.shell("am", "force-stop", smoke.GAME)
-    with closing(smoke.database_from_bytes(android.read(f"{FILES}/userdata.db"))) as database:
-        created = {row[0] for row in database.execute("SELECT user_id FROM u_status")} - before
-        assert len(created) == 1, "Exactly one original-game-created account required"
-        uid = created.pop()
-        status = database.execute("SELECT tutorial_phase FROM u_status WHERE user_id=?", (uid,)).fetchone()
-        assert status[0] == 99
-        owned = {row[0] for row in database.execute("SELECT suit_master_id FROM u_suit WHERE user_id=?", (uid,))}
-        assert {SPLIT, BASELINE} <= owned
-        member = database.execute("SELECT view_status FROM u_member WHERE user_id=? AND member_master_id=?", (uid, OWNER)).fetchone()
-        assert member is not None and member[0] == 1
-        auth = database.execute("SELECT session_key,command_id FROM u_authentication WHERE user_id=?", (uid,)).fetchone()
-        assert auth is not None and auth[0] is not None and len(auth[0]) == 32
-        session, command = bytes(auth[0]), auth[1]
-    client = Client("en", None)
-    client.uid, client.session, client.command = uid, session, command
-    # GL3.12's actual board-toggle predicate requires Rina bond episode12 to
-    # exist and be read. Use the normal story endpoint on this synthetic user;
-    # owning all cards/suits alone is insufficient. Null preserves auto mode.
-    client.request("/communicationMember/finishUserStoryMember",
-                   {"story_member_master_id": 1020912, "is_auto_mode": None})
-    with closing(smoke.database_from_bytes(android.read(f"{FILES}/userdata.db"))) as database:
-        story = database.execute("SELECT is_new FROM u_story_member WHERE user_id=? AND story_member_master_id=1020912", (uid,)).fetchone()
-        assert story is not None and story[0] == 0
-    client.request("/communicationMember/setTheme", {"member_master_id": OWNER,
-                   "suit_master_id": SPLIT, "custom_background_master_id": 0})
-    client.request("/communicationMember/setFavoriteMember", {"member_master_id": OWNER})
-    # Seed the real custom-MV deck API, not a scene constructor. The original
-    # game's actual Custom tab will be selected before playback. Dictionary
-    # fields are the protocol's flat key/value arrays, with one-based positions.
-    client.request("/liveMv/saveDeck", {"live_master_id": LIVE, "live_mv_deck_type": 2,
-                   "member_master_id_by_pos": [1, OWNER], "suit_master_id_by_pos": [1, SPLIT],
-                   "view_status_by_pos": [1, 1]})
-    return {"status": "PREPARED", "user_id": uid, "favorite_suit": SPLIT,
-            "favorite_member_id": OWNER, "background_id": 0, "baseline_suit": BASELINE,
-            "rina_board_unlock": {"story_member_master_id": 1020912, "is_new": False, "normal_api": True},
-            "mv_live_id": LIVE, "view_status": 1, "game_rendering_verified": False}
+    created = smoke.account_ids(android) - before
+    assert len(created) == 1, "Exactly one original-game-created account required"
+    from scene_fixture import prepare
+    return prepare(android, created.pop())
 
 
 def main():

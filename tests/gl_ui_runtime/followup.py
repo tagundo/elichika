@@ -68,7 +68,7 @@ def validate_command(command, run_id, sequence):
         return None
     action = command.get("action")
     base = {"run_id", "sequence", "action"}
-    allowed = {"capture": base, "close": base, "back": base,
+    allowed = {"capture": base, "close": base, "back": base, "repair_scene_fixture": base,
                "swipe_widgets": base | {"from_widget", "to_widget", "duration_ms"},
                "tap_widget": base | {"widget_id", "expected_class", "expected_bounds", "expected_label"}}
     if not isinstance(action, str) or action not in allowed or set(command) - allowed[action]:
@@ -397,6 +397,12 @@ def upgrade_and_restart(android, args, state, report, command):
     restart_game(android, args, report, "upgrade")
 
 
+def observation_seconds(tree, widget_id):
+    widgets = [node for node in tree.get("widgets", []) if node.get("id") == widget_id]
+    assert len(widgets) == 1
+    return 60 if "LLAS.Scene.LiveMvDeckSelect.LiveMvDeckSelectRoot.playButton" in widgets[0].get("semantic_refs", []) else 20
+
+
 def execute(command, args, state, report):
     android = smoke.Android(args.serial, args.evidence)
     if not android.shell("id").startswith("uid=0") or android.shell("getprop", "ro.product.cpu.abi") != "arm64-v8a":
@@ -407,9 +413,14 @@ def execute(command, args, state, report):
     mod_fixture = state.get("new_home", {}).get("mod_fixture")
     if mod_fixture is not None and action in {"set_favorite_suit", "seed_accessories"}:
         raise Refused("mod_retention_run_rejects_fixture_replacement")
-    maintenance = action in {"set_favorite_suit", "seed_accessories", "upgrade_candidate", "relaunch_game"}
+    maintenance = action in {"repair_scene_fixture", "set_favorite_suit", "seed_accessories", "upgrade_candidate", "relaunch_game"}
     if maintenance:
-        uid, _ = favorite_identity(android, state)
+        if action == "repair_scene_fixture":
+            uid = state.get("new_home", {}).get("user_id")
+            if type(uid) is not int or smoke.account_ids(android) != {uid}:
+                raise Refused("synthetic_account_not_unique")
+        else:
+            uid, _ = favorite_identity(android, state)
         verify_installed_game(android)
         report["maintenance_preconditions"] = {"synthetic_user_id": uid, "installed_gl_apk_sha256": smoke.GAME_SHA,
                                                "before_game_view_required": False}
@@ -428,7 +439,11 @@ def execute(command, args, state, report):
             point = list(map(str, selected["coordinates"]))
             android.shell("input", "touchscreen", "swipe", *(point + point), "240")
             report["tap_performed"] = True
-            smoke.observe_live_ui(android, args, report, "after-tap", seconds=60)
+            # Only the actual directly-bound MV Play control needs a long
+            # observation; menus should retain the round budget for navigation.
+            seconds = observation_seconds(tree, command["widget_id"])
+            report["observation_seconds"] = seconds
+            smoke.observe_live_ui(android, args, report, "after-tap", seconds=seconds)
         elif action == "swipe_widgets":
             first = select_widget(tree, command["from_widget"])
             last = select_widget(tree, command["to_widget"])
@@ -439,6 +454,31 @@ def execute(command, args, state, report):
             report["swipe"] = {"from": first, "to": last, "duration_ms": command["duration_ms"],
                                "source": "two fresh verified widget hit points", "performed": True}
             smoke.observe_live_ui(android, args, report, "after-swipe", seconds=30)
+        elif action == "repair_scene_fixture":
+            from rina_scene_qa.scene_recovery import repair, SceneRecoveryError
+            try:
+                recovered = repair(android, args, state, report)
+                # The scene auditor binds the active observer to the bootstrap
+                # PID. Preserve generation0 verbatim before publishing the
+                # verified new PID/fixture receipt as generation1 metadata.
+                original = args.state.read_bytes()
+                if decode_json(original) != state:
+                    raise SceneRecoveryError("BOOTSTRAP_METADATA_CHANGED")
+                preserved = args.state.parent.parent / "bootstrap-generation-0.json"
+                with preserved.open("xb") as saved:
+                    saved.write(original)
+                updated = dict(state, game_pid=recovered["new_game_pid"],
+                               new_home=recovered["fixture"], observer_generation=1,
+                               pre_model_recovery=recovered)
+                staged = args.state.with_suffix(".pending")
+                with staged.open("x") as saved:
+                    saved.write(json.dumps(updated, ensure_ascii=False, indent=2) + "\n")
+                staged.replace(args.state)
+                report["bootstrap_generation_updated"] = True
+            except SceneRecoveryError:
+                # A partially interrupted maintenance action ends the lane;
+                # never navigate with an uncertain observer generation.
+                raise RuntimeError("pre_model_recovery_failed") from None
         elif action == "set_favorite_suit":
             set_favorite(android, args, state, report, command["suit_id"])
         elif action == "seed_accessories":

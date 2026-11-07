@@ -32,7 +32,7 @@
         return {status: stopped ? "STOPPED" : "OBSERVING", reason: stopReason,
             counters: {...counters}, maxEvents, maxApplySamplesPerComponent: maxApplySamples,
             mainThreadId: main == null ? null : main.id, registeredComponentIds: [...initializedComponents],
-            maxSnapshots: 32, snapshotTimeoutMs, methods, scope};
+            maxSnapshots: 48, snapshotTimeoutMs, methods, scope};
     }
     function stop(reason) {
         if (!stopped) {
@@ -301,7 +301,7 @@
         if (stopped) return {status: "REFUSED", reason: "STOPPED"};
         if (!ready) return {status: "REFUSED", reason: "NOT_READY"};
         if (pendingSnapshot != null) return {status: "REFUSED", reason: "SNAPSHOT_BUSY"};
-        if (counters.snapshotsRequested >= 32) return {status: "REFUSED", reason: "SNAPSHOT_LIMIT"};
+        if (counters.snapshotsRequested >= 48) return {status: "REFUSED", reason: "SNAPSHOT_LIMIT"};
         const index = ++counters.snapshotsRequested;
         const job = {cancelled: false, cancel: null};
         pendingSnapshot = job;

@@ -47,7 +47,16 @@ def main():
     script = session.create_script(source, name="rina-read-only-scene-observer", runtime="v8")
     failures = []
     detached = []
-    session.on("detached", lambda reason, *rest: detached.append(reason))
+    owned_closing = False
+
+    def on_detached(reason, *rest):
+        # Frida also signals an explicitly requested successful detach. Only
+        # that owned teardown signal is benign; process loss remains fatal.
+        if not (owned_closing and reason == "application-requested"):
+            detached.append(reason)
+            failures.append("Unexpected observer detach: " + str(reason))
+
+    session.on("detached", on_detached)
     with events_path.open("a", buffering=1) as output:
         def message(message, data):
             if message["type"] == "send":
@@ -65,13 +74,14 @@ def main():
         script.on("message", message)
         started = time.monotonic()
         script.load()
+        terminal_summary = None
         try:
             while time.monotonic() - started < args.seconds and not args.stop_marker.exists() and not failures and not detached:
                 request = args.output / "snapshot-request.json"
                 if request.exists():
                     body = json.loads(request.read_text())
                     label = body["label"]
-                    assert set(body) == {"label"} and re.fullmatch(r"home-initial|followup-(?:[1-9]|1[0-9]|2[0-4])|final", label)
+                    assert set(body) == {"label"} and re.fullmatch(r"home-initial|followup-(?:[1-9]|[1-3][0-9]|40)|final", label)
                     destination = args.output / ("snapshot-" + label + ".json")
                     assert not destination.exists(), "Snapshot output must be new"
                     result = script.exports_sync.snapshot()
@@ -83,7 +93,8 @@ def main():
                     assert result.get("status") == "SNAPSHOT" and not result.get("readErrors"), "Native snapshot refused or failed"
                 time.sleep(1)
             summary = script.exports_sync.stop() if not detached else {"detached": detached}
-            (args.output / "summary.json").write_text(json.dumps({"pid": int(pid), "summary": summary, "failures": failures, "seconds": round(time.monotonic() - started, 2)}, ensure_ascii=False, indent=2) + "\n")
+            terminal_summary = {"pid": int(pid), "summary": summary, "failures": failures,
+                                "seconds": round(time.monotonic() - started, 2)}
             if not detached:
                 assert summary.get("reason") == "HOST_STOP", "Observer stopped incompletely"
                 assert all(summary["counters"][key] == 0 for key in ("readErrors", "offMainThread", "contextRejected")), "Observer had rejected or failed reads"
@@ -91,7 +102,17 @@ def main():
         finally:
             if not detached:
                 script.unload()
+                owned_closing = True
                 session.detach()
+            # Publish only after teardown so final workflow readers cannot
+            # race an earlier clean summary and miss a late detach failure.
+            if terminal_summary is not None:
+                terminal_summary["failures"] = failures
+                terminal_summary["unexpected_detach"] = detached
+                terminal_summary["owned_teardown_requested"] = owned_closing
+                staged = args.output / "summary.pending"
+                staged.write_text(json.dumps(terminal_summary, ensure_ascii=False, indent=2) + "\n")
+                staged.replace(args.output / "summary.json")
     assert not failures and not detached, "Observer detached or failed; inspect retained events"
 
 

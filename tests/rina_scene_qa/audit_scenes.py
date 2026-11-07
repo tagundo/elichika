@@ -141,6 +141,7 @@ def run(evidence):
                 "ORIGINAL_PROCESS_OR_OBSERVER_NOT_READY")
         counters = summary["summary"]["counters"]
         require(not summary.get("failures") and summary["summary"].get("reason") == "HOST_STOP"
+                and summary.get("unexpected_detach") == [] and summary.get("owned_teardown_requested") is True
                 and counters.get("events", 0) > 0
                 and all(counters.get(key) == 0 for key in ("readErrors", "offMainThread", "contextRejected")),
                 "OBSERVER_FAILED_OR_INCOMPLETE")
@@ -177,7 +178,7 @@ def run(evidence):
         checks["successful_normal_mv_start_routes"] = len(routes)
         candidates = {"home": [], "split_board": [], "split_bare": [], "baseline_board": [], "baseline_bare": []}
         snapshot_paths = sorted((evidence.root / "scene-observer").glob("snapshot-*.json"))
-        require(1 <= len(snapshot_paths) <= 32, "DELAYED_SNAPSHOT_CLOSURE_INVALID")
+        require(1 <= len(snapshot_paths) <= 48, "DELAYED_SNAPSHOT_CLOSURE_INVALID")
         for path in snapshot_paths:
             wrapper = evidence.load(path)
             result = wrapper.get("result", {})

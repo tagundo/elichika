@@ -48,7 +48,7 @@ def main():
     parser.add_argument("--observer-dir", type=Path, required=True)
     parser.add_argument("--label", required=True)
     args = parser.parse_args()
-    assert re.fullmatch(r"home-initial|followup-(?:[1-9]|1[0-9]|2[0-4])|final", args.label)
+    assert re.fullmatch(r"home-initial|followup-(?:[1-9]|[1-3][0-9]|40)|final", args.label)
     request = args.observer_dir / "snapshot-request.json"
     response = args.observer_dir / ("snapshot-" + args.label + ".json")
     assert (args.observer_dir / "ready.json").is_file()
