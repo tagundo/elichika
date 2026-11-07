@@ -35,15 +35,19 @@ func assertCompletedGuides(t *testing.T, session *userdata.Session) {
 }
 
 func TestLoginSkipsMainTutorialAndFirstUseGuides(t *testing.T) {
-	for _, phase := range []int32{enum.TutorialPhaseNameInput, enum.TutorialPhaseTutorialEnd} {
-		t.Run("phase_"+strconv.Itoa(int(phase)), func(t *testing.T) {
+	for _, input := range []struct {
+		phase int32
+		endAt int64
+	}{
+		{enum.TutorialPhaseNameInput, 0},
+		{enum.TutorialPhaseTutorialEnd, 123456},
+		{enum.TutorialPhaseTutorialEnd, 0},
+	} {
+		t.Run("phase_"+strconv.Itoa(int(input.phase))+"_end_"+strconv.FormatInt(input.endAt, 10), func(t *testing.T) {
 			tutorialPreference(t, false)
 			engine, _, ctx := homeSuitFixture(t)
-			endAt := int64(0)
-			if phase == enum.TutorialPhaseTutorialEnd {
-				endAt = 123456
-			}
-			if _, err := engine.Exec("UPDATE u_status SET tutorial_phase=?, tutorial_end_at=? WHERE user_id=?", phase, endAt, homeSuitUserID); err != nil {
+			endAt := input.endAt
+			if _, err := engine.Exec("UPDATE u_status SET tutorial_phase=?, tutorial_end_at=? WHERE user_id=?", input.phase, endAt, homeSuitUserID); err != nil {
 				t.Fatal(err)
 			}
 			session := userdata.GetSession(ctx, homeSuitUserID)
