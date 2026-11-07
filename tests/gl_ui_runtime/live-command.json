@@ -1,13 +1,27 @@
 {
   "run_id": "42357481576",
-  "sequence": 11,
-  "action": "tap_widget",
-  "widget_id": -17072,
-  "expected_class": "LLAS.Components.UI.ProductButton",
-  "expected_bounds": [
-    651.5142211914062,
-    271.1576843261719,
-    728.2758178710938,
-    347.9191589355469
-  ]
+  "sequence": 12,
+  "action": "drag_scrollbar",
+  "scroll_rect_id": -13804,
+  "scrollbar_id": -13830,
+  "expected_viewport_bounds": [
+    183.26840209960938,
+    93.2532958984375,
+    1087.1363525390625,
+    607.5563049316406
+  ],
+  "expected_handle_bounds": [
+    1060.2698974609375,
+    289.7698974609375,
+    1075.6221923828125,
+    548.8330078125
+  ],
+  "expected_track_bounds": [
+    1063.1484375,
+    93.2532958984375,
+    1072.74365234375,
+    613.3131408691406
+  ],
+  "towards": "bottom",
+  "duration_ms": 800
 }
