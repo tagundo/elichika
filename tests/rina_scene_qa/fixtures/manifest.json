@@ -1,0 +1,196 @@
+{
+  "schema": 1,
+  "game_sha256": "8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e",
+  "producer_manifest_sha256": "57c4e63b364c87a7c2ce533780c0221a7742f237550c9bffa498b9d34af7a982",
+  "producer_manifest_note": "Android fixture paths normalized; immutable original control expected target corrected to its actual serialized original Node values; no fixture bytes changed.",
+  "fixtures": [
+    {
+      "id": "android_mv_board",
+      "file": "android_mv_board.unity",
+      "sha256": "082cfc83170cb83e3eb3e4e6344c6933a77bc9d81b42db6204b0d72ff22866cd",
+      "bytes": 983798,
+      "role": "mv_board",
+      "expected_after": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      },
+      "require_initial_target": false
+    },
+    {
+      "id": "android_mv_unmasked",
+      "file": "android_mv_unmasked.unity",
+      "sha256": "a74286ca34ee90f63d5df4bd2084a105524987469154480eaabf3bacb06523f7",
+      "bytes": 885560,
+      "role": "mv_unmasked",
+      "expected_after": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      },
+      "require_initial_target": false
+    },
+    {
+      "id": "android_navi_board",
+      "file": "android_navi_board.unity",
+      "sha256": "67879649a75e99f6a4eb17c51948f6d18dd63798f5e59e9aa321f68e93bc8af1",
+      "bytes": 983764,
+      "role": "navi_board",
+      "expected_after": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      },
+      "require_initial_target": true
+    },
+    {
+      "id": "android_original_board",
+      "file": "android_original_board.unity",
+      "sha256": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+      "bytes": 991966,
+      "role": "control",
+      "expected_after": {
+        "BreastSize": [
+          0.6100000143051147,
+          0.9100000262260437,
+          0.8500000238418579
+        ],
+        "HipsSize": [
+          1.0,
+          0.949999988079071,
+          0.949999988079071
+        ]
+      },
+      "require_initial_target": false
+    },
+    {
+      "id": "android_shared_cab_ui",
+      "file": "android_shared_cab_ui.unity",
+      "sha256": "2ce53bab20b7fdf6fedfd01eafef2b1de59087cac8d97fac1f10425f633a14ab",
+      "bytes": 983119,
+      "role": "control",
+      "expected_after": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      },
+      "require_initial_target": true
+    },
+    {
+      "id": "android_navi_cab_only",
+      "file": "android_navi_cab_only.unity",
+      "sha256": "0b758bc9a8cd7de55cde6fcec72a8a93d612338230fa4e8858eb74a62781b29b",
+      "bytes": 983496,
+      "role": "control",
+      "expected_after": {
+        "BreastSize": [
+          0.8,
+          1.1,
+          1.2
+        ],
+        "HipsSize": [
+          1.25,
+          1.05,
+          1.15
+        ]
+      },
+      "require_initial_target": true
+    }
+  ],
+  "cases": [
+    {
+      "id": "mv-then-navi",
+      "expect": "isolated",
+      "sequence": [
+        "android_mv_board",
+        "android_navi_board"
+      ]
+    },
+    {
+      "id": "navi-then-mv",
+      "expect": "isolated",
+      "sequence": [
+        "android_navi_board",
+        "android_mv_board"
+      ]
+    },
+    {
+      "id": "mv-bare-navi",
+      "expect": "isolated",
+      "sequence": [
+        "android_mv_board",
+        "android_mv_unmasked",
+        "android_navi_board"
+      ]
+    },
+    {
+      "id": "navi-bare-mv",
+      "expect": "isolated",
+      "sequence": [
+        "android_navi_board",
+        "android_mv_unmasked",
+        "android_mv_board"
+      ]
+    },
+    {
+      "id": "original-shared-cab-negative",
+      "expect": "collision",
+      "sequence": [
+        "android_original_board",
+        "android_mv_board"
+      ]
+    },
+    {
+      "id": "changed-shared-cab-negative",
+      "expect": "collision",
+      "sequence": [
+        "android_mv_board",
+        "android_shared_cab_ui"
+      ]
+    },
+    {
+      "id": "cab-only-after-mv-observation",
+      "expect": "observe",
+      "sequence": [
+        "android_mv_board",
+        "android_navi_cab_only"
+      ]
+    },
+    {
+      "id": "cab-only-before-mv-observation",
+      "expect": "observe",
+      "sequence": [
+        "android_navi_cab_only",
+        "android_mv_board"
+      ]
+    }
+  ]
+}
