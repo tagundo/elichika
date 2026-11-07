@@ -1,0 +1,29 @@
+{
+  "source_commit": "91ae9a3d3d90102b13634f1e962248b5fa7740be",
+  "source_files": {
+    "tests/android_gl_visual_smoke.py": "549b9bdbc3d2685eff6ad1370826556902e01def9002ec0d052a6c505412c2cc",
+    "tests/android_release_smoke.py": "b236e2061a401c00339b1633cafee59d3a74028cc55da6b87dcc65ec8dd30b24",
+    "tests/gl_ui_runtime/accessory_fixture.py": "e5eacc04779ab8d42b2ede0602aaf4e22bbce84dea4df66e8a4588eac840756b",
+    "tests/gl_ui_runtime/candidate_upgrade.py": "2c2efaf024fedf1aabf93ad7bc62e595a2cdfa670f3cf6ccb85fcfd037afc877",
+    "tests/gl_ui_runtime/followup.py": "49916aea7fef79fb6f0270a84518560a3cd0dda0ceebf514086997578d916e90",
+    "tests/gl_ui_runtime/inspect-ui.js": "cc237e31b6d45d5c8b3385306f3640203d9440ed5c18818fac7a18c864e1d81a",
+    "tests/gl_ui_runtime/language-setup.js": "3fe3002980b48dfd19c82e09484fbe4bef9c76c372c63a265b4bcda51ab2d429",
+    "tests/gl_ui_runtime/language_setup.py": "6489f9fe320b729b511d5c10b596528e342e3dd15148359801f715c62098b7e6",
+    "tests/gl_ui_runtime/mod_fixture.py": "9a443035036c77b09cb34bbb25b92299bb5d0ac778bbda9ed679f394e828fba4",
+    "tests/gl_ui_runtime/native_diagnostics.py": "4da3971e00d234f10da7ce4c6e3f5a2dff522ccc7a3d3310c52c0b549778191f",
+    "tests/gl_ui_runtime/revision_receipt.py": "7d6ddae0529804292ec92534b1ffa18573d4610437db8add3c5467c9b933b55e",
+    "tests/gl_ui_runtime/snapshot.py": "e27d1321eb52471db2c8ac865a91fb14f898e105429a18e7eccbc977a225edee"
+  },
+  "prepare_tools_sha256": "4c07d8422952c8320a34b4e32c7beb8c7c83deef811f4d06cddd781cdbb2bd4e",
+  "public_label_input": {
+    "original_sha256": "deca6381e1aa4b0dd7c7437417d75d61debf9137e4a919c56a68a3994df96658",
+    "additions": [
+      "Download Song",
+      "Song Download Confirmation"
+    ],
+    "sha256": "0ba7fa28d5fcd75af3de777e9e8fdf2807e3792f7b5d3144c7f3d19c7aef8cb5"
+  },
+  "additional_frozen_sources": {
+    "tests/clone_stage_qa/crash_capture.py": "261767c8317f685c321c1ed5f7f83dbe8477a1d4426074f99d75fd429b561775"
+  }
+}
