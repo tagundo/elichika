@@ -1,27 +1,5 @@
 {
   "run_id": "42342653830",
-  "sequence": 12,
-  "action": "swipe_widgets",
-  "from_widget": {
-    "widget_id": -16532,
-    "expected_class": "LLAS.Components.UI.ProductButton",
-    "expected_bounds": [
-      889.4752197265625,
-      534.6324920654297,
-      1037.2413330078125,
-      588.3652496337891
-    ],
-    "expected_label": "All"
-  },
-  "to_widget": {
-    "widget_id": -14684,
-    "expected_class": "LLAS.Components.UI.ProductButton",
-    "expected_bounds": [
-      862.6085205078125,
-      139.31005859375,
-      1039.16015625,
-      193.04351806640625
-    ]
-  },
-  "duration_ms": 200
+  "sequence": 13,
+  "action": "close"
 }
