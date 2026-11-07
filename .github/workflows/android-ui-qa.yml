@@ -1,4 +1,4 @@
-name: Rina original-game scene validation
+name: Rina same-board authored-scale original scenes
 
 on:
   workflow_dispatch:
@@ -15,7 +15,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          submodules: true
 
       - name: Prepare disposable native ARM64 Android
         run: |
@@ -23,22 +22,31 @@ jobs:
           test "$(uname -m)" = aarch64
           sudo apt-get update -qq
           sudo apt-get install -y adb
+          test "$(command -v adb)" = /usr/bin/adb
           if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
             sudo apt-get install -y "linux-modules-extra-$(uname -r)"
             sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
           fi
-          mkdir -p evidence "$RUNNER_TEMP/android-data"
+          mkdir -p evidence "$RUNNER_TEMP/rina-authored-sync-data"
           uname -a > evidence/host.txt
           getconf PAGESIZE >> evidence/host.txt
           docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
           docker image inspect redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa --format '{{json .RepoDigests}} {{.Architecture}}' >> evidence/host.txt
-          docker run --detach --privileged --name rina-unity-qa \
+          docker run --detach --privileged --name rina-authored-sync-qa \
+            --label "elichika.qa.scope=rina-authored-sync-scene" --label "elichika.qa.run=$GITHUB_RUN_ID" \
             --publish 127.0.0.1:5555:5555 \
-            --volume "$RUNNER_TEMP/android-data:/data" \
+            --volume "$RUNNER_TEMP/rina-authored-sync-data:/data" \
             redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
             androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 androidboot.redroid_height=1280 \
             androidboot.redroid_fps=10 ro.secure=0
+          python3 tests/rina_authored_sync_scene_qa/ownership.py > evidence/ownership.json
+          export ELICHIKA_AUTHORED_SYNC_REAL_ADB=/usr/bin/adb
+          export PATH="$GITHUB_WORKSPACE/tests/rina_authored_sync_scene_qa:$PATH"
+          test -x "$GITHUB_WORKSPACE/tests/rina_authored_sync_scene_qa/adb"
+          test "$(command -v adb)" = "$GITHUB_WORKSPACE/tests/rina_authored_sync_scene_qa/adb"
+          echo ELICHIKA_AUTHORED_SYNC_REAL_ADB=/usr/bin/adb >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/tests/rina_authored_sync_scene_qa" >> "$GITHUB_PATH"
           ready=0
           for attempt in $(seq 1 120); do
             adb connect 127.0.0.1:5555 >/dev/null || true
@@ -52,7 +60,10 @@ jobs:
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.hardware | tr -d '\r')" = redroid
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
           adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
+          # Fresh Android OS education setup from the proven normal-stage lane.
+          # No original-game PlayerPrefs or tutorial fields are changed.
           adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+          test "$(adb -s 127.0.0.1:5555 shell settings --user 0 get secure immersive_mode_confirmations | tr -d '\r')" = confirmed
 
       - name: Install unchanged public original GL3.12 player
         run: |
@@ -63,7 +74,7 @@ jobs:
           adb -s 127.0.0.1:5555 install -r -g "$RUNNER_TEMP/LLAS_GL_LOCAL.apk"
           adb -s 127.0.0.1:5555 shell dumpsys package com.klab.lovelive.allstars.global > evidence/game-package.txt
 
-      - name: Download verified signed tutorial provider without rebuilding
+      - name: Download frozen signed tutorial provider without rebuilding
         uses: actions/download-artifact@v4
         with:
           name: elichika-release-apk
@@ -72,328 +83,51 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare pinned late-attach tooling
+        run: >-
+          bash tests/rina_scene_qa/prepare_tools.sh
+          "$RUNNER_TEMP/qa-python" "$RUNNER_TEMP/qa-tools"
+          127.0.0.1:5555 evidence/tools.json
+
+      - name: Bind frozen UI bridge and validate bounded host contracts
         run: |
           set -euo pipefail
-          bash tests/rina_scene_qa/prepare_tools.sh \
-            "$RUNNER_TEMP/qa-python" "$RUNNER_TEMP/qa-tools" \
-            127.0.0.1:5555 evidence/tools.json
           mkdir -p tests/gl_ui_runtime/package/dist
           cp "$RUNNER_TEMP/qa-tools/package/dist/index.js" tests/gl_ui_runtime/package/dist/index.js
+          python3 -m unittest discover -s tests/rina_authored_sync_scene_qa -p 'test_*.py' -v
 
-      - name: Publish public Rina fixture and bootstrap the original game
+      - name: Publish disposable models and traverse actual normal scenes
         run: |
           set -euo pipefail
           git rev-parse HEAD > evidence/qa-source.txt
           mapfile -t qa_apks < <(python3 -c 'from pathlib import Path; print("\n".join(str(p) for p in Path("candidate").rglob("*.apk") if p.is_file()))')
           test "${#qa_apks[@]}" = 1
-          "$RUNNER_TEMP/qa-python/bin/python" -u tests/rina_scene_qa/scene_bootstrap.py \
+          "$RUNNER_TEMP/qa-python/bin/python" -u tests/rina_authored_sync_scene_qa/run.py \
             --candidate "${qa_apks[0]}" --game "$RUNNER_TEMP/LLAS_GL_LOCAL.apk" \
-            --temporary "$RUNNER_TEMP/rina-scenes" --evidence evidence/gl \
+            --temporary "$RUNNER_TEMP/authored-sync-scenes" --evidence evidence/authored-sync \
             --live-python "$RUNNER_TEMP/qa-python/bin/python" \
-            --bridge "$RUNNER_TEMP/qa-tools/package/dist/index.js" \
-            --require-provider-onboarding
+            --bridge "$RUNNER_TEMP/qa-tools/package/dist/index.js"
 
-      - name: Publish initial original-game scene evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rina-original-scene-bootstrap
-          path: evidence
-          retention-days: 14
-
-      - name: Scoped original-game follow-up 1
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '1'
-
-      - name: Scoped original-game follow-up 2
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '2'
-
-      - name: Scoped original-game follow-up 3
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '3'
-
-      - name: Scoped original-game follow-up 4
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '4'
-
-      - name: Scoped original-game follow-up 5
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '5'
-
-      - name: Scoped original-game follow-up 6
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '6'
-
-      - name: Scoped original-game follow-up 7
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '7'
-
-      - name: Scoped original-game follow-up 8
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '8'
-
-      - name: Scoped original-game follow-up 9
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '9'
-
-      - name: Scoped original-game follow-up 10
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '10'
-
-      - name: Scoped original-game follow-up 11
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '11'
-
-      - name: Scoped original-game follow-up 12
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '12'
-
-      - name: Scoped original-game follow-up 13
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '13'
-
-      - name: Scoped original-game follow-up 14
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '14'
-
-      - name: Scoped original-game follow-up 15
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '15'
-
-      - name: Scoped original-game follow-up 16
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '16'
-
-      - name: Scoped original-game follow-up 17
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '17'
-
-      - name: Scoped original-game follow-up 18
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '18'
-
-      - name: Scoped original-game follow-up 19
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '19'
-
-      - name: Scoped original-game follow-up 20
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '20'
-
-      - name: Scoped original-game follow-up 21
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '21'
-
-      - name: Scoped original-game follow-up 22
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '22'
-
-      - name: Scoped original-game follow-up 23
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '23'
-
-      - name: Scoped original-game follow-up 24
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '24'
-
-      - name: Scoped original-game follow-up 25
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '25'
-
-      - name: Scoped original-game follow-up 26
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '26'
-
-      - name: Scoped original-game follow-up 27
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '27'
-
-      - name: Scoped original-game follow-up 28
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '28'
-
-      - name: Scoped original-game follow-up 29
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '29'
-
-      - name: Scoped original-game follow-up 30
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '30'
-
-      - name: Scoped original-game follow-up 31
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '31'
-
-      - name: Scoped original-game follow-up 32
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '32'
-
-      - name: Scoped original-game follow-up 33
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '33'
-
-      - name: Scoped original-game follow-up 34
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '34'
-
-      - name: Scoped original-game follow-up 35
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '35'
-
-      - name: Scoped original-game follow-up 36
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '36'
-
-      - name: Scoped original-game follow-up 37
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '37'
-
-      - name: Scoped original-game follow-up 38
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '38'
-
-      - name: Scoped original-game follow-up 39
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '39'
-
-      - name: Scoped original-game follow-up 40
-        if: ${{ success() && hashFiles('evidence/gl-followup-closed.marker') == '' }}
-        uses: ./.github/actions/rina-scene-followup
-        with:
-          sequence: '40'
-
-      - name: Stop read-only observer and audit actual scene evidence
+      - name: Audit bound HOME, preview, four MVs, motion and initialization
         if: always()
         run: |
-          set -euo pipefail
-          mkdir -p evidence/scene-observer
-          touch evidence/scene-observer/stop.marker
-          if [ -f evidence/scene-observer/host-pid.txt ]; then
-            for attempt in $(seq 1 20); do
-              test -f evidence/scene-observer/summary.json && break
-              sleep 1
-            done
-          fi
-          python3 tests/rina_scene_qa/audit_scenes.py --evidence evidence
+          python3 tests/rina_authored_sync_scene_qa/audit_scenes.py --evidence evidence
 
-      - name: Collect sanitized original-game diagnostics
+      - name: Collect diagnostics and stop only the owned Android
         if: always()
         run: |
           mkdir -p evidence
-          python3 tests/rina_scene_qa/collect_scene_diagnostics.py --evidence evidence || true
-          adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
-          python3 tests/rina_scene_qa/crash_capture.py \
-            --state evidence/gl/gl-visual-smoke.json \
-            --output evidence/game-native-crashes-final.json || true
-          docker logs rina-unity-qa > evidence/container.log 2>&1 || true
-          docker rm --force rina-unity-qa || true
-
-      - name: Validate bounded owned-game crash evidence
-        if: always()
-        run: |
-          python3 - <<'PYTHON'
-          import json
-          from pathlib import Path
-          path = Path("evidence/game-native-crashes-final.json")
-          evidence = json.loads(path.read_text()) if path.exists() else {}
-          diagnostics_path = Path("evidence/scene-final-diagnostics.json")
-          diagnostics = json.loads(diagnostics_path.read_text()) if diagnostics_path.exists() else {}
-          complete = (evidence.get("status") == "CAPTURED" and isinstance(evidence.get("events"), list)
-                      and evidence.get("safe_errors") == [] and evidence.get("source_counts", {}).get("logcat") == 1)
-          crashed = bool(evidence.get("events"))
-          alive = diagnostics.get("game_process_running") is True
-          owned_alive = evidence.get("expected_pid_matches_running_pid") is True
-          status = "PASS_NO_OWNED_GAME_CRASH_CAPTURED" if complete and not crashed and alive and owned_alive else "FAILED_OR_INCOMPLETE_OWNED_GAME_RUNTIME"
-          report = {"status": status, "capture_complete": complete, "owned_game_crash_captured": crashed,
-                    "game_alive_at_final_diagnostics": alive, "same_owned_pid_running_at_capture": owned_alive,
-                    "scope": "This bounded original-game observation only; prior crashes and other processes are separate"}
-          Path("evidence/native-crash-verdict.json").write_text(json.dumps(report, indent=2) + "\n")
-          print(json.dumps(report))
-          raise SystemExit(0 if status == "PASS_NO_OWNED_GAME_CRASH_CAPTURED" else 1)
-          PYTHON
+          if python3 tests/rina_authored_sync_scene_qa/ownership.py > evidence/cleanup-ownership.json 2> evidence/cleanup-ownership-error.txt; then
+            docker logs rina-authored-sync-qa > evidence/container.log 2>&1 || true
+            adb -s 127.0.0.1:5555 logcat -d -t 2000 -s Unity:I AndroidRuntime:E > evidence/unity-logcat.txt 2>&1 || true
+            adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
+            adb -s 127.0.0.1:5555 shell am force-stop com.klab.lovelive.allstars.global || true
+            python3 tests/rina_authored_sync_scene_qa/ownership.py > evidence/remove-ownership.json
+            docker rm --force rina-authored-sync-qa
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: rina-original-scene-evidence
+          name: rina-authored-sync-original-scene-evidence
           path: evidence
           retention-days: 14

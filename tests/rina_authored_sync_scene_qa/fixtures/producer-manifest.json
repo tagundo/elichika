@@ -1,0 +1,565 @@
+{
+  "format": "elichika-rina-single-board-authored-sync-fixture",
+  "version": 1,
+  "scope": "Scratch only; do not claim current production/gameplay success",
+  "desired_absolute_scales": {
+    "BreastSize": [
+      0.8,
+      1.1,
+      1.2
+    ],
+    "HipsSize": [
+      1.25,
+      1.05,
+      1.15
+    ]
+  },
+  "platforms": {
+    "android": {
+      "control_pairs": {
+        "authored_sync": [
+          "board",
+          "unmasked"
+        ],
+        "node_only": [
+          "node_only_board",
+          "node_only_unmasked"
+        ],
+        "original": [
+          "original_board",
+          "original_unmasked"
+        ]
+      },
+      "all_execution_cabs_pairwise_unique": true,
+      "canonical": {
+        "canonical_node_only_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_canonical_node_only_board.unity",
+          "sha256": "082cfc83170cb83e3eb3e4e6344c6933a77bc9d81b42db6204b0d72ff22866cd",
+          "bytes": 983798
+        },
+        "canonical_synced_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_canonical_synced_board.unity",
+          "sha256": "2ce53bab20b7fdf6fedfd01eafef2b1de59087cac8d97fac1f10425f633a14ab",
+          "bytes": 983119
+        },
+        "canonical_unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_canonical_unmasked.unity",
+          "sha256": "a74286ca34ee90f63d5df4bd2084a105524987469154480eaabf3bacb06523f7",
+          "bytes": 885560
+        },
+        "canonical_original_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_canonical_original_board.unity",
+          "sha256": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+          "bytes": 991966
+        },
+        "canonical_original_unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_canonical_original_unmasked.unity",
+          "sha256": "96476b6f689350cb96453589897758059377aae6563b51358faac54df45045ed",
+          "bytes": 896810
+        }
+      },
+      "execution": {
+        "board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_board.unity",
+          "sha256": "16c374933e20cb21cc3117d587843ea867ec3e5bebeb06001abe02d5db29e02e",
+          "bytes": 1365844,
+          "native_target": 13,
+          "identity_only_proof": {
+            "source_sha256": "2ce53bab20b7fdf6fedfd01eafef2b1de59087cac8d97fac1f10425f633a14ab",
+            "execution_sha256": "16c374933e20cb21cc3117d587843ea867ec3e5bebeb06001abe02d5db29e02e",
+            "source_cabs": [
+              "CAB-6f4c2513a80b89e4091e6522bed13a85"
+            ],
+            "execution_cabs": [
+              "CAB-167415c41ceed53a4eb050febaa45e64"
+            ],
+            "verified_objects": 564,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:android:board"
+        },
+        "unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_unmasked.unity",
+          "sha256": "b7d245ee0842bc50019bc42b2d8303a84fee0efcee2768002ba59ec7de721335",
+          "bytes": 1216745,
+          "native_target": 13,
+          "identity_only_proof": {
+            "source_sha256": "a74286ca34ee90f63d5df4bd2084a105524987469154480eaabf3bacb06523f7",
+            "execution_sha256": "b7d245ee0842bc50019bc42b2d8303a84fee0efcee2768002ba59ec7de721335",
+            "source_cabs": [
+              "CAB-16c3dd98dc3f420a83a0b34f649516d6"
+            ],
+            "execution_cabs": [
+              "CAB-4949d901ddcacc4451719cdd32b79f81"
+            ],
+            "verified_objects": 335,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:android:unmasked"
+        },
+        "node_only_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_node_only_board.unity",
+          "sha256": "e476f1761ceff5bc0d9a1ce9e914b97b57aeb27494d6dd0e0d11d7ef52b82222",
+          "bytes": 1365843,
+          "native_target": 13,
+          "identity_only_proof": {
+            "source_sha256": "082cfc83170cb83e3eb3e4e6344c6933a77bc9d81b42db6204b0d72ff22866cd",
+            "execution_sha256": "e476f1761ceff5bc0d9a1ce9e914b97b57aeb27494d6dd0e0d11d7ef52b82222",
+            "source_cabs": [
+              "CAB-6f4c2513a80b89e4091e6522bed13a85"
+            ],
+            "execution_cabs": [
+              "CAB-c605de2a23fdb14ac4303e138146eae7"
+            ],
+            "verified_objects": 564,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:android:node_only_board"
+        },
+        "node_only_unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_node_only_unmasked.unity",
+          "sha256": "9c95138f54144b47533137b94a3766edaa2bf6de1ecee6981a32ef9d24ff28e2",
+          "bytes": 1216745,
+          "native_target": 13,
+          "identity_only_proof": {
+            "source_sha256": "a74286ca34ee90f63d5df4bd2084a105524987469154480eaabf3bacb06523f7",
+            "execution_sha256": "9c95138f54144b47533137b94a3766edaa2bf6de1ecee6981a32ef9d24ff28e2",
+            "source_cabs": [
+              "CAB-16c3dd98dc3f420a83a0b34f649516d6"
+            ],
+            "execution_cabs": [
+              "CAB-39ef23d97e1a6653fc8e222f0b7b2b83"
+            ],
+            "verified_objects": 335,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:android:node_only_unmasked"
+        },
+        "original_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_original_board.unity",
+          "sha256": "270bb397a7f0c8b8202fada426bedb0ccb2bd9be5c3d6a7a69b8d62658fc791f",
+          "bytes": 1365822,
+          "native_target": 13,
+          "identity_only_proof": {
+            "source_sha256": "aa2fa97c5695c3f87e1f1b74464dd5784cf8f631ecb8be17fa8b5d731754e6e6",
+            "execution_sha256": "270bb397a7f0c8b8202fada426bedb0ccb2bd9be5c3d6a7a69b8d62658fc791f",
+            "source_cabs": [
+              "CAB-6f4c2513a80b89e4091e6522bed13a85"
+            ],
+            "execution_cabs": [
+              "CAB-943f4d65991f591675d185978f19b7d2"
+            ],
+            "verified_objects": 564,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:android:original_board"
+        },
+        "original_unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/android_original_unmasked.unity",
+          "sha256": "839bdf6570fa5875f5dfebf89787b48ddd1f61b1ff539696166ee40530ca3474",
+          "bytes": 1216742,
+          "native_target": 13,
+          "identity_only_proof": {
+            "source_sha256": "96476b6f689350cb96453589897758059377aae6563b51358faac54df45045ed",
+            "execution_sha256": "839bdf6570fa5875f5dfebf89787b48ddd1f61b1ff539696166ee40530ca3474",
+            "source_cabs": [
+              "CAB-16c3dd98dc3f420a83a0b34f649516d6"
+            ],
+            "execution_cabs": [
+              "CAB-57b57c4481d03790ef77ddf67576e0ef"
+            ],
+            "verified_objects": 335,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:android:original_unmasked"
+        }
+      },
+      "same_execution_board_for_HOME_and_MV": true,
+      "bare_canonical_bytes_unchanged": true,
+      "proof": {
+        "changed_Transform_fields": [
+          {
+            "bone": "HipsSize",
+            "transform_id": "-3360250076024137181",
+            "from_authored": [
+              1.0,
+              0.949999988079071,
+              0.949999988079071
+            ],
+            "to_authored": [
+              1.25,
+              1.0499999523162842,
+              1.149999976158142
+            ],
+            "Node_records_unchanged": [
+              {
+                "target": {
+                  "m_FileID": 0,
+                  "m_PathID": -3360250076024137181
+                },
+                "originValue": {
+                  "x": 1.0,
+                  "y": 0.949999988079071,
+                  "z": 0.949999988079071
+                },
+                "scaledValue": {
+                  "x": 1.25,
+                  "y": 1.0499999523162842,
+                  "z": 1.149999976158142
+                }
+              }
+            ]
+          },
+          {
+            "bone": "BreastSize",
+            "transform_id": "-1519033089903859402",
+            "from_authored": [
+              0.6100000143051147,
+              0.9100000262260437,
+              0.8500000238418579
+            ],
+            "to_authored": [
+              0.800000011920929,
+              1.100000023841858,
+              1.2000000476837158
+            ],
+            "Node_records_unchanged": [
+              {
+                "target": {
+                  "m_FileID": 0,
+                  "m_PathID": -1519033089903859402
+                },
+                "originValue": {
+                  "x": 0.6100000143051147,
+                  "y": 0.9100000262260437,
+                  "z": 0.8500000238418579
+                },
+                "scaledValue": {
+                  "x": 0.800000011920929,
+                  "y": 1.100000023841858,
+                  "z": 1.2000000476837158
+                }
+              }
+            ]
+          }
+        ],
+        "objects": 564,
+        "only_two_Transform_localScale_properties_changed": true,
+        "no_new_components_objects_or_types": true,
+        "NodeScaling_raw_origin_endpoint_allarrays_exact": true,
+        "all_other_raw_objects_mesh_animation_physics_materials_exact": true,
+        "all_streams_exact": 1,
+        "external_refs_exact": true,
+        "all_direct_SMRenderer_bone_authored_scales_within_native_limits": true,
+        "direct_bone_count": 121,
+        "idempotent_sync_exact": true,
+        "Apply1_absolute_repetition_no_accumulation": 100
+      }
+    },
+    "ios": {
+      "control_pairs": {
+        "authored_sync": [
+          "board",
+          "unmasked"
+        ],
+        "node_only": [
+          "node_only_board",
+          "node_only_unmasked"
+        ],
+        "original": [
+          "original_board",
+          "original_unmasked"
+        ]
+      },
+      "all_execution_cabs_pairwise_unique": true,
+      "canonical": {
+        "canonical_node_only_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_canonical_node_only_board.unity",
+          "sha256": "fba4a12c03854437d62a38f58ac8681611e93872c4921e1f579c24c04d7e42f2",
+          "bytes": 959101
+        },
+        "canonical_synced_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_canonical_synced_board.unity",
+          "sha256": "9454bbed80d16eb75edd1589fb33fae884400e3a168666ac8bc850560f297db0",
+          "bytes": 958784
+        },
+        "canonical_unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_canonical_unmasked.unity",
+          "sha256": "9a2ecbc2a4d6133536fbf672e0d1ba28b526bb25bc2925bc9b661d82fa5cce04",
+          "bytes": 861631
+        },
+        "canonical_original_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_canonical_original_board.unity",
+          "sha256": "a6c34391dfd21bfb3db7d048b20917a286522801f3e66576c5fc036d11b216a5",
+          "bytes": 969357
+        },
+        "canonical_original_unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_canonical_original_unmasked.unity",
+          "sha256": "a81608f8c0226afdf2ddc6f5f0dcec96c555db6fcefad218ecc5510dd9d096e4",
+          "bytes": 873950
+        }
+      },
+      "execution": {
+        "board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_board.unity",
+          "sha256": "bea32a35c208fd7c40efe5f9ff6ccfae77d593d7d803be1a583f151081029c26",
+          "bytes": 1352693,
+          "native_target": 9,
+          "identity_only_proof": {
+            "source_sha256": "9454bbed80d16eb75edd1589fb33fae884400e3a168666ac8bc850560f297db0",
+            "execution_sha256": "bea32a35c208fd7c40efe5f9ff6ccfae77d593d7d803be1a583f151081029c26",
+            "source_cabs": [
+              "CAB-6f4c2513a80b89e4091e6522bed13a85"
+            ],
+            "execution_cabs": [
+              "CAB-19e7950b1592791a6dad3cdc6250eb75"
+            ],
+            "verified_objects": 564,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:ios:board"
+        },
+        "unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_unmasked.unity",
+          "sha256": "2fed39bf08a1284541f3dc5dd0aaaffdc20c4c1a5788a498681358e3e4d40cec",
+          "bytes": 1202123,
+          "native_target": 9,
+          "identity_only_proof": {
+            "source_sha256": "9a2ecbc2a4d6133536fbf672e0d1ba28b526bb25bc2925bc9b661d82fa5cce04",
+            "execution_sha256": "2fed39bf08a1284541f3dc5dd0aaaffdc20c4c1a5788a498681358e3e4d40cec",
+            "source_cabs": [
+              "CAB-16c3dd98dc3f420a83a0b34f649516d6"
+            ],
+            "execution_cabs": [
+              "CAB-7621700d6db7b7fc9ce6651f5cffd4d9"
+            ],
+            "verified_objects": 335,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:ios:unmasked"
+        },
+        "node_only_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_node_only_board.unity",
+          "sha256": "66ab8ba3d38c87c86df177689b203dd8bc137070734d4057bbdf1633e7d3df85",
+          "bytes": 1352692,
+          "native_target": 9,
+          "identity_only_proof": {
+            "source_sha256": "fba4a12c03854437d62a38f58ac8681611e93872c4921e1f579c24c04d7e42f2",
+            "execution_sha256": "66ab8ba3d38c87c86df177689b203dd8bc137070734d4057bbdf1633e7d3df85",
+            "source_cabs": [
+              "CAB-6f4c2513a80b89e4091e6522bed13a85"
+            ],
+            "execution_cabs": [
+              "CAB-98dd1f8a55d5d404a3c6c0e622e8ff8a"
+            ],
+            "verified_objects": 564,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:ios:node_only_board"
+        },
+        "node_only_unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_node_only_unmasked.unity",
+          "sha256": "9e0594faca1db67978aebc5fcddcecedd0f38a94de04c956918a27e96bb08192",
+          "bytes": 1202123,
+          "native_target": 9,
+          "identity_only_proof": {
+            "source_sha256": "9a2ecbc2a4d6133536fbf672e0d1ba28b526bb25bc2925bc9b661d82fa5cce04",
+            "execution_sha256": "9e0594faca1db67978aebc5fcddcecedd0f38a94de04c956918a27e96bb08192",
+            "source_cabs": [
+              "CAB-16c3dd98dc3f420a83a0b34f649516d6"
+            ],
+            "execution_cabs": [
+              "CAB-71a38cac6fa6811fa028d80527bf5a6d"
+            ],
+            "verified_objects": 335,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:ios:node_only_unmasked"
+        },
+        "original_board": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_original_board.unity",
+          "sha256": "2ac2cfad109007199fa287d792626f501384cbc44787086682a8234c4a7d6ca3",
+          "bytes": 1352671,
+          "native_target": 9,
+          "identity_only_proof": {
+            "source_sha256": "a6c34391dfd21bfb3db7d048b20917a286522801f3e66576c5fc036d11b216a5",
+            "execution_sha256": "2ac2cfad109007199fa287d792626f501384cbc44787086682a8234c4a7d6ca3",
+            "source_cabs": [
+              "CAB-6f4c2513a80b89e4091e6522bed13a85"
+            ],
+            "execution_cabs": [
+              "CAB-21d0d277d06cdfe131a555c0cc019325"
+            ],
+            "verified_objects": 564,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:ios:original_board"
+        },
+        "original_unmasked": {
+          "path": "/dev/shm/elichika-rina-single-model-authored-sync-fixtures-20261107/ios_original_unmasked.unity",
+          "sha256": "6cb029e5c63f927f8d3ed81fbfc6fafcc4cb6354967d2aff370db12609e10a86",
+          "bytes": 1202120,
+          "native_target": 9,
+          "identity_only_proof": {
+            "source_sha256": "a81608f8c0226afdf2ddc6f5f0dcec96c555db6fcefad218ecc5510dd9d096e4",
+            "execution_sha256": "6cb029e5c63f927f8d3ed81fbfc6fafcc4cb6354967d2aff370db12609e10a86",
+            "source_cabs": [
+              "CAB-16c3dd98dc3f420a83a0b34f649516d6"
+            ],
+            "execution_cabs": [
+              "CAB-aef9f34ffa277cee12b1ef429a4f7362"
+            ],
+            "verified_objects": 335,
+            "verified_streams": 1,
+            "all_nonidentity_data_preserved": true
+          },
+          "namespace": "rina-single-authored-sync-v1:ios:original_unmasked"
+        }
+      },
+      "same_execution_board_for_HOME_and_MV": true,
+      "bare_canonical_bytes_unchanged": true,
+      "proof": {
+        "changed_Transform_fields": [
+          {
+            "bone": "HipsSize",
+            "transform_id": "-3360250076024137181",
+            "from_authored": [
+              1.0,
+              0.949999988079071,
+              0.949999988079071
+            ],
+            "to_authored": [
+              1.25,
+              1.0499999523162842,
+              1.149999976158142
+            ],
+            "Node_records_unchanged": [
+              {
+                "target": {
+                  "m_FileID": 0,
+                  "m_PathID": -3360250076024137181
+                },
+                "originValue": {
+                  "x": 1.0,
+                  "y": 0.949999988079071,
+                  "z": 0.949999988079071
+                },
+                "scaledValue": {
+                  "x": 1.25,
+                  "y": 1.0499999523162842,
+                  "z": 1.149999976158142
+                }
+              }
+            ]
+          },
+          {
+            "bone": "BreastSize",
+            "transform_id": "-1519033089903859402",
+            "from_authored": [
+              0.6100000143051147,
+              0.9100000262260437,
+              0.8500000238418579
+            ],
+            "to_authored": [
+              0.800000011920929,
+              1.100000023841858,
+              1.2000000476837158
+            ],
+            "Node_records_unchanged": [
+              {
+                "target": {
+                  "m_FileID": 0,
+                  "m_PathID": -1519033089903859402
+                },
+                "originValue": {
+                  "x": 0.6100000143051147,
+                  "y": 0.9100000262260437,
+                  "z": 0.8500000238418579
+                },
+                "scaledValue": {
+                  "x": 0.800000011920929,
+                  "y": 1.100000023841858,
+                  "z": 1.2000000476837158
+                }
+              }
+            ]
+          }
+        ],
+        "objects": 564,
+        "only_two_Transform_localScale_properties_changed": true,
+        "no_new_components_objects_or_types": true,
+        "NodeScaling_raw_origin_endpoint_allarrays_exact": true,
+        "all_other_raw_objects_mesh_animation_physics_materials_exact": true,
+        "all_streams_exact": 1,
+        "external_refs_exact": true,
+        "all_direct_SMRenderer_bone_authored_scales_within_native_limits": true,
+        "direct_bone_count": 121,
+        "idempotent_sync_exact": true,
+        "Apply1_absolute_repetition_no_accumulation": 100
+      }
+    }
+  },
+  "source_authority": "Canonical native originals+source-bound edit recipe; runtime authoredD is NOT editing rest authority",
+  "generator_sha256": "c664e866eb333eca4b2fba5f15a1aa710d469c05c3a45c7dc90ccb1a86946c2c",
+  "native_direct_bone_scale_interval": {
+    "minimum_float32": 0.20000000298023224,
+    "maximum_float32": 2.5,
+    "policy": "Reject nonfinite/out-of-range persisted float32 authored scales; do not clamp"
+  },
+  "limitations": [
+    "Only exact public320913 BreastSize/HipsSize Node scales/compensate=false are covered",
+    "Additional derived child compensation targets need explicit support, no silent HOME parity promise",
+    "Runtime physics caches may consistently reflect D and need not equal old Node-only S0 caches; actual engine validation required",
+    "No new MonoBehaviour/Animation/Animator/controller/clip objects exist in this candidate",
+    "iOS output is static native serialization, not iOS runtime evidence"
+  ],
+  "boundary_examples": [
+    {
+      "requested": 0.1,
+      "persisted_float32": 0.10000000149011612,
+      "allowed": false
+    },
+    {
+      "requested": 0.2,
+      "persisted_float32": 0.20000000298023224,
+      "allowed": true
+    },
+    {
+      "requested": 1.0,
+      "persisted_float32": 1.0,
+      "allowed": true
+    },
+    {
+      "requested": 2.5,
+      "persisted_float32": 2.5,
+      "allowed": true
+    },
+    {
+      "requested": 2.6,
+      "persisted_float32": 2.5999999046325684,
+      "allowed": false
+    },
+    {
+      "requested": -1.0,
+      "persisted_float32": -1.0,
+      "allowed": false
+    },
+    {
+      "requested": 0.0,
+      "persisted_float32": 0.0,
+      "allowed": false
+    }
+  ],
+  "max_rss_kib": 199896
+}

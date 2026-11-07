@@ -512,7 +512,7 @@
             const scopedMatches = new Map();
             // Only metadata-verified UI references and public content IDs. No
             // account IDs, arbitrary strings, callbacks, setters or transitions.
-            const state = {schema: 1, sceneContexts: [], musicSelect: [], songCells: [], mvDeck: [], mvSlots: [], suitPopup: [], suitCells: [], refusals: []};
+            const state = {schema: 1, sceneContexts: [], costumePreview: {status: "NOT_ACTIVE"}, musicSelect: [], songCells: [], mvDeck: [], mvSlots: [], suitPopup: [], suitCells: [], refusals: []};
             const ownersFor = ownerName => {
                 if (!ownersByClass.has(ownerName)) {
                     const cls = findClass(ownerName);
@@ -597,6 +597,7 @@
             // Shared Navi objects intentionally do not identify the Home scene.
             for (const className of [
                 "LLAS.Scene.EntryPoint.HomeScene",
+                "LLAS.Scene.EntryPoint.CostumePreviewScene",
                 "LLAS.Scene.Home.HomeMenu",
                 "LLAS.Scene.Home.HomeMenuButtonsController",
                 "LLAS.Scene.LiveMusicSelect.LiveMusicSelectController",
@@ -612,6 +613,46 @@
                     state.sceneContexts.push({className, activeOwners: owners == null ? null : owners.length,
                         status: owners == null ? "OWNER_CLASS_UNAVAILABLE" : "COUNTED"});
                 } catch (_) { state.sceneContexts.push({className, activeOwners: null, status: "READ_REFUSED"}); }
+            }
+            // The preview is an overlay with its own typed transition data.
+            // Home/favorite account state cannot identify the selected preview.
+            // These exact public Int32 getters are pinned to the original GL
+            // CostumePreviewScene.TransitionData, avoiding ambiguous nested
+            // classes whose short name is also "TransitionData".
+            try {
+                const owners = ownersFor("LLAS.Scene.EntryPoint.CostumePreviewScene");
+                if (owners == null) state.costumePreview = {status: "OWNER_CLASS_UNAVAILABLE"};
+                else if (owners.length === 0) state.costumePreview = {status: "NOT_ACTIVE"};
+                else if (owners.length !== 1) state.costumePreview = {status: "AMBIGUOUS"};
+                else {
+                    const owner = owners[0];
+                    const transitionField = owner.tryField("transitionData");
+                    if (transitionField == null || transitionField.isStatic) throw Error("Preview transition field unavailable");
+                    const transition = nullable(transitionField.value);
+                    if (transition == null || transition.class.name !== "TransitionData") throw Error("Preview transition class mismatch");
+                    const base = Process.getModuleByName("libil2cpp.so").base;
+                    const pinnedInt = (name, rva) => {
+                        const getter = transition.tryMethod(name, 0);
+                        if (getter == null || getter.isStatic || getter.parameters.length !== 0 ||
+                            getter.returnType.name !== "System.Int32" ||
+                            getter.virtualAddress == null || !getter.virtualAddress.equals(base.add(rva))) {
+                            throw Error("Preview public getter mismatch");
+                        }
+                        return publicInt(getter.invoke());
+                    };
+                    const memberId = pinnedInt("get_MemberMasterId", 0x21f1d44);
+                    const suitId = pinnedInt("get_SuitMasterId", 0x21f1d3c);
+                    if (memberId <= 0 || memberId >= 10000 || suitId <= 0) throw Error("Preview public identity invalid");
+                    const navi = objectField(owner, "navi", "LLAS.Components.Navi.NaviCostumePreview");
+                    if (navi == null || !active(navi)) throw Error("Preview navi inactive");
+                    state.costumePreview = {status: "READ", memberId, suitId,
+                        ownerId: id(owner), ownerGameObjectId: id(call(owner, "get_gameObject")),
+                        naviId: id(navi), naviGameObjectId: id(call(navi, "get_gameObject")),
+                        source: "CostumePreviewScene.transitionData"};
+                }
+            } catch (_) {
+                state.costumePreview = {status: "READ_REFUSED"};
+                state.refusals.push({section: "costumePreview", status: "READ_REFUSED"});
             }
             for (const [ownerName, fieldName, buttonType] of refs) {
                 const ref = ownerName + "." + fieldName;
