@@ -1,0 +1,33 @@
+name: Scoped Rina original-game follow-up
+description: One fresh-tree UI action on the job-owned original game.
+inputs:
+  sequence:
+    required: true
+    description: Ordered command sequence for this exact run.
+runs:
+  using: composite
+  steps:
+    - name: Wait for one scoped original-game command
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        FOLLOWUP_SEQUENCE: ${{ inputs.sequence }}
+      run: |
+        set -euo pipefail
+        python3 tests/gl_ui_runtime/followup.py \
+          --sequence "$FOLLOWUP_SEQUENCE" --run-id "$GITHUB_RUN_ID" \
+          --serial 127.0.0.1:5555 --game "$RUNNER_TEMP/LLAS_GL_LOCAL.apk" \
+          --live-python "$RUNNER_TEMP/qa-python/bin/python" \
+          --output "evidence/followup-$FOLLOWUP_SEQUENCE" \
+          --state evidence/gl/gl-visual-smoke.json --qa-language en \
+          --command-ref codex/rina-scene-model-qa-20261107 \
+          --repository "$GITHUB_REPOSITORY"
+        "$RUNNER_TEMP/qa-python/bin/python" tests/rina_scene_qa/request_snapshot.py \
+          --observer-dir evidence/scene-observer --label "followup-$FOLLOWUP_SEQUENCE"
+    - name: Upload scoped scene evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: rina-scene-followup-${{ inputs.sequence }}
+        path: evidence/followup-${{ inputs.sequence }}
+        retention-days: 14
