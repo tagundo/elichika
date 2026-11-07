@@ -56,6 +56,22 @@ jobs:
           test "$ready" = 1
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.hardware | tr -d '\r')" = redroid
           test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
+          # Android's system fullscreen education covered the first language
+          # picker in42351642220. This fresh-device OS fixture matches the Rina
+          # scene job; it does not write any game PlayerPrefs or gameplay state.
+          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+          test "$(adb -s 127.0.0.1:5555 shell settings --user 0 get secure immersive_mode_confirmations | tr -d '\r')" = confirmed
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('evidence/os-fullscreen-setup.json').write_text(json.dumps({
+              'scope': 'Fresh owned Redroid Android system setup only',
+              'run_id': os.environ['GITHUB_RUN_ID'], 'android_user': 0,
+              'setting': 'secure/immersive_mode_confirmations', 'readback': 'confirmed',
+              'game_PlayerPrefs_written': False, 'gameplay_callbacks_invoked': False,
+              'reason': 'Observed Android Viewing full screen/GOT IT overlay in42351642220'
+          }, indent=2) + '\n')
+          PY
 
       - name: Download unchanged original GL3.12 player
         run: |
