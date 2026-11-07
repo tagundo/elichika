@@ -8,6 +8,7 @@ import re
 import subprocess
 import threading
 import time
+import xml.etree.ElementTree as ET
 
 GAME = "com.klab.lovelive.allstars.global"
 GAME_SHA = "8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e"
@@ -82,6 +83,38 @@ def main():
               "cases": []}
     output_file = args.output / "unity-coload.json"
     session = script = None
+
+    def screenshot(name):
+        data = subprocess.check_output(["adb", "-s", args.serial, "exec-out", "screencap", "-p"], timeout=15)
+        assert data.startswith(b"\x89PNG\r\n\x1a\n")
+        (args.output / name).write_bytes(data)
+
+    def dismiss_known_startup_warning(case_id):
+        # Reuse the exact public warning/positive action observed by the working
+        # GL HOME driver. Never guess coordinates or dismiss an unknown dialog.
+        adb("shell", "rm", "-f", "/sdcard/rina-startup.xml")
+        adb("shell", "uiautomator", "dump", "/sdcard/rina-startup.xml", timeout=8)
+        xml = adb("exec-out", "cat", "/sdcard/rina-startup.xml")
+        (args.output / (case_id + "-startup.xml")).write_text(xml)
+        root = ET.fromstring(xml)
+        warning = "Love Live!AS won't run without Google Play services, which are not supported by your device."
+        messages = [node for node in root.iter("node") if node.get("package") == GAME
+                    and node.get("resource-id") == "android:id/message" and node.get("text") == warning]
+        buttons = [node for node in root.iter("node") if node.get("package") == GAME
+                   and node.get("resource-id") == "android:id/button1" and node.get("text") == "OK"
+                   and node.get("enabled") == "true"]
+        if len(messages) != 1 or len(buttons) != 1:
+            return None
+        bounds = buttons[0].get("bounds", "")
+        match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+        assert match is not None, "Known warning button has no measured bounds"
+        x1, y1, x2, y2 = map(int, match.groups())
+        assert x2 > x1 and y2 > y1
+        screenshot(case_id + "-known-warning.png")
+        center = [(x1 + x2) // 2, (y1 + y2) // 2]
+        adb("shell", "input", "tap", *map(str, center))
+        return {"message": warning, "resource_id": "android:id/button1", "bounds": bounds, "center": center}
+
     try:
         for case in cases:
             # Each case gets a fresh process; owned objects cannot leak into a
@@ -90,10 +123,21 @@ def main():
             adb("shell", "am", "start", "-n", component)
             deadline = time.monotonic() + 90
             session = script = None
+            startup = {"case": case["id"], "events": []}
+            report.setdefault("startup", []).append(startup)
             while time.monotonic() < deadline:
                 try:
                     pid = adb("shell", "pidof", "-s", GAME)
                     assert pid.isdigit()
+                    maps = adb("exec-out", "cat", f"/proc/{pid}/maps")
+                    if "libil2cpp.so" not in maps:
+                        if "known_warning_dismissed" not in startup:
+                            dismissed = dismiss_known_startup_warning(case["id"])
+                            if dismissed is not None:
+                                startup["known_warning_dismissed"] = dismissed
+                        time.sleep(1)
+                        continue
+                    startup["libil2cpp_mapped_before_attach"] = True
                     session = device.attach(int(pid))
                     check = session.create_script("send((() => {const m=Process.findModuleByName('libil2cpp.so'); if(m===null)return false; const f=m.findExportByName('il2cpp_get_corlib'); return f!==null&&!new NativeFunction(f,'pointer',[])().isNull();})())")
                     ready, ready_event = [], threading.Event()
@@ -105,7 +149,9 @@ def main():
                         break
                     session.detach()
                     session = None
-                except Exception:
+                except Exception as error:
+                    if len(startup["events"]) < 12:
+                        startup["events"].append({"error_type": type(error).__name__, "detail": str(error)[:240]})
                     if session is not None:
                         session.detach()
                         session = None
@@ -144,6 +190,15 @@ def main():
     except Exception as error:
         report["status"] = "FAILED"
         report["error"] = str(error)
+        # Capture while the owned game is still running, before finally stops
+        # it. A post-cleanup launcher image cannot diagnose a startup modal.
+        try:
+            screenshot("failure-before-cleanup.png")
+            adb("shell", "rm", "-f", "/sdcard/rina-failure.xml")
+            adb("shell", "uiautomator", "dump", "/sdcard/rina-failure.xml", timeout=8)
+            (args.output / "failure-before-cleanup.xml").write_text(adb("exec-out", "cat", "/sdcard/rina-failure.xml"))
+        except Exception as capture_error:
+            report["failure_capture_error"] = type(capture_error).__name__
         raise
     finally:
         if script is not None:
