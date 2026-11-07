@@ -1,8 +1,9 @@
 """Self-test for the elichika admin panel.
 
 Builds a synthetic install dir (dummy DBs + a minimal masterdata schema) so we can
-exercise backup, restore, costume listing, and a full costume clone end-to-end,
-plus the HTTP layer. Run: python -m adminui.selftest
+exercise backup, restore, costume listing, clone adapter/database writes, and
+the HTTP layer. Bundle isolation is covered by tests/test_costume_clone.py.
+Run: python -m adminui.selftest
 """
 import json
 import os
@@ -87,6 +88,28 @@ def test_backup_restore(root):
 
 
 def test_costume(root):
+    # This lightweight adapter smoke test also runs before optional model-editing
+    # dependencies are installed. The dedicated clone tests exercise real native
+    # bundles, asset catalogs, packages and rollback end-to-end.
+    from unittest.mock import patch
+    import costume_clone_assets
+
+    class PreparedAssets:
+        def __init__(self, models, new_id, source_ids, log):
+            self.models = {(region, old): f"selftest/{new_id}/{region}/{old}"
+                           for region, paths in models.items() for old in paths}
+
+        def publish(self): pass
+        def register(self): pass
+        def commit(self): pass
+        def rollback(self): pass
+        def close(self): pass
+
+    with patch.object(costume_clone_assets, "prepare_clone_assets", side_effect=PreparedAssets):
+        _test_costume_metadata(root)
+
+
+def _test_costume_metadata(root):
     print("costume clone:")
     from adminui.jobs import Job
     from adminui.tools.common import ensure_repo_on_path

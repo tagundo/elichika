@@ -148,6 +148,44 @@ def gallery_png_checks(temporary):
         return hashlib.sha256(png).hexdigest()
 
 
+def clone_bundle_checks(preview):
+    """Exercise the shipped clone serializer through the embedded UnityPy runtime."""
+    import UnityPy
+    from costume_clone_assets import _cab_names, isolate_bundle
+
+    def contents(data):
+        return {obj.path_id: (obj.type.name, obj.get_raw_data(), obj)
+                for obj in UnityPy.load(data).objects}
+
+    original = contents(preview)
+    original_cabs = set(_cab_names(preview))
+    copies = [isolate_bundle(preview, "android-native-clone-" + suffix)
+              for suffix in ("a", "b")]
+    identities = [original_cabs] + [set(_cab_names(data)) for data in copies]
+    assert all(identities) and all(not left.intersection(right)
+        for index, left in enumerate(identities) for right in identities[index + 1:])
+    runtime_names = []
+    for data in [preview, *copies]:
+        objects = contents(data)
+        assert set(objects) == set(original), "Clone serialization changed object path IDs"
+        names = []
+        for path_id, (kind, raw, obj) in objects.items():
+            assert kind == original[path_id][0]
+            if kind == "AssetBundle":
+                tree = obj.read_typetree()
+                source = original[path_id][2].read_typetree()
+                assert tree["m_Container"] == source["m_Container"]
+                assert tree["m_Dependencies"] == source["m_Dependencies"]
+                names.append((tree["m_Name"], tree["m_AssetBundleName"]))
+            else:
+                assert raw == original[path_id][1], "Clone serialization changed animation bytes"
+        runtime_names.append(tuple(names))
+    assert all(runtime_names) and len(set(runtime_names)) == 3
+    assert hashlib.sha256(preview).hexdigest() == "96ada81d0b8f35573fa81e0a3830b018a1d46ff26fff778f3be0a0deed618ebe"
+    return {"copies": len(copies), "preserved_objects": len(original),
+            "source_sha256": hashlib.sha256(preview).hexdigest()}
+
+
 def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     import ssl
     import ctypes
@@ -173,6 +211,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     assert hashlib.sha256(preview).hexdigest() == "96ada81d0b8f35573fa81e0a3830b018a1d46ff26fff778f3be0a0deed618ebe"
     preview_clips = [obj.read().m_Name for obj in UnityPy.load(preview).objects if obj.type.name == "AnimationClip"]
     assert preview_clips == ["ch0301_GEN_preview1_L"]
+    clone_report = clone_bundle_checks(preview)
 
     assert sys.version_info[:2] == (3, 13)
     assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
@@ -244,6 +283,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
             "gallery_thumbnail_png": True, "gallery_png_sha256": gallery_sha256,
             "adminui_and_webtools_imports": True, "astc_encode_decode": True,
             "bundled_suit_preview": True,
+            "clone_bundle_isolation": True, "clone_bundle_report": clone_report,
             "astc_sha256": hashlib.sha256(astc_data).hexdigest(), "astc_mean_error": round(float(difference), 3)}
 
 
