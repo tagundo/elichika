@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fresh APK10 provider + public Rina fixture + original-game HOME bootstrap."""
+"""Frozen signed provider + public Rina fixture + original-game HOME bootstrap."""
 import argparse
 from contextlib import closing
 import hashlib
@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import android_gl_visual_smoke as smoke
 from android_release_smoke import Android, Client, FILES
 
-APK_SHA = "3367c377bfbca556b1617fe78a1b433e2e6a7ad7c3dbeac8f07fb13e7713b2f9"
+APK_SHA = "6f8998c12e459b82d878ba93db2660693ced20b442dd3f093d7d7513735ac690"
 SPLIT = 912093017
 BASELINE = 912093018
 OWNER = 209
@@ -26,14 +26,14 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def prepare_rina(android, before):
+def prepare_rina(android, before, require_provider_onboarding=False):
     # Exactly the original game's newly created disposable account. No account
     # or secret from a command document is accepted by the normal-API helper.
     android.shell("am", "force-stop", smoke.GAME)
     created = smoke.account_ids(android) - before
     assert len(created) == 1, "Exactly one original-game-created account required"
     from scene_fixture import prepare
-    return prepare(android, created.pop())
+    return prepare(android, created.pop(), require_provider_onboarding=require_provider_onboarding)
 
 
 def main():
@@ -44,13 +44,15 @@ def main():
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--live-python", type=Path, required=True)
     parser.add_argument("--bridge", type=Path, required=True)
+    parser.add_argument("--require-provider-onboarding", action="store_true",
+                        help="Refuse to fixture-complete guides that the signed provider login must already finish")
     args = parser.parse_args()
     args.evidence.mkdir(parents=True, exist_ok=True)
     args.temporary.mkdir(parents=True, exist_ok=True)
     args.serial, args.interval = "127.0.0.1:5555", 10
     args.qa_language, args.qa_download_mode = "en", "light"
     report = {"status": "RUNNING", "captures": [], "candidate_sha256": APK_SHA,
-              "scope": "Fresh public fixture on frozen APK10 provider; original GL3.12 scene investigation; no personal device or account"}
+              "scope": "Fresh public fixture on frozen signed2026.11.07.1 provider; original GL3.12 scene investigation; no personal device or account"}
     state = args.evidence / "gl-visual-smoke.json"
     android = Android(args.serial, args.evidence)
     assert android.shell("getprop", "ro.hardware") == "redroid"
@@ -58,7 +60,7 @@ def main():
     assert android.shell("id").startswith("uid=0")
     assert digest(args.candidate) == APK_SHA and digest(args.game) == smoke.GAME_SHA
     try:
-        report["candidate_install"] = android.install(args.candidate, 2026110610)
+        report["candidate_install"] = android.install(args.candidate, 2026110701)
         report["candidate_start"] = android.start("rina-provider-initial")
         assert smoke.account_ids(android) == set(), "Fresh provider must have zero accounts"
         smoke.stop_server(android)
@@ -121,9 +123,13 @@ def main():
             smoke.observe_live_ui(android, args, report, "first-login", seconds=45)
         if smoke.account_ids(android) == before and smoke.tap_ready_title(android, args, report, phase="retry"):
             smoke.observe_live_ui(android, args, report, "retry-login", seconds=45)
-        report["new_home"] = prepare_rina(android, before)
+        report["new_home"] = prepare_rina(android, before, args.require_provider_onboarding)
         report["play_services_warning_dismissed"] = False
+        report["crash_capture_not_before_unix_seconds"] = time.time()
         android.shell("am", "start", "-W", "-n", component, timeout=90)
+        started_pid = android.shell("pidof", "-s", smoke.GAME)
+        assert started_pid.isdecimal(), "Original game did not expose its scenario PID"
+        report["game_pid"] = int(started_pid)
         for index in range(3):
             time.sleep(2)
             smoke.capture(android, args.evidence, f"rina-restart-{index}", report)

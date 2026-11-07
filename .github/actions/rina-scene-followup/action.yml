@@ -20,7 +20,7 @@ runs:
           --live-python "$RUNNER_TEMP/qa-python/bin/python" \
           --output "evidence/followup-$FOLLOWUP_SEQUENCE" \
           --state evidence/gl/gl-visual-smoke.json --qa-language en \
-          --command-ref codex/rina-scene-model-qa-20261107 \
+          --command-ref codex/rina-scene-model-qa-v2-20261107 \
           --repository "$GITHUB_REPOSITORY"
         "$RUNNER_TEMP/qa-python/bin/python" tests/rina_scene_qa/request_snapshot.py \
           --observer-dir evidence/scene-observer --label "followup-$FOLLOWUP_SEQUENCE"
@@ -28,6 +28,15 @@ runs:
           "evidence/followup-$FOLLOWUP_SEQUENCE/native-snapshot.json"
         cp evidence/scene-observer/ready.json "evidence/followup-$FOLLOWUP_SEQUENCE/native-ready.json"
         cp evidence/scene-observer/events.jsonl "evidence/followup-$FOLLOWUP_SEQUENCE/native-events.jsonl"
+    - name: Capture bounded owned-game native crash evidence
+      if: always()
+      shell: bash
+      env:
+        FOLLOWUP_SEQUENCE: ${{ inputs.sequence }}
+      run: |
+        python3 tests/rina_scene_qa/crash_capture.py \
+          --state evidence/gl/gl-visual-smoke.json \
+          --output "evidence/followup-$FOLLOWUP_SEQUENCE/native-crash.json" || true
     - name: Upload scoped scene evidence
       if: always()
       uses: actions/upload-artifact@v4

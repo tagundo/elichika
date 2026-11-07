@@ -15,7 +15,7 @@ import math
 from pathlib import Path
 
 GAME_SHA = "8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e"
-APK_SHA = "3367c377bfbca556b1617fe78a1b433e2e6a7ad7c3dbeac8f07fb13e7713b2f9"
+APK_SHA = "6f8998c12e459b82d878ba93db2660693ced20b442dd3f093d7d7513735ac690"
 SPLIT, BASELINE = 912093017, 912093018
 NODE = "LLAS.Scene.Live.Components.LiveCoreMemberNodeScaling."
 NAVI = "LLAS.Components.Navi.NaviMember.Initialize"

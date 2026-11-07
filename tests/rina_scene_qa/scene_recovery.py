@@ -184,6 +184,7 @@ def repair(android, args, state, report):
         args.qa_download_mode = "light"
         report["play_services_warning_dismissed"] = False
         report["game_launch_generation"] = 1
+        recovery["new_game_launch_unix_seconds"] = time.time()
         recovery["game_launch"] = android.shell("am", "start", "-W", "-n", choices[0], timeout=90)
         for index in range(3):
             smoke.capture(android, args.evidence, f"recovery-restart-{index}", report)

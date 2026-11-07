@@ -13,6 +13,7 @@ from android_release_smoke import Client, FILES
 SPLIT, BASELINE, OWNER, LIVE = 912093017, 912093018, 209, 12008
 STORY = 1020912
 BACKGROUNDS = (100100400, 202300200)
+SCENE_TIPS = (1, 2, 3, 4)
 CATALOGS = [("gl", platform, language) for language in ("en", "ko", "zh") for platform in ("a", "i")] + [
     ("jp", platform, "ja") for platform in ("a", "i")
 ]
@@ -126,9 +127,10 @@ def nullable_int(value):
     return value
 
 
-def prepare(android, expected_uid: int):
+def prepare(android, expected_uid: int, *, require_provider_onboarding=False):
     """Prepare only this verified account while the original game is stopped."""
     require(type(expected_uid) is int and 0 < expected_uid <= 2147483647, "Positive_expected_account_ID_required")
+    require(type(require_provider_onboarding) is bool, "Explicit_provider_onboarding_mode_required")
     stopped_disposable_game(android)
     with memory_db(android, "userdata.db") as db:
         owned_backgrounds = checked_account(db, expected_uid)
@@ -137,6 +139,10 @@ def prepare(android, expected_uid: int):
     stopped_disposable_game(android)
     with memory_db(android, "userdata.db") as db:
         require(background in checked_account(db, expected_uid), "Verified_background_ownership_changed")
+        previous_tips = {row[0] for row in db.execute("SELECT scene_tips_type FROM u_scene_tips WHERE user_id=?", (expected_uid,))}
+        missing_tips = [tip for tip in SCENE_TIPS if tip not in previous_tips]
+        # New tutorial-skip APK verification must not be masked by this fixture.
+        require(not require_provider_onboarding or not missing_tips, "Provider_login_did_not_complete_first_use_guides")
         auth = db.execute("SELECT session_key,command_id FROM u_authentication WHERE user_id=?", (expected_uid,)).fetchone()
         require(auth is not None and isinstance(auth[0], (bytes, bytearray)) and len(auth[0]) == 32
                 and type(auth[1]) is int and auth[1] >= 0, "Existing_disposable_session_required")
@@ -147,6 +153,11 @@ def prepare(android, expected_uid: int):
         # Normal endpoints only. finishUserStoryMember is idempotent once read;
         # no PlayerPrefs, callback patch, SQL write or account creation is used.
         client.request("/communicationMember/finishUserStoryMember", {"story_member_master_id": STORY, "is_auto_mode": None})
+        # An already-onboarded owned synthetic account is a scenario input.
+        # Complete only missing official guides through their normal endpoint;
+        # do not modify PlayerPrefs, native guide state or rule descriptions.
+        for tip in missing_tips:
+            client.request("/sceneTips/saveSceneTipsType", {"scene_tips_type": tip})
         client.request("/communicationMember/setTheme", {"member_master_id": OWNER, "suit_master_id": SPLIT,
                                                        "custom_background_master_id": background})
         client.request("/communicationMember/setFavoriteMember", {"member_master_id": OWNER})
@@ -158,6 +169,8 @@ def prepare(android, expected_uid: int):
         session, command = None, None
     with memory_db(android, "userdata.db") as db:
         require(background in checked_account(db, expected_uid), "Prepared_background_no_longer_owned")
+        final_tips = {row[0] for row in db.execute("SELECT scene_tips_type FROM u_scene_tips WHERE user_id=?", (expected_uid,))}
+        require(set(SCENE_TIPS) <= final_tips, "First_use_guide_completion_readback_mismatch")
         require(db.execute("SELECT favorite_member_id FROM u_status WHERE user_id=?", (expected_uid,)).fetchone()[0] == OWNER,
                 "Favorite_member_readback_mismatch")
         member = db.execute("SELECT suit_master_id,custom_background_master_id,view_status FROM u_member WHERE user_id=? AND member_master_id=?", (expected_uid, OWNER)).fetchone()
@@ -170,5 +183,11 @@ def prepare(android, expected_uid: int):
             "background_id": background, "baseline_suit": BASELINE,
             "rina_board_unlock": {"story_member_master_id": STORY, "is_new": False, "normal_api": True},
             "mv_live_id": LIVE, "view_status": 1, "game_rendering_verified": False,
+            "onboarding_fixture": {"main_tutorial_phase": 99, "completed_scene_tips": list(SCENE_TIPS),
+                                   "already_completed_before_fixture": sorted(set(SCENE_TIPS) & previous_tips),
+                                   "normal_API_completed": missing_tips,
+                                   "require_provider_onboarding": require_provider_onboarding,
+                                   "before_observed_Rina_scenario_restart": True,
+                                   "native_guide_state_or_PlayerPrefs_written": False},
             "background_validation": proof, "normal_API_only": True, "game_stopped_during_preparation": True,
             "auth_values_persisted": False}

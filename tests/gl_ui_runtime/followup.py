@@ -468,6 +468,7 @@ def execute(command, args, state, report):
                 with preserved.open("xb") as saved:
                     saved.write(original)
                 updated = dict(state, game_pid=recovered["new_game_pid"],
+                               crash_capture_not_before_unix_seconds=recovered["new_game_launch_unix_seconds"],
                                new_home=recovered["fixture"], observer_generation=1,
                                pre_model_recovery=recovered)
                 staged = args.state.with_suffix(".pending")

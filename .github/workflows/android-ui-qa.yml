@@ -63,12 +63,12 @@ jobs:
           adb -s 127.0.0.1:5555 install -r -g "$RUNNER_TEMP/LLAS_GL_LOCAL.apk"
           adb -s 127.0.0.1:5555 shell dumpsys package com.klab.lovelive.allstars.global > evidence/game-package.txt
 
-      - name: Download frozen APK10 provider without rebuilding
+      - name: Download verified signed tutorial provider without rebuilding
         uses: actions/download-artifact@v4
         with:
           name: elichika-release-apk
           path: candidate
-          run-id: 42269124453
+          run-id: 42339779291
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare pinned late-attach tooling
@@ -90,7 +90,8 @@ jobs:
             --candidate "${qa_apks[0]}" --game "$RUNNER_TEMP/LLAS_GL_LOCAL.apk" \
             --temporary "$RUNNER_TEMP/rina-scenes" --evidence evidence/gl \
             --live-python "$RUNNER_TEMP/qa-python/bin/python" \
-            --bridge "$RUNNER_TEMP/qa-tools/package/dist/index.js"
+            --bridge "$RUNNER_TEMP/qa-tools/package/dist/index.js" \
+            --require-provider-onboarding
 
       - name: Publish initial original-game scene evidence
         if: always()
@@ -360,8 +361,35 @@ jobs:
           mkdir -p evidence
           python3 tests/rina_scene_qa/collect_scene_diagnostics.py --evidence evidence || true
           adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
+          python3 tests/rina_scene_qa/crash_capture.py \
+            --state evidence/gl/gl-visual-smoke.json \
+            --output evidence/game-native-crashes-final.json || true
           docker logs rina-unity-qa > evidence/container.log 2>&1 || true
           docker rm --force rina-unity-qa || true
+
+      - name: Validate bounded owned-game crash evidence
+        if: always()
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          path = Path("evidence/game-native-crashes-final.json")
+          evidence = json.loads(path.read_text()) if path.exists() else {}
+          diagnostics_path = Path("evidence/scene-final-diagnostics.json")
+          diagnostics = json.loads(diagnostics_path.read_text()) if diagnostics_path.exists() else {}
+          complete = (evidence.get("status") == "CAPTURED" and isinstance(evidence.get("events"), list)
+                      and evidence.get("safe_errors") == [] and evidence.get("source_counts", {}).get("logcat") == 1)
+          crashed = bool(evidence.get("events"))
+          alive = diagnostics.get("game_process_running") is True
+          owned_alive = evidence.get("expected_pid_matches_running_pid") is True
+          status = "PASS_NO_OWNED_GAME_CRASH_CAPTURED" if complete and not crashed and alive and owned_alive else "FAILED_OR_INCOMPLETE_OWNED_GAME_RUNTIME"
+          report = {"status": status, "capture_complete": complete, "owned_game_crash_captured": crashed,
+                    "game_alive_at_final_diagnostics": alive, "same_owned_pid_running_at_capture": owned_alive,
+                    "scope": "This bounded original-game observation only; prior crashes and other processes are separate"}
+          Path("evidence/native-crash-verdict.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps(report))
+          raise SystemExit(0 if status == "PASS_NO_OWNED_GAME_CRASH_CAPTURED" else 1)
+          PYTHON
 
       - uses: actions/upload-artifact@v4
         if: always()
