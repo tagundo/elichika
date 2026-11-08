@@ -473,7 +473,11 @@ def _recovery_checks(template, work, workers):
                                           FROM_VERSION, TO_VERSION, merge_workers=workers)
         original = engine._replace
         def interrupt(source, destination):
-            marker = Path(destination) == root / engine.MARKER and Path(source).parent.name == "next"
+            # Android app cache paths may contain /data/user/0 aliases, while
+            # the production engine resolves its runtime root before publish.
+            # Normalize both sides, retaining the exact marker + next boundary.
+            marker = (Path(destination).resolve() == (root / engine.MARKER).resolve()
+                      and Path(source).parent.name == "next")
             if marker and not after_marker:
                 raise _PowerLoss()
             value = original(source, destination)

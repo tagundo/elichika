@@ -323,3 +323,10 @@ jobs:
       noop_probe_sha256: ${{ needs.instrumentation.outputs.noop_probe_sha256 }}
       focused_header_diagnostic: ${{ inputs.focused_header_diagnostic || false }}
       focused_header_font_scale: ${{ inputs.focused_header_font_scale || '1.0' }}
+
+  native-compatibility:
+    needs: instrumentation
+    uses: ./.github/workflows/android-16k.yml
+    with:
+      candidate_sha256: ${{ needs.instrumentation.outputs.candidate_sha256 }}
+      version_name: ${{ needs.instrumentation.outputs.version_name }}

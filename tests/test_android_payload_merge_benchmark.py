@@ -389,6 +389,28 @@ class MergeBenchmarkProtocolTests(unittest.TestCase):
         self.assertEqual(result["workers_4"], "RESOURCE_LIMIT_REFUSED")
         self.assertEqual(list(native.iterdir()), [])
 
+    def test_native_probe_recovers_through_parent_directory_alias_without_removing_alias(self):
+        real_parent = self.base / "real-parent"
+        native = real_parent / "cache/native-qa"
+        native.mkdir(parents=True)
+        sentinel = native / "keep"
+        sentinel.write_bytes(b"pre-existing alias target sentinel")
+        alias = self.base / "parent-alias"
+        alias.symlink_to(real_parent, target_is_directory=True)
+        aliased_native = alias / "cache/native-qa"
+        self.assertFalse(aliased_native.is_symlink())
+        self.assertNotEqual(aliased_native, aliased_native.resolve())
+
+        result = benchmark.native_merge_checks(aliased_native)
+
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["recovery"], [{"after_marker": False, "status": "ROLLED_BACK"},
+                                              {"after_marker": True, "status": "COMMITTED"}])
+        self.assertTrue(alias.is_symlink())
+        self.assertEqual(alias.resolve(), real_parent)
+        self.assertEqual(list(native.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_bytes(), b"pre-existing alias target sentinel")
+
     def test_native_probe_refuses_linked_or_relative_temporary_roots(self):
         outside = self.base / "outside-temporary"
         outside.mkdir()
