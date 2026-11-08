@@ -111,7 +111,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_viewer_mod_package.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_flow.py -v
           python3 -m unittest discover -s tests -p test_viewer_body_controls.py -v
-          python3 -m unittest discover -s tests -p test_game_models.py -v
+          python3 -m unittest discover -s tests -p 'test_game_models*.py' -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
           python3 -m unittest discover -s tests -p test_node_height_tool.py -v
           python3 -m unittest discover -s tests -p test_viewer_archive.py -v
@@ -201,6 +201,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/compact-layout" node tests/viewer_compact_layout_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/body-controls" node tests/viewer_body_controls_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/game-assets" node tests/viewer_game_assets_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/transplant-game-assets" node tests/transplant_game_assets_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/macos" node tests/viewer_macos_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/resolution" node tests/viewer_resolution_browser.js
 

@@ -51,6 +51,7 @@ class ViewerPersistenceTest {
             assertGameStopped()
             File(context.cacheDir, "viewer-persistence-report.json").delete()
             File(context.cacheDir, "viewer-persistence.png").delete()
+            File(context.cacheDir, "costume-transplant-picker.png").delete()
             assertEquals("The APK must package the audited original neutral persistence fixture",
                 "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1", sha256(neutralBytes))
             assertEquals("Use the fixed separate synthetic fractional ZIP without altering the original Unity fixture",
@@ -178,6 +179,7 @@ class ViewerPersistenceTest {
             val modPackage = saveNamedModPackage(context, webView, second, authoring, source, bytes, intended, sourceThigh)
             val installedMod = addToGameAndRestartGo(launched, webView, authoring, source, bytes)
             val accessory = exerciseAccessoryUnclip(context, webView)
+            val transplantPicker = exerciseTransplantPicker(launched, webView)
             val report = JSONObject().put("sourceSha256", sha256(bytes)).put("sourcePreserved", true)
                 .put("originalNeutralFixtureSha256", sha256(neutralBytes)).put("unityMemberSha256", sha256(member))
                 .put("fractionalZipValidation", fractionalValidation).put("sourceThighTransform", sourceThigh)
@@ -190,6 +192,7 @@ class ViewerPersistenceTest {
                 .put("reloadedVertices", reloaded).put("rebuiltVertices", rebuilt)
                 .put("nativeAssetNavigation", nativeNavigation)
                 .put("nativeAccessoryUnclip", accessory)
+                .put("nativeTransplantPicker", transplantPicker)
                 .put("namedInstallerModPackage", modPackage)
                 .put("editingServerRemainedStopped", true)
                 .put("actualAddToGame", installedMod).put("gameServerRemainedStopped", false)
@@ -373,6 +376,99 @@ class ViewerPersistenceTest {
                 .put("actualSerializedOracle", inspected).put("sourcePreserved", true)
                 .put("derivedOffsetExcludedFromEdits", true).put("recipeFlagPreserved", true)
         } finally { source.delete() }
+    }
+
+    private fun exerciseTransplantPicker(activity: MainActivity, webView: WebView): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assertGameStopped()
+        // Make a fresh unsaved edit after the preceding serialized uniform2
+        // check. The popup must leave this live authoring session untouched.
+        boneInput(webView, "BreastSize", "scale", "X", 1.9)
+        waitForDom(webView, "the pending Node+Accessory session before tool selection") {
+            "var s=ModelViewer.getState(),a=ModelViewer.getAuthoringState(),c=s.accessories;return JSON.stringify({" +
+                "ok:!!a.accessoryUnclip&&a.edits.length===1&&c&&c.status==='ready'&&!c.pending&&!c.error,error:c&&c.error||''});"
+        }
+        run(webView, "var s=ModelViewer.getState();window.__nativeTransplantReference={model:s.modelId,camera:JSON.parse(JSON.stringify(s.camera))," +
+            "token:ModelViewer.getEditingMetadata().token,authoring:JSON.stringify(ModelViewer.getAuthoringState())};" +
+            "if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(2048);")
+        instrumentation.runOnMainSync { NativeTabsQa.tab(activity, MainActivity.TAB_ASSET_TOOLS).select() }
+        waitForDom(webView, "the native Asset tools destination") {
+            "return JSON.stringify({ok:ElichikaNavigation.currentSection()==='tools'&&document.getElementById('tab-tools').classList.contains('active')});"
+        }
+        run(webView, "var tool=document.querySelector('#tool-list button[data-id=\"costume_transplant\"]');" +
+            "if(!tool)throw new Error('The packaged Costume Transplant tool is missing');tool.click();" +
+            "function field(name){return document.querySelector('#tool-form [data-name=\"'+name+'\"]');}" +
+            "field('donor').value='/native/manual-donor.unity';field('target').value='/native/manual-target.unity';" +
+            "field('suffix').value='_native_cancel_draft';field('preserve_physics').checked=false;field('mask_handling').checked=false;")
+        fun snapshot(): JSONObject = evaluate(webView, "function field(name){return document.querySelector('#tool-form [data-name=\"'+name+'\"]');}" +
+            "var s=ModelViewer.getState(),r=window.__nativeTransplantReference,delta=0;['position','target'].forEach(function(key){" +
+            "s.camera[key].forEach(function(v,i){delta=Math.max(delta,Math.abs(v-r.camera[key][i]));});});delta=Math.max(delta,Math.abs(s.camera.fov-r.camera.fov));" +
+            "return JSON.stringify({modelSame:s.modelId===r.model,tokenSame:ModelViewer.getEditingMetadata().token===r.token,cameraDelta:delta," +
+            "authoringSame:JSON.stringify(ModelViewer.getAuthoringState())===r.authoring,section:ElichikaNavigation.currentSection()," +
+            "donor:field('donor').value,target:field('target').value,suffix:field('suffix').value,preservePhysics:field('preserve_physics').checked," +
+            "maskHandling:field('mask_handling').checked,importRequests:performance.getEntriesByType('resource').filter(function(e){return new URL(e.name).pathname==='/api/viewer/game/import';}).length});")
+        val before = snapshot()
+        val dialogs = JSONArray()
+        for (fieldName in listOf("donor", "target")) {
+            run(webView, "var button=document.querySelector('[data-game-asset-field=\"$fieldName\"]');" +
+                "if(!button)throw new Error('The dedicated $fieldName game-assets button is missing');button.scrollIntoView({block:'center'});")
+            waitForDom(webView, "the visible $fieldName game-assets button") {
+                "var b=document.querySelector('[data-game-asset-field=\"$fieldName\"]'),r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);" +
+                    "return JSON.stringify({ok:!b.disabled&&r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&(hit===b||b.contains(hit))});"
+            }
+            val trigger = evaluate(webView, "var b=document.querySelector('[data-game-asset-field=\"$fieldName\"]');" +
+                "var label=b.getAttribute('title').split(' · ').pop();b.click();return JSON.stringify({label:label});")
+            waitForDom(webView, "the $fieldName popup and real stock character catalog") {
+                "var d=document.getElementById('viewer-game-assets-dialog'),c=document.getElementById('viewer-game-character'),p=document.getElementById('viewer-game-platform');" +
+                    "return JSON.stringify({ok:d.open&&!!p&&Array.prototype.some.call(c.options,function(o){return !!o.value;})," +
+                    "error:document.getElementById('viewer-game-assets-status').classList.contains('viewer-warning')?document.getElementById('viewer-game-assets-status').textContent:''});"
+            }
+            run(webView, "var c=document.getElementById('viewer-game-character');c.value=Array.prototype.filter.call(c.options,function(o){return !!o.value;})[0].value;c.dispatchEvent(new Event('change',{bubbles:true}));")
+            val catalog = waitForDom(webView, "the $fieldName popup's actual nonempty costume catalog") {
+                "var d=document.getElementById('viewer-game-assets-dialog'),c=document.getElementById('viewer-game-costume'),p=document.getElementById('viewer-game-platform'),r=d.getBoundingClientRect();" +
+                    "var choices=Array.prototype.filter.call(c.options,function(o){return !!o.value;});return JSON.stringify({ok:d.open&&choices.length>0&&!document.getElementById('viewer-game-import').disabled," +
+                    "title:document.getElementById('viewer-game-assets-title').textContent,platform:p.value,platforms:Array.prototype.map.call(p.options,function(o){return o.value;})," +
+                    "characters:document.getElementById('viewer-game-character').options.length-1,costumes:choices.length,dialogWidth:r.width,dialogHeight:r.height," +
+                    "error:document.getElementById('viewer-game-assets-status').classList.contains('viewer-warning')?document.getElementById('viewer-game-assets-status').textContent:''});"
+            }
+            assertTrue("The popup must identify its requested model field", catalog.getString("title").endsWith(trigger.getString("label")))
+            assertEquals("Cancel must not retain an unsubmitted platform from the other field", "android", catalog.getString("platform"))
+            assertEquals(listOf("android", "ios"), (0 until catalog.getJSONArray("platforms").length()).map { catalog.getJSONArray("platforms").getString(it) })
+            assertTrue(catalog.getInt("characters") > 0 && catalog.getInt("costumes") > 0)
+            assertTrue("The shared modal must be visible outside the hidden 3D section", catalog.getDouble("dialogWidth") > 200 && catalog.getDouble("dialogHeight") > 200)
+            if (fieldName == "donor") {
+                run(webView, "var p=document.getElementById('viewer-game-platform');p.value='ios';p.dispatchEvent(new Event('change',{bubbles:true}));")
+                instrumentation.uiAutomation.takeScreenshot()?.let { image ->
+                    File(activity.cacheDir, "costume-transplant-picker.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    image.recycle()
+                }
+            }
+            run(webView, if (fieldName == "donor") "document.querySelector('#viewer-game-assets-dialog .modal-head button').click();"
+                else "document.querySelector('#viewer-game-assets-dialog .viewer-game-assets-actions button:not(#viewer-game-import)').click();")
+            waitForDom(webView, "the canceled $fieldName popup") {
+                "return JSON.stringify({ok:!document.getElementById('viewer-game-assets-dialog').open});"
+            }
+            val after = snapshot()
+            for (key in listOf("donor", "target", "suffix", "preservePhysics", "maskHandling")) {
+                assertEquals("Cancel must preserve the existing $key value", before.get(key), after.get(key))
+            }
+            assertTrue(after.getBoolean("modelSame") && after.getBoolean("tokenSame") && after.getBoolean("authoringSame"))
+            assertEquals("The picker must not move the existing preview camera", 0.0, after.getDouble("cameraDelta"), 1e-7)
+            assertEquals("tools", after.getString("section"))
+            assertEquals("No body import/download may run during this native cancel-only smoke", before.getInt("importRequests"), after.getInt("importRequests"))
+            instrumentation.runOnMainSync {
+                assertEquals(MainActivity.TAB_ASSET_TOOLS, NativeTabsQa.selectedId(activity))
+                val visible = descendants(activity.findViewById(R.id.content)).filterIsInstance<WebView>().filter { it.visibility == View.VISIBLE }.toList()
+                assertEquals("The modal must keep the same active shared WebView", listOf(webView), visible)
+            }
+            dialogs.put(JSONObject().put("field", fieldName).put("catalog", catalog).put("cancelPreservedDraftsAndScene", true))
+        }
+        assertFalse("Donor and target titles must distinguish their destinations", dialogs.getJSONObject(0).getJSONObject("catalog").getString("title") == dialogs.getJSONObject(1).getJSONObject("catalog").getString("title"))
+        assertGameStopped()
+        return JSONObject().put("status", "PASS").put("scope", "Actual native buttons and local stock catalog; cancel only, no body download or transplant execution")
+            .put("dialogs", dialogs).put("sameWebView", true).put("pendingNodeAndAccessoryPreserved", true)
+            .put("modelTokenAndCameraPreserved", true).put("manualDraftsAndOptionsPreserved", true)
+            .put("nativeToolsSelectionPreserved", true).put("unsubmittedPlatformNotRetained", true).put("bodyImportRequests", 0)
     }
 
     private val accessoryInspectionScript = """
