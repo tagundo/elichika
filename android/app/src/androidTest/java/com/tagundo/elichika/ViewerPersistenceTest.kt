@@ -353,7 +353,14 @@ class ViewerPersistenceTest {
             // planning/CLI function computes this oracle: (uniform2 - 1)*C.
             val expectedDelta = doubleArrayOf(-.25166666666666665, .013333333333333334, .025)
             for (axis in 0..2) assertEquals("Three-space accessory delta axis$axis", expectedDelta[axis], delta.getDouble(axis), 2e-6)
-            val anchor = evaluate(webView, "var b=ModelViewer.getState().rig.bones.filter(function(b){return b.name==='PartsA_Offset';})[0];return JSON.stringify({position:b.position});").getJSONArray("position")
+            val anchorIdentity = evaluate(webView, "var m=ModelViewer.getEditingMetadata(),s=ModelViewer.getState();" +
+                "var nodes=m.nodes.filter(function(n){return n.name==='PartsA_Offset';});" +
+                "if(nodes.length!==1)throw new Error('The accessory fixture must have one metadata anchor');" +
+                "var bones=s.rig.bones.filter(function(b){return String(b.node)===String(nodes[0].node);});" +
+                "if(bones.length!==1)throw new Error('The metadata node must identify one actual rig anchor');" +
+                "return JSON.stringify({node:String(nodes[0].node),publicName:bones[0].name,position:bones[0].position});")
+            assertEquals("The preview and endpoint must identify the same unique anchor", response.getJSONArray("corrections").getJSONObject(0).get("node").toString(), anchorIdentity.getString("node"))
+            val anchor = anchorIdentity.getJSONArray("position")
             val expectedThreePosition = doubleArrayOf(-.26166666666666666, .03333333333333333, .045)
             for (axis in 0..2) assertEquals("The real preview must install the endpoint correction axis$axis", expectedThreePosition[axis], anchor.getDouble(axis), 2e-6)
             val saved = save(webView)
@@ -373,6 +380,7 @@ class ViewerPersistenceTest {
             return JSONObject().put("status", "PASS").put("fixtureSha256", sha256(bytes))
                 .put("packagedModule", packagedModule.get("__name__").toString())
                 .put("actualHttpResponse", response).put("actualPreview", ready.getJSONObject("accessories"))
+                .put("actualAnchorIdentity", anchorIdentity)
                 .put("actualSerializedOracle", inspected).put("sourcePreserved", true)
                 .put("derivedOffsetExcludedFromEdits", true).put("recipeFlagPreserved", true)
         } finally { source.delete() }

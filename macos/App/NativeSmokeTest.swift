@@ -352,8 +352,16 @@ final class NativeSmokeTest {
         try require(summary["status"] as? String == "applied" && summary["changed"] as? Int == 1 && corrections.count == 1,
                     "The real HTTP endpoint must derive exactly one accessory anchor.")
         guard let delta = corrections[0]["delta"] as? [Double] else { throw NativeError.invalidResponse }
-        let anchor = try await object(webView, "var b=ModelViewer.getState().rig.bones.find(function(b){return b.name==='PartsA_Offset';});return JSON.stringify({position:b.position});")
-        guard let position = anchor["position"] as? [Double] else { throw NativeError.invalidResponse }
+        let anchor = try await object(webView, """
+            var targets=ModelViewer.getEditingMetadata().nodes.filter(function(n){return n.name==='PartsA_Offset';});
+            if(targets.length!==1)throw new Error('The source metadata must identify one accessory anchor');
+            var target=targets[0],bones=ModelViewer.getState().rig.bones.filter(function(b){return String(b.node)===String(target.node);});
+            if(bones.length!==1)throw new Error('The real rig must identify the source accessory node exactly once');
+            return JSON.stringify({node:target.node,position:bones[0].position,path:bones[0].name});
+            """)
+        guard let position = anchor["position"] as? [Double], let anchorNode = anchor["node"] as? Int,
+              let correctionNode = corrections[0]["node"] as? Int else { throw NativeError.invalidResponse }
+        try require(anchorNode == correctionNode, "The HTTP correction must target the same stable source anchor as the real rig.")
         // Independent fixture centroid C; uniform2 requests (2-1)*C.
         try require(try difference([delta], [[-0.25166666666666665, 0.013333333333333334, 0.025]]) < 0.000002,
                     "The actual HTTP correction differs from the independent original centroid.")
@@ -378,7 +386,7 @@ final class NativeSmokeTest {
         try require(try Data(contentsOf: source) == original, "Accessory editing must preserve its original source bytes.")
         try await snapshot(webView, directory.appendingPathComponent("accessory-saved-model.png"))
         report["native_accessory_unclip"] = ["status": "PASS", "source_path": source.path, "fixture_sha256": digest,
-            "actual_http_response": response, "actual_preview": preview, "actual_anchor": position,
+            "actual_http_response": response, "actual_preview": preview, "actual_anchor": position, "actual_anchor_node": anchorNode,
             "export": result, "source_preserved": true, "derived_offset_excluded_from_edits": true,
             "recipe_flag_preserved": true, "saved_geometry_max_error": error, "skinned_vertices_compared": 21]
         try checkpoint("native-accessory-reloaded")
