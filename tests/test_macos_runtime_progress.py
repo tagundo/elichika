@@ -170,7 +170,39 @@ class MacReadinessTests(unittest.TestCase):
             "python": sys.executable,
             "console_tail": [re.sub(r"\b[0-9a-f]{32}\b", "<nonce>", line)[:400]
                              for line in controller._test_log_messages[-12:]],
+            "probes": list(getattr(controller, "_test_probe_messages", [])),
         }, sort_keys=True)
+
+    def trace_child_probes(self, controller):
+        original = controller._probe_http_address
+        probe_code = original.__func__.__code__
+        controller._test_probe_messages = []
+        def probe(address, port, token):
+            record = {"exceptions": []}
+            def trace_probe(frame, event, argument):
+                if frame.f_code is not probe_code:
+                    return None
+                if event == "exception":
+                    kind, error, _ = argument
+                    record["exceptions"].append({
+                        "line": frame.f_lineno, "type": kind.__name__,
+                        "errno": getattr(error, "errno", None),
+                        "message": str(error).replace(token, "<nonce>")[:200],
+                    })
+                return trace_probe
+            previous_trace = sys.gettrace()
+            started = time.monotonic()
+            try:
+                sys.settrace(trace_probe)
+                result = original(address, port, token)
+                record["result"] = result
+                return result
+            finally:
+                sys.settrace(previous_trace)
+                record["elapsed"] = round(time.monotonic() - started, 4)
+                controller._test_probe_messages.append(record)
+                controller._test_probe_messages[:] = controller._test_probe_messages[-6:]
+        controller._probe_http_address = probe
 
     def test_http_probe_requires_own_child_nonce_and_sends_no_token_in_request(self):
         controller, _, port = self.controller()
@@ -292,13 +324,24 @@ class MacReadinessTests(unittest.TestCase):
 
     def test_stop_during_drip_does_not_delay_or_mark_next_child_ready(self):
         controller, data, _ = self.controller()
+        self.trace_child_probes(controller)
         (data / "drip").touch()
-        script = '''import http.server,json,os,pathlib,time
+        script = '''print('fixture:import-begin',flush=True)
+import http.server,json,os,pathlib,socket,time
+print('fixture:imports-ready',flush=True)
+original_getfqdn=socket.getfqdn
+def traced_getfqdn(*args,**kwargs):
+ print('fixture:getfqdn-begin',flush=True)
+ try:return original_getfqdn(*args,**kwargs)
+ finally:print('fixture:getfqdn-end',flush=True)
+socket.getfqdn=traced_getfqdn
 port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1])
+print('fixture:config-ready',flush=True)
 class Handler(http.server.BaseHTTPRequestHandler):
  disable_nagle_algorithm=True
  def log_message(self,*_):pass
  def do_GET(self):
+  print('fixture:GET',flush=True)
   raw=json.dumps({'ready':True,'token':os.environ['ELICHIKA_READY_TOKEN']}).encode()
   self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers()
   try:
@@ -307,7 +350,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
     for byte in raw:self.wfile.write(bytes([byte]));self.wfile.flush();time.sleep(.08)
    else:self.wfile.write(raw)
   except (BrokenPipeError,ConnectionResetError):pass
-http.server.HTTPServer(('127.0.0.1',port),Handler).serve_forever()
+print('fixture:constructor-begin',flush=True)
+server=http.server.HTTPServer(('127.0.0.1',port),Handler)
+print('fixture:constructor-end',flush=True)
+print('fixture:serve-begin',flush=True)
+server.serve_forever()
 '''
         controller.binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable)
                                      + " -B -c " + shlex.quote(script) + "\n")
@@ -352,18 +399,32 @@ http.server.HTTPServer(('127.0.0.1',port),Handler).serve_forever()
 
     def test_real_child_listens_before_http_ready_and_restart_stays_loading(self):
         controller, data, _ = self.controller()
-        script = '''import http.server,json,os,pathlib,time
+        self.trace_child_probes(controller)
+        script = '''print('fixture:import-begin',flush=True)
+import http.server,json,os,pathlib,socket,time
+print('fixture:imports-ready',flush=True)
+original_getfqdn=socket.getfqdn
+def traced_getfqdn(*args,**kwargs):
+ print('fixture:getfqdn-begin',flush=True)
+ try:return original_getfqdn(*args,**kwargs)
+ finally:print('fixture:getfqdn-end',flush=True)
+socket.getfqdn=traced_getfqdn
 port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1])
+print('fixture:config-ready',flush=True)
 class Handler(http.server.BaseHTTPRequestHandler):
  disable_nagle_algorithm=True
  def log_message(self,*_):pass
  def do_GET(self):
+  print('fixture:GET',flush=True)
   raw=json.dumps({'ready':True,'token':os.environ['ELICHIKA_READY_TOKEN']}).encode()
   self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers()
   try:self.wfile.write(raw)
   except BrokenPipeError:pass
+print('fixture:constructor-begin',flush=True)
 server=http.server.HTTPServer(('127.0.0.1',port),Handler)
+print('fixture:constructor-end',flush=True)
 time.sleep(.5)
+print('fixture:serve-begin',flush=True)
 server.serve_forever()
 '''
         controller.binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable)
