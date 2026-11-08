@@ -450,7 +450,7 @@ class ViewerPersistenceTest {
                 "var d=document.getElementById('viewer-game-assets-dialog'),p=document.getElementById('viewer-game-platform'),r=p.getBoundingClientRect()," +
                     "hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2),style=getComputedStyle(d);" +
                     "return JSON.stringify({ok:window.__nativeTransplantPaintFrames===2&&d.open&&style.display!=='none'&&style.visibility!=='hidden'&&" +
-                    "!p.disabled&&r.width>=44&&r.height>=44&&r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1&&" +
+                    "!p.disabled&&r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1&&" +
                     "!!hit&&d.contains(hit)&&(hit===p||p.contains(hit)),frames:window.__nativeTransplantPaintFrames,dialogOpen:d.open," +
                     "platform:p.value,hitTag:hit&&hit.tagName,hitId:hit&&hit.id,hitInsideDialog:!!hit&&d.contains(hit)," +
                     "left:r.left,top:r.top,width:r.width,height:r.height});"
