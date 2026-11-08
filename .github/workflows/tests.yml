@@ -102,6 +102,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
           python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
           python3 -m unittest discover -s tests -p test_model_edits.py -v
+          python3 -m unittest discover -s tests -p 'test_model_accessory_unclip*.py' -v
           python3 -m unittest discover -s tests -p 'test_viewer_scene*.py' -v
           python3 -m unittest discover -s tests -p test_viewer_execution_model_graph.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_sources.py -v
@@ -181,6 +182,8 @@ jobs:
             sleep 1
           done
           curl --fail --silent "$VIEWER_URL/api/tools" > /dev/null
+          EVIDENCE_DIR="$EVIDENCE_DIR/navigation" node tests/viewer_navigation_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/runtime-optimization" node tests/viewer_runtime_optimization_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/layout" node tests/viewer_layout_browser.js

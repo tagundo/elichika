@@ -393,7 +393,7 @@ class ModelViewerRigTest {
             preferences.edit().putBoolean("seen_guide", true).commit()
             val launched = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
             activity = launched
-            instrumentation.runOnMainSync { launched.findViewById<TabLayout>(R.id.tabs).getTabAt(4)!!.select() }
+            instrumentation.runOnMainSync { NativeTabsQa.tab(launched, MainActivity.TAB_MODEL_VIEWER).select() }
             val browser = waitForWebView(launched)
             webView = browser
             waitForDom(browser, "the real offline rig viewer") {
@@ -879,7 +879,7 @@ class ModelViewerRigTest {
                     it.getInt("systemUiVisibility") == normalNative.getInt("systemUiVisibility") &&
                     it.getInt("windowFlags") == normalNative.getInt("windowFlags")
             }
-            assertEquals("Fullscreen Back must stay on the modeling-tools tab", 4, current.getInt("selectedTab"))
+            assertEquals("Fullscreen Back must stay on the model viewer tab", normalNative.getInt("selectedTab"), current.getInt("selectedTab"))
             assertTrue(current.getBoolean("webViewAttached"))
             if (checkFocus) assertEquals("Leaving fullscreen restores the original native focus target", normalNative.getInt("focusIdentity"), current.getInt("focusIdentity"))
             val state = assertPreserved()
@@ -937,7 +937,7 @@ class ModelViewerRigTest {
                 it.getInt("selectedTab") == 0 && it.getInt("headerVisibility") == normalNative.getInt("headerVisibility") &&
                     it.getInt("tabsVisibility") == normalNative.getInt("tabsVisibility")
             }
-            instrumentation.runOnMainSync { activity.findViewById<TabLayout>(R.id.tabs).getTabAt(4)!!.select() }
+            instrumentation.runOnMainSync { NativeTabsQa.tab(activity, MainActivity.TAB_MODEL_VIEWER).select() }
             waitMode("none")
             val afterNativeTab = assertNormal(checkFocus = false)
             enter()

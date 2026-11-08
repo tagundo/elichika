@@ -142,7 +142,7 @@ enum IPAddress {
 }
 
 struct NativeRequest: Decodable {
-    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth }
+    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth, setSection }
     let id: String
     let action: Action
     let multiple: Bool?
@@ -152,6 +152,8 @@ struct NativeRequest: Decodable {
     let enabled: Bool?
     let language: String?
     let width: Int?
+    let section: String?
+    let event: String?
 
     static func parse(_ body: Any) throws -> NativeRequest {
         guard JSONSerialization.isValidJSONObject(body) else { throw NativeError.invalidMessage }
@@ -166,6 +168,9 @@ struct NativeRequest: Decodable {
             guard let width = request.width, width == 0 || (240...640).contains(width) else { throw NativeError.invalidMessage }
         } else if request.action == .setViewerFilesWidth {
             guard let width = request.width, width == 0 || (160...360).contains(width) else { throw NativeError.invalidMessage }
+        } else if request.action == .setSection {
+            guard let section = request.section, AssetEditorSection(rawValue: section) != nil else { throw NativeError.invalidMessage }
+            if let event = request.event, AssetSectionEvent(rawValue: event) == nil { throw NativeError.invalidMessage }
         }
         return request
     }
@@ -189,14 +194,15 @@ enum NativeError: LocalizedError {
 }
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case server, accounts, content, assets, settings
+    case server, accounts, content, assets, viewer, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .server: return "server.rack"
         case .accounts: return "person.crop.circle"
         case .content: return "externaldrive"
-        case .assets: return "cube.transparent"
+        case .assets: return "wrench.and.screwdriver"
+        case .viewer: return "cube.transparent"
         case .settings: return "gearshape"
         }
     }
@@ -205,10 +211,58 @@ enum AppSection: String, CaseIterable, Identifiable {
             "server": ["Server", "서버", "サーバー"],
             "accounts": ["Accounts", "계정", "アカウント"],
             "content": ["Server content", "서버 콘텐츠", "サーバーコンテンツ"],
-            "assets": ["Asset editing", "에셋 편집", "アセット編集"],
+            "assets": ["Asset editing tools", "에셋 편집툴", "アセット編集ツール"],
+            "viewer": ["3D model", "3D 모델", "3Dモデル"],
             "settings": ["Settings", "설정", "設定"],
         ]
         return strings[rawValue]![language == "ko" ? 1 : language == "ja" ? 2 : 0]
+    }
+
+    var assetEditorSection: AssetEditorSection? {
+        switch self {
+        case .assets: return .tools
+        case .viewer: return .viewer
+        default: return nil
+        }
+    }
+}
+
+enum AssetEditorSection: String, CaseIterable, Sendable {
+    case tools, viewer
+
+    var appSection: AppSection { self == .tools ? .assets : .viewer }
+
+    static func embeddedURL(_ base: URL, section: Self) -> URL? {
+        guard TrustedOrigin(base) != nil,
+              var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
+        var items = components.queryItems ?? []
+        items.removeAll { $0.name == "embedded" }
+        items.append(URLQueryItem(name: "embedded", value: "1"))
+        components.queryItems = items
+        components.fragment = section.rawValue
+        return components.url
+    }
+}
+
+enum AssetSectionEvent: String { case ready, change }
+
+/// Keep the latest native destination while the shared page is loading.
+struct AssetNavigationState {
+    private(set) var desired: AssetEditorSection
+    private(set) var sent: AssetEditorSection?
+
+    init(desired: AssetEditorSection = .tools) { self.desired = desired }
+    var needsUpdate: Bool { sent != desired }
+    mutating func select(_ section: AssetEditorSection) { desired = section }
+    mutating func pageReady() { sent = nil }
+    mutating func markSent(_ section: AssetEditorSection) {
+        if section == desired { sent = section }
+    }
+    mutating func retry(_ section: AssetEditorSection) {
+        if section == desired && sent == section { sent = nil }
+    }
+    mutating func pageChanged(_ section: AssetEditorSection) {
+        desired = section; sent = section
     }
 }
 

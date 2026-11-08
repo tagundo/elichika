@@ -180,6 +180,7 @@ final class NativeSmokeTest {
             try require(authored.count == 2 && Set(authored.compactMap { $0["method"] as? String }) == Set(["node", "mesh"]), "Both editing backends must receive real edits.")
             let intended = try await vertices(webView)
             try require(try difference(baseline, intended) > 0.01, "The actual skin must change after editing.")
+            try await checkAssetNavigationPreservesDraft(webView)
             try await checkSeparatePoseBodyPanels(webView)
             try await checkInvalidBodyDraftMenuSave(webView)
             model.perform("saveModel")
@@ -230,6 +231,7 @@ final class NativeSmokeTest {
             try require(preservedSource == original && preservedZIP == originalZIP,
                         "Saving the installer ZIP must preserve both original fixture files.")
             try await checkMinimizedViewer(webView)
+            try await checkAccessoryUnclip(webView, directory: directory)
             _ = try await model.request("/v1/server/start", method: "POST")
             try checkpoint("quit-server-start-requested")
             try await wait("the game server before quitting", timeout: 120) {
@@ -270,6 +272,89 @@ final class NativeSmokeTest {
             try? checkpoint("failed")
             Darwin.exit(1)
         }
+    }
+
+    private func checkAccessoryUnclip(_ webView: WKWebView, directory: URL) async throws {
+        try checkpoint("native-accessory-source")
+        let source = directory.appendingPathComponent("accessory-overlap.unity")
+        let original = try Data(contentsOf: source)
+        let digest = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+        try require(digest == "4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e",
+                    "The own-geometry accessory fixture must match the audited input.")
+        let before = try await object(webView, "return JSON.stringify({id:ModelViewer.getState().modelId||''});")
+        let oldID = String(decoding: try JSONSerialization.data(withJSONObject: [before["id"] as? String ?? ""]), as: UTF8.self) + "[0]"
+        _ = try await js(webView, "var a=document.getElementById('viewer-auto-face');if(a&&a.checked)a.click();return true;")
+        let paths = try await model.authorize([source])
+        model.selectedSection = .viewer
+        model.browser(.assets).perform("openModel", paths: paths)
+        try await waitJS(webView, "the newly authorized accessory source", timeout: 120, expression:
+            "ModelViewer.getState().modelId!==" + oldID + "&&ModelViewer.getState().loaded&&!ModelViewer.getState().loading")
+        try await loaded(webView, expectedVertices: 21, expectedTriangles: 7)
+        try await waitJS(webView, "the packaged accessory script and source editing session", timeout: 30, expression:
+            "!!window.ViewerAccessories&&!!ModelViewer.getState().accessories&&!!ModelViewer.getEditingMetadata().token")
+        _ = try await js(webView, """
+            document.getElementById('viewer-body-adjustments').open=true;
+            document.getElementById('viewer-node-editor').open=true;
+            document.getElementById('viewer-editor-node-tab').click();
+            for(var axis of ['X','Y','Z'])ViewerRigQa.boneInput('BreastSize','scale',axis,2);
+            ViewerRigQa.input('viewer-save-method','node','change');
+            document.getElementById('viewer-accessory-card').open=true;
+            var checkbox=document.getElementById('viewer-accessory-enabled');
+            if(checkbox.disabled)throw new Error('The source-bound accessory checkbox must be enabled');
+            if(!checkbox.checked)checkbox.click();return true;
+            """)
+        try await waitJS(webView, "the real accessory request and derived preview", timeout: 90, expression:
+            "(function(){var a=ModelViewer.getState().accessories;return a&&a.enabled&&!a.pending&&!a.error&&a.status==='ready'&&a.changed===1;})()")
+        let preview = try await object(webView, "return JSON.stringify(ModelViewer.getState().accessories);")
+        let authored = try await object(webView, "return JSON.stringify(ModelViewer.getAuthoringState());")
+        let edits = authored["edits"] as? [[String: Any]] ?? []
+        let options = authored["accessoryUnclip"] as? [String: Any] ?? [:]
+        try require(edits.count == 1 && edits[0]["method"] as? String == "node" && edits[0]["compensate"] as? Bool == false,
+                    "Derived accessory movement must not become another body edit.")
+        try require(options["strength"] as? Double == 1 && options["overlap"] as? Double == 0.15 && options["closeGaps"] as? Bool == false,
+                    "The actual accessory UI must preserve its default source-bound settings.")
+        let response = try await object(webView, """
+            var state=ModelViewer.getAuthoringState();delete state.unsupported;
+            var response=await fetch('/api/viewer/edit/accessories',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({token:ModelViewer.getEditingMetadata().token,state:state})});
+            var value=await response.json();if(!response.ok||value.error)throw new Error(value.error||'Accessory endpoint failed');
+            return JSON.stringify(value);
+            """)
+        let summary = response["summary"] as? [String: Any] ?? [:]
+        let corrections = response["corrections"] as? [[String: Any]] ?? []
+        try require(summary["status"] as? String == "applied" && summary["changed"] as? Int == 1 && corrections.count == 1,
+                    "The real HTTP endpoint must derive exactly one accessory anchor.")
+        guard let delta = corrections[0]["delta"] as? [Double] else { throw NativeError.invalidResponse }
+        let anchor = try await object(webView, "var b=ModelViewer.getState().rig.bones.find(function(b){return b.name==='PartsA_Offset';});return JSON.stringify({position:b.position});")
+        guard let position = anchor["position"] as? [Double] else { throw NativeError.invalidResponse }
+        // Independent fixture centroid C; uniform2 requests (2-1)*C.
+        try require(try difference([delta], [[-0.25166666666666665, 0.013333333333333334, 0.025]]) < 0.000002,
+                    "The actual HTTP correction differs from the independent original centroid.")
+        try require(try difference([position], [[-0.26166666666666666, 0.03333333333333333, 0.045]]) < 0.000002,
+                    "The real WebGL rig must install the derived anchor exactly once.")
+        let intended = try await vertices(webView, expectedCount: 21)
+        let prior = try await object(webView, "return JSON.stringify(ModelViewer.getState().persistence);")
+        model.perform("saveModel")
+        try checkpoint("native-accessory-export")
+        let result = try await saved(webView, previousJob: prior["jobId"] as? String ?? "")
+        try checkFiles(result)
+        guard let recipePath = result["recipePath"] as? String,
+              let recipe = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: recipePath))) as? [String: Any],
+              let state = recipe["state"] as? [String: Any] else { throw NativeError.invalidResponse }
+        try require(state["accessoryUnclip"] as? [String: Any] != nil && (state["edits"] as? [[String: Any]])?.count == 1,
+                    "The recipe must retain accessory settings without accumulating derived offsets.")
+        _ = try await js(webView, "document.getElementById('viewer-open-saved').click();return true;")
+        try await loaded(webView, reviewing: true, expectedVertices: 21, expectedTriangles: 7)
+        let reloaded = try await vertices(webView, expectedCount: 21)
+        let error = try difference(intended, reloaded)
+        try require(error < 0.00002, "Saved accessory geometry must match all live skinned vertices without double application.")
+        try require(try Data(contentsOf: source) == original, "Accessory editing must preserve its original source bytes.")
+        try await snapshot(webView, directory.appendingPathComponent("accessory-saved-model.png"))
+        report["native_accessory_unclip"] = ["status": "PASS", "source_path": source.path, "fixture_sha256": digest,
+            "actual_http_response": response, "actual_preview": preview, "actual_anchor": position,
+            "export": result, "source_preserved": true, "derived_offset_excluded_from_edits": true,
+            "recipe_flag_preserved": true, "saved_geometry_max_error": error, "skinned_vertices_compared": 21]
+        try checkpoint("native-accessory-reloaded")
     }
 
     private func checkMinimizedViewer(_ webView: WKWebView) async throws {
@@ -519,6 +604,45 @@ final class NativeSmokeTest {
             """)
     }
 
+    private func checkAssetNavigationPreservesDraft(_ webView: WKWebView) async throws {
+        let before = try await editingSnapshot(webView)
+        _ = try await js(webView, """
+            window.__nativeAssetNavigationCanvas=document.getElementById('viewer-canvas');
+            window.__nativeAssetNavigationContext=__nativeAssetNavigationCanvas.getContext('webgl2')||__nativeAssetNavigationCanvas.getContext('webgl');
+            return !!window.__nativeAssetNavigationContext;
+            """)
+        model.selectedSection = .assets
+        try await waitJS(webView, "the native asset-tools destination", timeout: 15,
+                         expression: "window.ElichikaNavigation&&ElichikaNavigation.currentSection()==='tools'")
+        try require(model.assetWebView === webView, "Tools and 3D must reuse the same native WebView.")
+        _ = try await js(webView, "ElichikaNavigation.showSection('viewer',{notify:true});return true;")
+        try await wait("page-to-native viewer selection", timeout: 15) { self.model.selectedSection == .viewer }
+        try await waitJS(webView, "the page-selected viewer destination", timeout: 15,
+                         expression: "ElichikaNavigation.currentSection()==='viewer'")
+        model.selectedSection = .assets
+        try await waitJS(webView, "the second native asset-tools destination", timeout: 15,
+                         expression: "ElichikaNavigation.currentSection()==='tools'")
+        model.selectedSection = .viewer
+        try await waitJS(webView, "the native 3D destination", timeout: 15,
+                         expression: "ElichikaNavigation.currentSection()==='viewer'")
+        _ = try await js(webView, "return await ElichikaPlatform.request('setSection',{section:'tools',event:'ready'});")
+        try require(model.selectedSection == .viewer, "A late page-ready event must not replace the native destination.")
+        try await waitJS(webView, "the latest native destination after page readiness", timeout: 15,
+                         expression: "ElichikaNavigation.currentSection()==='viewer'")
+        let retainedContext = try await js(webView, """
+            var canvas=document.getElementById('viewer-canvas');
+            var context=canvas.getContext('webgl2')||canvas.getContext('webgl');
+            return canvas===window.__nativeAssetNavigationCanvas&&context===window.__nativeAssetNavigationContext&&!context.isContextLost();
+            """)
+        try require(retainedContext as? Bool == true, "Native navigation must preserve the live canvas and WebGL context.")
+        try require(model.assetWebView === webView, "Native section changes must not replace the editor session.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+        report["asset_navigation"] = ["same_webview": true, "same_canvas_and_context": true,
+            "unsaved_node_mesh_edits_preserved": true, "page_change_selected_viewer": true,
+            "late_ready_preserved_native_destination": true]
+        try checkpoint("native-asset-navigation-preserved")
+    }
+
     private func requireEditingSnapshot(_ actual: [String: Any], matches expected: [String: Any], invalidDraft: Bool = false) throws {
         for key in ["modelId", "loadedPaths", "authoringEdits", "camera", "rig", "persistence"] + (invalidDraft ? [] : ["authoring"]) {
             guard let current = actual[key] as? String, let retained = expected[key] as? String else { throw NativeError.invalidResponse }
@@ -704,10 +828,10 @@ final class NativeSmokeTest {
         }
     }
 
-    private func loaded(_ webView: WKWebView, reviewing: Bool = false) async throws {
+    private func loaded(_ webView: WKWebView, reviewing: Bool = false, expectedVertices: Int = 6, expectedTriangles: Int = 4) async throws {
         let review = reviewing ? "&&s.persistence.reviewingSaved" : ""
         try await waitJS(webView, "the actual Unity skin and native framebuffer", timeout: 120, expression:
-            "(function(){var s=ModelViewer.getState(),p=s.loaded?ModelViewer.renderProbe(33):{ready:false};return s.loaded&&!s.loading&&!s.contextLost&&s.rig&&s.rig.available&&s.stats.meshes===1&&s.stats.vertices===6&&s.stats.triangles===4&&p.ready&&p.glError===0&&p.nonBackgroundSamples>=3&&document.getElementById('viewer-busy').hidden" + review + ";})()")
+            "(function(){var s=ModelViewer.getState(),p=s.loaded?ModelViewer.renderProbe(33):{ready:false};return s.loaded&&!s.loading&&!s.contextLost&&s.rig&&s.rig.available&&s.stats.meshes===1&&s.stats.vertices===\(expectedVertices)&&s.stats.triangles===\(expectedTriangles)&&p.ready&&p.glError===0&&p.nonBackgroundSamples>=3&&document.getElementById('viewer-busy').hidden" + review + ";})()")
     }
 
     private func saved(_ webView: WKWebView, previousJob: String) async throws -> [String: Any] {
@@ -727,9 +851,9 @@ final class NativeSmokeTest {
         }
     }
 
-    private func vertices(_ webView: WKWebView) async throws -> [[Double]] {
+    private func vertices(_ webView: WKWebView, expectedCount: Int = 6) async throws -> [[Double]] {
         let result = try await object(webView, "return JSON.stringify(ViewerRigQa.deformedVertices());")
-        guard let values = result["vertices"] as? [[Double]], values.count == 6 else { throw NativeError.invalidResponse }
+        guard let values = result["vertices"] as? [[Double]], values.count == expectedCount else { throw NativeError.invalidResponse }
         return values
     }
 

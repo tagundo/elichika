@@ -130,7 +130,7 @@ struct RootView: View {
         switch model.selectedSection ?? .server {
         case .server: ServerView(model: model)
         case .settings: SettingsView(model: model)
-        case .assets:
+        case .assets, .viewer:
             if model.toolsReady { WebPanel(model: model, route: .assets) }
             else { PreparationView(model: model) }
         case .content:
