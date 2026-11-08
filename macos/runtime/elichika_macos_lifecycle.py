@@ -187,12 +187,16 @@ class ServerController:
         deadline = time.monotonic() + 1.0
         connection = http.client.HTTPConnection(address, port, timeout=.2)
         timer = None
+        watchdog_socket = None
         expired = threading.Event()
         try:
             connection.connect()
             transport = connection.sock
             if transport is None:
                 return False
+            # Keep an independent socket handle: getresponse() may detach or
+            # close HTTPConnection's handle for a Connection: close response.
+            watchdog_socket = transport.dup()
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return False
@@ -200,7 +204,7 @@ class ServerController:
             def expire():
                 expired.set()
                 try:
-                    transport.shutdown(socket.SHUT_RDWR)
+                    watchdog_socket.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
 
@@ -218,7 +222,6 @@ class ServerController:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0 or expired.is_set():
                     return False
-                transport.settimeout(min(.2, remaining))
                 block = response.read1(min(256, 4097 - count))
                 if not block:
                     break
@@ -242,6 +245,8 @@ class ServerController:
             if timer is not None:
                 timer.cancel()
             connection.close()
+            if watchdog_socket is not None:
+                watchdog_socket.close()
 
     def _accept_http_ready(self, process):
         with self._lock:

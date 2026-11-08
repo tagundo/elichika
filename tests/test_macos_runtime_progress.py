@@ -177,6 +177,8 @@ class MacReadinessTests(unittest.TestCase):
                 self.assertEqual(args, ("GET", "/_elichika/ready"))
                 self.assertNotIn(token, repr((args, kwargs)))
                 connection.close.assert_called_once()
+                connection.sock.dup.assert_called_once()
+                connection.sock.dup.return_value.close.assert_called_once()
 
     def test_localhost_can_confirm_ipv6_when_ipv4_is_not_ready(self):
         controller, _, port = self.controller()
@@ -208,6 +210,7 @@ class MacReadinessTests(unittest.TestCase):
         controller, _, _ = self.controller()
         token = "a" * 32
         class DripHandler(BaseHTTPRequestHandler):
+            disable_nagle_algorithm = True
             mode = "body"
             def log_message(self, *_):
                 pass
@@ -250,6 +253,7 @@ class MacReadinessTests(unittest.TestCase):
         script = '''import http.server,json,os,pathlib,time
 port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1])
 class Handler(http.server.BaseHTTPRequestHandler):
+ disable_nagle_algorithm=True
  def log_message(self,*_):pass
  def do_GET(self):
   raw=json.dumps({'ready':True,'token':os.environ['ELICHIKA_READY_TOKEN']}).encode()
@@ -307,6 +311,7 @@ http.server.HTTPServer(('127.0.0.1',port),Handler).serve_forever()
         script = '''import http.server,json,os,pathlib,time
 port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1])
 class Handler(http.server.BaseHTTPRequestHandler):
+ disable_nagle_algorithm=True
  def log_message(self,*_):pass
  def do_GET(self):
   raw=json.dumps({'ready':True,'token':os.environ['ELICHIKA_READY_TOKEN']}).encode()
