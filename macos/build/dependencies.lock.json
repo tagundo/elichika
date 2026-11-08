@@ -28,7 +28,17 @@
         "filename": "cpython-3.12.16+20261026-aarch64-apple-darwin-install_only_stripped.tar.gz",
         "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.12.16%2B20261026-aarch64-apple-darwin-install_only_stripped.tar.gz",
         "sha256": "353d5f1b4fd2715e7053f12f068435d5bbad16b91e057006b5d01e0925709a7e",
-        "bytes": 25035343
+        "bytes": 25035343,
+        "alternate_downloads": [
+          {
+            "url": "https://api.github.com/repos/astral-sh/python-build-standalone/releases/assets/678574500",
+            "headers": {
+              "Accept": "application/octet-stream",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "Elichika-macOS-build"
+            }
+          }
+        ]
       },
       "wheels": [
         {

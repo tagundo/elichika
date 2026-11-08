@@ -44,6 +44,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_admin_install_restart.py -v
           python3 -m unittest discover -s tests -p test_sukusta_paths.py -v
           python3 -m unittest discover -s tests -p test_android_python_launch.py -v
+          python3 -m unittest discover -s android/ci -p test_prepare_gradle.py -v
           python3 -m unittest discover -s tests -p 'test_costume_management*.py' -v
           python3 -m unittest discover -s tests -p test_admin_costume_delete_flow.py -v
           python3 -m unittest discover -s tests -p test_costume_scene_installer.py -v

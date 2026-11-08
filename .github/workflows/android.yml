@@ -89,6 +89,11 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Prepare verified Gradle distribution through the official asset API
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 android/ci/prepare_gradle.py
+
       - name: Prepare pinned offline Android Python wheels
         id: python_wheels
         env:
