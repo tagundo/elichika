@@ -1,5 +1,6 @@
 """Observable DB preparation and owned-child HTTP readiness contracts."""
 from contextlib import closing
+import http.client
 import importlib.util
 import io
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -239,11 +240,39 @@ class MacReadinessTests(unittest.TestCase):
             for mode in ("headers", "body"):
                 with self.subTest(mode=mode):
                     DripHandler.mode = mode
+                    probe_code = controller._probe_http_address.__func__.__code__
+                    diagnostics = {
+                        "python": sys.version,
+                        "platform": sys.platform,
+                        "http_client_file": http.client.__file__,
+                        "http_connection": [http.client.HTTPConnection.__module__, http.client.HTTPConnection.__qualname__],
+                        "create_connection": [socket.create_connection.__module__, socket.create_connection.__qualname__],
+                        "socket_default_timeout": socket.getdefaulttimeout(),
+                        "exceptions": [],
+                    }
+                    def trace_probe(frame, event, argument):
+                        if frame.f_code is not probe_code:
+                            return None
+                        if event == "exception":
+                            kind, error, _ = argument
+                            diagnostics["exceptions"].append({
+                                "line": frame.f_lineno, "type": kind.__name__,
+                                "errno": getattr(error, "errno", None),
+                                "message": str(error).replace(token, "<nonce>")[:200],
+                            })
+                        return trace_probe
+                    previous_trace = sys.gettrace()
                     start = time.monotonic()
-                    self.assertFalse(controller._probe_http_address("127.0.0.1", server.server_port, token))
+                    try:
+                        sys.settrace(trace_probe)
+                        result = controller._probe_http_address("127.0.0.1", server.server_port, token)
+                    finally:
+                        sys.settrace(previous_trace)
                     elapsed = time.monotonic() - start
-                    self.assertGreater(elapsed, .65)
-                    self.assertLess(elapsed, 1.8, "idle-byte drips must not prolong a readiness probe")
+                    detail = json.dumps(diagnostics, sort_keys=True)
+                    self.assertFalse(result, detail)
+                    self.assertGreater(elapsed, .65, detail)
+                    self.assertLess(elapsed, 1.8, "idle-byte drips must not prolong a readiness probe: " + detail)
         finally:
             server.shutdown(); server.server_close(); thread.join(2)
 
