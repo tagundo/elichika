@@ -327,7 +327,7 @@ class MacReadinessTests(unittest.TestCase):
         self.trace_child_probes(controller)
         (data / "drip").touch()
         script = '''print('fixture:import-begin',flush=True)
-import http.server,json,os,pathlib,socket,time
+import http.server,json,os,pathlib,socket,socketserver,time
 print('fixture:imports-ready',flush=True)
 original_getfqdn=socket.getfqdn
 def traced_getfqdn(*args,**kwargs):
@@ -335,6 +335,10 @@ def traced_getfqdn(*args,**kwargs):
  try:return original_getfqdn(*args,**kwargs)
  finally:print('fixture:getfqdn-end',flush=True)
 socket.getfqdn=traced_getfqdn
+class LocalHTTPServer(http.server.HTTPServer):
+ def server_bind(self):
+  socketserver.TCPServer.server_bind(self)
+  self.server_name='localhost';self.server_port=self.server_address[1]
 port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1])
 print('fixture:config-ready',flush=True)
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -351,7 +355,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
    else:self.wfile.write(raw)
   except (BrokenPipeError,ConnectionResetError):pass
 print('fixture:constructor-begin',flush=True)
-server=http.server.HTTPServer(('127.0.0.1',port),Handler)
+server=LocalHTTPServer(('127.0.0.1',port),Handler)
 print('fixture:constructor-end',flush=True)
 print('fixture:serve-begin',flush=True)
 server.serve_forever()
@@ -365,6 +369,7 @@ server.serve_forever()
         while not (data / "drip-observed").exists() and time.monotonic() < deadline:
             time.sleep(.02)
         self.assertTrue((data / "drip-observed").exists(), self.child_diagnostics(controller))
+        self.assertNotIn("[server] fixture:getfqdn-begin", controller._test_log_messages)
         self.assertFalse(controller.state()["http_ready"])
         start = time.monotonic()
         controller.manual_stop()
@@ -401,7 +406,7 @@ server.serve_forever()
         controller, data, _ = self.controller()
         self.trace_child_probes(controller)
         script = '''print('fixture:import-begin',flush=True)
-import http.server,json,os,pathlib,socket,time
+import http.server,json,os,pathlib,socket,socketserver,time
 print('fixture:imports-ready',flush=True)
 original_getfqdn=socket.getfqdn
 def traced_getfqdn(*args,**kwargs):
@@ -409,6 +414,10 @@ def traced_getfqdn(*args,**kwargs):
  try:return original_getfqdn(*args,**kwargs)
  finally:print('fixture:getfqdn-end',flush=True)
 socket.getfqdn=traced_getfqdn
+class LocalHTTPServer(http.server.HTTPServer):
+ def server_bind(self):
+  socketserver.TCPServer.server_bind(self)
+  self.server_name='localhost';self.server_port=self.server_address[1]
 port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1])
 print('fixture:config-ready',flush=True)
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -421,7 +430,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
   try:self.wfile.write(raw)
   except BrokenPipeError:pass
 print('fixture:constructor-begin',flush=True)
-server=http.server.HTTPServer(('127.0.0.1',port),Handler)
+server=LocalHTTPServer(('127.0.0.1',port),Handler)
 print('fixture:constructor-end',flush=True)
 time.sleep(.5)
 print('fixture:serve-begin',flush=True)
@@ -441,6 +450,7 @@ server.serve_forever()
             while not controller.state()["http_ready"] and time.monotonic() < deadline:
                 time.sleep(.03)
             self.assertTrue(controller.state()["http_ready"], self.child_diagnostics(controller))
+            self.assertNotIn("[server] fixture:getfqdn-begin", controller._test_log_messages)
             self.assertEqual(controller.state()["status"], "running")
             controller.manual_stop()
             self.assertFalse(controller._accept_http_ready(process))
