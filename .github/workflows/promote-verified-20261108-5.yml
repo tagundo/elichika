@@ -1,0 +1,161 @@
+name: Promote verified 2026.11.08.5 files
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/promote-verified-20261108-5]
+    paths: [.github/workflows/promote-verified-20261108-5.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: promote-verified-20261108-5
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/promote-verified-20261108-5'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: tagundo/elichika
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require the exact merged sources, passed gates and private draft
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/'+path]))
+          build='6a6965e7f4188b6da853a203c6bb5adc82a51189'
+          source='f591bdb32c5b7f456cb782133302ef445db26d03'
+          main='f67b48f93fe70ee90fa2605d020c84acdb693995'
+          tree='b32383b6c15876705ac516aba815abb244d7c979'
+          workflow='.github/workflows/promote-verified-20261108-5.yml'
+          changed=subprocess.check_output(['git','diff','--name-only',main,'HEAD'],text=True).splitlines()
+          assert changed==[workflow],changed
+          current=api('commits/main')
+          assert current['sha']==main and current['commit']['tree']['sha']==tree
+          pr=api('pulls/69')
+          assert pr['merged'] and pr['head']['sha']==source and pr['merge_commit_sha']==main
+          for run,sha in ((42459531290,source),(42459523596,source),(42457144595,build),(42459523641,source)):
+              item=api('actions/runs/'+str(run))
+              assert item['head_sha']==sha and item['status']=='completed' and item['conclusion']=='success'
+          original=api('actions/runs/42457139761')
+          assert original['head_sha']==build and original['status']=='completed'
+          jobs=api('actions/runs/42457139761/jobs?per_page=100')['jobs']
+          for name in ('build','apk-audit / audit'):
+              matches=[j for j in jobs if j['name']==name]
+              assert len(matches)==1 and matches[0]['conclusion']=='success'
+          diff=api('compare/'+build+'...'+source)
+          assert diff['ahead_by']==1 and {i['filename'] for i in diff['files']}=={
+              '.github/workflows/android-ui-qa.yml','tests/android_payload_merge_benchmark.py','tests/test_android_payload_merge_benchmark.py'}
+          artifacts=[]
+          for aid,rid,name in ((13608631125,42457139761,'elichika-release-apk'),(13608990344,42457144595,'elichika-macos-apple-silicon')):
+              artifact=api('actions/artifacts/'+str(aid))
+              assert artifact['id']==aid and artifact['name']==name and not artifact['expired']
+              assert artifact['workflow_run']['id']==rid and artifact['workflow_run']['head_sha']==build
+              artifacts.append({k:artifact[k] for k in ('id','name','digest','size_in_bytes')})
+          release=api('releases/438115704')
+          assert release['tag_name']=='v2026.11.08.5' and release['target_commitish']==source
+          assert release['draft'] and not release['prerelease']
+          body=release['body'].replace('\r\n','\n').strip().encode()
+          assert hashlib.sha256(body).hexdigest()=='90cb7f0e87c87a0d16f22486ec30fe5bee585139c20fac7193a04003b21df067'
+          assert not release['assets'], 'Require the reviewed empty private draft'
+          Path('promotion-evidence').mkdir()
+          Path('promotion-evidence/source-gates.json').write_text(json.dumps({'status':'PASS','build_source':build,'release_source':source,'main':main,'artifacts':artifacts,'draft_id':release['id']},indent=2)+'\n')
+          PY
+
+      - name: Download the original signed APK without rebuilding
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: 13608631125
+          run-id: 42457139761
+          github-token: ${{ github.token }}
+          path: frozen/apk
+
+      - name: Download the original verified Mac ZIP without rebuilding
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: 13608990344
+          run-id: 42457144595
+          github-token: ${{ github.token }}
+          path: frozen/mac
+
+      - name: Bind the exact files and checksums, then upload and publish
+        run: |
+          python3 -u - <<'PY'
+          import hashlib,json,shutil,subprocess
+          from pathlib import Path
+          repo='repos/tagundo/elichika/'
+          tag='v2026.11.08.5'
+          source='f591bdb32c5b7f456cb782133302ef445db26d03'
+          release_id=438115704
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api',repo+path]))
+          expected={
+              'elichika-2026.11.08.5.apk':(290472325,'f08229d0a286daf53eb237c9ace8197d38ae8d23987612acdfaf847385c3b704'),
+              'Elichika-2026.11.08.5-AppleSilicon.app.zip':(302927092,'9dd3710959193d27dbbbab845e5b2c380e3e31e93e1c275772b6870e54fc5578')}
+          out=Path('release-files');out.mkdir()
+          for name,(size,digest) in expected.items():
+              candidates=list(Path('frozen').rglob(name))
+              assert len(candidates)==1 and candidates[0].is_file() and not candidates[0].is_symlink()
+              file=candidates[0]
+              assert file.stat().st_size==size
+              with file.open('rb') as stream:
+                  assert hashlib.file_digest(stream,'sha256').hexdigest()==digest
+              shutil.move(str(file),out/name)
+          sums=''.join(digest+'  '+name+'\n' for name,(size,digest) in expected.items()).encode()
+          (out/'SHA256SUMS').write_bytes(sums)
+          expected['SHA256SUMS']=(len(sums),hashlib.sha256(sums).hexdigest())
+          def verify(release):
+              assert len(release['assets'])==3 and {a['name'] for a in release['assets']}==set(expected)
+              for item in release['assets']:
+                  size,digest=expected[item['name']]
+                  assert item['state']=='uploaded' and item['size']==size and item['digest']=='sha256:'+digest
+              assert release['target_commitish']==source and release['tag_name']==tag and not release['prerelease']
+              body=release['body'].replace('\r\n','\n').strip().encode()
+              assert hashlib.sha256(body).hexdigest()=='90cb7f0e87c87a0d16f22486ec30fe5bee585139c20fac7193a04003b21df067'
+          def tag_commit(allow_missing=False):
+              result=subprocess.run(['gh','api',repo+'git/ref/tags/'+tag],capture_output=True,text=True)
+              if allow_missing and result.returncode and 'HTTP 404' in result.stderr:
+                  return None
+              assert result.returncode==0,result.stderr
+              obj=json.loads(result.stdout)['object']
+              for _ in range(5):
+                  if obj['type']=='commit':
+                      assert obj['sha']==source
+                      return obj['sha']
+                  assert obj['type']=='tag'
+                  obj=api('git/tags/'+obj['sha'])['object']
+              raise RuntimeError('Unexpected tag nesting')
+          subprocess.run(['gh','release','upload',tag,*[str(out/name) for name in expected],'--repo','tagundo/elichika'],check=True)
+          draft=api('releases/'+str(release_id));assert draft['draft'];verify(draft)
+          assert tag_commit(allow_missing=True) in (None,source)
+          Path('promotion-evidence/uploaded-draft.json').write_text(json.dumps(draft,indent=2)+'\n')
+          try:
+              subprocess.run(['gh','release','edit',tag,'--repo','tagundo/elichika','--draft=false','--latest'],check=True)
+              published=api('releases/'+str(release_id));assert not published['draft'];verify(published)
+              assert tag_commit()==source
+              assert api('releases/latest')['id']==release_id
+              Path('promotion-evidence/published-release.json').write_text(json.dumps(published,indent=2)+'\n')
+              print('PUBLISHED_VERIFIED_RELEASE='+published['html_url'])
+          except BaseException:
+              subprocess.run(['gh','release','edit',tag,'--repo','tagundo/elichika','--draft=true'],check=True)
+              raise
+          PY
+
+      - name: Upload the promotion proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-20261108-5-promotion-evidence
+          path: promotion-evidence/
+          if-no-files-found: error
