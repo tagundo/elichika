@@ -31,7 +31,7 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -207,6 +207,33 @@ jobs:
             com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
             | tee evidence/native-instrumentation.txt
           python3 -c 'from pathlib import Path; text=Path("evidence/native-instrumentation.txt").read_text(); assert "OK (30 tests)" in text and "FAILURES" not in text, text'
+
+      - name: Verify and measure mod-preserving parallel merges in the signed APK
+        if: ${{ !inputs.focused_header_diagnostic }}
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
+          adb -s 127.0.0.1:5555 shell am instrument -w \
+            -e payloadMergeBenchmark true \
+            -e class com.tagundo.elichika.PayloadMergeBenchmarkTest \
+            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee evidence/native-payload-merge-benchmark.txt
+          python3 -c 'from pathlib import Path; text=Path("evidence/native-payload-merge-benchmark.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
+          adb -s 127.0.0.1:5555 exec-out sh -c 'find /data/user/0/com.tagundo.elichika/cache -maxdepth 1 -type f -name "payload-merge-benchmark-*.json"' \
+            | tr -d '\r' > evidence/payload-merge-report-files.txt
+          python3 - <<'PY'
+          import json, re, subprocess
+          from pathlib import Path
+          reports = Path('evidence/payload-merge-report-files.txt').read_text().splitlines()
+          assert reports, 'The actual APK benchmark must retain its report'
+          for name in reports:
+              assert re.fullmatch(r'/data/user/0/com\.tagundo\.elichika/cache/payload-merge-benchmark-[0-9a-f-]+\.json', name), name
+              raw = subprocess.check_output(['adb', '-s', '127.0.0.1:5555', 'exec-out', 'cat', name])
+              report = json.loads(raw)
+              assert report['status'] == 'PASS' and report['main_looper_responsive'], report['status']
+              Path('evidence', Path(name).name).write_bytes(raw)
+          PY
 
       - name: Exercise the same signed APK in a real wide Android window
         if: ${{ !inputs.focused_header_diagnostic }}

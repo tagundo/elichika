@@ -1,5 +1,6 @@
 package com.tagundo.elichika
 
+import android.app.ActivityManager
 import android.content.Context
 import org.json.JSONObject
 import java.io.File
@@ -61,7 +62,8 @@ internal object PayloadUpgrade {
         val session = PayloadProgress.Session(progress)
         try {
             val result = invoke(context, "elichika_launch", "apply_payload_with_progress", root.absolutePath,
-                payload.absolutePath, from.orEmpty(), to, mode, manifest, PayloadProgressObserver(session))
+                payload.absolutePath, from.orEmpty(), to, mode, manifest, PayloadProgressObserver(session),
+                availableMemory(context))
             requireStatus(result, setOf("COMMITTED"))
             check(File(root, "installed_version").readText().trim() == to) {
                 "Game-data update did not publish its completion marker"
@@ -71,6 +73,14 @@ internal object PayloadUpgrade {
             session.close()
         }
     }
+
+    /** Read on the preparation worker for this invocation, never cache a stale budget. */
+    private fun availableMemory(context: Context): Long = runCatching {
+        val manager = context.getSystemService(ActivityManager::class.java)
+        val info = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(info)
+        info.availMem.takeIf { it > 0L } ?: 0L
+    }.getOrDefault(0L)
 
     private fun invoke(context: Context, module: String, method: String, vararg arguments: Any): JSONObject = try {
         val result = EmbeddedPython.instance(context).getModule(module)

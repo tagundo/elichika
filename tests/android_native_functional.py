@@ -309,6 +309,8 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     clone_report = clone_bundle_checks(preview)
     clone_crypto_report = clone_crypto_checks()
     payload_progress_report = payload_progress_checks()
+    from android_payload_merge_benchmark import native_merge_checks
+    payload_merge_report = native_merge_checks(temporary)
 
     assert sys.version_info[:2] == (3, 13)
     assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
@@ -383,6 +385,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
             "clone_bundle_isolation": True, "clone_bundle_report": clone_report,
             "clone_crypto_fast_path": clone_crypto_report,
             "payload_upgrade_progress": payload_progress_report,
+            "payload_parallel_merge": payload_merge_report,
             "astc_sha256": hashlib.sha256(astc_data).hexdigest(), "astc_mean_error": round(float(difference), 3)}
 
 

@@ -470,7 +470,7 @@ class PayloadDatabaseUpgradeTests(unittest.TestCase):
 
         def damage_valid_clone(source, destination, *args, **kwargs):
             result = copyfile(source, destination, *args, **kwargs)
-            if Path(destination).name == "masterdata.db" and "next" in Path(destination).parts:
+            if Path(destination).name == "masterdata.db" and any(part in Path(destination).parts for part in ("next", "merge-jobs")):
                 with sqlite3.connect(destination) as connection:
                     connection.execute("UPDATE m_content SET name='copy corruption with valid SQLite structure' WHERE id=1")
                     self.assertEqual(connection.execute("PRAGMA integrity_check").fetchall(), [("ok",)])
@@ -1928,7 +1928,7 @@ class PayloadPreparedCertificateTests(unittest.TestCase):
             def commit(connection):
                 super(HeaderAtCommit, connection).commit()
                 output = Path(connection.execute("PRAGMA database_list").fetchone()[2])
-                if "next" in output.parts and output.name == "masterdata.db":
+                if any(part in output.parts for part in ("next", "merge-jobs")) and output.name == "masterdata.db":
                     connection.execute("PRAGMA user_version=19")
 
         def connect(*args, **kwargs):

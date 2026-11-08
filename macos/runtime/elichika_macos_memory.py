@@ -1,4 +1,4 @@
-"""Fresh, conservative host-memory hints for the bundled Go child only."""
+"""Fresh, conservative host-memory snapshots for bounded local work."""
 from __future__ import annotations
 
 import ctypes
@@ -25,7 +25,7 @@ def available_macos_memory_bytes():
     """Return free + inactive bytes, or None when the Mach ABI is unavailable.
 
     Compressed/purgeable memory is deliberately excluded. This is a scheduling
-    hint rather than a reservation; Go still applies its bounded worker policy.
+    hint rather than a reservation; callers still apply bounded worker policies.
     """
     if sys.platform != "darwin":
         return None

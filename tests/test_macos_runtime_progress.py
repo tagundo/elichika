@@ -94,7 +94,7 @@ class MacPayloadProgressTests(unittest.TestCase):
         for status, marker in [("FAILED", True), ("COMMITTED", False)]:
             with self.subTest(status=status, marker=marker):
                 events = []
-                def fake_apply(*_, progress):
+                def fake_apply(*_, progress, memory_budget_bytes):
                     progress("merging", 1, 2, "masterdata.db")
                     progress("complete", 1, 1, "")
                     if marker:
@@ -105,6 +105,44 @@ class MacPayloadProgressTests(unittest.TestCase):
                         install_payload(self.resources, self.data, lambda *row: events.append(row))
                 self.assertNotIn("complete", [row[0] for row in events])
                 (self.data / "installed_version").unlink(missing_ok=True)
+
+    def test_db_merge_memory_hint_is_fresh_for_changes_and_not_read_for_same_data(self):
+        import payload_revision
+        budgets = [2 << 30, 3 << 30]
+        measured = iter(budgets)
+        events = []
+        def fresh_budget():
+            self.assertEqual(events[-1][0], "copying_data")
+            self.assertEqual(events[-1][1], events[-1][2])
+            return next(measured)
+        observe = lambda *row: events.append(row)
+        with patch.dict(os.environ, {"ELICHIKA_CLIENTDB_MEMORY_BYTES": "invalid-inherited-hint"}), \
+                patch("elichika_macos_payload.available_macos_memory_bytes", side_effect=fresh_budget) as snapshot, \
+                patch("payload_revision.apply_json", wraps=payload_revision.apply_json) as apply:
+            self.assertEqual(install_payload(self.resources, self.data, observe)["action"], "fresh")
+            self.assertEqual(snapshot.call_count, 1)
+            self.assertEqual(install_payload(self.resources, self.data, observe)["action"], "skip")
+            self.assertEqual(snapshot.call_count, 1)
+            with closing(sqlite3.connect(self.payload / "assets/db/gl/masterdata.db")) as db:
+                db.execute("INSERT INTO fixture_catalog(id,value) VALUES(91,'new official row')")
+                db.commit()
+            self.refresh_manifest()
+            self.assertEqual(install_payload(self.resources, self.data, observe)["action"], "upgrade")
+            self.assertEqual(snapshot.call_count, 2)
+            self.assertEqual([call.kwargs["memory_budget_bytes"] for call in apply.call_args_list], budgets)
+            self.assertEqual(os.environ["ELICHIKA_CLIENTDB_MEMORY_BYTES"], "invalid-inherited-hint")
+
+    def test_db_merge_unavailable_invalid_or_failed_memory_snapshot_uses_unknown_budget(self):
+        import payload_revision
+        for index, value in enumerate([None, 0, -1, True, "1024", 1 << 63, OSError("Mach unavailable")]):
+            with self.subTest(value=value):
+                data = self.base / ("unknown-memory-" + str(index))
+                data.mkdir()
+                effect = {"side_effect": value} if isinstance(value, Exception) else {"return_value": value}
+                with patch("elichika_macos_payload.available_macos_memory_bytes", **effect), \
+                        patch("payload_revision.apply_json", wraps=payload_revision.apply_json) as apply:
+                    self.assertEqual(install_payload(self.resources, data)["action"], "fresh")
+                    self.assertIsNone(apply.call_args.kwargs["memory_budget_bytes"])
 
     def runtime(self):
         value = Runtime(self.resources, self.data, self.base / "library")

@@ -17,6 +17,11 @@ class NativePythonTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val python = EmbeddedPython.instance(context)
+        val mergeModule = python.getModule("types").callAttr("ModuleType", "android_payload_merge_benchmark")
+        val mergeScript = instrumentation.context.assets.open("android_payload_merge_benchmark.py")
+            .bufferedReader().use { it.readText() }
+        python.getModule("builtins").callAttr("exec", mergeScript, mergeModule.get("__dict__"))
+        python.getModule("sys").get("modules")!!.callAttr("__setitem__", "android_payload_merge_benchmark", mergeModule)
         val module = python.getModule("types").callAttr("ModuleType", "_native_qa")
         val script = instrumentation.context.assets.open("native_python_checks.py")
             .bufferedReader().use { it.readText() }

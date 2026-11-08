@@ -251,6 +251,7 @@ jobs:
           set -euo pipefail
           cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
           cp ../tests/android_payload_upgrade_benchmark.py app/src/androidTest/assets/android_payload_upgrade_benchmark.py
+          cp ../tests/android_payload_merge_benchmark.py app/src/androidTest/assets/android_payload_merge_benchmark.py
           ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
             --init-script "$RUNNER_TEMP/instrumentation-only.gradle" \
             -x :app:generateReleasePythonProxies -x :app:installReleasePythonRequirements \

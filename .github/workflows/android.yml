@@ -412,6 +412,7 @@ jobs:
           mkdir -p app/src/androidTest/assets
           cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
           cp ../tests/android_payload_upgrade_benchmark.py app/src/androidTest/assets/android_payload_upgrade_benchmark.py
+          cp ../tests/android_payload_merge_benchmark.py app/src/androidTest/assets/android_payload_merge_benchmark.py
           ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
             -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
             -PappVersionName="${{ steps.ver.outputs.name }}" \
@@ -510,6 +511,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
+          target_commitish: ${{ github.sha }}
           files: release/*.apk
           # release_notes (if given) appears at the top; with
           # generate_release_notes the changelog is appended below it.

@@ -2,6 +2,8 @@ package com.tagundo.elichika
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.os.Handler
+import android.os.Looper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject
@@ -13,6 +15,8 @@ import org.junit.runner.RunWith
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** Real installer orchestration and Python journals, using only tiny cache fixtures. */
 @RunWith(AndroidJUnit4::class)
@@ -176,11 +180,30 @@ class PayloadRevisionTest {
         f.editOwnerRow()
         f.source.files["payload/webui/index.html"] = "changed official progress fixture".toByteArray()
         f.refreshManifest()
+        var heartbeatRequested = false
+        var heartbeatPassed = false
+        var heartbeatMillis = -1L
+        f.progressProbe = { state ->
+            if (state.stage == "merging" && state.completed > 0 && !heartbeatRequested) {
+                heartbeatRequested = true
+                val heartbeat = CountDownLatch(1)
+                val begin = System.nanoTime()
+                Handler(Looper.getMainLooper()).post { heartbeat.countDown() }
+                heartbeatPassed = heartbeat.await(2, TimeUnit.SECONDS)
+                heartbeatMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - begin)
+            }
+        }
         f.prepare("synthetic-progress-change")
         val values = f.progress.filterNotNull()
         assertTrue("Real Python apply_json must call the Java observer", values.size > 5)
         assertTrue(values.any { it.stage == "merging" })
         assertTrue(values.any { it.stage == "verifying" })
+        assertTrue("The actual merge must exercise the UI heartbeat probe", heartbeatRequested)
+        assertTrue("DB preparation and progress must leave the main looper responsive", heartbeatPassed)
+        assertTrue("Actual Java progress must stay on the maintenance owner native thread",
+            f.progressNativeThreads.isNotEmpty() && f.progressNativeThreads.all { it == f.preparationNativeThread })
+        assertTrue("Neither DB preparation nor Java progress callbacks may run on the UI thread",
+            f.progressOnMain.all { !it })
         assertEquals(100, values.last().percent)
         assertEquals(1, values.count { it.percent == 100 })
         assertTrue(values.zipWithNext().all { (a, b) -> b.percent >= a.percent })
@@ -189,7 +212,7 @@ class PayloadRevisionTest {
         assertTrue("100 requires the installed_version marker to be verified", f.completedMarkers.all { it })
         assertEquals("owner override", f.ownerRow())
         assertEquals(null, f.progress.last())
-        println("ANDROID_PAYLOAD_PROGRESS_COMMITTED_PASS observer=real_java_callback monotonic=true cap99=true marker_verified=true owner_mod_preserved=true")
+        println("ANDROID_PAYLOAD_PROGRESS_COMMITTED_PASS observer=real_java_callback monotonic=true cap99=true marker_verified=true owner_mod_preserved=true coordinator_native_thread=true main_heartbeat_ms=$heartbeatMillis")
     }
 
     @Test
@@ -237,6 +260,10 @@ class PayloadRevisionTest {
         val phases = mutableListOf<AssetInstaller.PreparationPhase>()
         val progress = mutableListOf<PayloadProgress.State?>()
         val completedMarkers = mutableListOf<Boolean>()
+        val progressNativeThreads = mutableListOf<Int>()
+        val progressOnMain = mutableListOf<Boolean>()
+        var preparationNativeThread = -1
+        var progressProbe: (PayloadProgress.State) -> Unit = {}
         var settingsRuns = 0
         var locale = "en"
         private val python = EmbeddedPython.instance(context)
@@ -316,8 +343,16 @@ class PayloadRevisionTest {
             phases.clear()
             progress.clear()
             completedMarkers.clear()
+            progressNativeThreads.clear()
+            progressOnMain.clear()
+            preparationNativeThread = android.os.Process.myTid()
             PayloadPreparation.prepare(context, root, source, apkVersion, reset, { phases.add(it) }, {}, { state ->
                 progress.add(state)
+                if (state != null) {
+                    progressNativeThreads.add(android.os.Process.myTid())
+                    progressOnMain.add(Looper.myLooper() == Looper.getMainLooper())
+                    progressProbe(state)
+                }
                 if (state?.percent == 100) completedMarkers.add(File(root, "installed_version").readText() == revision())
             }) {
                 settingsRuns++

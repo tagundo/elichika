@@ -12,6 +12,8 @@ from pathlib import Path
 import shutil
 import tempfile
 
+from elichika_macos_memory import available_macos_memory_bytes
+
 
 _ENGINE_PROGRESS_STAGES = frozenset({"validating", "snapshot", "merging", "verifying",
                                      "publishing", "complete", "recovering"})
@@ -99,10 +101,19 @@ def install_payload(resources: Path, data: Path, progress=lambda *_: None) -> di
                 target.chmod(0o600)
                 copied += record["bytes"]
                 report("copying_data", copied, total)
+            # Schedule from a fresh host snapshot after staging, never from a
+            # stale Go-child environment hint or the app's earlier startup.
+            try:
+                memory_budget = available_macos_memory_bytes()
+            except Exception:
+                memory_budget = None
+            if type(memory_budget) is not int or not 0 < memory_budget < (1 << 63):
+                memory_budget = None
             result = json.loads(payload_revision.apply_json(
                 str(data), str(staged), decision["from_version"],
                 manifest["revision"], decision["action"],
-                json.dumps(manifest, ensure_ascii=True), progress=engine_progress))
+                json.dumps(manifest, ensure_ascii=True), progress=engine_progress,
+                memory_budget_bytes=memory_budget))
             if result.get("status") not in ("COMMITTED", "ALREADY_COMMITTED"):
                 raise ValueError(result.get("reason", "PAYLOAD_UPGRADE_FAILED"))
             try:
