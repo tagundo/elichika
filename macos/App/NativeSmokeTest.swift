@@ -266,6 +266,17 @@ final class NativeSmokeTest {
         } catch {
             report["status"] = "FAIL"
             report["error"] = error.localizedDescription
+            if let webView = model.assetWebView {
+                report["accessory_failure_diagnostic"] = try? await object(webView, """
+                    var s=ModelViewer.getState(),m=ModelViewer.getEditingMetadata(),a=document.getElementById('viewer-accessory-enabled');
+                    return JSON.stringify({step:window.__nativeAccessoryStep||'',loaded:s.loaded,loading:s.loading,
+                      vertices:s.stats&&s.stats.vertices,editingAvailable:!!(m&&m.available),
+                      authoringEnabled:!!(s.rig&&s.rig.authoringEnabled),persistenceBusy:!!(s.persistence&&s.persistence.busy),
+                      reviewingSaved:!!(s.persistence&&s.persistence.reviewingSaved),
+                      saveMethodDisabled:document.getElementById('viewer-save-method').disabled,
+                      selectedNode:s.rig&&s.rig.selectedNode,accessoryDisabled:!!(a&&a.disabled),accessoryChecked:!!(a&&a.checked)});
+                    """)
+            }
             report["console_tail"] = Array(model.console.suffix(100))
             await model.stopRuntime()
             report["runtime_terminated"] = model.process?.isRunning != true
@@ -285,24 +296,40 @@ final class NativeSmokeTest {
         let oldID = String(decoding: try JSONSerialization.data(withJSONObject: [before["id"] as? String ?? ""]), as: UTF8.self) + "[0]"
         _ = try await js(webView, "var a=document.getElementById('viewer-auto-face');if(a&&a.checked)a.click();return true;")
         let paths = try await model.authorize([source])
+        let authorizedPath = String(decoding: try JSONSerialization.data(withJSONObject: [paths[0]]), as: UTF8.self) + "[0]"
         model.selectedSection = .viewer
         model.browser(.assets).perform("openModel", paths: paths)
         try await waitJS(webView, "the newly authorized accessory source", timeout: 120, expression:
             "ModelViewer.getState().modelId!==" + oldID + "&&ModelViewer.getState().loaded&&!ModelViewer.getState().loading")
         try await loaded(webView, expectedVertices: 21, expectedTriangles: 7)
-        try await waitJS(webView, "the packaged accessory script and source editing session", timeout: 30, expression:
-            "!!window.ViewerAccessories&&!!ModelViewer.getState().accessories&&!!ModelViewer.getEditingMetadata().token")
+        try checkpoint("native-accessory-rendered")
+        report["accessory_setup_readiness_before"] = try await object(webView, """
+            var s=ModelViewer.getState(),m=ModelViewer.getEditingMetadata(),a=document.getElementById('viewer-accessory-enabled');
+            return JSON.stringify({loaded:s.loaded,loading:s.loading,editingAvailable:!!(m&&m.available),
+              authoringEnabled:!!(s.rig&&s.rig.authoringEnabled),persistenceBusy:!!(s.persistence&&s.persistence.busy),
+              reviewingSaved:!!(s.persistence&&s.persistence.reviewingSaved),accessoryDisabled:!!(a&&a.disabled)});
+            """)
+        try await waitJS(webView, "the current source's writable editing session", timeout: 30, expression:
+            "(function(){var s=ModelViewer.getState(),m=ModelViewer.getEditingMetadata(),p=s.persistence;return !!window.ViewerAccessories&&!!s.accessories&&s.loaded&&!s.loading&&s.loadedPaths.length===1&&s.loadedPaths[0]===" + authorizedPath + "&&m&&m.available&&m.token&&s.rig&&s.rig.available&&s.rig.authoringEnabled===true&&p&&!p.busy&&!p.reviewingSaved;})()")
+        try checkpoint("native-accessory-metadata-ready")
         _ = try await js(webView, """
+            window.__nativeAccessoryStep='open-body-editor';
             document.getElementById('viewer-body-adjustments').open=true;
             document.getElementById('viewer-node-editor').open=true;
-            document.getElementById('viewer-editor-node-tab').click();
-            for(var axis of ['X','Y','Z'])ViewerRigQa.boneInput('BreastSize','scale',axis,2);
-            ViewerRigQa.input('viewer-save-method','node','change');
-            document.getElementById('viewer-accessory-card').open=true;
-            var checkbox=document.getElementById('viewer-accessory-enabled');
-            if(checkbox.disabled)throw new Error('The source-bound accessory checkbox must be enabled');
-            if(!checkbox.checked)checkbox.click();return true;
+            document.getElementById('viewer-editor-node-tab').click();return true;
             """)
+        try await waitJS(webView, "the writable source's bone selector", timeout: 15, expression:
+            "!document.getElementById('viewer-node').disabled")
+        for axis in ["X", "Y", "Z"] {
+            _ = try await js(webView, "window.__nativeAccessoryStep='bone-scale-\(axis)';ViewerRigQa.boneInput('BreastSize','scale','\(axis)',2);return true;")
+        }
+        try await waitJS(webView, "the selected BreastSize save method control", timeout: 15, expression:
+            "String(ModelViewer.getState().rig.selectedNode)===String(ViewerRigQa.nodeId('BreastSize'))&&!document.getElementById('viewer-save-method').disabled")
+        _ = try await js(webView, "window.__nativeAccessoryStep='save-method';ViewerRigQa.input('viewer-save-method','node','change');document.getElementById('viewer-accessory-card').open=true;return true;")
+        try await waitJS(webView, "the current source's enabled accessory control", timeout: 15, expression:
+            "!document.getElementById('viewer-accessory-enabled').disabled")
+        _ = try await js(webView, "window.__nativeAccessoryStep='enable-accessory';var c=document.getElementById('viewer-accessory-enabled');if(!c.checked)c.click();return true;")
+        try checkpoint("native-accessory-controls-changed")
         try await waitJS(webView, "the real accessory request and derived preview", timeout: 90, expression:
             "(function(){var a=ModelViewer.getState().accessories;return a&&a.enabled&&!a.pending&&!a.error&&a.status==='ready'&&a.changed===1;})()")
         let preview = try await object(webView, "return JSON.stringify(ModelViewer.getState().accessories);")
@@ -809,8 +836,17 @@ final class NativeSmokeTest {
     }
 
     private func js(_ webView: WKWebView, _ source: String) async throws -> Any {
-        try await withCheckedThrowingContinuation { continuation in
-            webView.callAsyncJavaScript(source, arguments: [:], in: nil, in: .page) { continuation.resume(with: $0) }
+        do {
+            return try await withCheckedThrowingContinuation { continuation in
+                webView.callAsyncJavaScript(source, arguments: [:], in: nil, in: .page) { continuation.resume(with: $0) }
+            }
+        } catch {
+            let failure = error as NSError
+            guard let message = failure.userInfo["WKJavaScriptExceptionMessage"] as? String else { throw error }
+            let line = failure.userInfo["WKJavaScriptExceptionLineNumber"] as? Int ?? 0
+            let column = failure.userInfo["WKJavaScriptExceptionColumnNumber"] as? Int ?? 0
+            report["javascript_exception"] = ["message": String(message.prefix(2048)), "line": line, "column": column]
+            throw NativeError.service("JavaScript: " + String(message.prefix(2048)) + " (line \(line), column \(column))")
         }
     }
 
