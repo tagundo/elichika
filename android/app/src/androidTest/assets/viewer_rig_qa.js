@@ -165,7 +165,9 @@
       camera: JSON.parse(JSON.stringify(current.camera)) };
     return result;
   }
-  function deformedVertices() {
+  function deformedVertices(expectedCount) {
+    if (expectedCount === undefined) expectedCount = 6;
+    if (!Number.isInteger(expectedCount) || expectedCount <= 0) throw new Error("Expected a positive integer neutral fixture vertex count");
     if (!parsedModel) throw new Error("The actual loaded GLTF scene was not observed");
     var source = [];
     parsedModel.updateMatrixWorld(true);
@@ -174,7 +176,7 @@
     });
     if (source.length !== 1 || !source[0].isSkinnedMesh) throw new Error("The neutral fixture must use its real skin");
     var mesh = source[0], attribute = mesh.geometry.attributes.position;
-    if (attribute.count !== 6) throw new Error("Unexpected neutral fixture geometry");
+    if (attribute.count !== expectedCount) throw new Error("Unexpected neutral fixture geometry");
     mesh.skeleton.update();
     var points = [];
     for (var vertex = 0; vertex < attribute.count; vertex += 1) {
