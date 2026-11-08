@@ -7,10 +7,12 @@ import (
 
 	"bytes"
 	"crypto/md5"
-	"crypto/sha1"
 	"encoding/hex"
+	"fmt"
 
 	"os"
+	"path/filepath"
+	"strings"
 
 	hwdecrypt "gitlab.com/tatara_hisoka/gohwdecrypt"
 )
@@ -30,112 +32,161 @@ func versionString(shaInHex string) string {
 	return hex.EncodeToString(utils.Xor(bytes[:length], bytes[length:]))
 }
 
-func fileSha1(fileName string) []byte {
-	file, err := os.ReadFile(fileName)
-	if err != nil {
-		file = []byte{}
-	}
-	sha1 := sha1.Sum(file)
-	return sha1[:]
-}
-
-func fileSha1AndSize(fileName string) ([]byte, int) {
-	file, err := os.ReadFile(fileName)
-	if err != nil {
-		file = []byte{}
-	}
-	sha1 := sha1.Sum(file)
-	return sha1[:], len(file)
-}
-
+// updateClientDb treats installed clear databases as authoritative. Preparation
+// jobs own independent references; no manifest is published until every worker
+// has joined and all authoritative inputs have passed the final hash barrier.
 func updateClientDb(baseDir string, masterdataRefs []string) {
-	versionBytes := []byte{}
-	oldVersion := ""
-	actualFileVersions := map[string]string{}
-	mMap := map[string]*manifest{}
+	updateClientDbWithWorkers(baseDir, masterdataRefs, 0)
+}
+
+// A private component-test/benchmark limit. Normal startup always uses the
+// resource-aware automatic policy; there is no new user configuration setting.
+func updateClientDbWithWorkers(baseDir string, masterdataRefs []string, workerLimit int) {
+	if workerLimit != 0 && workerLimit != 1 && workerLimit != 2 && workerLimit != 4 && workerLimit != 8 {
+		log.Panic("client database workers must be automatic, 1, 2, 4 or 8")
+	}
+	type databaseFile struct {
+		name      string
+		sha       string
+		size      int64
+		reference FileReference
+	}
+	files := []databaseFile{}
+	indices := map[string]int{}
+	manifests := make([]*manifest, 0, len(masterdataRefs))
+	oldVersion, mixedVersions := "", false
 	for _, refPath := range masterdataRefs {
 		log.Println(baseDir + refPath)
 		f, err := os.Open(baseDir + refPath)
 		utils.CheckErr(err)
-		defer f.Close()
-		mMap[refPath] = newManifest(f)
+		m := newManifest(f)
+		utils.CheckErr(f.Close())
+		if !strings.HasSuffix(refPath, "_"+m.Lang) {
+			log.Panic("manifest locale does not match its filename: " + refPath)
+		}
+		manifests = append(manifests, m)
 		if oldVersion == "" {
-			oldVersion = mMap[refPath].Version
-		} else if oldVersion != mMap[refPath].Version {
-			log.Panic("manifest files must come from the same version")
+			oldVersion = m.Version
+		} else if oldVersion != m.Version {
+			mixedVersions = true
 		}
-		for _, file := range mMap[refPath].Files {
-			actualFileVersion, checked := actualFileVersions[file.Name]
-			if !checked {
-				actualFileVersion = hex.EncodeToString(fileSha1(baseDir + file.Name))
-				actualFileVersions[file.Name] = actualFileVersion
+		for _, file := range m.Files {
+			if _, found := indices[file.Name]; !found {
+				indices[file.Name] = len(files)
+				files = append(files, databaseFile{name: file.Name, reference: file})
 			}
-			versionBytes = append(versionBytes, []byte(actualFileVersion)...)
 		}
 	}
-	version := md5.Sum(versionBytes) // use md5 because it generate a 16 bytes string, which we can fold into 16 hex char
+	workers := clientDBWorkerCount(len(files))
+	if workerLimit > 0 {
+		workers = workerLimit
+	}
+	utils.CheckErr(runClientDBJobs(len(files), workers, func(index int) error {
+		sha, size, err := hashSQLiteFile(baseDir + files[index].name)
+		if err != nil {
+			return err
+		}
+		files[index].sha, files[index].size = sha, size
+		return nil
+	}))
+	// Concatenation order remains manifest/file order, including duplicate
+	// references. Worker completion order must never change the regional version.
+	versionBytes := []byte{}
+	for _, m := range manifests {
+		for _, file := range m.Files {
+			versionBytes = append(versionBytes, []byte(files[indices[file.Name]].sha)...)
+		}
+	}
+	version := md5.Sum(versionBytes)
 	newVersion := versionString(hex.EncodeToString(version[:]))
-	os.MkdirAll(config.StaticDataPath+newVersion+"/", 0755)
-	// A shared DB can appear in several locale/platform manifests. Reuse only
-	// outputs already verified/generated in this call, with this source SHA and
-	// fixed keySpec; a pre-existing disk path is never sufficient evidence.
-	verified := map[string]FileReference{}
-	prepare := func(inputFile, outputFile string, file *FileReference) {
-		file.SHA = actualFileVersions[file.Name]
-		if previous, ok := verified[outputFile]; ok && previous.SHA == file.SHA {
-			file.EncryptedSHA, file.Size = previous.EncryptedSHA, previous.Size
-			return
-		}
-		rekey(inputFile, outputFile, file, keySpec)
-		verified[outputFile] = *file
-	}
-	if newVersion == oldVersion {
-		// check for integrity  of the data
-		log.Println("Performing integrity check for version: ", oldVersion)
-		updated := false
-		for _, m := range mMap {
-			for i := range m.Files {
-				inputFile := baseDir + m.Files[i].Name
-				existingFile := config.StaticDataPath + oldVersion + "/" + m.Files[i].Name
-				before := m.Files[i]
-				prepare(inputFile, existingFile, &m.Files[i])
-				if m.Files[i] != before {
-					updated = true
-				}
-			}
-		}
-		// A restored output may have the same metadata as before, while the
-		// corresponding static manifest is missing or damaged.
-		for refPath, m := range mMap {
-			existing, err := os.ReadFile(config.StaticDataPath + oldVersion + "/" + refPath)
-			if err != nil || !bytes.Equal(existing, m.serialize()) {
-				updated = true
-			}
-		}
-		if updated { // update all the manifest
-			for refPath, m := range mMap {
-				serialized := m.serialize()
-				err := os.WriteFile(config.StaticDataPath+oldVersion+"/"+refPath, serialized, 0777)
-				utils.CheckErr(err)
-				err = os.WriteFile(baseDir+refPath, serialized, 0777)
-				utils.CheckErr(err)
-			}
-		}
-	} else {
+	outputDir := filepath.Join(config.StaticDataPath, newVersion)
+	utils.CheckErr(os.MkdirAll(outputDir, 0755))
+	if mixedVersions {
+		log.Println("Recovering interrupted client manifest update from installed databases: ", newVersion)
+	} else if newVersion != oldVersion {
 		log.Println("Difference detected, new version: ", newVersion)
-		for refPath, m := range mMap {
-			m.Version = newVersion
-			for i := range m.Files {
-				inputFile := baseDir + m.Files[i].Name
-				outputFile := config.StaticDataPath + newVersion + "/" + m.Files[i].Name
-				prepare(inputFile, outputFile, &m.Files[i])
-			}
-			serialized := m.serialize()
-			err := os.WriteFile(config.StaticDataPath+newVersion+"/"+refPath, serialized, 0777)
-			utils.CheckErr(err)
-			err = os.WriteFile(baseDir+refPath, serialized, 0777)
-			utils.CheckErr(err)
+	} else {
+		log.Println("Performing integrity check for version: ", newVersion)
+	}
+	log.Printf("Preparing %d client database files with %d worker(s)\n", len(files), workers)
+	for index := range files {
+		file := &files[index]
+		file.reference.Version, file.reference.SHA = newVersion, file.sha
+	}
+	utils.CheckErr(runClientDBJobs(len(files), workers, func(index int) error {
+		file := &files[index]
+		return rekeyFile(baseDir+file.name, filepath.Join(outputDir, file.name), &file.reference, keySpec)
+	}))
+	// A source changed while a different worker was preparing its file must not
+	// be advertised under the earlier version. This is deliberately a content
+	// hash, not a timestamp-only shortcut.
+	utils.CheckErr(runClientDBJobs(len(files), workers, func(index int) error {
+		file := &files[index]
+		sha, size, err := hashSQLiteFile(baseDir + file.name)
+		if err != nil {
+			return err
 		}
+		if sha != file.sha || size != file.size {
+			return fmt.Errorf("clear database changed before client manifest publication: %s", file.name)
+		}
+		return nil
+	}))
+	for _, m := range manifests {
+		m.Version = newVersion
+		for index := range m.Files {
+			file := &m.Files[index]
+			prepared := files[indices[file.Name]].reference
+			file.Version, file.SHA = newVersion, prepared.SHA
+			file.EncryptedSHA, file.Size = prepared.EncryptedSHA, prepared.Size
+		}
+	}
+	// CDN copies first, then installed headers. All file verification has ended
+	// before even staging these manifest bytes; interrupted renames still recover.
+	writes := make([]manifestWrite, 0, 2*len(manifests))
+	for index, m := range manifests {
+		writes = append(writes, manifestWrite{filepath.Join(outputDir, masterdataRefs[index]), m.serialize()})
+	}
+	for index, m := range manifests {
+		writes = append(writes, manifestWrite{baseDir + masterdataRefs[index], m.serialize()})
+	}
+	publishManifests(writes)
+}
+
+type manifestWrite struct {
+	path string
+	data []byte
+}
+
+func publishManifests(writes []manifestWrite) {
+	type stagedManifest struct{ temporary, destination string }
+	staged := make([]stagedManifest, 0, len(writes))
+	defer func() {
+		for _, file := range staged {
+			os.Remove(file.temporary)
+		}
+	}()
+	for _, write := range writes {
+		if existing, err := os.ReadFile(write.path); err == nil && bytes.Equal(existing, write.data) {
+			continue
+		}
+		file, err := os.CreateTemp(filepath.Dir(write.path), ".manifest-*")
+		utils.CheckErr(err)
+		staged = append(staged, stagedManifest{file.Name(), write.path})
+		func() {
+			defer file.Close()
+			mode := os.FileMode(0644)
+			if info, err := os.Stat(write.path); err == nil {
+				mode = info.Mode().Perm()
+			}
+			utils.CheckErr(file.Chmod(mode))
+			_, err := file.Write(write.data)
+			utils.CheckErr(err)
+			utils.CheckErr(file.Sync())
+			utils.CheckErr(file.Close())
+		}()
+	}
+	for _, file := range staged {
+		utils.CheckErr(os.Rename(file.temporary, file.destination))
 	}
 }
 
@@ -169,23 +220,6 @@ func init() {
 func readMasterdataManinest(path string) string {
 	file, err := os.Open(path)
 	utils.CheckErr(err)
-	buff := make([]byte, 1024)
-	count, err := file.Read(buff)
-	utils.CheckErr(err)
-	if count < 21 {
-		log.Panic("file too short")
-	}
-	length := int(buff[20])
-	version := string(buff[21 : 21+length])
-	return version
-}
-
-func copy(in, out string) error {
-	file, err := os.ReadFile(in)
-	if err != nil {
-		return err
-	}
-	err = os.WriteFile(out, file, 0777)
-	utils.CheckErr(err)
-	return nil
+	defer file.Close()
+	return newManifest(file).Version
 }

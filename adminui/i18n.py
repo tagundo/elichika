@@ -48,6 +48,67 @@ def all_strings(lang):
 # _TABLES[lang] maps an English source string -> its translation.
 _TABLES = {
     "ko": {
+        "Remove Costume / Clone": "코스튬/복제 삭제",
+        "Review and remove installed costumes or clones. Original game costumes and costumes currently in use are protected. A recovery backup is always kept.":
+            "설치한 코스튬이나 복제를 확인한 뒤 삭제합니다. 원본 코스튬과 사용 중인 코스튬은 보호되며, 복구용 백업을 반드시 남깁니다.",
+        "Installed costume or clone": "설치된 코스튬 또는 복제",
+        "Show and allow removal of built-in costumes (advanced)": "기본 제공 코스튬 표시 및 삭제 허용 (고급)",
+        "Built-in costumes require an additional confirmation popup. Game-required references stay protected.":
+            "기본 제공 코스튬은 별도 확인 팝업에 동의해야 삭제됩니다. 게임에서 필수로 참조하는 코스튬은 계속 보호합니다.",
+        "Built-in costume: ": "기본 제공 코스튬: ",
+        "Remove a built-in costume?": "기본 제공 코스튬을 삭제할까요?",
+        "Remove built-in costume": "기본 제공 코스튬 삭제",
+        "Remove this built-in costume? A backup will be kept. This affects every account. Continue?":
+            "이 기본 제공 코스튬을 삭제할까요? 복구용 백업을 남기며, 모든 계정에 적용됩니다. 삭제를 진행하시겠습니까?",
+        "Change used costumes to the character's default before removing": "사용 중인 코스튬을 캐릭터의 기본 코스튬으로 변경 후 삭제",
+        "Review the HOME and MV slots that will change before confirming removal.": "삭제를 확정하기 전에 변경될 홈·MV 편성 항목을 확인합니다.",
+        "Used costumes will change to each character's default: ": "기본 코스튬으로 변경할 사용 항목: ",
+        "Copy a costume to several characters at once (adds a separate clone for each selected character).":
+            "선택한 여러 캐릭터에게 코스튬을 한 번에 복제합니다. 대상마다 독립된 모델을 만듭니다.",
+        "Target characters": "대상 캐릭터 (여러 명 선택)",
+        "Select every character to receive a clone. Each receives independent model assets.":
+            "복제할 대상 캐릭터를 모두 체크하세요. 대상마다 독립된 모델 에셋을 사용합니다.",
+        "Review removal": "삭제 내용 확인",
+        "Removal review": "삭제 전 확인",
+        "Costume IDs: ": "코스튬 ID: ",
+        "Database rows: ": "DB 항목: ",
+        "Owned files: ": "전용 파일: ",
+        "The server will stop. A recovery backup is kept; user progress and shared assets are preserved.":
+            "서버를 중지하고 복구용 백업을 만든 뒤 삭제합니다. 유저 진행 상황과 공유 에셋은 유지됩니다.",
+        "Assets without proven ownership remain cached.": "소유 관계가 확인되지 않은 에셋은 캐시에 남겨 둡니다.",
+        "Back up and remove this costume / clone": "백업 후 이 코스튬/복제 삭제",
+        "Removal blocked. Change outfits or MV teams that use this costume, then review again.":
+            "삭제할 수 없습니다. 이 코스튬을 사용하는 홈 코스튬·MV 편성 등을 변경한 뒤 다시 확인하세요.",
+        "Installed costumes or clones": "설치된 코스튬 또는 복제 (여러 개 선택)",
+        "Select up to 100 costumes. Review first, then confirm removal.": "코스튬을 최대 100개 선택하세요. 먼저 검토한 뒤 삭제를 확정합니다.",
+        "Select up to 100 costumes per removal.": "한 번에 삭제할 코스튬은 최대 100개까지 선택하세요.",
+        "Select one or several costumes. Review first, then confirm removal.": "한 개 또는 여러 코스튬을 선택하세요. 먼저 검토한 뒤 삭제를 확정합니다.",
+        "Select costumes, review their use, then confirm removal.": "코스튬을 선택해 사용 내역을 검토한 뒤 삭제를 확정하세요.",
+        "Search costumes": "코스튬 검색",
+        "Selected costumes: ": "선택한 코스튬: ",
+        "Reviewing selected costumes…": "선택한 코스튬 검토 중…",
+        "Removing selected costumes…": "선택한 코스튬 삭제 중…",
+        "Review complete — not deleted yet": "검토 완료 — 아직 삭제되지 않았습니다",
+        "Review complete — removal blocked": "검토 완료 — 삭제가 차단되었습니다",
+        "Review result unavailable — review again": "검토 결과를 확인하지 못했습니다 — 다시 검토하세요",
+        "Review cancelled — nothing was removed": "검토 취소 — 삭제되지 않았습니다",
+        "Review failed — nothing was removed": "검토 실패 — 삭제되지 않았습니다",
+        "Removal complete": "삭제 완료",
+        "Removal complete — check the log": "삭제 완료 — 로그를 확인하세요",
+        "Removal was not confirmed — check the log": "삭제 결과를 확인하지 못했습니다 — 로그를 확인하세요",
+        "Removal cancelled — check the log": "삭제 취소 — 로그를 확인하세요",
+        "Removal failed — check the log": "삭제 실패 — 로그를 확인하세요",
+        "Selection changed — review again": "선택 항목이 변경되었습니다 — 다시 검토하세요",
+        "Back up and remove selected costumes / clones": "백업 후 선택한 코스튬/복제 삭제",
+        "Remove selected built-in costumes?": "선택한 기본 제공 코스튬을 삭제할까요?",
+        "This selection includes built-in costumes. Remove all selected costumes? A backup will be kept. This affects every account.": "선택 항목에 기본 제공 코스튬이 포함되어 있습니다. 선택한 코스튬을 모두 삭제할까요? 복구용 백업을 남기며 모든 계정에 적용됩니다.",
+        "Remove all selected costumes": "선택한 코스튬 모두 삭제",
+        "Removed costumes: ": "삭제한 코스튬: ",
+        "Restart the server and game to apply the removal.": "삭제 내용을 적용하려면 서버와 게임을 다시 시작하세요.",
+        "Recovery backup: ": "복구용 백업: ",
+        "Removal finished, but the job reported an error or cancellation. Check the log.": "삭제는 완료됐지만 작업에서 오류 또는 취소가 보고됐습니다. 로그를 확인하세요.",
+        "Show log": "로그 보기",
+        "No job was started.": "작업이 시작되지 않았습니다.",
         # static UI chrome (client-side, app.js / index.html)
         "elichika · Database Admin": "elichika · 데이터베이스 관리",
         "Pick a tool on the left.": "왼쪽에서 도구를 선택하세요.",
@@ -70,8 +131,8 @@ _TABLES = {
         # tool labels
         "Backup Database": "데이터베이스 백업",
         "Clear Pack Cache": "팩 캐시 비우기",
-        "Delete downloaded game packs (Download/sukusta/packs) to free storage. Missing packs re-download when you play.":
-            "받아둔 게임 팩(Download/sukusta/packs)을 삭제해 저장공간을 확보합니다. 부족한 팩은 플레이 시 다시 받습니다.",
+        "Delete downloaded game packs (sukusta/packs) to free storage. Missing packs re-download when you play.":
+            "받아둔 게임 팩(sukusta/packs)을 삭제해 저장공간을 확보합니다. 부족한 팩은 플레이 시 다시 받습니다.",
         "Restore Database": "데이터베이스 복원",
         "Costume Clone": "코스튬 복제",
         "Extract / Decrypt Assets": "에셋 추출 / 복호화",
@@ -103,18 +164,18 @@ _TABLES = {
             "이전 백업에서 데이터베이스를 복원합니다(현재 상태는 먼저 백업됩니다).",
         "Copy a costume from one character to another (adds a cloned suit for every user).":
             "한 캐릭터의 코스튬을 다른 캐릭터로 복사합니다(모든 유저에게 복제 코스튬 추가).",
-        "Install a costume add-on zip into the server database. Drop the zip into Download/sukusta/suit (or use the file picker), then pick it.":
-            "코스튬 애드온 zip을 서버 DB에 설치합니다. zip을 Download/sukusta/suit 에 넣거나 파일 선택기로 가져온 뒤 고르세요.",
-        "Install a live (song) add-on zip into the server database. Drop the zip into Download/sukusta/live.":
-            "라이브(곡) 애드온 zip을 서버 DB에 설치합니다. zip을 Download/sukusta/live 에 넣으세요.",
-        "Install a card add-on zip into the server database. Drop the zip into Download/sukusta/card.":
-            "카드 애드온 zip을 서버 DB에 설치합니다. zip을 Download/sukusta/card 에 넣으세요.",
-        "Install a tower / DLP add-on zip. Drop the zip into Download/sukusta/tower.":
-            "타워 / DLP 애드온 zip을 설치합니다. zip을 Download/sukusta/tower 에 넣으세요.",
-        "Install a live camera / timeline add-on zip. Drop the zip into Download/sukusta/livetimeline.":
-            "라이브 카메라 / 타임라인 애드온 zip을 설치합니다. zip을 Download/sukusta/livetimeline 에 넣으세요.",
-        "Import a .sql patch into the master / user databases (advanced). Drop the file into Download/sukusta/sql.":
-            "마스터 / 유저 DB에 .sql 패치를 임포트합니다(고급). 파일을 Download/sukusta/sql 에 넣으세요.",
+        "Install a costume add-on zip into the server database. Drop the zip into sukusta/suit (or use the file picker), then pick it.":
+            "코스튬 애드온 zip을 서버 DB에 설치합니다. zip을 sukusta/suit 에 넣거나 파일 선택기로 가져온 뒤 고르세요.",
+        "Install a live (song) add-on zip into the server database. Drop the zip into sukusta/live.":
+            "라이브(곡) 애드온 zip을 서버 DB에 설치합니다. zip을 sukusta/live 에 넣으세요.",
+        "Install a card add-on zip into the server database. Drop the zip into sukusta/card.":
+            "카드 애드온 zip을 서버 DB에 설치합니다. zip을 sukusta/card 에 넣으세요.",
+        "Install a tower / DLP add-on zip. Drop the zip into sukusta/tower.":
+            "타워 / DLP 애드온 zip을 설치합니다. zip을 sukusta/tower 에 넣으세요.",
+        "Install a live camera / timeline add-on zip. Drop the zip into sukusta/livetimeline.":
+            "라이브 카메라 / 타임라인 애드온 zip을 설치합니다. zip을 sukusta/livetimeline 에 넣으세요.",
+        "Import a .sql patch into the master / user databases (advanced). Drop the file into sukusta/sql.":
+            "마스터 / 유저 DB에 .sql 패치를 임포트합니다(고급). 파일을 sukusta/sql 에 넣으세요.",
         "Swap the JP client's text for another language's dictionary. To revert, swap back to ja.":
             "JP 클라이언트의 텍스트를 다른 언어 사전으로 교체합니다. 되돌리려면 다시 ja로 바꾸세요.",
         # field labels
@@ -123,12 +184,12 @@ _TABLES = {
         "Back up the database first": "DB 먼저 백업",
         "Stop the elichika server first": "먼저 elichika 서버 중지",
         "Automatically restart the server after installation": "설치 후 서버 자동 재시작",
-        "Android app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
-            "Android 앱: 실행 중인 서버를 먼저 중지하고 모든 파일 설치가 성공하면 다시 시작합니다. 꺼져 있던 서버는 켜지지 않습니다. 실패하거나 취소하면 중지 상태를 유지합니다.",
+        "In the app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
+            "앱: 실행 중인 서버를 먼저 중지하고 모든 파일 설치가 성공하면 다시 시작합니다. 꺼져 있던 서버는 켜지지 않습니다. 실패하거나 취소하면 중지 상태를 유지합니다.",
         "Backup to restore": "복원할 백업",
         "Source character": "원본 캐릭터",
         "Costume to clone": "복제할 코스튬",
-        "Rina version (character 209 only)": "리나 버전 (캐릭터 209 전용)",
+        "Rina board / bare face": "리나 보드·맨얼굴",
         "Target character": "대상 캐릭터",
         "Back up databases first": "먼저 데이터베이스 백업",
         "Language to use": "사용할 언어",
@@ -147,12 +208,73 @@ _TABLES = {
             "고른 하나가 아니라 위 목록의 모든 코스튬(캐릭터의 코스튬 또는 검색 결과 전체)을 추출합니다.",
         "Recommended: a full DB backup is taken before the clone.":
             "권장: 복제 전에 전체 DB 백업이 수행됩니다.",
-        "Files in Download/sukusta/{folder} and …/addons appear here.":
-            "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다.",
-        "Files in Download/sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
-            "Download/sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다. Ctrl/Cmd를 누른 채(또는 드래그) 여러 개를 선택하면 차례로 설치됩니다.",
+        "Files in sukusta/{folder} and …/addons appear here.":
+            "sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다.",
+        "Files in sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
+            "sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다. Ctrl/Cmd를 누른 채(또는 드래그) 여러 개를 선택하면 차례로 설치됩니다.",
     },
     "ja": {
+        "Remove Costume / Clone": "衣装・クローンの削除",
+        "Review and remove installed costumes or clones. Original game costumes and costumes currently in use are protected. A recovery backup is always kept.":
+            "追加した衣装やクローンを確認して削除します。元の衣装と使用中の衣装は保護され、復旧用バックアップを必ず保存します。",
+        "Installed costume or clone": "追加済みの衣装・クローン",
+        "Show and allow removal of built-in costumes (advanced)": "初期収録衣装の表示・削除を許可（上級）",
+        "Built-in costumes require an additional confirmation popup. Game-required references stay protected.":
+            "初期収録衣装は追加の確認ダイアログへの同意が必要です。ゲームで必須の参照がある衣装は保護されます。",
+        "Built-in costume: ": "初期収録衣装: ",
+        "Remove a built-in costume?": "初期収録衣装を削除しますか？",
+        "Remove built-in costume": "初期収録衣装を削除",
+        "Remove this built-in costume? A backup will be kept. This affects every account. Continue?":
+            "この初期収録衣装を削除しますか？復旧用バックアップを保存します。全アカウントに適用されます。続行しますか？",
+        "Change used costumes to the character's default before removing": "使用中の衣装を各キャラクターの初期衣装に変更して削除",
+        "Review the HOME and MV slots that will change before confirming removal.": "削除を確定する前に、変更されるホーム・MV編成を確認します。",
+        "Used costumes will change to each character's default: ": "初期衣装に変更する使用箇所: ",
+        "Copy a costume to several characters at once (adds a separate clone for each selected character).":
+            "選択した複数のキャラクターに衣装を一括複製します。それぞれ独立したモデルを作成します。",
+        "Target characters": "対象キャラクター（複数選択）",
+        "Select every character to receive a clone. Each receives independent model assets.":
+            "複製先をすべて選択してください。各対象に独立したモデルアセットを作成します。",
+        "Review removal": "削除内容を確認",
+        "Removal review": "削除前の確認",
+        "Costume IDs: ": "衣装ID: ",
+        "Database rows: ": "DB項目: ",
+        "Owned files: ": "専用ファイル: ",
+        "The server will stop. A recovery backup is kept; user progress and shared assets are preserved.":
+            "サーバーを停止して復旧用バックアップを保存します。進行状況と共有アセットは維持されます。",
+        "Assets without proven ownership remain cached.": "所有関係を確認できないアセットはキャッシュに残します。",
+        "Back up and remove this costume / clone": "バックアップしてこの衣装・クローンを削除",
+        "Removal blocked. Change outfits or MV teams that use this costume, then review again.":
+            "削除できません。この衣装を使用するホーム衣装・MV編成などを変更し、再度確認してください。",
+        "Installed costumes or clones": "インストール済み衣装・クローン（複数選択）",
+        "Select up to 100 costumes. Review first, then confirm removal.": "衣装は最大100件選択できます。内容を確認してから削除を確定してください。",
+        "Select up to 100 costumes per removal.": "一度に削除する衣装は最大100件まで選択してください。",
+        "Select one or several costumes. Review first, then confirm removal.": "衣装を一つ以上選び、内容を確認してから削除を確定してください。",
+        "Select costumes, review their use, then confirm removal.": "衣装を選び、使用箇所を確認してから削除を確定してください。",
+        "Search costumes": "衣装を検索",
+        "Selected costumes: ": "選択した衣装: ",
+        "Reviewing selected costumes…": "選択した衣装を確認中…",
+        "Removing selected costumes…": "選択した衣装を削除中…",
+        "Review complete — not deleted yet": "確認完了 — まだ削除されていません",
+        "Review complete — removal blocked": "確認完了 — 削除できません",
+        "Review result unavailable — review again": "確認結果がありません — 再度確認してください",
+        "Review cancelled — nothing was removed": "確認を中止 — 削除されていません",
+        "Review failed — nothing was removed": "確認失敗 — 削除されていません",
+        "Removal complete": "削除完了",
+        "Removal complete — check the log": "削除完了 — ログを確認してください",
+        "Removal was not confirmed — check the log": "削除結果を確認できません — ログを確認してください",
+        "Removal cancelled — check the log": "削除中止 — ログを確認してください",
+        "Removal failed — check the log": "削除失敗 — ログを確認してください",
+        "Selection changed — review again": "選択が変更されました — 再度確認してください",
+        "Back up and remove selected costumes / clones": "バックアップして選択した衣装・クローンを削除",
+        "Remove selected built-in costumes?": "選択した初期収録衣装を削除しますか？",
+        "This selection includes built-in costumes. Remove all selected costumes? A backup will be kept. This affects every account.": "選択内容には初期収録衣装が含まれます。選択した衣装をすべて削除しますか？復旧用バックアップを保存します。全アカウントに適用されます。",
+        "Remove all selected costumes": "選択した衣装をすべて削除",
+        "Removed costumes: ": "削除した衣装: ",
+        "Restart the server and game to apply the removal.": "削除内容を適用するにはサーバーとゲームを再起動してください。",
+        "Recovery backup: ": "復旧用バックアップ: ",
+        "Removal finished, but the job reported an error or cancellation. Check the log.": "削除は完了しましたが、作業でエラーまたは中止が報告されました。ログを確認してください。",
+        "Show log": "ログを表示",
+        "No job was started.": "作業が開始されませんでした。",
         # static UI chrome (client-side, app.js / index.html)
         "elichika · Database Admin": "elichika · データベース管理",
         "Pick a tool on the left.": "左からツールを選んでください。",
@@ -175,8 +297,8 @@ _TABLES = {
         # tool labels
         "Backup Database": "データベースのバックアップ",
         "Clear Pack Cache": "パックキャッシュを消去",
-        "Delete downloaded game packs (Download/sukusta/packs) to free storage. Missing packs re-download when you play.":
-            "ダウンロード済みのゲームパック（Download/sukusta/packs）を削除して空き容量を確保します。不足分はプレイ時に再取得されます。",
+        "Delete downloaded game packs (sukusta/packs) to free storage. Missing packs re-download when you play.":
+            "ダウンロード済みのゲームパック（sukusta/packs）を削除して空き容量を確保します。不足分はプレイ時に再取得されます。",
         "Restore Database": "データベースの復元",
         "Costume Clone": "衣装クローン",
         "Extract / Decrypt Assets": "アセット抽出 / 復号",
@@ -207,18 +329,18 @@ _TABLES = {
             "以前のバックアップからデータベースを復元します（現在の状態は先にバックアップされます）。",
         "Copy a costume from one character to another (adds a cloned suit for every user).":
             "ある衣装を別のキャラにコピーします（全ユーザーにクローン衣装を追加）。",
-        "Install a costume add-on zip into the server database. Drop the zip into Download/sukusta/suit (or use the file picker), then pick it.":
-            "衣装アドオンzipをサーバーDBにインストールします。zipをDownload/sukusta/suitに置くかファイル選択で取り込み、選択してください。",
-        "Install a live (song) add-on zip into the server database. Drop the zip into Download/sukusta/live.":
-            "ライブ（楽曲）アドオンzipをサーバーDBにインストールします。zipをDownload/sukusta/liveに置いてください。",
-        "Install a card add-on zip into the server database. Drop the zip into Download/sukusta/card.":
-            "カードアドオンzipをサーバーDBにインストールします。zipをDownload/sukusta/cardに置いてください。",
-        "Install a tower / DLP add-on zip. Drop the zip into Download/sukusta/tower.":
-            "タワー / DLP アドオンzipをインストールします。zipをDownload/sukusta/towerに置いてください。",
-        "Install a live camera / timeline add-on zip. Drop the zip into Download/sukusta/livetimeline.":
-            "ライブカメラ / タイムラインアドオンzipをインストールします。zipをDownload/sukusta/livetimelineに置いてください。",
-        "Import a .sql patch into the master / user databases (advanced). Drop the file into Download/sukusta/sql.":
-            "マスター / ユーザーDBに.sqlパッチをインポートします（上級）。ファイルをDownload/sukusta/sqlに置いてください。",
+        "Install a costume add-on zip into the server database. Drop the zip into sukusta/suit (or use the file picker), then pick it.":
+            "衣装アドオンzipをサーバーDBにインストールします。zipをsukusta/suitに置くかファイル選択で取り込み、選択してください。",
+        "Install a live (song) add-on zip into the server database. Drop the zip into sukusta/live.":
+            "ライブ（楽曲）アドオンzipをサーバーDBにインストールします。zipをsukusta/liveに置いてください。",
+        "Install a card add-on zip into the server database. Drop the zip into sukusta/card.":
+            "カードアドオンzipをサーバーDBにインストールします。zipをsukusta/cardに置いてください。",
+        "Install a tower / DLP add-on zip. Drop the zip into sukusta/tower.":
+            "タワー / DLP アドオンzipをインストールします。zipをsukusta/towerに置いてください。",
+        "Install a live camera / timeline add-on zip. Drop the zip into sukusta/livetimeline.":
+            "ライブカメラ / タイムラインアドオンzipをインストールします。zipをsukusta/livetimelineに置いてください。",
+        "Import a .sql patch into the master / user databases (advanced). Drop the file into sukusta/sql.":
+            "マスター / ユーザーDBに.sqlパッチをインポートします（上級）。ファイルをsukusta/sqlに置いてください。",
         "Swap the JP client's text for another language's dictionary. To revert, swap back to ja.":
             "JPクライアントのテキストを別言語の辞書に置き換えます。戻すにはjaに置換し直してください。",
         "File to install": "インストールするファイル",
@@ -226,12 +348,12 @@ _TABLES = {
         "Back up the database first": "先にDBをバックアップ",
         "Stop the elichika server first": "先にelichikaサーバーを停止",
         "Automatically restart the server after installation": "インストール後にサーバーを自動再起動",
-        "Android app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
-            "Androidアプリ: 実行中のサーバーを停止し、全ファイルのインストール成功後に再起動します。停止中のサーバーは起動しません。失敗やキャンセル時は停止したままにします。",
+        "In the app: stop a running server before installing and restart it after all files succeed. A stopped server stays off. Failed or cancelled installs stay stopped.":
+            "アプリ: 実行中のサーバーを停止し、全ファイルのインストール成功後に再起動します。停止中のサーバーは起動しません。失敗やキャンセル時は停止したままにします。",
         "Backup to restore": "復元するバックアップ",
         "Source character": "元キャラ",
         "Costume to clone": "クローンする衣装",
-        "Rina version (character 209 only)": "リナ版（キャラ209のみ）",
+        "Rina board / bare face": "璃奈ボード・素顔",
         "Target character": "対象キャラ",
         "Back up databases first": "先にデータベースをバックアップ",
         "Language to use": "使用する言語",
@@ -249,9 +371,9 @@ _TABLES = {
             "選んだ1つではなく、上の一覧のすべての衣装（キャラの衣装、または検索結果すべて）を抽出します。",
         "Recommended: a full DB backup is taken before the clone.":
             "推奨: クローン前に完全なDBバックアップが取られます。",
-        "Files in Download/sukusta/{folder} and …/addons appear here.":
-            "Download/sukusta/{folder} と …/addons のファイルがここに表示されます。",
-        "Files in Download/sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
-            "Download/sukusta/{folder} と …/addons のファイルがここに表示されます。Ctrl/Cmdを押しながら（またはドラッグで）複数選択すると順番にインストールされます。",
+        "Files in sukusta/{folder} and …/addons appear here.":
+            "sukusta/{folder} と …/addons のファイルがここに表示されます。",
+        "Files in sukusta/{folder} and …/addons appear here. Hold Ctrl/Cmd (or drag) to select several — they install one after another.":
+            "sukusta/{folder} と …/addons のファイルがここに表示されます。Ctrl/Cmdを押しながら（またはドラッグで）複数選択すると順番にインストールされます。",
     },
 }

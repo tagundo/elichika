@@ -7,6 +7,7 @@ import random
 import sys
 import shutil
 import hashlib
+from sukusta_paths import installer_scan_path
 
 def clear_terminal():
     system = platform.system()
@@ -22,7 +23,7 @@ print("Specifically: outdated code, method creating dlp is copy paste not custom
 print("")
 confirm_script_card = input("Press Enter to Continue")
 
-modding_elichika_path = "assets/data/"
+modding_elichika_path = installer_scan_path("tower", "assets/data/")
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)
@@ -88,6 +89,15 @@ source_file_elichika_old = "assets/db/serverdata.db"
 backup_file_elichika_old = "assets/db/backup_old/serverdata.db"
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(data, keys_0, keys_1, keys_2)
+        return
     for i in range(len(data)):
         data[i] = data[i] ^ ((keys_1 ^ keys_0 ^ keys_2) >> 24 & 0xFF)
         keys_0 = (0x343fd * keys_0 + 0x269ec3) & 0xFFFFFFFF

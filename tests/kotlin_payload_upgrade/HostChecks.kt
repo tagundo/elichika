@@ -11,6 +11,7 @@ import java.nio.file.Files
 import java.util.Comparator
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 private fun removeTree(file: File) {
     if (file.exists() || Files.isSymbolicLink(file.toPath())) {
@@ -22,9 +23,12 @@ private class Backend {
     var applyCount=0
     var recoverCount=0
     var decisionCount=0
+    var startupReply="""{"status":"CLEAN"}"""
+    var startupChecks=0
     var beforeDecision: (File)->Unit = {}
     val admittedManifests=mutableMapOf<File,String>()
     var launchCount=0
+    var launchRoot: File?=null
     var refused=false
     var leaseBusy=false
     var recovered=false
@@ -33,8 +37,13 @@ private class Backend {
     var beforeApply: (File,File,String)->Unit = { _,_,_ -> }
     val modes=mutableListOf<String>()
     fun call(module: String, method: String, arguments: Array<out Any?>): String {
-        if (module=="elichika_launch") { check(heldRoot==null); launchCount++; return "None" }
+        if (module=="elichika_launch") { check(heldRoot==null); launchCount++; launchRoot=File(arguments[0].toString()); return "None" }
         val root=File(arguments[0].toString())
+        if (module=="costume_management") {
+            check(method=="startup_check_json" && arguments.size==1)
+            startupChecks++
+            return startupReply
+        }
         if (module=="database_maintenance") {
             if (method=="begin_maintenance_json") {
                 if (leaseBusy) return JSONObject().put("status","REFUSED").put("reason","DATABASE_MAINTENANCE_BUSY").toString()
@@ -314,10 +323,79 @@ fun main(args: Array<String>) {
     Files.delete(incoming.toPath())
 
     check(backend.launchCount==0 && backend.heldRoot==null) { "Preparation started tools or leaked its lease" }
+    checkCostumeStartup(temporary,backend)
     check(PyServers.ensureStarted(first,first.filesDir))
     check(backend.launchCount==1 && Python.starts.get()==1)
     checkController(temporary)
-    println("KOTLIN_UPGRADE_HOST_CHECKS_PASS: fresh/reset, mod-state isolation, missing-file repair, APK-only no-op, data revision change, rebase, missing provenance, manifest admission and recovery ordering, settings on skip, whole preparation lease, busy leaves inputs/config untouched, refusal/recovery, source/module failure, no-follow cleanup, shared Python init")
+    println("KOTLIN_UPGRADE_HOST_CHECKS_PASS: fresh/reset, mod-state isolation, missing-file repair, APK-only no-op, data revision change, rebase, missing provenance, manifest admission and recovery ordering, settings on skip, whole preparation lease, busy leaves inputs/config untouched, refusal/recovery, source/module failure, no-follow cleanup, shared Python init, costume startup refusal before recovery/reset/native CLI, known-only cold recovery HTTP tools")
+}
+
+private fun checkCostumeStartup(parent: File, backend: Backend) {
+    val ctx=context(parent,"costume-recovery")
+    val input=File(ctx.filesDir,".payload-incoming/pending/payload/keep").apply { parentFile.mkdirs(); writeText("PRESERVE") }
+    val config=File(ctx.filesDir,"config.json").apply { writeText("""{"keep":"EXACT"}""") }
+    val userdata=File(ctx.filesDir,"userdata.db").apply { writeText("SYNTHETIC_USER") }
+    val native=File(parent,"synthetic-native").apply { mkdirs() }
+    val executable=File(native,"libelichika.so").apply {
+        writeText("#!/bin/sh\nprintf '%s\\n' \"${'$'}*\" >> native-invocations\n")
+        check(setExecutable(true))
+    }
+    check(executable.isFile)
+    ctx.applicationInfo.nativeLibraryDir=native.absolutePath
+    val marker=File(ctx.filesDir,"native-invocations")
+    val beforeRecover=backend.recoverCount
+    val beforeApply=backend.applyCount
+    val beforeDecision=backend.decisionCount
+    val beforeLanguage=Lang.writes
+    val refused="""{"status":"REFUSED","reason":"COSTUME_RECOVERY_REQUIRED"}"""
+    val invalidReplies=listOf(refused,"""{"status":"FAILED","reason":"COSTUME_RECOVERY_REQUIRED"}""",
+        """{"status":"READY"}""", "private-row-sentinel")
+    for (reply in invalidReplies) {
+        backend.startupReply=reply
+        val checked=backend.startupChecks
+        expectFailure { AssetInstaller.install(ctx) {} }
+        expectFailure { AssetInstaller.resetServerData(ctx) {} }
+        val process=ServerProcess(ctx)
+        check(!process.startServer(ctx.filesDir) { error("A refused server must not invoke onExit") })
+        for (verb in listOf("reset_accounts","rebuild_assets")) {
+            check(!process.runOnce(listOf(verb),ctx.filesDir) { error("A refused CLI must not invoke onExit") })
+        }
+        check(backend.startupChecks==checked+5 && backend.heldRoot==null)
+        check(backend.recoverCount==beforeRecover && backend.applyCount==beforeApply && backend.decisionCount==beforeDecision)
+        check(ctx.assets.opens==0 && Lang.writes==beforeLanguage && !marker.exists())
+        check(input.readText()=="PRESERVE" && config.readText()=="""{"keep":"EXACT"}""" && userdata.readText()=="SYNTHETIC_USER")
+    }
+    backend.startupReply="""{"status":"CLEAN"}"""
+    for (arguments in listOf(emptyList(),listOf("reset_accounts"))) {
+        val exited=CountDownLatch(1)
+        val process=ServerProcess(ctx)
+        check(process.runOnce(arguments,ctx.filesDir) { code -> check(code==0); exited.countDown() })
+        check(exited.await(5,TimeUnit.SECONDS))
+    }
+    check(marker.readLines()==listOf("","reset_accounts"))
+    fun awaitTools() {
+        val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5)
+        while (PyServers.isPreparing() && System.nanoTime()<deadline) Thread.sleep(5)
+        check(!PyServers.isPreparing())
+    }
+    for (reply in invalidReplies.drop(1)) {
+        backend.startupReply=reply
+        PyServers.prepareAsync(ctx); awaitTools()
+        check(!PyServers.isStarted() && PyServers.hasPreparationError() && backend.launchCount==0)
+    }
+    Hooks.invoke={ module,method,arguments ->
+        if (module=="costume_management") throw IllegalStateException("private-row-sentinel")
+        backend.call(module,method,arguments)
+    }
+    PyServers.prepareAsync(ctx); awaitTools()
+    check(!PyServers.isStarted() && backend.launchCount==0)
+    Hooks.invoke=backend::call
+    backend.startupReply=refused
+    PyServers.prepareAsync(ctx); awaitTools()
+    check(PyServers.isStarted() && !PyServers.hasPreparationError() && backend.launchCount==1 && backend.launchRoot==ctx.filesDir)
+    check(backend.recoverCount==beforeRecover && input.readText()=="PRESERVE" && backend.heldRoot==null)
+    check(Bus.logs.none { "private-row-sentinel" in it })
+    backend.startupReply="""{"status":"CLEAN"}"""
 }
 
 private fun checkController(parent: File) {

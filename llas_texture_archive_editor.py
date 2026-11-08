@@ -6,6 +6,15 @@ import io
 import json
 
 def manipulate_file(data, key0, key1, key2):
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(data, key0, key1, key2)
+        return data
     for i in range(len(data)):
         data[i] = data[i] ^ ((key1 ^ key0 ^ key2) >> 24 & 0xFF)
         key0 = (0x343fd * key0 + 0x269ec3) & 0xFFFFFFFF

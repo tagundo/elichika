@@ -41,7 +41,7 @@ object AssetInstaller {
             override fun list(path: String): Array<String> = ctx.assets.list(path) ?: emptyArray()
             override fun open(path: String) = ctx.assets.open(path)
         }
-        return PayloadPreparation.prepare(ctx, ctx.filesDir, source, appVersion(ctx), reset, onPhase, log) {
+        return PayloadPreparation.prepare(ctx, ctx.filesDir, source, appVersion(ctx), reset, onPhase, log, Bus::setPayloadProgress) {
             // Settings still run on data-revision no-ops and preserve explicit choices.
             ensureBundledConfig(ctx, ctx.filesDir)
             ensureSharedLinks(ctx, ctx.filesDir, log)

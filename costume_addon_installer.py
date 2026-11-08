@@ -25,6 +25,7 @@ import json
 import hashlib
 import zlib
 from datetime import datetime
+from sukusta_paths import configured_root, installer_scan_path, library_path, termux_storage_missing, use_cli_picker
 
 # ============================================================
 # 1. 데이터 테이블
@@ -688,6 +689,15 @@ def generate_crc32(path):
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
     """게임 클라이언트가 읽을 수 있도록 XOR 스트림 암호화를 적용한다 (in-place)."""
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(data, keys_0, keys_1, keys_2)
+        return
     for i in range(len(data)):
         data[i] = data[i] ^ ((keys_1 ^ keys_0 ^ keys_2) >> 24 & 0xFF)
         keys_0 = (0x343fd * keys_0 + 0x269ec3) & 0xFFFFFFFF
@@ -803,17 +813,19 @@ def open_and_check_zip(file_path):
 def _pack_output_dir():
     """Directory where encrypted packs are written.
 
-    - Termux: straight into the server's packs cache dir (config.json
+    - Termux / an explicitly managed SUKUSTA_DIR: straight into the server's
+      packs cache dir (config.json
       'cdn_cache_dir', or the default when unset/empty). The server serves
       /static/<name> from there directly, skipping both the static->cache
       migration and the slow first-load index rebuild over the (huge,
       FUSE-backed) packs dir - the ~8s stall on Android.
-    - PC / macOS: the elichika static/ folder. It sits right next to the server
+    - Standalone PC / macOS without a library override: the elichika static/
+      folder. It sits right next to the server
       (easy to find and manage), and on a normal filesystem the migration +
       index build are cheap, so there's no downside to keeping packs there."""
-    if not is_termux():
+    if not is_termux() and configured_root() is None:
         return "static/"
-    cdir = "~/storage/downloads/sukusta/packs"   # server default (DefaultCdnCacheDir)
+    cdir = library_path("packs")
     try:
         with open("config.json", "r", encoding="utf-8") as f:
             v = json.load(f).get("cdn_cache_dir", "")
@@ -1046,17 +1058,16 @@ if not os.path.exists(check_json_config):
     print('Config file is missing, Exiting...')
     sys.exit(1)
 
-if is_termux():
-    modding_elichika_path = os.path.expanduser('~/storage/downloads/sukusta/suit/')
-    termux_storage_chc = os.path.expanduser('~/storage/')
-    if not os.path.exists(termux_storage_chc):
+if use_cli_picker():
+    modding_elichika_path = installer_scan_path("suit", "assets/package/suit/")
+    if termux_storage_missing():
         print('Path is missing, please execute termux-setup-storage command and allow it')
         sys.exit(1)
     if not os.path.exists(modding_elichika_path):
         os.makedirs(modding_elichika_path)
 
 encrypted_folder = PACK_DEST_DIR
-print(f"packs are written to: {encrypted_folder}  ({'termux: packs cache' if is_termux() else 'static/'})")
+print(f"packs are written to: {encrypted_folder}")
 if not os.path.exists(encrypted_folder):
     os.makedirs(encrypted_folder)
 
@@ -1072,7 +1083,7 @@ nested_path_batch = "assets/package/.nested/"
 shutil.rmtree(nested_path_batch, ignore_errors=True)
 
 # ---- zip 파일 선택 (termux: 번호 입력 / PC: 파일 선택 대화상자) ----
-if is_termux():
+if use_cli_picker():
     zip_files = []
     for root, dirs, files in os.walk(modding_elichika_path):
         for file in files:
@@ -1143,7 +1154,7 @@ else:
 
 # termux는 위에서 이미 open_and_check_zip 처리를 끝냈으므로
 # 여기서는 PC(tkinter) 선택 결과만 처리한다 (기존의 이중 처리 버그 수정)
-if not is_termux():
+if not use_cli_picker():
     for zip_file_path_batch in zip_file_path:
         open_and_check_zip(zip_file_path_batch)
 

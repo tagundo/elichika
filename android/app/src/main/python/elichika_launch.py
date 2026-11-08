@@ -139,3 +139,18 @@ def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None, server_controlle
 
 def ports():
     return [ADMIN_PORT, MOD_PORT]
+
+
+def apply_payload_with_progress(root, payload, previous, revision, mode, manifest, observer,
+                                memory_budget_bytes=None):
+    """Keep Java callbacks display-only; the journal remains authoritative."""
+    from payload_revision import apply_json
+    from payload_upgrade_progress import ProgressReporter
+    options = {"progress": ProgressReporter(observer.onProgress)}
+    # Zero is the native bridge's unavailable-memory sentinel. Preserve other
+    # values so the core can refuse invalid bool/negative budgets explicitly.
+    if type(memory_budget_bytes) is int and memory_budget_bytes == 0:
+        memory_budget_bytes = None
+    if memory_budget_bytes is not None:
+        options["memory_budget_bytes"] = memory_budget_bytes
+    return apply_json(root, payload, previous, revision, mode, manifest, **options)

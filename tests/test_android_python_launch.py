@@ -317,5 +317,30 @@ with tempfile.TemporaryDirectory(prefix="guarded-viewer-export-") as directory:
                                   "source_preserved": True, "busy_guard_preserved": True})
 
 
+class PayloadBridgeMemoryTests(unittest.TestCase):
+    def test_optional_memory_hint_preserves_compatibility_and_core_validation(self):
+        location = Path(__file__).resolve().parents[1] / "android/app/src/main/python/elichika_launch.py"
+        spec = importlib.util.spec_from_file_location("_test_payload_bridge", location)
+        launcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(launcher)
+        observer = SimpleNamespace(onProgress=lambda unused: None)
+        for hint, should_forward in ((None, False), (0, False), (768 * 1024 * 1024, True),
+                                     (True, True), (False, True), (-1, True)):
+            with self.subTest(hint=hint), patch("payload_revision.apply_json", return_value="synthetic-result") as apply:
+                result = launcher.apply_payload_with_progress("root", "stage", "previous", "revision", "upgrade", "{}", observer, hint)
+                self.assertEqual(result, "synthetic-result")
+                self.assertEqual(apply.call_args.args, ("root", "stage", "previous", "revision", "upgrade", "{}"))
+                self.assertTrue(callable(apply.call_args.kwargs["progress"]))
+                self.assertEqual("memory_budget_bytes" in apply.call_args.kwargs, should_forward)
+                if should_forward:
+                    # In particular bool must reach the strict core as bool,
+                    # rather than becoming an unavailable-memory zero.
+                    self.assertIs(type(apply.call_args.kwargs["memory_budget_bytes"]), type(hint))
+                    self.assertEqual(apply.call_args.kwargs["memory_budget_bytes"], hint)
+        with patch("payload_revision.apply_json", return_value="legacy-call") as apply:
+            self.assertEqual(launcher.apply_payload_with_progress("root", "stage", "previous", "revision", "upgrade", "{}", observer), "legacy-call")
+            self.assertNotIn("memory_budget_bytes", apply.call_args.kwargs)
+
+
 if __name__ == "__main__":
     unittest.main()

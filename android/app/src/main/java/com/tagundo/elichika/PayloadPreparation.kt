@@ -7,12 +7,18 @@ import java.io.File
 internal object PayloadPreparation {
     fun prepare(context: Context, root: File, source: PayloadFiles.Source, apkVersion: String,
                 reset: Boolean, onPhase: (AssetInstaller.PreparationPhase) -> Unit,
-                log: (String) -> Unit, settings: () -> Unit): File {
+                log: (String) -> Unit, onProgress: (PayloadProgress.State?) -> Unit = {},
+                settings: () -> Unit): File {
         fun report(phase: AssetInstaller.PreparationPhase) { runCatching { onPhase(phase) } }
+        fun progress(value: PayloadProgress.State?) { runCatching { onProgress(value) } }
         var completed = false
+        progress(null)
         report(AssetInstaller.PreparationPhase.PREPARING)
         try {
             val result = PayloadUpgrade.withMaintenance(context, root) {
+                // A costume transaction may have partially changed game data.
+                // Preserve its recovery inputs before any payload recovery or reset.
+                PayloadUpgrade.checkCostumeStartup(context, root)
                 // Pending journal inputs must survive until recovery completes,
                 // even when this APK's mandatory manifest is missing or malformed.
                 PayloadUpgrade.recover(context, root, log)
@@ -32,14 +38,28 @@ internal object PayloadPreparation {
                 try {
                     settings()
                     if (staged != null) {
-                        if (decision.action == "upgrade") {
-                            report(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA)
-                            log(context.getString(R.string.log_setup_preserving_mods))
-                        }
+                        report(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA)
+                        if (decision.action == "upgrade") log(context.getString(R.string.log_setup_preserving_mods))
+                        var loggedStage = ""
+                        var loggedDatabase = ""
+                        var loggedBucket = -1
                         enteredUpdater = true
                         try {
                             PayloadUpgrade.apply(context, root, staged, decision.fromVersion,
-                                decision.revision, decision.action, manifest)
+                                decision.revision, decision.action, manifest) { value ->
+                                progress(value)
+                                val bucket = value.percent / 10
+                                if (value.stage != loggedStage || value.current != loggedDatabase || bucket != loggedBucket) {
+                                    loggedStage = value.stage
+                                    loggedDatabase = value.current
+                                    loggedBucket = bucket
+                                    val database = if (value.current.isEmpty()) "" else " · ${value.current}"
+                                    // These are bounded work counters, never an estimated duration.
+                                    runCatching { log(context.getString(R.string.log_setup_data_progress,
+                                        value.percent, PayloadProgress.stageLabel(context, value.stage),
+                                        value.completed, value.total, database)) }
+                                }
+                            }
                         } finally {
                             report(AssetInstaller.PreparationPhase.PREPARING)
                         }
@@ -54,6 +74,7 @@ internal object PayloadPreparation {
             completed = true
             return result
         } finally {
+            progress(null)
             report(if (completed) AssetInstaller.PreparationPhase.IDLE else AssetInstaller.PreparationPhase.FAILED)
         }
     }

@@ -21,6 +21,15 @@ def clear_terminal():
         os.system('clear')
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(data, keys_0, keys_1, keys_2)
+        return
     for i in range(len(data)):
         data[i] = data[i] ^ ((keys_1 ^ keys_0 ^ keys_2) >> 24 & 0xFF)
         keys_0 = (0x343fd * keys_0 + 0x269ec3) & 0xFFFFFFFF

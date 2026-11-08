@@ -32,6 +32,13 @@ The APK is built by GitHub Actions (see `.github/workflows/android.yml`, `androi
 
 > Fan-made, not affiliated with Bushiroad / KLab; for personal, educational use.
 
+### macOS — standalone Apple Silicon app
+The macOS companion bundles the server, Python tools and shared 3D editor in
+`Elichika.app` for macOS 13 or later. It uses native file panels, menus and server
+controls, with no separate Python or Go installation. See the
+[macOS build, downloads and usage guide](macos/README.md) for review artifacts
+and validation details.
+
 ### Android — Termux (manual)
 To install the server manually, first install termux, you can get it from [f-droid](https://f-droid.org/en/packages/com.termux/) or [github](https://github.com/termux/termux-app#github). Note that the google play store version will most likely NOT WORK.
 

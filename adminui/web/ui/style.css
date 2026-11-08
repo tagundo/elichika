@@ -44,7 +44,7 @@ main { padding: 14px; display: grid; grid-template-columns: 220px minmax(0, 1fr)
 .field { margin-bottom: 12px; }
 .field > label { display: block; font-size: 13px; margin-bottom: 4px; }
 .field .help { color: var(--muted); font-size: 12px; margin-top: 3px; }
-.field input[type=text], .field select { width: 100%; padding: 9px 10px; border-radius: 8px;
+.field input[type=text], .field input[type=search], .field select { width: 100%; padding: 9px 10px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 15px; }
 .dyn-row { display: flex; gap: 8px; }
 .dyn-row select { flex: 1; min-width: 0; }
@@ -56,10 +56,39 @@ main { padding: 14px; display: grid; grid-template-columns: 220px minmax(0, 1fr)
   border-radius: 8px; padding: 0 14px; cursor: pointer; font-size: 16px; }
 .field.checkbox label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .field.checkbox input { width: 18px; height: 18px; }
+.multi-choices { max-height: 240px; overflow-y: auto; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel2); padding: 4px; }
+.multi-choices label { display: flex; align-items: center; gap: 10px; min-height: 44px;
+  padding: 6px 10px; cursor: pointer; font-size: 14px; }
+.multi-choices input { width: 18px; height: 18px; flex: 0 0 auto; }
+.multi-choices label[hidden] { display: none; }
+.removal-choices { margin-top: 6px; }
+.removal-phase { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--panel2);
+  border-radius: 4px; font-size: 14px; }
+.removal-phase.ready, .removal-review-notice { font-weight: 600; }
+.removal-phase.warning { border-color: #ad3444; }
+.removal-review { margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.removal-review h3 { margin: 0; font-size: 16px; }
+.removal-items { max-height: 180px; overflow: auto; padding-left: 24px; }
+.removal-replacements { max-height: 200px; overflow: auto; padding-left: 24px; }
+.removal-log { margin-top: 8px; min-height: 36px; padding: 6px 12px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel2); color: var(--text); cursor: pointer; }
+.original-warning { font-weight: 600; }
+.original-confirm { width: min(480px, calc(100vw - 32px)); max-height: 80vh; overflow-y: auto;
+  padding: 20px; background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 12px; overflow-wrap: anywhere; }
+.original-confirm::backdrop { background: rgba(0, 0, 0, .55); }
+.original-confirm h3 { margin-top: 0; font-size: 18px; }
+.original-confirm-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.original-confirm-actions button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel2); color: var(--text); cursor: pointer; font-size: 14px; }
+.original-confirm-actions .danger { background: #ad3444; color: #fff; }
+.run-btn.danger { background: #ad3444; }
 
 .run-btn { margin-top: 8px; background: var(--accent2); color: #fff; border: 0; border-radius: 10px;
   padding: 12px 20px; font-size: 16px; cursor: pointer; width: 100%; }
 .run-btn:active { background: var(--accent); }
+.run-btn:disabled { opacity: .55; cursor: wait; }
 
 .console { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--panel);
   border-top: 1px solid var(--line); max-height: 55vh; display: flex; flex-direction: column; }

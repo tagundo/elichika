@@ -16,6 +16,10 @@ import java.util.concurrent.TimeUnit
 class ServerProcess(private val ctx: Context) {
 
     @Volatile private var proc: Process? = null
+    internal data class Launch(val process: Process, val token: String)
+    @Volatile private var launch: Launch? = null
+    internal fun currentLaunch(): Launch? = launch?.takeIf { proc === it.process && it.process.isAlive }
+    internal fun owns(candidate: Launch): Boolean = proc === candidate.process && launch === candidate && candidate.process.isAlive
 
     private fun binary(): File = File(ctx.applicationInfo.nativeLibraryDir, "libelichika.so")
 
@@ -37,6 +41,12 @@ class ServerProcess(private val ctx: Context) {
     @Synchronized
     private fun start(args: List<String>, workDir: File, onExit: (Int) -> Unit): Boolean {
         if (isAlive()) return false
+        try {
+            PayloadUpgrade.checkCostumeStartup(ctx, workDir)
+        } catch (error: IllegalStateException) {
+            Bus.log(error.message.orEmpty())
+            return false
+        }
         val bin = binary()
         if (!bin.exists()) {
             Bus.log(ctx.getString(R.string.log_error_missing_binary, bin.absolutePath))
@@ -47,6 +57,11 @@ class ServerProcess(private val ctx: Context) {
             .directory(workDir)
             .redirectErrorStream(true)
         pb.environment()["HOME"] = workDir.absolutePath
+        // Never reuse a token across process launches. A listener left on the
+        // configured port cannot make a new process look ready.
+        val readyToken = if (args.isEmpty()) java.util.UUID.randomUUID().toString().replace("-", "") else null
+        if (readyToken != null) pb.environment()["ELICHIKA_READY_TOKEN"] = readyToken
+        else pb.environment().remove("ELICHIKA_READY_TOKEN")
         // Do NOT force GODEBUG=netdns=go here: Android has no /etc/resolv.conf, so the
         // pure-Go resolver fails ("lookup ... on [::1]:53: connection refused") and every
         // download dies. The cgo/NDK build defaults to bionic's resolver, which works.
@@ -58,13 +73,14 @@ class ServerProcess(private val ctx: Context) {
             return false
         }
         proc = p
+        launch = readyToken?.let { Launch(p, it) }
         Thread {
             try {
                 p.inputStream.bufferedReader().forEachLineSafe { Bus.log(it) }
             } catch (_: Exception) {
             }
             val code = try { p.waitFor() } catch (_: InterruptedException) { -1 }
-            synchronized(this) { if (proc === p) proc = null }
+            synchronized(this) { if (proc === p) { proc = null; launch = null } }
             onExit(code)
         }.start()
         return true

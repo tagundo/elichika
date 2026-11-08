@@ -6,7 +6,7 @@ import (
 
 func userSceneTipsFinalizer(session *userdata.Session) {
 	for _, userSceneTips := range session.UserModel.UserSceneTipsByEnum.Map {
-		userdata.GenericDatabaseInsert(session, "u_scene_tips", *userSceneTips)
+		session.PersistSceneTip(userSceneTips.SceneTipsType)
 	}
 }
 

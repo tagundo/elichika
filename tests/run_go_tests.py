@@ -44,7 +44,9 @@ def run_tests(runtime, arguments, env):
     validate_runtime(runtime)
     run([sys.executable, str(runtime / "assets/tests/validate_localization.py"), "--runtime", str(runtime)], cwd=REPOSITORY, env=env)
     run(["go", "vet", "./..."], cwd=REPOSITORY, env=env)
-    env = dict(env, ELICHIKA_TEST_RUNTIME=str(runtime), ELICHIKA_TEST_WRAPPER=str(REPOSITORY / "tests/run_go_test_binary.sh"))
+    env = dict(env, ELICHIKA_TEST_RUNTIME=str(runtime),
+               ELICHIKA_TEST_WRAPPER=str(REPOSITORY / "tests/run_go_test_binary.sh"),
+               ELICHIKA_STOCK_STARTUP_MASTERDATA=str(runtime / "assets/db"))
     # Package initialization opens shared SQLite files and updates manifests.
     # Serialize packages; also keep Go test's vet checks and disable test caching.
     # Go starts -exec from each package directory. Pass the absolute wrapper via

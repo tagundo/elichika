@@ -26,7 +26,9 @@ func init() {
 	log.Println("server address: ", *config.Conf.ServerAddress)
 	log.Println("WebUI address: ", *config.Conf.ServerAddress+"/webui/...")
 	go func() {
-		r.Run(*config.Conf.ServerAddress)
+		if err := r.Run(*config.Conf.ServerAddress); err != nil {
+			log.Panic(err)
+		}
 	}()
 	log.Println("Exit main init, server should be live")
 	embedded.SendLoadedSignal()

@@ -32,3 +32,12 @@ __pycache__/
 /.payload-incoming/
 /.database-maintenance.lock
 /installed_version
+
+# Reviewed, pinned macOS runtime dependency inputs.
+!/macos/build/dependencies.lock.json
+!/macos/build/requirements-macos.txt
+
+# Local Swift and macOS packaging output.
+/macos/.build/
+/macos/dist/
+.DS_Store

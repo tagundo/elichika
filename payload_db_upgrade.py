@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import queue
 import re
 import shutil
 import sqlite3
@@ -32,10 +33,196 @@ MARKER = "installed_version"
 ALGORITHM = "jp-global-content-v1"
 REQUIRED_DICTIONARIES = ("assets/db/jp/dictionary_ja_k.db",) + tuple("assets/db/gl/dictionary_" + language + "_k.db" for language in ("en", "ko", "zh"))
 _replace = os.replace
+_MAX_MERGE_WORKERS = 4
+_DEFAULT_MERGE_WORKERS = 2
+_RESOURCE_UNKNOWN = object()
 
 
 class UpgradeError(ValueError):
     """A fixed, non-sensitive reason code."""
+
+
+def _progress(callback, stage, completed, total, current=""):
+    """Observe work only; a broken UI must never change transaction semantics."""
+    if callback is not None:
+        try:
+            # Only fixed stages, integer work counters and a file basename cross
+            # the native bridge. Database values and directory names stay local.
+            callback(stage, int(completed), max(1, int(total)), Path(current).name if current else "")
+        except BaseException:
+            # This includes observer cancellation/SystemExit: cancellation of a
+            # data operation needs its own transaction-aware API, not a UI hook.
+            pass
+
+
+def _progress_weights(paths):
+    weights = []
+    for path in paths:
+        try:
+            weights.append(max(1, path.stat().st_size))
+        except OSError:
+            # Observation must not replace the authoritative operation's error.
+            weights.append(1)
+    return weights
+
+
+def _resource_text(path):
+    try:
+        return Path(path).read_text().strip()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except (OSError, ValueError):
+        return _RESOURCE_UNKNOWN
+
+
+def _merge_cgroup_paths():
+    roots = {"v2": [Path("/sys/fs/cgroup")],
+             "memory": [Path("/sys/fs/cgroup/memory")],
+             "cpu": [Path("/sys/fs/cgroup/cpu"), Path("/sys/fs/cgroup/cpu,cpuacct"),
+                     Path("/sys/fs/cgroup/cpuacct,cpu")]}
+    membership = _resource_text("/proc/self/cgroup")
+    unknown = membership is _RESOURCE_UNKNOWN
+    for line in (membership if isinstance(membership, str) else "").splitlines():
+        parts = line.split(":", 2)
+        if len(parts) != 3:
+            continue
+        relative = Path(parts[2].lstrip("/"))
+        if ".." in relative.parts:
+            continue
+        controllers = parts[1].split(",")
+        kinds = (["v2"] if parts[:2] == ["0", ""] else [])
+        kinds += [kind for kind in ("memory", "cpu") if kind in controllers]
+        for kind in kinds:
+            for root in tuple(roots[kind]):
+                # Only mount roots are expanded, never an already added child.
+                if root.parent != Path("/sys/fs/cgroup") and kind != "v2":
+                    continue
+                if kind == "v2" and root != Path("/sys/fs/cgroup"):
+                    continue
+                current = root / relative
+                while current != root:
+                    roots[kind].append(current)
+                    current = current.parent
+    result = {kind: tuple(dict.fromkeys(paths)) for kind, paths in roots.items()}
+    result["unknown"] = unknown
+    return result
+
+
+def _merge_cpu_count(paths):
+    if paths.get("unknown"):
+        return 1
+    cpus = max(1, os.cpu_count() or 1)
+    try:
+        cpus = min(cpus, max(1, len(os.sched_getaffinity(0))))
+    except (AttributeError, OSError):
+        pass
+    for directory in paths["v2"]:
+        text = _resource_text(directory / "cpu.max")
+        if text is _RESOURCE_UNKNOWN:
+            return 1
+        if text is None:
+            continue
+        fields = text.split()
+        try:
+            if len(fields) != 2 or int(fields[1]) <= 0:
+                return 1
+            if fields[0] != "max":
+                quota = int(fields[0])
+                if quota < 0:
+                    return 1
+                cpus = min(cpus, max(1, quota // int(fields[1])))
+        except ValueError:
+            return 1
+    for directory in paths["cpu"]:
+        text = _resource_text(directory / "cpu.cfs_quota_us")
+        if text is _RESOURCE_UNKNOWN:
+            return 1
+        if text is None or text == "-1":
+            continue
+        try:
+            quota = int(text)
+            period_text = _resource_text(directory / "cpu.cfs_period_us")
+            if period_text is _RESOURCE_UNKNOWN:
+                return 1
+            period = int(period_text)
+            if quota < 0 or period <= 0:
+                return 1
+            cpus = min(cpus, max(1, quota // period))
+        except (ValueError, TypeError):
+            return 1
+    return cpus
+
+
+def _merge_available_memory(memory_budget_bytes, paths):
+    if paths.get("unknown"):
+        return None
+    available = memory_budget_bytes
+    meminfo = _resource_text("/proc/meminfo")
+    for line in (meminfo if isinstance(meminfo, str) else "").splitlines():
+        fields = line.split()
+        if len(fields) == 3 and fields[0] == "MemAvailable:" and fields[2] == "kB":
+            try:
+                measured = int(fields[1]) * 1024
+                if measured < 0 or measured > (1 << 63) - 1:
+                    return None
+                available = measured if available is None else min(available, measured)
+            except ValueError:
+                return None
+            break
+    if available is None:
+        return None  # Physical RAM or a cgroup limit alone is not available RAM.
+    for kind, limits, usage_name in (("v2", ("memory.max", "memory.high"), "memory.current"),
+                                    ("memory", ("memory.limit_in_bytes",), "memory.usage_in_bytes")):
+        for directory in paths[kind]:
+            for limit_name in limits:
+                text = _resource_text(directory / limit_name)
+                if text is _RESOURCE_UNKNOWN:
+                    return None
+                if text is None or text == "max":
+                    continue
+                try:
+                    limit = int(text)
+                    if kind == "memory" and limit >= 1 << 60:
+                        continue  # Linux v1 unlimited sentinel.
+                    current_text = _resource_text(directory / usage_name)
+                    if current_text is _RESOURCE_UNKNOWN:
+                        return None
+                    current = int(current_text)
+                    if limit < 0 or current < 0:
+                        return None
+                    available = min(available, max(0, limit - current))
+                except (TypeError, ValueError):
+                    return None
+    return available
+
+
+def _validate_merge_request(requested, memory_budget_bytes):
+    _require(requested is None or type(requested) is int and requested in (1, 2, 4),
+             "MERGE_WORKER_LIMIT_INVALID")
+    _require(memory_budget_bytes is None or type(memory_budget_bytes) is int
+             and 0 <= memory_budget_bytes <= (1 << 63) - 1, "MERGE_MEMORY_BUDGET_INVALID")
+
+
+def _merge_worker_count(requested, jobs, memory_budget_bytes=None, *, largest_database_bytes=0):
+    """Conservative automatic two-worker policy; four is a guarded test override."""
+    _validate_merge_request(requested, memory_budget_bytes)
+    paths = _merge_cgroup_paths()
+    cpus, available = _merge_cpu_count(paths), _merge_available_memory(memory_budget_bytes, paths)
+    capacity = 1
+    if available is not None:
+        if cpus >= 2 and available >= 1 << 30:
+            capacity = 2
+        if cpus >= 4 and available >= 2 << 30:
+            capacity = _MAX_MERGE_WORKERS
+        # Attached SQLite caches and typed foreign-key violation maps also use
+        # native/Python memory. Reserve half for the host and scale down large
+        # mod databases, rather than applying the Go compressor's worker budget.
+        per_job = max(128 << 20, 2 * largest_database_bytes)
+        capacity = min(capacity, max(1, available // (2 * per_job)))
+    if requested is not None:
+        _require(requested <= capacity, "MERGE_WORKER_RESOURCE_LIMIT")
+    selected = min(_DEFAULT_MERGE_WORKERS, capacity) if requested is None else requested
+    return min(max(0, jobs), selected)
 
 
 def _require(condition, reason):
@@ -120,16 +307,26 @@ def _snapshot(source, destination):
         raise UpgradeError("DATABASE_SNAPSHOT_FAILED") from None
 
 
-def _snapshot_batch(jobs):
+def _snapshot_batch(jobs, *, progress=None):
     """Finish independent, checked backups before publishing any certificates.
 
-    Only this pre-merge phase uses workers. Each _snapshot opens and closes its
+    Each _snapshot opens and closes its
     own SQLite connections, while all baseline writes and publication stay on
     the maintenance owner thread. Submission is bounded as well as execution.
     The executor joins running jobs even when submission, hashing or result
     collection raises BaseException; preparation must not remove their tree
     while a worker could still write into it.
     """
+    weights = _progress_weights([job[0] for job in jobs]) if progress is not None else None
+    total, completed_weight = sum(weights) if weights else 1, 0
+    _progress(progress, "snapshot", 0, total)
+
+    def observed(index):
+        nonlocal completed_weight
+        if weights is not None:
+            completed_weight += weights[index]
+            _progress(progress, "snapshot", completed_weight, total, jobs[index][0].name)
+
     def run(job):
         source, destination, certificate_name = job
         _snapshot(source, destination)
@@ -137,10 +334,13 @@ def _snapshot_batch(jobs):
 
     if len(jobs) < 2:
         hashes = {}
-        for job in jobs:
+        for index, job in enumerate(jobs):
             digest = run(job)
             if job[2] is not None:
                 hashes[job[2]] = digest
+            observed(index)
+        if not jobs:
+            _progress(progress, "snapshot", 1, 1)
         return hashes
     digests, pending, submitted = [None] * len(jobs), {}, 0
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="payload-snapshot") as pool:
@@ -155,6 +355,7 @@ def _snapshot_batch(jobs):
                 for future in sorted(completed, key=pending.__getitem__):
                     index = pending.pop(future)
                     digests[index] = future.result()
+                    observed(index)  # Always on the maintenance owner thread.
                 while len(pending) < 2 and submitted < len(jobs):
                     pending[pool.submit(run, jobs[submitted])] = submitted
                     submitted += 1
@@ -163,6 +364,157 @@ def _snapshot_batch(jobs):
                 future.cancel()
             raise
     return {job[2]: digests[index] for index, job in enumerate(jobs) if job[2] is not None}
+
+
+def _merge_one_database(job, progress):
+    """Own every connection, certificate and output of one physical database."""
+    private = job["private"]
+    private.mkdir(mode=0o700)
+    output = private / "output" / job["relative"]
+    output.parent.mkdir(parents=True)
+    stocks = private / "stock"
+    prior = _ro(job["prior_path"]) if job["prior_path"] is not None else None
+    try:
+        with closing(sqlite3.connect(":memory:")) as fragment:
+            _baseline_schema(fragment)
+            certificates = {}
+            options = dict(current_snapshot_sha=job["snapshot_sha"],
+                           identical_current=job["identical_current"],
+                           output_integrity_certificates=certificates)
+            if progress is not None:
+                options["progress"] = progress
+            counts = _merge_database(job["current"], job["incoming"], output, job["relative"],
+                                     prior, fragment, job["prior_files"], stocks, **options)
+            files = fragment.execute("SELECT file,sha256,bytes,snapshot,codec,compressed_sha256,compressed_bytes FROM files ORDER BY rowid").fetchall()
+            schemas = fragment.execute("SELECT file,table_name,columns_json FROM schemas ORDER BY rowid").fetchall()
+            _require(len(files) == 1 and files[0][0] == job["relative"], "MERGE_FRAGMENT_INVALID")
+        outputs = []
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            path = output.with_name(output.name + suffix)
+            if path.exists() or path.is_symlink():
+                _require(path.is_file() and not path.is_symlink(), "MERGE_OUTPUT_CHANGED")
+                outputs.append((suffix, path, _sha(path), path.stat().st_size))
+        _require(outputs and outputs[0][0] == "", "MERGE_OUTPUT_CHANGED")
+        return {"counts": counts, "files": files, "schemas": schemas,
+                "certificates": certificates, "outputs": outputs, "stocks": stocks}
+    finally:
+        if prior is not None:
+            prior.close()
+
+
+def _merge_database_batch(jobs, workers, *, progress=None, total_weight=1):
+    """Bound submission and join all workers before either fan-in or cleanup.
+
+    Workers never enter the maintenance guard or write the shared baseline.
+    A bounded, nonblocking queue contains observations only; dropping an
+    intermediate display event must never block error cleanup or DB work.
+    """
+    if not jobs:
+        return []
+    results, pending, submitted = [None] * len(jobs), {}, 0
+    events = queue.Queue(maxsize=max(16, workers * 16)) if progress is not None else None
+    completed_weights = [0] * len(jobs)
+
+    def report(index, completed, total):
+        if events is not None:
+            amount = jobs[index]["weight"] * completed // max(1, total)
+            completed_weights[index] = max(completed_weights[index], min(jobs[index]["weight"], amount))
+            _progress(progress, "merging", sum(completed_weights), total_weight, jobs[index]["relative"])
+
+    def drain():
+        if events is not None:
+            while True:
+                try:
+                    index, completed, total = events.get_nowait()
+                except queue.Empty:
+                    break
+                report(index, completed, total)
+
+    def submit(pool, index):
+        observer = None
+        if events is not None:
+            def observer(stage, completed, total, current):
+                try:
+                    events.put_nowait((index, completed, total))
+                except queue.Full:
+                    pass
+        pending[pool.submit(_merge_one_database, jobs[index], observer)] = index
+
+    _progress(progress, "merging", 0, total_weight)
+    if workers == 1:
+        for index, job in enumerate(jobs):
+            observer = None
+            if progress is not None:
+                def observer(stage, completed, total, current):
+                    report(index, completed, total)
+            results[index] = _merge_one_database(job, observer)
+            report(index, 1, 1)
+        return results
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="payload-merge") as pool:
+        try:
+            while submitted < min(workers, len(jobs)):
+                submit(pool, submitted)
+                submitted += 1
+            while pending:
+                completed, _ = wait(pending, timeout=.05, return_when=FIRST_COMPLETED)
+                drain()
+                # Observe all completed failures before submitting later jobs.
+                for future in sorted(completed, key=pending.__getitem__):
+                    index = pending.pop(future)
+                    results[index] = future.result()
+                    report(index, 1, 1)
+                while len(pending) < workers and submitted < len(jobs):
+                    submit(pool, submitted)
+                    submitted += 1
+            drain()
+        except BaseException:
+            for future in pending:
+                future.cancel()
+            # Executor.__exit__ joins every active writer before the caller's
+            # preparation exception handler can remove their private tree.
+            raise
+    return results
+
+
+def _collect_merged_database(result, destination, baseline, stocks, certificates):
+    """Owner-only deterministic fan-in; every worker has already succeeded."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    for suffix, source, digest, size in result["outputs"]:
+        target = destination.with_name(destination.name + suffix)
+        _require(source.is_file() and not source.is_symlink() and source.stat().st_size == size
+                 and _sha(source) == digest, "MERGE_OUTPUT_CHANGED")
+        os.replace(source, target)
+        _require(target.stat().st_size == size and _sha(target) == digest, "MERGE_OUTPUT_CHANGED")
+    for row in result["files"]:
+        source = _stock_file(result["stocks"], row[1:])
+        target = stocks / row[3]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() or target.is_symlink():
+            # Distinct previous records can legitimately share one immutable
+            # archive name. They may only fan in when the exact bytes agree.
+            _require(target.is_file() and not target.is_symlink()
+                     and target.stat().st_size == row[6] and _sha(target) == row[5],
+                     "BASELINE_SNAPSHOT_COLLISION")
+        else:
+            os.replace(source, target)
+            _stock_file(stocks, row[1:])
+    # Preserve the original per-file table insertion order and original overall
+    # incoming-file order. SQLite row/page layout must not follow finish order.
+    baseline.executemany("INSERT INTO schemas VALUES(?,?,?)", result["schemas"])
+    baseline.executemany("INSERT INTO files VALUES(?,?,?,?,?,?,?)", result["files"])
+    certificates.update(result["certificates"])
+
+
+def _discard_preparation(work, baseline, prior):
+    # Both owner connections now refer to private work. Close them before
+    # deletion on hosts which cannot unlink open SQLite files. Workers are joined.
+    for connection in (prior, baseline):
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
+    shutil.rmtree(work, ignore_errors=True)
 
 
 def _copy_tree(source, destination, root, *, skip_databases=(), snapshot_hashes=None, snapshot_jobs=None):
@@ -379,12 +731,14 @@ def _merge_manifest(current, incoming, previous=None):
 
 
 def _merge_database(current, incoming, output, relative, prior, baseline, prior_files, next_files,
-                    *, current_snapshot_sha=None, identical_current=False, output_integrity_certificates=None):
+                    *, current_snapshot_sha=None, identical_current=False, output_integrity_certificates=None,
+                    progress=None):
     counts = {"inserted": 0, "advanced": 0, "owner_rows_preserved": 0, "unkeyed_tables_preserved": 0, "packages_refreshed": 0, "unchanged_stock_databases_reused": 0}
     has_current = bool(current and current.exists())
     identical_current = bool(identical_current and has_current and prior is None)
     old_path = output.with_name(output.name + ".official-previous")
     old = None
+    _progress(progress, "merging", 0, 1, relative)
     try:
         previous = _stock_record(prior, relative)
         unchanged_stock = bool(previous and previous[0] == _sha(incoming))
@@ -406,7 +760,11 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
             target.execute("BEGIN IMMEDIATE")
             changed_packages = set()
             tables = source.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
-            for table, sql in tables:
+            table_work = len(tables) + 2  # Final checks and stock archive also count.
+            for index, (table, sql) in enumerate(tables):
+                # Reporting at the next table also covers every early-continue
+                # branch, without changing a single SQL statement or its order.
+                _progress(progress, "merging", index, table_work, relative)
                 _require(sql and not sql.upper().startswith("CREATE VIRTUAL"), "VIRTUAL_SCHEMA_REQUIRES_REVIEW")
                 columns = _columns(source, table)
                 names = [row[1] for row in columns]
@@ -483,6 +841,7 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
                 if not exists:
                     for statement, in source.execute("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", (table,)):
                         target.execute(statement)
+            _progress(progress, "merging", len(tables), table_work, relative)
             if changed_packages:
                 _require(target.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='m_asset_package'").fetchone(), "PACKAGE_HEADER_MISSING")
                 _require(not target.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' AND tbl_name='m_asset_package' COLLATE NOCASE").fetchone(), "CUSTOM_TRIGGER_REQUIRES_REVIEW")
@@ -516,6 +875,7 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
                     _require(checked.execute("PRAGMA integrity_check").fetchall() == [("ok",)], "DATABASE_INTEGRITY_FAILED")
             elif output_integrity_certificates is not None:
                 output_integrity_certificates[relative] = current_snapshot_sha
+        _progress(progress, "merging", len(tables) + 1, table_work, relative)
         if unchanged_stock:
             next_files.mkdir(parents=True, exist_ok=True)
             copied = next_files / previous[2]
@@ -525,6 +885,7 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
             counts["unchanged_stock_databases_reused"] = 1
         else:
             _compress_stock(incoming, relative, baseline, next_files)
+        _progress(progress, "merging", table_work, table_work, relative)
         return counts
     except UpgradeError:
         raise
@@ -703,9 +1064,11 @@ def _serialized(function):
 
 
 @_serialized
-def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="upgrade", *, expected_files=None):
+def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="upgrade", *, expected_files=None,
+                    progress=None, merge_workers=None, memory_budget_bytes=None):
     root, staged = _root(rootPath), Path(stagedPayloadPath).resolve()
     _require(mode in ("fresh", "reset", "upgrade"), "INVALID_UPGRADE_MODE")
+    _validate_merge_request(merge_workers, memory_budget_bytes)
     _require(isinstance(fromVersion, str) and isinstance(toVersion, str) and 0 < len(toVersion) <= 160, "INVALID_VERSION")
     _require(expected_files is not None or not toVersion.startswith("payload-v1:"), "SIGNED_PAYLOAD_MANIFEST_REQUIRED")
     _require(staged.is_dir() and staged != root and staged.is_relative_to(root / ".payload-incoming"), "INVALID_STAGING_PATH")
@@ -717,8 +1080,18 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     dbs = [name for name in incoming if _is_database(name)]
     _require("serverdata.db" in dbs and any(name.startswith("assets/db/") for name in dbs), "INCOMING_DATABASE_SET_MISSING")
     _require(mode != "fresh" or not any(_is_database(path.relative_to(root).as_posix()) for name in MANAGED for path in _files(root / name)), "FRESH_RUNTIME_ALREADY_HAS_DATABASES")
+    _progress(progress, "validating", 0, 1)
     inputs = _inputs(root)
-    source_hashes = {name: _sha(path) for name, path in incoming.items()}
+    if progress is None:
+        source_hashes = {name: _sha(path) for name, path in incoming.items()}
+    else:
+        incoming_weights = dict(zip(incoming, _progress_weights(incoming.values())))
+        incoming_total, validated = sum(incoming_weights.values()) or 1, 0
+        source_hashes = {}
+        for name, path in incoming.items():
+            source_hashes[name] = _sha(path)
+            validated += incoming_weights[name]
+            _progress(progress, "validating", validated, incoming_total, path.name)
     if expected_files is not None:
         # This barrier precedes any new private work, space allocation or reuse
         # of an older preparation, without hashing the whole payload twice.
@@ -733,6 +1106,7 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     for candidate in sorted(transactions.glob("*/prepared.json")):
         prepared = json.loads(candidate.read_text())
         if prepared.get("inputs") == inputs and prepared.get("incoming") == source_hashes and prepared.get("from_version") == fromVersion and prepared.get("to_version") == toVersion and prepared.get("mode") == mode:
+            _progress(progress, "merging", 1, 1)
             return prepared["summary"]
     # Live snapshots and prepared copies coexist. New source files additionally
     # need their next-tree copy and a bounded stock archive, including on fresh
@@ -759,7 +1133,8 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                     snapshot_jobs.append((source, backup / name, None))
                 else:
                     _copy_tree(source, backup, root, snapshot_hashes=snapshot_hashes, snapshot_jobs=snapshot_jobs)
-        snapshot_hashes.update(_snapshot_batch(snapshot_jobs))
+        snapshot_hashes.update(_snapshot_batch(snapshot_jobs) if progress is None
+                               else _snapshot_batch(snapshot_jobs, progress=progress))
         if mode == "upgrade":
             incoming_databases = frozenset(dbs)
             for name in MANAGED:
@@ -773,7 +1148,10 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                 # unlink it immediately before creating another copy.
                 _copy_tree(backup / name, next_root, backup, skip_databases=incoming_databases)
         if mode == "upgrade" and (root / BASELINE).is_file() and not (root / REBASE_FLAG).exists():
-            prior = _ro(root / BASELINE)
+            _require(_fingerprint(backup / BASELINE) == inputs[BASELINE]
+                     and _fingerprint(backup / BASELINE_FILES) == inputs[BASELINE_FILES],
+                     "BASELINE_BACKUP_CHANGED")
+            prior = _ro(backup / BASELINE)
             version = prior.execute("SELECT value FROM meta WHERE key='payload_version'").fetchone()
             _require(version == (fromVersion,), "BASELINE_VERSION_MISMATCH")
             _require(prior.execute("SELECT value FROM meta WHERE key='format'").fetchone() == ("1",), "BASELINE_FORMAT_MISMATCH")
@@ -788,24 +1166,62 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
         # not sampled runtime concurrency or later owner-only snapshots.
         totals["backup_snapshot_databases"] = len(snapshot_jobs)
         totals["backup_snapshot_worker_limit"] = min(2, len(snapshot_jobs))
+        merge_root = work / "merge-jobs"
+        merge_root.mkdir(mode=0o700)
+        jobs = []
+        largest_database = 0
+        for index, relative in enumerate(sorted(dbs)):
+            source = incoming[relative]
+            current = backup / relative if mode == "upgrade" else None
+            sizes = _progress_weights([source] + ([current] if current is not None and current.exists() else []))
+            largest_database = max(largest_database, *sizes)
+            jobs.append({"relative": relative, "incoming": source, "current": current,
+                         "private": merge_root / str(index),
+                         "prior_path": backup / BASELINE if prior is not None else None,
+                         "prior_files": backup / BASELINE_FILES,
+                         "snapshot_sha": snapshot_hashes.get(relative),
+                         "identical_current": (mode == "upgrade" and prior is None
+                            and _input_digest(inputs, relative) == source_hashes[relative]
+                            and all(_input_digest(inputs, relative + suffix) is None
+                                    for suffix in ("-wal", "-journal"))),
+                         "weight": incoming_weights[relative] if progress is not None else sizes[0]})
+        worker_count = _merge_worker_count(merge_workers, len(jobs), memory_budget_bytes,
+                                          largest_database_bytes=largest_database)
+        # Old stock decompression now overlaps across independent workers. Keep
+        # space for the largest simultaneous restores as well as all remaining
+        # output DBs and stock archives; never rely on compressed size alone.
+        old_sizes = []
+        if prior is not None:
+            for relative in dbs:
+                row = _stock_record(prior, relative)
+                if row is not None and row[0] != source_hashes[relative] and type(row[1]) is int and 0 < row[1] <= 2 * 1024 ** 3:
+                    old_sizes.append(row[1])
+        output_space = sum(sum(_progress_weights([job["incoming"]]
+                           + ([job["current"]] if job["current"] is not None and job["current"].exists() else [])))
+                           for job in jobs)
+        archive_space = sum(job["incoming"].stat().st_size for job in jobs)
+        old_sizes.sort(reverse=True)
+        free = shutil.disk_usage(root).free
+        if merge_workers is None and worker_count > 1 and free < output_space + archive_space + sum(old_sizes[:worker_count]) + 1024 * 1024:
+            worker_count = 1
+        restore_space = sum(old_sizes[:worker_count])
+        _require(free >= output_space + archive_space + restore_space + 1024 * 1024,
+                 "INSUFFICIENT_UPGRADE_SPACE")
+        results = _merge_database_batch(jobs, worker_count, progress=progress,
+                                        total_weight=incoming_total if progress is not None else 1)
+        merged = {job["relative"]: result for job, result in zip(jobs, results)}
         manifest_versions = {}
+        merged_weight = sum(job["weight"] for job in jobs)
         for relative, source in sorted(incoming.items()):
             destination = next_root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             if _is_database(relative):
                 if destination.exists():
                     destination.unlink()
-                current = backup / relative if mode == "upgrade" else None
-                identical_current = (mode == "upgrade" and prior is None
-                                     and _input_digest(inputs, relative) == source_hashes[relative]
-                                     and all(_input_digest(inputs, relative + suffix) is None
-                                             for suffix in ("-wal", "-journal")))
-                result = _merge_database(current, source, destination, relative, prior, baseline,
-                                         root / BASELINE_FILES, next_root / BASELINE_FILES,
-                                         current_snapshot_sha=snapshot_hashes.get(relative),
-                                         identical_current=identical_current,
-                                         output_integrity_certificates=output_integrity_certificates)
-                for key, value in result.items():
+                result = merged[relative]
+                _collect_merged_database(result, destination, baseline, next_root / BASELINE_FILES,
+                                         output_integrity_certificates)
+                for key, value in result["counts"].items():
                     totals[key] += value
             elif _is_manifest(relative):
                 fresh = source.read_bytes()
@@ -821,6 +1237,10 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                 destination.write_bytes(fresh)
             else:
                 shutil.copyfile(source, destination)
+            if progress is not None and not _is_database(relative):
+                merged_weight += incoming_weights[relative]
+                _progress(progress, "merging", merged_weight, incoming_total, source.name)
+        shutil.rmtree(merge_root)
         for relative in incoming:
             if _is_manifest(relative):
                 for name, _, _ in _read_manifest((next_root / relative).read_bytes())[2]:
@@ -834,10 +1254,15 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                       "jp_global_coverage": coverage}
         _atomic_json(next_root / DESCRIPTOR, descriptor)
         (next_root / MARKER).write_text(toVersion)
+        _progress(progress, "verifying", 0, 1000000)
         _sync_tree(backup)
+        _progress(progress, "verifying", 100000, 1000000)
         _sync_tree(next_root)
+        _progress(progress, "verifying", 200000, 1000000)
         _require(_inputs(root) == inputs, "LIVE_INPUT_CHANGED_DURING_PREPARE")
+        _progress(progress, "verifying", 300000, 1000000)
         _require(all(_sha(path) == source_hashes[name] for name, path in incoming.items()), "STAGED_INPUT_CHANGED_DURING_PREPARE")
+        _progress(progress, "verifying", 350000, 1000000)
         summary = {"status": "PREPARED", "transaction_id": identity, "mode": mode, "from_version": fromVersion,
                    "to_version": toVersion, "legacy_existing_rows_preserved": prior is None and mode == "upgrade", "counts": totals,
                    "rebased": (root / REBASE_FLAG).exists(),
@@ -864,13 +1289,22 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
         totals["main_integrity_certificates_reused"] = len(output_integrity_certificates)
         _atomic_json(work / "prepared.json", data)
         _sync_directory(transactions)
+        _progress(progress, "verifying", 400000, 1000000)
         return summary
     except UpgradeError:
-        shutil.rmtree(work, ignore_errors=True)
+        _discard_preparation(work, baseline, prior)
+        baseline = prior = None
         raise
     except Exception:
-        shutil.rmtree(work, ignore_errors=True)
+        _discard_preparation(work, baseline, prior)
+        baseline = prior = None
         raise UpgradeError("UPGRADE_PREPARATION_FAILED") from None
+    except BaseException:
+        # ThreadPoolExecutor has joined every writer before control reaches
+        # here, including cancellation/SystemExit originating in a worker.
+        _discard_preparation(work, baseline, prior)
+        baseline = prior = None
+        raise
     finally:
         if prior is not None:
             prior.close()
@@ -895,7 +1329,7 @@ def _finish(root, work):
 
 
 @_serialized
-def recover_upgrade(rootPath):
+def recover_upgrade(rootPath, *, progress=None):
     root = _root(rootPath)
     journal_path = root / META / "journal.json"
     if not journal_path.exists():
@@ -905,14 +1339,17 @@ def recover_upgrade(rootPath):
         work = _transaction(root, journal["transaction_id"])
         _require(type(journal.get("journal_version")) is int and journal["journal_version"] in (1, 2) and journal.get("state") in ("COMMITTING", "COMMITTED"), "INVALID_RECOVERY_JOURNAL")
         _validate_transaction_plan(journal, work, "INVALID_RECOVERY_JOURNAL")
+        recovery_total = len(journal["operations"]) + 1
+        _progress(progress, "recovering", 0, recovery_total)
         if journal["state"] == "COMMITTED" or _committed(root, journal):
             # Once durably committed, subsequent legitimate mod writes must not
             # turn leftover cleanup metadata into a rollback request.
             journal["state"] = "COMMITTED"
             _atomic_json(journal_path, journal)
             _finish(root, work)
+            _progress(progress, "recovering", recovery_total, recovery_total)
             return {"status": "COMMITTED", "to_version": journal["to_version"]}
-        for item in reversed(journal["operations"]):
+        for index, item in enumerate(reversed(journal["operations"])):
             if item.get("retain") is True:
                 continue
             relative = item["path"]
@@ -924,7 +1361,9 @@ def recover_upgrade(rootPath):
                 _sync_directory(live.parent)
             elif not item["had_old"] and not pending.exists():
                 _remove(live)
+            _progress(progress, "recovering", index + 1, recovery_total, relative)
         _finish(root, work)
+        _progress(progress, "recovering", recovery_total, recovery_total)
         return {"status": "ROLLED_BACK"}
     except UpgradeError:
         raise
@@ -933,7 +1372,7 @@ def recover_upgrade(rootPath):
 
 
 @_serialized
-def commit_upgrade(rootPath, transaction_id):
+def commit_upgrade(rootPath, transaction_id, *, progress=None):
     root = _root(rootPath)
     work = _transaction(root, transaction_id)
     _require(not (root / META / "journal.json").exists(), "RECOVERY_REQUIRED")
@@ -941,15 +1380,21 @@ def commit_upgrade(rootPath, transaction_id):
         data = json.loads((work / "prepared.json").read_text())
         _require(data.get("transaction_id") == transaction_id, "INVALID_TRANSACTION")
         version = _validate_transaction_plan(data, work, "INVALID_TRANSACTION")
+        _progress(progress, "verifying", 500000, 1000000)
         _require(_inputs(root) == data["inputs"], "LIVE_INPUT_CHANGED_BEFORE_COMMIT")
+        _progress(progress, "verifying", 650000, 1000000)
         _require(all(_fingerprint(work / "next" / item["path"]) == item["new"] for item in data["operations"] if item.get("retain") is not True), "PREPARED_PAYLOAD_CHANGED")
+        _progress(progress, "verifying", 900000, 1000000)
         for item in data["operations"]:
             (work / "rollback" / item["path"]).parent.mkdir(parents=True, exist_ok=True)
         _sync_tree(work / "rollback")
         _sync_directory(work)
+        _progress(progress, "verifying", 1000000, 1000000)
         data.update(journal_version=version, state="COMMITTING")
         _atomic_json(root / META / "journal.json", data)
-        for item in data["operations"]:
+        publishing_total = len(data["operations"]) + 2
+        _progress(progress, "publishing", 0, publishing_total)
+        for index, item in enumerate(data["operations"]):
             if item.get("retain") is True:
                 continue
             relative = item["path"]
@@ -971,18 +1416,22 @@ def commit_upgrade(rootPath, transaction_id):
                 live.parent.mkdir(parents=True, exist_ok=True)
                 _replace(pending, live)
                 _sync_directory(live.parent)
+            _progress(progress, "publishing", index + 1, publishing_total, relative)
         _require(_committed(root, data), "COMMITTED_PAYLOAD_VERIFICATION_FAILED")
         data["state"] = "COMMITTED"
         _atomic_json(root / META / "journal.json", data)
+        _progress(progress, "publishing", publishing_total - 1, publishing_total)
         _finish(root, work)
+        _progress(progress, "publishing", publishing_total, publishing_total)
+        _progress(progress, "complete", 1, 1)
         return dict(data["summary"], status="COMMITTED")
     except UpgradeError:
         if (root / META / "journal.json").exists():
-            recover_upgrade(root)
+            recover_upgrade(root) if progress is None else recover_upgrade(root, progress=progress)
         raise
     except Exception:
         if (root / META / "journal.json").exists():
-            recover_upgrade(root)
+            recover_upgrade(root) if progress is None else recover_upgrade(root, progress=progress)
         raise UpgradeError("UPGRADE_COMMIT_FAILED") from None
 
 
@@ -1012,16 +1461,27 @@ def request_rebase(rootPath, reason="database_restore"):
     return {"status": "REBASE_REQUIRED"}
 
 
-def apply_upgrade_json(root, staged, from_version, to_version, mode="upgrade", *, expected_files=None):
+def apply_upgrade_json(root, staged, from_version, to_version, mode="upgrade", *, expected_files=None,
+                       progress=None, merge_workers=None, memory_budget_bytes=None):
     @_serialized
     def apply(rootPath):
-        recover_upgrade(rootPath)
+        recover_upgrade(rootPath) if progress is None else recover_upgrade(rootPath, progress=progress)
+        _progress(progress, "validating", 0, 1)
         _validate_production_payload(rootPath, staged)
-        if expected_files is None:
+        if merge_workers is not None or memory_budget_bytes is not None:
+            prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode,
+                                       expected_files=expected_files, progress=progress,
+                                       merge_workers=merge_workers, memory_budget_bytes=memory_budget_bytes)
+        elif progress is not None:
+            prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode,
+                                       expected_files=expected_files, progress=progress)
+        elif expected_files is None:
             prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode)
         else:
             prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode,
                                        expected_files=expected_files)
         _validate_prepared_contract(_root(rootPath), prepared)
-        return commit_upgrade(rootPath, prepared["transaction_id"])
+        _progress(progress, "verifying", 500000, 1000000)
+        return (commit_upgrade(rootPath, prepared["transaction_id"]) if progress is None
+                else commit_upgrade(rootPath, prepared["transaction_id"], progress=progress))
     return _json_call(apply, root)

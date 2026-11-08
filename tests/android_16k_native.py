@@ -299,7 +299,8 @@ def extract_apk_runtime(archive, root):
         else:
             shutil.copyfile(path, destination)
     source = Path(__file__).parent
-    for filename in ("android_release_smoke.py", "validate_runtime.py", "validate_jp_global_content.py"):
+    for filename in ("android_release_smoke.py", "validate_runtime.py", "validate_jp_global_content.py",
+                     "android_payload_merge_benchmark.py"):
         shutil.copyfile(source / filename, python / "app" / filename)
     shutil.copyfile(source / "android_native_functional.py", python / "native_probe.py")
     (root / "runtime/config.json").write_text(json.dumps({
@@ -439,6 +440,7 @@ def prepare(args, report):
 set -e
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox mount -t tmpfs -o size=512m,mode=1777 tmpfs /tmp || /bin/busybox poweroff -f
 # Official Android kernels use ueventd instead of CONFIG_DEVTMPFS. Supply
 # the character devices needed by subprocesses, Go and standalone CPython.
 /bin/busybox mount -t tmpfs tmpfs /dev

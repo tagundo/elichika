@@ -24,6 +24,7 @@ import sys
 import shutil
 import hashlib
 from datetime import datetime
+from sukusta_paths import installer_scan_path, termux_storage_missing
 
 # ============================================================
 # 1. 데이터 테이블
@@ -183,6 +184,15 @@ def clear_terminal():
 
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(data, keys_0, keys_1, keys_2)
+        return
     for i in range(len(data)):
         data[i] = data[i] ^ ((keys_1 ^ keys_0 ^ keys_2) >> 24 & 0xFF)
         keys_0 = (0x343fd * keys_0 + 0x269ec3) & 0xFFFFFFFF
@@ -658,16 +668,10 @@ if not os.path.exists(check_json_config):
     print('Config file is missing, Exiting...')
     sys.exit(1)
 
-# Set folder path based on environment
-if is_termux():
-    modding_elichika_path = os.path.expanduser('~/storage/downloads/sukusta/live/')
-    termux_storage_chc = os.path.expanduser('~/storage/')
-    if not os.path.exists(termux_storage_chc):
-        print('Path is missing, please execute termux-setup-storage command and allow it')
-        sys.exit(1)
-else:
-    # Set a default or other path if not in Termux
-    modding_elichika_path = "assets/package/live/"
+modding_elichika_path = installer_scan_path("live", "assets/package/live/")
+if termux_storage_missing():
+    print('Path is missing, please execute termux-setup-storage command and allow it')
+    sys.exit(1)
 
 if not os.path.exists(modding_elichika_path):
     os.makedirs(modding_elichika_path)

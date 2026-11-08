@@ -148,6 +148,139 @@ def gallery_png_checks(temporary):
         return hashlib.sha256(png).hexdigest()
 
 
+def clone_bundle_checks(preview):
+    """Exercise the shipped clone serializer through the embedded UnityPy runtime."""
+    import UnityPy
+    from costume_clone_assets import _cab_names, isolate_bundle
+
+    def contents(data):
+        return {obj.path_id: (obj.type.name, obj.get_raw_data(), obj)
+                for obj in UnityPy.load(data).objects}
+
+    original = contents(preview)
+    original_cabs = set(_cab_names(preview))
+    copies = [isolate_bundle(preview, "android-native-clone-" + suffix)
+              for suffix in ("a", "b")]
+    identities = [original_cabs] + [set(_cab_names(data)) for data in copies]
+    assert all(identities) and all(not left.intersection(right)
+        for index, left in enumerate(identities) for right in identities[index + 1:])
+    runtime_names = []
+    for data in [preview, *copies]:
+        objects = contents(data)
+        assert set(objects) == set(original), "Clone serialization changed object path IDs"
+        names = []
+        for path_id, (kind, raw, obj) in objects.items():
+            assert kind == original[path_id][0]
+            if kind == "AssetBundle":
+                tree = obj.read_typetree()
+                source = original[path_id][2].read_typetree()
+                assert tree["m_Container"] == source["m_Container"]
+                assert tree["m_Dependencies"] == source["m_Dependencies"]
+                names.append((tree["m_Name"], tree["m_AssetBundleName"]))
+            else:
+                assert raw == original[path_id][1], "Clone serialization changed animation bytes"
+        runtime_names.append(tuple(names))
+    assert all(runtime_names) and len(set(runtime_names)) == 3
+    assert hashlib.sha256(preview).hexdigest() == "96ada81d0b8f35573fa81e0a3830b018a1d46ff26fff778f3be0a0deed618ebe"
+    return {"copies": len(copies), "preserved_objects": len(original),
+            "source_sha256": hashlib.sha256(preview).hexdigest()}
+
+
+def clone_crypto_checks():
+    """Run the packaged vector path on native NumPy across block boundaries."""
+    import llas_asset_extractor as extractor
+    import sifas_asset_crypto as shared_crypto
+    from costume_clone_assets import (_crypt_section, _lcg_coefficients,
+                                      _CRYPTO_FAST_MIN_SIZE)
+
+    size = 2 * 65536 + 137
+    assert size >= _CRYPTO_FAST_MIN_SIZE
+    plain = bytes((index * 73 + 19) & 255 for index in range(size))
+    cases = []
+    before = _lcg_coefficients.cache_info()
+    scalar = extractor._decrypt_section_scalar
+    fallback = shared_crypto.decrypt_section_scalar
+
+    def refuse_scalar(*args):
+        raise AssertionError("Native clone crypto probe unexpectedly used the scalar fallback")
+
+    for label, keys in (("signed-distinct", (12345, -2147483648, 2147483647)),
+                        ("equal-after-normalization", (0, -1, 4294967295))):
+        expected = bytearray(plain)
+        # The untouched scalar extractor is the independent byte oracle.
+        scalar(expected, *keys)
+        actual = bytearray(plain)
+        try:
+            shared_crypto.decrypt_section_scalar = refuse_scalar
+            _crypt_section(actual, *keys)
+            assert actual == expected, "Native vector ciphertext differs from scalar oracle"
+            _crypt_section(actual, *keys)
+            assert actual == plain, "Native vector crypto roundtrip changed bytes"
+        finally:
+            shared_crypto.decrypt_section_scalar = fallback
+        cases.append({"case": label, "bytes": size,
+                      "ciphertext_sha256": hashlib.sha256(expected).hexdigest()})
+    after = _lcg_coefficients.cache_info()
+    coefficient_calls = after.hits + after.misses - before.hits - before.misses
+    assert coefficient_calls == 4, "Native fast path did not use its coefficient table"
+    # The public extractor and installers must use the packaged common backend,
+    # while the original scalar above remains an independent oracle.
+    from live_install_core import manipulate_file
+    from costume_scene_installer import _encrypt
+    shared_before = _lcg_coefficients.cache_info()
+    try:
+        shared_crypto.decrypt_section_scalar = refuse_scalar
+        for function in (extractor.decrypt_section, manipulate_file):
+            for _, keys in (("signed", (12345, -2147483648, 2147483647)),
+                            ("equal", (0, -1, 4294967295))):
+                expected = bytearray(plain)
+                scalar(expected, *keys)
+                actual = bytearray(plain)
+                assert function(actual, *keys) is None
+                assert actual == expected
+                function(actual, *keys)
+                assert actual == plain
+        expected = bytearray(plain)
+        scalar(expected, 12345, 0, 0)
+        assert _encrypt(plain) == bytes(expected)
+        assert _encrypt(expected) == plain
+    finally:
+        shared_crypto.decrypt_section_scalar = fallback
+    shared_after = _lcg_coefficients.cache_info()
+    shared_calls = shared_after.hits + shared_after.misses - shared_before.hits - shared_before.misses
+    assert shared_calls == 10, "Packaged asset/installer paths did not use the common backend"
+    return {"fast_path_used": True, "scalar_oracle_match": True,
+            "roundtrip": True, "coefficient_calls": coefficient_calls, "cases": cases,
+            "shared_consumers": ["asset-extractor", "live-installer", "scene-installer"],
+            "shared_coefficient_calls": shared_calls}
+
+
+def payload_progress_checks():
+    """Exercise the packaged display protocol, without a database transaction."""
+    from payload_upgrade_progress import ProgressReporter
+
+    records = []
+    report = ProgressReporter(lambda value: records.append(json.loads(value)))
+    report("publishing", 1, 1, "/private/probe/masterdata.db")
+    assert records[-1]["percent"] == 99
+    assert records[-1]["current"] == "masterdata.db"
+    report("complete", 0, 1)
+    assert len(records) == 1, "Incomplete work was displayed as committed"
+    report("merging", 1, 1, "stale.db")
+    assert len(records) == 1, "Delayed progress changed the publishing state"
+    # The caller supplies this event only after accepting the durable commit;
+    # native host tests separately cover that transaction/marker boundary.
+    report("complete", 1, 1)
+    assert records[-1]["stage"] == "complete" and records[-1]["percent"] == 100
+    count = len(records)
+    report("recovering", 0, 1)
+    assert len(records) == count, "Late callbacks reopened completed progress"
+    return {"shared_module_import": True, "publishing_percent": 99,
+            "complete_percent": 100, "invalid_complete_ignored": True,
+            "stale_and_post_complete_ignored": True, "basename_only": True,
+            "scope": "Display protocol only; no database transaction or native UI"}
+
+
 def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     import ssl
     import ctypes
@@ -173,6 +306,11 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     assert hashlib.sha256(preview).hexdigest() == "96ada81d0b8f35573fa81e0a3830b018a1d46ff26fff778f3be0a0deed618ebe"
     preview_clips = [obj.read().m_Name for obj in UnityPy.load(preview).objects if obj.type.name == "AnimationClip"]
     assert preview_clips == ["ch0301_GEN_preview1_L"]
+    clone_report = clone_bundle_checks(preview)
+    clone_crypto_report = clone_crypto_checks()
+    payload_progress_report = payload_progress_checks()
+    from android_payload_merge_benchmark import native_merge_checks
+    payload_merge_report = native_merge_checks(temporary)
 
     assert sys.version_info[:2] == (3, 13)
     assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
@@ -244,6 +382,10 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
             "gallery_thumbnail_png": True, "gallery_png_sha256": gallery_sha256,
             "adminui_and_webtools_imports": True, "astc_encode_decode": True,
             "bundled_suit_preview": True,
+            "clone_bundle_isolation": True, "clone_bundle_report": clone_report,
+            "clone_crypto_fast_path": clone_crypto_report,
+            "payload_upgrade_progress": payload_progress_report,
+            "payload_parallel_merge": payload_merge_report,
             "astc_sha256": hashlib.sha256(astc_data).hexdigest(), "astc_mean_error": round(float(difference), 3)}
 
 

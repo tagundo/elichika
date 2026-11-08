@@ -17,6 +17,11 @@ class NativePythonTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val python = EmbeddedPython.instance(context)
+        val mergeModule = python.getModule("types").callAttr("ModuleType", "android_payload_merge_benchmark")
+        val mergeScript = instrumentation.context.assets.open("android_payload_merge_benchmark.py")
+            .bufferedReader().use { it.readText() }
+        python.getModule("builtins").callAttr("exec", mergeScript, mergeModule.get("__dict__"))
+        python.getModule("sys").get("modules")!!.callAttr("__setitem__", "android_payload_merge_benchmark", mergeModule)
         val module = python.getModule("types").callAttr("ModuleType", "_native_qa")
         val script = instrumentation.context.assets.open("native_python_checks.py")
             .bufferedReader().use { it.readText() }
@@ -50,7 +55,8 @@ class NativePythonTest {
             assertEquals(6, report.getInt("compression_roundtrips"))
             for (key in listOf("ssl_and_certificates", "sqlite_unicode", "ctypes",
                 "numpy_linear_algebra", "pillow_png_jpeg_freetype", "unitypy_binary_io",
-                "fsspec_memory_io", "adminui_and_webtools_imports", "astc_encode_decode", "bundled_suit_preview")) {
+                "fsspec_memory_io", "adminui_and_webtools_imports", "astc_encode_decode", "bundled_suit_preview",
+                "clone_bundle_isolation")) {
                 assertTrue(key, report.getBoolean(key))
             }
             println("ANDROID_PYTHON_NATIVE_REPORT=$encoded")

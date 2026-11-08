@@ -15,6 +15,7 @@ from adminui.tools.assets_extract import run_extract
 from adminui.tools.backup import run_backup
 from adminui.tools.reset import run_clear_packs
 from adminui.tools.costume_clone import character_choices, costume_options, run_costume_clone
+from adminui.tools.costume_delete import costume_delete_options, run_costume_delete
 from adminui.tools.installers import (
     options_for, run_camera, run_card, run_costume, run_db, run_dictionary, run_live, run_tower,
 )
@@ -25,7 +26,7 @@ _STOP = {"name": "stop_server", "label": "Stop the elichika server first", "type
          "default": True, "help": "Recommended: these tools modify the server's database files."}
 _RESTART = {"name": "restart_server", "label": "Automatically restart the server after installation",
             "type": "checkbox", "default": False, "persist": True,
-            "help": "Android app: stop a running server before installing and restart it after all files "
+            "help": "In the app: stop a running server before installing and restart it after all files "
                     "succeed. A stopped server stays off. Failed or cancelled installs stay stopped."}
 
 # Character pickers — built once from each tool's name table so a beginner can
@@ -42,17 +43,17 @@ def _addon(folder, multi=False):
     picker becomes a multi-select so several files can be installed in one run."""
     f = {"name": "addon", "label": "File to install", "type": "dynamic_select",
          "source": "addon", "required": True,
-         "help": "Files in Download/sukusta/{folder} and …/addons appear here.",
+         "help": "Files in sukusta/{folder} and …/addons appear here.",
          "help_folder": folder}
     if multi:
         f["multi"] = True
         f["label"] = "Files to install"
-        f["help"] = ("Files in Download/sukusta/{folder} and …/addons appear here. "
+        f["help"] = ("Files in sukusta/{folder} and …/addons appear here. "
                      "Hold Ctrl/Cmd (or drag) to select several — they install one after another.")
     return f
 
 
-def _char_field(name, label, help_text=None, choices=None, required=True):
+def _char_field(name, label, help_text=None, choices=None, required=True, multi=False):
     """A character field: a dropdown when the names table loaded, else plain text."""
     opts = _CHARACTERS if choices is None else choices
     f = {"name": name, "label": label}
@@ -60,6 +61,8 @@ def _char_field(name, label, help_text=None, choices=None, required=True):
         f["required"] = True
     if opts:
         f.update({"type": "select", "options": opts})
+        if multi:
+            f["multi"] = True
     else:
         f["type"] = "text"
     if help_text:
@@ -78,7 +81,7 @@ TOOLS = [
     {
         "id": "clear_packs",
         "label": "Clear Pack Cache",
-        "description": ("Delete downloaded game packs (Download/sukusta/packs) to free storage. "
+        "description": ("Delete downloaded game packs (sukusta/packs) to free storage. "
                         "Missing packs re-download when you play."),
         "run": run_clear_packs,
         "fields": [_STOP],
@@ -105,7 +108,7 @@ TOOLS = [
     {
         "id": "costume_clone",
         "label": "Costume Clone",
-        "description": "Copy a costume from one character to another (adds a cloned suit for every user).",
+        "description": "Copy a costume to several characters at once (adds a separate clone for each selected character).",
         "run": run_costume_clone,
         "options": costume_options,
         "fields": [
@@ -113,12 +116,33 @@ TOOLS = [
                         "Pick a character, then press ↻ to list their costumes."),
             {"name": "costume", "label": "Costume to clone", "type": "dynamic_select",
              "source": "costume", "depends_on": "src_id", "required": True},
-            {"name": "mask", "label": "Rina version (character 209 only)", "type": "select",
+            {"name": "mask", "label": "Rina board / bare face", "type": "select",
              "options": ["1 (with mask)", "2 (no mask)"], "default": "1 (with mask)"},
-            _char_field("tgt_id", "Target character"),
+            _char_field("tgt_ids", "Target characters",
+                        "Select every character to receive a clone. Each receives independent model assets.",
+                        multi=True),
             {"name": "backup", "label": "Back up databases first", "type": "checkbox",
              "default": True, "help": "Recommended: a full DB backup is taken before the clone."},
             _STOP,
+        ],
+    },
+    {
+        "id": "costume_delete",
+        "label": "Remove Costume / Clone",
+        "description": ("Review and remove installed costumes or clones. Original game costumes and "
+                        "costumes currently in use are protected. A recovery backup is always kept."),
+        "run": run_costume_delete,
+        "options": costume_delete_options,
+        "fields": [
+            {"name": "allow_original", "label": "Show and allow removal of built-in costumes (advanced)",
+             "type": "checkbox", "default": False,
+             "help": "Built-in costumes require an additional confirmation popup. Game-required references stay protected."},
+            {"name": "installation", "label": "Installed costumes or clones", "type": "dynamic_select",
+             "source": "installation", "depends_on": "allow_original", "required": True, "multi": True,
+             "help": "Select up to 100 costumes. Review first, then confirm removal."},
+            {"name": "replace_in_use", "label": "Change used costumes to the character's default before removing",
+             "type": "checkbox", "default": False,
+             "help": "Review the HOME and MV slots that will change before confirming removal."},
         ],
     },
     {
@@ -154,7 +178,7 @@ TOOLS = [
         "id": "install_costume",
         "label": "Install Costume (zip)",
         "description": ("Install a costume add-on zip into the server database. Drop the zip into "
-                        "Download/sukusta/suit (or use the file picker), then pick it."),
+                        "sukusta/suit (or use the file picker), then pick it."),
         "run": run_costume,
         "options": options_for("costume"),
         "fields": [_addon("suit", multi=True), _BACKUP, _STOP, _RESTART],
@@ -163,7 +187,7 @@ TOOLS = [
         "id": "install_live",
         "label": "Install Live / Song (zip)",
         "description": ("Install a live (song) add-on zip into the server database. Drop the zip "
-                        "into Download/sukusta/live."),
+                        "into sukusta/live."),
         "run": run_live,
         "options": options_for("live"),
         "fields": [_addon("live"), _BACKUP, _STOP],
@@ -172,7 +196,7 @@ TOOLS = [
         "id": "install_card",
         "label": "Install Card (zip)",
         "description": ("Install a card add-on zip into the server database. Drop the zip into "
-                        "Download/sukusta/card."),
+                        "sukusta/card."),
         "run": run_card,
         "options": options_for("card"),
         "fields": [_addon("card"), _BACKUP, _STOP],
@@ -180,7 +204,7 @@ TOOLS = [
     {
         "id": "install_tower",
         "label": "Install Tower / DLP (zip)",
-        "description": "Install a tower / DLP add-on zip. Drop the zip into Download/sukusta/tower.",
+        "description": "Install a tower / DLP add-on zip. Drop the zip into sukusta/tower.",
         "run": run_tower,
         "options": options_for("tower"),
         "fields": [_addon("tower"), _BACKUP, _STOP],
@@ -189,7 +213,7 @@ TOOLS = [
         "id": "install_camera",
         "label": "Replace Live Camera Timeline (zip)",
         "description": ("Install a live camera / timeline add-on zip. Drop the zip into "
-                        "Download/sukusta/livetimeline."),
+                        "sukusta/livetimeline."),
         "run": run_camera,
         "options": options_for("camera"),
         "fields": [_addon("livetimeline", multi=True), _BACKUP, _STOP],
@@ -198,7 +222,7 @@ TOOLS = [
         "id": "install_db",
         "label": "Import DB SQL (.sql)",
         "description": ("Import a .sql patch into the master / user databases (advanced). Drop the "
-                        "file into Download/sukusta/sql."),
+                        "file into sukusta/sql."),
         "run": run_db,
         "options": options_for("db"),
         "fields": [_addon("sql"), _BACKUP, _STOP],

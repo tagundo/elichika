@@ -4,6 +4,7 @@ import (
 	"elichika/log"
 	"elichika/utils"
 
+	"database/sql"
 	"fmt"
 
 	"xorm.io/xorm"
@@ -19,32 +20,47 @@ type PackType struct {
 	Category       int           `xorm:"'category'"`
 }
 
-func loadPack(locale string, session *xorm.Session) {
+func loadPack(locale string, engine *xorm.Engine) {
 	log.Println("Loading Pack")
-	packs := []*PackType{}
-	err := session.Table("m_asset_package_mapping").Find(&packs)
+	// Use a forward SQL cursor rather than xorm.Iterate: Iterate rebuilds its
+	// reflection/column schema for every row. These are the same six columns and
+	// unordered scan as the previous Find; keep first-mapping/collision rules.
+	rows, err := engine.DB().Query("SELECT package_key, pack_name, file_size, metapack_name, metapack_offset, category FROM m_asset_package_mapping")
 	utils.CheckErr(err)
+	defer rows.Close()
 	cnt := 0
-	for _, pack := range packs {
-		_, exist := Metapack[pack.PackName]
-		if exist {
-			log.Panic(fmt.Sprint("same name used for both a pack and a metapack: ", pack.PackName,
-				"\nLocale: ", locale, ", previous locale: ", NameToLocale[pack.PackName]))
+	var packageKey, packName, metapackName sql.NullString
+	var fileSize, metapackOffset, category sql.NullInt64
+	for rows.Next() {
+		err = rows.Scan(&packageKey, &packName, &fileSize, &metapackName, &metapackOffset, &category)
+		utils.CheckErr(err)
+		if _, exists := Metapack[packName.String]; exists {
+			log.Panic(fmt.Sprint("same name used for both a pack and a metapack: ", packName.String,
+				"\nLocale: ", locale, ", previous locale: ", NameToLocale[packName.String]))
 		}
-		if pack.MetapackName != nil {
-			pack.Metapack = Metapack[*pack.MetapackName]
-		}
-		previous, exist := Pack[pack.PackName]
-		if !exist {
-			Pack[pack.PackName] = pack
-			NameToLocale[pack.PackName] = locale
-			cnt++
+		previous, exists := Pack[packName.String]
+		if exists && previous.FileSize == int(fileSize.Int64) {
 			continue
 		}
-		if previous.FileSize != pack.FileSize {
-			// TODO(assert): This doesn't necessarily imply all packs are the same, some test is necessary
+		pack := &PackType{
+			PackageKey:     packageKey.String,
+			PackName:       packName.String,
+			FileSize:       int(fileSize.Int64),
+			MetapackOffset: int(metapackOffset.Int64),
+			Category:       int(category.Int64),
+		}
+		if metapackName.Valid {
+			name := metapackName.String
+			pack.MetapackName = &name
+			pack.Metapack = Metapack[name]
+		}
+		if exists {
 			log.Panic(fmt.Sprint("pack name reused: ", *previous, *pack))
 		}
+		Pack[pack.PackName] = pack
+		NameToLocale[pack.PackName] = locale
+		cnt++
 	}
+	utils.CheckErr(rows.Err())
 	log.Printf("Loaded %d new pack\n", cnt)
 }

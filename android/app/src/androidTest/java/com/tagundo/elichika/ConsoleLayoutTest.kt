@@ -153,6 +153,7 @@ class ConsoleLayoutTest {
         assertConsoleStateRetained(activity, originalButtons, 1)
         resizeContent(activity, 1000f * fontScale)
         assertConsoleStateRetained(activity, originalButtons, 3)
+        HeaderLayoutNativeQa.exercise(activity, wide = false)
     }
 
     private fun resizeContent(activity: MainActivity, widthDp: Float) {

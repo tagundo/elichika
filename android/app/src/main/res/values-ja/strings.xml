@@ -48,8 +48,22 @@
     <string name="cdn_off">CDNキャッシュ: オフ (タップで有効化)</string>
 
     <!-- server state -->
+    <string name="status_server_loading">サーバー読み込み中…</string>
+    <string name="status_server_start_failed">サーバー起動失敗 · コンソールを確認</string>
+    <string name="log_server_ready">[server] 読み込み完了。リクエストを受け付ける準備ができました。</string>
+    <string name="log_server_ready_timeout">[server] 5分以内に起動が完了しなかったため停止しました。コンソールとサーバーのアドレス・ポートを確認してください。</string>
     <string name="status_starting">◌ 開始中…</string>
     <string name="status_preparing">サーバーファイルを準備中…</string>
+    <string name="status_data_update_percent">データ更新 %1$d%%</string>
+    <string name="progress_work_detail">%1$d%% · %2$s (処理量 %3$d/%4$d)</string>
+    <string name="log_setup_data_progress">[setup] データ更新 %1$d%% · %2$s · 処理量 %3$d/%4$d%5$s</string>
+    <string name="progress_recovering">復旧状態を確認</string>
+    <string name="progress_validating">元データを確認</string>
+    <string name="progress_snapshot">既存データをバックアップ</string>
+    <string name="progress_merging">データと導入済みモッドを統合</string>
+    <string name="progress_verifying">更新データを検証</string>
+    <string name="progress_publishing">検証済みデータを反映</string>
+    <string name="progress_complete">データ更新完了</string>
     <string name="status_updating_game_data">インストール済みのモッドを保持してゲームデータを更新中…</string>
     <string name="status_preparation_failed">準備に失敗しました · コンソールログを確認してください</string>
 

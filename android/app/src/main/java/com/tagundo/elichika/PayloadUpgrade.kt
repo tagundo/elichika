@@ -1,5 +1,6 @@
 package com.tagundo.elichika
 
+import android.app.ActivityManager
 import android.content.Context
 import org.json.JSONObject
 import java.io.File
@@ -13,6 +14,8 @@ internal object PayloadUpgrade {
         val requiresUpdate: Boolean get() = action != "skip"
     }
 
+    class CostumeRecoveryRequired : IllegalStateException("Game-data update refused (COSTUME_RECOVERY_REQUIRED)")
+
     fun <T> withMaintenance(context: Context, root: File, action: () -> T): T {
         val lease = invoke(context, "database_maintenance", "begin_maintenance_json", root.absolutePath)
         requireStatus(lease, setOf("ACQUIRED"))
@@ -25,6 +28,14 @@ internal object PayloadUpgrade {
             requireStatus(invoke(context, "database_maintenance", "end_maintenance_json",
                 root.absolutePath, token), setOf("RELEASED"))
         }
+    }
+
+    fun checkCostumeStartup(context: Context, root: File) {
+        val result = invoke(context, "costume_management", "startup_check_json", root.absolutePath)
+        if (result.optString("status") == "REFUSED" && result.optString("reason") == "COSTUME_RECOVERY_REQUIRED") {
+            throw CostumeRecoveryRequired()
+        }
+        requireStatus(result, setOf("CLEAN"))
     }
 
     fun recover(context: Context, root: File, log: (String) -> Unit) {
@@ -47,14 +58,29 @@ internal object PayloadUpgrade {
     }
 
     fun apply(context: Context, root: File, payload: File, from: String?, to: String,
-              mode: String, manifest: String) {
-        val result = invoke(context, "payload_revision", "apply_json", root.absolutePath,
-            payload.absolutePath, from.orEmpty(), to, mode, manifest)
-        requireStatus(result, setOf("COMMITTED"))
-        check(File(root, "installed_version").readText().trim() == to) {
-            "Game-data update did not publish its completion marker"
+              mode: String, manifest: String, progress: (PayloadProgress.State) -> Unit = {}) {
+        val session = PayloadProgress.Session(progress)
+        try {
+            val result = invoke(context, "elichika_launch", "apply_payload_with_progress", root.absolutePath,
+                payload.absolutePath, from.orEmpty(), to, mode, manifest, PayloadProgressObserver(session),
+                availableMemory(context))
+            requireStatus(result, setOf("COMMITTED"))
+            check(File(root, "installed_version").readText().trim() == to) {
+                "Game-data update did not publish its completion marker"
+            }
+            session.committed()
+        } finally {
+            session.close()
         }
     }
+
+    /** Read on the preparation worker for this invocation, never cache a stale budget. */
+    private fun availableMemory(context: Context): Long = runCatching {
+        val manager = context.getSystemService(ActivityManager::class.java)
+        val info = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(info)
+        info.availMem.takeIf { it > 0L } ?: 0L
+    }.getOrDefault(0L)
 
     private fun invoke(context: Context, module: String, method: String, vararg arguments: Any): JSONObject = try {
         val result = EmbeddedPython.instance(context).getModule(module)

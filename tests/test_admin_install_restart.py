@@ -1,7 +1,9 @@
 """Costume install process sequencing with a synthetic Android controller."""
 import builtins
+import hashlib
 import sys
 import threading
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -245,6 +247,46 @@ class InstallRestartTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "only installed 1/2"):
                 installers._install_one(self.job, "costume", installers.INSTALLERS["costume"],
                                         "nested.zip", False)
+
+    def test_verified_viewer_file_cannot_be_shadowed_by_same_drop_filename(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "suit/same.zip"
+            shadow = root / "addons/same.zip"
+            scan = root / "private-scan"
+            for parent in (source.parent, shadow.parent, scan):
+                parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(b"verified selected package")
+            shadow.write_bytes(b"wrong same-name package")
+            expected = hashlib.sha256(source.read_bytes()).hexdigest()
+            result = SimpleNamespace(mod_installed=True, installed_count=1, batch_proccess_list=["same.zip"])
+
+            def load_selected(module):
+                self.assertFalse(self.controller.running)
+                self.assertEqual((scan / "same.zip").read_bytes(), b"verified selected package")
+                self.assertEqual(builtins.input("backup?"), "y")
+                return result
+
+            with patch.object(installers, "_locate", side_effect=AssertionError("Do not resolve by basename")), \
+                    patch.object(installers, "_dirs", return_value=[str(scan)]), \
+                    patch.object(installers, "ensure_repo_on_path"), \
+                    patch.object(installers, "_reload", side_effect=load_selected):
+                installers.run_costume_file(self.job, str(source), expected, restart_server=True)
+            self.assertEqual(shadow.read_bytes(), b"wrong same-name package")
+            self.assertEqual(self.controller.events, ["stop", "start", "finish"])
+
+    def test_changed_verified_viewer_file_is_refused_before_installer_executes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "changed.zip"
+            source.write_bytes(b"replaced")
+            expected = hashlib.sha256(b"original package").hexdigest()
+            with patch.object(installers, "ensure_repo_on_path"), \
+                    patch.object(installers, "_reload") as execute:
+                with self.assertRaisesRegex(ValueError, "changed before installation"):
+                    installers.run_costume_file(self.job, str(source), expected, restart_server=True)
+            execute.assert_not_called()
+            self.assertFalse(self.controller.running)
+            self.assertEqual(self.controller.events, ["stop", "finish"])
 
 
 if __name__ == "__main__":

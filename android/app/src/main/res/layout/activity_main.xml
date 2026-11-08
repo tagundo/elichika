@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
@@ -11,12 +12,14 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:padding="8dp"
-        android:background="@color/elichika_primary">
+        android:background="?attr/colorSurface">
 
         <Button
             android:id="@+id/btn_toggle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            app:backgroundTint="?attr/colorSurface"
+            android:textColor="?attr/colorOnSurface"
             android:text="@string/start_server" />
 
         <ProgressBar
@@ -26,18 +29,18 @@
             android:layout_height="20dp"
             android:layout_marginStart="12dp"
             android:indeterminate="true"
-            android:indeterminateTint="@color/white"
+            android:indeterminateTint="?attr/colorOnSurface"
             android:importantForAccessibility="no"
             android:visibility="gone" />
 
         <TextView
             android:id="@+id/txt_status"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="12dp"
             android:accessibilityLiveRegion="polite"
-            android:textColor="@color/white"
+            android:textColor="?attr/colorOnSurface"
             android:text="" />
     </LinearLayout>
 
@@ -45,8 +48,13 @@
         android:id="@+id/tabs"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
         app:tabMode="scrollable"
-        xmlns:app="http://schemas.android.com/apk/res-auto" />
+        app:tabMinWidth="44dp"
+        app:tabGravity="start"
+        app:tabTextColor="?attr/colorOnSurface"
+        app:tabSelectedTextColor="?attr/colorPrimary"
+        app:tabIndicatorColor="?attr/colorPrimary" />
 
     <FrameLayout
         android:id="@+id/content"

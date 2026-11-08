@@ -4,9 +4,11 @@ import (
 	"elichika/config"
 	"elichika/i18n"
 	"elichika/log"
+	"elichika/readiness"
 	// "elichika/webui/user"
 
 	"html/template"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -81,6 +83,7 @@ func AddTemplates(path string) {
 }
 
 func Router(r *gin.Engine) {
+	r.GET(readiness.Path, gin.WrapH(readiness.Handler(os.Getenv(readiness.Environment))))
 	// whole pack/metapack files are served by the cache-aware /static/:fileName handler
 	// (handler/asset/whole.go), which can download missing packs from the upstream CDN when
 	// cdn_cache is enabled.

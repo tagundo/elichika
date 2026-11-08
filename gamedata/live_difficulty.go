@@ -87,28 +87,6 @@ func (ld *LiveDifficulty) populate(gamedata *Gamedata) {
 	// 2-way links
 	ld.Live.LiveDifficulties = append(ld.Live.LiveDifficulties, ld)
 	ld.LiveId = &gamedata.Live[*ld.LiveId].LiveId
-	var err error
-	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
-		err = session.Table("m_live_difficulty_mission").Where("live_difficulty_master_id = ?", ld.LiveDifficultyId).OrderBy("position").Find(&gamedata.LiveDifficulty[ld.LiveDifficultyId].Missions)
-	})
-
-	utils.CheckErr(err)
-	// if ld.LiveDifficultyId == 9999 || ld.LiveDifficultyId/10 == 6000000  {
-	// 	return
-	// }
-
-	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
-		err = session.Table("m_live_difficulty_gimmick").Where("live_difficulty_master_id = ?", ld.LiveDifficultyId).Find(&ld.LiveDifficultyGimmicks)
-	})
-	utils.CheckErr(err)
-
-	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
-		err = session.Table("m_live_difficulty_note_gimmick").Where("live_difficulty_id = ?", ld.LiveDifficultyId).Find(&ld.LiveDifficultyNoteGimmicks)
-	})
-	utils.CheckErr(err)
-	for i := range ld.LiveDifficultyNoteGimmicks {
-		ld.LiveDifficultyNoteGimmicks[i].populate()
-	}
 
 	if ld.NoteDropGroupId != nil {
 		ld.NoteDropGroup = gamedata.LiveDropGroup[*ld.NoteDropGroupId]
@@ -132,6 +110,79 @@ func (ld *LiveDifficulty) populate(gamedata *Gamedata) {
 	if ld.AdditionalRareDropContentGroupId != nil {
 		ld.AdditionalRareDropContentGroup = gamedata.LiveDropGroup[*ld.AdditionalRareDropContentGroupId]
 		ld.AdditionalRareDropContentGroup.Check()
+	}
+}
+
+// loadLiveDifficultyDetails reads each related table once on the standard
+// schema. Keep the original query ordering for owner-modified index layouts.
+func loadLiveDifficultyDetails(gamedata *Gamedata) {
+	var err error
+	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+		var safe bool
+		for _, spec := range []struct {
+			table string
+			key   []string
+		}{
+			{"m_live_difficulty_mission", []string{"live_difficulty_master_id", "position"}},
+			{"m_live_difficulty_gimmick", []string{"id"}},
+			{"m_live_difficulty_note_gimmick", []string{"live_difficulty_id", "note_id"}},
+		} {
+			safe, err = batchReadOrderSafe(session, spec.table, spec.key)
+			if err != nil {
+				return
+			}
+			if !safe {
+				for id, ld := range gamedata.LiveDifficulty {
+					if err = session.Table("m_live_difficulty_mission").Where("live_difficulty_master_id = ?", id).OrderBy("position").Find(&ld.Missions); err != nil {
+						return
+					}
+					if err = session.Table("m_live_difficulty_gimmick").Where("live_difficulty_master_id = ?", id).Find(&ld.LiveDifficultyGimmicks); err != nil {
+						return
+					}
+					if err = session.Table("m_live_difficulty_note_gimmick").Where("live_difficulty_id = ?", id).Find(&ld.LiveDifficultyNoteGimmicks); err != nil {
+						return
+					}
+				}
+				return
+			}
+		}
+		type missionRow struct {
+			Owner                 int32 `xorm:"'live_difficulty_master_id'"`
+			LiveDifficultyMission `xorm:"extends"`
+		}
+		err = batchRows(session.Table("m_live_difficulty_mission").Where("live_difficulty_master_id IN (SELECT live_difficulty_id FROM m_live_difficulty)").OrderBy("live_difficulty_master_id, position"), new(missionRow), func(_ int, bean interface{}) error {
+			row := bean.(*missionRow)
+			if ld := gamedata.LiveDifficulty[row.Owner]; ld != nil {
+				ld.Missions = append(ld.Missions, row.LiveDifficultyMission)
+			}
+			return nil
+		})
+		if err != nil {
+			return
+		}
+		err = batchRows(session.Table("m_live_difficulty_gimmick").Where("live_difficulty_master_id IN (SELECT live_difficulty_id FROM m_live_difficulty)").OrderBy("id"), new(LiveDifficultyGimmick), func(_ int, bean interface{}) error {
+			row := bean.(*LiveDifficultyGimmick)
+			if ld := gamedata.LiveDifficulty[row.LiveDifficultyMasterId]; ld != nil {
+				ld.LiveDifficultyGimmicks = append(ld.LiveDifficultyGimmicks, *row)
+			}
+			return nil
+		})
+		if err != nil {
+			return
+		}
+		err = batchRows(session.Table("m_live_difficulty_note_gimmick").Where("live_difficulty_id IN (SELECT live_difficulty_id FROM m_live_difficulty)").OrderBy("live_difficulty_id, note_id"), new(LiveDifficultyNoteGimmick), func(_ int, bean interface{}) error {
+			row := bean.(*LiveDifficultyNoteGimmick)
+			if ld := gamedata.LiveDifficulty[row.LiveDifficultyId]; ld != nil {
+				ld.LiveDifficultyNoteGimmicks = append(ld.LiveDifficultyNoteGimmicks, *row)
+			}
+			return nil
+		})
+	})
+	utils.CheckErr(err)
+	for _, ld := range gamedata.LiveDifficulty {
+		for i := range ld.LiveDifficultyNoteGimmicks {
+			ld.LiveDifficultyNoteGimmicks[i].populate()
+		}
 	}
 }
 
@@ -301,6 +352,7 @@ func loadLiveDifficulty(gamedata *Gamedata) {
 		err = session.Table("m_live_difficulty").Find(&gamedata.LiveDifficulty)
 	})
 	utils.CheckErr(err)
+	loadLiveDifficultyDetails(gamedata)
 	// ordered iteration is important here
 	ids := []int32{}
 	for id := range gamedata.LiveDifficulty {

@@ -48,8 +48,22 @@
     <string name="cdn_off">CDN 캐시: 꺼짐 (눌러서 켜기)</string>
 
     <!-- server state -->
+    <string name="status_server_loading">서버 로딩 중…</string>
+    <string name="status_server_start_failed">서버 시작 실패 · 콘솔 확인</string>
+    <string name="log_server_ready">[server] 로딩 완료. 요청을 받을 준비가 되었습니다.</string>
+    <string name="log_server_ready_timeout">[server] 5분 동안 서버 로딩이 완료되지 않아 중지했습니다. 콘솔과 서버 주소·포트를 확인하세요.</string>
     <string name="status_starting">◌ 시작 중…</string>
     <string name="status_preparing">서버 파일 준비 중…</string>
+    <string name="status_data_update_percent">데이터 갱신 %1$d%%</string>
+    <string name="progress_work_detail">%1$d%% · %2$s (작업량 %3$d/%4$d)</string>
+    <string name="log_setup_data_progress">[setup] 데이터 갱신 %1$d%% · %2$s · 작업량 %3$d/%4$d%5$s</string>
+    <string name="progress_recovering">복구 상태 확인</string>
+    <string name="progress_validating">원본 데이터 확인</string>
+    <string name="progress_snapshot">기존 데이터 백업</string>
+    <string name="progress_merging">데이터와 설치된 모드 병합</string>
+    <string name="progress_verifying">갱신 데이터 검증</string>
+    <string name="progress_publishing">검증된 데이터 반영</string>
+    <string name="progress_complete">데이터 갱신 완료</string>
     <string name="status_updating_game_data">설치된 모드를 보존하며 게임 데이터 갱신 중…</string>
     <string name="status_preparation_failed">준비 실패 · 콘솔 로그를 확인하세요</string>
 

@@ -1,8 +1,7 @@
 """Costume clone tool for elichika.
 
-Clones an existing costume from one character onto another: it inserts a new
-m_suit row (GL + JP masterdata), the localized costume name into the five
-dictionary DBs, and grants the cloned suit to every user (u_suit).
+Clones an existing costume from one character onto another with independent
+model bundles, GL + JP masterdata, localized names, and user grants (u_suit).
 
 This module is import-safe: all logic lives in functions (`list_costumes` /
 `clone_costume`) so the WebUI adapter can import and call them directly. The
@@ -13,7 +12,11 @@ Paths are relative to the elichika install dir, so callers must run from there
 (the CLI is launched from it, and the WebUI chdir's to it in run.py).
 """
 import os
+import hashlib
+import json
+from pathlib import Path
 import random
+import re
 import sqlite3
 import sys
 
@@ -97,14 +100,15 @@ def list_costumes(md_conn, dict_conn, chara_id):
     excluding already-cloned suits, newest costume first. Read-only; no printing."""
     cur = md_conn.cursor()
     dcur = dict_conn.cursor()
-    where = " AND ".join("name NOT LIKE ?" for _ in _CLONE_SUFFIXES)
+    from costume_scene_clones import canonical_clone_candidates
+    canonical = canonical_clone_candidates()
     direction = _newest_first_dir(md_conn)
     cur.execute(
-        "SELECT id, name FROM m_suit WHERE member_m_id = ? AND " + where
-        + f" ORDER BY display_order {direction}",
-        (int(chara_id), *(f"%{s}" for s in _CLONE_SUFFIXES)),
+        "SELECT id, name FROM m_suit WHERE member_m_id = ?"
+        + f" ORDER BY display_order {direction}", (int(chara_id),),
     )
-    return [(cid, key, get_real_costume_name(dcur, key)) for cid, key in cur.fetchall()]
+    return [(cid, key, get_real_costume_name(dcur, key)) for cid, key in cur.fetchall()
+            if cid in canonical or not any(key.casefold().endswith(suffix.casefold()) for suffix in _CLONE_SUFFIXES)]
 
 
 def dict_path_for_lang(lang=None):
@@ -131,10 +135,14 @@ def list_costumes_for_character(chara_id, lang=None):
 
 
 def get_no_mask_model_path(md_conn, suit_id):
-    """model_asset_path for the no-mask variant (m_suit_view), or None."""
-    cur = md_conn.cursor()
-    cur.execute("SELECT model_asset_path FROM m_suit_view WHERE suit_master_id = ?", (suit_id,))
-    row = cur.fetchone()
+    """Model for view_status=2 (Rina's unmasked variant), or None."""
+    columns = {row[1] for row in md_conn.execute("PRAGMA table_info(m_suit_view)")}
+    if not columns:
+        return None
+    query = "SELECT model_asset_path FROM m_suit_view WHERE suit_master_id = ?"
+    if "view_status" in columns:
+        query += " AND view_status = 2"
+    row = md_conn.execute(query, (suit_id,)).fetchone()
     return row[0] if row else None
 
 
@@ -177,15 +185,6 @@ def _safe_display_order(md_conn, member_id):
     return (base + 1) if base is not None else 0
 
 
-def _members_sharing_model(md_conn, model_asset_path, exclude_member):
-    """Distinct member ids (other than exclude_member) whose suit already uses
-    this model_asset_path. Used to warn about the same-model-on-multiple-members
-    case that breaks live rendering."""
-    cur = md_conn.execute(
-        "SELECT DISTINCT member_m_id FROM m_suit WHERE model_asset_path = ?", (model_asset_path,))
-    return sorted(m for (m,) in cur.fetchall() if m is not None and m != exclude_member)
-
-
 def _resolve_real_name(name_key):
     """Look up the EN display name for a masterdata key; key itself on failure."""
     if not os.path.exists(DICT_EN):
@@ -207,90 +206,204 @@ def _backup():
 # ============================================================
 # the clone operation (import-safe; raises on any problem)
 # ============================================================
-def clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_backup=True):
-    """Clone costume `costume_id` (owned by character `src_id`) onto character
-    `tgt_id`, and grant it to every user. Returns the new suit id.
+def _source_metadata(conn, costume_id, src_id):
+    """Read the selected suit and its exact colour/base/view relationships."""
+    from costume_clone_assets import _rows
+    suits, attachments, views = {}, {}, {}
+    current = costume_id
+    for _ in range(8):
+        if current in suits:
+            raise ValueError("costume colour mapping contains a loop")
+        rows = _rows(conn, "m_suit", "id", current)
+        if len(rows) != 1 or rows[0]["member_m_id"] != src_id:
+            raise ValueError(f"costume {current} is missing or does not belong to character {src_id}")
+        suit = rows[0]
+        if not suit.get("model_asset_path"):
+            raise ValueError(f"costume {current} has no model")
+        if suits and suit["model_asset_path"] != suits[costume_id]["model_asset_path"]:
+            raise ValueError("costume colour mapping does not match its original model")
+        suits[current] = suit
+        views[current] = _rows(conn, "m_suit_view", "suit_master_id", current)
+        attached = _rows(conn, "m_suit_attach", "suit_master_id", current)
+        if not attached:
+            return suits, attachments, views
+        if len(attached) != 1:
+            raise ValueError("costume has ambiguous colour mappings")
+        key = attached[0].get("attach_key")
+        if not isinstance(key, str) or not re.fullmatch(r"c[1-9][0-9]{0,2}", key):
+            raise ValueError("costume colour mapping has an invalid attachment key")
+        if attachments and key != next(iter(attachments.values()))["attach_key"]:
+            raise ValueError("costume colour mapping has conflicting attachment keys")
+        attachments[current] = attached[0]
+        current = attached[0]["original_suit_master_id"]
+    raise ValueError("costume colour mapping is too deep")
 
-    Safety properties:
-      * inputs are validated up front (known character ids; the costume must
-        belong to the source character; both masterdata DBs must exist);
-      * a new id is chosen unique across *both* GL and JP masterdata;
-      * a full DB backup is taken before any write (do_backup);
-      * every write is staged and committed only after all inserts succeed, so a
-        failure before the commit block leaves nothing committed. (SQLite can't
-        span files in one transaction; the backup is the recovery path if a
-        commit itself fails partway.)
-    """
+
+def _validate_source_format(metadata):
+    """Only verified shared-board scenes have canonical clone authority."""
+    message = ("Cloning scene-specific HOME/MV costumes requires a verified shared-board v2 export. "
+               "Re-export the source costume first; no clone was written.")
+    source_ids = set()
+    distinct = False
+    for suits, _, views in metadata.values():
+        source_ids.update(suits)
+        for sid, suit in suits.items():
+            if any(row.get("view_status") == 1 and row.get("model_asset_path")
+                   and row["model_asset_path"] != suit["model_asset_path"] for row in views[sid]):
+                distinct = True
+    # A tracked scene with changed/missing routes must fail verification rather
+    # than silently fall back to the currently installed Navi model.
+    from costume_scene_installer import installed_scene_source
+    scenes = [info for sid in sorted(source_ids) if sid > 0 and
+              (info := installed_scene_source(sid, root=".")) is not None]
+    if not scenes:
+        if distinct:
+            raise ValueError(message)
+        return None
+    if distinct or len(scenes) != 1 or len(source_ids) != 1 or scenes[0].get("manifest_version") != 2:
+        raise ValueError(message)
+    scene = scenes[0]
+    for suits, attachments, views in metadata.values():
+        sid = next(iter(suits))
+        if attachments or scene.get("target_member_id") != suits[sid]["member_m_id"] or {
+                row.get("view_status"): row.get("model_asset_path") for row in views[sid]} != {
+                    1: scene.get("main_model_path"), 2: scene.get("runtime_model_paths", {}).get("mv_unmasked")}:
+            raise ValueError("The shared-board source routes do not match its canonical archive.")
+    return scene
+
+
+def _validate_scene_targets(scene, targets, use_no_mask):
+    if scene is not None and use_no_mask and 209 in targets:
+        raise ValueError("A shared-board Rina costume must use its board default; choose the board option.")
+
+
+def clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_backup=True,
+                  *, before_write=None):
+    """Clone one costume under the installation's cooperative mutation guard."""
+    from database_maintenance import guard
     src_id = _validate_char_id("source character id", src_id)
     tgt_id = _validate_char_id("target character id", tgt_id)
     costume_id = int(str(costume_id).strip())
+    with guard("."):
+        return _clone_costume(src_id, costume_id, tgt_id, use_no_mask=use_no_mask,
+            log=log, do_backup=do_backup, before_write=before_write)
 
+
+def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_backup=True,
+                   *, before_write=None):
+    """Clone a costume with independent model assets, and grant it to every user.
+
+    All region/platform bundles are resolved and validated before publishing
+    clone packs or mutating databases. Source resolution may cache downloads;
+    existing model assets stay intact. Metadata, asset catalogs and user grants
+    are staged until every insert succeeds; the usual backup covers a partial
+    cross-file commit failure.
+    """
+    from costume_clone_assets import prepare_clone_assets, _insert, _cleanup_connections
+    src_id = _validate_char_id("source character id", src_id)
+    tgt_id = _validate_char_id("target character id", tgt_id)
+    costume_id = int(str(costume_id).strip())
     for path in (MASTERDATA_GL, MASTERDATA_JP):
         if not os.path.exists(path):
             raise FileNotFoundError(f"missing masterdata: {path}")
 
-    gl = sqlite3.connect(MASTERDATA_GL)
-    jp = sqlite3.connect(MASTERDATA_JP)
+    gl = jp = None
     dict_conns = []
     user_conn = None
+    assets = None
+    canonical_archive = None
+    receipt = None
+    data_committed = False
+    operation_error = None
     try:
-        # --- resolve & validate the source costume in GL ---
-        gl_src = gl.execute(
-            "SELECT member_m_id, thumbnail_image_asset_path, suit_release_route, "
-            "suit_release_value, model_asset_path, name FROM m_suit WHERE id = ?",
-            (costume_id,)).fetchone()
-        if gl_src is None:
-            raise ValueError(f"costume {costume_id} not found in GL masterdata")
-        if gl_src[0] != src_id:
-            raise ValueError(f"costume {costume_id} belongs to character {gl_src[0]} "
-                             f"({CHARACTER_NAMES.get(gl_src[0], '?')}), not {src_id}")
-        name_key = gl_src[5]
+        gl = sqlite3.connect(MASTERDATA_GL)
+        jp = sqlite3.connect(MASTERDATA_JP)
+        metadata = {region: _source_metadata(conn, costume_id, src_id)
+                    for region, conn in (("gl", gl), ("jp", jp))}
+        scene_source = _validate_source_format(metadata)
+        _validate_scene_targets(scene_source, [tgt_id], use_no_mask)
+        name_key = metadata["gl"][0][costume_id]["name"]
         real_name = _resolve_real_name(name_key)
+        # Colour variants need a corresponding private base suit. They reference
+        # the same private model, and only the selected costume is granted.
+        id_map = {}
+        original_ids = {costume_id}
+        for suits, _, _ in metadata.values():
+            original_ids.update(suits)
+        for original_id in [costume_id] + sorted(original_ids - {costume_id}):
+            while True:
+                candidate = generate_unique_costume_id(gl.cursor(), jp.cursor())
+                if candidate not in id_map.values() and (scene_source is None or candidate > 0):
+                    break
+            id_map[original_id] = candidate
+        new_id = id_map[costume_id]
+        # Each install owns its dictionary row. A later target must not depend
+        # on a translation owned by an independently removable earlier clone.
+        cloned_key = name_key + "_" + str(new_id) + "_cloned"
 
-        jp_src = jp.execute(
-            "SELECT member_m_id, thumbnail_image_asset_path, suit_release_route, "
-            "suit_release_value, model_asset_path FROM m_suit WHERE id = ?",
-            (costume_id,)).fetchone()
-        if jp_src is None:
-            raise ValueError(f"costume {costume_id} not found in JP masterdata")
-
-        # --- pick an id unique in BOTH masterdata DBs ---
-        new_id = generate_unique_costume_id(gl.cursor(), jp.cursor())
-        cloned_key = name_key + "_cloned"
-
-        # --- resolve model paths (honour the Rina no-mask variant) ---
-        gl_model = gl_src[4]
-        jp_model = jp_src[4]
-        if use_no_mask:
-            nm_gl = get_no_mask_model_path(gl, costume_id)
-            nm_jp = get_no_mask_model_path(jp, costume_id)
-            if nm_gl:
-                gl_model = nm_gl
-                log(f"using no-mask model path (GL): {gl_model}")
-            else:
-                log("no-mask model path not found (GL); using default model")
-            if nm_jp:
-                jp_model = nm_jp
-
-        # --- warn about same-model-on-multiple-members (breaks live rendering) ---
-        sharers = _members_sharing_model(gl, gl_model, tgt_id)
-        if sharers:
-            who = ", ".join(f"{m}:{CHARACTER_NAMES.get(m, '?')}" for m in sharers)
-            log("⚠️  WARNING: this costume's model is already used by other "
-                f"character(s) [{who}].")
-            log("    Putting the SAME costume model on multiple members in one live "
-                "can cause infinite loading or broken stage lighting in-game.")
-            log("    (Different costumes on the same character are fine.)")
-
-        gl_display = _safe_display_order(gl, tgt_id)
-        jp_display = _safe_display_order(jp, tgt_id)
-
-        # --- backup BEFORE touching anything ---
+        region_models = {}
+        primary_models = {}
+        for region, (suits, _, views) in metadata.items():
+            if scene_source is not None:
+                physical = scene_source["canonical_model_paths"][region]
+                selected = physical["unmasked" if use_no_mask else "primary"]
+                primary_models[region] = {sid: selected for sid in suits}
+                region_models[region] = set(physical.values())
+                continue
+            no_mask = None
+            if use_no_mask:
+                source_conn = gl if region == "gl" else jp
+                no_mask = next((path for sid in suits if
+                    (path := get_no_mask_model_path(source_conn, sid))), None)
+            if use_no_mask:
+                log(f"using no-mask model ({region}): {no_mask}" if no_mask else
+                    f"no-mask model not found ({region}); using default model")
+            primary_models[region] = {sid: no_mask or row["model_asset_path"]
+                                      for sid, row in suits.items()}
+            region_models[region] = set(primary_models[region].values())
+            region_models[region].update(row["model_asset_path"] for rows in views.values()
+                                          for row in rows if row.get("model_asset_path"))
+        canonical_options = dict(shared_roots=scene_source["canonical_model_paths"],
+            retained_textures={region: {row["thumbnail_image_asset_path"] for row in value[0].values()
+                if row.get("thumbnail_image_asset_path")} for region, value in metadata.items()}) if scene_source is not None else {}
+        assets = prepare_clone_assets(region_models, new_id,
+            {region: {sid: id_map[sid] for sid in value[0]}
+             for region, value in metadata.items()}, log=log, **canonical_options)
+        if scene_source is not None:
+            from costume_scene_clones import prepare_canonical_clone
+            canonical_archive = prepare_canonical_clone(scene_source, assets, tgt_id, use_no_mask)
+        displays = {"gl": _safe_display_order(gl, tgt_id), "jp": _safe_display_order(jp, tgt_id)}
+        if before_write is not None:
+            before_write()
         if do_backup:
             log("backing up databases before changes ...")
             _backup()
 
-        # --- stage every write; commit only after all inserts succeed ---
+        # Freeze the exact inserted rows before recording ownership. The same
+        # objects below drive both the durable intent and actual INSERTs.
+        master_rows = []
+        for region, conn, path in (("gl", gl, MASTERDATA_GL), ("jp", jp, MASTERDATA_JP)):
+            suits, attachments, views = metadata[region]
+            for sid, original in suits.items():
+                row = dict(original)
+                row.update(id=id_map[sid], member_m_id=tgt_id, name=cloned_key,
+                    model_asset_path=assets.models[region, primary_models[region][sid]],
+                    display_order=displays[region])
+                master_rows.append((conn, path, "m_suit", row))
+                for original_view in views[sid]:
+                    view = dict(original_view)
+                    view["suit_master_id"] = id_map[sid]
+                    old_model = (primary_models[region][sid] if scene_source is not None and
+                                 view["view_status"] == 1 else view["model_asset_path"])
+                    view["model_asset_path"] = assets.models[region, old_model]
+                    master_rows.append((conn, path, "m_suit_view", view))
+                if sid in attachments:
+                    attached = dict(attachments[sid])
+                    attached["suit_master_id"] = id_map[sid]
+                    attached["original_suit_master_id"] = id_map[attached["original_suit_master_id"]]
+                    master_rows.append((conn, path, "m_suit_attach", attached))
+
+        dictionary_rows = []
         key_no_prefix = cloned_key[2:] if cloned_key.startswith("k.") else cloned_key
         for lang, path in DICT_PATHS.items():
             if not os.path.exists(path):
@@ -298,62 +411,223 @@ def clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_b
                 continue
             conn = sqlite3.connect(path)
             dict_conns.append(conn)
-            msg = real_name + SUFFIX_MAP.get(lang, SUFFIX_MAP["en"])
-            conn.execute(
-                "INSERT OR IGNORE INTO main.m_dictionary (id, message) VALUES (?, ?);",
-                (key_no_prefix, msg))
+            if not conn.execute("SELECT 1 FROM m_dictionary WHERE id=?", (key_no_prefix,)).fetchone():
+                dictionary_rows.append((conn, path, "m_dictionary", dict(
+                    id=key_no_prefix, message=real_name + SUFFIX_MAP.get(lang, SUFFIX_MAP["en"]))))
 
-        insert_suit = (
-            "INSERT INTO m_suit (id, member_m_id, name, thumbnail_image_asset_path, "
-            "suit_release_route, suit_release_value, model_asset_path, display_order) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        gl.execute(insert_suit, (new_id, tgt_id, cloned_key, gl_src[1], gl_src[2],
-                                 gl_src[3], gl_model, gl_display))
-        jp.execute(insert_suit, (new_id, tgt_id, cloned_key, jp_src[1], jp_src[2],
-                                 jp_src[3], jp_model, jp_display))
+        owned_rows = [dict(db=path, table=table, row=row)
+                      for _, path, table, row in master_rows + dictionary_rows]
+        asset_paths = {}
+        for conn, table, row in assets.registration_rows():
+            if conn not in asset_paths:
+                filename = next(item[2] for item in conn.execute("PRAGMA database_list") if item[1] == "main")
+                asset_paths[conn] = os.path.relpath(filename, os.getcwd()).replace(os.sep, "/")
+            owned_rows.append(dict(db=asset_paths[conn], table=table, row=row))
+        owned_files, reused_files = [], []
+        for name, data in assets.packs.items():
+            path = assets.destination / name
+            if path.exists():
+                if path.read_bytes() != data:
+                    raise ValueError("clone pack name collides with an existing file")
+                reused_files.append(str(path))
+            else:
+                owned_files.append(dict(path=str(path), size=len(data), sha256=hashlib.sha256(data).hexdigest()))
+        donor_metadata = {region: dict(suits=suits, attachments=attachments, views=views)
+                          for region, (suits, attachments, views) in metadata.items()}
+        source_receipt = dict(member_id=src_id, suit_id=costume_id, target_member_id=tgt_id,
+                use_no_mask=bool(use_no_mask), source_suit_ids=sorted(original_ids),
+                metadata_sha256=hashlib.sha256(json.dumps(donor_metadata, sort_keys=True).encode()).hexdigest())
+        if canonical_archive is not None:
+            source_receipt["canonical_scene"] = canonical_archive.source
+            owned_files.append(canonical_archive.descriptor())
+        from costume_management import begin_install
+        receipt = begin_install(kind="clone", label=f"{real_name} → {CHARACTER_NAMES[tgt_id]}",
+            owned_rows=owned_rows, owned_files=owned_files,
+            source=source_receipt,
+            references=dict(source_model_paths={region: sorted(paths) for region, paths in region_models.items()},
+                            reused_files=reused_files))
+
+        for conn, _, table, row in dictionary_rows:
+            _insert(conn, table, row)
+
+        assets.publish()
+        if canonical_archive is not None:
+            canonical_archive.publish()
+        assets.register()
+        for conn, _, table, row in master_rows:
+            _insert(conn, table, row)
 
         n_users = 0
         if os.path.exists(USERDATA):
             user_conn = sqlite3.connect(USERDATA)
-            user_ids = [r[0] for r in user_conn.execute("SELECT user_id FROM u_status").fetchall()]
-            for uid in user_ids:
-                user_conn.execute(
-                    "INSERT INTO main.u_suit (user_id, suit_master_id, is_new) VALUES (?, ?, '0');",
-                    (uid, new_id))
+            user_ids = [r[0] for r in user_conn.execute("SELECT user_id FROM u_status")]
+            user_conn.executemany("INSERT INTO u_suit (user_id,suit_master_id,is_new) VALUES (?,?,'0')",
+                [(uid, new_id) for uid in user_ids])
             n_users = len(user_ids)
         else:
             log(f"⚠ {USERDATA} missing; the clone will not be granted to any user")
 
-        # commit last: dictionaries first (an orphan string is harmless), then
-        # masterdata, then the user grants.
         for conn in dict_conns:
             conn.commit()
+        assets.commit()
         gl.commit()
         jp.commit()
         if user_conn is not None:
             user_conn.commit()
-
+        data_committed = True
+        receipt.commit()
+        log(f"recorded costume ownership: {receipt.install_id}")
         log(f"✅ cloned '{real_name}' onto character {tgt_id} "
             f"({CHARACTER_NAMES.get(tgt_id, '?')}) as new suit id {new_id}; "
             f"granted to {n_users} user(s).")
         log("restart the elichika server to see it in-game.")
         return new_id
-    except Exception:
-        # nothing is committed until the commit block, so roll back defensively.
-        for conn in [gl, jp, user_conn, *dict_conns]:
-            if conn is not None:
-                try:
-                    conn.rollback()
-                except sqlite3.Error:
-                    pass
+    except Exception as error:
+        operation_error = error
+        _cleanup_connections([gl, jp, user_conn, *dict_conns], "rollback")
+        if assets is not None:
+            assets.rollback()
+        if canonical_archive is not None:
+            try:
+                canonical_archive.rollback(retain=assets is not None and assets.commit_started)
+            except Exception:
+                pass
+        if receipt is not None:
+            try:
+                receipt.incomplete(error)
+            except Exception:
+                pass  # Keep the original error and the pre-write intent.
+            try:
+                error.clone_install_id = receipt.install_id
+                error.clone_suit_id = new_id
+                error.clone_committed = data_committed
+            except Exception:
+                pass
         raise
     finally:
-        for conn in [gl, jp, user_conn, *dict_conns]:
-            if conn is not None:
-                try:
-                    conn.close()
-                except sqlite3.Error:
-                    pass
+        _cleanup_connections([gl, jp, user_conn, *dict_conns], "close")
+        if assets is not None:
+            assets.close()
+        if operation_error is not None and receipt is not None:
+            try:
+                # Only absence across every planned database row and owned
+                # file can close an unsuccessful intent. Partial commits keep
+                # their incomplete receipt and block unsafe server startup.
+                receipt.rolled_back()
+            except Exception:
+                pass
+
+
+def normalize_target_ids(target_ids):
+    """Validate the complete selection and deduplicate it in selection order."""
+    if isinstance(target_ids, str):
+        values = [value for value in re.split(r"[\s,]+", target_ids.strip()) if value]
+    elif isinstance(target_ids, (list, tuple)):
+        values = target_ids
+    elif target_ids is None:
+        values = []
+    else:
+        values = [target_ids]
+    if not values:
+        raise ValueError("select at least one target character")
+    result = []
+    for value in values:
+        target = _validate_char_id("target character id", value)
+        if target not in result:
+            result.append(target)
+    return result
+
+
+def validate_clone_batch(src_id, costume_id, target_ids, *, use_no_mask=False):
+    """Read-only request validation, usable before pausing the server."""
+    source = _validate_char_id("source character id", src_id)
+    targets = normalize_target_ids(target_ids)
+    try:
+        costume = int(str(costume_id).strip())
+    except (TypeError, ValueError):
+        raise ValueError("costume id must be a number") from None
+    metadata = {}
+    for region, path in (("gl", MASTERDATA_GL), ("jp", MASTERDATA_JP)):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"missing masterdata: {path}")
+        conn = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            metadata[region] = _source_metadata(conn, costume, source)
+        finally:
+            conn.close()
+    scene = _validate_source_format(metadata)
+    _validate_scene_targets(scene, targets, use_no_mask)
+    return source, costume, targets
+
+
+class CloneBatchError(RuntimeError):
+    """A stopped batch; successful earlier clones remain committed."""
+    def __init__(self, result, cause):
+        self.result = result
+        failed = next(row for row in result["results"] if row["status"] == "failed")
+        super().__init__(f"clone batch stopped after {result['completed']}/{len(result['target_ids'])} "
+                         f"completed targets; target {failed['target_id']} failed: {cause}. "
+                         "Earlier completed clones were retained. Check the log and backup before recovery.")
+
+
+def clone_costumes(src_id, costume_id, target_ids, use_no_mask=False, log=print,
+                   do_backup=True, *, progress=None, should_stop=None):
+    """Validate the full request, then hold one mutation guard for the batch."""
+    from database_maintenance import guard
+    source, costume, targets = validate_clone_batch(src_id, costume_id, target_ids, use_no_mask=use_no_mask)
+    with guard("."):
+        return _clone_costumes(source, costume, targets, use_no_mask=use_no_mask, log=log,
+            do_backup=do_backup, progress=progress, should_stop=should_stop)
+
+
+def _clone_costumes(src_id, costume_id, target_ids, use_no_mask=False, log=print,
+                    do_backup=True, *, progress=None, should_stop=None):
+    """Clone onto several targets, with one backup and independent assets each.
+
+    All target ids and donor ownership are checked before any installation
+    write. A later failure stops the batch and preserves completed targets;
+    CloneBatchError.result describes completed, failed and unattempted targets.
+    Cancellation is checked between complete single-target operations.
+    """
+    source, costume, targets = validate_clone_batch(src_id, costume_id, target_ids, use_no_mask=use_no_mask)
+    result = {"source_id": source, "source_suit_id": costume, "target_ids": targets,
+              "status": "completed", "completed": 0, "backup_created": False, "results": []}
+    if progress is not None:
+        progress(0, len(targets))
+
+    def backup_once():
+        if do_backup and not result["backup_created"]:
+            log("backing up databases once for the selected targets ...")
+            _backup()
+            result["backup_created"] = True
+
+    for index, target in enumerate(targets):
+        if should_stop is not None and should_stop():
+            result["status"] = "cancelled"
+            result["results"].extend({"target_id": remaining, "status": "not_started"}
+                                     for remaining in targets[index:])
+            break
+        log(f"cloning target {index + 1}/{len(targets)}: {target} "
+            f"({CHARACTER_NAMES[target]})")
+        try:
+            new_id = clone_costume(source, costume, target, use_no_mask=use_no_mask,
+                                   log=log, do_backup=False, before_write=backup_once)
+        except Exception as error:
+            result["status"] = "failed"
+            failed = {"target_id": target, "status": "failed", "error": str(error)}
+            for attribute, key in (("clone_install_id", "install_id"), ("clone_suit_id", "suit_id"),
+                                   ("clone_committed", "data_committed")):
+                if hasattr(error, attribute):
+                    failed[key] = getattr(error, attribute)
+            result["results"].append(failed)
+            result["results"].extend({"target_id": remaining, "status": "not_started"}
+                                     for remaining in targets[index + 1:])
+            raise CloneBatchError(result, error) from error
+        result["results"].append({"target_id": target, "status": "completed", "suit_id": new_id})
+        result["completed"] += 1
+        if progress is not None:
+            progress(result["completed"], len(targets))
+    return result
 
 
 # ============================================================
@@ -424,8 +698,7 @@ def main():
         print("\nCharacter list:")
         _print_character_menu()
         try:
-            tgt_id = _validate_char_id(
-                "target character id", input("Enter target character ID: "))
+            target_ids = normalize_target_ids(input("Enter target character IDs (comma separated): "))
         except ValueError as e:
             print(f"❌ {e}")
             return
@@ -434,7 +707,7 @@ def main():
         print("About to clone:")
         print(f"  costume : {rname} (id {cid})")
         print(f"  from    : {src_id}:{CHARACTER_NAMES[src_id]}")
-        print(f"  to      : {tgt_id}:{CHARACTER_NAMES[tgt_id]}")
+        print("  to      : " + ", ".join(f"{target}:{CHARACTER_NAMES[target]}" for target in target_ids))
         print("  writes  : GL+JP masterdata, dictionaries; grants to every user")
         print("=" * 80)
         do_backup = input("Back up databases first? (Y/n): ").strip().lower() not in ("n", "no")
@@ -443,11 +716,11 @@ def main():
             return
 
         try:
-            clone_costume(src_id, cid, tgt_id, use_no_mask=use_no_mask, do_backup=do_backup)
+            clone_costumes(src_id, cid, target_ids, use_no_mask=use_no_mask, do_backup=do_backup)
         except Exception as e:
             print(f"❌ clone failed: {e}")
             if do_backup:
-                print("   no changes were committed; your databases are unchanged.")
+                print("   If this attempt created a backup, use it to recover from any partial database commit.")
             sys.exit(1)
     finally:
         md.close()
