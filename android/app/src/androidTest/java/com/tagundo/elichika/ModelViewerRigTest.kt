@@ -266,15 +266,18 @@ class ModelViewerRigTest {
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen))
         val quality = ViewerQualityNativeQa.exercise(webView, "neutral-rig-quality", 4, 4)
         val highQualityReference = quality.getString("hqReferenceFrame")
-        run(webView, "document.querySelector('.tab[data-tab=\"tools\"]').click();")
-        assertFalse(state(webView).getBoolean("visible"))
-        Thread.sleep(250)
-        run(webView, "document.querySelector('.tab[data-tab=\"viewer\"]').click();" +
-            "if(!document.getElementById('tab-viewer').classList.contains('viewer-expanded'))document.getElementById('viewer-expand').click();")
-        waitForDom(webView, "the retained native rig tab") {
-            "var s=ModelViewer.getState();return JSON.stringify({ok:s.visible&&s.loaded&&!s.loading,error:s.error,state:s});"
-        }
+        val qualityNativeViewport = nativeViewport(session)
+        val qualityPresentation = presentation(webView)
+        for (key in listOf("expanded", "fullscreen")) assertEquals("The recorded presentation must match the quality reference's $key",
+            quality.getJSONObject("finalState").getJSONObject("layout").get(key), qualityPresentation.getJSONObject("layout").get(key))
+        persistReport("model-viewer-rig-resume-geometry.json", JSONObject().put("status", "REFERENCE_CAPTURED")
+            .put("referencePresentation", qualityPresentation).put("referenceNativeViewport", qualityNativeViewport))
+        selectNativeAssetSection(session, MainActivity.TAB_ASSET_TOOLS, "tools")
+        selectNativeAssetSection(session, MainActivity.TAB_MODEL_VIEWER, "viewer")
+        val restoredPresentation = restorePresentation(webView, qualityPresentation)
         assertRetained(retainedState, state(webView))
+        val resumeGeometry = waitForRetainedFramebuffer(session, quality.getJSONObject("high"),
+            quality.getJSONObject("highDriver").getJSONObject("quality"), qualityNativeViewport, restoredPresentation)
         val afterTab = capture(webView, compare = highQualityReference)
         assertRestored("Returning to the viewer must retain its actual adjusted image", afterTab)
         recoverContext(webView)
@@ -313,7 +316,8 @@ class ModelViewerRigTest {
             .put("scrub", scrub).put("playing", playing).put("paused", paused)
             .put("independentPoseAndBodyPanels", independentPanels).put("separateExpressionPanel", expressionPanel)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen).put("highQuality3D", quality)
-            .put("afterTab", afterTab).put("afterContext", afterContext)
+            .put("restoredReferencePresentation", restoredPresentation)
+            .put("retainedFramebufferGeometry", resumeGeometry).put("afterTab", afterTab).put("afterContext", afterContext)
             .put("modelMinimize", minimizedModel)
             .put("sourcePreserved", true).put("gameServerRemainedStopped", true)
         persistReport("model-viewer-rig-report.json", report)
@@ -393,7 +397,7 @@ class ModelViewerRigTest {
             preferences.edit().putBoolean("seen_guide", true).commit()
             val launched = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
             activity = launched
-            instrumentation.runOnMainSync { launched.findViewById<TabLayout>(R.id.tabs).getTabAt(4)!!.select() }
+            instrumentation.runOnMainSync { NativeTabsQa.tab(launched, MainActivity.TAB_MODEL_VIEWER).select() }
             val browser = waitForWebView(launched)
             webView = browser
             waitForDom(browser, "the real offline rig viewer") {
@@ -600,11 +604,11 @@ class ModelViewerRigTest {
     }
 
     private fun exerciseSectionCollapse(session: Session, retained: JSONObject): JSONArray {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
         val originallyExpanded = retained.getJSONObject("layout").getBoolean("expanded")
         val originalGroup = retained.getJSONObject("rig").getString("editorGroup")
         val selectedBone = retained.getJSONObject("rig").getString("selectedNode")
         val results = JSONArray()
+        val keyboardDiagnostics = JSONArray()
         fun selectArea(group: String) {
             run(session.webView, "var group=" + JSONObject.quote(group) + ",id=" + JSONObject.quote(selectedBone) + ";" +
                 "var tab=document.getElementById('viewer-editor-'+group+'-tab'),panel=document.getElementById('viewer-editor-'+group+'-panel');" +
@@ -671,14 +675,7 @@ class ModelViewerRigTest {
                 }
                 assertRetained(retained, state(session.webView))
                 assertEquals("Collapsing preserves the shortcut-selected bone", retained.getJSONObject("rig").getString("selectedNode"), state(session.webView).getJSONObject("rig").getString("selectedNode"))
-                instrumentation.runOnMainSync { session.webView.requestFocus() }
-                run(session.webView, "var summary=document.getElementById(" + JSONObject.quote(id) + ").querySelector('summary');summary.focus();" +
-                    "if(document.activeElement!==summary)throw new Error('The native section summary cannot receive keyboard focus');")
-                instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
-                val opened = waitForDom(session.webView, "keyboard reopening $id", 15) {
-                    "var card=document.getElementById(" + JSONObject.quote(id) + ");return JSON.stringify({ok:card.open&&" +
-                        "card.querySelector(" + JSONObject.quote(content) + ").getBoundingClientRect().height>0,open:card.open});"
-                }
+                val opened = reopenDetailsWithNativeEnter(session, id, content, keyboardDiagnostics)
                 val current = state(session.webView)
                 assertRetained(retained, current)
                 assertEquals("Keyboard reopening preserves the shortcut-selected bone", retained.getJSONObject("rig").getString("selectedNode"), current.getJSONObject("rig").getString("selectedNode"))
@@ -700,6 +697,108 @@ class ModelViewerRigTest {
                     "&&Math.abs(stage.width-" + retained.getJSONObject("layout").getJSONObject("stage").getDouble("width") +
                     ")<1&&Math.abs(stage.height-" + retained.getJSONObject("layout").getJSONObject("stage").getDouble("height") + ")<1,state:s});"
             }
+        }
+    }
+
+    private fun keyboardNativeState(session: Session): JSONObject {
+        val observed = AtomicReference<JSONObject>()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val activity = session.activity
+            val webView = session.webView
+            var focused: View? = activity.currentFocus
+            var focusInside = false
+            while (focused != null) {
+                if (focused === webView) { focusInside = true; break }
+                focused = focused.parent as? View
+            }
+            observed.set(JSONObject().put("resumed", activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                .put("windowHasFocus", activity.hasWindowFocus()).put("webWindowHasFocus", webView.hasWindowFocus())
+                .put("attached", webView.isAttachedToWindow).put("shown", webView.isShown)
+                .put("webHasFocus", webView.hasFocus()).put("webIsFocused", webView.isFocused)
+                .put("currentFocusInsideWebView", focusInside)
+                .put("focusClass", activity.currentFocus?.javaClass?.name ?: "none")
+                .put("imeVisible", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                    webView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) ?: JSONObject.NULL else JSONObject.NULL))
+        }
+        return observed.get()
+    }
+
+    /** Observe the genuine input channel before one hardware Enter. Passive
+     * observers record delivery/default handling without activating a control. */
+    private fun reopenDetailsWithNativeEnter(session: Session, id: String, content: String,
+                                              attempts: JSONArray): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val webView = session.webView
+        val target = JSONObject.quote(id)
+        val selector = JSONObject.quote(content)
+        val key = JSONObject.quote(System.nanoTime().toString())
+        val report = JSONObject().put("id", id).put("status", "WAITING_FOR_FOCUS").put("hardwareEnterCalls", 0)
+            .put("nativeBefore", keyboardNativeState(session))
+        attempts.put(report)
+        fun persist() = persistReport("model-viewer-section-keyboard.json", JSONObject().put("attempts", attempts))
+        try {
+            instrumentation.runOnMainSync { webView.requestFocus() }
+            run(webView, """
+                if(window.__nativeDetailsKeyboard)window.__nativeDetailsKeyboard.dispose();
+                var card=document.getElementById($target),summary=card.querySelector('summary'),events=[];
+                function identity(node){return node?{tag:node.tagName||'',id:node.id||'',parent:node.parentElement&&node.parentElement.id||''}:null;}
+                function observe(event){
+                  var enter=(event.key==='Enter'||event.keyCode===13),isKey=event.type==='keydown'||event.type==='keyup';
+                  if(isKey&&!enter||event.type==='click'&&event.target!==summary&&!summary.contains(event.target)||event.type==='toggle'&&event.target!==card)return;
+                  var record={type:event.type,key:event.key||'',code:event.code||'',keyCode:event.keyCode||0,repeat:!!event.repeat,
+                    isTrusted:event.isTrusted,target:identity(event.target),summaryTarget:event.target===summary||summary.contains(event.target),
+                    documentFocused:document.hasFocus(),active:identity(document.activeElement),defaultPreventedAtCapture:event.defaultPrevented,
+                    cardOpenAtCapture:card.open,timeStamp:event.timeStamp};
+                  if(events.length<64)events.push(record);
+                  setTimeout(function(){record.defaultPreventedAfterDispatch=event.defaultPrevented;record.afterDispatch=true;
+                    record.cardOpenAfterDispatch=card.open;record.activeAfterDispatch=identity(document.activeElement);},0);
+                }
+                var types=['keydown','keyup','click','toggle','focusin','focusout'];
+                types.forEach(function(type){document.addEventListener(type,observe,{capture:true,passive:true});});
+                window.__nativeDetailsKeyboard={key:$key,proof:null,dispose:function(){types.forEach(function(type){document.removeEventListener(type,observe,true);});},
+                  snapshot:function(){var box=summary.getBoundingClientRect(),hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2);
+                    return {id:card.id,open:card.open,contentHeight:card.querySelector($selector).getBoundingClientRect().height,
+                      documentFocused:document.hasFocus(),summaryActive:document.activeElement===summary,connected:card.isConnected&&summary.isConnected,
+                      hitSummary:hit===summary||summary.contains(hit),withinViewport:box.left>=0&&box.top>=0&&box.right<=innerWidth+1&&box.bottom<=innerHeight+1,
+                      width:box.width,height:box.height,active:identity(document.activeElement),events:events.slice()};}};
+                summary.scrollIntoView({block:'center'});summary.focus();
+                """.trimIndent())
+            val ready = waitForDom(webView, "native and DOM keyboard focus for $id in two observations", 15) {
+                val native = keyboardNativeState(session)
+                """
+                var observer=window.__nativeDetailsKeyboard,dom=observer.snapshot(),native=$native;
+                var coherent=!!(native.resumed&&native.windowHasFocus&&native.webWindowHasFocus&&native.attached&&native.shown&&
+                  native.webHasFocus&&(native.webIsFocused||native.currentFocusInsideWebView)&&
+                  dom.documentFocused&&dom.summaryActive&&dom.connected&&dom.hitSummary&&dom.withinViewport&&dom.width>=44&&dom.height>=44&&!dom.open);
+                var geometry=JSON.stringify({native:native,active:dom.active,width:dom.width,height:dom.height}),prior=observer.proof;
+                observer.proof=coherent?geometry:null;
+                return JSON.stringify({ok:!!(coherent&&prior===geometry),coherent:coherent,native:native,dom:dom});
+                """.trimIndent()
+            }
+            report.put("focusReady", ready).put("status", "ONE_HARDWARE_ENTER").put("hardwareEnterCalls", 1)
+            persist()
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+            val opened = waitForDom(webView, "one trusted hardware Enter reopening $id", 15) {
+                val native = keyboardNativeState(session)
+                """
+                var dom=window.__nativeDetailsKeyboard.snapshot(),keys=dom.events.filter(function(e){return e.type==='keydown'||e.type==='keyup';});
+                var down=keys.filter(function(e){return e.type==='keydown';}),up=keys.filter(function(e){return e.type==='keyup';});
+                var delivered=down.length===1&&up.length===1&&keys[0].type==='keydown'&&keys[1].type==='keyup'&&keys.every(function(e){
+                  return e.summaryTarget&&e.isTrusted&&!e.repeat&&e.documentFocused&&e.afterDispatch&&e.defaultPreventedAfterDispatch===false;});
+                return JSON.stringify({ok:dom.open&&dom.contentHeight>0&&delivered,open:dom.open,delivered:delivered,dom:dom,native:$native});
+                """.trimIndent()
+            }
+            report.put("status", "PASS").put("opened", opened)
+            persist()
+            return opened
+        } catch (failure: AssertionError) {
+            val dom = runCatching { evaluate(webView, "return JSON.stringify(window.__nativeDetailsKeyboard?window.__nativeDetailsKeyboard.snapshot():{observerMissing:true});") }
+                .getOrElse { JSONObject().put("observerUnavailable", true) }
+            report.put("status", "FAIL").put("domAtFailure", dom).put("nativeAtFailure", keyboardNativeState(session))
+            persist()
+            throw failure
+        } finally {
+            runCatching { run(webView, "if(window.__nativeDetailsKeyboard)window.__nativeDetailsKeyboard.dispose();") }
         }
     }
 
@@ -879,7 +978,7 @@ class ModelViewerRigTest {
                     it.getInt("systemUiVisibility") == normalNative.getInt("systemUiVisibility") &&
                     it.getInt("windowFlags") == normalNative.getInt("windowFlags")
             }
-            assertEquals("Fullscreen Back must stay on the modeling-tools tab", 4, current.getInt("selectedTab"))
+            assertEquals("Fullscreen Back must stay on the model viewer tab", normalNative.getInt("selectedTab"), current.getInt("selectedTab"))
             assertTrue(current.getBoolean("webViewAttached"))
             if (checkFocus) assertEquals("Leaving fullscreen restores the original native focus target", normalNative.getInt("focusIdentity"), current.getInt("focusIdentity"))
             val state = assertPreserved()
@@ -937,7 +1036,7 @@ class ModelViewerRigTest {
                 it.getInt("selectedTab") == 0 && it.getInt("headerVisibility") == normalNative.getInt("headerVisibility") &&
                     it.getInt("tabsVisibility") == normalNative.getInt("tabsVisibility")
             }
-            instrumentation.runOnMainSync { activity.findViewById<TabLayout>(R.id.tabs).getTabAt(4)!!.select() }
+            instrumentation.runOnMainSync { NativeTabsQa.tab(activity, MainActivity.TAB_MODEL_VIEWER).select() }
             waitMode("none")
             val afterNativeTab = assertNormal(checkFocus = false)
             enter()
@@ -1013,6 +1112,118 @@ class ModelViewerRigTest {
         waitForDom(webView, "actual native context restoration", 60) {
             "var s=ModelViewer.getState();return JSON.stringify({ok:!s.contextLost&&s.loaded&&!s.loading&&!document.getElementById('viewer-breast-preset').disabled&&" +
                 "!document.getElementById('viewer-pose-basic').disabled&&document.getElementById('viewer-pose-preview').disabled,state:s});"
+        }
+    }
+
+    private fun presentation(webView: WebView): JSONObject = evaluate(webView,
+        "var s=ModelViewer.getState(),tab=document.getElementById('tab-viewer');return JSON.stringify({layout:s.layout," +
+            "classes:tab.className,expandedClass:tab.classList.contains('viewer-expanded'),fullscreenClass:tab.classList.contains('viewer-fullscreen')," +
+            "section:ElichikaNavigation.currentSection()});")
+
+    private fun selectNativeAssetSection(session: Session, id: String, section: String) {
+        val expectedIndex = AtomicReference<Int>()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val tab = NativeTabsQa.tab(session.activity, id)
+            expectedIndex.set(tab.position)
+            tab.select()
+        }
+        waitForDom(session.webView, "the native $section tab and its shared document acknowledgement", 30) {
+            val native = nativeViewport(session)
+            "var s=ModelViewer.getState(),native=$native;return JSON.stringify({ok:native.selectedTab===${expectedIndex.get()}&&" +
+                "native.webViewAttached&&ElichikaNavigation.currentSection()===${JSONObject.quote(section)}&&" +
+                "s.visible===${section == "viewer"}" + (if (section == "viewer") "&&s.loaded&&!s.loading" else "") +
+                ",native:native,presentation:{layout:s.layout,classes:document.getElementById('tab-viewer').className}});"
+        }
+    }
+
+    /** Native navigation intentionally exits presentation modes. Re-enter only
+     * the recorded mode through its real controls after both tabs acknowledge. */
+    private fun restorePresentation(webView: WebView, reference: JSONObject): JSONObject {
+        val before = presentation(webView)
+        val expected = reference.getJSONObject("layout")
+        val mode = expected.getString("fullscreen")
+        assertTrue("The native reference must use an observed supported fullscreen mode", mode in setOf("none", "native"))
+        assertFalse("A reference must not contain an unsettled fullscreen command", expected.getBoolean("fullscreenPending"))
+        val actions = JSONArray()
+        persistReport("model-viewer-rig-resume-geometry.json", JSONObject().put("status", "RESTORING_PRESENTATION")
+            .put("referencePresentation", reference).put("afterNativeAcknowledgement", before))
+        fun waitMode(value: String) = waitForDom(webView, "the recorded fullscreen presentation $value", 30) {
+            "var s=ModelViewer.getState();return JSON.stringify({ok:s.layout.fullscreen===${JSONObject.quote(value)}&&" +
+                "!s.layout.fullscreenPending&&s.visible&&s.loaded&&!s.loading,layout:s.layout});"
+        }
+        val currentMode = before.getJSONObject("layout").getString("fullscreen")
+        waitMode(currentMode)
+        if (currentMode != mode) {
+            if (currentMode != "none") { click(webView, "viewer-fullscreen"); actions.put("exit-fullscreen"); waitMode("none") }
+            if (mode != "none") { click(webView, "viewer-fullscreen"); actions.put("enter-" + mode); waitMode(mode) }
+        }
+        if (state(webView).getJSONObject("layout").getBoolean("expanded") != expected.getBoolean("expanded")) {
+            click(webView, "viewer-expand")
+            actions.put("expanded=" + expected.getBoolean("expanded"))
+        }
+        waitForDom(webView, "the original observed presentation after native navigation", 30) {
+            "var p=" + presentationScript + ",expected=$expected;return JSON.stringify({ok:" +
+                "p.section==='viewer'&&p.layout.fullscreen===expected.fullscreen&&!p.layout.fullscreenPending&&" +
+                "p.layout.expanded===expected.expanded&&p.expandedClass===expected.expanded,presentation:p});"
+        }
+        return JSONObject().put("reference", reference).put("afterNativeAcknowledgement", before)
+            .put("actions", actions).put("restored", presentation(webView))
+    }
+
+    private val presentationScript = "(function(){var s=ModelViewer.getState(),tab=document.getElementById('tab-viewer');" +
+        "return {layout:s.layout,classes:tab.className,expandedClass:tab.classList.contains('viewer-expanded')," +
+        "fullscreenClass:tab.classList.contains('viewer-fullscreen'),section:ElichikaNavigation.currentSection()};})()"
+
+    /** A visible/loaded scene may still have a queued resize from section
+     * activation. Require the original exact pixel and CSS geometry before
+     * comparing the original frame; never replace its pixels or camera. */
+    private fun waitForRetainedFramebuffer(session: Session, reference: JSONObject,
+                                           quality: JSONObject, native: JSONObject, presentation: JSONObject): JSONObject {
+        val expected = JSONObject().put("width", reference.getInt("width")).put("height", reference.getInt("height"))
+            .put("cssWidth", quality.getDouble("cssWidth")).put("cssHeight", quality.getDouble("cssHeight"))
+            .put("nativePixelRatio", quality.getDouble("nativePixelRatio"))
+            .put("webViewWidth", native.getInt("webViewWidth")).put("webViewHeight", native.getInt("webViewHeight"))
+            .put("orientation", native.getInt("orientation")).put("selectedTab", native.getInt("selectedTab"))
+            .put("presentation", presentation)
+        val key = JSONObject.quote(System.nanoTime().toString())
+        try {
+            val observation = waitForDom(session.webView, "the original HQ framebuffer and native viewport in two coherent observations", 30) {
+                val currentNative = nativeViewport(session)
+                """
+                var s=ModelViewer.getState(),q=s.quality,stage=document.getElementById('viewer-stage'),canvas=document.getElementById('viewer-canvas');
+                var gl=canvas.getContext('webgl2')||canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+                var expected=$expected,native=$currentNative,box=stage.getBoundingClientRect();
+                var actual={cssWidth:stage.clientWidth,cssHeight:stage.clientHeight,stageLeft:box.left,stageTop:box.top,
+                  canvasWidth:canvas.width,canvasHeight:canvas.height,drawingWidth:gl&&gl.drawingBufferWidth,drawingHeight:gl&&gl.drawingBufferHeight,
+                  qualityWidth:q&&q.width,qualityHeight:q&&q.height,qualityCssWidth:q&&q.cssWidth,qualityCssHeight:q&&q.cssHeight,
+                  nativePixelRatio:devicePixelRatio,qualityNativePixelRatio:q&&q.nativePixelRatio,viewportWidth:innerWidth,viewportHeight:innerHeight,
+                  webViewWidth:native.webViewWidth,webViewHeight:native.webViewHeight,orientation:native.orientation,selectedTab:native.selectedTab,
+                  expanded:s.layout.expanded,fullscreen:s.layout.fullscreen,fullscreenPending:s.layout.fullscreenPending,
+                  classes:document.getElementById('tab-viewer').className,section:ElichikaNavigation.currentSection()};
+                var coherent=!!(s.visible&&s.loaded&&!s.loading&&!s.contextLost&&q&&q.ready&&q.enabled&&gl&&native.webViewAttached&&
+                  actual.cssWidth===expected.cssWidth&&actual.cssHeight===expected.cssHeight&&
+                  actual.qualityCssWidth===actual.cssWidth&&actual.qualityCssHeight===actual.cssHeight&&
+                  actual.canvasWidth===expected.width&&actual.canvasHeight===expected.height&&
+                  actual.drawingWidth===expected.width&&actual.drawingHeight===expected.height&&
+                  actual.qualityWidth===expected.width&&actual.qualityHeight===expected.height&&
+                  actual.nativePixelRatio===expected.nativePixelRatio&&actual.qualityNativePixelRatio===expected.nativePixelRatio&&
+                  actual.webViewWidth===expected.webViewWidth&&actual.webViewHeight===expected.webViewHeight&&
+                  actual.orientation===expected.orientation&&actual.selectedTab===expected.selectedTab&&
+                  actual.expanded===expected.presentation.reference.layout.expanded&&
+                  actual.fullscreen===expected.presentation.reference.layout.fullscreen&&!actual.fullscreenPending&&actual.section==='viewer');
+                var geometry=JSON.stringify(actual),prior=window.__nativeRigResumeGeometry;
+                var report={ok:!!(coherent&&prior&&prior.key===$key&&prior.geometry===geometry),coherent:coherent,
+                  expected:expected,actual:actual,scope:'Readiness only; the original strict framebuffer and camera oracle follows'};
+                window.__nativeRigResumeGeometry={key:$key,geometry:coherent?geometry:null,report:report};
+                return JSON.stringify(report);
+                """.trimIndent()
+            }
+            persistReport("model-viewer-rig-resume-geometry.json", observation)
+            return observation
+        } catch (failure: AssertionError) {
+            val last = evaluate(session.webView, "return JSON.stringify(window.__nativeRigResumeGeometry&&window.__nativeRigResumeGeometry.report||{ok:false,expected:$expected});")
+            persistReport("model-viewer-rig-resume-geometry.json", last)
+            throw failure
         }
     }
 

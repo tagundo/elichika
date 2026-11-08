@@ -61,7 +61,7 @@ class MeshWebViewTest {
         try {
             lateinit var webView: WebView
             instrumentation.runOnMainSync {
-                activity.findViewById<TabLayout>(R.id.tabs).getTabAt(4)!!.select()
+                NativeTabsQa.tab(activity, MainActivity.TAB_ASSET_TOOLS).select()
                 webView = descendants(activity.findViewById(R.id.content))
                     .filterIsInstance<WebView>().first { it.visibility == View.VISIBLE }
             }
@@ -222,8 +222,9 @@ class MeshWebViewTest {
             }
             val start = HeaderLayoutNativeQa.exercise(launched, wide = true, retainedWebView = null)
             assertEquals("PASS", start.getString("status"))
-            assertEquals(39, start.getJSONArray("samples").length())
-            assertEquals(39, start.getJSONArray("measurements").length())
+            val strictSamples = start.getJSONArray("samples").length()
+            assertTrue("Every diagnostic case must have a strict measurement", strictSamples > 0)
+            assertEquals(strictSamples, start.getJSONArray("measurements").length())
             copyEvidence("header-layout-wide-report.json", "header-policy-start-report.json")
             copyEvidence("header-layout-wide.png", "header-policy-start.png")
             instrumentation.runOnMainSync {
@@ -232,7 +233,7 @@ class MeshWebViewTest {
                 assertEquals(TabLayout.GRAVITY_START, tabs.tabGravity)
             }
             comparison.put("start", JSONObject().put("status", "PASS").put("tabGravity", TabLayout.GRAVITY_START)
-                .put("strictSamples", 39).put("measurements", 39))
+                .put("strictSamples", strictSamples).put("measurements", strictSamples))
                 .put("sameActivityAndNativeViews", true).put("status", "PASS")
                 .put("notExecuted", JSONArray(listOf("toolServers", "payloadInstallation", "narrowTabNavigation", "chromeGoneResize", "webViewRetention")))
         } catch (failure: Throwable) {

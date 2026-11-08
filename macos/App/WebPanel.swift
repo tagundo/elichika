@@ -21,16 +21,19 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     private var fullscreenOwned = false
     private var viewerFullscreen = false
     private var currentLanguage: String
+    private var assetNavigation: AssetNavigationState
     private var fullscreenCompletion: ((Result<Bool, Error>) -> Void)?
 
     init(model: AppModel, route: BrowserRoute) {
         self.model = model; self.route = route
         currentLanguage = model.language
+        let assetSection = model.selectedSection?.assetEditorSection ?? .tools
+        assetNavigation = AssetNavigationState(desired: assetSection)
         bridgeEnabled = route == .content || route == .assets
         if let ready = model.connection {
             switch route {
             case .content: targetURL = ready.adminURL
-            case .assets: targetURL = ready.toolsURL
+            case .assets: targetURL = AssetEditorSection.embeddedURL(ready.toolsURL, section: assetSection)
             case .accounts: targetURL = model.goURL(path: "/webui/user/")
             case .serverSettings: targetURL = model.goURL(path: "/webui/admin/")
             }
@@ -40,7 +43,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         configuration.websiteDataStore = bridgeEnabled ? model.websiteDataStore : model.goWebsiteDataStore
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         if bridgeEnabled {
-            configuration.userContentController.addUserScript(Self.platformScript(language: model.language))
+            configuration.userContentController.addUserScript(Self.platformScript(language: model.language, assetNavigation: route == .assets))
         }
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -65,6 +68,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     func perform(_ action: String, paths: [String]? = nil) {
         guard bridgeEnabled, route == .assets, ["openModel", "saveModel", "showViewer"].contains(action) else { return }
+        showAssetSection(.viewer)
         guard loaded else { pendingPerform = (action, paths); return }
         let arguments: [String: Any] = ["action": action, "payload": paths.map { ["paths": $0] } ?? [:]]
         let data = try! JSONSerialization.data(withJSONObject: arguments)
@@ -72,20 +76,42 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         webView.evaluateJavaScript("(function(){const a=" + json + ";if(window.ElichikaPlatform)window.ElichikaPlatform.perform(a.action,a.payload);})();")
     }
 
+    func showAssetSection(_ section: AssetEditorSection) {
+        guard route == .assets else { return }
+        assetNavigation.select(section)
+        applyAssetSection()
+    }
+
+    private func applyAssetSection() {
+        guard route == .assets, loaded, assetNavigation.needsUpdate else { return }
+        let section = assetNavigation.desired
+        assetNavigation.markSent(section)
+        let name = String(decoding: try! JSONSerialization.data(withJSONObject: [section.rawValue]), as: UTF8.self)
+        let script = "(function(){if(!window.ElichikaNavigation||typeof ElichikaNavigation.showSection!=='function')return false;ElichikaNavigation.showSection(" + name + "[0],{notify:false});return true;})();"
+        webView.evaluateJavaScript(script) { [weak self] result, error in
+            let accepted = error == nil && (result as? Bool) == true
+            Task { @MainActor in
+                if !accepted { self?.assetNavigation.retry(section) }
+            }
+        }
+    }
+
     func setLanguage(_ language: String) {
         guard bridgeEnabled, ["en", "ko", "ja"].contains(language), language != currentLanguage else { return }
         currentLanguage = language
         webView.configuration.userContentController.removeAllUserScripts()
-        webView.configuration.userContentController.addUserScript(Self.platformScript(language: language))
+        webView.configuration.userContentController.addUserScript(Self.platformScript(language: language, assetNavigation: route == .assets))
         let json = String(decoding: try! JSONSerialization.data(withJSONObject: [language]), as: UTF8.self)
         webView.evaluateJavaScript("(function(){const l=" + json + "[0];if(window.ElichikaDesktop)window.ElichikaDesktop.language=l;if(typeof changeLang==='function')changeLang(l);})();")
     }
 
-    private static func platformScript(language: String) -> WKUserScript {
+    private static func platformScript(language: String, assetNavigation: Bool) -> WKUserScript {
         let storedWidth = UserDefaults.standard.integer(forKey: "viewerPanelWidth")
         let storedFilesWidth = UserDefaults.standard.integer(forKey: "viewerFilesWidth")
+        var capabilities = ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage", "setViewerPanelWidth", "setViewerFilesWidth"]
+        if assetNavigation { capabilities.append("setSection") }
         let metadata: [String: Any] = ["platform": "macos", "version": 1,
-            "capabilities": ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage", "setViewerPanelWidth", "setViewerFilesWidth"],
+            "capabilities": capabilities,
             "language": language, "viewerPanelWidth": (240...640).contains(storedWidth) ? storedWidth : 0,
             "viewerFilesWidth": (160...360).contains(storedFilesWidth) ? storedFilesWidth : 0]
         let json = String(decoding: try! JSONSerialization.data(withJSONObject: metadata), as: UTF8.self)
@@ -143,6 +169,19 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
                     if width == 0 { UserDefaults.standard.removeObject(forKey: "viewerFilesWidth") }
                     else { UserDefaults.standard.set(width, forKey: "viewerFilesWidth") }
                     result = ["width": width]
+                case .setSection:
+                    guard route == .assets, let name = request.section,
+                          let section = AssetEditorSection(rawValue: name) else { throw NativeError.invalidMessage }
+                    if request.event == AssetSectionEvent.ready.rawValue {
+                        // A late initial page event must not replace a newer
+                        // native selection made while the document was loading.
+                        assetNavigation.pageReady()
+                        applyAssetSection()
+                    } else {
+                        assetNavigation.pageChanged(section)
+                        model.assetSectionChanged(section)
+                    }
+                    result = ["section": assetNavigation.desired.rawValue]
                 }
                 reply(id: request.id, result: result)
             } catch { reply(id: request.id, error: error.localizedDescription) }
@@ -238,6 +277,8 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
+        assetNavigation.pageReady()
+        applyAssetSection()
         observeWindow()
         if let model { setLanguage(model.language) }
         if let (action, paths) = pendingPerform { pendingPerform = nil; perform(action, paths: paths) }
@@ -300,6 +341,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         loaded = false
+        assetNavigation.pageReady()
         model?.message = "The web editor stopped. Reopen the app after preserving any exported files."
     }
 }
@@ -308,5 +350,9 @@ struct WebPanel: NSViewRepresentable {
     @ObservedObject var model: AppModel
     let route: BrowserRoute
     func makeNSView(context: Context) -> WKWebView { model.browser(route).webView }
-    func updateNSView(_ view: WKWebView, context: Context) {}
+    func updateNSView(_ view: WKWebView, context: Context) {
+        if route == .assets, let section = model.selectedSection?.assetEditorSection {
+            model.browser(.assets).showAssetSection(section)
+        }
+    }
 }

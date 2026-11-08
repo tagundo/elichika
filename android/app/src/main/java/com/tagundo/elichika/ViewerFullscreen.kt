@@ -213,7 +213,7 @@ internal class ViewerFullscreen(
     private fun trustedView(view: WebView): Boolean = !disposed && attached.contains(view) &&
         !activity.isFinishing && !activity.isDestroyed && runCatching {
             val uri = Uri.parse(view.url ?: "")
-            trustedOrigin(uri) && (uri.path == "/" || uri.path.isNullOrEmpty()) && uri.query == null
+            AssetNavigationBridge.isToolDocument(uri)
         }.getOrDefault(false)
 
     private fun trustedOrigin(uri: Uri): Boolean = uri.scheme == "http" &&
@@ -230,7 +230,7 @@ internal class ViewerFullscreen(
     }
 
     companion object {
-        const val ORIGIN = "http://127.0.0.1:8770"
+        const val ORIGIN = AssetNavigationBridge.ORIGIN
         private const val BRIDGE = "ElichikaViewerFullscreen"
         private const val SCHEME = "elichika-viewer-fullscreen"
     }

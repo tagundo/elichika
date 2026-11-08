@@ -44,6 +44,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_admin_install_restart.py -v
           python3 -m unittest discover -s tests -p test_sukusta_paths.py -v
           python3 -m unittest discover -s tests -p test_android_python_launch.py -v
+          python3 -m unittest discover -s android/ci -p test_prepare_gradle.py -v
           python3 -m unittest discover -s tests -p 'test_costume_management*.py' -v
           python3 -m unittest discover -s tests -p test_admin_costume_delete_flow.py -v
           python3 -m unittest discover -s tests -p test_costume_scene_installer.py -v
@@ -102,6 +103,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
           python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
           python3 -m unittest discover -s tests -p test_model_edits.py -v
+          python3 -m unittest discover -s tests -p 'test_model_accessory_unclip*.py' -v
           python3 -m unittest discover -s tests -p 'test_viewer_scene*.py' -v
           python3 -m unittest discover -s tests -p test_viewer_execution_model_graph.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_sources.py -v
@@ -110,7 +112,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_viewer_mod_package.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_flow.py -v
           python3 -m unittest discover -s tests -p test_viewer_body_controls.py -v
-          python3 -m unittest discover -s tests -p test_game_models.py -v
+          python3 -m unittest discover -s tests -p 'test_game_models*.py' -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
           python3 -m unittest discover -s tests -p test_node_height_tool.py -v
           python3 -m unittest discover -s tests -p test_viewer_archive.py -v
@@ -181,6 +183,8 @@ jobs:
             sleep 1
           done
           curl --fail --silent "$VIEWER_URL/api/tools" > /dev/null
+          EVIDENCE_DIR="$EVIDENCE_DIR/navigation" node tests/viewer_navigation_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/runtime-optimization" node tests/viewer_runtime_optimization_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/layout" node tests/viewer_layout_browser.js
@@ -198,6 +202,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/compact-layout" node tests/viewer_compact_layout_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/body-controls" node tests/viewer_body_controls_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/game-assets" node tests/viewer_game_assets_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/transplant-game-assets" node tests/transplant_game_assets_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/macos" node tests/viewer_macos_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/resolution" node tests/viewer_resolution_browser.js
 

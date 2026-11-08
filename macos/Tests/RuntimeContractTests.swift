@@ -141,4 +141,69 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertFalse(RuntimeState().serverLoading)
     }
 
+    func testAssetToolsAndViewerAreAdjacentNativeDestinationsForOneEditor() throws {
+        let sections = AppSection.allCases
+        let tools = try XCTUnwrap(sections.firstIndex(of: .assets))
+        XCTAssertEqual(sections[tools + 1], .viewer)
+        XCTAssertEqual(AppSection.assets.title("ko"), "에셋 편집툴")
+        XCTAssertEqual(AppSection.viewer.title("ko"), "3D 모델")
+        XCTAssertEqual(AppSection.assets.assetEditorSection, .tools)
+        XCTAssertEqual(AppSection.viewer.assetEditorSection, .viewer)
+        XCTAssertNil(AppSection.server.assetEditorSection)
+        XCTAssertEqual(AssetEditorSection.tools.appSection, .assets)
+        XCTAssertEqual(AssetEditorSection.viewer.appSection, .viewer)
+    }
+
+    func testEmbeddedAssetDestinationKeepsTheTrustedOriginAndExistingQuery() throws {
+        let base = URL(string: "http://127.0.0.1:8123/editor?theme=dark&embedded=0#old")!
+        for section in AssetEditorSection.allCases {
+            let url = try XCTUnwrap(AssetEditorSection.embeddedURL(base, section: section))
+            let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+            XCTAssertEqual(TrustedOrigin(url), TrustedOrigin(base))
+            XCTAssertEqual(url.path, "/editor")
+            XCTAssertEqual(components.fragment, section.rawValue)
+            XCTAssertEqual(components.queryItems?.filter { $0.name == "embedded" }, [URLQueryItem(name: "embedded", value: "1")])
+            XCTAssertTrue(components.queryItems?.contains(URLQueryItem(name: "theme", value: "dark")) == true)
+        }
+        XCTAssertNil(AssetEditorSection.embeddedURL(URL(string: "https://external.example/")!, section: .viewer))
+    }
+
+    func testPendingAssetNavigationKeepsTheLatestNativeSelectionAcrossPageReady() {
+        var navigation = AssetNavigationState()
+        navigation.select(.viewer)
+        navigation.pageReady()
+        XCTAssertEqual(navigation.desired, .viewer)
+        XCTAssertTrue(navigation.needsUpdate)
+        navigation.markSent(.tools) // An old completion cannot acknowledge the new destination.
+        XCTAssertTrue(navigation.needsUpdate)
+        navigation.markSent(.viewer)
+        XCTAssertFalse(navigation.needsUpdate)
+        navigation.select(.tools)
+        navigation.retry(.viewer)
+        XCTAssertEqual(navigation.desired, .tools)
+        XCTAssertTrue(navigation.needsUpdate)
+        navigation.pageChanged(.viewer)
+        XCTAssertEqual(navigation.desired, .viewer)
+        XCTAssertFalse(navigation.needsUpdate)
+    }
+
+    func testAssetSectionBridgeAcceptsOnlyKnownSectionsAndEvents() throws {
+        for section in AssetEditorSection.allCases {
+            for event in ["ready", "change"] {
+                let request = try NativeRequest.parse(["id": "navigation-1", "action": "setSection", "section": section.rawValue, "event": event])
+                XCTAssertEqual(request.action, .setSection)
+                XCTAssertEqual(request.section, section.rawValue)
+                XCTAssertEqual(request.event, event)
+            }
+        }
+        XCTAssertNoThrow(try NativeRequest.parse(["id": "navigation-1", "action": "setSection", "section": "viewer"]))
+        for section in ["", "textures", "assets", "../../viewer", "https://external.example"] {
+            XCTAssertThrowsError(try NativeRequest.parse(["id": "navigation-1", "action": "setSection", "section": section]))
+        }
+        XCTAssertThrowsError(try NativeRequest.parse(["id": "navigation-1", "action": "setSection"]))
+        XCTAssertThrowsError(try NativeRequest.parse(["id": "navigation-1", "action": "setSection", "section": true]))
+        XCTAssertThrowsError(try NativeRequest.parse(["id": "navigation-1", "action": "setSection", "section": "viewer", "event": "unknown"]))
+        XCTAssertThrowsError(try NativeRequest.parse(["id": "navigation-1", "action": "setSection", "section": "viewer", "event": true]))
+    }
+
 }

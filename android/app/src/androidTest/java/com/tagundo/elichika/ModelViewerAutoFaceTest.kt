@@ -65,7 +65,7 @@ class ModelViewerAutoFaceTest {
             ) as MainActivity
             activity = launched
             instrumentation.runOnMainSync {
-                launched.findViewById<TabLayout>(R.id.tabs).getTabAt(4)!!.select()
+                NativeTabsQa.tab(launched, MainActivity.TAB_MODEL_VIEWER).select()
             }
             // The real Asset editing tab prepares Python without starting the game server.
             val webView = waitForWebView(launched)
