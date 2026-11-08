@@ -689,6 +689,15 @@ def generate_crc32(path):
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
     """게임 클라이언트가 읽을 수 있도록 XOR 스트림 암호화를 적용한다 (in-place)."""
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(data, keys_0, keys_1, keys_2)
+        return
     for i in range(len(data)):
         data[i] = data[i] ^ ((keys_1 ^ keys_0 ^ keys_2) >> 24 & 0xFF)
         keys_0 = (0x343fd * keys_0 + 0x269ec3) & 0xFFFFFFFF

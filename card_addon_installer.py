@@ -90,6 +90,15 @@ skill_effect_category_calculation_add = [2, 3, 4, 5, 9]
 skill_effect_value_count_types = [119, 121, 123, 125, 128, 130, 132, 134, 161, 162, 163, 164, 177, 178, 179, 180, 193, 194, 195, 196, 209, 210, 211, 212]
 
 def manipulate_file(data, keys_0, keys_1, keys_2):
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(data, keys_0, keys_1, keys_2)
+        return
     for i in range(len(data)):
         data[i] = data[i] ^ ((keys_1 ^ keys_0 ^ keys_2) >> 24 & 0xFF)
         keys_0 = (0x343fd * keys_0 + 0x269ec3) & 0xFFFFFFFF

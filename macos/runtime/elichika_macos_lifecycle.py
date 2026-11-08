@@ -13,6 +13,8 @@ import threading
 import time
 from urllib.parse import urlsplit
 
+from elichika_macos_memory import fresh_macos_memory_env
+
 
 @dataclass
 class _Hold:
@@ -130,7 +132,7 @@ class ServerController:
         # Inherit the Python-owned session so native fallback cleanup covers all
         # descendants, including legacy CLI and codec workers.
         process = subprocess.Popen(
-            [str(self.binary)], cwd=self.data, env=os.environ.copy(),
+            [str(self.binary)], cwd=self.data, env=fresh_macos_memory_env(os.environ),
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
             close_fds=True, start_new_session=False)

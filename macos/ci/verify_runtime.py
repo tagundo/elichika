@@ -54,17 +54,24 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'unity_costumemod_packer','skin_tone_changer','texture_importer',
          'assetbundle_IosApk_batch_import_plus','fix_sifas_bundle_export',
          'database_backup','database_restore','costume_scene_installer','costume_scene_clones','costume_scene_sources',
-         'llas_asset_extractor','elichika_macos']
+         'llas_asset_extractor','sifas_asset_crypto','elichika_macos_memory','elichika_macos']
 for name in modules: importlib.import_module(name)
+from elichika_macos_memory import fresh_macos_memory_env, available_macos_memory_bytes
+memory_bytes=available_macos_memory_bytes()
+assert isinstance(memory_bytes,int) and memory_bytes>0
+memory_environment=fresh_macos_memory_env({'ELICHIKA_CLIENTDB_MEMORY_BYTES':'invalid-parent-value'})
+assert memory_environment['ELICHIKA_CLIENTDB_MEMORY_BYTES'].isdigit()
+assert int(memory_environment['ELICHIKA_CLIENTDB_MEMORY_BYTES'])>0
 # Exercise the actual packaged arm64 NumPy path across its block boundary.
 # The scalar extractor is an independent byte-for-byte oracle; no game files
 # or installed data are used. Cache counters prove this is not the fallback.
 from costume_clone_assets import _crypt_section, _lcg_coefficients
-from llas_asset_extractor import decrypt_section, FIXED_KEY0
+from llas_asset_extractor import _decrypt_section_scalar, decrypt_section, FIXED_KEY0
+import sifas_asset_crypto as shared_crypto
 crypto_input=bytes((index*37+11)&255 for index in range(65537))
 crypto_keys=(FIXED_KEY0,-2147483648,-1)
 crypto_expected=bytearray(crypto_input)
-decrypt_section(crypto_expected,*crypto_keys)
+_decrypt_section_scalar(crypto_expected,*crypto_keys)
 crypto_actual=bytearray(crypto_input)
 crypto_before=_lcg_coefficients.cache_info()
 _crypt_section(crypto_actual,*crypto_keys)
@@ -76,10 +83,35 @@ assert all(array.dtype==np.dtype('uint32') and len(array)==65536
            and not array.flags.writeable for array in crypto_coefficients[:2])
 _crypt_section(crypto_actual,*crypto_keys)
 assert crypto_actual==crypto_input
+from live_install_core import manipulate_file
+from costume_scene_installer import _encrypt
+crypto_scalar=shared_crypto.decrypt_section_scalar
+def refuse_shared_scalar(*args):
+    raise AssertionError('Packaged common crypto unexpectedly used scalar fallback')
+shared_before=_lcg_coefficients.cache_info()
+try:
+    shared_crypto.decrypt_section_scalar=refuse_shared_scalar
+    for crypto_consumer in (decrypt_section,manipulate_file):
+        crypto_actual=bytearray(crypto_input)
+        assert crypto_consumer(crypto_actual,*crypto_keys) is None
+        assert crypto_actual==crypto_expected
+        crypto_consumer(crypto_actual,*crypto_keys)
+        assert crypto_actual==crypto_input
+    scene_expected=bytearray(crypto_input)
+    _decrypt_section_scalar(scene_expected,12345,0,0)
+    assert _encrypt(crypto_input)==bytes(scene_expected)
+    assert _encrypt(scene_expected)==crypto_input
+finally:
+    shared_crypto.decrypt_section_scalar=crypto_scalar
+shared_after=_lcg_coefficients.cache_info()
+shared_calls=shared_after.hits+shared_after.misses-shared_before.hits-shared_before.misses
+assert shared_calls==6
 crypto_probe={'status':'PASS_ACCELERATED_SCALAR_EQUIVALENCE','bytes':len(crypto_input),
     'signed_distinct_keys':True,'block_boundary_crossed':True,'accelerated_path_observed':True,
     'immutable_coefficients':True,'round_trip':True,
-    'ciphertext_sha256':hashlib.sha256(crypto_expected).hexdigest()}
+    'ciphertext_sha256':hashlib.sha256(crypto_expected).hexdigest(),
+    'shared_consumers':['asset-extractor','live-installer','scene-installer'],
+    'shared_coefficient_calls':shared_calls}
 # These original installer CLIs deliberately execute their interaction/job at
 # module scope. Their registered adapters load them only during an explicit job.
 # Validate packaged source without running an installation during import QA.
@@ -107,6 +139,8 @@ print('ELICHIKA_RUNTIME_PROBE=' + json.dumps({'status':'PASS','arch':platform.ma
     'interactive_installer_sources_compiled_not_executed':script_files,
     'private_prefix':True,'no_runtime_pip':True,'offline_imports':True,
     'numpy_blas':True,'clone_crypto':crypto_probe,'pillow_png':True,'lz4_brotli':True,'astc_encode_decode':True,
+    'clientdb_memory_bridge':{'fresh_snapshot':True,'available_bytes':memory_bytes,
+                            'environment_bytes':int(memory_environment['ELICHIKA_CLIENTDB_MEMORY_BYTES'])},
     'certificate_roots':context.cert_store_stats()['x509_ca']}))
 '''
 

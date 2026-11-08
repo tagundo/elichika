@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+import sifas_asset_crypto as crypto
 import costume_clone_assets as assets
 import llas_asset_extractor as extractor
 
@@ -20,7 +21,7 @@ def payload(length):
 
 def oracle(data, keys):
     expected = bytearray(data)
-    extractor.decrypt_section(expected, *keys)
+    extractor._decrypt_section_scalar(expected, *keys)
     return expected
 
 
@@ -103,7 +104,7 @@ class CloneCipherTests(unittest.TestCase):
                 raise AssertionError("Small scalar path imported NumPy")
             return original_import(name, *args, **kwargs)
         with patch.object(builtins, "__import__", side_effect=no_numpy), \
-                patch.object(extractor, "decrypt_section", wraps=extractor.decrypt_section) as scalar:
+                patch.object(crypto, "decrypt_section_scalar", wraps=crypto.decrypt_section_scalar) as scalar:
             actual = bytearray(original)
             assets._crypt_section(actual, *seeds)
             scalar.assert_called_once_with(actual, *seeds)
@@ -118,7 +119,7 @@ class CloneCipherTests(unittest.TestCase):
                 raise ModuleNotFoundError("Synthetic unavailable optional NumPy", name="numpy")
             return original_import(name, *args, **kwargs)
         with patch.object(builtins, "__import__", side_effect=no_numpy), \
-                patch.object(extractor, "decrypt_section", wraps=extractor.decrypt_section) as scalar:
+                patch.object(crypto, "decrypt_section_scalar", wraps=crypto.decrypt_section_scalar) as scalar:
             actual = bytearray(original)
             assets._crypt_section(actual, *seeds)
             scalar.assert_called_once_with(actual, *seeds)
@@ -136,7 +137,7 @@ class CloneCipherTests(unittest.TestCase):
                     return original_import(name, *args, **kwargs)
                 actual = bytearray(original)
                 with patch.object(builtins, "__import__", side_effect=broken_numpy), \
-                        patch.object(extractor, "decrypt_section", wraps=extractor.decrypt_section) as scalar:
+                        patch.object(crypto, "decrypt_section_scalar", wraps=crypto.decrypt_section_scalar) as scalar:
                     with self.assertRaises(type(error)):
                         assets._crypt_section(actual, 12345, 7, 11)
                     scalar.assert_not_called()
@@ -156,7 +157,7 @@ class CloneCipherTests(unittest.TestCase):
                     raise RuntimeError("Synthetic second block write failure")
             return original_xor(*args, **kwargs)
         with patch.object(np, "bitwise_xor", side_effect=fail_second_buffer_write), \
-                patch.object(extractor, "decrypt_section", wraps=extractor.decrypt_section) as scalar:
+                patch.object(crypto, "decrypt_section_scalar", wraps=crypto.decrypt_section_scalar) as scalar:
             with self.assertRaisesRegex(RuntimeError, "second block"):
                 assets._crypt_section(actual, *seeds)
             scalar.assert_not_called()

@@ -46,8 +46,12 @@ func loadStoryMember(gamedata *Gamedata) {
 		err = session.Table("m_story_member").Find(&gamedata.StoryMember)
 	})
 	utils.CheckErr(err)
-	for _, storyMember := range gamedata.StoryMember {
-		storyMember.populate(gamedata)
+	detailsLoaded, err := loadStoryMemberRewards(gamedata)
+	utils.CheckErr(err)
+	if !detailsLoaded {
+		for _, storyMember := range gamedata.StoryMember {
+			storyMember.populate(gamedata)
+		}
 	}
 }
 

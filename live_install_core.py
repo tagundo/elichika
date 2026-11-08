@@ -121,6 +121,15 @@ def _log(log: Optional[Callable[[str], None]], msg: str) -> None:
 def manipulate_file(data: bytearray, keys_0: int, keys_1: int, keys_2: int) -> None:
     """In-place XOR with the game's LCG-derived keystream.  Identical to the
     routine in camera_live_timeline_replacer.py / live_addon_installer.py."""
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(data, keys_0, keys_1, keys_2)
+        return
     for i in range(len(data)):
         data[i] = data[i] ^ ((keys_1 ^ keys_0 ^ keys_2) >> 24 & 0xFF)
         keys_0 = (0x343FD * keys_0 + 0x269EC3) & 0xFFFFFFFF

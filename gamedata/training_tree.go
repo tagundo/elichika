@@ -48,9 +48,12 @@ type TrainingTree struct {
 	TrainingTreeProgressRewards []TrainingTreeProgressReward `xorm:"-"`
 }
 
-func (tree *TrainingTree) populate(gamedata *Gamedata) {
+func (tree *TrainingTree) populate(gamedata *Gamedata, detailsLoaded bool) {
 	tree.TrainingTreeMapping = gamedata.TrainingTreeMapping[*tree.TrainingTreeMappingMId]
 	tree.TrainingTreeMappingMId = &tree.TrainingTreeMapping.Id
+	if detailsLoaded {
+		return
+	}
 	{
 		var err error
 		gamedata.MasterdataDb.Do(func(session *xorm.Session) {
@@ -108,8 +111,10 @@ func loadTrainingTree(gamedata *Gamedata) {
 		err = session.Table("m_training_tree").Find(&gamedata.TrainingTree)
 	})
 	utils.CheckErr(err)
+	detailsLoaded, err := loadTrainingTreeDetails(gamedata)
+	utils.CheckErr(err)
 	for _, tree := range gamedata.TrainingTree {
-		tree.populate(gamedata)
+		tree.populate(gamedata, detailsLoaded)
 	}
 }
 

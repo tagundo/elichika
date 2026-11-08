@@ -6,7 +6,6 @@ identity. Model dependencies are private too, since face/animation bundles can
 contain mutable materials. Shader dependencies remain shared.
 """
 import hashlib
-from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -26,70 +25,9 @@ REQUIRED_ASSET_CATALOGS = {
 }
 
 
-_CRYPTO_BLOCK_SIZE = 65536
-_CRYPTO_FAST_MIN_SIZE = _CRYPTO_BLOCK_SIZE
-
-
-@lru_cache(maxsize=1)
-def _lcg_coefficients():
-    """Universal F^i(x) = A[i]*x+C[i] for one bounded uint32 block.
-
-    Only these input-independent coefficients are cached. Immutable byte-backed
-    views prevent a caller from accidentally modifying the shared arrays.
-    """
-    import numpy as np
-    multipliers = np.empty(_CRYPTO_BLOCK_SIZE, dtype=np.uint32)
-    increments = np.empty(_CRYPTO_BLOCK_SIZE, dtype=np.uint32)
-    multipliers[0], increments[0] = 1, 0
-    count, jump_a, jump_c = 1, 0x343fd, 0x269ec3
-    while count < _CRYPTO_BLOCK_SIZE:
-        # Copy F^(count+i), with i starting at zero. Each pass doubles
-        # the prefix; Python-int jump arithmetic is explicitly reduced.
-        multipliers[count:2 * count] = multipliers[:count] * np.uint32(jump_a)
-        increments[count:2 * count] = (increments[:count] * np.uint32(jump_a)
-                                     + np.uint32(jump_c))
-        count *= 2
-        jump_c = (jump_c * (jump_a + 1)) & 0xffffffff
-        jump_a = (jump_a * jump_a) & 0xffffffff
-    return (np.frombuffer(multipliers.tobytes(), dtype=np.uint32),
-            np.frombuffer(increments.tobytes(), dtype=np.uint32), jump_a, jump_c)
-
-
-def _crypt_section(data, key0, key1, key2):
-    """Exact scalar XOR stream, with bounded optional NumPy acceleration.
-
-    The scalar uses each seed's high byte before advancing the LCG. The first
-    affine entry is therefore identity, not F. Native uint32 array arithmetic
-    supplies the same modulo-2^32 wraparound as the reference implementation.
-    """
-    import llas_asset_extractor as extractor
-    if len(data) < _CRYPTO_FAST_MIN_SIZE:
-        return extractor.decrypt_section(data, key0, key1, key2)
-    try:
-        import numpy as np
-    except ModuleNotFoundError as exc:
-        if exc.name != "numpy":
-            raise
-        return extractor.decrypt_section(data, key0, key1, key2)
-    multipliers, increments, jump_a, jump_c = _lcg_coefficients()
-    keys = [int(key & 0xffffffff) for key in (key0, key1, key2)]
-    for offset in range(0, len(data), _CRYPTO_BLOCK_SIZE):
-        count = min(_CRYPTO_BLOCK_SIZE, len(data) - offset)
-        factors, additions = multipliers[:count], increments[:count]
-        stream = factors * np.uint32(keys[0])
-        np.add(stream, additions, out=stream)
-        if keys[1] != keys[2]:
-            other = factors * np.uint32(keys[1])
-            np.add(other, additions, out=other)
-            np.bitwise_xor(stream, other, out=stream)
-            np.multiply(factors, np.uint32(keys[2]), out=other)
-            np.add(other, additions, out=other)
-            np.bitwise_xor(stream, other, out=stream)
-        np.right_shift(stream, 24, out=stream)
-        view = np.frombuffer(data, dtype=np.uint8, count=count, offset=offset)
-        np.bitwise_xor(view, stream.astype(np.uint8), out=view)
-        if offset + count < len(data):
-            keys = [(jump_a * key + jump_c) & 0xffffffff for key in keys]
+# Backward-compatible private aliases; all asset tools share this primitive.
+from sifas_asset_crypto import (_CRYPTO_BLOCK_SIZE, _CRYPTO_FAST_MIN_SIZE,
+                                _lcg_coefficients, crypt_section as _crypt_section)
 
 
 def _cleanup_connections(connections, method):

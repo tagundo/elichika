@@ -97,7 +97,7 @@ CHARACTERS = {
 # Crypto / file utils
 # ============================================================
 
-def decrypt_section(data, key0, key1, key2):
+def _decrypt_section_scalar(data, key0, key1, key2):
     """Same XOR stream as manipulate_file in llasdecryptor.py (in-place).
 
     XOR, so encrypt/decrypt are symmetric. key1/key2 from the DB may be a
@@ -110,6 +110,21 @@ def decrypt_section(data, key0, key1, key2):
         k0 = (0x343fd * k0 + 0x269ec3) & 0xFFFFFFFF
         k1 = (0x343fd * k1 + 0x269ec3) & 0xFFFFFFFF
         k2 = (0x343fd * k2 + 0x269ec3) & 0xFFFFFFFF
+
+
+def decrypt_section(data, key0, key1, key2):
+    """Decrypt/encrypt in place, optionally using the shared bounded backend.
+
+    Keep the original scalar above as an independent oracle and as the
+    standalone script fallback when the companion module is not installed.
+    """
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+        return _decrypt_section_scalar(data, key0, key1, key2)
+    return crypt_section(data, key0, key1, key2)
 
 
 def detect_extension(data):
@@ -226,6 +241,9 @@ def root_has_content_shallow(root):
 
 # Per-root pack index cache: {root(abspath): {basename: fullpath}}
 _pack_index_cache = {}
+# Directory stamps are only checked on a lookup miss (or a vanished hit). Normal
+# hits avoid scanning either the root or its bucket directories again.
+_pack_index_dirs = {}
 
 
 def _is_bucket_dir(name):
@@ -250,7 +268,7 @@ def _index_dir(d, index, prog=None):
 _WRAPPER_DIRS = {"files", "static"}
 
 
-def _index_buckets_under(d, index, dirs=None, prog=None, depth=0):
+def _index_buckets_under(d, index, dirs=None, prog=None, depth=0, stamps=None):
     """Index files directly in d, plus files inside d's pak*/pkg* buckets.
     Descends one more level into 'files'/'static' wrapper folders, so all of
     these are handled:
@@ -265,12 +283,15 @@ def _index_buckets_under(d, index, dirs=None, prog=None, depth=0):
     touch, which the on-disk cache stores as its staleness signature: adding or
     removing a file/folder bumps its parent dir's mtime, so a changed mtime on any
     stored dir (root, a bucket, or a wrapper) means the cache must be rebuilt."""
-    _index_dir(d, index, prog)                    # flat files at this level
     if dirs is not None:
         try:
-            dirs[os.path.abspath(d)] = os.stat(d).st_mtime
+            info = os.stat(d)
+            dirs[os.path.abspath(d)] = info.st_mtime
+            if stamps is not None:
+                stamps[os.path.abspath(d)] = info.st_mtime_ns
         except OSError:
             pass
+    _index_dir(d, index, prog)                    # flat files at this level
     try:
         entries = list(os.scandir(d))
     except (FileNotFoundError, NotADirectoryError, PermissionError):
@@ -280,14 +301,17 @@ def _index_buckets_under(d, index, dirs=None, prog=None, depth=0):
             continue
         name = entry.name.lower()
         if _is_bucket_dir(name):
-            _index_dir(entry.path, index, prog)   # files inside a bucket
             if dirs is not None:
                 try:
-                    dirs[os.path.abspath(entry.path)] = os.stat(entry.path).st_mtime
+                    info = os.stat(entry.path)
+                    dirs[os.path.abspath(entry.path)] = info.st_mtime
+                    if stamps is not None:
+                        stamps[os.path.abspath(entry.path)] = info.st_mtime_ns
                 except OSError:
                     pass
+            _index_dir(entry.path, index, prog)   # files inside a bucket
         elif name in _WRAPPER_DIRS and depth < 3:
-            _index_buckets_under(entry.path, index, dirs, prog, depth + 1)
+            _index_buckets_under(entry.path, index, dirs, prog, depth + 1, stamps)
 
 
 # ---- on-disk pack index cache -----------------------------------------------
@@ -340,12 +364,16 @@ def _load_disk_index(root):
     dirs, index = data.get("dirs"), data.get("index")
     if not isinstance(dirs, dict) or not isinstance(index, dict):
         return None
+    stamps = {}
     for d, mtime in dirs.items():
         try:
-            if os.stat(d).st_mtime != mtime:
+            info = os.stat(d)
+            if info.st_mtime != mtime:
                 return None                       # something changed -> rebuild
+            stamps[d] = info.st_mtime_ns
         except OSError:
             return None                           # a scanned dir vanished -> rebuild
+    _pack_index_dirs[root] = stamps
     return index
 
 
@@ -431,10 +459,11 @@ class _ScanProgress:
 
 def _scan_pack_index(root):
     """Full cold scan of root -> ({basename: path}, {scanned_dir: mtime})."""
-    index, dirs = {}, {}
+    index, dirs, stamps = {}, {}, {}
     prog = _ScanProgress(root)
-    _index_buckets_under(root, index, dirs, prog)
+    _index_buckets_under(root, index, dirs, prog, stamps=stamps)
     prog.done()
+    _pack_index_dirs[os.path.abspath(root)] = stamps
     return index, dirs
 
 
@@ -459,6 +488,72 @@ def build_pack_index(root):
     return index
 
 
+def _pack_basename(pack_name):
+    return (isinstance(pack_name, str) and bool(pack_name)
+            and pack_name not in (".", "..")
+            and not any(character in pack_name for character in ("/", "\\", "\x00")))
+
+
+def _pack_path(root, candidate, pack_name):
+    """An index is a hint, never authority to read outside its source root."""
+    try:
+        if not candidate or os.path.basename(candidate) != pack_name:
+            return None
+        real_root, real_path = os.path.realpath(root), os.path.realpath(candidate)
+        if os.path.commonpath((real_root, real_path)) != real_root or not os.path.isfile(candidate):
+            return None
+        return candidate
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _pack_index_changed(root):
+    stamps = _pack_index_dirs.get(root)
+    if stamps is None:
+        return False
+    if not stamps:
+        return os.path.isdir(root)
+    for directory, stamp in stamps.items():
+        try:
+            if os.stat(directory).st_mtime_ns != stamp:
+                return True
+        except OSError:
+            return True
+    return False
+
+
+def indexed_pack_file(root, pack_name):
+    """Keep index precedence, but find new flat packs without a cold scan.
+
+    Flat files were already indexed before buckets. Probe that same preferred
+    location first, then verify a cached hit still exists within the root. A
+    miss only rebuilds a cached index when its scanned directories changed.
+    Thus another tool's publication/removal is visible in the same process.
+    """
+    if not _pack_basename(pack_name):
+        return None
+    root = os.path.abspath(root)
+    flat = _pack_path(root, os.path.join(root, pack_name), pack_name)
+    if flat:
+        cached = _pack_index_cache.get(root)
+        if cached is not None and cached.get(pack_name) != flat:
+            cached[pack_name] = flat
+            _invalidate_disk_index(root)
+        return flat
+    index = build_pack_index(root)
+    candidate = index.get(pack_name)
+    hit = _pack_path(root, candidate, pack_name)
+    if hit:
+        return hit
+    if candidate is not None or _pack_index_changed(root):
+        _pack_index_cache.pop(root, None)
+        _pack_index_dirs.pop(root, None)
+        _invalidate_disk_index(root)
+        hit = build_pack_index(root).get(pack_name)
+        return _pack_path(root, hit, pack_name)
+    return None
+
+
 def find_pack_file(pack_roots, pack_name):
     """Find the actual pack file path across several source roots, autodetecting layout.
 
@@ -469,7 +564,7 @@ def find_pack_file(pack_roots, pack_name):
     2) otherwise, look it up by basename in an index built from pak1/pak2/...
        buckets (matches the real game's .../files/files/pak<N>/ layout)
     """
-    if not pack_name:
+    if not _pack_basename(pack_name):
         return None
     first = pack_name[0]
     for root in pack_roots:
@@ -479,10 +574,10 @@ def find_pack_file(pack_roots, pack_name):
             os.path.join(root, "static", pack_name),
             os.path.join(root, "static", "pkg" + first, pack_name),
         ):
-            if os.path.isfile(p):
-                return p
-        idx = build_pack_index(root)
-        hit = idx.get(pack_name)
+            hit = _pack_path(root, p, pack_name)
+            if hit:
+                return hit
+        hit = indexed_pack_file(root, pack_name)
         if hit:
             return hit
     return None
@@ -571,17 +666,18 @@ class PackResolver:
         self.cdn_base = (cdn_base.rstrip("/") + "/") if cdn_base else None
         self.asset_conn = asset_conn          # for the rare metapack lookup
         self._meta_tmp = {}                   # metapack_name -> temp path (reused per run)
+        self._registrations = 0
         self.stats = {"packs": 0, "copied": 0, "cdn": 0, "metapack": 0, "missing": 0}
 
     # ---- lookups ----
     def _in_packs(self, pack_name):
-        return build_pack_index(self.packs_dir).get(pack_name)
+        return indexed_pack_file(self.packs_dir, pack_name)
 
     def _in_other_roots(self, pack_name):
         for root in self.roots:
             if root == self.packs_dir:
                 continue
-            hit = build_pack_index(root).get(pack_name)
+            hit = indexed_pack_file(root, pack_name)
             if hit:
                 return hit
         return None
@@ -598,7 +694,22 @@ class PackResolver:
         idx = _pack_index_cache.get(os.path.abspath(self.packs_dir))
         if idx is not None:
             idx[pack_name] = dest
+        self._registrations += 1
         _invalidate_disk_index(self.packs_dir)
+
+    def _finish_registered_writes(self, before, registrations):
+        # The files registered above are already in the live index. Do not
+        # rescan thousands of flat packs before every next bulk-download item.
+        # Only advance this root's known stamp, and only if it was current
+        # before our writes. Changed bucket stamps remain independently dirty.
+        if before is None or self._registrations == registrations:
+            return
+        stamps = _pack_index_dirs.get(self.packs_dir)
+        if stamps is not None and stamps.get(self.packs_dir) == before:
+            try:
+                stamps[self.packs_dir] = os.stat(self.packs_dir).st_mtime_ns
+            except OSError:
+                pass
 
     def _finalize(self, tmp, pack_name):
         os.makedirs(self.packs_dir, exist_ok=True)
@@ -704,25 +815,36 @@ class PackResolver:
 
     # ---- main entry ----
     def resolve(self, pack_name):
+        if not _pack_basename(pack_name):
+            self.stats["missing"] += 1
+            return None
         hit = self._in_packs(pack_name)
         if hit:
             self.stats["packs"] += 1
             return hit
-        hit = self._in_other_roots(pack_name)
-        if hit:
-            self.stats["copied"] += 1
-            return self._copy_in(hit, pack_name)
-        if self.cdn_base:
-            hit = self._download_direct(pack_name)
+        try:
+            before = os.stat(self.packs_dir).st_mtime_ns
+        except OSError:
+            before = None
+        registrations = self._registrations
+        try:
+            hit = self._in_other_roots(pack_name)
             if hit:
-                self.stats["cdn"] += 1
-                return hit
-            hit = self._download_via_metapack(pack_name)
-            if hit:
-                self.stats["metapack"] += 1
-                return hit
-        self.stats["missing"] += 1
-        return None
+                self.stats["copied"] += 1
+                return self._copy_in(hit, pack_name)
+            if self.cdn_base:
+                hit = self._download_direct(pack_name)
+                if hit:
+                    self.stats["cdn"] += 1
+                    return hit
+                hit = self._download_via_metapack(pack_name)
+                if hit:
+                    self.stats["metapack"] += 1
+                    return hit
+            self.stats["missing"] += 1
+            return None
+        finally:
+            self._finish_registered_writes(before, registrations)
 
 
 # Chars forbidden on FAT/exFAT (Android shared storage) + path separators

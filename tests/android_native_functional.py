@@ -189,6 +189,7 @@ def clone_bundle_checks(preview):
 def clone_crypto_checks():
     """Run the packaged vector path on native NumPy across block boundaries."""
     import llas_asset_extractor as extractor
+    import sifas_asset_crypto as shared_crypto
     from costume_clone_assets import (_crypt_section, _lcg_coefficients,
                                       _CRYPTO_FAST_MIN_SIZE)
 
@@ -197,7 +198,8 @@ def clone_crypto_checks():
     plain = bytes((index * 73 + 19) & 255 for index in range(size))
     cases = []
     before = _lcg_coefficients.cache_info()
-    scalar = extractor.decrypt_section
+    scalar = extractor._decrypt_section_scalar
+    fallback = shared_crypto.decrypt_section_scalar
 
     def refuse_scalar(*args):
         raise AssertionError("Native clone crypto probe unexpectedly used the scalar fallback")
@@ -209,20 +211,48 @@ def clone_crypto_checks():
         scalar(expected, *keys)
         actual = bytearray(plain)
         try:
-            extractor.decrypt_section = refuse_scalar
+            shared_crypto.decrypt_section_scalar = refuse_scalar
             _crypt_section(actual, *keys)
             assert actual == expected, "Native vector ciphertext differs from scalar oracle"
             _crypt_section(actual, *keys)
             assert actual == plain, "Native vector crypto roundtrip changed bytes"
         finally:
-            extractor.decrypt_section = scalar
+            shared_crypto.decrypt_section_scalar = fallback
         cases.append({"case": label, "bytes": size,
                       "ciphertext_sha256": hashlib.sha256(expected).hexdigest()})
     after = _lcg_coefficients.cache_info()
     coefficient_calls = after.hits + after.misses - before.hits - before.misses
     assert coefficient_calls == 4, "Native fast path did not use its coefficient table"
+    # The public extractor and installers must use the packaged common backend,
+    # while the original scalar above remains an independent oracle.
+    from live_install_core import manipulate_file
+    from costume_scene_installer import _encrypt
+    shared_before = _lcg_coefficients.cache_info()
+    try:
+        shared_crypto.decrypt_section_scalar = refuse_scalar
+        for function in (extractor.decrypt_section, manipulate_file):
+            for _, keys in (("signed", (12345, -2147483648, 2147483647)),
+                            ("equal", (0, -1, 4294967295))):
+                expected = bytearray(plain)
+                scalar(expected, *keys)
+                actual = bytearray(plain)
+                assert function(actual, *keys) is None
+                assert actual == expected
+                function(actual, *keys)
+                assert actual == plain
+        expected = bytearray(plain)
+        scalar(expected, 12345, 0, 0)
+        assert _encrypt(plain) == bytes(expected)
+        assert _encrypt(expected) == plain
+    finally:
+        shared_crypto.decrypt_section_scalar = fallback
+    shared_after = _lcg_coefficients.cache_info()
+    shared_calls = shared_after.hits + shared_after.misses - shared_before.hits - shared_before.misses
+    assert shared_calls == 10, "Packaged asset/installer paths did not use the common backend"
     return {"fast_path_used": True, "scalar_oracle_match": True,
-            "roundtrip": True, "coefficient_calls": coefficient_calls, "cases": cases}
+            "roundtrip": True, "coefficient_calls": coefficient_calls, "cases": cases,
+            "shared_consumers": ["asset-extractor", "live-installer", "scene-installer"],
+            "shared_coefficient_calls": shared_calls}
 
 
 def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):

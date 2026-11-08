@@ -51,6 +51,15 @@ XOR_KEY0 = 12345
 
 
 def manipulate(buf, k0, k1, k2):
+    # Standalone copies retain the scalar below when the companion is absent.
+    try:
+        from sifas_asset_crypto import crypt_section
+    except ModuleNotFoundError as exc:
+        if exc.name != "sifas_asset_crypto":
+            raise
+    else:
+        crypt_section(buf, k0, k1, k2)
+        return
     for i in range(len(buf)):
         buf[i] ^= ((k1 ^ k0 ^ k2) >> 24 & 0xFF)
         k0 = (0x343FD * k0 + 0x269EC3) & 0xFFFFFFFF

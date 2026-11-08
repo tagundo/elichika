@@ -7,8 +7,8 @@ import (
 
 	"bytes"
 	"crypto/md5"
-	"crypto/sha1"
 	"encoding/hex"
+	"fmt"
 
 	"os"
 	"path/filepath"
@@ -32,24 +32,29 @@ func versionString(shaInHex string) string {
 	return hex.EncodeToString(utils.Xor(bytes[:length], bytes[length:]))
 }
 
-func fileSha1AndSize(fileName string) ([]byte, int) {
-	file, err := os.ReadFile(fileName)
-	if err != nil {
-		file = []byte{}
-	}
-	sha1 := sha1.Sum(file)
-	return sha1[:], len(file)
+// updateClientDb treats installed clear databases as authoritative. Preparation
+// jobs own independent references; no manifest is published until every worker
+// has joined and all authoritative inputs have passed the final hash barrier.
+func updateClientDb(baseDir string, masterdataRefs []string) {
+	updateClientDbWithWorkers(baseDir, masterdataRefs, 0)
 }
 
-// updateClientDb treats the installed clear databases as authoritative. Header
-// versions can legitimately differ after a previous process stopped between
-// manifest renames; each valid manifest still supplies its own locale/file list.
-func updateClientDb(baseDir string, masterdataRefs []string) {
-	versionBytes := []byte{}
-	oldVersion := ""
-	mixedVersions := false
-	actualFileVersions := map[string]string{}
+// A private component-test/benchmark limit. Normal startup always uses the
+// resource-aware automatic policy; there is no new user configuration setting.
+func updateClientDbWithWorkers(baseDir string, masterdataRefs []string, workerLimit int) {
+	if workerLimit != 0 && workerLimit != 1 && workerLimit != 2 && workerLimit != 4 && workerLimit != 8 {
+		log.Panic("client database workers must be automatic, 1, 2, 4 or 8")
+	}
+	type databaseFile struct {
+		name      string
+		sha       string
+		size      int64
+		reference FileReference
+	}
+	files := []databaseFile{}
+	indices := map[string]int{}
 	manifests := make([]*manifest, 0, len(masterdataRefs))
+	oldVersion, mixedVersions := "", false
 	for _, refPath := range masterdataRefs {
 		log.Println(baseDir + refPath)
 		f, err := os.Open(baseDir + refPath)
@@ -66,19 +71,30 @@ func updateClientDb(baseDir string, masterdataRefs []string) {
 			mixedVersions = true
 		}
 		for _, file := range m.Files {
-			actualFileVersion, checked := actualFileVersions[file.Name]
-			if !checked {
-				// Do not turn a missing/unreadable DB into an empty-file hash.
-				source, err := os.ReadFile(baseDir + file.Name)
-				utils.CheckErr(err)
-				if len(source) < 16 || string(source[:16]) != "SQLite format 3\x00" {
-					log.Panic("Missing SQLite file signature: " + file.Name)
-				}
-				hash := sha1.Sum(source)
-				actualFileVersion = hex.EncodeToString(hash[:])
-				actualFileVersions[file.Name] = actualFileVersion
+			if _, found := indices[file.Name]; !found {
+				indices[file.Name] = len(files)
+				files = append(files, databaseFile{name: file.Name, reference: file})
 			}
-			versionBytes = append(versionBytes, []byte(actualFileVersion)...)
+		}
+	}
+	workers := clientDBWorkerCount(len(files))
+	if workerLimit > 0 {
+		workers = workerLimit
+	}
+	utils.CheckErr(runClientDBJobs(len(files), workers, func(index int) error {
+		sha, size, err := hashSQLiteFile(baseDir + files[index].name)
+		if err != nil {
+			return err
+		}
+		files[index].sha, files[index].size = sha, size
+		return nil
+	}))
+	// Concatenation order remains manifest/file order, including duplicate
+	// references. Worker completion order must never change the regional version.
+	versionBytes := []byte{}
+	for _, m := range manifests {
+		for _, file := range m.Files {
+			versionBytes = append(versionBytes, []byte(files[indices[file.Name]].sha)...)
 		}
 	}
 	version := md5.Sum(versionBytes)
@@ -92,33 +108,46 @@ func updateClientDb(baseDir string, masterdataRefs []string) {
 	} else {
 		log.Println("Performing integrity check for version: ", newVersion)
 	}
-	// Generate/verify every output before publishing any manifest. A failure in
-	// a later locale must not advertise partially prepared client data.
-	verified := map[string]FileReference{}
+	log.Printf("Preparing %d client database files with %d worker(s)\n", len(files), workers)
+	for index := range files {
+		file := &files[index]
+		file.reference.Version, file.reference.SHA = newVersion, file.sha
+	}
+	utils.CheckErr(runClientDBJobs(len(files), workers, func(index int) error {
+		file := &files[index]
+		return rekeyFile(baseDir+file.name, filepath.Join(outputDir, file.name), &file.reference, keySpec)
+	}))
+	// A source changed while a different worker was preparing its file must not
+	// be advertised under the earlier version. This is deliberately a content
+	// hash, not a timestamp-only shortcut.
+	utils.CheckErr(runClientDBJobs(len(files), workers, func(index int) error {
+		file := &files[index]
+		sha, size, err := hashSQLiteFile(baseDir + file.name)
+		if err != nil {
+			return err
+		}
+		if sha != file.sha || size != file.size {
+			return fmt.Errorf("clear database changed before client manifest publication: %s", file.name)
+		}
+		return nil
+	}))
 	for _, m := range manifests {
 		m.Version = newVersion
-		for i := range m.Files {
-			file := &m.Files[i]
-			file.Version = newVersion
-			file.SHA = actualFileVersions[file.Name]
-			outputFile := filepath.Join(outputDir, file.Name)
-			if previous, ok := verified[outputFile]; ok && previous.SHA == file.SHA {
-				file.EncryptedSHA, file.Size = previous.EncryptedSHA, previous.Size
-				continue
-			}
-			rekey(baseDir+file.Name, outputFile, file, keySpec)
-			verified[outputFile] = *file
+		for index := range m.Files {
+			file := &m.Files[index]
+			prepared := files[indices[file.Name]].reference
+			file.Version, file.SHA = newVersion, prepared.SHA
+			file.EncryptedSHA, file.Size = prepared.EncryptedSHA, prepared.Size
 		}
 	}
-	// Publish CDN copies first, then the installed headers used on next boot.
-	// All bytes are staged before any rename; individual replacements are atomic.
-	// A process kill between renames is recovered above on the next startup.
+	// CDN copies first, then installed headers. All file verification has ended
+	// before even staging these manifest bytes; interrupted renames still recover.
 	writes := make([]manifestWrite, 0, 2*len(manifests))
-	for i, m := range manifests {
-		writes = append(writes, manifestWrite{filepath.Join(outputDir, masterdataRefs[i]), m.serialize()})
+	for index, m := range manifests {
+		writes = append(writes, manifestWrite{filepath.Join(outputDir, masterdataRefs[index]), m.serialize()})
 	}
-	for i, m := range manifests {
-		writes = append(writes, manifestWrite{baseDir + masterdataRefs[i], m.serialize()})
+	for index, m := range manifests {
+		writes = append(writes, manifestWrite{baseDir + masterdataRefs[index], m.serialize()})
 	}
 	publishManifests(writes)
 }
@@ -193,14 +222,4 @@ func readMasterdataManinest(path string) string {
 	utils.CheckErr(err)
 	defer file.Close()
 	return newManifest(file).Version
-}
-
-func copy(in, out string) error {
-	file, err := os.ReadFile(in)
-	if err != nil {
-		return err
-	}
-	err = os.WriteFile(out, file, 0777)
-	utils.CheckErr(err)
-	return nil
 }

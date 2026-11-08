@@ -72,5 +72,5 @@ func Init(locale string, assetdata *xorm.Engine) {
 	session := assetdata.NewSession()
 	defer session.Close()
 	loadMetapack(locale, session)
-	loadPack(locale, session)
+	loadPack(locale, assetdata)
 }

@@ -34,12 +34,14 @@ type TrainingTreeMapping struct {
 	TrainingTreeDesign         *TrainingTreeDesign       `xorm:"-"`
 }
 
-func (treeMapping *TrainingTreeMapping) populate(gamedata *Gamedata) {
+func (treeMapping *TrainingTreeMapping) populate(gamedata *Gamedata, detailsLoaded bool) {
 	var err error
-	gamedata.MasterdataDb.Do(func(session *xorm.Session) {
-		err = session.Table("m_training_tree_cell_content").Where("id = ?", treeMapping.TrainingTreeCellContentMId).OrderBy("cell_id").Find(&treeMapping.TrainingTreeCellContents)
-	})
-	utils.CheckErr(err)
+	if !detailsLoaded {
+		gamedata.MasterdataDb.Do(func(session *xorm.Session) {
+			err = session.Table("m_training_tree_cell_content").Where("id = ?", treeMapping.TrainingTreeCellContentMId).OrderBy("cell_id").Find(&treeMapping.TrainingTreeCellContents)
+		})
+		utils.CheckErr(err)
+	}
 	for i := range treeMapping.TrainingTreeCellContents {
 		treeMapping.TrainingTreeCellContents[i].populate(gamedata)
 	}
@@ -55,8 +57,10 @@ func loadTrainingTreeMapping(gamedata *Gamedata) {
 		err = session.Table("m_training_tree_mapping").Find(&gamedata.TrainingTreeMapping)
 	})
 	utils.CheckErr(err)
+	detailsLoaded, err := loadTrainingMappingDetails(gamedata)
+	utils.CheckErr(err)
 	for _, treeMapping := range gamedata.TrainingTreeMapping {
-		treeMapping.populate(gamedata)
+		treeMapping.populate(gamedata, detailsLoaded)
 	}
 }
 

@@ -2,6 +2,11 @@
 
 const state = { tools: [], currentTool: null, es: null, jobId: null, lang: null, languages: [], deleteReview: null, formGeneration: 0, running: false };
 const $ = (s) => document.querySelector(s);
+// Only presentation is queued. SSE parsing, progress and job decisions remain
+// synchronous, and no raw line is summarized, retimed, deduplicated or dropped.
+const logView = { pending: [], characters: 0, frame: null, timer: null, epoch: 0, follow: true, top: 0 };
+const LOG_FLUSH_DELAY = 50;
+const LOG_PENDING_CHARACTERS = 64 * 1024;
 
 // append ?lang=/&lang= to a URL when a language is explicitly chosen (else the
 // server falls back to SIFAS_LANG / English).
@@ -41,7 +46,14 @@ const el = (tag, attrs = {}, children = []) => {
 
 async function init() {
   $("#cancel-btn").addEventListener("click", cancelRun);
-  $("#console-close").addEventListener("click", () => $("#console").classList.add("hidden"));
+  $("#console-close").addEventListener("click", () => { flushPendingLogs(); $("#console").classList.add("hidden"); });
+  $("#log").addEventListener("scroll", rememberLogScroll, { passive: true });
+  $("#log").addEventListener("pointerdown", flushPendingLogs);
+  $("#log").addEventListener("contextmenu", flushPendingLogs);
+  document.addEventListener("copy", flushPendingLogs);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) flushPendingLogs(); });
+  window.addEventListener("pagehide", flushPendingLogs);
+  window.addEventListener("beforeprint", flushPendingLogs);
   const saved = localStorage.getItem("sifas_lang");
   if (saved) state.lang = saved;
   await loadI18n();
@@ -420,7 +432,6 @@ function streamJob(jobId, context) {
     if (state.es !== es) return;
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === "log") {
-      appendLog(msg.line);
       if (context.toolId === "costume_delete") {
         const value = parseJobRecord(msg.line);
         if (value && sameRemovalIds(value, context.params)) {
@@ -435,6 +446,7 @@ function streamJob(jobId, context) {
             removalComplete = value;
         }
       }
+      appendLog(msg.line);
     }
     else if (msg.type === "progress") setProgress(msg.done, msg.total);
     else if (msg.type === "done") {
@@ -499,7 +511,7 @@ function requiresOriginalRemoval(plan) {
 
 function showJobLogButton() {
   return el("button", { type: "button", class: "removal-log", text: T("Show log"),
-    onclick: () => $("#console").classList.remove("hidden") });
+    onclick: showConsoleLog });
 }
 
 function showRemovalReview(plan) {
@@ -581,15 +593,26 @@ function showRemovalResult(result, status) {
 async function cancelRun() {
   if (!state.jobId) return;
   appendLog(T("[cancelling…]"));
-  try { await fetch("/api/jobs/" + state.jobId + "/cancel", { method: "POST" }); } catch {}
+  // Start the control request before spending any time rendering queued text.
+  const request = fetch("/api/jobs/" + state.jobId + "/cancel", { method: "POST" });
+  flushPendingLogs();
+  try { await request; } catch {}
 }
 
 function openConsole(title, phase = "running…") {
+  flushPendingLogs();
+  cancelLogFlush();
+  logView.epoch += 1;
+  logView.pending = []; logView.characters = 0;
+  logView.follow = true; logView.top = 0;
   $("#console").classList.remove("hidden");
   $("#console-title").textContent = title + " — " + T(phase);
   $("#log").textContent = ""; $("#cancel-btn").disabled = false; setProgress(0, 1);
 }
 function finishConsole(status, context = null, outcome = {}) {
+  // The final summary is enqueued by streamJob immediately before this call.
+  // It must be available for reading/copying before a terminal state is shown.
+  flushPendingLogs();
   let source = status === "done" ? "done ✓" : status === "cancelled" ? "cancelled" : "error ✗";
   if (context && context.toolId === "costume_delete") {
     if (context.params.action === "preview") {
@@ -609,7 +632,75 @@ function finishConsole(status, context = null, outcome = {}) {
   $("#console-title").textContent = (context ? context.toolLabel : state.currentTool ? state.currentTool.label : T("Job")) + " — " + T(source);
   $("#cancel-btn").disabled = true;
 }
-function appendLog(line) { const l = $("#log"); l.textContent += line + "\n"; l.scrollTop = l.scrollHeight; }
+function logIsVisible(log) {
+  return !document.hidden && !$("#console").classList.contains("hidden");
+}
+
+function rememberLogScroll() {
+  const log = $("#log");
+  if (!log || !logIsVisible(log)) return;
+  logView.follow = log.scrollHeight - log.scrollTop - log.clientHeight <= 2;
+  logView.top = log.scrollTop;
+}
+
+function cancelLogFlush() {
+  if (logView.frame !== null) window.cancelAnimationFrame(logView.frame);
+  if (logView.timer !== null) window.clearTimeout(logView.timer);
+  logView.frame = null; logView.timer = null;
+}
+
+function flushPendingLogs() {
+  cancelLogFlush();
+  if (!logView.pending.length) return;
+  const log = $("#log");
+  if (!log) return;
+  const visible = logIsVisible(log);
+  const top = visible ? log.scrollTop : logView.top;
+  // Read the user's latest position at flush time, including a scroll made
+  // after the first line was queued. Appending preserves existing selections.
+  const follow = visible ? log.scrollHeight - top - log.clientHeight <= 2 : logView.follow;
+  const text = logView.pending.join("");
+  logView.pending = []; logView.characters = 0;
+  log.appendChild(document.createTextNode(text));
+  logView.follow = follow;
+  if (visible) {
+    log.scrollTop = follow ? log.scrollHeight : top;
+    logView.top = log.scrollTop;
+  }
+}
+
+function showConsoleLog() {
+  flushPendingLogs();
+  $("#console").classList.remove("hidden");
+  const log = $("#log");
+  log.scrollTop = logView.follow ? log.scrollHeight : logView.top;
+  logView.top = log.scrollTop;
+}
+
+function appendLog(line) {
+  const text = String(line);
+  logView.pending.push(text + "\n");
+  logView.characters += text.length + 1;
+  const raw = text.replace(/^\[\+\s*\d+(?:\.\d+)?s\]\s*/, "");
+  const critical = raw.startsWith("ERROR:") || raw.startsWith(T("ERROR: ")) || raw.startsWith("Traceback (most recent call last):");
+  if (critical || document.hidden || logView.characters >= LOG_PENDING_CHARACTERS) {
+    flushPendingLogs();
+    return;
+  }
+  const issued = logView.epoch;
+  if (logView.frame === null) logView.frame = window.requestAnimationFrame(() => {
+    if (issued !== logView.epoch) return;
+    logView.frame = null;
+    flushPendingLogs();
+  });
+  // WebViews may stop delivering animation callbacks while obscured. The
+  // fallback and terminal flush keep already-received text available anyway.
+  if (logView.timer === null) logView.timer = window.setTimeout(() => {
+    if (issued !== logView.epoch) return;
+    logView.timer = null;
+    flushPendingLogs();
+  }, LOG_FLUSH_DELAY);
+}
 function setProgress(done, total) {
   const p = $("#progress"); p.max = total || 1; p.value = done || 0;
   $("#progress-text").textContent = total ? done + " / " + total : "";

@@ -157,11 +157,9 @@ def _display(db, member_id=209):
 
 def _encrypt(raw):
     # Exactly the client's fixed-key stream used by ordinary costume installs.
-    state = 12345
+    from sifas_asset_crypto import crypt_section
     output = bytearray(raw)
-    for index in range(len(output)):
-        output[index] ^= (state >> 24) & 255
-        state = (0x343FD * state + 0x269EC3) & 0xFFFFFFFF
+    crypt_section(output, 12345, 0, 0)
     return bytes(output)
 
 
