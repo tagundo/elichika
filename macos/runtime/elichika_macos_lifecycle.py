@@ -185,7 +185,7 @@ class ServerController:
         # Idle socket timeouts alone do not bound a peer which drips one byte
         # before each timeout. Bound headers, chunk framing and body together.
         deadline = time.monotonic() + 1.0
-        connection = http.client.HTTPConnection(address, port, timeout=.2)
+        connection = http.client.HTTPConnection(address, port, timeout=1.0)
         timer = None
         watchdog_socket = None
         expired = threading.Event()
