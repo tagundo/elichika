@@ -266,6 +266,7 @@ class ModelViewerRigTest {
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen))
         val quality = ViewerQualityNativeQa.exercise(webView, "neutral-rig-quality", 4, 4)
         val highQualityReference = quality.getString("hqReferenceFrame")
+        val qualityNativeViewport = nativeViewport(session)
         run(webView, "document.querySelector('.tab[data-tab=\"tools\"]').click();")
         assertFalse(state(webView).getBoolean("visible"))
         Thread.sleep(250)
@@ -275,6 +276,8 @@ class ModelViewerRigTest {
             "var s=ModelViewer.getState();return JSON.stringify({ok:s.visible&&s.loaded&&!s.loading,error:s.error,state:s});"
         }
         assertRetained(retainedState, state(webView))
+        val resumeGeometry = waitForRetainedFramebuffer(session, quality.getJSONObject("high"),
+            quality.getJSONObject("highDriver").getJSONObject("quality"), qualityNativeViewport)
         val afterTab = capture(webView, compare = highQualityReference)
         assertRestored("Returning to the viewer must retain its actual adjusted image", afterTab)
         recoverContext(webView)
@@ -313,7 +316,7 @@ class ModelViewerRigTest {
             .put("scrub", scrub).put("playing", playing).put("paused", paused)
             .put("independentPoseAndBodyPanels", independentPanels).put("separateExpressionPanel", expressionPanel)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen).put("highQuality3D", quality)
-            .put("afterTab", afterTab).put("afterContext", afterContext)
+            .put("retainedFramebufferGeometry", resumeGeometry).put("afterTab", afterTab).put("afterContext", afterContext)
             .put("modelMinimize", minimizedModel)
             .put("sourcePreserved", true).put("gameServerRemainedStopped", true)
         persistReport("model-viewer-rig-report.json", report)
@@ -1013,6 +1016,54 @@ class ModelViewerRigTest {
         waitForDom(webView, "actual native context restoration", 60) {
             "var s=ModelViewer.getState();return JSON.stringify({ok:!s.contextLost&&s.loaded&&!s.loading&&!document.getElementById('viewer-breast-preset').disabled&&" +
                 "!document.getElementById('viewer-pose-basic').disabled&&document.getElementById('viewer-pose-preview').disabled,state:s});"
+        }
+    }
+
+    /** A visible/loaded scene may still have a queued resize from section
+     * activation. Require the original exact pixel and CSS geometry before
+     * comparing the original frame; never replace its pixels or camera. */
+    private fun waitForRetainedFramebuffer(session: Session, reference: JSONObject,
+                                           quality: JSONObject, native: JSONObject): JSONObject {
+        val expected = JSONObject().put("width", reference.getInt("width")).put("height", reference.getInt("height"))
+            .put("cssWidth", quality.getDouble("cssWidth")).put("cssHeight", quality.getDouble("cssHeight"))
+            .put("nativePixelRatio", quality.getDouble("nativePixelRatio"))
+            .put("webViewWidth", native.getInt("webViewWidth")).put("webViewHeight", native.getInt("webViewHeight"))
+            .put("orientation", native.getInt("orientation")).put("selectedTab", native.getInt("selectedTab"))
+        val key = JSONObject.quote(System.nanoTime().toString())
+        try {
+            val observation = waitForDom(session.webView, "the original HQ framebuffer and native viewport in two coherent observations", 30) {
+                val currentNative = nativeViewport(session)
+                """
+                var s=ModelViewer.getState(),q=s.quality,stage=document.getElementById('viewer-stage'),canvas=document.getElementById('viewer-canvas');
+                var gl=canvas.getContext('webgl2')||canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+                var expected=$expected,native=$currentNative,box=stage.getBoundingClientRect();
+                var actual={cssWidth:stage.clientWidth,cssHeight:stage.clientHeight,stageLeft:box.left,stageTop:box.top,
+                  canvasWidth:canvas.width,canvasHeight:canvas.height,drawingWidth:gl&&gl.drawingBufferWidth,drawingHeight:gl&&gl.drawingBufferHeight,
+                  qualityWidth:q&&q.width,qualityHeight:q&&q.height,qualityCssWidth:q&&q.cssWidth,qualityCssHeight:q&&q.cssHeight,
+                  nativePixelRatio:devicePixelRatio,qualityNativePixelRatio:q&&q.nativePixelRatio,viewportWidth:innerWidth,viewportHeight:innerHeight,
+                  webViewWidth:native.webViewWidth,webViewHeight:native.webViewHeight,orientation:native.orientation,selectedTab:native.selectedTab};
+                var coherent=!!(s.visible&&s.loaded&&!s.loading&&!s.contextLost&&q&&q.ready&&q.enabled&&gl&&native.webViewAttached&&
+                  actual.cssWidth===expected.cssWidth&&actual.cssHeight===expected.cssHeight&&
+                  actual.qualityCssWidth===actual.cssWidth&&actual.qualityCssHeight===actual.cssHeight&&
+                  actual.canvasWidth===expected.width&&actual.canvasHeight===expected.height&&
+                  actual.drawingWidth===expected.width&&actual.drawingHeight===expected.height&&
+                  actual.qualityWidth===expected.width&&actual.qualityHeight===expected.height&&
+                  actual.nativePixelRatio===expected.nativePixelRatio&&actual.qualityNativePixelRatio===expected.nativePixelRatio&&
+                  actual.webViewWidth===expected.webViewWidth&&actual.webViewHeight===expected.webViewHeight&&
+                  actual.orientation===expected.orientation&&actual.selectedTab===expected.selectedTab);
+                var geometry=JSON.stringify(actual),prior=window.__nativeRigResumeGeometry;
+                var report={ok:!!(coherent&&prior&&prior.key===$key&&prior.geometry===geometry),coherent:coherent,
+                  expected:expected,actual:actual,scope:'Readiness only; the original strict framebuffer and camera oracle follows'};
+                window.__nativeRigResumeGeometry={key:$key,geometry:coherent?geometry:null,report:report};
+                return JSON.stringify(report);
+                """.trimIndent()
+            }
+            persistReport("model-viewer-rig-resume-geometry.json", observation)
+            return observation
+        } catch (failure: AssertionError) {
+            val last = evaluate(session.webView, "return JSON.stringify(window.__nativeRigResumeGeometry&&window.__nativeRigResumeGeometry.report||{ok:false,expected:$expected});")
+            persistReport("model-viewer-rig-resume-geometry.json", last)
+            throw failure
         }
     }
 
