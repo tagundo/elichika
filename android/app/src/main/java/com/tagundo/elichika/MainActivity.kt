@@ -654,7 +654,7 @@ class MainActivity : AppCompatActivity() {
                 if (fits) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, if (fits) 1f else 0f)
             statusText.layoutParams = (statusText.layoutParams as LinearLayout.LayoutParams).apply {
-                width = 0
+                width = ViewGroup.LayoutParams.WRAP_CONTENT
                 weight = 1f
             }
             navigation.layoutParams = LinearLayout.LayoutParams(
