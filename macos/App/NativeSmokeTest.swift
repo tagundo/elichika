@@ -896,7 +896,7 @@ final class NativeSmokeTest {
     }
 
     private func vertices(_ webView: WKWebView, expectedCount: Int = 6) async throws -> [[Double]] {
-        let result = try await object(webView, "return JSON.stringify(ViewerRigQa.deformedVertices());")
+        let result = try await object(webView, "return JSON.stringify(ViewerRigQa.deformedVertices(\(expectedCount)));")
         guard let values = result["vertices"] as? [[Double]], values.count == expectedCount else { throw NativeError.invalidResponse }
         return values
     }

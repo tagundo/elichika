@@ -444,12 +444,29 @@ class ViewerPersistenceTest {
             assertEquals(listOf("android", "ios"), (0 until catalog.getJSONArray("platforms").length()).map { catalog.getJSONArray("platforms").getString(it) })
             assertTrue(catalog.getInt("characters") > 0 && catalog.getInt("costumes") > 0)
             assertTrue("The shared modal must be visible outside the hidden 3D section", catalog.getDouble("dialogWidth") > 200 && catalog.getDouble("dialogHeight") > 200)
+            run(webView, "window.__nativeTransplantPaintFrames=0;requestAnimationFrame(function(){window.__nativeTransplantPaintFrames=1;" +
+                "requestAnimationFrame(function(){window.__nativeTransplantPaintFrames=2;});});")
+            val platformHit = waitForDom(webView, "the painted and directly usable $fieldName platform control", 30) {
+                "var d=document.getElementById('viewer-game-assets-dialog'),p=document.getElementById('viewer-game-platform'),r=p.getBoundingClientRect()," +
+                    "hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2),style=getComputedStyle(d);" +
+                    "return JSON.stringify({ok:window.__nativeTransplantPaintFrames===2&&d.open&&style.display!=='none'&&style.visibility!=='hidden'&&" +
+                    "!p.disabled&&r.width>=44&&r.height>=44&&r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1&&" +
+                    "!!hit&&d.contains(hit)&&(hit===p||p.contains(hit)),frames:window.__nativeTransplantPaintFrames,dialogOpen:d.open," +
+                    "platform:p.value,hitTag:hit&&hit.tagName,hitId:hit&&hit.id,hitInsideDialog:!!hit&&d.contains(hit)," +
+                    "left:r.left,top:r.top,width:r.width,height:r.height});"
+            }
+            catalog.put("nativePlatformHit", platformHit)
             if (fieldName == "donor") {
+                waitForWebViewVisualState(webView)
+                catalog.put("nativeVisualStateDrawn", true)
+                val image = instrumentation.uiAutomation.takeScreenshot()
+                    ?: throw AssertionError("The acknowledged native modal must produce a screenshot")
+                try {
+                    File(activity.cacheDir, "costume-transplant-picker.png").outputStream().use {
+                        assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it))
+                    }
+                } finally { image.recycle() }
                 run(webView, "var p=document.getElementById('viewer-game-platform');p.value='ios';p.dispatchEvent(new Event('change',{bubbles:true}));")
-                instrumentation.uiAutomation.takeScreenshot()?.let { image ->
-                    File(activity.cacheDir, "costume-transplant-picker.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                    image.recycle()
-                }
             }
             run(webView, if (fieldName == "donor") "document.querySelector('#viewer-game-assets-dialog .modal-head button').click();"
                 else "document.querySelector('#viewer-game-assets-dialog .viewer-game-assets-actions button:not(#viewer-game-import)').click();")
@@ -473,10 +490,37 @@ class ViewerPersistenceTest {
         }
         assertFalse("Donor and target titles must distinguish their destinations", dialogs.getJSONObject(0).getJSONObject("catalog").getString("title") == dialogs.getJSONObject(1).getJSONObject("catalog").getString("title"))
         assertGameStopped()
+        waitForWebViewVisualState(webView)
         return JSONObject().put("status", "PASS").put("scope", "Actual native buttons and local stock catalog; cancel only, no body download or transplant execution")
             .put("dialogs", dialogs).put("sameWebView", true).put("pendingNodeAndAccessoryPreserved", true)
             .put("modelTokenAndCameraPreserved", true).put("manualDraftsAndOptionsPreserved", true)
             .put("nativeToolsSelectionPreserved", true).put("unsubmittedPlatformNotRetained", true).put("bodyImportRequests", 0)
+    }
+
+    private fun waitForWebViewVisualState(webView: WebView) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val drawn = CountDownLatch(1)
+        val request = System.nanoTime()
+        instrumentation.runOnMainSync {
+            webView.postVisualStateCallback(request, object : WebView.VisualStateCallback() {
+                override fun onComplete(requestId: Long) {
+                    assertEquals(request, requestId)
+                    val observer = webView.viewTreeObserver
+                    val listener = object : android.view.ViewTreeObserver.OnDrawListener {
+                        override fun onDraw() {
+                            webView.post {
+                                if (observer.isAlive) observer.removeOnDrawListener(this)
+                                drawn.countDown()
+                            }
+                        }
+                    }
+                    observer.addOnDrawListener(listener)
+                    webView.invalidate()
+                }
+            })
+        }
+        assertTrue("The actual WebView must draw its acknowledged modal state", drawn.await(15, TimeUnit.SECONDS))
+        instrumentation.waitForIdleSync()
     }
 
     private val accessoryInspectionScript = """
