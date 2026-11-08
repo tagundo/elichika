@@ -37,6 +37,10 @@ class MeshWebViewTest {
     fun meshEditorLoadsAndWorksInTheInstalledWebView() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
+        if (InstrumentationRegistry.getArguments().getString("headerMeasurementDiagnosticOnly") == "true") {
+            HeaderMeasurementNativeQa.compare()
+            return
+        }
         if (InstrumentationRegistry.getArguments().getString("headerDiagnosticOnly") == "true") {
             compareNativeHeaderPolicies()
             return

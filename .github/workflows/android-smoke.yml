@@ -188,7 +188,7 @@ jobs:
           adb -s 127.0.0.1:5555 shell settings put system font_scale "$HEADER_DIAGNOSTIC_FONT_SCALE"
           adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
           adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e requireWideUi true -e headerDiagnosticOnly true -e expectedFontScale "$HEADER_DIAGNOSTIC_FONT_SCALE" \
+            -e requireWideUi true -e headerMeasurementDiagnosticOnly true -e expectedFontScale "$HEADER_DIAGNOSTIC_FONT_SCALE" \
             -e class com.tagundo.elichika.MeshWebViewTest \
             com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
             | tee evidence/native-header-diagnostic.txt
