@@ -9,6 +9,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.material.tabs.TabLayout
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -38,6 +39,7 @@ internal object HeaderMeasurementNativeQa {
             val status = launched.findViewById<TextView>(R.id.txt_status)
             val toggle = launched.findViewById<TextView>(R.id.btn_toggle)
             val progress = launched.findViewById<ProgressBar>(R.id.progress_preparing)
+            val tabs = launched.findViewById<TabLayout>(R.id.tabs)
             lateinit var controls: LinearLayout
             instrumentation.runOnMainSync {
                 assertFalse(Bus.serverRunning || Bus.serverStarting)
@@ -83,11 +85,14 @@ internal object HeaderMeasurementNativeQa {
                         .put("controlsWidth", controls.width).put("controlsHeight", controls.height)
                         .put("statusText", status.text).put("statusWidth", status.width).put("statusHeight", status.height)
                         .put("measuredWidth", status.measuredWidth).put("measuredHeight", status.measuredHeight)
+                        .put("statusLayoutWidth", status.layoutParams.width)
+                        .put("statusLayoutWeight", (status.layoutParams as LinearLayout.LayoutParams).weight)
                         .put("textLayoutWidth", layout.width).put("textLayoutHeight", layout.height)
                         .put("lineCount", layout.lineCount).put("contentHeight", contentHeight)
                         .put("fullyReadable", readable).put("strictOutcome", if (readable) "PASS" else "FAIL")
                         .put("widthsFit", widthsFit).put("ellipsesAbsent", ellipsesAbsent).put("lines", lines)
                         .put("headerOrientation", header.orientation)
+                        .put("tabLabels", JSONArray((0 until tabs.tabCount).map { tabs.getTabAt(it)?.text.toString() }))
                 }
                 return sample
             }
@@ -97,6 +102,11 @@ internal object HeaderMeasurementNativeQa {
                     toggle.text = strings.getString(R.string.start_server)
                     status.text = strings.getString(R.string.status_data_update_percent, 99)
                     progress.visibility = View.VISIBLE
+                    // Match the failing full HeaderLayoutNativeQa exactly.
+                    // English tabs fit at853 and would change inline mode,
+                    // invalidating the width-zero status measurement cache.
+                    val ids = listOf(R.string.tab_console, R.string.tab_webui, R.string.tab_user, R.string.tab_dev, R.string.tab_mod)
+                    ids.forEachIndexed { index, id -> tabs.getTabAt(index)!!.text = strings.getString(id) }
                 }
                 width(320); width(853)
                 mutate {
@@ -136,17 +146,44 @@ internal object HeaderMeasurementNativeQa {
                 repeats.put(capture("baseline-off-repeat-$it"))
             }
             report.put("baselineOffRepeats", repeats)
+            mutate {
+                status.layoutParams = (status.layoutParams as LinearLayout.LayoutParams).apply {
+                    width = android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                    weight = 1f
+                }
+            }
+            report.put("wrapContentWide", reproduce(true))
+            report.put("wrapContent", capture("wrap-content-weight1"))
+            val wrapRepeats = JSONArray()
+            repeat(3) {
+                reproduce(true)
+                wrapRepeats.put(capture("wrap-content-repeat-$it"))
+            }
+            report.put("wrapContentRepeats", wrapRepeats)
+            val wrapReadable = (0 until wrapRepeats.length()).all {
+                val value = wrapRepeats.getJSONObject(it)
+                value.getBoolean("fullyReadable") && value.getInt("statusLayoutWidth") == android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            }
+            report.put("wrapContentRepeatedStrictOutcome", if (wrapReadable) "PASS" else "FAIL")
             val repeatedReadable = (0 until repeats.length()).all { repeats.getJSONObject(it).getBoolean("fullyReadable") }
             report.put("baselineOffRepeatedStrictOutcome", if (repeatedReadable) "PASS" else "FAIL")
-            report.put("status", "DIAGNOSTIC_COMPLETED")
-            report.put("baselineReproduced", !baseline.getBoolean("fullyReadable"))
+            val baselineReproduced = !baseline.getBoolean("fullyReadable")
+            val sameVerticalPath = baselineWide.getInt("headerOrientation") == LinearLayout.VERTICAL &&
+                baseline.getInt("headerOrientation") == LinearLayout.VERTICAL
+            val valid = baselineReproduced && sameVerticalPath
+            report.put("status", if (valid) "VALID_DIAGNOSTIC_COMPLETED" else "INVALID_DIAGNOSTIC_BASELINE_NOT_REPRODUCED")
+                .put("sameVerticalPathAt853And320", sameVerticalPath)
+            report.put("baselineReproduced", baselineReproduced)
                 .put("forceLayoutReadable", forced.getBoolean("fullyReadable"))
                 .put("baselineOffReadable", noBaseline.getBoolean("fullyReadable"))
             println("HEADER_MEASUREMENT_DIAGNOSTIC=" + JSONObject().put("baselineReproduced", !baseline.getBoolean("fullyReadable"))
                 .put("forceLayoutReadable", forced.getBoolean("fullyReadable"))
                 .put("baselineOffReadable", noBaseline.getBoolean("fullyReadable")))
+            assertTrue("Invalid diagnostic: original JA tabs must keep both853 and320 headers vertical", sameVerticalPath)
+            assertTrue("Invalid diagnostic: the default frozen APK must reproduce the original text clip before evaluating fixes", baselineReproduced)
         } catch (failure: Throwable) {
-            report.put("status", "FAIL_DIAGNOSTIC").put("error", failure.toString())
+            if (!report.optString("status").startsWith("INVALID_DIAGNOSTIC")) report.put("status", "FAIL_DIAGNOSTIC")
+            report.put("error", failure.toString())
             throw failure
         } finally {
             evidence.writeText(report.toString(2))
