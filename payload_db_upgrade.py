@@ -38,6 +38,30 @@ class UpgradeError(ValueError):
     """A fixed, non-sensitive reason code."""
 
 
+def _progress(callback, stage, completed, total, current=""):
+    """Observe work only; a broken UI must never change transaction semantics."""
+    if callback is not None:
+        try:
+            # Only fixed stages, integer work counters and a file basename cross
+            # the native bridge. Database values and directory names stay local.
+            callback(stage, int(completed), max(1, int(total)), Path(current).name if current else "")
+        except BaseException:
+            # This includes observer cancellation/SystemExit: cancellation of a
+            # data operation needs its own transaction-aware API, not a UI hook.
+            pass
+
+
+def _progress_weights(paths):
+    weights = []
+    for path in paths:
+        try:
+            weights.append(max(1, path.stat().st_size))
+        except OSError:
+            # Observation must not replace the authoritative operation's error.
+            weights.append(1)
+    return weights
+
+
 def _require(condition, reason):
     if not condition:
         raise UpgradeError(reason)
@@ -120,7 +144,7 @@ def _snapshot(source, destination):
         raise UpgradeError("DATABASE_SNAPSHOT_FAILED") from None
 
 
-def _snapshot_batch(jobs):
+def _snapshot_batch(jobs, *, progress=None):
     """Finish independent, checked backups before publishing any certificates.
 
     Only this pre-merge phase uses workers. Each _snapshot opens and closes its
@@ -130,6 +154,16 @@ def _snapshot_batch(jobs):
     collection raises BaseException; preparation must not remove their tree
     while a worker could still write into it.
     """
+    weights = _progress_weights([job[0] for job in jobs]) if progress is not None else None
+    total, completed_weight = sum(weights) if weights else 1, 0
+    _progress(progress, "snapshot", 0, total)
+
+    def observed(index):
+        nonlocal completed_weight
+        if weights is not None:
+            completed_weight += weights[index]
+            _progress(progress, "snapshot", completed_weight, total, jobs[index][0].name)
+
     def run(job):
         source, destination, certificate_name = job
         _snapshot(source, destination)
@@ -137,10 +171,13 @@ def _snapshot_batch(jobs):
 
     if len(jobs) < 2:
         hashes = {}
-        for job in jobs:
+        for index, job in enumerate(jobs):
             digest = run(job)
             if job[2] is not None:
                 hashes[job[2]] = digest
+            observed(index)
+        if not jobs:
+            _progress(progress, "snapshot", 1, 1)
         return hashes
     digests, pending, submitted = [None] * len(jobs), {}, 0
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="payload-snapshot") as pool:
@@ -155,6 +192,7 @@ def _snapshot_batch(jobs):
                 for future in sorted(completed, key=pending.__getitem__):
                     index = pending.pop(future)
                     digests[index] = future.result()
+                    observed(index)  # Always on the maintenance owner thread.
                 while len(pending) < 2 and submitted < len(jobs):
                     pending[pool.submit(run, jobs[submitted])] = submitted
                     submitted += 1
@@ -379,12 +417,14 @@ def _merge_manifest(current, incoming, previous=None):
 
 
 def _merge_database(current, incoming, output, relative, prior, baseline, prior_files, next_files,
-                    *, current_snapshot_sha=None, identical_current=False, output_integrity_certificates=None):
+                    *, current_snapshot_sha=None, identical_current=False, output_integrity_certificates=None,
+                    progress=None):
     counts = {"inserted": 0, "advanced": 0, "owner_rows_preserved": 0, "unkeyed_tables_preserved": 0, "packages_refreshed": 0, "unchanged_stock_databases_reused": 0}
     has_current = bool(current and current.exists())
     identical_current = bool(identical_current and has_current and prior is None)
     old_path = output.with_name(output.name + ".official-previous")
     old = None
+    _progress(progress, "merging", 0, 1, relative)
     try:
         previous = _stock_record(prior, relative)
         unchanged_stock = bool(previous and previous[0] == _sha(incoming))
@@ -406,7 +446,11 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
             target.execute("BEGIN IMMEDIATE")
             changed_packages = set()
             tables = source.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
-            for table, sql in tables:
+            table_work = len(tables) + 2  # Final checks and stock archive also count.
+            for index, (table, sql) in enumerate(tables):
+                # Reporting at the next table also covers every early-continue
+                # branch, without changing a single SQL statement or its order.
+                _progress(progress, "merging", index, table_work, relative)
                 _require(sql and not sql.upper().startswith("CREATE VIRTUAL"), "VIRTUAL_SCHEMA_REQUIRES_REVIEW")
                 columns = _columns(source, table)
                 names = [row[1] for row in columns]
@@ -483,6 +527,7 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
                 if not exists:
                     for statement, in source.execute("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", (table,)):
                         target.execute(statement)
+            _progress(progress, "merging", len(tables), table_work, relative)
             if changed_packages:
                 _require(target.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='m_asset_package'").fetchone(), "PACKAGE_HEADER_MISSING")
                 _require(not target.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' AND tbl_name='m_asset_package' COLLATE NOCASE").fetchone(), "CUSTOM_TRIGGER_REQUIRES_REVIEW")
@@ -516,6 +561,7 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
                     _require(checked.execute("PRAGMA integrity_check").fetchall() == [("ok",)], "DATABASE_INTEGRITY_FAILED")
             elif output_integrity_certificates is not None:
                 output_integrity_certificates[relative] = current_snapshot_sha
+        _progress(progress, "merging", len(tables) + 1, table_work, relative)
         if unchanged_stock:
             next_files.mkdir(parents=True, exist_ok=True)
             copied = next_files / previous[2]
@@ -525,6 +571,7 @@ def _merge_database(current, incoming, output, relative, prior, baseline, prior_
             counts["unchanged_stock_databases_reused"] = 1
         else:
             _compress_stock(incoming, relative, baseline, next_files)
+        _progress(progress, "merging", table_work, table_work, relative)
         return counts
     except UpgradeError:
         raise
@@ -703,7 +750,8 @@ def _serialized(function):
 
 
 @_serialized
-def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="upgrade", *, expected_files=None):
+def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="upgrade", *, expected_files=None,
+                    progress=None):
     root, staged = _root(rootPath), Path(stagedPayloadPath).resolve()
     _require(mode in ("fresh", "reset", "upgrade"), "INVALID_UPGRADE_MODE")
     _require(isinstance(fromVersion, str) and isinstance(toVersion, str) and 0 < len(toVersion) <= 160, "INVALID_VERSION")
@@ -717,8 +765,18 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     dbs = [name for name in incoming if _is_database(name)]
     _require("serverdata.db" in dbs and any(name.startswith("assets/db/") for name in dbs), "INCOMING_DATABASE_SET_MISSING")
     _require(mode != "fresh" or not any(_is_database(path.relative_to(root).as_posix()) for name in MANAGED for path in _files(root / name)), "FRESH_RUNTIME_ALREADY_HAS_DATABASES")
+    _progress(progress, "validating", 0, 1)
     inputs = _inputs(root)
-    source_hashes = {name: _sha(path) for name, path in incoming.items()}
+    if progress is None:
+        source_hashes = {name: _sha(path) for name, path in incoming.items()}
+    else:
+        incoming_weights = dict(zip(incoming, _progress_weights(incoming.values())))
+        incoming_total, validated = sum(incoming_weights.values()) or 1, 0
+        source_hashes = {}
+        for name, path in incoming.items():
+            source_hashes[name] = _sha(path)
+            validated += incoming_weights[name]
+            _progress(progress, "validating", validated, incoming_total, path.name)
     if expected_files is not None:
         # This barrier precedes any new private work, space allocation or reuse
         # of an older preparation, without hashing the whole payload twice.
@@ -733,6 +791,7 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
     for candidate in sorted(transactions.glob("*/prepared.json")):
         prepared = json.loads(candidate.read_text())
         if prepared.get("inputs") == inputs and prepared.get("incoming") == source_hashes and prepared.get("from_version") == fromVersion and prepared.get("to_version") == toVersion and prepared.get("mode") == mode:
+            _progress(progress, "merging", 1, 1)
             return prepared["summary"]
     # Live snapshots and prepared copies coexist. New source files additionally
     # need their next-tree copy and a bounded stock archive, including on fresh
@@ -759,7 +818,8 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                     snapshot_jobs.append((source, backup / name, None))
                 else:
                     _copy_tree(source, backup, root, snapshot_hashes=snapshot_hashes, snapshot_jobs=snapshot_jobs)
-        snapshot_hashes.update(_snapshot_batch(snapshot_jobs))
+        snapshot_hashes.update(_snapshot_batch(snapshot_jobs) if progress is None
+                               else _snapshot_batch(snapshot_jobs, progress=progress))
         if mode == "upgrade":
             incoming_databases = frozenset(dbs)
             for name in MANAGED:
@@ -789,6 +849,9 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
         totals["backup_snapshot_databases"] = len(snapshot_jobs)
         totals["backup_snapshot_worker_limit"] = min(2, len(snapshot_jobs))
         manifest_versions = {}
+        merged_weight = 0
+        if progress is not None:
+            _progress(progress, "merging", 0, incoming_total)
         for relative, source in sorted(incoming.items()):
             destination = next_root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -800,11 +863,16 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                                      and _input_digest(inputs, relative) == source_hashes[relative]
                                      and all(_input_digest(inputs, relative + suffix) is None
                                              for suffix in ("-wal", "-journal")))
+                options = {"current_snapshot_sha": snapshot_hashes.get(relative),
+                           "identical_current": identical_current,
+                           "output_integrity_certificates": output_integrity_certificates}
+                if progress is not None:
+                    def database_progress(stage, completed, total, current):
+                        weighted = merged_weight + incoming_weights[relative] * completed // max(1, total)
+                        _progress(progress, "merging", weighted, incoming_total, current)
+                    options["progress"] = database_progress
                 result = _merge_database(current, source, destination, relative, prior, baseline,
-                                         root / BASELINE_FILES, next_root / BASELINE_FILES,
-                                         current_snapshot_sha=snapshot_hashes.get(relative),
-                                         identical_current=identical_current,
-                                         output_integrity_certificates=output_integrity_certificates)
+                                         root / BASELINE_FILES, next_root / BASELINE_FILES, **options)
                 for key, value in result.items():
                     totals[key] += value
             elif _is_manifest(relative):
@@ -821,6 +889,9 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                 destination.write_bytes(fresh)
             else:
                 shutil.copyfile(source, destination)
+            if progress is not None:
+                merged_weight += incoming_weights[relative]
+                _progress(progress, "merging", merged_weight, incoming_total, source.name)
         for relative in incoming:
             if _is_manifest(relative):
                 for name, _, _ in _read_manifest((next_root / relative).read_bytes())[2]:
@@ -834,10 +905,15 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
                       "jp_global_coverage": coverage}
         _atomic_json(next_root / DESCRIPTOR, descriptor)
         (next_root / MARKER).write_text(toVersion)
+        _progress(progress, "verifying", 0, 1000000)
         _sync_tree(backup)
+        _progress(progress, "verifying", 100000, 1000000)
         _sync_tree(next_root)
+        _progress(progress, "verifying", 200000, 1000000)
         _require(_inputs(root) == inputs, "LIVE_INPUT_CHANGED_DURING_PREPARE")
+        _progress(progress, "verifying", 300000, 1000000)
         _require(all(_sha(path) == source_hashes[name] for name, path in incoming.items()), "STAGED_INPUT_CHANGED_DURING_PREPARE")
+        _progress(progress, "verifying", 350000, 1000000)
         summary = {"status": "PREPARED", "transaction_id": identity, "mode": mode, "from_version": fromVersion,
                    "to_version": toVersion, "legacy_existing_rows_preserved": prior is None and mode == "upgrade", "counts": totals,
                    "rebased": (root / REBASE_FLAG).exists(),
@@ -864,6 +940,7 @@ def prepare_upgrade(rootPath, stagedPayloadPath, fromVersion, toVersion, mode="u
         totals["main_integrity_certificates_reused"] = len(output_integrity_certificates)
         _atomic_json(work / "prepared.json", data)
         _sync_directory(transactions)
+        _progress(progress, "verifying", 400000, 1000000)
         return summary
     except UpgradeError:
         shutil.rmtree(work, ignore_errors=True)
@@ -895,7 +972,7 @@ def _finish(root, work):
 
 
 @_serialized
-def recover_upgrade(rootPath):
+def recover_upgrade(rootPath, *, progress=None):
     root = _root(rootPath)
     journal_path = root / META / "journal.json"
     if not journal_path.exists():
@@ -905,14 +982,17 @@ def recover_upgrade(rootPath):
         work = _transaction(root, journal["transaction_id"])
         _require(type(journal.get("journal_version")) is int and journal["journal_version"] in (1, 2) and journal.get("state") in ("COMMITTING", "COMMITTED"), "INVALID_RECOVERY_JOURNAL")
         _validate_transaction_plan(journal, work, "INVALID_RECOVERY_JOURNAL")
+        recovery_total = len(journal["operations"]) + 1
+        _progress(progress, "recovering", 0, recovery_total)
         if journal["state"] == "COMMITTED" or _committed(root, journal):
             # Once durably committed, subsequent legitimate mod writes must not
             # turn leftover cleanup metadata into a rollback request.
             journal["state"] = "COMMITTED"
             _atomic_json(journal_path, journal)
             _finish(root, work)
+            _progress(progress, "recovering", recovery_total, recovery_total)
             return {"status": "COMMITTED", "to_version": journal["to_version"]}
-        for item in reversed(journal["operations"]):
+        for index, item in enumerate(reversed(journal["operations"])):
             if item.get("retain") is True:
                 continue
             relative = item["path"]
@@ -924,7 +1004,9 @@ def recover_upgrade(rootPath):
                 _sync_directory(live.parent)
             elif not item["had_old"] and not pending.exists():
                 _remove(live)
+            _progress(progress, "recovering", index + 1, recovery_total, relative)
         _finish(root, work)
+        _progress(progress, "recovering", recovery_total, recovery_total)
         return {"status": "ROLLED_BACK"}
     except UpgradeError:
         raise
@@ -933,7 +1015,7 @@ def recover_upgrade(rootPath):
 
 
 @_serialized
-def commit_upgrade(rootPath, transaction_id):
+def commit_upgrade(rootPath, transaction_id, *, progress=None):
     root = _root(rootPath)
     work = _transaction(root, transaction_id)
     _require(not (root / META / "journal.json").exists(), "RECOVERY_REQUIRED")
@@ -941,15 +1023,21 @@ def commit_upgrade(rootPath, transaction_id):
         data = json.loads((work / "prepared.json").read_text())
         _require(data.get("transaction_id") == transaction_id, "INVALID_TRANSACTION")
         version = _validate_transaction_plan(data, work, "INVALID_TRANSACTION")
+        _progress(progress, "verifying", 500000, 1000000)
         _require(_inputs(root) == data["inputs"], "LIVE_INPUT_CHANGED_BEFORE_COMMIT")
+        _progress(progress, "verifying", 650000, 1000000)
         _require(all(_fingerprint(work / "next" / item["path"]) == item["new"] for item in data["operations"] if item.get("retain") is not True), "PREPARED_PAYLOAD_CHANGED")
+        _progress(progress, "verifying", 900000, 1000000)
         for item in data["operations"]:
             (work / "rollback" / item["path"]).parent.mkdir(parents=True, exist_ok=True)
         _sync_tree(work / "rollback")
         _sync_directory(work)
+        _progress(progress, "verifying", 1000000, 1000000)
         data.update(journal_version=version, state="COMMITTING")
         _atomic_json(root / META / "journal.json", data)
-        for item in data["operations"]:
+        publishing_total = len(data["operations"]) + 2
+        _progress(progress, "publishing", 0, publishing_total)
+        for index, item in enumerate(data["operations"]):
             if item.get("retain") is True:
                 continue
             relative = item["path"]
@@ -971,18 +1059,22 @@ def commit_upgrade(rootPath, transaction_id):
                 live.parent.mkdir(parents=True, exist_ok=True)
                 _replace(pending, live)
                 _sync_directory(live.parent)
+            _progress(progress, "publishing", index + 1, publishing_total, relative)
         _require(_committed(root, data), "COMMITTED_PAYLOAD_VERIFICATION_FAILED")
         data["state"] = "COMMITTED"
         _atomic_json(root / META / "journal.json", data)
+        _progress(progress, "publishing", publishing_total - 1, publishing_total)
         _finish(root, work)
+        _progress(progress, "publishing", publishing_total, publishing_total)
+        _progress(progress, "complete", 1, 1)
         return dict(data["summary"], status="COMMITTED")
     except UpgradeError:
         if (root / META / "journal.json").exists():
-            recover_upgrade(root)
+            recover_upgrade(root) if progress is None else recover_upgrade(root, progress=progress)
         raise
     except Exception:
         if (root / META / "journal.json").exists():
-            recover_upgrade(root)
+            recover_upgrade(root) if progress is None else recover_upgrade(root, progress=progress)
         raise UpgradeError("UPGRADE_COMMIT_FAILED") from None
 
 
@@ -1012,16 +1104,23 @@ def request_rebase(rootPath, reason="database_restore"):
     return {"status": "REBASE_REQUIRED"}
 
 
-def apply_upgrade_json(root, staged, from_version, to_version, mode="upgrade", *, expected_files=None):
+def apply_upgrade_json(root, staged, from_version, to_version, mode="upgrade", *, expected_files=None,
+                       progress=None):
     @_serialized
     def apply(rootPath):
-        recover_upgrade(rootPath)
+        recover_upgrade(rootPath) if progress is None else recover_upgrade(rootPath, progress=progress)
+        _progress(progress, "validating", 0, 1)
         _validate_production_payload(rootPath, staged)
-        if expected_files is None:
+        if progress is not None:
+            prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode,
+                                       expected_files=expected_files, progress=progress)
+        elif expected_files is None:
             prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode)
         else:
             prepared = prepare_upgrade(rootPath, staged, from_version, to_version, mode,
                                        expected_files=expected_files)
         _validate_prepared_contract(_root(rootPath), prepared)
-        return commit_upgrade(rootPath, prepared["transaction_id"])
+        _progress(progress, "verifying", 500000, 1000000)
+        return (commit_upgrade(rootPath, prepared["transaction_id"]) if progress is None
+                else commit_upgrade(rootPath, prepared["transaction_id"], progress=progress))
     return _json_call(apply, root)

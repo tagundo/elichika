@@ -54,8 +54,16 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'unity_costumemod_packer','skin_tone_changer','texture_importer',
          'assetbundle_IosApk_batch_import_plus','fix_sifas_bundle_export',
          'database_backup','database_restore','costume_scene_installer','costume_scene_clones','costume_scene_sources',
-         'llas_asset_extractor','sifas_asset_crypto','elichika_macos_memory','elichika_macos']
+         'llas_asset_extractor','sifas_asset_crypto','payload_upgrade_progress','elichika_macos_memory','elichika_macos']
 for name in modules: importlib.import_module(name)
+from payload_upgrade_progress import ProgressReporter
+payload_progress=[]
+report_progress=ProgressReporter(lambda raw: payload_progress.append(json.loads(raw)))
+report_progress('merging',1,2,'asset_a_ko.db')
+report_progress('publishing',1,1,'')
+assert [item['percent'] for item in payload_progress] == [60,99]
+report_progress('complete',1,1,'')
+assert payload_progress[-1]['percent'] == 100
 from elichika_macos_memory import fresh_macos_memory_env, available_macos_memory_bytes
 memory_bytes=available_macos_memory_bytes()
 assert isinstance(memory_bytes,int) and memory_bytes>0

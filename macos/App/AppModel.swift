@@ -73,8 +73,26 @@ final class AppModel: ObservableObject {
 
     var toolsReady: Bool { connection != nil && process?.isRunning == true && snapshot.prepared && snapshot.phase != "error" && !stoppingRuntime }
     var canChangeStorage: Bool { !snapshot.busy && !snapshot.serverRunning && !quitting && !launching && !stoppingRuntime }
+    var preparationStatusTitle: String {
+        if snapshot.phase == "error" { return text("Preparation failed", "준비하지 못했습니다", "準備できませんでした") }
+        switch snapshot.progress?.stage {
+        case "recovering": return text("Checking interrupted updates…", "중단된 갱신 확인 중…", "中断された更新を確認中…")
+        case "copying_data": return text("Preparing game data…", "게임 데이터 준비 중…", "ゲームデータを準備中…")
+        case "validating": return text("Checking game data…", "게임 데이터 확인 중…", "ゲームデータを確認中…")
+        case "snapshot": return text("Backing up game data…", "게임 데이터 백업 중…", "ゲームデータをバックアップ中…")
+        case "merging": return text("Merging data and preserving mods…", "모드를 보존하며 DB 병합 중…", "Modを維持してデータを統合中…")
+        case "verifying": return text("Verifying updated data…", "병합 결과 검증 중…", "更新データを検証中…")
+        case "publishing": return text("Applying verified data…", "검증된 데이터 적용 중…", "検証済みデータを適用中…")
+        case "complete": return text("Game-data update complete", "게임 데이터 갱신 완료", "ゲームデータ更新完了")
+        case "same_data": return text("Game data is already current", "게임 데이터가 최신입니다", "ゲームデータは最新です")
+        default: return text("Preparing bundled tools…", "내장 도구 준비 중…", "内蔵ツールを準備中…")
+        }
+    }
     var serverStatusTitle: String {
-        if snapshot.serverRunning && snapshot.server?.httpReady != true { return text("Server starting…", "서버 시작 중…", "サーバー起動中…") }
+        if snapshot.phase == "preparing" {
+            return preparationStatusTitle + (snapshot.preparationPercent.map { " \($0)%" } ?? "")
+        }
+        if snapshot.serverLoading { return text("Server loading…", "서버 로딩 중…", "サーバー読み込み中…") }
         return snapshot.serverRunning ? text("Server running", "서버 실행 중", "サーバー実行中") : text("Server stopped", "서버 중지됨", "サーバー停止中")
     }
     var networkChanged: Bool { networkApplied != ServerNetworkConfig(serverAddress: serverAddressDraft, cdnServer: cdnServerDraft) }
@@ -191,6 +209,7 @@ final class AppModel: ObservableObject {
     private func runtimeExited(pid: Int32, status: Int32) {
         guard process?.processIdentifier == pid else { return }
         polling?.cancel()
+        snapshot.progress = nil
         launching = false
         if !quitting && !stoppingRuntime {
             message = NativeError.runtimeExited.localizedDescription
@@ -223,11 +242,14 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() async {
-        guard connection != nil, !quitting else { return }
+        guard connection != nil, !quitting, !stoppingRuntime else { return }
+        let runtimePID = process?.processIdentifier
         do {
             let previousGoURL = snapshot.server?.url
             let previousRunning = snapshot.serverRunning
-            snapshot = try JSONDecoder().decode(RuntimeState.self, from: await request("/v1/state"))
+            let updated = try JSONDecoder().decode(RuntimeState.self, from: await request("/v1/state"))
+            guard !quitting, !stoppingRuntime, process?.processIdentifier == runtimePID else { return }
+            snapshot = updated
             if previousGoURL != snapshot.server?.url || previousRunning != snapshot.serverRunning { clearGoBrowsers() }
             if snapshot.prepared && networkApplied == nil { await loadNetworkConfig() }
             let logs = try JSONDecoder().decode(RuntimeLogs.self, from: await request("/v1/logs?after=\(logCursor)"))
@@ -412,6 +434,7 @@ final class AppModel: ObservableObject {
             return
         }
         stoppingRuntime = true
+        snapshot.progress = nil
         defer { stoppingRuntime = false }
         polling?.cancel()
         if connection != nil && process?.isRunning == true {

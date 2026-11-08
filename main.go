@@ -106,7 +106,9 @@ func main() {
 	log.Println("server address: ", *config.Conf.ServerAddress)
 	log.Println("WebUI address: ", *config.Conf.ServerAddress+"/webui/...")
 	go func() {
-		r.Run(*config.Conf.ServerAddress)
+		if err := r.Run(*config.Conf.ServerAddress); err != nil {
+			log.Panic(err)
+		}
 	}()
 	shutdown.ReceiveFinalSignal()
 }

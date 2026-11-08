@@ -373,7 +373,7 @@ class Runtime:
         self._prepared = False
         self._phase = "preparing"
         self._error = None
-        self._progress = {"completed": 0, "total": 1}
+        self._progress = {"stage": "preparing", "completed": 0, "total": 1}
         self._detail = "Preparing server files…"
         self._last_progress_write = 0
         self._servers, self._threads = {}, []
@@ -384,17 +384,49 @@ class Runtime:
         self.controller = ServerController(self.binary, self.data, log=self.logs.write,
                                            ready=lambda: self._prepared and not self.stop_event.is_set())
 
-    def _progress_update(self, phase, completed, total):
+    def _progress_update(self, stage, completed, total, current=""):
+        details = {
+            "recovering": "Checking interrupted updates…", "copying_data": "Preparing game data…",
+            "same_data": "Game data is already current.", "validating": "Checking game data…",
+            "snapshot": "Backing up game data…", "merging": "Updating game data while preserving installed mods…",
+            "verifying": "Verifying updated game data…", "publishing": "Applying verified game data…",
+            "complete": "Game-data update complete.",
+        }
         with self._lock:
-            self._detail = {
-                "recovering": "Checking interrupted updates…", "copying_data": "Preparing game data…",
-                "same_data": "Game data is already current.",
-                "preserving_mods": "Updating game data while preserving installed mods…",
-            }.get(phase, phase)
-            self._progress = {"completed": completed, "total": total}
-        if self.state_file and (completed == total or time.monotonic() - self._last_progress_write > .25):
-            self._last_progress_write = time.monotonic()
-            self._write_state()
+            if self.stop_event.is_set() or self._phase != "preparing":
+                return
+        from payload_upgrade_progress import make_record
+        if stage not in details or (stage == "complete" and (completed, total) != (1, 1)):
+            return
+        # Copying precedes the shared DB stages; use the same admission budget
+        # as recovery rather than inventing an independent 0..100 scale.
+        record = make_record("recovering" if stage == "copying_data" else stage,
+                             completed, total, current)
+        if stage == "same_data":
+            record = {"stage": stage, "completed": 1, "total": 1, "current": "", "percent": None}
+        elif record is not None:
+            record["stage"] = stage
+        if record is None:
+            return
+        with self._lock:
+            if self.stop_event.is_set() or self._phase != "preparing":
+                return
+            self._detail = details[stage]
+            previous = self._progress.get("percent") if self._progress else None
+            if previous == 100 and stage != "complete":
+                return
+            if previous is not None and record.get("percent") is not None:
+                record["percent"] = max(previous, record["percent"])
+            self._progress = record
+            now = time.monotonic()
+            write = self.state_file and (completed == total or now - self._last_progress_write > .25)
+            if write:
+                self._last_progress_write = now
+        if write:
+            try:
+                self._write_state()
+            except BaseException:
+                pass  # A UI state-file failure must not abort a database update.
 
     def state(self):
         with self._lock:
@@ -403,7 +435,7 @@ class Runtime:
                 "phase": self._phase, "prepared": self._prepared,
                 "busy": self._phase == "preparing" or self.controller.busy(),
                 "server_running": server["running"], "error": self._error,
-                "detail": self._detail, "progress": dict(self._progress),
+                "detail": self._detail, "progress": dict(self._progress) if self._progress else None,
                 "server": server, "data_dir": str(self.data), "sukusta_dir": str(self.sukusta),
                 "runtime": {"pid": os.getpid(), "architecture": self.arch, "language": self.language},
             }
@@ -469,7 +501,7 @@ class Runtime:
             with self._lock:
                 self._prepared = True
                 self._phase, self._detail = "ready", "Ready."
-                self._progress = {"completed": 1, "total": 1}
+                self._progress = None
             self.logs.write("[setup] Ready. The game server is stopped.")
         except Exception as error:
             # Keep the database restore/backup tools available while refusing
@@ -484,6 +516,7 @@ class Runtime:
             with self._lock:
                 self._phase, self._error = "error", self.logs.redact(error)
                 self._detail = "Server preparation failed."
+                self._progress = None
             self.logs.write("[setup] " + str(error))
         finally:
             self._write_state()
@@ -542,6 +575,7 @@ class Runtime:
         self.stop_event.set()
         with self._lock:
             self._phase, self._detail = "stopping", "Stopping…"
+            self._progress = None
         if self._manager:
             with self._manager._lock:
                 for job in self._manager._jobs.values():

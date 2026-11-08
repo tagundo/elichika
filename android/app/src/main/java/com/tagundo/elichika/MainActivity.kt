@@ -343,20 +343,27 @@ class MainActivity : AppCompatActivity() {
         val preparing = phase == AssetInstaller.PreparationPhase.PREPARING ||
             phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA
         toggle.setText(if (running || Bus.serverStarting) R.string.stop_server else R.string.start_server)
+        val dataProgress = Bus.payloadProgress.takeIf { phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA }
         statusText.text = when {
+            dataProgress != null -> getString(R.string.status_data_update_percent, dataProgress.percent)
             phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA -> getString(R.string.status_updating_game_data)
             phase == AssetInstaller.PreparationPhase.PREPARING -> getString(R.string.status_preparing)
+            running && !Bus.serverReady -> getString(R.string.status_server_loading)
             running -> getString(R.string.status_running)
+            Bus.serverStartupFailed -> getString(R.string.status_server_start_failed)
             phase == AssetInstaller.PreparationPhase.FAILED -> getString(R.string.status_preparation_failed)
             Bus.serverStarting -> getString(R.string.status_starting)
             else -> getString(R.string.status_stopped)
         }
-        preparationProgress.visibility = if (preparing ||
+        statusText.contentDescription = dataProgress?.let {
+            getString(R.string.progress_work_detail, it.percent, PayloadProgress.stageLabel(this, it.stage), it.completed, it.total)
+        } ?: statusText.text
+        preparationProgress.visibility = if (preparing || (running && !Bus.serverReady) ||
             (Bus.serverStarting && phase != AssetInstaller.PreparationPhase.FAILED)) View.VISIBLE else View.GONE
         scheduleHeaderReflow()
         // If a web tab is showing the offline overlay and the server just came up,
         // swap the overlay for the (now reachable) page.
-        if ((running || (currentTab >= 3 && PyServers.isStarted())) &&
+        if (((running && Bus.serverReady) || (currentTab >= 3 && PyServers.isStarted())) &&
             tabs[currentTab].url != null && offlineOverlay.visibility == View.VISIBLE) {
             showTab(currentTab)
         }
@@ -668,7 +675,7 @@ class MainActivity : AppCompatActivity() {
             tab.url == null -> consolePanel.visibility = View.VISIBLE
             // The editors prepare independently. Server/account pages retain
             // their Start server action while the local tools show preparation.
-            !(if (index >= 3) PyServers.isStarted() else Bus.serverRunning) -> {
+            !(if (index >= 3) PyServers.isStarted() else Bus.serverReady) -> {
                 offlineOverlay.visibility = View.VISIBLE
                 if (index >= 3 && !PyServers.isPreparing() && !PyServers.hasPreparationError()) {
                     PyServers.prepareAsync(applicationContext)

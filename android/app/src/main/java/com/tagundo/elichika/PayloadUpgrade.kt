@@ -57,12 +57,18 @@ internal object PayloadUpgrade {
     }
 
     fun apply(context: Context, root: File, payload: File, from: String?, to: String,
-              mode: String, manifest: String) {
-        val result = invoke(context, "payload_revision", "apply_json", root.absolutePath,
-            payload.absolutePath, from.orEmpty(), to, mode, manifest)
-        requireStatus(result, setOf("COMMITTED"))
-        check(File(root, "installed_version").readText().trim() == to) {
-            "Game-data update did not publish its completion marker"
+              mode: String, manifest: String, progress: (PayloadProgress.State) -> Unit = {}) {
+        val session = PayloadProgress.Session(progress)
+        try {
+            val result = invoke(context, "elichika_launch", "apply_payload_with_progress", root.absolutePath,
+                payload.absolutePath, from.orEmpty(), to, mode, manifest, PayloadProgressObserver(session))
+            requireStatus(result, setOf("COMMITTED"))
+            check(File(root, "installed_version").readText().trim() == to) {
+                "Game-data update did not publish its completion marker"
+            }
+            session.committed()
+        } finally {
+            session.close()
         }
     }
 

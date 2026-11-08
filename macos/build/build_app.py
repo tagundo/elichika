@@ -44,7 +44,7 @@ def copy_python_sources(repo, destination):
         copy_tree(repo / "modtools/live_timeline", destination / "live_timeline", ignore=source_ignore)
     # The app's managed installation and path helpers always come from parent.
     for name in ("payload_db_upgrade.py", "database_maintenance.py", "payload_file_hash.py",
-                 "payload_revision.py", "sukusta_paths.py", "costume_management.py",
+                 "payload_revision.py", "payload_upgrade_progress.py", "sukusta_paths.py", "costume_management.py",
                  "costume_scene_installer.py", "costume_scene_clones.py", "costume_scene_sources.py",
                  "sifas_asset_crypto.py"):
         shutil.copy2(repo / name, destination / name)

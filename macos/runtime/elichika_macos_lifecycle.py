@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import http.client
 import json
 import ipaddress
 import os
 from pathlib import Path
 import signal
 import socket
+import secrets
 import subprocess
 import threading
 import time
@@ -131,8 +133,11 @@ class ServerController:
                 raise RuntimeError(f"Port {port} is already in use. The other process was left running.") from None
         # Inherit the Python-owned session so native fallback cleanup covers all
         # descendants, including legacy CLI and codec workers.
+        environment = fresh_macos_memory_env(os.environ)
+        ready_token = secrets.token_hex(16)
+        environment["ELICHIKA_READY_TOKEN"] = ready_token
         process = subprocess.Popen(
-            [str(self.binary)], cwd=self.data, env=fresh_macos_memory_env(os.environ),
+            [str(self.binary)], cwd=self.data, env=environment,
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
             close_fds=True, start_new_session=False)
@@ -156,21 +161,94 @@ class ServerController:
                         self._error = f"Server exited with code {code}. Check the console."
 
         def watch_http():
-            deadline = time.monotonic() + 180
-            while process.poll() is None and time.monotonic() < deadline:
-                try:
-                    with socket.create_connection((self._connection_host(host), port), timeout=.2):
-                        with self._lock:
-                            if self._process is process and process.poll() is None:
-                                self._http_ready = True
+            while process.poll() is None:
+                with self._lock:
+                    if self._closed or self._process is not process:
                         return
-                except OSError:
-                    time.sleep(.15)
+                if self._probe_http(host, port, ready_token):
+                    self._accept_http_ready(process)
+                    return
+                time.sleep(.15)
 
         threading.Thread(target=consume, name="go-console", daemon=True).start()
         threading.Thread(target=watch_http, name="go-readiness", daemon=True).start()
         self.log("[server] Starting…")
         return True
+
+    def _probe_http(self, host, port, ready_token):
+        addresses = [self._connection_host(host)]
+        if host == "localhost":
+            addresses.append("::1")
+        return any(self._probe_http_address(address, port, ready_token) for address in addresses)
+
+    def _probe_http_address(self, address, port, ready_token):
+        # Idle socket timeouts alone do not bound a peer which drips one byte
+        # before each timeout. Bound headers, chunk framing and body together.
+        deadline = time.monotonic() + 1.0
+        connection = http.client.HTTPConnection(address, port, timeout=.2)
+        timer = None
+        expired = threading.Event()
+        try:
+            connection.connect()
+            transport = connection.sock
+            if transport is None:
+                return False
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+
+            def expire():
+                expired.set()
+                try:
+                    transport.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+            # Shutdown also bounds getresponse() and chunk-header parsing,
+            # whose internal readline calls otherwise reset the idle timeout.
+            timer = threading.Timer(remaining, expire)
+            timer.daemon = True
+            timer.start()
+            connection.request("GET", "/_elichika/ready", headers={"Connection": "close"})
+            response = connection.getresponse()
+            if response.status != 200:
+                return False
+            blocks, count = [], 0
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or expired.is_set():
+                    return False
+                transport.settimeout(min(.2, remaining))
+                block = response.read1(min(256, 4097 - count))
+                if not block:
+                    break
+                count += len(block)
+                if count > 4096:
+                    return False
+                blocks.append(block)
+                if response.isclosed():
+                    break
+            if expired.is_set() or time.monotonic() >= deadline:
+                return False
+            value = json.loads(b"".join(blocks))
+            token = value.get("token") if isinstance(value, dict) else None
+            return (isinstance(value, dict) and set(value) == {"ready", "token"}
+                    and value["ready"] is True and isinstance(token, str)
+                    and len(token) == 32 and all(char in "0123456789abcdef" for char in token)
+                    and secrets.compare_digest(token, ready_token))
+        except (OSError, http.client.HTTPException, ValueError, UnicodeError):
+            return False
+        finally:
+            if timer is not None:
+                timer.cancel()
+            connection.close()
+
+    def _accept_http_ready(self, process):
+        with self._lock:
+            if not self._closed and self._process is process and process.poll() is None:
+                self._http_ready = True
+                return True
+        return False
 
     def _stop_locked(self):
         process = self._process

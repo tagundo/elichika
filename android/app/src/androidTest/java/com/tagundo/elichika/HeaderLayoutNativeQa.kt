@@ -128,12 +128,12 @@ internal object HeaderLayoutNativeQa {
         fun width(dp: Int) = mutate {
             header.layoutParams = header.layoutParams.apply { width = ceil(dp * density.toDouble()).toInt() }
         }
-        fun configure(language: String, statusId: Int, busy: Boolean, stopAction: Boolean = false) = mutate {
+        fun configure(language: String, statusId: Int, busy: Boolean, stopAction: Boolean = false, percent: Int? = null) = mutate {
             val configuration = Configuration(activity.resources.configuration).apply { setLocale(Locale(language)) }
             val strings = activity.createConfigurationContext(configuration).resources
             expectedToggle = strings.getString(if (stopAction) R.string.stop_server else R.string.start_server)
             toggle.text = expectedToggle
-            expectedStatus = strings.getString(statusId)
+            expectedStatus = if (percent == null) strings.getString(statusId) else strings.getString(statusId, percent)
             status.text = expectedStatus
             expectedProgress = if (busy) View.VISIBLE else View.GONE
             progress.visibility = expectedProgress
@@ -277,6 +277,14 @@ internal object HeaderLayoutNativeQa {
                     if (wide) {
                         for (dp in listOf(853, 1600)) { width(dp); check(language, scale, "updating", dp) }
                     }
+                    for (value in listOf(42, 99)) {
+                        configure(language, R.string.status_data_update_percent, true, percent = value)
+                        width(320); check(language, scale, "updating-$value", 320)
+                        if (wide) { width(853); check(language, scale, "updating-$value", 853) }
+                    }
+                    configure(language, R.string.status_server_loading, true, stopAction = true)
+                    width(320); check(language, scale, "server-loading", 320)
+                    if (wide) { width(853); check(language, scale, "server-loading", 853) }
                     configure(language, R.string.status_preparation_failed, false)
                     width(320); check(language, scale, "failed", 320)
                 }

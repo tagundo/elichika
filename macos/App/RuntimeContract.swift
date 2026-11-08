@@ -48,7 +48,29 @@ struct RuntimeState: Decodable {
     var progress: ProgressState?
     var server: ServerState?
 
-    struct ProgressState: Decodable { let completed: Int?; let total: Int? }
+    struct ProgressState: Decodable {
+        let stage: String?
+        let completed: Int?
+        let total: Int?
+        let current: String?
+
+        let percent: Int?
+
+        var displayPercent: Int? {
+            guard let stage, let completed, let total, let percent,
+                  total > 0, completed >= 0, completed <= total, (0...100).contains(percent) else { return nil }
+            if stage == "complete" { return completed == 1 && total == 1 && percent == 100 ? 100 : nil }
+            guard ["copying_data", "validating", "snapshot", "merging", "verifying", "publishing", "recovering"].contains(stage), percent < 100 else { return nil }
+            return percent
+        }
+    }
+
+    var serverLoading: Bool { serverRunning && server?.httpReady != true }
+
+    var preparationPercent: Int? {
+        guard phase == "preparing", !prepared else { return nil }
+        return progress?.displayPercent
+    }
     struct ServerState: Decodable {
         let running: Bool?
         let pid: Int?

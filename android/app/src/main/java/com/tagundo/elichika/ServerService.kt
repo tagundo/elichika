@@ -28,7 +28,7 @@ class ServerService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var workDir: File
     private val main = Handler(Looper.getMainLooper())
-    private var operation = 0L
+    @Volatile private var operation = 0L
     private var installing = false
     private var maintenance = false
     private var stopAfterMaintenance = false
@@ -59,6 +59,11 @@ class ServerService : Service() {
         getSharedPreferences(ServerSettings.PREFS, MODE_PRIVATE)
             .registerOnSharedPreferenceChangeListener(preferencesChanged)
         createChannel()
+        Bus.addListener(this, {}, {
+            if (current === this && !destroyed && !closing) {
+                getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification())
+            }
+        })
         // Claim the foreground immediately, then keep the main thread available
         // for console input and Stop while the large first-install copy runs.
         startForeground(NOTIF_ID, buildNotification())
@@ -220,11 +225,45 @@ class ServerService : Service() {
         Bus.setRunning(ok)
         if (ok) {
             Bus.log(getString(R.string.log_server_starting))
-            scheduleAutoStop()
+            awaitServerReadiness(token)
         } else {
             finishService()
         }
         return ok
+    }
+
+    private fun awaitServerReadiness(generation: Long) {
+        val launch = server.currentLaunch() ?: return
+        Thread({
+            val endpoints = runCatching {
+                ServerReadiness.endpoints(ServerConfig.read(workDir).optString("server_address", "0.0.0.0:8080"))
+            }.getOrDefault(emptyList())
+            val result = ServerReadiness.await(endpoints, launch.token, {
+                operation == generation && !destroyed && server.owns(launch)
+            })
+            main.post {
+                if (generation != operation || destroyed || closing || !server.owns(launch)) return@post
+                when (result) {
+                    ServerReadiness.Result.READY -> {
+                        Bus.setServerReady()
+                        Bus.log(getString(R.string.log_server_ready))
+                        scheduleAutoStop()
+                    }
+                    ServerReadiness.Result.TIMED_OUT -> {
+                        // Prevent the old exit callback or a delayed HTTP reply
+                        // from changing a later start's state.
+                        operation++
+                        val process = server.stop()
+                        Bus.setRunning(false)
+                        Bus.setServerStartupFailed()
+                        Bus.log(getString(R.string.log_server_ready_timeout))
+                        Thread { ServerProcess.awaitStopped(process) }.start()
+                        finishService()
+                    }
+                    ServerReadiness.Result.CANCELLED -> Unit
+                }
+            }
+        }, "elichika-http-ready").start()
     }
 
     private fun stopServer(stopSelfToo: Boolean) {
@@ -276,11 +315,6 @@ class ServerService : Service() {
 
     private fun preparationChanged(phase: AssetInstaller.PreparationPhase) {
         Bus.setPreparationPhase(phase)
-        main.post {
-            if (current === this && !destroyed && !closing) {
-                getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification())
-            }
-        }
     }
 
     private fun cancelAutoStop() {
@@ -291,6 +325,7 @@ class ServerService : Service() {
     private fun scheduleAutoStop() {
         cancelAutoStop()
         val minutes = ServerSettings.autoStopMinutes(this)
+        if (!Bus.serverReady) return
         if (minutes > 0) {
             val task = Runnable {
                 cancellation++
@@ -467,9 +502,13 @@ class ServerService : Service() {
         val phase = Bus.preparationPhase
         val preparing = phase == AssetInstaller.PreparationPhase.PREPARING ||
             phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA
+        val dataProgress = Bus.payloadProgress.takeIf { phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA }
         val text = when {
+            dataProgress != null -> getString(R.string.progress_work_detail, dataProgress.percent,
+                PayloadProgress.stageLabel(this, dataProgress.stage), dataProgress.completed, dataProgress.total)
             phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA -> getString(R.string.status_updating_game_data)
             initializing || preparing -> getString(R.string.notif_preparing_text)
+            Bus.serverRunning && !Bus.serverReady -> getString(R.string.status_server_loading)
             installing -> getString(R.string.notif_installing_text)
             minutes > 0 -> getString(R.string.notif_auto_stop, minutes)
             else -> getString(R.string.notif_text)
@@ -477,10 +516,12 @@ class ServerService : Service() {
         val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             Notification.Builder(this, CHANNEL) else @Suppress("DEPRECATION") Notification.Builder(this)
         val title = when {
-            initializing || preparing -> R.string.notif_preparing
+            initializing || preparing || (Bus.serverRunning && !Bus.serverReady) -> R.string.notif_preparing
             installing -> R.string.notif_installing
             else -> R.string.notif_running
         }
+        if (dataProgress != null) b.setProgress(100, dataProgress.percent, false)
+        else if (initializing || preparing || (Bus.serverRunning && !Bus.serverReady)) b.setProgress(0, 0, true)
         return b.setContentTitle(getString(title))
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_notification)
@@ -494,6 +535,7 @@ class ServerService : Service() {
 
     override fun onDestroy() {
         destroyed = true
+        Bus.removeListener(this)
         isReady = false
         pendingCommands.clear()
         operation++

@@ -13,6 +13,18 @@ import shutil
 import tempfile
 
 
+_ENGINE_PROGRESS_STAGES = frozenset({"validating", "snapshot", "merging", "verifying",
+                                     "publishing", "complete", "recovering"})
+
+
+def _report_progress(observer, stage, completed, total, current=""):
+    """Progress is observation only, including during a durable commit."""
+    try:
+        observer(stage, completed, total, current)
+    except BaseException:
+        pass
+
+
 def atomic_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
@@ -40,14 +52,27 @@ def install_payload(resources: Path, data: Path, progress=lambda *_: None) -> di
     if payload.is_symlink() or manifest_path.is_symlink():
         raise ValueError("BUNDLED_PAYLOAD_SYMLINK")
     manifest = payload_revision.parse_manifest(manifest_path.read_bytes())
+
+    def report(stage, completed, total, current=""):
+        _report_progress(progress, stage, completed, total, current)
+
+    completion_observed = False
+
+    def engine_progress(stage, completed, total, current=""):
+        nonlocal completion_observed
+        if stage == "complete":
+            completion_observed = (type(completed) is int and type(total) is int
+                                   and (completed, total) == (1, 1))
+        elif stage in _ENGINE_PROGRESS_STAGES:
+            report(stage, completed, total, current)
     with guard(data):
         from costume_management import assert_safe_to_start
         assert_safe_to_start(data)
-        progress("recovering", 0, 1)
-        payload_db_upgrade.recover_upgrade(data)
+        report("recovering", 0, 1)
+        payload_db_upgrade.recover_upgrade(data, progress=engine_progress)
         decision = payload_revision.decide(data, manifest)
         if decision["action"] == "skip":
-            progress("same_data", 1, 1)
+            report("same_data", 1, 1)
             return {"action": "skip", "revision": manifest["revision"]}
         incoming = data / ".payload-incoming"
         if incoming.is_symlink():
@@ -62,7 +87,7 @@ def install_payload(resources: Path, data: Path, progress=lambda *_: None) -> di
             files = manifest["files"]
             total = sum(record["bytes"] for record in files.values())
             copied = 0
-            progress("copying_data", copied, total)
+            report("copying_data", copied, total)
             for name, record in files.items():
                 source, target = payload / name, staged / name
                 if source.is_symlink() or not source.is_file():
@@ -73,15 +98,21 @@ def install_payload(resources: Path, data: Path, progress=lambda *_: None) -> di
                 shutil.copyfile(source, target)
                 target.chmod(0o600)
                 copied += record["bytes"]
-                progress("copying_data", copied, total)
-            progress("preserving_mods", 0, 1)
+                report("copying_data", copied, total)
             result = json.loads(payload_revision.apply_json(
                 str(data), str(staged), decision["from_version"],
                 manifest["revision"], decision["action"],
-                json.dumps(manifest, ensure_ascii=True)))
+                json.dumps(manifest, ensure_ascii=True), progress=engine_progress))
             if result.get("status") not in ("COMMITTED", "ALREADY_COMMITTED"):
                 raise ValueError(result.get("reason", "PAYLOAD_UPGRADE_FAILED"))
-            progress("preserving_mods", 1, 1)
+            try:
+                installed = (data / "installed_version").read_text().strip()
+            except OSError:
+                raise ValueError("PAYLOAD_COMPLETION_MARKER_MISMATCH") from None
+            if installed != manifest["revision"]:
+                raise ValueError("PAYLOAD_COMPLETION_MARKER_MISMATCH")
+            if completion_observed:
+                report("complete", 1, 1)
             return {"action": decision["action"], "revision": manifest["revision"]}
         finally:
             shutil.rmtree(staged, ignore_errors=True)

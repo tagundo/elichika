@@ -49,8 +49,22 @@
     <string name="cdn_off">CDN cache: OFF (tap to turn on)</string>
 
     <!-- server state -->
+    <string name="status_server_loading">Loading server…</string>
+    <string name="status_server_start_failed">Server startup failed · check the console</string>
+    <string name="log_server_ready">[server] ready to accept requests.</string>
+    <string name="log_server_ready_timeout">[server] startup did not become ready within 5 minutes; the server was stopped. Check the console and configured address/port.</string>
     <string name="status_starting">◌ starting…</string>
     <string name="status_preparing">Preparing server files…</string>
+    <string name="status_data_update_percent">Updating data %1$d%%</string>
+    <string name="progress_work_detail">%1$d%% · %2$s (%3$d/%4$d work units)</string>
+    <string name="log_setup_data_progress">[setup] data update %1$d%% · %2$s · %3$d/%4$d work units%5$s</string>
+    <string name="progress_recovering">Checking recovery</string>
+    <string name="progress_validating">Checking source data</string>
+    <string name="progress_snapshot">Backing up current data</string>
+    <string name="progress_merging">Merging data and installed mods</string>
+    <string name="progress_verifying">Verifying updated data</string>
+    <string name="progress_publishing">Publishing verified data</string>
+    <string name="progress_complete">Data update complete</string>
     <string name="status_updating_game_data">Updating game data while preserving installed mods…</string>
     <string name="status_preparation_failed">Preparation failed · check the console log</string>
 

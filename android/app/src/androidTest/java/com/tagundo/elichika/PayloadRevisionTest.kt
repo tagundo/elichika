@@ -45,6 +45,7 @@ class PayloadRevisionTest {
         assertEquals(beforeSettings + 1, f.settingsRuns)
         assertEquals("ko", ServerConfig.read(f.root).getString("locales"))
         assertFalse(f.phases.contains(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA))
+        assertTrue("A same-payload launch must never show update percentages", f.progress.all { it == null })
         assertEquals(AssetInstaller.PreparationPhase.IDLE, f.phases.last())
         assertFalse(File(f.root, ".payload-incoming").exists())
         println("ANDROID_PAYLOAD_REVISION_NOOP_PASS nominal_apk_versions=2 manifest_opens=1 bulk_opens=0 new_transactions=0 settings_applied=true owner_mod_preserved=true")
@@ -169,6 +170,50 @@ class PayloadRevisionTest {
         println("ANDROID_PAYLOAD_REVISION_RECOVERY_PASS recovery_before_manifest=true missing_refused=true malformed_refused=true owner_mod_preserved=true pending_costume_blocks_prep_reset_and_native_cli=true")
     }
 
+    @Test
+    fun changedPayloadReportsWorkAndAcknowledgesOnlyDurableCompletion() = fixture { f ->
+        f.prepare("synthetic-progress-first")
+        f.editOwnerRow()
+        f.source.files["payload/webui/index.html"] = "changed official progress fixture".toByteArray()
+        f.refreshManifest()
+        f.prepare("synthetic-progress-change")
+        val values = f.progress.filterNotNull()
+        assertTrue("Real Python apply_json must call the Java observer", values.size > 5)
+        assertTrue(values.any { it.stage == "merging" })
+        assertTrue(values.any { it.stage == "verifying" })
+        assertEquals(100, values.last().percent)
+        assertEquals(1, values.count { it.percent == 100 })
+        assertTrue(values.zipWithNext().all { (a, b) -> b.percent >= a.percent })
+        assertTrue(values.filter { it.stage != "complete" }.all { it.percent <= 99 })
+        assertTrue(values.all { !it.current.contains('/') && !it.current.contains('\\') })
+        assertTrue("100 requires the installed_version marker to be verified", f.completedMarkers.all { it })
+        assertEquals("owner override", f.ownerRow())
+        assertEquals(null, f.progress.last())
+        println("ANDROID_PAYLOAD_PROGRESS_COMMITTED_PASS observer=real_java_callback monotonic=true cap99=true marker_verified=true owner_mod_preserved=true")
+    }
+
+    @Test
+    fun lateMarkerFailureCannotPublish100AndClearsDisplay() = fixture { f ->
+        f.prepare("synthetic-progress-before-failure")
+        f.editOwnerRow()
+        val marker = File(f.root, "installed_version").readText()
+        f.source.files["payload/webui/index.html"] = "changed official failing fixture".toByteArray()
+        f.refreshManifest()
+        f.python("fail_marker", true)
+        try { failure { f.prepare("synthetic-progress-late-failure") } }
+        finally { f.python("fail_marker", false) }
+        assertTrue(f.progress.filterNotNull().isNotEmpty())
+        assertTrue("Failure must never display completion", f.progress.filterNotNull().all { it.percent < 100 })
+        assertEquals(null, f.progress.last())
+        assertEquals(AssetInstaller.PreparationPhase.FAILED, f.phases.last())
+        assertEquals(marker, File(f.root, "installed_version").readText())
+        assertEquals("owner override", f.ownerRow())
+        f.prepare("synthetic-progress-retry")
+        assertEquals(100, f.progress.filterNotNull().last().percent)
+        assertEquals("owner override", f.ownerRow())
+        println("ANDROID_PAYLOAD_PROGRESS_LATE_FAILURE_PASS before_marker=true completion_absent=true cleared=true retry_committed=true owner_mod_preserved=true")
+    }
+
     private class Source(val files: MutableMap<String, ByteArray>) : PayloadFiles.Source {
         val opened = mutableListOf<String>()
         var listCalls = 0
@@ -190,6 +235,8 @@ class PayloadRevisionTest {
         val root = File(directory, "runtime").apply { mkdir() }
         private val stock = File(directory, "source").apply { mkdir() }
         val phases = mutableListOf<AssetInstaller.PreparationPhase>()
+        val progress = mutableListOf<PayloadProgress.State?>()
+        val completedMarkers = mutableListOf<Boolean>()
         var settingsRuns = 0
         var locale = "en"
         private val python = EmbeddedPython.instance(context)
@@ -200,6 +247,14 @@ class PayloadRevisionTest {
                 import sqlite3
                 from pathlib import Path
                 import payload_db_upgrade as upgrade
+
+                original_replace = upgrade._replace
+                def fail_marker(enabled):
+                    def reject(source, destination):
+                        if Path(destination).name == 'installed_version' and Path(source).parent.name == 'next':
+                            raise OSError('synthetic marker publication failure')
+                        return original_replace(source, destination)
+                    upgrade._replace = reject if enabled else original_replace
 
                 def legacy(path):
                     root = Path(path)
@@ -259,7 +314,12 @@ class PayloadRevisionTest {
         fun transactions(): Set<String> = File(root, ".payload-upgrade/transactions").list()?.toSet().orEmpty()
         fun prepare(apkVersion: String, reset: Boolean = false) {
             phases.clear()
-            PayloadPreparation.prepare(context, root, source, apkVersion, reset, { phases.add(it) }, {}) {
+            progress.clear()
+            completedMarkers.clear()
+            PayloadPreparation.prepare(context, root, source, apkVersion, reset, { phases.add(it) }, {}, { state ->
+                progress.add(state)
+                if (state?.percent == 100) completedMarkers.add(File(root, "installed_version").readText() == revision())
+            }) {
                 settingsRuns++
                 ServerConfig.update(root) { it.put("locales", locale).put("settings_runs", settingsRuns) }
             }

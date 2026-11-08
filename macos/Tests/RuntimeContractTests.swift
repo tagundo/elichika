@@ -105,4 +105,40 @@ final class RuntimeContractTests: XCTestCase {
         gate.cleanupFinished()
         XCTAssertEqual(gate.request(), .cleanUp)
     }
+    func testPreparationUsesSharedPercentAndRequiresDurableCompletion() throws {
+        func state(_ phase: String = "preparing", stage: String = "merging", done: Int = 1, total: Int = 2, percent: Int = 60) throws -> RuntimeState {
+            let data = try JSONSerialization.data(withJSONObject: ["phase": phase, "prepared": false,
+                "progress": ["stage": stage, "completed": done, "total": total, "percent": percent, "current": "masterdata.db"]])
+            return try JSONDecoder().decode(RuntimeState.self, from: data)
+        }
+        let merging = try state()
+        XCTAssertEqual(merging.preparationPercent, 60)
+        XCTAssertFalse(merging.serverRunning)
+        XCTAssertNil(try state(stage: "publishing", done: 1, total: 1, percent: 100).preparationPercent)
+        XCTAssertNil(try state("error", stage: "complete", done: 1, total: 1, percent: 100).preparationPercent)
+        XCTAssertNil(try state("stopping", stage: "complete", done: 1, total: 1, percent: 100).preparationPercent)
+        XCTAssertNil(try state(stage: "complete", done: 0, total: 1, percent: 100).preparationPercent)
+        XCTAssertEqual(try state(stage: "complete", done: 1, total: 1, percent: 100).preparationPercent, 100)
+        XCTAssertNil(try state(stage: "unknown", percent: 60).preparationPercent)
+        XCTAssertNil(try state(done: -1).preparationPercent)
+        XCTAssertNil(try state(total: 0).preparationPercent)
+        XCTAssertNil(RuntimeState().preparationPercent)
+    }
+
+    func testServerProcessRemainsLoadingUntilHttpReadinessAndCanRemainStopped() throws {
+        func state(_ running: Bool, _ ready: Bool?) throws -> RuntimeState {
+            var server: [String: Any] = ["running": running]
+            if let ready { server["http_ready"] = ready }
+            let data = try JSONSerialization.data(withJSONObject: ["phase": "ready", "prepared": true,
+                "server_running": running, "server": server])
+            return try JSONDecoder().decode(RuntimeState.self, from: data)
+        }
+        XCTAssertTrue(try state(true, false).serverLoading)
+        XCTAssertTrue(try state(true, nil).serverLoading)
+        XCTAssertFalse(try state(true, true).serverLoading)
+        XCTAssertFalse(try state(false, false).serverLoading)
+        XCTAssertFalse(try state(false, true).serverLoading)
+        XCTAssertFalse(RuntimeState().serverLoading)
+    }
+
 }

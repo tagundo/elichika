@@ -255,6 +255,32 @@ def clone_crypto_checks():
             "shared_coefficient_calls": shared_calls}
 
 
+def payload_progress_checks():
+    """Exercise the packaged display protocol, without a database transaction."""
+    from payload_upgrade_progress import ProgressReporter
+
+    records = []
+    report = ProgressReporter(lambda value: records.append(json.loads(value)))
+    report("publishing", 1, 1, "/private/probe/masterdata.db")
+    assert records[-1]["percent"] == 99
+    assert records[-1]["current"] == "masterdata.db"
+    report("complete", 0, 1)
+    assert len(records) == 1, "Incomplete work was displayed as committed"
+    report("merging", 1, 1, "stale.db")
+    assert len(records) == 1, "Delayed progress changed the publishing state"
+    # The caller supplies this event only after accepting the durable commit;
+    # native host tests separately cover that transaction/marker boundary.
+    report("complete", 1, 1)
+    assert records[-1]["stage"] == "complete" and records[-1]["percent"] == 100
+    count = len(records)
+    report("recovering", 0, 1)
+    assert len(records) == count, "Late callbacks reopened completed progress"
+    return {"shared_module_import": True, "publishing_percent": 99,
+            "complete_percent": 100, "invalid_complete_ignored": True,
+            "stale_and_post_complete_ignored": True, "basename_only": True,
+            "scope": "Display protocol only; no database transaction or native UI"}
+
+
 def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     import ssl
     import ctypes
@@ -282,6 +308,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     assert preview_clips == ["ch0301_GEN_preview1_L"]
     clone_report = clone_bundle_checks(preview)
     clone_crypto_report = clone_crypto_checks()
+    payload_progress_report = payload_progress_checks()
 
     assert sys.version_info[:2] == (3, 13)
     assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
@@ -355,6 +382,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
             "bundled_suit_preview": True,
             "clone_bundle_isolation": True, "clone_bundle_report": clone_report,
             "clone_crypto_fast_path": clone_crypto_report,
+            "payload_upgrade_progress": payload_progress_report,
             "astc_sha256": hashlib.sha256(astc_data).hexdigest(), "astc_mean_error": round(float(difference), 3)}
 
 

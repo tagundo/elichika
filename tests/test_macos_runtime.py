@@ -210,7 +210,8 @@ class LifecycleTests(unittest.TestCase):
         fake = ("import http.server,json,pathlib;" +
                 "import os;pathlib.Path('go-env.json').write_text(json.dumps({k:os.environ.get(k) for k in ['HOME','PYTHONPATH','PYTHONNOUSERSITE','PYTHONSAFEPATH']}));" +
                 "port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1]);" +
-                "http.server.HTTPServer(('127.0.0.1',port),http.server.BaseHTTPRequestHandler).serve_forever()")
+                "handler=type('ReadyHandler',(http.server.BaseHTTPRequestHandler,),{'do_GET':lambda self:(self.send_response(200 if self.path=='/_elichika/ready' else 404),self.end_headers(),self.wfile.write(json.dumps({'ready':True,'token':os.environ.get('ELICHIKA_READY_TOKEN','')}).encode()))});" +
+                "http.server.HTTPServer(('127.0.0.1',port),handler).serve_forever()")
         self.binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -B -c " + shlex.quote(fake) + "\n")
         self.binary.chmod(0o755)
         self.controller = ServerController(self.binary, self.data, log=lambda _:None)
@@ -508,7 +509,8 @@ class IntegrationTests(unittest.TestCase):
         fake = ("import http.server,json,pathlib;" +
                 "import os;pathlib.Path('go-env.json').write_text(json.dumps({k:os.environ.get(k) for k in ['HOME','PYTHONPATH','PYTHONNOUSERSITE','PYTHONSAFEPATH']}));" +
                 "port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1]);" +
-                "http.server.HTTPServer(('127.0.0.1',port),http.server.BaseHTTPRequestHandler).serve_forever()")
+                "handler=type('ReadyHandler',(http.server.BaseHTTPRequestHandler,),{'do_GET':lambda self:(self.send_response(200 if self.path=='/_elichika/ready' else 404),self.end_headers(),self.wfile.write(json.dumps({'ready':True,'token':os.environ.get('ELICHIKA_READY_TOKEN','')}).encode()))});" +
+                "http.server.HTTPServer(('127.0.0.1',port),handler).serve_forever()")
         go.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -B -c " + shlex.quote(fake) + "\n")
         go.chmod(0o755)
         data = base / "Library/Application Support/Elichika"

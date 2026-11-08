@@ -87,9 +87,13 @@ struct RootView: View {
             .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Circle().fill(model.snapshot.serverRunning ? Color.green : Color.secondary).frame(width: 8, height: 8)
+                        if model.snapshot.serverLoading { ProgressView().controlSize(.small) }
+                        else { Circle().fill(model.snapshot.serverRunning ? Color.green : Color.secondary).frame(width: 8, height: 8) }
                         Text(model.serverStatusTitle)
                             .font(.caption)
+                    }
+                    if let percent = model.snapshot.preparationPercent {
+                        ProgressView(value: Double(percent), total: 100).controlSize(.small)
                     }
                     Button(model.snapshot.serverRunning ? model.text("Stop server", "서버 중지", "サーバー停止") : model.text("Start server", "서버 시작", "サーバー起動")) { model.toggleServer() }
                         .disabled(!model.toolsReady || model.snapshot.busy)
@@ -143,13 +147,9 @@ private struct PreparationView: View {
     @ObservedObject var model: AppModel
     var body: some View {
         VStack(spacing: 18) {
-            if model.snapshot.phase != "error" { ProgressView() }
-            Text(model.snapshot.phase == "error" ? model.text("Preparation failed", "준비하지 못했습니다", "準備できませんでした") : model.text("Preparing bundled tools…", "내장 도구를 준비하고 있습니다…", "内蔵ツールを準備しています…"))
-                .font(.title3)
-            if let progress = model.snapshot.progress, let done = progress.completed, let total = progress.total, total > 0 {
-                ProgressView(value: Double(done), total: Double(total)).frame(width: 300)
-                Text("\(done) / \(total)").font(.caption.monospacedDigit())
-            }
+            if model.snapshot.phase != "error" && model.snapshot.preparationPercent == nil { ProgressView() }
+            Text(model.preparationStatusTitle).font(.title3)
+            PreparationProgressView(model: model).frame(width: 300)
             Text(model.text("The game server can remain stopped while editing assets.", "에셋을 편집할 때 게임 서버를 실행할 필요는 없습니다.", "アセット編集中はゲームサーバーを停止したままにできます。"))
                 .foregroundStyle(.secondary)
             if model.snapshot.phase == "error" || (!model.launching && model.message != nil) {
@@ -157,6 +157,22 @@ private struct PreparationView: View {
                     .disabled(!model.canChangeStorage)
             }
         }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct PreparationProgressView: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        if let percent = model.snapshot.preparationPercent {
+            VStack(spacing: 6) {
+                ProgressView(value: Double(percent), total: 100)
+                HStack {
+                    Text(model.text("Game-data update progress", "게임 데이터 갱신 진행률", "ゲームデータ更新の進捗"))
+                    Spacer()
+                    Text("\(percent)%").monospacedDigit()
+                }.font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
@@ -182,7 +198,10 @@ private struct ServerView: View {
             HStack(spacing: 18) {
                 Image(systemName: "server.rack").font(.system(size: 40)).foregroundStyle(.pink)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(model.serverStatusTitle).font(.title2)
+                    HStack {
+                        Text(model.serverStatusTitle).font(.title2)
+                        if model.snapshot.serverLoading { ProgressView().controlSize(.small) }
+                    }
                     Text(model.toolsReady ? model.text("Tools are ready", "도구 준비 완료", "ツール準備完了") : model.text("Preparing tools…", "도구 준비 중…", "ツール準備中…")).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -196,6 +215,7 @@ private struct ServerView: View {
                     Button(model.text("Server settings", "서버 설정", "サーバー設定")) { model.selectedSection = .settings; model.showServerSettings = true }
                 }
             }
+            PreparationProgressView(model: model).frame(maxWidth: 420, alignment: .leading)
             Text(model.text("Console", "콘솔", "コンソール")).font(.headline)
             if !model.launching && model.process?.isRunning != true {
                 Button(model.text("Retry preparation", "준비 다시 시도", "準備を再試行")) { model.retryTools() }

@@ -368,7 +368,7 @@ def decide_json(root, manifest_json, reset=False):
         return json.dumps({'status': 'FAILED', 'reason': reason}, sort_keys=True)
 
 
-def apply_json(root, staged, from_version, to_version, mode, manifest_json):
+def apply_json(root, staged, from_version, to_version, mode, manifest_json, *, progress=None):
     """Publish a receipt only for the exact raw payload admitted by the APK.
 
     The engine compares this map with its existing incoming hash pass, before
@@ -379,6 +379,9 @@ def apply_json(root, staged, from_version, to_version, mode, manifest_json):
         manifest = parse_manifest(manifest_json)
         _require(to_version == manifest['revision'], 'REVISION_VERSION_MISMATCH')
         import payload_db_upgrade as engine
+        if progress is not None:
+            return engine.apply_upgrade_json(root, staged, from_version, to_version, mode,
+                                             expected_files=manifest['files'], progress=progress)
         return engine.apply_upgrade_json(root, staged, from_version, to_version, mode,
                                          expected_files=manifest['files'])
     except RevisionError as error:

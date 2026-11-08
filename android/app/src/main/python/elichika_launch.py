@@ -139,3 +139,11 @@ def start(server_cwd, sukusta_dir, lang="en", astcenc_bin=None, server_controlle
 
 def ports():
     return [ADMIN_PORT, MOD_PORT]
+
+
+def apply_payload_with_progress(root, payload, previous, revision, mode, manifest, observer):
+    """Keep Java callbacks display-only; the journal remains authoritative."""
+    from payload_revision import apply_json
+    from payload_upgrade_progress import ProgressReporter
+    return apply_json(root, payload, previous, revision, mode, manifest,
+                      progress=ProgressReporter(observer.onProgress))

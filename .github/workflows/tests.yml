@@ -56,6 +56,8 @@ jobs:
           python3 -m unittest discover -s tests -p test_payload_revision.py -v
           python3 -m unittest discover -s tests -p test_deterministic_serverdata.py -v
           python3 -m unittest discover -s tests -p test_payload_db_upgrade.py -v
+          python3 -m unittest discover -s tests -p test_payload_upgrade_progress.py -v
+          python3 -m unittest discover -s tests -p test_payload_progress_reporter.py -v
           python3 -m unittest discover -s tests -p test_database_maintenance.py -v
           python3 -m unittest discover -s tests -p test_restore_payload_rebase.py -v
           python3 -m unittest discover -s tests -p test_android_app_version.py -v

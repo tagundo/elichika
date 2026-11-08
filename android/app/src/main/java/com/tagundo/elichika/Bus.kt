@@ -24,10 +24,18 @@ object Bus {
 
     @Volatile var serverRunning = false
         private set
+    @Volatile var serverReady = false
+        private set
+    @Volatile var serverStartupFailed = false
+        private set
     @Volatile var serverStarting = false
         private set
     @Volatile var preparationPhase = AssetInstaller.PreparationPhase.IDLE
         private set
+
+    @Volatile internal var payloadProgress: PayloadProgress.State? = null
+        private set
+    private var progressDispatch: Runnable? = null
 
     private data class Listener(
         val log: (String) -> Unit,
@@ -84,16 +92,34 @@ object Bus {
     }
 
     fun setRunning(running: Boolean) {
+        val wasRunning = serverRunning
         serverRunning = running
+        if (!running || !wasRunning) serverReady = false
+        if (running) serverStartupFailed = false
         serverStarting = false
-        main.post { listeners.values.toList().forEach { it.state(running) } }
+        main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
+    }
+
+    fun setServerReady() {
+        if (!serverRunning) return
+        serverReady = true
+        serverStartupFailed = false
+        main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
+    }
+
+    fun setServerStartupFailed() {
+        serverReady = false
+        serverStartupFailed = true
+        main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
     }
 
     /** Includes queued starts while payload/Python preparation runs off-main. */
     fun setStarting(starting: Boolean) {
         serverStarting = starting
+        if (starting) serverStartupFailed = false
         if (starting && preparationPhase == AssetInstaller.PreparationPhase.FAILED) {
             preparationPhase = AssetInstaller.PreparationPhase.IDLE
+            setPayloadProgress(null)
         }
         main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
     }
@@ -101,7 +127,27 @@ object Bus {
     /** The installer owns this phase until its atomic work finishes, even after Stop. */
     fun setPreparationPhase(phase: AssetInstaller.PreparationPhase) {
         preparationPhase = phase
+        if (phase == AssetInstaller.PreparationPhase.IDLE || phase == AssetInstaller.PreparationPhase.FAILED) {
+            setPayloadProgress(null)
+        }
         main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
+    }
+
+    /** Replay the newest value after rotation; coalesce display work, never DB callbacks. */
+    @Synchronized internal fun setPayloadProgress(progress: PayloadProgress.State?) {
+        payloadProgress = progress
+        if (progress == null || progress.percent == 100) {
+            progressDispatch?.let { main.removeCallbacks(it) }
+            progressDispatch = null
+            main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
+        } else if (progressDispatch == null) {
+            val task = Runnable {
+                synchronized(this) { progressDispatch = null }
+                listeners.values.toList().forEach { it.state(serverRunning) }
+            }
+            progressDispatch = task
+            main.postDelayed(task, 150L)
+        }
     }
 
     /** Local editing tools may become ready while the game server stays stopped. */
