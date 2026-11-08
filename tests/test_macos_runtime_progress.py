@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
+import shlex
 import socket
 import sqlite3
 import sys
@@ -154,9 +156,21 @@ class MacReadinessTests(unittest.TestCase):
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
         (data / "config.json").write_text(json.dumps({"server_address": f"127.0.0.1:{port}"}))
-        controller = ServerController(data / "server", data, log=lambda _: None)
+        messages = []
+        controller = ServerController(data / "server", data, log=messages.append)
+        controller._test_log_messages = messages
         self.addCleanup(controller.close)
         return controller, data, port
+
+    def child_diagnostics(self, controller):
+        process = controller._process
+        return json.dumps({
+            "state": controller.state(),
+            "exit_code": process.poll() if process is not None else None,
+            "python": sys.executable,
+            "console_tail": [re.sub(r"\b[0-9a-f]{32}\b", "<nonce>", line)[:400]
+                             for line in controller._test_log_messages[-12:]],
+        }, sort_keys=True)
 
     def test_http_probe_requires_own_child_nonce_and_sends_no_token_in_request(self):
         controller, _, port = self.controller()
@@ -295,14 +309,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
   except (BrokenPipeError,ConnectionResetError):pass
 http.server.HTTPServer(('127.0.0.1',port),Handler).serve_forever()
 '''
-        controller.binary.write_text("#!" + sys.executable + "\n" + script)
+        controller.binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable)
+                                     + " -B -c " + shlex.quote(script) + "\n")
         controller.binary.chmod(0o700)
         controller.manual_start()
         old = controller._process
         deadline = time.monotonic() + 3
         while not (data / "drip-observed").exists() and time.monotonic() < deadline:
             time.sleep(.02)
-        self.assertTrue((data / "drip-observed").exists())
+        self.assertTrue((data / "drip-observed").exists(), self.child_diagnostics(controller))
         self.assertFalse(controller.state()["http_ready"])
         start = time.monotonic()
         controller.manual_stop()
@@ -314,7 +329,7 @@ http.server.HTTPServer(('127.0.0.1',port),Handler).serve_forever()
         deadline = time.monotonic() + 3
         while not controller.state()["http_ready"] and time.monotonic() < deadline:
             time.sleep(.02)
-        self.assertTrue(controller.state()["http_ready"])
+        self.assertTrue(controller.state()["http_ready"], self.child_diagnostics(controller))
         time.sleep(1.05)  # The old deadline cannot close a later child's connection.
         self.assertTrue(controller.state()["http_ready"])
         controller.manual_stop()
@@ -351,7 +366,8 @@ server=http.server.HTTPServer(('127.0.0.1',port),Handler)
 time.sleep(.5)
 server.serve_forever()
 '''
-        controller.binary.write_text("#!" + sys.executable + "\n" + script)
+        controller.binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable)
+                                     + " -B -c " + shlex.quote(script) + "\n")
         controller.binary.chmod(0o700)
         for _ in range(2):
             controller.manual_start()
@@ -363,7 +379,7 @@ server.serve_forever()
             deadline = time.monotonic() + 5
             while not controller.state()["http_ready"] and time.monotonic() < deadline:
                 time.sleep(.03)
-            self.assertTrue(controller.state()["http_ready"])
+            self.assertTrue(controller.state()["http_ready"], self.child_diagnostics(controller))
             self.assertEqual(controller.state()["status"], "running")
             controller.manual_stop()
             self.assertFalse(controller._accept_http_ready(process))
