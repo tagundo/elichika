@@ -267,17 +267,17 @@ class ModelViewerRigTest {
         val quality = ViewerQualityNativeQa.exercise(webView, "neutral-rig-quality", 4, 4)
         val highQualityReference = quality.getString("hqReferenceFrame")
         val qualityNativeViewport = nativeViewport(session)
-        run(webView, "document.querySelector('.tab[data-tab=\"tools\"]').click();")
-        assertFalse(state(webView).getBoolean("visible"))
-        Thread.sleep(250)
-        run(webView, "document.querySelector('.tab[data-tab=\"viewer\"]').click();" +
-            "if(!document.getElementById('tab-viewer').classList.contains('viewer-expanded'))document.getElementById('viewer-expand').click();")
-        waitForDom(webView, "the retained native rig tab") {
-            "var s=ModelViewer.getState();return JSON.stringify({ok:s.visible&&s.loaded&&!s.loading,error:s.error,state:s});"
-        }
+        val qualityPresentation = presentation(webView)
+        for (key in listOf("expanded", "fullscreen")) assertEquals("The recorded presentation must match the quality reference's $key",
+            quality.getJSONObject("finalState").getJSONObject("layout").get(key), qualityPresentation.getJSONObject("layout").get(key))
+        persistReport("model-viewer-rig-resume-geometry.json", JSONObject().put("status", "REFERENCE_CAPTURED")
+            .put("referencePresentation", qualityPresentation).put("referenceNativeViewport", qualityNativeViewport))
+        selectNativeAssetSection(session, MainActivity.TAB_ASSET_TOOLS, "tools")
+        selectNativeAssetSection(session, MainActivity.TAB_MODEL_VIEWER, "viewer")
+        val restoredPresentation = restorePresentation(webView, qualityPresentation)
         assertRetained(retainedState, state(webView))
         val resumeGeometry = waitForRetainedFramebuffer(session, quality.getJSONObject("high"),
-            quality.getJSONObject("highDriver").getJSONObject("quality"), qualityNativeViewport)
+            quality.getJSONObject("highDriver").getJSONObject("quality"), qualityNativeViewport, restoredPresentation)
         val afterTab = capture(webView, compare = highQualityReference)
         assertRestored("Returning to the viewer must retain its actual adjusted image", afterTab)
         recoverContext(webView)
@@ -316,6 +316,7 @@ class ModelViewerRigTest {
             .put("scrub", scrub).put("playing", playing).put("paused", paused)
             .put("independentPoseAndBodyPanels", independentPanels).put("separateExpressionPanel", expressionPanel)
             .put("collapsibleSections", sections).put("fullscreenViewport", fullscreen).put("highQuality3D", quality)
+            .put("restoredReferencePresentation", restoredPresentation)
             .put("retainedFramebufferGeometry", resumeGeometry).put("afterTab", afterTab).put("afterContext", afterContext)
             .put("modelMinimize", minimizedModel)
             .put("sourcePreserved", true).put("gameServerRemainedStopped", true)
@@ -1114,16 +1115,76 @@ class ModelViewerRigTest {
         }
     }
 
+    private fun presentation(webView: WebView): JSONObject = evaluate(webView,
+        "var s=ModelViewer.getState(),tab=document.getElementById('tab-viewer');return JSON.stringify({layout:s.layout," +
+            "classes:tab.className,expandedClass:tab.classList.contains('viewer-expanded'),fullscreenClass:tab.classList.contains('viewer-fullscreen')," +
+            "section:ElichikaNavigation.currentSection()});")
+
+    private fun selectNativeAssetSection(session: Session, id: String, section: String) {
+        val expectedIndex = AtomicReference<Int>()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val tab = NativeTabsQa.tab(session.activity, id)
+            expectedIndex.set(tab.position)
+            tab.select()
+        }
+        waitForDom(session.webView, "the native $section tab and its shared document acknowledgement", 30) {
+            val native = nativeViewport(session)
+            "var s=ModelViewer.getState(),native=$native;return JSON.stringify({ok:native.selectedTab===${expectedIndex.get()}&&" +
+                "native.webViewAttached&&ElichikaNavigation.currentSection()===${JSONObject.quote(section)}&&" +
+                "s.visible===${section == "viewer"}" + (if (section == "viewer") "&&s.loaded&&!s.loading" else "") +
+                ",native:native,presentation:{layout:s.layout,classes:document.getElementById('tab-viewer').className}});"
+        }
+    }
+
+    /** Native navigation intentionally exits presentation modes. Re-enter only
+     * the recorded mode through its real controls after both tabs acknowledge. */
+    private fun restorePresentation(webView: WebView, reference: JSONObject): JSONObject {
+        val before = presentation(webView)
+        val expected = reference.getJSONObject("layout")
+        val mode = expected.getString("fullscreen")
+        assertTrue("The native reference must use an observed supported fullscreen mode", mode in setOf("none", "native"))
+        assertFalse("A reference must not contain an unsettled fullscreen command", expected.getBoolean("fullscreenPending"))
+        val actions = JSONArray()
+        persistReport("model-viewer-rig-resume-geometry.json", JSONObject().put("status", "RESTORING_PRESENTATION")
+            .put("referencePresentation", reference).put("afterNativeAcknowledgement", before))
+        fun waitMode(value: String) = waitForDom(webView, "the recorded fullscreen presentation $value", 30) {
+            "var s=ModelViewer.getState();return JSON.stringify({ok:s.layout.fullscreen===${JSONObject.quote(value)}&&" +
+                "!s.layout.fullscreenPending&&s.visible&&s.loaded&&!s.loading,layout:s.layout});"
+        }
+        val currentMode = before.getJSONObject("layout").getString("fullscreen")
+        waitMode(currentMode)
+        if (currentMode != mode) {
+            if (currentMode != "none") { click(webView, "viewer-fullscreen"); actions.put("exit-fullscreen"); waitMode("none") }
+            if (mode != "none") { click(webView, "viewer-fullscreen"); actions.put("enter-" + mode); waitMode(mode) }
+        }
+        if (state(webView).getJSONObject("layout").getBoolean("expanded") != expected.getBoolean("expanded")) {
+            click(webView, "viewer-expand")
+            actions.put("expanded=" + expected.getBoolean("expanded"))
+        }
+        waitForDom(webView, "the original observed presentation after native navigation", 30) {
+            "var p=" + presentationScript + ",expected=$expected;return JSON.stringify({ok:" +
+                "p.section==='viewer'&&p.layout.fullscreen===expected.fullscreen&&!p.layout.fullscreenPending&&" +
+                "p.layout.expanded===expected.expanded&&p.expandedClass===expected.expanded,presentation:p});"
+        }
+        return JSONObject().put("reference", reference).put("afterNativeAcknowledgement", before)
+            .put("actions", actions).put("restored", presentation(webView))
+    }
+
+    private val presentationScript = "(function(){var s=ModelViewer.getState(),tab=document.getElementById('tab-viewer');" +
+        "return {layout:s.layout,classes:tab.className,expandedClass:tab.classList.contains('viewer-expanded')," +
+        "fullscreenClass:tab.classList.contains('viewer-fullscreen'),section:ElichikaNavigation.currentSection()};})()"
+
     /** A visible/loaded scene may still have a queued resize from section
      * activation. Require the original exact pixel and CSS geometry before
      * comparing the original frame; never replace its pixels or camera. */
     private fun waitForRetainedFramebuffer(session: Session, reference: JSONObject,
-                                           quality: JSONObject, native: JSONObject): JSONObject {
+                                           quality: JSONObject, native: JSONObject, presentation: JSONObject): JSONObject {
         val expected = JSONObject().put("width", reference.getInt("width")).put("height", reference.getInt("height"))
             .put("cssWidth", quality.getDouble("cssWidth")).put("cssHeight", quality.getDouble("cssHeight"))
             .put("nativePixelRatio", quality.getDouble("nativePixelRatio"))
             .put("webViewWidth", native.getInt("webViewWidth")).put("webViewHeight", native.getInt("webViewHeight"))
             .put("orientation", native.getInt("orientation")).put("selectedTab", native.getInt("selectedTab"))
+            .put("presentation", presentation)
         val key = JSONObject.quote(System.nanoTime().toString())
         try {
             val observation = waitForDom(session.webView, "the original HQ framebuffer and native viewport in two coherent observations", 30) {
@@ -1136,7 +1197,9 @@ class ModelViewerRigTest {
                   canvasWidth:canvas.width,canvasHeight:canvas.height,drawingWidth:gl&&gl.drawingBufferWidth,drawingHeight:gl&&gl.drawingBufferHeight,
                   qualityWidth:q&&q.width,qualityHeight:q&&q.height,qualityCssWidth:q&&q.cssWidth,qualityCssHeight:q&&q.cssHeight,
                   nativePixelRatio:devicePixelRatio,qualityNativePixelRatio:q&&q.nativePixelRatio,viewportWidth:innerWidth,viewportHeight:innerHeight,
-                  webViewWidth:native.webViewWidth,webViewHeight:native.webViewHeight,orientation:native.orientation,selectedTab:native.selectedTab};
+                  webViewWidth:native.webViewWidth,webViewHeight:native.webViewHeight,orientation:native.orientation,selectedTab:native.selectedTab,
+                  expanded:s.layout.expanded,fullscreen:s.layout.fullscreen,fullscreenPending:s.layout.fullscreenPending,
+                  classes:document.getElementById('tab-viewer').className,section:ElichikaNavigation.currentSection()};
                 var coherent=!!(s.visible&&s.loaded&&!s.loading&&!s.contextLost&&q&&q.ready&&q.enabled&&gl&&native.webViewAttached&&
                   actual.cssWidth===expected.cssWidth&&actual.cssHeight===expected.cssHeight&&
                   actual.qualityCssWidth===actual.cssWidth&&actual.qualityCssHeight===actual.cssHeight&&
@@ -1145,7 +1208,9 @@ class ModelViewerRigTest {
                   actual.qualityWidth===expected.width&&actual.qualityHeight===expected.height&&
                   actual.nativePixelRatio===expected.nativePixelRatio&&actual.qualityNativePixelRatio===expected.nativePixelRatio&&
                   actual.webViewWidth===expected.webViewWidth&&actual.webViewHeight===expected.webViewHeight&&
-                  actual.orientation===expected.orientation&&actual.selectedTab===expected.selectedTab);
+                  actual.orientation===expected.orientation&&actual.selectedTab===expected.selectedTab&&
+                  actual.expanded===expected.presentation.reference.layout.expanded&&
+                  actual.fullscreen===expected.presentation.reference.layout.fullscreen&&!actual.fullscreenPending&&actual.section==='viewer');
                 var geometry=JSON.stringify(actual),prior=window.__nativeRigResumeGeometry;
                 var report={ok:!!(coherent&&prior&&prior.key===$key&&prior.geometry===geometry),coherent:coherent,
                   expected:expected,actual:actual,scope:'Readiness only; the original strict framebuffer and camera oracle follows'};
