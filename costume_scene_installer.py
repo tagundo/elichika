@@ -9,7 +9,7 @@ for inspection instead of making an incomplete role family look installed.
 from __future__ import annotations
 
 import ast
-from contextlib import closing
+from contextlib import ExitStack, closing
 import copy
 import hashlib
 import json
@@ -846,9 +846,15 @@ def installed_scene_source(suit_id, *, root="."):
     managed = root / ".costume-management" / "sources"
     if not archive.is_relative_to(managed) or archive.suffix != ".zip":
         raise ValueError("The scene costume's preserved archive path is invalid.")
-    for item in receipt["owned_rows"]:
-        with closing(management_connect(root, item["db"])) as db:
-            if _selected(db, item["table"], item["key"]) != [item["row"]]:
+    # Reuse read-only handles for this verification only. Every owned row is
+    # still queried; no result or file proof survives into another operation.
+    with ExitStack() as stack:
+        databases = {}
+        for item in receipt["owned_rows"]:
+            relative = item["db"]
+            if relative not in databases:
+                databases[relative] = stack.enter_context(closing(management_connect(root, relative)))
+            if _selected(databases[relative], item["table"], item["key"]) != [item["row"]]:
                 raise ValueError("The installed scene costume changed; reopen its preserved original archive explicitly.")
     for item in receipt["owned_files"]:
         owned = _safe_file(item["path"])

@@ -12,7 +12,7 @@ from common import require, write_json
 
 
 PROBE = r'''
-import ast, importlib, importlib.util, io, json, os, pathlib, platform, socket, subprocess, sys, tempfile
+import ast, hashlib, importlib, importlib.util, io, json, os, pathlib, platform, socket, subprocess, sys, tempfile
 resources = pathlib.Path(sys.argv[1]).resolve()
 private = resources / 'runtime/arm64'
 python = private / 'python'
@@ -56,6 +56,30 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'database_backup','database_restore','costume_scene_installer','costume_scene_clones','costume_scene_sources',
          'llas_asset_extractor','elichika_macos']
 for name in modules: importlib.import_module(name)
+# Exercise the actual packaged arm64 NumPy path across its block boundary.
+# The scalar extractor is an independent byte-for-byte oracle; no game files
+# or installed data are used. Cache counters prove this is not the fallback.
+from costume_clone_assets import _crypt_section, _lcg_coefficients
+from llas_asset_extractor import decrypt_section, FIXED_KEY0
+crypto_input=bytes((index*37+11)&255 for index in range(65537))
+crypto_keys=(FIXED_KEY0,-2147483648,-1)
+crypto_expected=bytearray(crypto_input)
+decrypt_section(crypto_expected,*crypto_keys)
+crypto_actual=bytearray(crypto_input)
+crypto_before=_lcg_coefficients.cache_info()
+_crypt_section(crypto_actual,*crypto_keys)
+crypto_after=_lcg_coefficients.cache_info()
+assert crypto_after.hits+crypto_after.misses > crypto_before.hits+crypto_before.misses
+assert crypto_actual==crypto_expected
+crypto_coefficients=_lcg_coefficients()
+assert all(array.dtype==np.dtype('uint32') and len(array)==65536
+           and not array.flags.writeable for array in crypto_coefficients[:2])
+_crypt_section(crypto_actual,*crypto_keys)
+assert crypto_actual==crypto_input
+crypto_probe={'status':'PASS_ACCELERATED_SCALAR_EQUIVALENCE','bytes':len(crypto_input),
+    'signed_distinct_keys':True,'block_boundary_crossed':True,'accelerated_path_observed':True,
+    'immutable_coefficients':True,'round_trip':True,
+    'ciphertext_sha256':hashlib.sha256(crypto_expected).hexdigest()}
 # These original installer CLIs deliberately execute their interaction/job at
 # module scope. Their registered adapters load them only during an explicit job.
 # Validate packaged source without running an installation during import QA.
@@ -82,7 +106,7 @@ print('ELICHIKA_RUNTIME_PROBE=' + json.dumps({'status':'PASS','arch':platform.ma
     'python':platform.python_version(),'packages':packages,'registered_modules':modules,
     'interactive_installer_sources_compiled_not_executed':script_files,
     'private_prefix':True,'no_runtime_pip':True,'offline_imports':True,
-    'numpy_blas':True,'pillow_png':True,'lz4_brotli':True,'astc_encode_decode':True,
+    'numpy_blas':True,'clone_crypto':crypto_probe,'pillow_png':True,'lz4_brotli':True,'astc_encode_decode':True,
     'certificate_roots':context.cert_store_stats()['x509_ca']}))
 '''
 

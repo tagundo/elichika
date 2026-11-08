@@ -10,7 +10,7 @@ so you can run them with clicks instead of the Termux text menu.
 | **Backup Database** | `database_backup.py` | one click |
 | **Restore Database** | `database_restore.py` | pick a backup from the list |
 | **Costume Clone** | `costume_clone.py` | source → costume → check one or several target characters |
-| **Remove Costume / Clone** | `costume_management.py` | review affected records → back up and remove |
+| **Remove Costume / Clone** | `costume_management.py` | select one or several → review → confirm removal |
 
 Each shows a live log + progress and can stop the elichika server first (these
 tools modify the server's database files).
@@ -44,8 +44,25 @@ Options: `--host 0.0.0.0` (LAN), `--port 8772`, `--no-browser`.
   the writes. A database backup covers recovery from a partial commit failure.
   A batch backs up once, isolates each target separately, and reports completed,
   failed and unattempted targets without claiming the whole batch succeeded.
+  Exact source bundles and complete target-specific dependency maps reuse
+  immutable inspection and conversion results within that operation. Targets
+  retain separate model identities. Installed scene-source verification reuses
+  one read-only handle per database while still checking every owned row,
+  source file and preserved archive. No validation result is kept for a later
+  operation. Large clone sections use bounded NumPy blocks for the same XOR
+  stream; small sections or an absent NumPy use the original scalar codec.
+  Byte-for-byte oracle checks cover signed keys and block boundaries. All
+  regional masters, language/platform catalogs and ownership
+  records remain synchronized: the startup language setting controls loading,
+  and does not make other published client catalogs optional.
 - **Remove Costume / Clone** first reviews references and requires a second
-  removal action. Optional default replacement changes supported HOME/live/MV
+  removal action. Review completion explicitly means that nothing has been
+  removed. Select several checkboxes to review them together; the confirmation
+  applies to that exact selection and its reviewed options. A changed selection,
+  reference or owned record requires a new review. Real completion is displayed
+  only after the removal result arrives, then the installed list is refreshed.
+  The batch uses one combined review, backup and recovery journal. Optional
+  default replacement changes supported HOME/live/MV
   suit references while retaining their characters, cards, poses and other
   slots. It verifies the official per-character default and account ownership;
   ambiguous references remain blocked. The database snapshots and quarantined
@@ -58,8 +75,8 @@ Options: `--host 0.0.0.0` (LAN), `--port 8772`, `--no-browser`.
   re-editing does not lose its source. Legacy custom costumes
   require the stock index packaged from the clean initialized build; never
   generate that index from an installed, modded database.
-- Rina's corrected HOME scaling uses a scene Mod ZIP with separate HOME,
-  board-MV and unmasked-MV models. Reopen an old modified ZIP in the updated
+- Rina's corrected HOME scaling uses a shared board model for HOME and board-MV,
+  paired with the unmasked-MV model. Reopen an old modified ZIP in the updated
   viewer, save a new Mod ZIP, add it to the game and select the added costume.
   Existing installed costumes are not silently rewritten. The ZIP preserves
   canonical originals and edit recipes so repeat saves and Node/Mesh changes

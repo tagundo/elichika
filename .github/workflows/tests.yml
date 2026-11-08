@@ -44,7 +44,8 @@ jobs:
           python3 -m unittest discover -s tests -p test_admin_install_restart.py -v
           python3 -m unittest discover -s tests -p test_sukusta_paths.py -v
           python3 -m unittest discover -s tests -p test_android_python_launch.py -v
-          python3 -m unittest discover -s tests -p test_costume_management.py -v
+          python3 -m unittest discover -s tests -p 'test_costume_management*.py' -v
+          python3 -m unittest discover -s tests -p test_admin_costume_delete_flow.py -v
           python3 -m unittest discover -s tests -p test_costume_scene_installer.py -v
           python3 -m unittest discover -s tests -p test_costume_stock_build.py -v
           python3 -m adminui.selftest
@@ -160,6 +161,7 @@ jobs:
         run: |
           export NODE_PATH="$RUNNER_TEMP/viewer-browser/node_modules"
           mkdir -p "$EVIDENCE_DIR"
+          EVIDENCE_DIR="$EVIDENCE_DIR/costume-delete" node ../tests/adminui_costume_delete_browser.js
           python3 -m webtools --no-browser --host 127.0.0.1 --port 8898 > "$EVIDENCE_DIR/server.log" 2>&1 &
           viewer_server_pid=$!
           trap 'kill "$viewer_server_pid" 2>/dev/null || true' EXIT

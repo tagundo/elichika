@@ -6,6 +6,7 @@ identity. Model dependencies are private too, since face/animation bundles can
 contain mutable materials. Shader dependencies remain shared.
 """
 import hashlib
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,72 @@ REQUIRED_ASSET_CATALOGS = {
                 for language in ("en", "ko", "zh")),
     "jp": ("asset_a_ja.db", "asset_i_ja.db"),
 }
+
+
+_CRYPTO_BLOCK_SIZE = 65536
+_CRYPTO_FAST_MIN_SIZE = _CRYPTO_BLOCK_SIZE
+
+
+@lru_cache(maxsize=1)
+def _lcg_coefficients():
+    """Universal F^i(x) = A[i]*x+C[i] for one bounded uint32 block.
+
+    Only these input-independent coefficients are cached. Immutable byte-backed
+    views prevent a caller from accidentally modifying the shared arrays.
+    """
+    import numpy as np
+    multipliers = np.empty(_CRYPTO_BLOCK_SIZE, dtype=np.uint32)
+    increments = np.empty(_CRYPTO_BLOCK_SIZE, dtype=np.uint32)
+    multipliers[0], increments[0] = 1, 0
+    count, jump_a, jump_c = 1, 0x343fd, 0x269ec3
+    while count < _CRYPTO_BLOCK_SIZE:
+        # Copy F^(count+i), with i starting at zero. Each pass doubles
+        # the prefix; Python-int jump arithmetic is explicitly reduced.
+        multipliers[count:2 * count] = multipliers[:count] * np.uint32(jump_a)
+        increments[count:2 * count] = (increments[:count] * np.uint32(jump_a)
+                                     + np.uint32(jump_c))
+        count *= 2
+        jump_c = (jump_c * (jump_a + 1)) & 0xffffffff
+        jump_a = (jump_a * jump_a) & 0xffffffff
+    return (np.frombuffer(multipliers.tobytes(), dtype=np.uint32),
+            np.frombuffer(increments.tobytes(), dtype=np.uint32), jump_a, jump_c)
+
+
+def _crypt_section(data, key0, key1, key2):
+    """Exact scalar XOR stream, with bounded optional NumPy acceleration.
+
+    The scalar uses each seed's high byte before advancing the LCG. The first
+    affine entry is therefore identity, not F. Native uint32 array arithmetic
+    supplies the same modulo-2^32 wraparound as the reference implementation.
+    """
+    import llas_asset_extractor as extractor
+    if len(data) < _CRYPTO_FAST_MIN_SIZE:
+        return extractor.decrypt_section(data, key0, key1, key2)
+    try:
+        import numpy as np
+    except ModuleNotFoundError as exc:
+        if exc.name != "numpy":
+            raise
+        return extractor.decrypt_section(data, key0, key1, key2)
+    multipliers, increments, jump_a, jump_c = _lcg_coefficients()
+    keys = [int(key & 0xffffffff) for key in (key0, key1, key2)]
+    for offset in range(0, len(data), _CRYPTO_BLOCK_SIZE):
+        count = min(_CRYPTO_BLOCK_SIZE, len(data) - offset)
+        factors, additions = multipliers[:count], increments[:count]
+        stream = factors * np.uint32(keys[0])
+        np.add(stream, additions, out=stream)
+        if keys[1] != keys[2]:
+            other = factors * np.uint32(keys[1])
+            np.add(other, additions, out=other)
+            np.bitwise_xor(stream, other, out=stream)
+            np.multiply(factors, np.uint32(keys[2]), out=other)
+            np.add(other, additions, out=other)
+            np.bitwise_xor(stream, other, out=stream)
+        np.right_shift(stream, 24, out=stream)
+        view = np.frombuffer(data, dtype=np.uint8, count=count, offset=offset)
+        np.bitwise_xor(view, stream.astype(np.uint8), out=view)
+        if offset + count < len(data):
+            keys = [(jump_a * key + jump_c) & 0xffffffff for key in keys]
 
 
 def _cleanup_connections(connections, method):
@@ -76,6 +143,28 @@ def _runtime_names(data, namespace):
                     original = tree["m_AssetBundleName"]
                     result[original] = _runtime_name(namespace, sf.name, original)
     return result
+
+
+def _bundle_metadata(data):
+    """Inspect immutable source metadata once, never retaining mutable UnityPy files.
+
+    A native model commonly appears in three GL locale catalogs. Keeping just
+    the names/dependencies lets each catalog validate its own graph without
+    reparsing the same model. The isolator always receives original bytes and
+    creates its own mutable environment.
+    """
+    _, _, files = _bundle(data)
+    cabs, runtime, externals, dependencies = [], [], [], []
+    for sf in files:
+        cabs.append(sf.name)
+        externals.extend(external.path for external in sf.externals)
+        for obj in sf.objects.values():
+            if obj.type.name == "AssetBundle":
+                tree = obj.read_typetree()
+                if tree.get("m_AssetBundleName"):
+                    runtime.append((sf.name, tree["m_AssetBundleName"]))
+                dependencies.extend(tree.get("m_Dependencies", []))
+    return tuple(cabs), tuple(runtime), tuple(externals), tuple(dependencies)
 
 
 def isolate_bundle(data, namespace, _identities=None, _bundle_names=None):
@@ -319,9 +408,21 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared
         roots = extractor.build_pack_roots(os.getcwd(), [str(plan.destination)],
             [p for p, status in extractor.detect_game_candidates() if status == "found"])
         cache = {}
+        metadata_cache = {}
+        # Reuse immutable output only within this one clone/namespace. Two
+        # catalogs may share source bytes but have different private graphs;
+        # both final CAB and runtime dependency maps are part of the key.
+        isolated_cache = {}
+
+        def inspect(data):
+            if data not in metadata_cache:
+                metadata_cache[data] = _bundle_metadata(data)
+            return metadata_cache[data]
+
         for region, path, conn, models in catalogs:
             resolver = extractor.PackResolver(roots, str(plan.destination), extractor.DEFAULT_CDN_BASE, conn)
             originals = {}
+            source_descriptors = {}
             if shared_roots is not None:
                 plan.copied_source_packs[conn] = {
                     row["pack_name"] for old in models for row in _rows(conn, "member_model", "asset_path", old)}
@@ -353,6 +454,7 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared
                     raise ValueError("model " + old + " is missing from " + str(path))
                 pack, head, size, key1, key2 = row
                 descriptor = (pack, int(head), int(size), int(key1), int(key2))
+                source_descriptors[old] = descriptor
                 if descriptor not in cache:
                     source = resolver.resolve(pack)
                     if source is None:
@@ -364,9 +466,10 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared
                         data = bytearray(f.read(int(size)))
                     if len(data) != int(size):
                         raise ValueError("truncated source model pack: " + str(pack))
-                    extractor.decrypt_section(data, extractor.FIXED_KEY0, int(key1), int(key2))
-                    _cab_names(bytes(data))
-                    cache[descriptor] = bytes(data)
+                    _crypt_section(data, extractor.FIXED_KEY0, int(key1), int(key2))
+                    original = bytes(data)
+                    inspect(original)
+                    cache[descriptor] = original
                 originals[old] = cache[descriptor]
             identities = {}
             ambiguous_cabs = set()
@@ -378,16 +481,21 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared
             seen_cabs = set()
             for old, data in originals.items():
                 model_namespace = model_namespaces[old]
+                cabs, runtime, _, _ = inspect(data)
                 if shared_roots:
-                    owned_cabs = {name.lower() for name in _cab_names(data)}
+                    owned_cabs = {name.lower() for name in cabs}
                     if seen_cabs.intersection(owned_cabs):
                         raise ValueError("canonical clone has ambiguous duplicate physical model CABs")
                     seen_cabs.update(owned_cabs)
-                for original, renamed in _cab_mapping(_cab_names(data), model_namespace).items():
+                for original, renamed in _cab_mapping(cabs, model_namespace).items():
                     if original in identities and identities[original] != renamed:
                         ambiguous_cabs.add(original)
                     identities[original] = renamed
-                for original, renamed in _runtime_names(data, model_namespace).items():
+                # Preserve the standalone inspector's last-wins behavior for
+                # repeated runtime names within one physical bundle.
+                runtime_names = {original: _runtime_name(model_namespace, serialized_name, original)
+                                 for serialized_name, original in runtime}
+                for original, renamed in runtime_names.items():
                     if original in bundle_names and bundle_names[original] != renamed:
                         ambiguous_names.add(original)
                     bundle_names[original] = renamed
@@ -399,26 +507,31 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared
             # inputs. A dependency on such a name cannot be resolved safely.
             if ambiguous_names or ambiguous_cabs:
                 for data in originals.values():
-                    _, _, files = _bundle(data)
-                    for sf in files:
-                        if any(any(cab in external.path.lower() for cab in ambiguous_cabs)
-                               for external in sf.externals):
-                            raise ValueError("ambiguous private model CAB dependency")
-                        for obj in sf.objects.values():
-                            if obj.type.name == "AssetBundle" and ambiguous_names.intersection(
-                                    obj.read_typetree().get("m_Dependencies", [])):
-                                raise ValueError("ambiguous private model bundle dependency")
+                    _, _, externals, dependencies = inspect(data)
+                    if any(any(cab in external.lower() for cab in ambiguous_cabs)
+                           for external in externals):
+                        raise ValueError("ambiguous private model CAB dependency")
+                    if ambiguous_names.intersection(dependencies):
+                        raise ValueError("ambiguous private model bundle dependency")
             records = []
+            identity_key = tuple(sorted(identities.items()))
+            bundle_name_key = tuple(sorted(bundle_names.items()))
             for old, data in originals.items():
-                cloned = bytearray(isolate_bundle(data, model_namespaces[old],
-                                                  identities, bundle_names))
-                plain = bytes(cloned) if shared_roots else None
-                extractor.decrypt_section(cloned, extractor.FIXED_KEY0, 0, 0)
-                pack = "cc" + hashlib.sha256(cloned).hexdigest()[:30]
-                plan.packs[pack] = bytes(cloned)
+                key = (source_descriptors[old], data, model_namespaces[old],
+                       identity_key, bundle_name_key, (extractor.FIXED_KEY0, 0, 0))
+                if key not in isolated_cache:
+                    cloned = bytearray(isolate_bundle(data, model_namespaces[old],
+                                                      identities, bundle_names))
+                    plain = bytes(cloned) if shared_roots else None
+                    _crypt_section(cloned, extractor.FIXED_KEY0, 0, 0)
+                    encoded = bytes(cloned)
+                    pack = "cc" + hashlib.sha256(encoded).hexdigest()[:30]
+                    isolated_cache[key] = (pack, encoded, plain)
+                pack, encoded, plain = isolated_cache[key]
+                plan.packs[pack] = encoded
                 if shared_roots:
                     plan.plain_packs[pack] = plain
-                records.append((old, plan.models[region, old], pack, len(cloned)))
+                records.append((old, plan.models[region, old], pack, len(encoded)))
             plan.catalogs.append((conn, records, source_ids[region], new_id))
             log("prepared independent costume models: " + str(path))
         return plan

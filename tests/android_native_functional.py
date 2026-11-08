@@ -186,6 +186,45 @@ def clone_bundle_checks(preview):
             "source_sha256": hashlib.sha256(preview).hexdigest()}
 
 
+def clone_crypto_checks():
+    """Run the packaged vector path on native NumPy across block boundaries."""
+    import llas_asset_extractor as extractor
+    from costume_clone_assets import (_crypt_section, _lcg_coefficients,
+                                      _CRYPTO_FAST_MIN_SIZE)
+
+    size = 2 * 65536 + 137
+    assert size >= _CRYPTO_FAST_MIN_SIZE
+    plain = bytes((index * 73 + 19) & 255 for index in range(size))
+    cases = []
+    before = _lcg_coefficients.cache_info()
+    scalar = extractor.decrypt_section
+
+    def refuse_scalar(*args):
+        raise AssertionError("Native clone crypto probe unexpectedly used the scalar fallback")
+
+    for label, keys in (("signed-distinct", (12345, -2147483648, 2147483647)),
+                        ("equal-after-normalization", (0, -1, 4294967295))):
+        expected = bytearray(plain)
+        # The untouched scalar extractor is the independent byte oracle.
+        scalar(expected, *keys)
+        actual = bytearray(plain)
+        try:
+            extractor.decrypt_section = refuse_scalar
+            _crypt_section(actual, *keys)
+            assert actual == expected, "Native vector ciphertext differs from scalar oracle"
+            _crypt_section(actual, *keys)
+            assert actual == plain, "Native vector crypto roundtrip changed bytes"
+        finally:
+            extractor.decrypt_section = scalar
+        cases.append({"case": label, "bytes": size,
+                      "ciphertext_sha256": hashlib.sha256(expected).hexdigest()})
+    after = _lcg_coefficients.cache_info()
+    coefficient_calls = after.hits + after.misses - before.hits - before.misses
+    assert coefficient_calls == 4, "Native fast path did not use its coefficient table"
+    return {"fast_path_used": True, "scalar_oracle_match": True,
+            "roundtrip": True, "coefficient_calls": coefficient_calls, "cases": cases}
+
+
 def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     import ssl
     import ctypes
@@ -212,6 +251,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
     preview_clips = [obj.read().m_Name for obj in UnityPy.load(preview).objects if obj.type.name == "AnimationClip"]
     assert preview_clips == ["ch0301_GEN_preview1_L"]
     clone_report = clone_bundle_checks(preview)
+    clone_crypto_report = clone_crypto_checks()
 
     assert sys.version_info[:2] == (3, 13)
     assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
@@ -284,6 +324,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
             "adminui_and_webtools_imports": True, "astc_encode_decode": True,
             "bundled_suit_preview": True,
             "clone_bundle_isolation": True, "clone_bundle_report": clone_report,
+            "clone_crypto_fast_path": clone_crypto_report,
             "astc_sha256": hashlib.sha256(astc_data).hexdigest(), "astc_mean_error": round(float(difference), 3)}
 
 

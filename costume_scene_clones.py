@@ -3,7 +3,7 @@
 Execution resources follow each clone's private model graph. Authoring originals,
 recipes, goldens and the original donor proof remain byte-for-byte canonical.
 """
-from contextlib import closing
+from contextlib import ExitStack, closing
 import copy
 import hashlib
 from pathlib import Path
@@ -212,50 +212,60 @@ def resolve_canonical_clone_source(suit_id, *, root="."):
     scene = source["canonical_scene"]
     if receipt.get("state") != "committed" or type(scene) is not dict or scene.get("version") != 2:
         raise ValueError("This canonical clone has incomplete installation provenance.")
-    for item in receipt["owned_rows"]:
-        with closing(_connect(root, item["db"])) as db:
-            if _selected(db, item["table"], item["key"]) != [item["row"]]:
+    # Keep one validated read-only connection per DB during this single
+    # verification, including its later route/graph checks. Queries, native
+    # files and archive hashes are all rechecked on the next call.
+    with ExitStack() as stack:
+        databases = {}
+
+        def database(relative):
+            if relative not in databases:
+                databases[relative] = stack.enter_context(closing(_connect(root, relative)))
+            return databases[relative]
+
+        for item in receipt["owned_rows"]:
+            if _selected(database(item["db"]), item["table"], item["key"]) != [item["row"]]:
                 raise ValueError("The canonical clone's installed database rows changed.")
-    owned_files = [_owned_file(root, spec) for spec in receipt["owned_files"]]
-    for spec in owned_files:
-        _verify_file(spec)
-    archive = _safe_file(scene["archive_path"])
-    if archive.parent != root / ".costume-management/sources" or not any(
-            spec["path"] == str(archive) and spec["sha256"] == scene["package_sha256"] for spec in owned_files):
-        raise ValueError("The canonical clone does not own its preserved archive.")
-    decoded = read_package(archive, scene["package_sha256"])
-    manifest = decoded["manifest"]
-    _shared(manifest)
-    if manifest != scene["manifest"]:
-        raise ValueError("The canonical clone's preserved metadata changed.")
-    target, variant = manifest["target_member_id"], manifest["default_variant"]
-    if target != source["target_member_id"]:
-        raise ValueError("The canonical clone owner disagrees with its archive.")
-    canonical, runtime = scene["canonical_model_paths"], scene["runtime_model_paths"]
-    if set(canonical) != {"gl", "jp"} or canonical["gl"] != canonical["jp"] or any(
-            set(f) != {"primary", "unmasked"} or len(set(f.values())) != 2 for f in canonical.values()):
-        raise ValueError("The canonical clone's physical model authority is invalid.")
-    selected = canonical["gl"][variant]
-    if runtime != dict(navi_board=selected, mv_board=selected, mv_unmasked=canonical["gl"]["unmasked"]):
-        raise ValueError("The canonical clone's selected model routes are invalid.")
-    import llas_asset_extractor as extractor
-    packs = {Path(item["path"]).name: item for item in owned_files if item["role"] == "pack"}
-    for region, catalogs in REQUIRED_ASSET_CATALOGS.items():
-        with closing(_connect(root, "assets/db/" + region + "/masterdata.db")) as db:
+        owned_files = [_owned_file(root, spec) for spec in receipt["owned_files"]]
+        for spec in owned_files:
+            _verify_file(spec)
+        archive = _safe_file(scene["archive_path"])
+        if archive.parent != root / ".costume-management/sources" or not any(
+                spec["path"] == str(archive) and spec["sha256"] == scene["package_sha256"] for spec in owned_files):
+            raise ValueError("The canonical clone does not own its preserved archive.")
+        decoded = read_package(archive, scene["package_sha256"])
+        manifest = decoded["manifest"]
+        _shared(manifest)
+        if manifest != scene["manifest"]:
+            raise ValueError("The canonical clone's preserved metadata changed.")
+        target, variant = manifest["target_member_id"], manifest["default_variant"]
+        if target != source["target_member_id"]:
+            raise ValueError("The canonical clone owner disagrees with its archive.")
+        canonical, runtime = scene["canonical_model_paths"], scene["runtime_model_paths"]
+        if set(canonical) != {"gl", "jp"} or canonical["gl"] != canonical["jp"] or any(
+                set(f) != {"primary", "unmasked"} or len(set(f.values())) != 2 for f in canonical.values()):
+            raise ValueError("The canonical clone's physical model authority is invalid.")
+        selected = canonical["gl"][variant]
+        if runtime != dict(navi_board=selected, mv_board=selected, mv_unmasked=canonical["gl"]["unmasked"]):
+            raise ValueError("The canonical clone's selected model routes are invalid.")
+        import llas_asset_extractor as extractor
+        packs = {Path(item["path"]).name: item for item in owned_files if item["role"] == "pack"}
+        for region, catalogs in REQUIRED_ASSET_CATALOGS.items():
+            db = database("assets/db/" + region + "/masterdata.db")
             row = db.execute("SELECT member_m_id,model_asset_path FROM m_suit WHERE id=?", (suit_id,)).fetchone()
             views = {r[0]: r[1] for r in db.execute("SELECT view_status,model_asset_path FROM m_suit_view WHERE suit_master_id=?", (suit_id,))}
             if row is None or tuple(row) != (target, selected) or views != {1: selected, 2: canonical[region]["unmasked"]}:
                 raise ValueError("The canonical clone's installed HOME/MV routes changed.")
-        for catalog in catalogs:
-            platform = "android" if catalog.startswith("asset_a_") else "ios"
-            graph = manifest["execution_model_graph"][platform]
-            bindings = scene["graph_model_paths"][region][platform]
-            if (set(bindings) != set(graph["nodes"]) or len(set(bindings.values())) != len(bindings) or
-                    bindings[graph["role_bindings"]["mv_board"]] != canonical[region]["primary"] or
-                    bindings[graph["role_bindings"]["mv_unmasked"]] != canonical[region]["unmasked"]):
-                raise ValueError("The canonical clone's complete execution graph authority is invalid.")
-            relative = "assets/db/" + region + "/" + catalog
-            with closing(_connect(root, relative)) as db:
+            for catalog in catalogs:
+                platform = "android" if catalog.startswith("asset_a_") else "ios"
+                graph = manifest["execution_model_graph"][platform]
+                bindings = scene["graph_model_paths"][region][platform]
+                if (set(bindings) != set(graph["nodes"]) or len(set(bindings.values())) != len(bindings) or
+                        bindings[graph["role_bindings"]["mv_board"]] != canonical[region]["primary"] or
+                        bindings[graph["role_bindings"]["mv_unmasked"]] != canonical[region]["unmasked"]):
+                    raise ValueError("The canonical clone's complete execution graph authority is invalid.")
+                relative = "assets/db/" + region + "/" + catalog
+                db = database(relative)
                 for node_id, model in bindings.items():
                     node = graph["nodes"][node_id]
                     ref = node["resource"]
@@ -277,7 +287,7 @@ def resolve_canonical_clone_source(suit_id, *, root="."):
                     if any(len(db.execute("SELECT asset_path FROM shader WHERE asset_path=?", (key,)).fetchall()) != 1
                            for key in node["shared_shader_dependencies"]):
                         raise ValueError("The canonical clone's shared shader authority is missing.")
-    return dict(archive_path=str(archive), sha256=decoded["sha256"], install_id=receipt["install_id"],
-                suit_id=suit_id, runtime_model_paths=runtime, canonical_model_paths=canonical,
-                target_member_id=target, default_variant=variant, manifest_version=2,
-                main_model_path=selected)
+        return dict(archive_path=str(archive), sha256=decoded["sha256"], install_id=receipt["install_id"],
+                    suit_id=suit_id, runtime_model_paths=runtime, canonical_model_paths=canonical,
+                    target_member_id=target, default_variant=variant, manifest_version=2,
+                    main_model_path=selected)

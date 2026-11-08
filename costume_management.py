@@ -824,7 +824,7 @@ def _all_game_dbs(root):
     return list(dict.fromkeys(required + extra))
 
 
-def _scene_donor_dependencies(root,install_id,suit_ids):
+def _scene_donor_dependencies(root,install_id,suit_ids,*,selected_install_ids=()):
     """Installed scene archives still need their donor when reinstalled.
 
     Plain clones have independent model graphs. Canonical shared-board clones
@@ -837,7 +837,7 @@ def _scene_donor_dependencies(root,install_id,suit_ids):
     if directory.is_symlink() or not directory.is_dir():
         return [dict(status="unverifiable_receipts_directory")],["Installation provenance cannot be verified before deletion"]
     for path in sorted(directory.glob("*.json")):
-        if path.stem==install_id:
+        if path.stem==install_id or path.stem in selected_install_ids:
             continue
         digest=None
         try:
@@ -889,41 +889,96 @@ def _scene_donor_dependencies(root,install_id,suit_ids):
     return proof,reasons
 
 
+def normalize_install_ids(install_ids):
+    """A bounded, deterministic selection; never stringify arbitrary inputs."""
+    if not isinstance(install_ids, (list, tuple)) or not install_ids or len(install_ids) > 100:
+        raise ManagementError("Select between 1 and 100 installed costumes")
+    if any(not isinstance(value, str) or not value or value != value.strip() for value in install_ids):
+        raise ManagementError("Invalid costume selection")
+    if len(set(install_ids)) != len(install_ids):
+        raise ManagementError("A costume was selected more than once")
+    return sorted(install_ids)
+
+
 def plan_delete(install_id, root=".", *, replace_in_use=False,allow_original=False):
-    """Read-only review, including references across every installed catalog/user."""
+    """Read-only single-install compatibility API."""
+    return plan_delete_batch([install_id], root, replace_in_use=replace_in_use, allow_original=allow_original)
+
+
+def plan_delete_batch(install_ids, root=".", *, replace_in_use=False,allow_original=False):
+    """Review a union of costumes against every installed catalog and account.
+
+    Selected installations share one review token. Cross-references among the
+    selected rows do not retain a private graph or block removal, but references
+    from any unselected installation and all official protections still apply.
+    """
     root = _root(root)
+    install_ids = normalize_install_ids(install_ids)
     if not isinstance(replace_in_use,bool):
         raise ManagementError("replace_in_use must be an explicit boolean")
     if not isinstance(allow_original,bool):
         raise ManagementError("allow_original must be an explicit boolean")
-    receipt = _get_install(root, install_id)
-    result = dict(install_id=install_id, label=receipt["label"], suit_ids=receipt["suit_ids"],
+    receipts = [_get_install(root, value) for value in install_ids]
+    install_id = install_ids[0] if len(install_ids) == 1 else None
+    owned_rows, owned_files, seen_rows, seen_files, seen_suits = [], [], {}, {}, set()
+    for receipt in receipts:
+        if seen_suits.intersection(receipt["suit_ids"]):
+            raise ManagementError("Multiple selected installations claim the same costume")
+        seen_suits.update(receipt["suit_ids"])
+        for item in receipt["owned_rows"]:
+            key = (item["db"], item["table"], _canonical(item["key"]))
+            if key in seen_rows:
+                if seen_rows[key] != item:
+                    raise ManagementError("Selected installations disagree about owned rows")
+                continue
+            seen_rows[key] = item
+            owned_rows.append(item)
+        for item in receipt["owned_files"]:
+            verified = _owned_file(root, item)
+            key = verified["path"]
+            if key in seen_files:
+                if seen_files[key] != verified:
+                    raise ManagementError("Selected installations disagree about owned files")
+                continue
+            seen_files[key] = verified
+            owned_files.append(verified)
+    items = [dict(install_id=value, label=receipt["label"], suit_ids=receipt["suit_ids"])
+             for value, receipt in zip(install_ids, receipts)]
+    label = receipts[0]["label"] if len(receipts) == 1 else str(len(receipts)) + " selected costumes"
+    result = dict(install_id=install_id, install_ids=install_ids, items=items, label=label,
+        suit_ids=sorted(seen_suits),
         blocked_reasons=[], active_references=[], preserved_assets=[], delete_rows=[], delete_files=[],
-        shared_packages=[], receipt_sha256=_digest(receipt), replace_in_use=replace_in_use,
+        shared_packages=[], receipt_sha256=_digest(receipts), replace_in_use=replace_in_use,
         reference_replacements=[], userdata_updates=[], fallback_evidence=[], fallback_grants=[],
         unresolved_references=[],allow_original=allow_original,is_original=False,
         requires_original_confirmation=False)
     blockers = result["blocked_reasons"]
-    if receipt.get("state") not in ("committed", "legacy","builtin"):
-        blockers.append("Installation has no verified completed ownership receipt")
-    ids = set(receipt["suit_ids"])
-    dependencies,dependency_blockers=_scene_donor_dependencies(root,install_id,ids)
+    for receipt in receipts:
+        if receipt.get("state") not in ("committed", "legacy","builtin"):
+            blockers.append("Installation has no verified completed ownership receipt")
+    ids = seen_suits
+    dependencies,dependency_blockers=_scene_donor_dependencies(root,install_id,ids,
+        selected_install_ids=set(install_ids))
     result["scene_donor_dependencies"]=dependencies
     blockers+=dependency_blockers
     baseline = _baseline(root)
     result["stock_index_sha256"]=_digest(baseline) if baseline else None
-    is_original=bool(baseline and any(ids.intersection(baseline["regions"][r]["suit_ids"]) for r in ("gl", "jp")))
+    for item in items:
+        item["is_original"] = bool(baseline and any(set(item["suit_ids"]).intersection(
+            baseline["regions"][r]["suit_ids"]) for r in ("gl", "jp")))
+    is_original = any(item["is_original"] for item in items)
     result.update(is_original=is_original,requires_original_confirmation=is_original)
     if is_original and not allow_original:
         blockers.append("Original game costumes are protected; enable the advanced original-costume option before reviewing deletion")
-    if is_original and not str(install_id).startswith("builtin:"):
+    if any(item["is_original"] and not item["install_id"].startswith("builtin:") for item in items):
         blockers.append("Original costumes must be selected from the advanced original inventory; a mod receipt cannot claim original assets")
-    if any(ids.intersection(v) for v in receipt.get("preexisting_suit_ids", {}).values()):
+    if any(set(receipt["suit_ids"]).intersection(v) for receipt in receipts
+           for v in receipt.get("preexisting_suit_ids", {}).values()):
         blockers.append("Receipt would remove a preexisting costume")
-    owned = receipt["owned_rows"]
+    owned = owned_rows
     owned_ids = {_identity(r) for r in owned}
     assets = {r["row"]["asset_path"] for r in owned if "asset_path" in r["row"]}
-    packs = {Path(f["path"]).name for f in receipt["owned_files"] if _owned_file(root, f)["role"] == "pack"}
+    packs = {Path(f["path"]).name for f in owned_files if f["role"] == "pack"}
     names = {r["row"].get("name") for r in owned if r["table"] == "m_suit"}
     name_ids = {n[2:] if n.startswith("k.") else n for n in names if isinstance(n, str)}
     owned_package_headers = {(r["db"], r["row"].get("package_key")) for r in owned if r["table"] == "m_asset_package"}
@@ -1082,8 +1137,7 @@ def plan_delete(install_id, root=".", *, replace_in_use=False,allow_original=Fal
                 key = row["package_key"]
                 if not any(r["db"] == item["db"] and r["table"] == "m_asset_package" and r["row"].get("package_key") == key for r in owned):
                     result["shared_packages"].append(dict(db=item["db"], package_key=key))
-        for item in receipt["owned_files"]:
-            item = _owned_file(root, item)
+        for item in owned_files:
             try:
                 _verify_file(item)
             except ManagementError as exc:
@@ -1121,6 +1175,14 @@ def assert_server_stopped():
 
 def delete_install(install_id, *, expected_token, root=".", log=print, replace_in_use=False,
                    allow_original=False,original_confirmed=False):
+    """Single-install compatibility wrapper for reviewed batch removal."""
+    return delete_installs([install_id], expected_token=expected_token, root=root, log=log,
+        replace_in_use=replace_in_use, allow_original=allow_original,
+        original_confirmed=original_confirmed)
+
+
+def delete_installs(install_ids, *, expected_token, root=".", log=print, replace_in_use=False,
+                    allow_original=False,original_confirmed=False):
     """Offline deletion with mandatory DB backups and reversible file quarantine.
 
     This is deliberately strict: active/favorite/formation references must be
@@ -1129,27 +1191,44 @@ def delete_install(install_id, *, expected_token, root=".", log=print, replace_i
     A killed process leaves the journal/backups for explicit inspection.
     """
     root = _root(root)
+    install_ids = normalize_install_ids(install_ids)
+    install_id = install_ids[0] if len(install_ids) == 1 else None
     if not isinstance(allow_original,bool) or not isinstance(original_confirmed,bool):
         raise ManagementError("Original deletion options must be explicit booleans")
     with guard(root):
         assert_server_stopped()
-        plan = plan_delete(install_id, root,replace_in_use=replace_in_use,allow_original=allow_original)
+        plan = plan_delete_batch(install_ids, root,replace_in_use=replace_in_use,allow_original=allow_original)
         if plan["is_original"] and not (allow_original and original_confirmed):
             raise ManagementError("Original costume deletion requires the advanced option and an explicit confirmation")
         if not expected_token or expected_token != plan["review_token"]:
             raise ManagementError("Deletion review is stale. Preview again before deleting.")
         if not plan["deletable"]:
             raise ManagementError("Deletion blocked: " + "; ".join(plan["blocked_reasons"]))
-        receipt_before = None if str(install_id).startswith(("legacy:","builtin:")) else _read_receipt(root, install_id)
+        receipts_before = {value: _read_receipt(root, value) for value in install_ids
+                           if not value.startswith(("legacy:", "builtin:"))}
         operation = uuid.uuid4().hex
         directory = root / STATE_DIR / "deletions" / operation
-        directory.mkdir(parents=True, exist_ok=False)
-        journal = dict(schema=1, operation=operation, install_id=install_id, state="preparing",
+        journal = dict(schema=1, operation=operation, install_id=install_id, install_ids=install_ids, state="preparing",
             plan=plan, backups=[], quarantined=[])
         journal_path = directory / "operation.json"
-        _write_json(journal_path, journal)
         dbs = sorted({r["db"] for r in plan["delete_rows"]} |
             {r["db"] for r in plan["shared_packages"]} | {"userdata.db"})
+        planned_quarantine = []
+        for item in plan["delete_files"]:
+            path = Path(item["path"])
+            quarantine = path.parent / ".elichika-quarantine" / operation / path.name
+            planned_quarantine.append(dict(source=str(path), quarantine=str(quarantine)))
+        # Startup deliberately refuses oversized/unreadable recovery documents.
+        # Bound the FINAL document before creating even an unfinished journal;
+        # a large batch must not succeed and then make startup look interrupted.
+        estimated_journal = dict(journal, state="recovery_required", recovery_failures=[],
+            quarantined=planned_quarantine, backups=[dict(db=relative,
+                path=str(directory / (str(index) + ".db")), sha256="0" * 64)
+                for index, relative in enumerate(dbs)])
+        if len(_canonical(estimated_journal).encode("utf-8")) + 65536 > 8 * 1024 * 1024:
+            raise ManagementError("Selected costumes exceed the recovery journal limit; select fewer costumes")
+        directory.mkdir(parents=True, exist_ok=False)
+        _write_json(journal_path, journal)
         lock_dbs = sorted(set(_all_game_dbs(root)) | set(dbs))
         connections, committed, moved = {}, [], []
         try:
@@ -1160,7 +1239,7 @@ def delete_install(install_id, *, expected_token, root=".", log=print, replace_i
                 conn.execute("BEGIN IMMEDIATE")
             # Close the preflight/write-lock gap, including catalogs which are
             # read-only for this deletion but could gain another mod's refs.
-            locked_plan = plan_delete(install_id, root,replace_in_use=replace_in_use,allow_original=allow_original)
+            locked_plan = plan_delete_batch(install_ids, root,replace_in_use=replace_in_use,allow_original=allow_original)
             if locked_plan["review_token"] != expected_token:
                 raise ManagementError("Deletion review changed before writer locks were acquired")
             for index, relative in enumerate(dbs):
@@ -1169,12 +1248,11 @@ def delete_install(install_id, *, expected_token, root=".", log=print, replace_i
                     source.backup(target)
                 journal["backups"].append(dict(db=relative, path=str(backup), sha256=_hash_file(backup)))
             # Persist exact recovery locations BEFORE the first destructive move.
-            for item in plan["delete_files"]:
-                path = Path(item["path"])
-                quarantine = path.parent / ".elichika-quarantine" / operation / path.name
+            for item in planned_quarantine:
+                quarantine = Path(item["quarantine"])
                 if quarantine.exists() or quarantine.parent.is_symlink():
                     raise ManagementError("Unsafe pack quarantine")
-                journal["quarantined"].append(dict(source=str(path), quarantine=str(quarantine)))
+                journal["quarantined"].append(item)
             journal["state"] = "applying"
             _write_json(journal_path, journal)
             for item in journal["quarantined"]:
@@ -1213,14 +1291,17 @@ def delete_install(install_id, *, expected_token, root=".", log=print, replace_i
                 conn.commit()
                 if relative in dbs:
                     committed.append(relative)
+            for value in receipts_before:
+                receipt = _read_receipt(root, value)
+                receipt.update(state="deleted", deletion_operation=operation, deleted_at=time.time())
+                _write_json(root / STATE_DIR / "receipts" / (value + ".json"), receipt)
+            # The journal remains applying until EVERY ownership publication is
+            # durable. A process death between receipt writes must block startup.
             journal["state"] = "committed"
             _write_json(journal_path, journal)
-            if not str(install_id).startswith(("legacy:","builtin:")):
-                receipt = _read_receipt(root, install_id)
-                receipt.update(state="deleted", deletion_operation=operation, deleted_at=time.time())
-                _write_json(root / STATE_DIR / "receipts" / (install_id + ".json"), receipt)
             log("Removed costume metadata and grants; original/shared assets and user progress were preserved.")
             return dict(status="deleted", operation=operation, backup=str(directory),
+                install_ids=install_ids, deleted_count=len(install_ids), suit_ids=plan["suit_ids"],
                 preserved_assets=plan["preserved_assets"], restart_required=True)
         except BaseException:
             failures = []
@@ -1242,11 +1323,11 @@ def delete_install(install_id, *, expected_token, root=".", log=print, replace_i
                     os.replace(item["quarantine"], item["source"])
                 except Exception:
                     failures.append(Path(item["source"]).name)
-            if receipt_before is not None:
+            for value, receipt_before in receipts_before.items():
                 try:
-                    _write_json(root / STATE_DIR / "receipts" / (install_id + ".json"), receipt_before)
+                    _write_json(root / STATE_DIR / "receipts" / (value + ".json"), receipt_before)
                 except Exception:
-                    failures.append("installation receipt")
+                    failures.append("installation receipt " + value)
             journal.update(state="recovery_required" if failures else "rolled_back", recovery_failures=failures)
             try:
                 _write_json(journal_path, journal)
