@@ -371,6 +371,95 @@ class ModelViewerRigTest {
         println("MODEL_VIEWER_SHADER_REPORT=$report")
     }
 
+    @Test
+    fun outlineControlsKeepExactEditsValidateSaveAndResetOnlyOutlines() = withRig { session ->
+        val webView = session.webView
+        waitForDom(webView, "the genuine source outline catalogue and controls") {
+            "var m=ModelViewer.getEditingMetadata(),s=ModelViewer.getState();return JSON.stringify({ok:" +
+                "!!window.ViewerOutlines&&!!m&&m.available&&!!m.outlines&&m.outlines.meshes.length>0&&" +
+                "!!s.outlines&&s.outlines.available&&!document.getElementById('viewer-outline-number').disabled});"
+        }
+        val initial = evaluate(webView,
+            "var panel=document.getElementById('viewer-outline-card'),expression=document.getElementById('viewer-expression-adjustments')," +
+                "body=document.getElementById('viewer-body-adjustments');return JSON.stringify({collapsed:!panel.open," +
+                "afterExpression:panel.previousElementSibling===expression,beforeBody:panel.nextElementSibling===body," +
+                "meshes:ModelViewer.getEditingMetadata().outlines.meshes.map(function(m){return m.id;})," +
+                "authoring:ModelViewer.getAuthoringState()});")
+        assertTrue("Outline controls must start collapsed", initial.getBoolean("collapsed"))
+        assertTrue("The actual outline card follows Expression", initial.getBoolean("afterExpression"))
+        assertTrue("The actual outline card precedes Body", initial.getBoolean("beforeBody"))
+        val catalogue = initial.getJSONArray("meshes")
+        assertTrue("The fixture supplies original editable outline data", catalogue.length() > 0)
+        run(webView, "document.querySelector('#viewer-outline-card > summary').click();")
+
+        boneInput(webView, "BreastSize", "scale", "Y", 1.125)
+        input(webView, "viewer-save-method", "node", "change")
+        val unrelated = evaluate(webView,
+            "var a=ModelViewer.getAuthoringState();delete a.outlines;return JSON.stringify(a);")
+        assertTrue("A separate valid body edit makes Save meaningful", unrelated.getJSONArray("edits").length() > 0)
+        waitForDom(webView, "Save for the unrelated valid body edit") {
+            "return JSON.stringify({ok:!document.getElementById('viewer-save').disabled});"
+        }
+
+        fun outlineState(): JSONObject = evaluate(webView,
+            "return JSON.stringify({authoring:ModelViewer.getAuthoringState(),outline:ModelViewer.getState().outlines," +
+                "saveDisabled:document.getElementById('viewer-save').disabled," +
+                "invalid:!document.getElementById('viewer-outline-number').checkValidity()," +
+                "status:document.getElementById('viewer-outline-status').textContent});")
+        fun assertFactors(observed: JSONObject, expected: Double) {
+            val values = observed.getJSONObject("authoring").getJSONArray("outlines")
+            assertEquals("All original catalogue meshes receive the selected factor", catalogue.length(), values.length())
+            val ids = (0 until catalogue.length()).map { catalogue.getString(it) }.toSet()
+            for (index in 0 until values.length()) {
+                val entry = values.getJSONObject(index)
+                assertTrue("Only original source mesh IDs may be authored", entry.getString("id") in ids)
+                assertEquals("Outline state preserves numeric precision", expected, entry.getDouble("factor"), 1e-12)
+            }
+        }
+        run(webView, "document.getElementById('viewer-outline-number').focus();")
+        input(webView, "viewer-outline-number", "137.123456789")
+        val numbered = outlineState()
+        assertFactors(numbered, 137.123456789 / 100.0)
+        assertFalse("A valid precise outline edit keeps Save enabled", numbered.getBoolean("saveDisabled"))
+
+        input(webView, "viewer-shader", "basic", "change")
+        val basic = outlineState()
+        assertFalse("Basic rendering reports that outline preview is unavailable", basic.getJSONObject("outline").getBoolean("shaderEnabled"))
+        assertTrue("The actual warning identifies SIFAS rendering", basic.getString("status").contains("SIFAS"))
+        assertFactors(basic, 137.123456789 / 100.0)
+        input(webView, "viewer-shader", "sifas", "change")
+        val member = outlineState()
+        assertTrue("Restoring SIFAS rendering restores outline preview eligibility", member.getJSONObject("outline").getBoolean("shaderEnabled"))
+        assertTrue("The basic-renderer warning clears", member.getString("status") != basic.getString("status"))
+        assertFactors(member, 137.123456789 / 100.0)
+
+        run(webView, "document.getElementById('viewer-outline-number').focus();")
+        input(webView, "viewer-outline-number", "201")
+        val invalid = outlineState()
+        assertTrue("Out-of-range outline input is rejected", invalid.getBoolean("invalid"))
+        assertTrue("Invalid outline input blocks real Save", invalid.getBoolean("saveDisabled"))
+        assertFactors(invalid, 137.123456789 / 100.0)
+        run(webView, "document.getElementById('viewer-outline-range').focus();")
+        input(webView, "viewer-outline-range", "80")
+        val ranged = outlineState()
+        assertFactors(ranged, .8)
+        assertFalse("A valid range edit clears the invalid draft", ranged.getBoolean("invalid"))
+        assertFalse("A valid range edit restores Save", ranged.getBoolean("saveDisabled"))
+        click(webView, "viewer-outline-reset")
+        val reset = outlineState()
+        assertEquals("Reset removes outline edits", 0, reset.getJSONObject("authoring").optJSONArray("outlines")?.length() ?: 0)
+        val bodyAfterReset = JSONObject(reset.getJSONObject("authoring").toString()).apply { remove("outlines") }
+        assertEquals("Outline reset preserves every unrelated authoring field", unrelated.toString(), bodyAfterReset.toString())
+        assertFalse("Reset keeps unrelated valid body edits saveable", reset.getBoolean("saveDisabled"))
+        saveScreenshot(session.activity, "model-viewer-outline-controls.png")
+        val report = JSONObject().put("status", "PASS").put("initial", initial).put("number", numbered)
+            .put("basic", basic).put("sifas", member).put("invalid", invalid).put("range", ranged).put("reset", reset)
+            .put("unrelatedAuthoringPreserved", true).put("sourcePreserved", true)
+            .put("scope", "Actual Android WebView controls and original fixture catalogue; no visible outline-width pixel assertion")
+        persistReport("model-viewer-outline-controls-report.json", report)
+        println("MODEL_VIEWER_OUTLINE_CONTROLS_REPORT=$report")
+    }
+
     private data class Session(val activity: MainActivity, val webView: WebView, val defaultPanels: JSONObject)
 
     private fun withRig(check: (Session) -> Unit) {
@@ -416,10 +505,10 @@ class ModelViewerRigTest {
             }
             val defaultPanels = evaluate(browser,
                 "var pose=document.getElementById('viewer-adjustments'),body=document.getElementById('viewer-body-adjustments'),expression=document.getElementById('viewer-expression-adjustments');" +
-                    "if(!pose||!body||!expression||pose.open||!body.open||!expression.open||pose.parentNode!==body.parentNode||body.parentNode!==expression.parentNode||" +
+                    "if(!pose||!body||!expression||pose.open||!body.open||expression.open||pose.parentNode!==body.parentNode||body.parentNode!==expression.parentNode||" +
                     "!pose.contains(document.getElementById('viewer-motion'))||!pose.contains(document.getElementById('viewer-add-motion'))||body.contains(document.getElementById('viewer-motion'))||" +
                     "!body.contains(document.getElementById('viewer-node-fields'))||pose.contains(document.getElementById('viewer-node-fields')))" +
-                    "throw new Error('Pose must default collapsed, with body and expressions open as independent sibling panels and their actual controls');" +
+                    "throw new Error('Pose and expressions must default collapsed, with body open as independent sibling panels and their actual controls');" +
                     "return JSON.stringify({poseOpen:pose.open,bodyOpen:body.open,expressionOpen:expression.open,distinctControlOwners:true});")
             run(browser, "document.getElementById('viewer-expand').click();" +
                 "document.querySelector('[data-viewer-view=\"front\"]').click();document.getElementById('viewer-fit').click();" +

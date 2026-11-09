@@ -49,6 +49,7 @@ from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
 modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.registry',
          'webtools.core.model_accessory_unclip','webtools.core.model_edits',
+         'webtools.core.model_outlines',
          'sifas_node_scaling','sifas_mesh_baker','sifas_breast_tuner','skirt_length_changer',
          'hips_size_changer','Upleg_SwingCollider_changer','sifas_accessory_unclip',
          'costume_transplant','costume_part_transplant','lower_body_swap',

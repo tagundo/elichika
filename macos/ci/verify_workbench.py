@@ -21,19 +21,48 @@ source = resources / 'python-app'
 sys.path.insert(0, str(source))
 from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
-from webtools.core import game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants, model_edits
-for module in (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants, model_edits):
+from webtools.core import game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits
+packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
+                    model_edits, model_outlines, viewer_mod_pair_edits)
+for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
             'test_viewer_transplants.py', 'test_viewer_workbench_routes.py']
 suite = unittest.TestSuite()
 for pattern in patterns:
     suite.addTests(unittest.defaultTestLoader.discover(str(repo / 'modtools/tests'), pattern=pattern))
+# Select neutral methods explicitly: the same outline class also provides an
+# opt-in preservation check requiring private original game assets. It is not
+# a universally available packaged-runtime fixture, and skips remain failures.
+explicit_cases = [
+    'test_model_outlines.OutlineTests.test_catalogue_rounding_clamp_masks_and_exact_unrelated_bytes',
+    'test_model_outlines.OutlineTests.test_rejects_forged_duplicate_nonfinite_bool_and_unknown_settings',
+    'test_model_outlines.OutlineTests.test_mixed_or_unsupported_color_shader_is_not_writable',
+    'test_model_outlines.OutlineTests.test_outline_only_export_recipe_restore_and_repeat_do_not_accumulate',
+    'test_model_outlines.OutlineTests.test_vertex_and_body_edit_combination_preserves_outline_mask_basis',
+    'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_pair_uses_semantic_mesh_and_each_native_mask',
+    'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_paired_mod_zip_propagates_all_platform_variants',
+    'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_pair_rejects_missing_and_ambiguous_semantic_mesh',
+]
+selected = unittest.defaultTestLoader.loadTestsFromNames(explicit_cases)
+assert selected.countTestCases() == len(explicit_cases)
+suite.addTests(selected)
+def case_ids(tests):
+    for item in tests:
+        if isinstance(item, unittest.TestSuite):
+            yield from case_ids(item)
+        else:
+            yield item.id()
+executed_cases = list(case_ids(suite))
+assert len(executed_cases) == len(set(executed_cases)), 'Duplicate packaged test selection'
 result = unittest.TextTestRunner(verbosity=2).run(suite)
 report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else 'FAIL',
           'tests': result.testsRun, 'skips': len(result.skipped), 'failures': len(result.failures),
           'errors': len(result.errors), 'patterns': patterns, 'packaged_sources': True,
-          'scope': 'Bundled interpreter and packaged workbench code with neutral serialized fixture round trips'}
+          'packaged_modules': [module.__name__ for module in packaged_modules],
+          'explicit_cases': explicit_cases, 'executed_cases': executed_cases,
+          'excluded_optional_cases': ['test_model_outlines.OutlineTests.test_actual_original_costumes_change_only_red_and_keep_textures_exact'],
+          'scope': 'Bundled interpreter and packaged workbench code with neutral serialized fixture round trips, native outline masks and paired platform ModZIP propagation'}
 print('ELICHIKA_WORKBENCH_TESTS=' + json.dumps(report))
 sys.exit(0 if report['status'] == 'PASS' and result.testsRun else 1)
 '''
