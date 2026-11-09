@@ -75,7 +75,7 @@ class ModelViewerWebViewTest {
             ) as MainActivity
             activity = launched
             instrumentation.runOnMainSync {
-                launched.findViewById<TabLayout>(R.id.tabs).getTabAt(4)!!.select()
+                NativeTabsQa.tab(launched, MainActivity.TAB_MODEL_VIEWER).select()
             }
             // Selecting Asset editing must prepare its local server asynchronously.
             // Do not bypass that product flow with a direct PyServers.start call.

@@ -360,9 +360,12 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig.png > evidence/model-viewer-rig.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader.png > evidence/model-viewer-shader.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-report.json > evidence/model-viewer-rig-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-resume-geometry.json > evidence/model-viewer-rig-resume-geometry.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-section-keyboard.json > evidence/model-viewer-section-keyboard.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader-report.json > evidence/model-viewer-shader-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-persistence-report.json > evidence/viewer-persistence-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-persistence.png > evidence/viewer-persistence.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/costume-transplant-picker.png > evidence/costume-transplant-picker.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-add-game-report.json > evidence/viewer-add-game-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow-report.json > evidence/header-layout-narrow-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow.png > evidence/header-layout-narrow.png 2>/dev/null || true

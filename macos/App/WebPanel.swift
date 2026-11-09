@@ -21,19 +21,19 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     private var fullscreenOwned = false
     private var viewerFullscreen = false
     private var currentLanguage: String
-    private var currentSurface: EditorSurface = .tools
-    private var surfaceApplied = false
+    private var assetNavigation: AssetNavigationState
     private var fullscreenCompletion: ((Result<Bool, Error>) -> Void)?
 
     init(model: AppModel, route: BrowserRoute) {
         self.model = model; self.route = route
         currentLanguage = model.language
-        currentSurface = model.selectedSection == .model ? .viewer : .tools
+        let assetSection = model.selectedSection?.assetEditorSection ?? .tools
+        assetNavigation = AssetNavigationState(desired: assetSection)
         bridgeEnabled = route == .content || route == .assets
         if let ready = model.connection {
             switch route {
             case .content: targetURL = ready.adminURL
-            case .assets: targetURL = ready.toolsURL
+            case .assets: targetURL = AssetEditorSection.embeddedURL(ready.toolsURL, section: assetSection)
             case .accounts: targetURL = model.goURL(path: "/webui/user/")
             case .serverSettings: targetURL = model.goURL(path: "/webui/admin/")
             }
@@ -48,7 +48,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
             configuration.mediaTypesRequiringUserActionForPlayback = []
         }
         if bridgeEnabled {
-            configuration.userContentController.addUserScript(Self.platformScript(language: model.language, editorSurface: route == .assets ? currentSurface : nil))
+            configuration.userContentController.addUserScript(Self.platformScript(language: model.language, editorSurface: route == .assets ? assetSection : nil))
         }
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -72,16 +72,12 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     }
 
     func setEditorSurface(_ surface: EditorSurface) {
-        guard route == .assets else { return }
-        if currentSurface != surface { currentSurface = surface; surfaceApplied = false }
-        guard loaded, !surfaceApplied else { return }
-        surfaceApplied = true
-        webView.evaluateJavaScript("if(window.ElichikaDesktop)window.ElichikaDesktop.editorSurface='" + surface.rawValue + "';")
-        perform(surface.command)
+        showAssetSection(surface)
     }
 
     func perform(_ action: String, paths: [String]? = nil) {
         guard bridgeEnabled, route == .assets, ["openModel", "saveModel", "showViewer", "showTools"].contains(action) else { return }
+        showAssetSection(action == "showTools" ? .tools : .viewer)
         guard loaded else { pendingPerform = (action, paths); return }
         let arguments: [String: Any] = ["action": action, "payload": paths.map { ["paths": $0] } ?? [:]]
         let data = try! JSONSerialization.data(withJSONObject: arguments)
@@ -89,11 +85,31 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         webView.evaluateJavaScript("(function(){const a=" + json + ";if(window.ElichikaPlatform)window.ElichikaPlatform.perform(a.action,a.payload);})();")
     }
 
+    func showAssetSection(_ section: AssetEditorSection) {
+        guard route == .assets else { return }
+        assetNavigation.select(section)
+        applyAssetSection()
+    }
+
+    private func applyAssetSection() {
+        guard route == .assets, loaded, assetNavigation.needsUpdate else { return }
+        let section = assetNavigation.desired
+        assetNavigation.markSent(section)
+        let name = String(decoding: try! JSONSerialization.data(withJSONObject: [section.rawValue]), as: UTF8.self)
+        let script = "(function(){const section=" + name + "[0];if(window.ElichikaDesktop)ElichikaDesktop.editorSurface=section;if(window.ElichikaNavigation&&typeof ElichikaNavigation.showSection==='function')return ElichikaNavigation.showSection(section,{notify:false})!==false;if(window.ElichikaPlatform)return ElichikaPlatform.perform(section==='viewer'?'showViewer':'showTools');return false;})();"
+        webView.evaluateJavaScript(script) { [weak self] result, error in
+            let accepted = error == nil && (result as? Bool) == true
+            Task { @MainActor in
+                if !accepted { self?.assetNavigation.retry(section) }
+            }
+        }
+    }
+
     func setLanguage(_ language: String) {
         guard bridgeEnabled, ["en", "ko", "ja"].contains(language), language != currentLanguage else { return }
         currentLanguage = language
         webView.configuration.userContentController.removeAllUserScripts()
-        webView.configuration.userContentController.addUserScript(Self.platformScript(language: language, editorSurface: route == .assets ? currentSurface : nil))
+        webView.configuration.userContentController.addUserScript(Self.platformScript(language: language, editorSurface: route == .assets ? assetNavigation.desired : nil))
         let json = String(decoding: try! JSONSerialization.data(withJSONObject: [language]), as: UTF8.self)
         webView.evaluateJavaScript("(function(){const l=" + json + "[0];if(window.ElichikaDesktop)window.ElichikaDesktop.language=l;if(typeof changeLang==='function')changeLang(l);})();")
     }
@@ -109,7 +125,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
             }
         }
         var capabilities = ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage", "setViewerPanelWidth", "setViewerFilesWidth", "setPanelSettings"]
-        if editorSurface != nil { capabilities.append("editorNavigation") }
+        if editorSurface != nil { capabilities.append(contentsOf: ["editorNavigation", "setSection"]) }
         let metadata: [String: Any] = ["platform": "macos", "version": 1,
             "capabilities": capabilities,
             "editorSurface": editorSurface?.rawValue ?? "tools",
@@ -173,9 +189,20 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
                     result = ["width": width]
                 case .setEditorSurface:
                     guard route == .assets, let surface = request.editorSurface else { throw NativeError.invalidMessage }
-                    currentSurface = surface; surfaceApplied = true
-                    model.selectedSection = surface.section
+                    assetNavigation.pageChanged(surface)
+                    model.assetSectionChanged(surface)
                     result = ["editorSurface": surface.rawValue]
+                case .setSection:
+                    guard route == .assets, let name = request.section,
+                          let section = AssetEditorSection(rawValue: name) else { throw NativeError.invalidMessage }
+                    if request.event == AssetSectionEvent.ready.rawValue {
+                        assetNavigation.pageReady()
+                        applyAssetSection()
+                    } else {
+                        assetNavigation.pageChanged(section)
+                        model.assetSectionChanged(section)
+                    }
+                    result = ["section": assetNavigation.desired.rawValue]
                 case .setPanelSettings:
                     guard let scope = request.panelScope, let settings = request.panelSettings else { throw NativeError.invalidMessage }
                     UserDefaults.standard.set(try JSONEncoder().encode(settings), forKey: "panelSettings." + scope)
@@ -275,8 +302,8 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
-        surfaceApplied = false
-        setEditorSurface(currentSurface)
+        assetNavigation.pageReady()
+        applyAssetSection()
         observeWindow()
         if let model { setLanguage(model.language) }
         if let (action, paths) = pendingPerform { pendingPerform = nil; perform(action, paths: paths) }
@@ -339,6 +366,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         loaded = false
+        assetNavigation.pageReady()
         model?.message = "The web editor stopped. Reopen the app after preserving any exported files."
     }
 }

@@ -120,6 +120,8 @@ jobs:
           python3 macos/build/build_payload.py --repo . --output "$RUNNER_TEMP/elichika-macos-shared"
 
       - name: Build self-contained signed app with private Python and executables
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 macos/build/build_app.py --repo . \

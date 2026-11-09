@@ -65,6 +65,119 @@ print(json.dumps(value,ensure_ascii=False))
 '''
 
 
+ACCESSORY_FIXTURE_SHA = "4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e"
+ACCESSORY_FIXTURE = r'''
+import hashlib,importlib.util,json,os,pathlib,sys
+app,helper,output,report,prefix=map(pathlib.Path,sys.argv[1:])
+assert os.path.samefile(sys.prefix,prefix)
+sys.path.insert(0,str(app))
+from webtools.core.tkstub import ensure_tk_stub
+ensure_tk_stub()
+spec=importlib.util.spec_from_file_location('native_accessory_fixture',helper)
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+raw=module.make_fixture()
+digest=hashlib.sha256(raw).hexdigest()
+assert digest=='4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e'
+output.write_bytes(raw)
+value={'status':'PASS_OWN_SERIALIZED_ACCESSORY_INPUT','fixture_sha256':digest,'bytes':len(raw),
+    'path':str(output),'vertices':21,'triangles':7,'private_prefix_samefile':True,
+    'scope':'Original generated neutral geometry; no game or user model'}
+report.write_text(json.dumps(value,indent=2)+'\n');print(json.dumps(value))
+'''
+
+
+ACCESSORY_ORACLE = r'''
+import copy,hashlib,json,math,os,pathlib,sys
+import UnityPy
+prefix,source_path,output_path,report=map(pathlib.Path,sys.argv[1:])
+assert os.path.samefile(sys.prefix,prefix)
+source=source_path.read_bytes();output=output_path.read_bytes()
+assert hashlib.sha256(source).hexdigest()=='4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e'
+def records(raw):
+    env=UnityPy.load(raw);objects={obj.path_id:obj for obj in env.objects}
+    assert len(objects)==len(env.objects)
+    names={obj.path_id:obj.read_typetree()['m_Name'] for obj in env.objects if obj.type.name=='GameObject'}
+    transforms={names[obj.read_typetree()['m_GameObject']['m_PathID']]:obj for obj in env.objects if obj.type.name=='Transform'}
+    return objects,transforms
+before,old_transforms=records(source);after,new_transforms=records(output)
+assert before.keys()==after.keys()
+anchor=old_transforms['PartsA_Offset'].path_id;body=old_transforms['BreastSize'].path_id
+old_position=old_transforms['PartsA_Offset'].read_typetree()['m_LocalPosition']
+actual=new_transforms['PartsA_Offset'].read_typetree()['m_LocalPosition']
+# Independent original fixture centroid C in identity Spine2 frame.
+# Requested uniform2 gives local delta (2-1)*C, without planner/CLI reuse.
+expected=(.01+.25166666666666665,.02+.013333333333333334,.02+.025)
+for axis,value in zip('xyz',expected):
+    assert math.isclose(actual[axis],value,abs_tol=2e-6),(axis,actual[axis],value)
+    assert math.isclose(old_position[axis],{'x':.01,'y':.02,'z':.02}[axis],abs_tol=2e-7)
+components=[key for key,obj in before.items() if obj.type.name=='MonoBehaviour' and 'scaleValues' in obj.read_typetree()]
+assert len(components)==1;component=components[0]
+old_settings=before[component].read_typetree();new_settings=after[component].read_typetree()
+assert len(old_settings['scaleValues'])==len(new_settings['scaleValues'])==1
+old_record,new_record=old_settings['scaleValues'][0],new_settings['scaleValues'][0]
+assert old_record['target']['m_PathID']==new_record['target']['m_PathID']==body
+assert all(math.isclose(old_record['scaledValue'][axis],1.5,abs_tol=1e-7) for axis in 'xyz')
+assert all(math.isclose(new_record['scaledValue'][axis],2.,abs_tol=1e-7) for axis in 'xyz')
+expected_settings=copy.deepcopy(old_settings)
+expected_settings['scaleValues'][0]['scaledValue']=dict.fromkeys('xyz',2.)
+assert new_settings==expected_settings
+changed={key for key in before if before[key].get_raw_data()!=after[key].get_raw_data()}
+assert changed=={anchor,component},changed
+meshes=[key for key,obj in before.items() if obj.type.name=='Mesh']
+textures=[key for key,obj in before.items() if obj.type.name=='Texture2D']
+assert len(meshes)==len(textures)==1
+assert all(before[key].get_raw_data()==after[key].get_raw_data() for key in meshes+textures)
+assert source_path.read_bytes()==source
+value={'status':'PASS','changedAnchors':1,'sourceAnchor':[old_position[axis] for axis in 'xyz'],
+    'savedAnchor':[actual[axis] for axis in 'xyz'],'expectedAnchor':list(expected),
+    'allMeshesAndTexturesByteIdentical':True,'otherRawObjectsByteIdentical':True,
+    'meshObjects':len(meshes),'textureObjects':len(textures),'onlyChangedObjectIds':sorted(changed),
+    'savedAbsoluteBodyScale':[2.,2.,2.],'private_prefix_samefile':True,
+    'source_sha256':hashlib.sha256(source).hexdigest(),'output_sha256':hashlib.sha256(output).hexdigest(),
+    'oracle':'Independent serialized fixture constants; no production planner or CLI result reuse'}
+report.write_text(json.dumps(value,indent=2)+'\n');print(json.dumps(value))
+'''
+
+
+def prepare_accessory_fixture(app, output):
+    resources = app / "Contents/Resources"
+    prefix = resources / "runtime/arm64/python"
+    helper = Path(__file__).resolve().parents[2] / "modtools/tests/test_model_accessory_unclip.py"
+    fixture = output / "native-app-data/accessory-overlap.unity"
+    report = output / "accessory-input.json"
+    result = subprocess.run([str(prefix / "bin/python3"), "-I", "-B", "-c", ACCESSORY_FIXTURE,
+                             str(resources / "python-app"), str(helper), str(fixture), str(report), str(prefix)],
+                            env=private_environment(resources), cwd=output, capture_output=True, text=True, timeout=60)
+    (output / "accessory-input.stdout.txt").write_text(result.stdout)
+    (output / "accessory-input.stderr.txt").write_text(result.stderr)
+    require(result.returncode == 0 and report.is_file(), "Accessory input generation failed; see input logs")
+    require(sha256(fixture) == ACCESSORY_FIXTURE_SHA, "Generated accessory fixture differs from audited geometry")
+    return json.loads(report.read_text())
+
+
+def inspect_accessory_export(app, output, label, report):
+    observed = report.get("native_accessory_unclip", {})
+    require(observed.get("status") == "PASS" and all(observed.get(key) is True for key in
+                ("source_preserved", "derived_offset_excluded_from_edits", "recipe_flag_preserved"))
+            and observed.get("saved_geometry_max_error", 1) < 2e-5,
+            "Actual native accessory UI/HTTP/save/reopen assertions did not pass")
+    source = Path(observed.get("source_path", ""))
+    require(source == output / "native-app-data/accessory-overlap.unity" and sha256(source) == ACCESSORY_FIXTURE_SHA,
+            "Native accessory smoke used an unexpected source")
+    previews = observed.get("export", {}).get("previewPaths", [])
+    require(len(previews) == 1 and Path(previews[0]).is_file(), "Native accessory export is missing")
+    resources = app / "Contents/Resources"
+    prefix = resources / "runtime/arm64/python"
+    receipt = output / f"{label}-accessory-oracle.json"
+    result = subprocess.run([str(prefix / "bin/python3"), "-I", "-B", "-c", ACCESSORY_ORACLE,
+                             str(prefix), str(source), previews[0], str(receipt)],
+                            env=private_environment(resources), cwd=output, capture_output=True, text=True, timeout=60)
+    (output / f"{label}-accessory-oracle.stdout.txt").write_text(result.stdout)
+    (output / f"{label}-accessory-oracle.stderr.txt").write_text(result.stderr)
+    require(result.returncode == 0 and receipt.is_file(), "Native accessory serialized oracle failed; see oracle logs")
+    observed["serialized_oracle"] = json.loads(receipt.read_text())
+
+
 def prepare_zip_fixture(app, output):
     """Make one real ZIP input using the shipped interpreter, outside the app."""
     directory = output / "native-app-data"
@@ -119,6 +232,11 @@ def check_pose_body_report(report):
     require(navigation.get("status") == "PASS" and all(navigation.get(key) is True for key in
                 ("single_webview", "model_camera_authoring_preserved", "no_extra_prepare", "header_hidden", "texture_previews_inside_tools")),
             "Native asset tools and 3D navigation must retain one WebView and its current model state")
+    navigation = report.get("asset_navigation", {})
+    require(all(navigation.get(key) is True for key in
+                ("same_webview", "same_canvas_and_context", "unsaved_node_mesh_edits_preserved",
+                 "page_change_selected_viewer", "late_ready_preserved_native_destination")),
+            "Native Tools/3D navigation must preserve the live renderer and unsaved edits")
     structure = report.get("pose_body_panel_structure", {})
     require(structure.get("poseOpen") is False and all(structure.get(key) is True for key in
                 ("bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody")),
@@ -191,6 +309,7 @@ def launch(app, output, label):
         while process_alive(pid) and time.monotonic() < deadline:
             time.sleep(.2)
         require(not process_alive(pid), f"Owned {key} remained alive after app quit")
+    inspect_accessory_export(app, output, label, report)
     write_json(output / f"{label}.json", report)
     for image in directory.glob("*.png"):
         shutil.copy2(image, output / f"{label}-{image.name}")
@@ -203,6 +322,7 @@ def check(app, output, relocation):
     output.mkdir(parents=True, exist_ok=True)
     require(not relocation.exists() and relocation.suffix == ".app", "Fresh relocation .app path required")
     fixture = prepare_zip_fixture(app, output)
+    accessory = prepare_accessory_fixture(app, output)
     first = launch(app, output, "first-launch")
     check_zip_edit_report(first, fixture)
     check_pose_body_report(first)
@@ -233,6 +353,7 @@ def check(app, output, relocation):
              "readonly_app_signature_preserved": True,
              "original_app_path_removed": True,
              "fractional_zip_input": fixture,
+             "accessory_input": accessory,
              "viewer_panel_width_persisted_across_relaunch": True,
              "viewer_files_width_persisted_across_relaunch": True,
              "space_and_unicode_path": " " in str(relocation) and any(ord(char) > 127 for char in str(relocation)),

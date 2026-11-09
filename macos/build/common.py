@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -9,6 +10,7 @@ import posixpath
 import shutil
 import subprocess
 import tarfile
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -51,7 +53,7 @@ def source_identity(repo):
 
 
 def verified_download(spec, cache):
-    """Download only fixed HTTPS inputs and check bytes before using any archive."""
+    """Try at most two locked HTTPS routes; publish only the original pinned bytes."""
     cache = Path(cache)
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / spec["filename"]
@@ -59,20 +61,51 @@ def verified_download(spec, cache):
     if destination.is_file() and sha256(destination) == spec["sha256"]:
         if "bytes" not in spec or destination.stat().st_size == spec["bytes"]:
             return destination
-    require(urllib.parse.urlsplit(spec["url"]).scheme == "https", "Locked inputs must use HTTPS")
+    alternates = spec.get("alternate_downloads", [])
+    require(isinstance(alternates, list) and len(alternates) <= 1, "At most one locked download alternate is allowed")
+    sources = [{"url": spec["url"]}, *alternates]
+    for source in sources:
+        require(isinstance(source, dict) and set(source) <= {"url", "headers"}
+                and isinstance(source.get("url"), str)
+                and urllib.parse.urlsplit(source["url"]).scheme == "https", "Locked inputs must use HTTPS")
+        headers = source.get("headers", {})
+        require(isinstance(headers, dict) and set(headers) <= {"Accept", "X-GitHub-Api-Version", "User-Agent"}
+                and all(isinstance(value, str) and "\r" not in value and "\n" not in value for value in headers.values()),
+                "Unsupported locked download headers")
     temporary = destination.with_name(destination.name + ".part")
-    temporary.unlink(missing_ok=True)
-    try:
-        with urllib.request.urlopen(spec["url"], timeout=90) as response, temporary.open("xb") as output:
-            require(urllib.parse.urlsplit(response.url).scheme == "https", "Download redirect downgraded HTTPS")
-            shutil.copyfileobj(response, output, 1024 * 1024)
-        require(sha256(temporary) == spec["sha256"], f"Locked input SHA256 mismatch: {destination.name}")
-        require("bytes" not in spec or temporary.stat().st_size == spec["bytes"],
-                f"Locked input byte count mismatch: {destination.name}")
-        temporary.replace(destination)
-    finally:
+    for index, source in enumerate(sources):
         temporary.unlink(missing_ok=True)
-    return destination
+        try:
+            request = urllib.request.Request(source["url"], headers=source["headers"]) if source.get("headers") else source["url"]
+            route = urllib.parse.urlsplit(source["url"])
+            if route.hostname == "api.github.com" and route.port in (None, 443) and route.username is None:
+                token = os.environ.get("GITHUB_TOKEN", "")
+                if token:
+                    require("\r" not in token and "\n" not in token, "Invalid build API token")
+                    if isinstance(request, str):
+                        request = urllib.request.Request(request)
+                    # urllib's redirect handler copies Request.headers only;
+                    # unredirected_hdrs belongs exclusively to the first API hop.
+                    request.add_unredirected_header("Authorization", "Bearer " + token)
+            with urllib.request.urlopen(request, timeout=90) as response, temporary.open("xb") as output:
+                require(urllib.parse.urlsplit(response.url).scheme == "https", "Download redirect downgraded HTTPS")
+                shutil.copyfileobj(response, output, 1024 * 1024)
+            require(sha256(temporary) == spec["sha256"], f"Locked input SHA256 mismatch: {destination.name}")
+            require("bytes" not in spec or temporary.stat().st_size == spec["bytes"],
+                    f"Locked input byte count mismatch: {destination.name}")
+            temporary.replace(destination)
+            return destination
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as error:
+            if isinstance(error, urllib.error.HTTPError):
+                transient = error.code in {408, 429, 500, 502, 503, 504}
+            elif isinstance(error, urllib.error.URLError):
+                transient = isinstance(error.reason, (TimeoutError, ConnectionError))
+            else:
+                transient = True
+            if not transient or index == len(sources) - 1:
+                raise
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def extract_python(archive, output):

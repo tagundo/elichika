@@ -33,6 +33,10 @@ open class Context(val filesDir: File, val assets: AssetManager, val packageMana
     fun getSharedPreferences(name: String, mode: Int) = preferences.getOrPut(name) { SharedPreferences() }
     fun getExternalFilesDir(type: String?) = File(filesDir, "external")
     fun getString(id: Int, vararg args: Any?) = "$id:" + args.joinToString()
+    fun <T> getSystemService(type: Class<T>): T {
+        check(type==android.app.ActivityManager::class.java)
+        return type.cast(android.app.ActivityManager())
+    }
     fun startForegroundService(intent: Intent) {
         beforeServiceStart?.invoke()
         val service=com.tagundo.elichika.ServerService()
@@ -54,6 +58,14 @@ class SharedPreferences {
         fun remove(key: String): Editor { values.remove(key); return this }
         fun apply() {}
     }
+}
+''',
+    'ActivityManager.kt': r'''
+package android.app
+class ActivityManager {
+    companion object { var availableBytes=1073741824L; var reads=0 }
+    class MemoryInfo { var availMem=0L }
+    fun getMemoryInfo(info: MemoryInfo) { reads++; info.availMem=availableBytes }
 }
 ''',
     'Assets.kt': r'''
@@ -140,15 +152,20 @@ object R { object string {
     const val log_setup_cdn_dir=7; const val log_setup_cdn_on=8; const val log_setup_preserving_mods=9
     const val log_setup_upgrade_recovered=10; const val log_pyservers_started=11; const val log_pyservers_failed=12
     const val log_error_missing_binary=13; const val log_error_exec_failed=14
+    const val log_setup_data_progress=15; const val progress_recovering=16; const val progress_validating=17
+    const val progress_snapshot=18; const val progress_merging=19; const val progress_verifying=20
+    const val progress_publishing=21; const val progress_complete=22
 } }
 object Lang { var writes=0; fun effective(ctx: Context)="en"; fun writeWebuiLanguage(ctx: Context,root: File) { writes++ } }
 object Bus {
     var serverRunning=false
     val logs=mutableListOf<String>()
+    internal val payloadProgressEvents=mutableListOf<PayloadProgress.State?>()
     fun log(value: String) { logs.add(value) }; fun toolsStateChanged() {}
     fun setRunning(value: Boolean) { serverRunning=value }
     fun setStarting(value: Boolean) {}
     fun setPreparationPhase(value: AssetInstaller.PreparationPhase) {}
+    internal fun setPayloadProgress(value: PayloadProgress.State?) { payloadProgressEvents.add(value) }
 }
 class ServerService {
     companion object {
@@ -258,7 +275,7 @@ class KotlinInstallerTests(unittest.TestCase):
                 path = temporary / name
                 path.write_text(content)
                 sources.append(str(path))
-            sources += [str(KOTLIN / name) for name in ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt', 'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerProcess.kt')]
+            sources += [str(KOTLIN / name) for name in ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadProgress.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt', 'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerProcess.kt')]
             sources.append(str(ROOT / 'android/app/src/androidTest/java/com/tagundo/elichika/NativePythonTest.kt'))
             sources.append(str(ROOT / 'tests/kotlin_payload_upgrade/HostChecks.kt'))
             output = temporary / 'checks.jar'
@@ -283,9 +300,9 @@ class KotlinInstallerTests(unittest.TestCase):
         jars = list(tools.glob('*.jar'))
         compiler = os.pathsep.join(map(str, jars))
         runtime = os.pathsep.join([sdk, *(str(p) for p in jars if p.name.startswith(('kotlin-stdlib-', 'annotations-', 'json-', 'junit-')))])
-        names = ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt',
+        names = ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadProgress.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt',
                  'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerService.kt',
-                 'ServerProcess.kt', 'ServerSettings.kt', 'Bus.kt', 'PayloadFileHasher.kt')
+                 'ServerProcess.kt', 'ServerReadiness.kt', 'ServerSettings.kt', 'Bus.kt', 'PayloadFileHasher.kt')
         sources = [KOTLIN / name for name in names]
         sources.append(ROOT / 'android/app/src/androidTest/java/com/tagundo/elichika/PayloadRevisionTest.kt')
         resources = {}

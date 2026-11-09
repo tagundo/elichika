@@ -37,13 +37,14 @@ private class Backend {
     var beforeApply: (File,File,String)->Unit = { _,_,_ -> }
     val modes=mutableListOf<String>()
     val environment=mutableMapOf<String,String>()
+    val memoryBudgets=mutableListOf<Long>()
     fun call(module: String, method: String, arguments: Array<out Any?>): String {
         if (module=="os") {
             check(method=="__setitem__" && arguments.size==2)
             environment[arguments[0].toString()]=arguments[1].toString()
             return "None"
         }
-        if (module=="elichika_launch") { check(heldRoot==null); launchCount++; launchRoot=File(arguments[0].toString()); return "None" }
+        if (module=="elichika_launch" && method=="start") { check(heldRoot==null); launchCount++; launchRoot=File(arguments[0].toString()); return "None" }
         val root=File(arguments[0].toString())
         if (module=="costume_management") {
             check(method=="startup_check_json" && arguments.size==1)
@@ -91,7 +92,17 @@ private class Backend {
             failedStage?.let { check(it.exists()) { "Kotlin removed an input before journal recovery" } }
             return JSONObject().put("status",if (recovered) "ROLLED_BACK" else "CLEAN").toString()
         }
-        check(module=="payload_revision" && method=="apply_json" && arguments.size==6)
+        check(module=="elichika_launch" && method=="apply_payload_with_progress" && arguments.size==8)
+        val observer=arguments[6] as PayloadProgressObserver
+        val memory=arguments[7] as Long
+        check(memory==android.app.ActivityManager.availableBytes && memory>0L)
+        memoryBudgets.add(memory)
+        val progressStart=Bus.payloadProgressEvents.size
+        observer.onProgress("""{"stage":"validating","completed":1,"total":2,"current":"masterdata.db","percent":10}""")
+        observer.onProgress("""{"stage":"complete","completed":1,"total":1,"current":"","percent":100}""")
+        check(Bus.payloadProgressEvents.drop(progressStart).filterNotNull().map { it.percent }==listOf(10,99)) {
+            "A raw callback acknowledged completion before Kotlin verified COMMITTED and installed_version"
+        }
         check(arguments[5]==admittedManifests[root]) { "Publisher lost the exact admitted manifest" }
         check(JSONObject(arguments[5].toString()).getString("revision")==arguments[3])
         applyCount++
@@ -178,10 +189,16 @@ fun main(args: Array<String>) {
 
     val first=context(temporary,"fresh")
     val phases=mutableListOf<AssetInstaller.PreparationPhase>()
+    val freshLogs=mutableListOf<String>()
     val observePhase: (AssetInstaller.PreparationPhase)->Unit = { phases.add(it) }
-    AssetInstaller.install(first,observePhase) {}
+    Bus.payloadProgressEvents.clear()
+    AssetInstaller.install(first,observePhase) { freshLogs.add(it) }
+    check(Bus.payloadProgressEvents.filterNotNull().map { it.percent }==listOf(10,99,100))
+    check(Bus.payloadProgressEvents.first()==null && Bus.payloadProgressEvents.last()==null)
+    check(backend.memoryBudgets.last()==1073741824L && android.app.ActivityManager.reads==1)
     check(phases.first()==AssetInstaller.PreparationPhase.PREPARING && phases.last()==AssetInstaller.PreparationPhase.IDLE)
-    check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA !in phases) { "Fresh install must not claim to preserve installed mods" }
+    check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA in phases) { "A fresh staged payload must expose its updater phase" }
+    check(freshLogs.none { it.startsWith("${R.string.log_setup_preserving_mods}:") }) { "Fresh install must not claim to preserve installed mods" }
     check(backend.modes.last()=="fresh")
     check(File(first.filesDir,"installed_version").readText()==revision)
     check(!File(first.filesDir,"userdata.db").exists())
@@ -205,7 +222,9 @@ fun main(args: Array<String>) {
     check(!File(first.filesDir,".payload-incoming").exists())
     check(AssetInstaller.PreparationPhase.UPDATING_GAME_DATA !in phases && phases.last()==AssetInstaller.PreparationPhase.IDLE)
     File(first.filesDir,"assets/db/gl/asset_a_ko.db").delete()
+    android.app.ActivityManager.availableBytes=536870912L
     AssetInstaller.install(first) {}
+    check(backend.memoryBudgets.last()==536870912L && android.app.ActivityManager.reads==2) { "Payload invocation reused a stale available-memory snapshot" }
     check(backend.applyCount==count+1 && backend.modes.last()=="upgrade")
     check(File(first.filesDir,"assets/db/gl/asset_a_ko.db").isFile)
     val rebase=File(first.filesDir,".payload-upgrade/needs-rebase").apply { parentFile.mkdirs(); writeText("restore") }

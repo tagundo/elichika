@@ -64,7 +64,7 @@ final class AppModel: ObservableObject {
         configuration.httpShouldSetCookies = false
         configuration.connectionProxyDictionary = [:]
         http = URLSession(configuration: configuration, delegate: LocalControlSessionDelegate(), delegateQueue: nil)
-        if smokeDirectory != nil { selectedSection = .model }
+        if smokeDirectory != nil { selectedSection = .viewer }
     }
 
     func text(_ en: String, _ ko: String, _ ja: String) -> String {
@@ -304,6 +304,14 @@ final class AppModel: ObservableObject {
 
     var assetWebView: WKWebView? { browsers[.assets]?.webView }
 
+    func assetSectionChanged(_ section: AssetEditorSection) {
+        // Keep a hidden editor's delayed event from stealing focus from the
+        // server, account or settings destination.
+        guard selectedSection?.assetEditorSection != nil,
+              selectedSection != section.appSection else { return }
+        selectedSection = section.appSection
+    }
+
     func goURL(path: String) -> URL? {
         guard snapshot.serverRunning, snapshot.server?.httpReady == true,
               let raw = snapshot.server?.url, let base = URL(string: raw),
@@ -345,7 +353,7 @@ final class AppModel: ObservableObject {
 
     func perform(_ action: String) {
         guard ["openModel", "saveModel", "showViewer"].contains(action), toolsReady else { return }
-        selectedSection = .model
+        selectedSection = .viewer
         let session = browser(.assets)
         session.setEditorSurface(.viewer)
         session.perform(action)
@@ -353,7 +361,7 @@ final class AppModel: ObservableObject {
 
     func openDocuments(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        selectedSection = .model
+        selectedSection = .viewer
         launch()
         Task {
             do {

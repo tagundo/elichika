@@ -142,7 +142,7 @@ enum IPAddress {
 }
 
 struct NativeRequest: Decodable {
-    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth, setPanelSettings, setEditorSurface }
+    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth, setPanelSettings, setEditorSurface, setSection }
     let id: String
     let action: Action
     let multiple: Bool?
@@ -155,6 +155,8 @@ struct NativeRequest: Decodable {
     let panelScope: String?
     let panelSettings: PanelPreferences?
     let editorSurface: EditorSurface?
+    let section: String?
+    let event: String?
 
     struct PanelPreferences: Codable {
         let hidden: [String]
@@ -184,6 +186,9 @@ struct NativeRequest: Decodable {
             guard let width = request.width, width == 0 || (160...360).contains(width) else { throw NativeError.invalidMessage }
         } else if request.action == .setEditorSurface {
             guard request.editorSurface != nil else { throw NativeError.invalidMessage }
+        } else if request.action == .setSection {
+            guard let section = request.section, AssetEditorSection(rawValue: section) != nil else { throw NativeError.invalidMessage }
+            if let event = request.event, AssetSectionEvent(rawValue: event) == nil { throw NativeError.invalidMessage }
         } else if request.action == .setPanelSettings {
             guard let scope = request.panelScope, ["viewer", "tools", "content"].contains(scope),
                   let settings = request.panelSettings, settings.isValid else { throw NativeError.invalidMessage }
@@ -209,14 +214,28 @@ enum NativeError: LocalizedError {
     }
 }
 
-enum EditorSurface: String, Codable {
+enum EditorSurface: String, Codable, CaseIterable, Sendable {
     case tools, viewer
-    var section: AppSection { self == .viewer ? .model : .assets }
+    var section: AppSection { self == .viewer ? .viewer : .assets }
     var command: String { self == .viewer ? "showViewer" : "showTools" }
+    var appSection: AppSection { section }
+
+    static func embeddedURL(_ base: URL, section: Self) -> URL? {
+        guard TrustedOrigin(base) != nil,
+              var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
+        var items = components.queryItems ?? []
+        items.removeAll { $0.name == "embedded" }
+        items.append(URLQueryItem(name: "embedded", value: "1"))
+        components.queryItems = items
+        components.fragment = section.rawValue
+        return components.url
+    }
 }
 
+typealias AssetEditorSection = EditorSurface
+
 enum AppSection: String, CaseIterable, Identifiable {
-    case server, accounts, content, assets, model, settings
+    case server, accounts, content, assets, viewer, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -224,7 +243,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .accounts: return "person.crop.circle"
         case .content: return "externaldrive"
         case .assets: return "wrench.and.screwdriver"
-        case .model: return "cube.transparent"
+        case .viewer: return "cube.transparent"
         case .settings: return "gearshape"
         }
     }
@@ -234,10 +253,40 @@ enum AppSection: String, CaseIterable, Identifiable {
             "accounts": ["Accounts", "계정", "アカウント"],
             "content": ["Server content", "서버 콘텐츠", "サーバーコンテンツ"],
             "assets": ["Asset editing tools", "에셋 편집 도구", "アセット編集ツール"],
-            "model": ["3D model", "3D 모델", "3Dモデル"],
+            "viewer": ["3D model", "3D 모델", "3Dモデル"],
             "settings": ["Settings", "설정", "設定"],
         ]
         return strings[rawValue]![language == "ko" ? 1 : language == "ja" ? 2 : 0]
+    }
+
+    var assetEditorSection: AssetEditorSection? {
+        switch self {
+        case .assets: return .tools
+        case .viewer: return .viewer
+        default: return nil
+        }
+    }
+}
+
+enum AssetSectionEvent: String { case ready, change }
+
+/// Keep the latest native destination while the shared page is loading.
+struct AssetNavigationState {
+    private(set) var desired: AssetEditorSection
+    private(set) var sent: AssetEditorSection?
+
+    init(desired: AssetEditorSection = .tools) { self.desired = desired }
+    var needsUpdate: Bool { sent != desired }
+    mutating func select(_ section: AssetEditorSection) { desired = section }
+    mutating func pageReady() { sent = nil }
+    mutating func markSent(_ section: AssetEditorSection) {
+        if section == desired { sent = section }
+    }
+    mutating func retry(_ section: AssetEditorSection) {
+        if section == desired && sent == section { sent = nil }
+    }
+    mutating func pageChanged(_ section: AssetEditorSection) {
+        desired = section; sent = section
     }
 }
 

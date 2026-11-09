@@ -51,6 +51,7 @@ class ViewerPersistenceTest {
             assertGameStopped()
             File(context.cacheDir, "viewer-persistence-report.json").delete()
             File(context.cacheDir, "viewer-persistence.png").delete()
+            File(context.cacheDir, "costume-transplant-picker.png").delete()
             assertEquals("The APK must package the audited original neutral persistence fixture",
                 "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1", sha256(neutralBytes))
             assertEquals("Use the fixed separate synthetic fractional ZIP without altering the original Unity fixture",
@@ -69,7 +70,7 @@ class ViewerPersistenceTest {
                 Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ) as MainActivity
             activity = launched
-            instrumentation.runOnMainSync { launched.findViewById<TabLayout>(R.id.tabs).getTabAt(4)!!.select() }
+            instrumentation.runOnMainSync { NativeTabsQa.tab(launched, MainActivity.TAB_MODEL_VIEWER).select() }
             val webView = waitForWebView(launched)
             browser = webView
             waitForDom(webView, "the packaged persistent editing UI") {
@@ -128,6 +129,7 @@ class ViewerPersistenceTest {
                 authoring.getJSONArray("edits").toString(), whileAnimated.getJSONArray("edits").toString())
             input(webView, "viewer-motion", "")
 
+            val nativeNavigation = exerciseNativeAssetNavigation(launched, webView, authoring)
             val first = save(webView)
             val outputFiles = checkOutputs(first, source)
             val recipeFile = File(first.getString("recipePath"))
@@ -176,6 +178,8 @@ class ViewerPersistenceTest {
             assertGameStopped()
             val modPackage = saveNamedModPackage(context, webView, second, authoring, source, bytes, intended, sourceThigh)
             val installedMod = addToGameAndRestartGo(launched, webView, authoring, source, bytes)
+            val accessory = exerciseAccessoryUnclip(context, webView)
+            val transplantPicker = exerciseTransplantPicker(launched, webView)
             val report = JSONObject().put("sourceSha256", sha256(bytes)).put("sourcePreserved", true)
                 .put("originalNeutralFixtureSha256", sha256(neutralBytes)).put("unityMemberSha256", sha256(member))
                 .put("fractionalZipValidation", fractionalValidation).put("sourceThighTransform", sourceThigh)
@@ -186,6 +190,9 @@ class ViewerPersistenceTest {
                 .put("animationOrderComparison", true).put("animatedPoseExcludedFromExport", true)
                 .put("baselineVertices", baseline).put("intendedVertices", intended)
                 .put("reloadedVertices", reloaded).put("rebuiltVertices", rebuilt)
+                .put("nativeAssetNavigation", nativeNavigation)
+                .put("nativeAccessoryUnclip", accessory)
+                .put("nativeTransplantPicker", transplantPicker)
                 .put("namedInstallerModPackage", modPackage)
                 .put("editingServerRemainedStopped", true)
                 .put("actualAddToGame", installedMod).put("gameServerRemainedStopped", false)
@@ -206,6 +213,370 @@ class ViewerPersistenceTest {
             preferences.edit().apply { if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide") }.commit()
         }
     }
+
+    private fun exerciseNativeAssetNavigation(activity: MainActivity, webView: WebView, authoring: JSONObject): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val before = evaluate(webView, "window.__nativeNavigationMarker='retained-document-'+Date.now();" +
+            "var s=ModelViewer.getState();return JSON.stringify({id:s.modelId,camera:s.camera,marker:window.__nativeNavigationMarker});")
+        fun select(id: String) {
+            instrumentation.runOnMainSync {
+                NativeTabsQa.tab(activity, id).select()
+                val visible = descendants(activity.findViewById(R.id.content)).filterIsInstance<WebView>().filter { it.visibility == View.VISIBLE }
+                assertEquals("Native tools and viewer must reveal exactly the same WebView", listOf(webView), visible.toList())
+                assertEquals(id, NativeTabsQa.selectedId(activity))
+                val toolViews = descendants(activity.findViewById(R.id.content)).filterIsInstance<WebView>().filter {
+                    android.net.Uri.parse(it.url ?: "").port == 8770
+                }.toList()
+                assertEquals("Never create a second webtools document for the viewer tab", listOf(webView), toolViews)
+            }
+        }
+        fun waitSection(section: String) = waitForDom(webView, "native-selected $section section") {
+            "return JSON.stringify({ok:window.ElichikaNavigation&&ElichikaNavigation.currentSection()===" + JSONObject.quote(section) +
+                "&&document.getElementById('tab-" + section + "').classList.contains('active')});"
+        }
+        select(MainActivity.TAB_ASSET_TOOLS)
+        waitSection("tools")
+        run(webView, "document.querySelector('#tool-list button[data-id=\"mesh_baker\"]').click();" +
+            "var input=document.querySelector('#tool-form [data-name=\"in_path\"]');if(!input)throw new Error('The real Mesh Baker form is required');" +
+            "input.value='native-navigation-unsaved-draft.unity';input.dispatchEvent(new Event('input',{bubbles:true}));")
+        select(MainActivity.TAB_MODEL_VIEWER)
+        waitSection("viewer")
+        val after = evaluate(webView, "var s=ModelViewer.getState();return JSON.stringify({id:s.modelId,camera:s.camera,marker:window.__nativeNavigationMarker,authoring:ModelViewer.getAuthoringState()});")
+        assertEquals("Switching outer destinations must preserve the live document", before.getString("marker"), after.getString("marker"))
+        assertEquals("Switching native tabs must not prepare another model", before.getString("id"), after.getString("id"))
+        assertEquals("Pending Node and Mesh edits must survive native navigation", authoring.getJSONArray("edits").toString(), after.getJSONObject("authoring").getJSONArray("edits").toString())
+        for (key in listOf("position", "target")) {
+            val original = before.getJSONObject("camera").getJSONArray(key)
+            val current = after.getJSONObject("camera").getJSONArray(key)
+            for (axis in 0..2) assertEquals("Keep the actual viewer camera $key/$axis", original.getDouble(axis), current.getDouble(axis), 1e-5)
+        }
+        assertEquals(before.getJSONObject("camera").getDouble("fov"), after.getJSONObject("camera").getDouble("fov"), 1e-5)
+        instrumentation.runOnMainSync {
+            NativeTabsQa.tab(activity, MainActivity.TAB_ASSET_TOOLS).select()
+            NativeTabsQa.tab(activity, MainActivity.TAB_MODEL_VIEWER).select()
+            NativeTabsQa.tab(activity, MainActivity.TAB_ASSET_TOOLS).select()
+        }
+        waitSection("tools")
+        instrumentation.runOnMainSync { assertEquals(MainActivity.TAB_ASSET_TOOLS, NativeTabsQa.selectedId(activity)) }
+        val draft = evaluate(webView, "return JSON.stringify({draft:document.querySelector('#tool-form [data-name=\"in_path\"]').value});")
+        assertEquals("Tools keep their unsaved form while the model is open", "native-navigation-unsaved-draft.unity", draft.getString("draft"))
+        run(webView, "ElichikaNavigation.showSection('viewer');")
+        waitSection("viewer")
+        val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        var selected: String? = null
+        while (System.nanoTime() < until) {
+            instrumentation.runOnMainSync { selected = NativeTabsQa.selectedId(activity) }
+            if (selected == MainActivity.TAB_MODEL_VIEWER) break
+            Thread.sleep(25)
+        }
+        assertEquals("Page actions must select the separate native model viewer tab", MainActivity.TAB_MODEL_VIEWER, selected)
+        assertEquals("Page-directed navigation must keep the same unsaved edits", authoring.getJSONArray("edits").toString(),
+            evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());").getJSONArray("edits").toString())
+        run(webView, """
+            window.__assetNavigationFrameResult=null;
+            var frame=document.createElement('iframe');
+            frame.id='native-navigation-frame-probe';frame.style.display='none';
+            frame.srcdoc="<script>var bridge=window.ElichikaNavigationNative;if(bridge)bridge.postMessage(JSON.stringify({event:'change',section:'tools'}));parent.__assetNavigationFrameResult={ready:true,bridge:!!bridge};</script>";
+            document.body.appendChild(frame);
+        """.trimIndent())
+        val frameProbe = waitForDom(webView, "the child-frame navigation guard") {
+            "var value=window.__assetNavigationFrameResult;return JSON.stringify({ok:!!value&&value.ready,bridge:value?value.bridge:null});"
+        }
+        instrumentation.waitForIdleSync()
+        instrumentation.runOnMainSync { assertEquals("A child frame must not control native top-level navigation", MainActivity.TAB_MODEL_VIEWER, NativeTabsQa.selectedId(activity)) }
+        run(webView, "document.getElementById('native-navigation-frame-probe').remove();" +
+            "ElichikaNavigationNative.postMessage('not-json');ElichikaNavigationNative.postMessage(JSON.stringify({event:'change',section:'gallery'}));")
+        instrumentation.waitForIdleSync()
+        instrumentation.runOnMainSync { assertEquals("Malformed or unsupported navigation messages must be ignored", MainActivity.TAB_MODEL_VIEWER, NativeTabsQa.selectedId(activity)) }
+        val embedded = evaluate(webView, "var header=document.querySelector('header');return JSON.stringify({embedded:new URLSearchParams(location.search).get('embedded')," +
+            "language:new URLSearchParams(location.search).get('lang'),hiddenHeader:!header||getComputedStyle(header).display==='none'});")
+        assertEquals("1", embedded.getString("embedded"))
+        assertTrue("The native shell must remove the duplicate inner header", embedded.getBoolean("hiddenHeader"))
+        assertEquals(Lang.effective(activity), embedded.getString("language"))
+        return JSONObject().put("sharedWebView", true).put("liveDocumentRetained", true).put("modelAndCameraRetained", true)
+            .put("unsavedNodeAndMeshRetained", true).put("toolsDraftRetained", true)
+            .put("rapidNativeSelection", true).put("pageToNativeSynchronized", true).put("childFrameProbe", frameProbe)
+            .put("unsupportedMessagesIgnored", true).put("embedded", embedded)
+    }
+
+    private fun exerciseAccessoryUnclip(context: Context, webView: WebView): JSONObject {
+        assertGameStopped()
+        val bytes = InstrumentationRegistry.getInstrumentation().context.assets.open("viewer_accessory_overlap.unity").use { it.readBytes() }
+        assertEquals("Use the audited own-geometry accessory fixture", "4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e", sha256(bytes))
+        val source = File(context.filesDir, "viewer-accessory-native-${System.nanoTime()}.unity")
+        source.writeBytes(bytes)
+        try {
+            val python = EmbeddedPython.instance(context)
+            val packagedModule = python.getModule("webtools.core.model_accessory_unclip")
+            assertEquals("webtools.core.model_accessory_unclip", packagedModule.get("__name__").toString())
+            val previous = evaluate(webView, "return JSON.stringify({id:ModelViewer.getState().modelId||''});").getString("id")
+            run(webView, "if(document.getElementById('viewer-auto-face').checked)document.getElementById('viewer-auto-face').click();openModelViewer([" + JSONObject.quote(source.absolutePath) + "]);")
+            waitForNewModel(webView, previous, JSONArray().put(source.absolutePath))
+            waitForDom(webView, "the actual packaged accessory script, serialized skin and editing session") {
+                "var s=ModelViewer.getState(),m=ModelViewer.getEditingMetadata(),p=s.loaded?ModelViewer.renderProbe(33):{ready:false};" +
+                    "return JSON.stringify({ok:!!window.ViewerAccessories&&s.loaded&&!s.loading&&!s.contextLost&&s.stats.meshes===1&&s.stats.vertices===21&&" +
+                    "!!s.rig&&s.rig.available&&!!m&&m.available&&!!m.token&&p.ready&&p.glError===0&&!!s.accessories," +
+                    "error:s.error||(document.readyState==='complete'&&!window.ViewerAccessories?'Missing packaged accessory script':''),state:s});"
+            }
+            assertBoneScale(webView, "BreastSize", doubleArrayOf(1.5, 1.5, 1.5))
+            run(webView, "document.getElementById('viewer-body-adjustments').open=true;document.getElementById('viewer-node-editor').open=true;")
+            clickVisible(webView, "viewer-editor-node-tab")
+            for (axis in listOf("X", "Y", "Z")) boneInput(webView, "BreastSize", "scale", axis, 2.0)
+            input(webView, "viewer-save-method", "node")
+            val body = evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());")
+            assertEquals(1, body.getJSONArray("edits").length())
+            assertEquals("node", body.getJSONArray("edits").getJSONObject(0).getString("method"))
+            assertFalse(body.getJSONArray("edits").getJSONObject(0).getBoolean("compensate"))
+            run(webView, "document.getElementById('viewer-accessory-card').open=true;var checkbox=document.getElementById('viewer-accessory-enabled');" +
+                "if(checkbox.disabled)throw new Error('The real source-bound accessory checkbox must be enabled');if(!checkbox.checked)checkbox.click();")
+            val ready = waitForDom(webView, "the actual accessory HTTP request and derived preview") {
+                "var s=ModelViewer.getState(),a=s.accessories;return JSON.stringify({ok:a&&a.enabled&&!a.pending&&!a.error&&a.status==='ready'&&a.changed>0," +
+                    "error:a&&a.error||'',accessories:a,authoring:ModelViewer.getAuthoringState()});"
+            }
+            assertEquals(1, ready.getJSONObject("accessories").getInt("changed"))
+            val authored = ready.getJSONObject("authoring")
+            assertEquals("Derived anchor movement must never become a second body edit", 1, authored.getJSONArray("edits").length())
+            assertEquals(1.0, authored.getJSONObject("accessoryUnclip").getDouble("strength"), 1e-9)
+            assertEquals(.15, authored.getJSONObject("accessoryUnclip").getDouble("overlap"), 1e-9)
+            assertFalse(authored.getJSONObject("accessoryUnclip").getBoolean("closeGaps"))
+            run(webView, "window.__nativeAccessoryResponse={done:false};var a=ModelViewer.getAuthoringState();delete a.unsupported;" +
+                "fetch('/api/viewer/edit/accessories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:ModelViewer.getEditingMetadata().token,state:a})})" +
+                ".then(function(r){return r.json().then(function(v){if(!r.ok||v.error)throw new Error(v.error||'Accessory endpoint failed');return v;});})" +
+                ".then(function(v){window.__nativeAccessoryResponse={done:true,value:v};},function(e){window.__nativeAccessoryResponse={done:true,error:String(e)};});")
+            val response = waitForDom(webView, "the independent actual accessory endpoint response") {
+                "var r=window.__nativeAccessoryResponse;return JSON.stringify({ok:r.done&&!r.error,error:r.error||'',value:r.value});"
+            }.getJSONObject("value")
+            assertEquals("applied", response.getJSONObject("summary").getString("status"))
+            assertEquals(1, response.getJSONObject("summary").getInt("changed"))
+            val delta = response.getJSONArray("corrections").getJSONObject(0).getJSONArray("delta")
+            // Independent original fixture centroid in Spine2. No production
+            // planning/CLI function computes this oracle: (uniform2 - 1)*C.
+            val expectedDelta = doubleArrayOf(-.25166666666666665, .013333333333333334, .025)
+            for (axis in 0..2) assertEquals("Three-space accessory delta axis$axis", expectedDelta[axis], delta.getDouble(axis), 2e-6)
+            val anchorIdentity = evaluate(webView, "var m=ModelViewer.getEditingMetadata(),s=ModelViewer.getState();" +
+                "var nodes=m.nodes.filter(function(n){return n.name==='PartsA_Offset';});" +
+                "if(nodes.length!==1)throw new Error('The accessory fixture must have one metadata anchor');" +
+                "var bones=s.rig.bones.filter(function(b){return String(b.node)===String(nodes[0].node);});" +
+                "if(bones.length!==1)throw new Error('The metadata node must identify one actual rig anchor');" +
+                "return JSON.stringify({node:String(nodes[0].node),publicName:bones[0].name,position:bones[0].position});")
+            assertEquals("The preview and endpoint must identify the same unique anchor", response.getJSONArray("corrections").getJSONObject(0).get("node").toString(), anchorIdentity.getString("node"))
+            val anchor = anchorIdentity.getJSONArray("position")
+            val expectedThreePosition = doubleArrayOf(-.26166666666666666, .03333333333333333, .045)
+            for (axis in 0..2) assertEquals("The real preview must install the endpoint correction axis$axis", expectedThreePosition[axis], anchor.getDouble(axis), 2e-6)
+            val saved = save(webView)
+            checkOutputs(saved, source)
+            val recipe = JSONObject(File(saved.getString("recipePath")).readText())
+            assertTrue(recipe.getJSONObject("state").has("accessoryUnclip"))
+            assertEquals(1, recipe.getJSONObject("state").getJSONArray("edits").length())
+            val inspect = python.getModule("types").callAttr("ModuleType", "_native_accessory_serialized_oracle")
+            python.getModule("builtins").callAttr("exec", accessoryInspectionScript, inspect.get("__dict__"))
+            val inspected = JSONObject(inspect.callAttr("inspect_json", source.absolutePath,
+                saved.getJSONArray("previewPaths").getString(0)).toString())
+            assertEquals(1, inspected.getInt("changedAnchors"))
+            assertTrue(inspected.getBoolean("allMeshesAndTexturesByteIdentical"))
+            assertTrue(inspected.getBoolean("otherRawObjectsByteIdentical"))
+            assertTrue(source.readBytes().contentEquals(bytes))
+            assertGameStopped()
+            return JSONObject().put("status", "PASS").put("fixtureSha256", sha256(bytes))
+                .put("packagedModule", packagedModule.get("__name__").toString())
+                .put("actualHttpResponse", response).put("actualPreview", ready.getJSONObject("accessories"))
+                .put("actualAnchorIdentity", anchorIdentity)
+                .put("actualSerializedOracle", inspected).put("sourcePreserved", true)
+                .put("derivedOffsetExcludedFromEdits", true).put("recipeFlagPreserved", true)
+        } finally { source.delete() }
+    }
+
+    private fun exerciseTransplantPicker(activity: MainActivity, webView: WebView): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assertGameStopped()
+        // Make a fresh unsaved edit after the preceding serialized uniform2
+        // check. The popup must leave this live authoring session untouched.
+        boneInput(webView, "BreastSize", "scale", "X", 1.9)
+        waitForDom(webView, "the pending Node+Accessory session before tool selection") {
+            "var s=ModelViewer.getState(),a=ModelViewer.getAuthoringState(),c=s.accessories;return JSON.stringify({" +
+                "ok:!!a.accessoryUnclip&&a.edits.length===1&&c&&c.status==='ready'&&!c.pending&&!c.error,error:c&&c.error||''});"
+        }
+        run(webView, "var s=ModelViewer.getState();window.__nativeTransplantReference={model:s.modelId,camera:JSON.parse(JSON.stringify(s.camera))," +
+            "token:ModelViewer.getEditingMetadata().token,authoring:JSON.stringify(ModelViewer.getAuthoringState())};" +
+            "if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(2048);")
+        instrumentation.runOnMainSync { NativeTabsQa.tab(activity, MainActivity.TAB_ASSET_TOOLS).select() }
+        waitForDom(webView, "the native Asset tools destination") {
+            "return JSON.stringify({ok:ElichikaNavigation.currentSection()==='tools'&&document.getElementById('tab-tools').classList.contains('active')});"
+        }
+        run(webView, "var tool=document.querySelector('#tool-list button[data-id=\"costume_transplant\"]');" +
+            "if(!tool)throw new Error('The packaged Costume Transplant tool is missing');tool.click();" +
+            "function field(name){return document.querySelector('#tool-form [data-name=\"'+name+'\"]');}" +
+            "field('donor').value='/native/manual-donor.unity';field('target').value='/native/manual-target.unity';" +
+            "field('suffix').value='_native_cancel_draft';field('preserve_physics').checked=false;field('mask_handling').checked=false;")
+        fun snapshot(): JSONObject = evaluate(webView, "function field(name){return document.querySelector('#tool-form [data-name=\"'+name+'\"]');}" +
+            "var s=ModelViewer.getState(),r=window.__nativeTransplantReference,delta=0;['position','target'].forEach(function(key){" +
+            "s.camera[key].forEach(function(v,i){delta=Math.max(delta,Math.abs(v-r.camera[key][i]));});});delta=Math.max(delta,Math.abs(s.camera.fov-r.camera.fov));" +
+            "return JSON.stringify({modelSame:s.modelId===r.model,tokenSame:ModelViewer.getEditingMetadata().token===r.token,cameraDelta:delta," +
+            "authoringSame:JSON.stringify(ModelViewer.getAuthoringState())===r.authoring,section:ElichikaNavigation.currentSection()," +
+            "donor:field('donor').value,target:field('target').value,suffix:field('suffix').value,preservePhysics:field('preserve_physics').checked," +
+            "maskHandling:field('mask_handling').checked,importRequests:performance.getEntriesByType('resource').filter(function(e){return new URL(e.name).pathname==='/api/viewer/game/import';}).length});")
+        val before = snapshot()
+        val dialogs = JSONArray()
+        for (fieldName in listOf("donor", "target")) {
+            run(webView, "var button=document.querySelector('[data-game-asset-field=\"$fieldName\"]');" +
+                "if(!button)throw new Error('The dedicated $fieldName game-assets button is missing');button.scrollIntoView({block:'center'});")
+            waitForDom(webView, "the visible $fieldName game-assets button") {
+                "var b=document.querySelector('[data-game-asset-field=\"$fieldName\"]'),r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);" +
+                    "return JSON.stringify({ok:!b.disabled&&r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&(hit===b||b.contains(hit))});"
+            }
+            val trigger = evaluate(webView, "var b=document.querySelector('[data-game-asset-field=\"$fieldName\"]');" +
+                "var label=b.getAttribute('title').split(' · ').pop();b.click();return JSON.stringify({label:label});")
+            waitForDom(webView, "the $fieldName popup and real stock character catalog") {
+                "var d=document.getElementById('viewer-game-assets-dialog'),c=document.getElementById('viewer-game-character'),p=document.getElementById('viewer-game-platform');" +
+                    "return JSON.stringify({ok:d.open&&!!p&&Array.prototype.some.call(c.options,function(o){return !!o.value;})," +
+                    "error:document.getElementById('viewer-game-assets-status').classList.contains('viewer-warning')?document.getElementById('viewer-game-assets-status').textContent:''});"
+            }
+            run(webView, "var c=document.getElementById('viewer-game-character');c.value=Array.prototype.filter.call(c.options,function(o){return !!o.value;})[0].value;c.dispatchEvent(new Event('change',{bubbles:true}));")
+            val catalog = waitForDom(webView, "the $fieldName popup's actual nonempty costume catalog") {
+                "var d=document.getElementById('viewer-game-assets-dialog'),c=document.getElementById('viewer-game-costume'),p=document.getElementById('viewer-game-platform'),r=d.getBoundingClientRect();" +
+                    "var choices=Array.prototype.filter.call(c.options,function(o){return !!o.value;});return JSON.stringify({ok:d.open&&choices.length>0&&!document.getElementById('viewer-game-import').disabled," +
+                    "title:document.getElementById('viewer-game-assets-title').textContent,platform:p.value,platforms:Array.prototype.map.call(p.options,function(o){return o.value;})," +
+                    "characters:document.getElementById('viewer-game-character').options.length-1,costumes:choices.length,dialogWidth:r.width,dialogHeight:r.height," +
+                    "error:document.getElementById('viewer-game-assets-status').classList.contains('viewer-warning')?document.getElementById('viewer-game-assets-status').textContent:''});"
+            }
+            assertTrue("The popup must identify its requested model field", catalog.getString("title").endsWith(trigger.getString("label")))
+            assertEquals("Cancel must not retain an unsubmitted platform from the other field", "android", catalog.getString("platform"))
+            assertEquals(listOf("android", "ios"), (0 until catalog.getJSONArray("platforms").length()).map { catalog.getJSONArray("platforms").getString(it) })
+            assertTrue(catalog.getInt("characters") > 0 && catalog.getInt("costumes") > 0)
+            assertTrue("The shared modal must be visible outside the hidden 3D section", catalog.getDouble("dialogWidth") > 200 && catalog.getDouble("dialogHeight") > 200)
+            run(webView, "window.__nativeTransplantPaintFrames=0;requestAnimationFrame(function(){window.__nativeTransplantPaintFrames=1;" +
+                "requestAnimationFrame(function(){window.__nativeTransplantPaintFrames=2;});});")
+            val platformHit = waitForDom(webView, "the painted and directly usable $fieldName platform control", 30) {
+                "var d=document.getElementById('viewer-game-assets-dialog'),p=document.getElementById('viewer-game-platform'),r=p.getBoundingClientRect()," +
+                    "hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2),style=getComputedStyle(d);" +
+                    "return JSON.stringify({ok:window.__nativeTransplantPaintFrames===2&&d.open&&style.display!=='none'&&style.visibility!=='hidden'&&" +
+                    "!p.disabled&&r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1&&" +
+                    "!!hit&&d.contains(hit)&&(hit===p||p.contains(hit)),frames:window.__nativeTransplantPaintFrames,dialogOpen:d.open," +
+                    "platform:p.value,hitTag:hit&&hit.tagName,hitId:hit&&hit.id,hitInsideDialog:!!hit&&d.contains(hit)," +
+                    "left:r.left,top:r.top,width:r.width,height:r.height});"
+            }
+            catalog.put("nativePlatformHit", platformHit)
+            if (fieldName == "donor") {
+                waitForWebViewVisualState(webView)
+                catalog.put("nativeVisualStateDrawn", true)
+                val image = instrumentation.uiAutomation.takeScreenshot()
+                    ?: throw AssertionError("The acknowledged native modal must produce a screenshot")
+                try {
+                    File(activity.cacheDir, "costume-transplant-picker.png").outputStream().use {
+                        assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it))
+                    }
+                } finally { image.recycle() }
+                run(webView, "var p=document.getElementById('viewer-game-platform');p.value='ios';p.dispatchEvent(new Event('change',{bubbles:true}));")
+            }
+            run(webView, if (fieldName == "donor") "document.querySelector('#viewer-game-assets-dialog .modal-head button').click();"
+                else "document.querySelector('#viewer-game-assets-dialog .viewer-game-assets-actions button:not(#viewer-game-import)').click();")
+            waitForDom(webView, "the canceled $fieldName popup") {
+                "return JSON.stringify({ok:!document.getElementById('viewer-game-assets-dialog').open});"
+            }
+            val after = snapshot()
+            for (key in listOf("donor", "target", "suffix", "preservePhysics", "maskHandling")) {
+                assertEquals("Cancel must preserve the existing $key value", before.get(key), after.get(key))
+            }
+            assertTrue(after.getBoolean("modelSame") && after.getBoolean("tokenSame") && after.getBoolean("authoringSame"))
+            assertEquals("The picker must not move the existing preview camera", 0.0, after.getDouble("cameraDelta"), 1e-7)
+            assertEquals("tools", after.getString("section"))
+            assertEquals("No body import/download may run during this native cancel-only smoke", before.getInt("importRequests"), after.getInt("importRequests"))
+            instrumentation.runOnMainSync {
+                assertEquals(MainActivity.TAB_ASSET_TOOLS, NativeTabsQa.selectedId(activity))
+                val visible = descendants(activity.findViewById(R.id.content)).filterIsInstance<WebView>().filter { it.visibility == View.VISIBLE }.toList()
+                assertEquals("The modal must keep the same active shared WebView", listOf(webView), visible)
+            }
+            dialogs.put(JSONObject().put("field", fieldName).put("catalog", catalog).put("cancelPreservedDraftsAndScene", true))
+        }
+        assertFalse("Donor and target titles must distinguish their destinations", dialogs.getJSONObject(0).getJSONObject("catalog").getString("title") == dialogs.getJSONObject(1).getJSONObject("catalog").getString("title"))
+        assertGameStopped()
+        waitForWebViewVisualState(webView)
+        return JSONObject().put("status", "PASS").put("scope", "Actual native buttons and local stock catalog; cancel only, no body download or transplant execution")
+            .put("dialogs", dialogs).put("sameWebView", true).put("pendingNodeAndAccessoryPreserved", true)
+            .put("modelTokenAndCameraPreserved", true).put("manualDraftsAndOptionsPreserved", true)
+            .put("nativeToolsSelectionPreserved", true).put("unsubmittedPlatformNotRetained", true).put("bodyImportRequests", 0)
+    }
+
+    private fun waitForWebViewVisualState(webView: WebView) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val drawn = CountDownLatch(1)
+        val request = System.nanoTime()
+        instrumentation.runOnMainSync {
+            webView.postVisualStateCallback(request, object : WebView.VisualStateCallback() {
+                override fun onComplete(requestId: Long) {
+                    assertEquals(request, requestId)
+                    val observer = webView.viewTreeObserver
+                    val listener = object : android.view.ViewTreeObserver.OnDrawListener {
+                        override fun onDraw() {
+                            webView.post {
+                                if (observer.isAlive) observer.removeOnDrawListener(this)
+                                drawn.countDown()
+                            }
+                        }
+                    }
+                    observer.addOnDrawListener(listener)
+                    webView.invalidate()
+                }
+            })
+        }
+        assertTrue("The actual WebView must draw its acknowledged modal state", drawn.await(15, TimeUnit.SECONDS))
+        instrumentation.waitForIdleSync()
+    }
+
+    private val accessoryInspectionScript = """
+        import copy, hashlib, json, math
+        from pathlib import Path
+        import UnityPy
+
+        def inspect_json(original_path, output_path):
+            source = Path(original_path).read_bytes()
+            assert hashlib.sha256(source).hexdigest() == '4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e'
+            def records(raw):
+                env = UnityPy.load(raw)
+                objects = {obj.path_id: obj for obj in env.objects}
+                assert len(objects) == len(env.objects)
+                names = {obj.path_id: obj.read_typetree()['m_Name'] for obj in env.objects if obj.type.name == 'GameObject'}
+                transforms = {names[obj.read_typetree()['m_GameObject']['m_PathID']]: obj for obj in env.objects if obj.type.name == 'Transform'}
+                return objects, transforms
+            before, old_transforms = records(source)
+            after, new_transforms = records(Path(output_path).read_bytes())
+            assert before.keys() == after.keys()
+            anchor = old_transforms['PartsA_Offset'].path_id
+            body = old_transforms['BreastSize'].path_id
+            old_position = old_transforms['PartsA_Offset'].read_typetree()['m_LocalPosition']
+            actual = new_transforms['PartsA_Offset'].read_typetree()['m_LocalPosition']
+            # Independent fixture constants: centroid C under the identity
+            # Spine2 rotation/scale; requested uniform2 gives local delta C.
+            expected = (.01 + .25166666666666665, .02 + .013333333333333334, .02 + .025)
+            for axis, value in zip('xyz', expected):
+                assert math.isclose(actual[axis], value, abs_tol=2e-6), (axis, actual[axis], value)
+                assert math.isclose(old_position[axis], {'x':.01,'y':.02,'z':.02}[axis], abs_tol=2e-7)
+            components = [key for key, obj in before.items() if obj.type.name == 'MonoBehaviour' and 'scaleValues' in obj.read_typetree()]
+            assert len(components) == 1
+            component = components[0]
+            old_settings = before[component].read_typetree()
+            new_settings = after[component].read_typetree()
+            assert len(old_settings['scaleValues']) == len(new_settings['scaleValues']) == 1
+            old_record, new_record = old_settings['scaleValues'][0], new_settings['scaleValues'][0]
+            assert old_record['target']['m_PathID'] == new_record['target']['m_PathID'] == body
+            assert all(math.isclose(old_record['scaledValue'][axis], 1.5, abs_tol=1e-7) for axis in 'xyz')
+            assert all(math.isclose(new_record['scaledValue'][axis], 2., abs_tol=1e-7) for axis in 'xyz')
+            expected_settings = copy.deepcopy(old_settings)
+            expected_settings['scaleValues'][0]['scaledValue'] = dict.fromkeys('xyz', 2.)
+            assert new_settings == expected_settings
+            changed = {key for key in before if before[key].get_raw_data() != after[key].get_raw_data()}
+            assert changed == {anchor, component}, changed
+            meshes = [key for key, obj in before.items() if obj.type.name == 'Mesh']
+            textures = [key for key, obj in before.items() if obj.type.name == 'Texture2D']
+            assert len(meshes) == len(textures) == 1
+            assert all(before[key].get_raw_data() == after[key].get_raw_data() for key in meshes + textures)
+            assert hashlib.sha256(Path(original_path).read_bytes()).hexdigest() == hashlib.sha256(source).hexdigest()
+            return json.dumps({'changedAnchors':1,'sourceAnchor':[old_position[axis] for axis in 'xyz'],
+                'savedAnchor':[actual[axis] for axis in 'xyz'],'expectedAnchor':list(expected),
+                'allMeshesAndTexturesByteIdentical':True,'otherRawObjectsByteIdentical':True,
+                'meshObjects':len(meshes),'textureObjects':len(textures),'onlyChangedObjectIds':sorted(changed),
+                'savedAbsoluteBodyScale':[2.,2.,2.],'oracle':'Independent serialized fixture constants; no production planner or CLI result reuse'})
+    """.trimIndent()
 
     private fun fractionalSaveState(webView: WebView): JSONObject {
         val observed = evaluate(webView, "var inputs=Array.prototype.slice.call(document.querySelectorAll('#viewer-node-fields input[type=number]'));" +

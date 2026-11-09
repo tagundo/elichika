@@ -40,6 +40,8 @@ internal object HeaderLayoutNativeQa {
         lateinit var tabViews: List<View>
         lateinit var tabObjects: List<TabLayout.Tab>
         lateinit var labels: List<CharSequence?>
+        val labelIds = listOf(R.string.tab_console, R.string.tab_webui, R.string.tab_user,
+            R.string.tab_dev, R.string.tab_mod, R.string.tab_model)
         var selected = 0
         var originalWidth = 0
         var originalStatus: CharSequence = ""
@@ -60,10 +62,10 @@ internal object HeaderLayoutNativeQa {
             assertSame(controls, status.parent)
             assertSame(controls, toggle.parent)
             assertSame(controls, progress.parent)
-            assertEquals(5, tabs.tabCount)
+            assertEquals("All six top-level destinations must remain native tabs", labelIds.size, tabs.tabCount)
             val strip = tabs.getChildAt(0) as ViewGroup
-            tabViews = (0 until 5).map(strip::getChildAt)
-            tabObjects = (0 until 5).map { tabs.getTabAt(it)!! }
+            tabViews = labelIds.indices.map(strip::getChildAt)
+            tabObjects = labelIds.indices.map { tabs.getTabAt(it)!! }
             labels = tabObjects.map { it.text }
             selected = tabs.selectedTabPosition
             originalWidth = header.layoutParams.width
@@ -137,8 +139,7 @@ internal object HeaderLayoutNativeQa {
             status.text = expectedStatus
             expectedProgress = if (busy) View.VISIBLE else View.GONE
             progress.visibility = expectedProgress
-            val ids = listOf(R.string.tab_console, R.string.tab_webui, R.string.tab_user, R.string.tab_dev, R.string.tab_mod)
-            ids.forEachIndexed { index, id -> tabObjects[index].text = strings.getString(id) }
+            labelIds.forEachIndexed { index, id -> tabObjects[index].text = strings.getString(id) }
         }
         fun check(language: String, scale: Float, state: String, dp: Int): JSONObject {
             lateinit var result: JSONObject
@@ -209,10 +210,10 @@ internal object HeaderLayoutNativeQa {
                     .put("spinnerContrast", ColorUtils.calculateContrast(spinnerColor, surface))
                 if (dp == 320 && state == "stopped") assertFalse("A narrow stopped header must retain two readable rows", inline)
                 if (language == "ko" && kotlin.math.abs(scale - 1f) < .01f && state == "stopped" && dp in listOf(768, 853)) {
-                    assertTrue("Korean stopped controls and all five tabs must fit inline at $dp dp", inline)
+                    assertTrue("Korean stopped controls and all six tabs must fit inline at $dp dp", inline)
                 }
                 if (inline) {
-                    assertEquals("The actual five-tab group must end at the padded header edge: $groupGeometry",
+                    assertEquals("The actual six-tab group must end at the padded header edge: $groupGeometry",
                         expectedGroupRight, tabRects.last().right)
                     val key = JSONArray().put(language).put(scale.toDouble()).put(header.width)
                         .put(JSONArray(tabObjects.map { it.text.toString() })).toString()
@@ -234,7 +235,7 @@ internal object HeaderLayoutNativeQa {
                     if (inline) {
                         val rect = bounds(header, tab)
                         val target = "tab=$index rect=$rect header=${header.width}x${header.height} navigationScrollX=${tabs.scrollX}"
-                        assertTrue("All five inline tabs must be fully inside the header: $target", rect.left >= 0 && rect.right <= header.width && rect.top >= 0 && rect.bottom <= header.height)
+                        assertTrue("All six inline tabs must be fully inside the header: $target", rect.left >= 0 && rect.right <= header.width && rect.top >= 0 && rect.bottom <= header.height)
                         val visible = Rect()
                         assertTrue("Every inline tab must actually be visible in the native window: $target", tab.getGlobalVisibleRect(visible))
                         assertEquals("The whole inline tab width must be visible: $target visible=$visible", tab.width, visible.width())
@@ -305,7 +306,7 @@ internal object HeaderLayoutNativeQa {
             width(320)
             // Exercise each actual tab's scroll/reveal and existing selection
             // callback; no Start server action is clicked.
-            for (index in 0 until 5) {
+            for (index in tabViews.indices) {
                 mutate {
                     val tab = tabViews[index]
                     tabObjects[index].select()

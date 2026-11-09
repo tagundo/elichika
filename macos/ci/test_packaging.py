@@ -1,5 +1,7 @@
 """Archive and dependency boundaries which must hold before running a Mac build."""
 import io
+import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -7,6 +9,8 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import urllib.error
+import urllib.request
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
@@ -14,6 +18,158 @@ from build_app import bundle_versions, build_hca
 from common import extract_python, readonly_tree, sha256, verified_download, writable_tree
 from audit_bundle import resolve_private, system_path
 from native_macho import allowed_runpath, loader_context, prune_external_runpaths
+
+
+class LockedDownloads(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.cache = Path(self.temporary.name)
+        self.raw = b"locked original archive bytes"
+        self.api = "https://api.github.com/repos/example/runtime/releases/assets/123"
+        self.headers = {"Accept": "application/octet-stream", "X-GitHub-Api-Version": "2022-11-28",
+                        "User-Agent": "Elichika-macOS-build"}
+        self.spec = {"filename": "python.tar.gz", "url": "https://github.com/example/runtime/python.tar.gz",
+                     "sha256": hashlib.sha256(self.raw).hexdigest(), "bytes": len(self.raw),
+                     "alternate_downloads": [{"url": self.api, "headers": self.headers}]}
+        self.destination = self.cache / self.spec["filename"]
+        self.partial = self.destination.with_name(self.destination.name + ".part")
+        # Keep tests independent of the host/CI's real credential environment.
+        environment = patch.dict(os.environ, {"GITHUB_TOKEN": ""})
+        environment.start(); self.addCleanup(environment.stop)
+
+    def response(self, raw=None, url="https://release-assets.githubusercontent.com/locked"):
+        response = io.BytesIO(self.raw if raw is None else raw)
+        response.url = url
+        return response
+
+    def error(self, code):
+        return urllib.error.HTTPError(self.spec["url"], code, "controlled failure", {}, None)
+
+    def assert_clean(self):
+        self.assertFalse(self.partial.exists())
+
+    def test_verified_cache_requires_no_http_or_api_credentials(self):
+        self.destination.write_bytes(self.raw)
+        with patch("common.urllib.request.urlopen") as download:
+            self.assertEqual(verified_download(self.spec, self.cache), self.destination)
+        download.assert_not_called()
+        self.assert_clean()
+
+    def test_primary_success_replaces_stale_cache_without_calling_alternate(self):
+        self.destination.write_bytes(b"stale cache")
+        with patch("common.urllib.request.urlopen", return_value=self.response()) as download:
+            self.assertEqual(verified_download(self.spec, self.cache), self.destination)
+        download.assert_called_once_with(self.spec["url"], timeout=90)
+        self.assertEqual(self.destination.read_bytes(), self.raw)
+        self.assert_clean()
+
+    def test_504_uses_only_locked_api_headers_and_the_original_pin(self):
+        with patch("common.urllib.request.urlopen", side_effect=[self.error(504), self.response()]) as download:
+            self.assertEqual(verified_download(self.spec, self.cache), self.destination)
+        self.assertEqual(download.call_count, 2)
+        request = download.call_args_list[1].args[0]
+        self.assertEqual(request.full_url, self.api)
+        self.assertEqual(dict((key.lower(), value) for key, value in request.header_items()),
+                         dict((key.lower(), value) for key, value in self.headers.items()))
+        self.assertEqual(self.destination.read_bytes(), self.raw)
+        self.assert_clean()
+
+    def test_wrong_hash_or_size_fails_closed_without_fallback_or_cache_overwrite(self):
+        for via_alternate in (False, True):
+            for failure in ("hash", "size"):
+                with self.subTest(alternate=via_alternate, failure=failure):
+                    spec = dict(self.spec)
+                    raw = b"unexpected bytes" if failure == "hash" else self.raw
+                    if failure == "size": spec["bytes"] += 1
+                    self.destination.write_bytes(b"prior cache remains intact")
+                    responses = ([self.error(504)] if via_alternate else []) + [self.response(raw)]
+                    with patch("common.urllib.request.urlopen", side_effect=responses) as download:
+                        with self.assertRaisesRegex(RuntimeError, "SHA256 mismatch|byte count mismatch"):
+                            verified_download(spec, self.cache)
+                    self.assertEqual(download.call_count, 2 if via_alternate else 1)
+                    self.assertEqual(self.destination.read_bytes(), b"prior cache remains intact")
+                    self.assert_clean()
+
+    def test_redirect_downgrade_is_terminal_even_when_an_alternate_exists(self):
+        for via_alternate in (False, True):
+            with self.subTest(alternate=via_alternate):
+                self.destination.write_bytes(b"prior cache")
+                responses = ([self.error(504)] if via_alternate else []) + [self.response(url="http://untrusted/archive")]
+                with patch("common.urllib.request.urlopen", side_effect=responses) as download:
+                    with self.assertRaisesRegex(RuntimeError, "downgraded HTTPS"):
+                        verified_download(self.spec, self.cache)
+                self.assertEqual(download.call_count, 2 if via_alternate else 1)
+                self.assertEqual(self.destination.read_bytes(), b"prior cache")
+                self.assert_clean()
+
+    def test_invalid_locked_routes_and_headers_are_rejected_before_http(self):
+        cases = [{"url": "http://untrusted/archive"},
+                 {"alternate_downloads": [{"url": "http://untrusted/archive"}]},
+                 {"alternate_downloads": [{"url": self.api}] * 2},
+                 {"alternate_downloads": [{"url": self.api, "headers": {"Authorization": "forbidden"}}]},
+                 {"alternate_downloads": [{"url": self.api, "headers": {"Accept": "x\r\ny"}}]}]
+        for changes in cases:
+            with self.subTest(changes=changes), patch("common.urllib.request.urlopen") as download:
+                with self.assertRaises(RuntimeError): verified_download({**self.spec, **changes}, self.cache)
+                download.assert_not_called()
+                self.assertFalse(self.destination.exists()); self.assert_clean()
+
+    def test_all_transient_routes_fail_after_exactly_two_attempts(self):
+        self.partial.write_bytes(b"abandoned prior partial")
+        with patch("common.urllib.request.urlopen", side_effect=[self.error(504), self.error(503)]) as download:
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                verified_download(self.spec, self.cache)
+        self.assertEqual(caught.exception.code, 503)
+        self.assertEqual(download.call_count, 2)
+        self.assertFalse(self.destination.exists()); self.assert_clean()
+
+    def test_permanent_http_errors_do_not_fallback(self):
+        for code in (400, 401, 403, 404):
+            with self.subTest(code=code), patch("common.urllib.request.urlopen", side_effect=self.error(code)) as download:
+                with self.assertRaises(urllib.error.HTTPError): verified_download(self.spec, self.cache)
+                self.assertEqual(download.call_count, 1)
+                self.assertFalse(self.destination.exists()); self.assert_clean()
+
+    def test_timeout_or_incomplete_body_can_fallback_but_unclassified_url_errors_cannot(self):
+        class Interrupted(io.BytesIO):
+            url = "https://release-assets.githubusercontent.com/locked"
+            def read(self, count=-1):
+                if self.tell(): raise http.client.IncompleteRead(b"partial", 20)
+                return super().read(4)
+        for failure in (TimeoutError("controlled timeout"), urllib.error.URLError(TimeoutError()), Interrupted(b"partial")):
+            with self.subTest(failure=type(failure).__name__):
+                self.destination.unlink(missing_ok=True)
+                with patch("common.urllib.request.urlopen", side_effect=[failure, self.response()]) as download:
+                    verified_download(self.spec, self.cache)
+                self.assertEqual(download.call_count, 2)
+                self.assertEqual(self.destination.read_bytes(), self.raw); self.assert_clean()
+        self.destination.unlink()
+        with patch("common.urllib.request.urlopen", side_effect=urllib.error.URLError("certificate or policy failure")) as download:
+            with self.assertRaises(urllib.error.URLError): verified_download(self.spec, self.cache)
+            self.assertEqual(download.call_count, 1)
+        self.assert_clean()
+
+    def test_optional_api_token_is_first_hop_only_and_never_used_for_other_hosts(self):
+        token = "controlled-test-value"
+        with patch.dict(os.environ, {"GITHUB_TOKEN": token}), patch("common.urllib.request.urlopen", side_effect=[self.error(504), self.response()]) as download:
+            verified_download(self.spec, self.cache)
+        first = download.call_args_list[0].args[0]
+        request = download.call_args_list[1].args[0]
+        self.assertIsInstance(first, str)
+        self.assertEqual(request.get_header("Authorization"), "Bearer " + token)
+        self.assertNotIn("Authorization", request.headers)
+        redirect = urllib.request.HTTPRedirectHandler().redirect_request(
+            request, None, 302, "Found", {}, "https://release-assets.githubusercontent.com/pinned?controlled=1")
+        self.assertIsNone(redirect.get_header("Authorization"))
+        for host in ("api.github.com.example", "release-assets.githubusercontent.com", "api.github.com:444"):
+            with self.subTest(host=host):
+                self.destination.unlink()
+                spec = {**self.spec, "alternate_downloads": [{"url": "https://" + host + "/pinned", "headers": self.headers}]}
+                with patch.dict(os.environ, {"GITHUB_TOKEN": token}), patch("common.urllib.request.urlopen", side_effect=[self.error(504), self.response()]) as download:
+                    verified_download(spec, self.cache)
+                self.assertIsNone(download.call_args_list[1].args[0].get_header("Authorization"))
+        self.assert_clean()
 
 
 class PackagingBoundaries(unittest.TestCase):
@@ -188,6 +344,14 @@ class PackagingBoundaries(unittest.TestCase):
             self.assertTrue(entry["url"].startswith("https://"))
             self.assertEqual(len(entry["sha256"]), 64)
             self.assertGreater(entry["bytes"], 0)
+        runtime = lock["architectures"]["arm64"]["python"]
+        self.assertEqual(runtime["sha256"], "353d5f1b4fd2715e7053f12f068435d5bbad16b91e057006b5d01e0925709a7e")
+        self.assertEqual(runtime["bytes"], 25035343)
+        self.assertEqual(runtime["alternate_downloads"], [{
+            "url": "https://api.github.com/repos/astral-sh/python-build-standalone/releases/assets/678574500",
+            "headers": {"Accept": "application/octet-stream", "X-GitHub-Api-Version": "2022-11-28",
+                        "User-Agent": "Elichika-macOS-build"}}])
+        self.assertTrue(all("alternate_downloads" not in wheel for wheel in wheels))
 
 
 if __name__ == "__main__":
