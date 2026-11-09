@@ -51,6 +51,32 @@ final class RuntimeContractTests: XCTestCase {
         }
     }
 
+    func testPanelSettingsBridgeLimitsScopesAndRestoresValidatedPreferences() throws {
+        let settings: [String: Any] = ["hidden": ["viewer-adjustments"], "order": ["viewer-body-adjustments", "viewer-adjustments"]]
+        for scope in ["viewer", "tools", "content"] {
+            let request = try NativeRequest.parse(["id": "panels-1", "action": "setPanelSettings", "panelScope": scope, "panelSettings": settings])
+            XCTAssertEqual(request.panelScope, scope)
+            XCTAssertEqual(request.panelSettings?.hidden, ["viewer-adjustments"])
+            let encoded = try JSONEncoder().encode(request.panelSettings!)
+            let restored = try JSONDecoder().decode(NativeRequest.PanelPreferences.self, from: encoded)
+            XCTAssertTrue(restored.isValid)
+            XCTAssertEqual(restored.order, ["viewer-body-adjustments", "viewer-adjustments"])
+        }
+        for scope in ["", "../outside", "server"] {
+            XCTAssertThrowsError(try NativeRequest.parse(["id": "panels-1", "action": "setPanelSettings", "panelScope": scope, "panelSettings": settings]))
+        }
+        let invalidSettings: [[String: Any]] = [
+            ["hidden": ["../outside"], "order": []], ["hidden": ["same", "same"], "order": []],
+            ["hidden": [], "order": Array(repeating: "panel", count: 257)],
+            ["hidden": [], "order": [String(repeating: "x", count: 129)]],
+            ["hidden": "invalid", "order": []], ["hidden": [], "order": [true]],
+        ]
+        for invalid in invalidSettings {
+            XCTAssertThrowsError(try NativeRequest.parse(["id": "panels-1", "action": "setPanelSettings", "panelScope": "viewer", "panelSettings": invalid]))
+        }
+        XCTAssertThrowsError(try NativeRequest.parse(["id": "panels-1", "action": "setPanelSettings", "panelScope": "viewer"]))
+    }
+
     func testOptionalRuntimeStatusDoesNotInventRunningServer() throws {
         let value = try JSONDecoder().decode(RuntimeState.self, from: Data("{\"phase\":\"preparing\",\"prepared\":false}".utf8))
         XCTAssertFalse(value.serverRunning)

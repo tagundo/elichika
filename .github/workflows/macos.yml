@@ -159,6 +159,12 @@ jobs:
               raise SystemExit('Bundled runtime tests must all pass without skipped integrations')
           PY
 
+      - name: Verify packaged motion, physics, mesh and transplant workbench
+        run: |
+          python3 macos/ci/verify_workbench.py --repo . \
+            --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" \
+            --report "$RUNNER_TEMP/macos-evidence/workbench-tests.json"
+
       - name: Exercise actual app, shared 3D editing, clean quit and relocated relaunch
         run: |
           python3 macos/ci/run_app_smoke.py \

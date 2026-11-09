@@ -84,10 +84,18 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     private static func platformScript(language: String) -> WKUserScript {
         let storedWidth = UserDefaults.standard.integer(forKey: "viewerPanelWidth")
         let storedFilesWidth = UserDefaults.standard.integer(forKey: "viewerFilesWidth")
+        var panelSettings: [String: Any] = [:]
+        for scope in ["viewer", "tools", "content"] {
+            if let data = UserDefaults.standard.data(forKey: "panelSettings." + scope),
+               let settings = try? JSONDecoder().decode(NativeRequest.PanelPreferences.self, from: data), settings.isValid {
+                panelSettings[scope] = ["hidden": settings.hidden, "order": settings.order]
+            }
+        }
         let metadata: [String: Any] = ["platform": "macos", "version": 1,
-            "capabilities": ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage", "setViewerPanelWidth", "setViewerFilesWidth"],
+            "capabilities": ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage", "setViewerPanelWidth", "setViewerFilesWidth", "setPanelSettings"],
             "language": language, "viewerPanelWidth": (240...640).contains(storedWidth) ? storedWidth : 0,
-            "viewerFilesWidth": (160...360).contains(storedFilesWidth) ? storedFilesWidth : 0]
+            "viewerFilesWidth": (160...360).contains(storedFilesWidth) ? storedFilesWidth : 0,
+            "panelSettings": panelSettings]
         let json = String(decoding: try! JSONSerialization.data(withJSONObject: metadata), as: UTF8.self)
         return WKUserScript(source: "window.ElichikaDesktop=" + json + ";", injectionTime: .atDocumentStart, forMainFrameOnly: true)
     }
@@ -143,6 +151,10 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
                     if width == 0 { UserDefaults.standard.removeObject(forKey: "viewerFilesWidth") }
                     else { UserDefaults.standard.set(width, forKey: "viewerFilesWidth") }
                     result = ["width": width]
+                case .setPanelSettings:
+                    guard let scope = request.panelScope, let settings = request.panelSettings else { throw NativeError.invalidMessage }
+                    UserDefaults.standard.set(try JSONEncoder().encode(settings), forKey: "panelSettings." + scope)
+                    result = ["panelScope": scope]
                 }
                 reply(id: request.id, result: result)
             } catch { reply(id: request.id, error: error.localizedDescription) }

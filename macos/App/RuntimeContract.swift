@@ -142,7 +142,7 @@ enum IPAddress {
 }
 
 struct NativeRequest: Decodable {
-    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth }
+    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth, setPanelSettings }
     let id: String
     let action: Action
     let multiple: Bool?
@@ -152,6 +152,21 @@ struct NativeRequest: Decodable {
     let enabled: Bool?
     let language: String?
     let width: Int?
+    let panelScope: String?
+    let panelSettings: PanelPreferences?
+
+    struct PanelPreferences: Codable {
+        let hidden: [String]
+        let order: [String]
+        var isValid: Bool {
+            [hidden, order].allSatisfy { values in
+                values.count <= 256 && Set(values).count == values.count && values.allSatisfy { value in
+                    (1...128).contains(value.utf8.count) &&
+                    value.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil
+                }
+            }
+        }
+    }
 
     static func parse(_ body: Any) throws -> NativeRequest {
         guard JSONSerialization.isValidJSONObject(body) else { throw NativeError.invalidMessage }
@@ -166,6 +181,9 @@ struct NativeRequest: Decodable {
             guard let width = request.width, width == 0 || (240...640).contains(width) else { throw NativeError.invalidMessage }
         } else if request.action == .setViewerFilesWidth {
             guard let width = request.width, width == 0 || (160...360).contains(width) else { throw NativeError.invalidMessage }
+        } else if request.action == .setPanelSettings {
+            guard let scope = request.panelScope, ["viewer", "tools", "content"].contains(scope),
+                  let settings = request.panelSettings, settings.isValid else { throw NativeError.invalidMessage }
         }
         return request
     }

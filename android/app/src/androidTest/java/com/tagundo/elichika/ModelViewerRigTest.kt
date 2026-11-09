@@ -412,10 +412,10 @@ class ModelViewerRigTest {
             }
             val defaultPanels = evaluate(browser,
                 "var pose=document.getElementById('viewer-adjustments'),body=document.getElementById('viewer-body-adjustments'),expression=document.getElementById('viewer-expression-adjustments');" +
-                    "if(!pose||!body||!expression||!pose.open||!body.open||!expression.open||pose.parentNode!==body.parentNode||body.parentNode!==expression.parentNode||" +
-                    "!pose.contains(document.getElementById('viewer-motion'))||body.contains(document.getElementById('viewer-motion'))||" +
+                    "if(!pose||!body||!expression||pose.open||!body.open||!expression.open||pose.parentNode!==body.parentNode||body.parentNode!==expression.parentNode||" +
+                    "!pose.contains(document.getElementById('viewer-motion'))||!pose.contains(document.getElementById('viewer-add-motion'))||body.contains(document.getElementById('viewer-motion'))||" +
                     "!body.contains(document.getElementById('viewer-node-fields'))||pose.contains(document.getElementById('viewer-node-fields')))" +
-                    "throw new Error('Pose, body and expressions must default to independent open sibling panels with their actual controls');" +
+                    "throw new Error('Pose must default collapsed, with body and expressions open as independent sibling panels and their actual controls');" +
                     "return JSON.stringify({poseOpen:pose.open,bodyOpen:body.open,expressionOpen:expression.open,distinctControlOwners:true});")
             run(browser, "document.getElementById('viewer-expand').click();" +
                 "document.querySelector('[data-viewer-view=\"front\"]').click();document.getElementById('viewer-fit').click();" +
