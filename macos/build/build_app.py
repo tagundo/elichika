@@ -157,6 +157,8 @@ def build(repo, shared, output, cache, version):
     qa.mkdir()
     shutil.copy2(repo / "modtools/tests/fixtures/viewer_persistence.unity", qa / "viewer_persistence.unity")
     shutil.copy2(repo / "android/app/src/androidTest/assets/viewer_rig_qa.js", qa / "viewer_rig_qa.js")
+    shutil.copy2(repo / "android/app/src/androidTest/assets/viewer_game_physics.unity", qa / "viewer_game_physics.unity")
+    shutil.copy2(repo / "macos/ci/native_game_physics_qa.js", qa / "native_game_physics_qa.js")
     dependencies = vendor_python(lock["architectures"]["arm64"], private, cache, repo)
     environment = dict(os.environ, CGO_ENABLED="0", GOOS="darwin", GOARCH="arm64",
                        MACOSX_DEPLOYMENT_TARGET="13.0")

@@ -233,6 +233,7 @@ final class NativeSmokeTest {
                         "Saving the installer ZIP must preserve both original fixture files.")
             try await checkMinimizedViewer(webView)
             try await checkAccessoryUnclip(webView, directory: directory)
+            try await checkGamePhysics(webView, directory: directory)
             _ = try await model.request("/v1/server/start", method: "POST")
             try checkpoint("quit-server-start-requested")
             try await wait("the game server before quitting", timeout: 120) {
@@ -284,6 +285,37 @@ final class NativeSmokeTest {
             try? checkpoint("failed")
             Darwin.exit(1)
         }
+    }
+
+    private func checkGamePhysics(_ webView: WKWebView, directory: URL) async throws {
+        try checkpoint("native-game-physics-source")
+        let source = directory.appendingPathComponent("game-physics.unity")
+        let original = try Data(contentsOf: source)
+        let digest = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+        try require(original.count == 78128 && digest == "d619ef6e956d3b8557660ebbd070e8c998c0c0c82dc2fb97a8755c2a4d74e66e",
+                    "The original neutral game-physics fixture must match its audited input.")
+        let old = try await object(webView, "return JSON.stringify({id:ModelViewer.getState().modelId||''});")
+        let oldID = String(decoding: try JSONSerialization.data(withJSONObject: [old["id"] as? String ?? ""]), as: UTF8.self) + "[0]"
+        let paths = try await model.authorize([source])
+        model.selectedSection = .viewer
+        model.browser(.assets).perform("openModel", paths: paths)
+        try await waitJS(webView, "the actual game-physics source", timeout: 120, expression:
+            "ModelViewer.getState().modelId!==" + oldID + "&&ModelViewer.getState().loaded&&!ModelViewer.getState().loading")
+        try await loaded(webView)
+        let helperURL = model.resourceDirectory.appendingPathComponent("qa/native_game_physics_qa.js")
+        let helper = try String(contentsOf: helperURL, encoding: .utf8)
+        _ = try await js(webView, helper + ";return true;")
+        var observed = try await object(webView, "return JSON.stringify(await NativeGamePhysicsQa.run());")
+        try require(observed["status"] as? String == "PASS", "The actual WebKit game-physics probe failed.")
+        try require(try Data(contentsOf: source) == original, "Game-physics preview must preserve its original source bytes.")
+        observed["source_path"] = source.path
+        observed["source_sha256"] = digest
+        observed["source_preserved"] = true
+        observed["sourcePreserved"] = true
+        observed["fixture"] = "viewer_game_physics.unity"
+        report["native_game_physics"] = observed
+        try await snapshot(webView, directory.appendingPathComponent("game-physics.png"))
+        try checkpoint("native-game-physics-passed")
     }
 
     private func checkAccessoryUnclip(_ webView: WKWebView, directory: URL) async throws {

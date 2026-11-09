@@ -460,12 +460,197 @@ class ModelViewerRigTest {
         println("MODEL_VIEWER_OUTLINE_CONTROLS_REPORT=$report")
     }
 
+    @Test
+    fun gamePhysicsUsesOriginalJobsAndPreservesPausedAndSeekState() = withRig("viewer_game_physics.unity", "Neutral MV scale override") { session ->
+        val webView = session.webView
+        fun snapshot(): JSONObject = evaluate(webView,
+            "var s=ModelViewer.getState();return JSON.stringify({physics:s.rig.physics,time:s.rig.time,playing:s.rig.playing," +
+                "bones:s.rig.bones,authoring:ModelViewer.getAuthoringState(),catalogue:ModelViewer.getEditingMetadata().physics," +
+                "controls:{mode:document.getElementById('viewer-physics-mode').value,frameRate:document.getElementById('viewer-physics-frame-rate').value," +
+                "frameDisabled:document.getElementById('viewer-physics-frame-rate').disabled,profile:document.getElementById('viewer-physics-profile').value," +
+                "profileDisabled:document.getElementById('viewer-physics-profile').disabled," +
+                "gameOptionEnabled:!document.querySelector('#viewer-physics-mode option[value=game]').disabled}});")
+        fun solver(observed: JSONObject): JSONObject = observed.getJSONObject("physics").getJSONObject("solver")
+        fun assertReady(observed: JSONObject, job: String) {
+            val physics = observed.getJSONObject("physics")
+            val actual = solver(observed)
+            assertTrue("Original game metadata remains available: $observed", physics.getBoolean("nativeAvailable"))
+            assertEquals("game", physics.getString("mode"))
+            assertTrue("Original native initialization must complete: $actual", actual.getBoolean("initialized"))
+            assertTrue("The real original job must be available: $actual", actual.getBoolean("available"))
+            assertEquals("No missing input may silently replace original game physics", 0, actual.getJSONArray("unsupported").length())
+            assertEquals(job, actual.getJSONObject("runtimeProfile").getString("job"))
+            val vectors = actual.getJSONArray("bones")
+            assertTrue("Actual original-job bone vectors must be exposed", vectors.length() > 0)
+            for (index in 0 until vectors.length()) {
+                val bone = vectors.getJSONObject(index)
+                for (field in listOf("origin", "tip")) {
+                    val vector = bone.getJSONArray(field)
+                    assertEquals(3, vector.length())
+                    for (axis in 0..2) assertTrue("$field must contain finite native outputs", vector.getDouble(axis).isFinite())
+                }
+            }
+        }
+        fun showControl(id: String): JSONObject = evaluate(webView,
+            "var control=ViewerRigQa.control(" + JSONObject.quote(id) + ",true);" +
+                "if(control.disabled||!control.visible||!control.withinViewport||!control.hittable)" +
+                "throw new Error('The actual physics control must be visible and usable: '+JSON.stringify(control));return JSON.stringify(control);")
+        fun advance(job: String): JSONObject {
+            val before = snapshot()
+            assertReady(before, job)
+            showControl("viewer-play")
+            click(webView, "viewer-play")
+            waitForDom(webView, "real Play advancing $job", 30) {
+                "var s=ModelViewer.getState(),p=s.rig.physics;return JSON.stringify({ok:s.rig.playing&&s.rig.time>.15&&" +
+                    "p.solver.totalNativeSteps>=" + (solver(before).getLong("totalNativeSteps") + 3) +
+                    ",physics:p,time:s.rig.time,error:s.error});"
+            }
+            click(webView, "viewer-play")
+            val after = snapshot()
+            assertFalse("The actual Play action must pause again", after.getBoolean("playing"))
+            assertReady(after, job)
+            assertTrue("Real playback advances the original job", solver(after).getLong("totalNativeSteps") > solver(before).getLong("totalNativeSteps"))
+            val beforeVectors = solver(before).getJSONArray("bones")
+            val afterVectors = solver(after).getJSONArray("bones")
+            var changedTip = false
+            for (index in 0 until afterVectors.length()) for (axis in 0..2) {
+                val previous = beforeVectors.getJSONObject(index).getJSONArray("tip").getDouble(axis)
+                val current = afterVectors.getJSONObject(index).getJSONArray("tip").getDouble(axis)
+                changedTip = changedTip || kotlin.math.abs(current - previous) > 1e-7
+            }
+            assertTrue("Real original-job tip vectors change during playback", changedTip)
+            return JSONObject().put("before", before).put("after", after).put("changedNativeTip", changedTip)
+        }
+        waitForDom(webView, "the native metadata fixture and game-physics controls") {
+            "var s=ModelViewer.getState(),p=s.rig.physics;return JSON.stringify({ok:!!p&&p.available&&p.nativeAvailable&&" +
+                "!!document.getElementById('viewer-physics-mode'),physics:p,error:s.error});"
+        }
+        val initial = snapshot()
+        assertEquals("Complete original data selects game physics by default", "game", initial.getJSONObject("physics").getString("mode"))
+        assertEquals("Normal game cadence defaults to30 FPS", 30, initial.getJSONObject("physics").getInt("frameRate"))
+        assertEquals(0, initial.getJSONObject("physics").getJSONArray("nativeMissing").length())
+        assertTrue(initial.getJSONObject("controls").getBoolean("gameOptionEnabled"))
+        if (state(webView).getJSONObject("layout").getBoolean("expanded")) click(webView, "viewer-expand")
+        run(webView, "document.getElementById('viewer-adjustments').open=true;" +
+            "document.querySelectorAll('.viewer-physics-region').forEach(function(region){region.open=true;});")
+        val modeControl = showControl("viewer-physics-mode")
+        val frameControl = showControl("viewer-physics-frame-rate")
+        input(webView, "viewer-physics-frame-rate", "60", "change")
+        assertEquals(60, snapshot().getJSONObject("physics").getInt("frameRate"))
+        input(webView, "viewer-physics-frame-rate", "30", "change")
+        input(webView, "viewer-motion", "Neutral MV scale override", "change")
+        input(webView, "viewer-time", "0")
+        click(webView, "viewer-physics-bones")
+        click(webView, "viewer-physics-colliders")
+        val ready = snapshot()
+        assertReady(ready, "SwingBoneJob")
+        assertTrue(ready.getJSONObject("physics").getBoolean("swingBone"))
+        assertTrue(ready.getJSONObject("physics").getBoolean("swingCollider"))
+        assertEquals("navi", ready.getJSONObject("physics").getJSONObject("runtime").getString("profile"))
+        assertEquals(30, ready.getJSONObject("physics").getInt("frameRate"))
+        val single = advance("SwingBoneJob")
+
+        showControl("viewer-physics-profile")
+        input(webView, "viewer-physics-profile", "live", "change")
+        input(webView, "viewer-physics-skirt-correction", "enabled", "change")
+        input(webView, "viewer-physics-motion-correction", "disabled", "change")
+        input(webView, "viewer-time", "0")
+        val groupReady = snapshot()
+        assertReady(groupReady, "SwingBoneGroupJob")
+        val groupPhysics = groupReady.getJSONObject("physics")
+        assertEquals("live", groupPhysics.getString("profile"))
+        assertEquals("enabled", groupPhysics.getString("skirtCorrection"))
+        assertEquals("disabled", groupPhysics.getString("motionCorrection"))
+        assertFalse(groupPhysics.getJSONObject("runtime").getBoolean("safeSwingBone"))
+        val managers = groupReady.getJSONObject("catalogue").getJSONArray("managers")
+        val costumeFlags = groupPhysics.getJSONObject("runtime").getJSONObject("skirtsafeDisableBySource")
+        assertTrue("The actual source provides native managers", managers.length() > 0)
+        for (index in 0 until managers.length()) {
+            val manager = managers.getJSONObject(index)
+            assertFalse("Manual MV costume correction supplies an explicit source flag", costumeFlags.getBoolean(manager.getInt("sourceIndex").toString()))
+            val knees = manager.optJSONArray("kneeTransforms")?.takeIf { it.length() >= 2 }
+                ?: manager.getJSONArray("resolvedKneeTransforms")
+            assertEquals("The native MV startup pass has both source knee references", 2, knees.length())
+        }
+        val group = advance("SwingBoneGroupJob")
+
+        val paused = snapshot()
+        showControl("viewer-physics-show-colliders")
+        click(webView, "viewer-physics-show-colliders")
+        val debugOn = snapshot()
+        saveScreenshot(session.activity, "model-viewer-game-physics.png")
+        Thread.sleep(250)
+        val debugHeld = snapshot()
+        click(webView, "viewer-physics-show-colliders")
+        val debugOff = snapshot()
+        assertTrue(debugOn.getJSONObject("physics").getBoolean("showColliders"))
+        assertFalse(debugOff.getJSONObject("physics").getBoolean("showColliders"))
+        for (observed in listOf(debugOn, debugHeld, debugOff)) {
+            assertFalse(observed.getBoolean("playing"))
+            assertEquals("Paused debug changes must not advance time", paused.getDouble("time"), observed.getDouble("time"), 1e-12)
+            for (field in listOf("totalNativeSteps", "resets", "initializationGeneration", "dynamicGeneration")) {
+                assertEquals("Paused debug changes preserve native $field", solver(paused).getLong(field), solver(observed).getLong(field))
+            }
+            assertEquals("Paused debug changes preserve native tip vectors", solver(paused).getJSONArray("bones").toString(), solver(observed).getJSONArray("bones").toString())
+            assertEquals("Paused debug changes preserve the actual rig pose", paused.getJSONArray("bones").toString(), observed.getJSONArray("bones").toString())
+        }
+
+        val parameterControl = evaluate(webView,
+            "var field=document.querySelector('[data-physics-field=dragForce]');if(!field||field.disabled)throw new Error('Original SwingBone drag is unavailable');" +
+                "for(var parent=field.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;" +
+                "var control=ViewerRigQa.control(field,true);if(!control.visible||!control.withinViewport||!control.hittable)" +
+                "throw new Error('The source physics parameter must be visible');" +
+                "field.value='.4';field.dispatchEvent(new Event('input',{bubbles:true}));return JSON.stringify(control);")
+        val authored = snapshot()
+        val physicsEdits = authored.getJSONObject("authoring").getJSONArray("physics")
+        assertEquals(1, physicsEdits.length())
+        assertEquals(.4, physicsEdits.getJSONObject(0).getJSONObject("values").getDouble("dragForce"), 1e-12)
+        input(webView, "viewer-time", ".75")
+        val seeked = snapshot()
+        assertReady(seeked, "SwingBoneGroupJob")
+        assertEquals(.75, seeked.getDouble("time"), 1e-7)
+        assertFalse(seeked.getBoolean("playing"))
+        assertEquals("Seeking preserves precise user physics parameters", physicsEdits.toString(), seeked.getJSONObject("authoring").getJSONArray("physics").toString())
+        assertEquals("Seeking preserves original source physics metadata", initial.getJSONObject("catalogue").toString(), seeked.getJSONObject("catalogue").toString())
+
+        val enhancedControl = showControl("viewer-physics-mode")
+        input(webView, "viewer-physics-mode", "enhanced", "change")
+        val enhanced = snapshot()
+        assertEquals("enhanced", enhanced.getJSONObject("physics").getString("mode"))
+        assertEquals("enhanced", enhanced.getJSONObject("controls").getString("mode"))
+        assertTrue("Game cadence is unavailable in additional-correction mode", enhanced.getJSONObject("controls").getBoolean("frameDisabled"))
+        assertTrue(enhanced.getJSONObject("controls").getBoolean("profileDisabled"))
+        assertEquals(physicsEdits.toString(), enhanced.getJSONObject("authoring").getJSONArray("physics").toString())
+        input(webView, "viewer-physics-mode", "game", "change")
+        val restored = snapshot()
+        assertReady(restored, "SwingBoneGroupJob")
+        assertEquals(30, restored.getJSONObject("physics").getInt("frameRate"))
+        assertEquals("30", restored.getJSONObject("controls").getString("frameRate"))
+        assertFalse(restored.getJSONObject("controls").getBoolean("frameDisabled"))
+        assertEquals(physicsEdits.toString(), restored.getJSONObject("authoring").getJSONArray("physics").toString())
+        val probe = evaluate(webView, "return JSON.stringify(ModelViewer.renderProbe(33));")
+        assertTrue("The actual native WebGL renderer remains ready", probe.getBoolean("ready"))
+        assertEquals(0, probe.getInt("glError"))
+        val report = JSONObject().put("status", "PASS").put("fixture", "viewer_game_physics.unity")
+            .put("initial", initial).put("ready", ready).put("singleJob", single).put("groupReady", groupReady).put("groupJob", group)
+            .put("paused", paused).put("debugOn", debugOn).put("debugHeld", debugHeld).put("debugOff", debugOff)
+            .put("parameterControl", parameterControl).put("authored", authored).put("seeked", seeked)
+            .put("modeControl", modeControl).put("frameControl", frameControl).put("enhancedControl", enhancedControl)
+            .put("enhanced", enhanced).put("restored", restored).put("probe", probe).put("sourcePreserved", true)
+            .put("checks", JSONObject().put("nativeDefault", true).put("singleJobAdvanced", true).put("groupJobAdvanced", true)
+                .put("pausedDebugPreserved", true).put("seekPreservedParameters", true)
+                .put("modeSwitchPreservedParameters", true).put("frameRateRestored30", true))
+            .put("scope", "Actual Android WebView original-job playback, source tip vectors and controls; auxiliary SwingBone is unskinned, so no mesh-pixel motion claim")
+        persistReport("model-viewer-game-physics-report.json", report)
+        println("MODEL_VIEWER_GAME_PHYSICS_REPORT=$report")
+    }
+
     private data class Session(val activity: MainActivity, val webView: WebView, val defaultPanels: JSONObject)
 
-    private fun withRig(check: (Session) -> Unit) {
+    private fun withRig(fixtureName: String = "viewer_rig.unity", clipName: String = "Neutral swing", check: (Session) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        val fixture = instrumentation.context.assets.open("viewer_rig.unity").use { it.readBytes() }
+        val fixture = instrumentation.context.assets.open(fixtureName).use { it.readBytes() }
         val source = File(context.filesDir, "viewer-rig-qa-${System.nanoTime()}.unity")
         val preferences = context.getSharedPreferences("elichika", Context.MODE_PRIVATE)
         val hadGuide = preferences.contains("seen_guide")
@@ -500,7 +685,7 @@ class ModelViewerRigTest {
             waitForDom(browser, "the genuine Unity skin, morph and animation") {
                 "var s=ModelViewer.getState();return JSON.stringify({ok:s.loaded&&!s.loading&&!s.contextLost&&" +
                     "!!s.rig&&s.rig.available&&s.stats.meshes===1&&s.stats.vertices===6&&s.stats.triangles===4&&" +
-                    "s.stats.textures===1&&s.rig.clipNames.indexOf('Neutral swing')>=0&&s.rig.expressions.length===1," +
+                    "s.stats.textures===1&&s.rig.clipNames.indexOf(" + JSONObject.quote(clipName) + ")>=0&&s.rig.expressions.length===1," +
                     "error:s.error,state:s});"
             }
             val defaultPanels = evaluate(browser,

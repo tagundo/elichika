@@ -14,7 +14,7 @@ from common import require, write_json
 
 
 PROBE = r'''
-import json, pathlib, sys, tempfile, unittest
+import hashlib, importlib.util, json, pathlib, shutil, sys, tempfile, unittest
 repo, resources = (pathlib.Path(value).resolve() for value in sys.argv[1:3])
 # macOS exposes temporary folders through /var aliases. These source-bound
 # fixtures must use real paths, as the app's authenticated routes already do.
@@ -23,16 +23,56 @@ source = resources / 'python-app'
 sys.path.insert(0, str(source))
 from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
-from webtools.core import game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits
+from webtools.core import game_motions, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
-                    model_edits, model_outlines, viewer_mod_pair_edits)
+                    model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime)
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
-            'test_viewer_transplants.py', 'test_viewer_workbench_routes.py']
+            'test_viewer_transplants.py', 'test_viewer_workbench_routes.py',
+            'test_physics_game_engine.py', 'test_physics_game_catalog.py', 'test_physics_game_runtime.py']
+# Node drivers are test-only host tools. Stage their original scripts beside a
+# link to the actual app static directory, so every relative require executes
+# the packaged Three.js/math/collision/engine bytes instead of repository JS.
+staged = tempfile.TemporaryDirectory(prefix='elichika-packaged-physics-tests-')
+stage = pathlib.Path(staged.name)
+test_source = repo / 'modtools/tests'
+test_stage = stage / 'tests'; test_stage.mkdir()
+(stage / 'webtools/web').mkdir(parents=True)
+static = source / 'webtools/web/static'
+(stage / 'webtools/web/static').symlink_to(static, target_is_directory=True)
+staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py']
+staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.js',
+    'viewer_game_physics_math_test.js', 'viewer_game_physics_collision_test.js',
+    'viewer_game_physics_job_collision_test.js', 'viewer_game_physics_native_test.js',
+    'viewer_game_physics_initialization_test.js', 'viewer_game_physics_adapter_test.js']
+numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisions.json',
+    'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
+    'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json']
+for name in staged_python + staged_drivers:
+    shutil.copy2(test_source / name, test_stage / name)
+(test_stage / 'fixtures').mkdir()
+for name in numeric_fixtures:
+    shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
+static_files = ['vendor/three-r128/three.min.js', 'viewer-physics.js',
+    'viewer-game-physics-math.js', 'viewer-game-physics-collision.js', 'viewer-game-physics.js']
+packaged_node_sources = {}
+for name in static_files:
+    actual = (stage / 'webtools/web/static' / name).resolve()
+    assert actual == (static / name).resolve() and actual.is_relative_to(source)
+    packaged_node_sources[name] = hashlib.sha256(actual.read_bytes()).hexdigest()
+staged_test_inputs = {str(path.relative_to(test_stage)): hashlib.sha256(path.read_bytes()).hexdigest()
+                     for path in sorted(test_stage.rglob('*')) if path.is_file()}
 suite = unittest.TestSuite()
 for pattern in patterns:
-    suite.addTests(unittest.defaultTestLoader.discover(str(repo / 'modtools/tests'), pattern=pattern))
+    if pattern in staged_python:
+        name = pathlib.Path(pattern).stem
+        spec = importlib.util.spec_from_file_location(name, test_stage / pattern)
+        module = importlib.util.module_from_spec(spec); sys.modules[name] = module
+        spec.loader.exec_module(module)
+        suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
+    else:
+        suite.addTests(unittest.defaultTestLoader.discover(str(test_source), pattern=pattern))
 # Select neutral methods explicitly: the same outline class also provides an
 # opt-in preservation check requiring private original game assets. It is not
 # a universally available packaged-runtime fixture, and skips remain failures.
@@ -63,8 +103,12 @@ report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else
           'errors': len(result.errors), 'patterns': patterns, 'packaged_sources': True,
           'packaged_modules': [module.__name__ for module in packaged_modules],
           'explicit_cases': explicit_cases, 'executed_cases': executed_cases,
+          'packaged_node_static_sources': packaged_node_sources,
+          'staged_test_inputs': staged_test_inputs,
+          'node_require_scope': 'Actual packaged static assets via isolated QA-only symlink; host Node is not an app runtime dependency',
           'excluded_optional_cases': ['test_model_outlines.OutlineTests.test_actual_original_costumes_change_only_red_and_keep_textures_exact'],
-          'scope': 'Bundled interpreter and packaged workbench code with neutral serialized fixture round trips, native outline masks and paired platform ModZIP propagation'}
+          'scope': 'Bundled interpreter and packaged workbench code with neutral round trips, outlines/paired ModZIP, original ARM64 numerical physics fixtures and source catalogue/runtime guards; no whole-client parity claim'}
+staged.cleanup()
 print('ELICHIKA_WORKBENCH_TESTS=' + json.dumps(report))
 sys.exit(0 if report['status'] == 'PASS' and result.testsRun else 1)
 '''

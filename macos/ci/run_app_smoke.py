@@ -66,6 +66,7 @@ print(json.dumps(value,ensure_ascii=False))
 
 
 ACCESSORY_FIXTURE_SHA = "4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e"
+GAME_PHYSICS_FIXTURE_SHA = "d619ef6e956d3b8557660ebbd070e8c998c0c0c82dc2fb97a8755c2a4d74e66e"
 ACCESSORY_FIXTURE = r'''
 import hashlib,importlib.util,json,os,pathlib,sys
 app,helper,output,report,prefix=map(pathlib.Path,sys.argv[1:])
@@ -176,6 +177,80 @@ def inspect_accessory_export(app, output, label, report):
     (output / f"{label}-accessory-oracle.stderr.txt").write_text(result.stderr)
     require(result.returncode == 0 and receipt.is_file(), "Native accessory serialized oracle failed; see oracle logs")
     observed["serialized_oracle"] = json.loads(receipt.read_text())
+
+
+def prepare_game_physics_fixture(app, output):
+    source = app / "Contents/Resources/qa/viewer_game_physics.unity"
+    raw = source.read_bytes()
+    require(len(raw) == 78128 and sha256(source) == GAME_PHYSICS_FIXTURE_SHA,
+            "Packaged native game-physics fixture differs from its audited input")
+    target = output / "native-app-data/game-physics.unity"
+    target.parent.mkdir(exist_ok=True)
+    target.write_bytes(raw)
+    require(sha256(target) == GAME_PHYSICS_FIXTURE_SHA, "Native game-physics copy changed its source bytes")
+    return {"status": "PASS_OWN_SERIALIZED_GAME_PHYSICS_INPUT", "fixture_sha256": GAME_PHYSICS_FIXTURE_SHA,
+            "bytes": len(raw), "path": str(target),
+            "scope": "Generated neutral serialized source; no game or user asset"}
+
+
+def check_game_physics_report(output, report):
+    import math
+    observed = report.get("native_game_physics", {})
+    require(observed.get("status") == "PASS" and observed.get("source_preserved") is True
+            and observed.get("sourcePreserved") is True and observed.get("sourceCataloguePreserved") is True,
+            "Native game-physics source and catalogue preservation must pass")
+    checks = observed.get("checks", {})
+    require(all(checks.get(key) is True for key in ("nativeDefault", "singleJobAdvanced", "groupJobAdvanced",
+                "pausedDebugPreserved", "seekPreservedParameters", "modeSwitchPreservedParameters", "frameRateRestored30")),
+            "All seven actual game-physics lifecycle checks must pass")
+    source = Path(observed.get("source_path", ""))
+    require(source == output / "native-app-data/game-physics.unity"
+            and observed.get("source_sha256") == GAME_PHYSICS_FIXTURE_SHA and sha256(source) == GAME_PHYSICS_FIXTURE_SHA,
+            "Native game-physics smoke must bind the exact preserved input")
+    initial = observed["initial"]
+    require(initial["physics"]["mode"] == "game" and initial["physics"]["frameRate"] == 30
+            and initial["physics"]["nativeAvailable"] and not initial["physics"]["nativeMissing"],
+            "Complete source inputs must select the original game engine and normal cadence")
+    for key, job in (("single", "SwingBoneJob"), ("group", "SwingBoneGroupJob")):
+        before, after = observed[key]["before"], observed[key]["after"]
+        a, b = before["physics"]["solver"], after["physics"]["solver"]
+        require(not after["playing"] and a["runtimeProfile"]["job"] == b["runtimeProfile"]["job"] == job
+                and b["initialized"] and b["available"] and not b["unsupported"]
+                and b["totalNativeSteps"] >= a["totalNativeSteps"] + 3,
+                "Actual Play must execute the requested original job")
+        require(len(a["bones"]) == len(b["bones"]) > 0, "Original job bone topology must remain stable")
+        require(all(len(bone[field]) == 3 and all(math.isfinite(value) for value in bone[field])
+                    for bone in b["bones"] for field in ("origin", "tip")), "Actual job vectors must remain finite")
+        require(any(abs(left["tip"][axis] - right["tip"][axis]) > 1e-7
+                    for left, right in zip(a["bones"], b["bones"]) for axis in range(3)),
+                "Actual original-job tip outputs must change while playing")
+    paused = observed["paused"]["before"]
+    for key in ("debugOn", "held", "debugOff"):
+        current = observed["paused"][key]
+        require(not current["playing"] and current["time"] == paused["time"]
+                and current["bones"] == paused["bones"]
+                and current["physics"]["solver"]["bones"] == paused["physics"]["solver"]["bones"],
+                "Paused debug toggles must preserve time and actual rig/solver poses")
+        require(all(current["physics"]["solver"][field] == paused["physics"]["solver"][field]
+                    for field in ("totalNativeSteps", "resets", "initializationGeneration", "dynamicGeneration")),
+                "Paused debug toggles must preserve actual native state generations")
+    authored, seeked = observed["seek"]["before"], observed["seek"]["after"]
+    edits = authored["authoring"]["physics"]
+    require(len(edits) == 1 and edits[0]["values"]["dragForce"] == .4
+            and seeked["authoring"]["physics"] == edits and seeked["catalogue"] == initial["catalogue"]
+            and abs(seeked["time"] - .75) < 1e-7 and not seeked["playing"],
+            "Seeking must preserve the actual original catalogue and precise parameter edits")
+    enhanced, restored = observed["enhanced"], observed["restored"]
+    require(enhanced["physics"]["mode"] == "enhanced" and enhanced["controls"]["frameDisabled"]
+            and enhanced["controls"]["profileDisabled"] and enhanced["authoring"]["physics"] == edits
+            and restored["physics"]["mode"] == "game" and restored["physics"]["frameRate"] == 30
+            and not restored["controls"]["frameDisabled"] and restored["authoring"]["physics"] == edits,
+            "Switching additional correction/original mode must preserve edits and game cadence")
+    frame = observed["framebuffer"]
+    require(frame["ready"] and frame["glError"] == 0 and frame["nonBackgroundSamples"] >= 3,
+            "Actual WKWebView must still render the game-physics model")
+    require((output / "native-app-data/game-physics.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"),
+            "Actual native game-physics screenshot is missing")
 
 
 def prepare_zip_fixture(app, output):
@@ -310,6 +385,7 @@ def launch(app, output, label):
             time.sleep(.2)
         require(not process_alive(pid), f"Owned {key} remained alive after app quit")
     inspect_accessory_export(app, output, label, report)
+    check_game_physics_report(output, report)
     write_json(output / f"{label}.json", report)
     for image in directory.glob("*.png"):
         shutil.copy2(image, output / f"{label}-{image.name}")
@@ -323,6 +399,7 @@ def check(app, output, relocation):
     require(not relocation.exists() and relocation.suffix == ".app", "Fresh relocation .app path required")
     fixture = prepare_zip_fixture(app, output)
     accessory = prepare_accessory_fixture(app, output)
+    game_physics = prepare_game_physics_fixture(app, output)
     first = launch(app, output, "first-launch")
     check_zip_edit_report(first, fixture)
     check_pose_body_report(first)
@@ -354,6 +431,7 @@ def check(app, output, relocation):
              "original_app_path_removed": True,
              "fractional_zip_input": fixture,
              "accessory_input": accessory,
+             "game_physics_input": game_physics,
              "viewer_panel_width_persisted_across_relaunch": True,
              "viewer_files_width_persisted_across_relaunch": True,
              "space_and_unicode_path": " " in str(relocation) and any(ord(char) > 127 for char in str(relocation)),
