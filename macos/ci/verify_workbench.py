@@ -12,8 +12,11 @@ from common import require, write_json
 
 
 PROBE = r'''
-import json, pathlib, sys, unittest
+import json, pathlib, sys, tempfile, unittest
 repo, resources = (pathlib.Path(value).resolve() for value in sys.argv[1:3])
+# macOS exposes temporary folders through /var aliases. These source-bound
+# fixtures must use real paths, as the app's authenticated routes already do.
+tempfile.tempdir = str(pathlib.Path(tempfile.gettempdir()).resolve())
 source = resources / 'python-app'
 sys.path.insert(0, str(source))
 from webtools.core.tkstub import ensure_tk_stub
