@@ -67,6 +67,207 @@ print(json.dumps(value,ensure_ascii=False))
 
 ACCESSORY_FIXTURE_SHA = "4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e"
 GAME_PHYSICS_FIXTURE_SHA = "d619ef6e956d3b8557660ebbd070e8c998c0c0c82dc2fb97a8755c2a4d74e66e"
+DETAIL_FIXTURE_SHA = "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1"
+GAZE_FIXTURE_SHA = "4058786fad837b3292bf1fdba0b9181719b7c7e9e756a705c266af146d113129"
+LIBRARY_MOTION_SHA = "b512951eaa10cc2cce1d53dca961ad3abbc5e731ce4c58a7b78ee9c4cc2ce7a9"
+DETAIL_OUTLINE_ORACLE = r'''
+#!/usr/bin/env python3
+"""Independent oracle for NativeDetailQa's actual outline-only Unity export.
+
+Usage with the app's bundled Python (isolated mode is recommended):
+  python3 -I -B verify_outline_save.py source.unity saved.unity recipe.json report.json PYTHON_PREFIX
+
+Uses only the standard library and UnityPy. It deliberately imports no Elichika
+code and fixes expectations to the audited neutral six-vertex fixture. A passing
+report proves exact source identity, source-bound recipe intent, exactly one
+changed Mesh object, and exactly one changed raw byte within that Mesh.
+"""
+import argparse
+import copy
+import hashlib
+import json
+import os
+from pathlib import Path
+import struct
+import sys
+
+import UnityPy
+
+
+SOURCE_SHA256 = "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1"
+SOURCE_SIZE = 72872
+MESH_RAW_SHA256 = "e3c64edfd7c34b3c14ae024ed5ec05f02e507f4b1fd231ea3bb2da9fd5e78127"
+VERTEX_BUFFER_SHA256 = "1130af5048c8d518e509824633aa9df6d6de6fc4910f75dcb802879646503811"
+MESH_ID = 1
+VERTEX_COUNT = 6
+VERTEX_STRIDE = 56
+COLOR_OFFSET = 52
+VERTEX_BUFFER_RAW_OFFSET = 404
+RAW_RED_OFFSET = VERTEX_BUFFER_RAW_OFFSET + COLOR_OFFSET
+ORIGINAL_RGBA = [255, 255, 0, 255]
+EXPECTED_SPARSE = [{"id": "0:0:1", "factor": 1.0, "vertices": [{"vertex": 0, "value": 0.25}]}]
+EXPECTED_STATE = {"version": 1, "edits": [], "savedSettingsEnabled": True,
+                  "unsupported": [], "compensationReference": [], "outlines": EXPECTED_SPARSE}
+EXPECTED_TYPES = {1: "Mesh", 2: "GameObject", 3: "Transform", 4: "GameObject", 5: "Transform",
+                  6: "GameObject", 7: "Transform", 8: "GameObject", 9: "Transform", 10: "GameObject",
+                  11: "Transform", 12: "SkinnedMeshRenderer", 13: "Material", 14: "Texture2D",
+                  15: "AnimationClip", 16: "MonoBehaviour", 17: "MonoScript", 18: "Shader"}
+
+
+def require(condition, message):
+    if not condition:
+        raise AssertionError(message)
+
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "Duplicate recipe JSON key: " + key)
+        result[key] = value
+    return result
+
+
+def invalid_constant(value):
+    raise ValueError("Non-finite recipe JSON number: " + value)
+
+
+def exact_json(actual, expected):
+    """Require integer IDs/versions; accept int/float widths, never bools."""
+    if type(expected) is int:
+        return type(actual) is int and actual == expected
+    if type(expected) is float:
+        return type(actual) in (int, float) and actual == expected
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(exact_json(actual[key], value) for key, value in expected.items())
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(exact_json(a, e) for a, e in zip(actual, expected))
+    return actual == expected
+
+
+def objects(raw):
+    environment = UnityPy.load(raw)
+    loaded = list(environment.objects)
+    require(len({id(obj.assets_file) for obj in loaded}) == 1, "Expected exactly one serialized file")
+    # UnityPy names standalone byte-loaded assets using hash(raw); that name is
+    # process-dependent and changes after a legitimate save. Sole-file ordinal
+    # zero plus the exact path IDs is the stable identity used by this recipe.
+    result = {obj.path_id: obj for obj in loaded}
+    require(len(result) == len(loaded) == 18, "Object IDs must be unique and the 18 original objects must remain")
+    require({key: obj.type.name for key, obj in result.items()} == EXPECTED_TYPES, "Object IDs or types changed")
+    return environment, result
+
+
+def verify(source_path, saved_path, recipe_path, prefix):
+    require(os.path.samefile(sys.prefix, prefix), "Oracle must run with the specified bundled Python prefix")
+    require(source_path.resolve() != saved_path.resolve(), "Saved model must be a new file")
+    source = source_path.read_bytes()
+    saved = saved_path.read_bytes()
+    require(len(source) == SOURCE_SIZE and digest(source) == SOURCE_SHA256, "Source differs from the audited clean fixture")
+    require(saved != source, "Saved model must contain the intended sparse outline edit")
+
+    recipe = json.loads(recipe_path.read_text(encoding="utf-8"), object_pairs_hook=unique_json_object,
+                        parse_constant=invalid_constant)
+    require(type(recipe) is dict and set(recipe) == {"format", "version", "sources", "originals", "state", "nodeIdentities"},
+            "Recipe schema changed")
+    require(recipe["format"] == "elichika-viewer-body-edit" and type(recipe["version"]) is int and recipe["version"] == 1,
+            "Recipe format/version changed")
+    expected_sources = [{"name": source_path.name, "sha256": SOURCE_SHA256, "container": 0, "member": None}]
+    expected_originals = [{"name": source_path.name, "sha256": SOURCE_SHA256}]
+    require(exact_json(recipe["sources"], expected_sources), "Recipe source identity differs from the actual clean input")
+    require(exact_json(recipe["originals"], expected_originals), "Recipe original identity differs from the actual clean input")
+    require(exact_json(recipe["state"], EXPECTED_STATE), "Recipe is not exactly the intended sparse outline-only state")
+    require(recipe["nodeIdentities"] == [], "Outline-only recipe must not carry body node identities")
+
+    before_env, before = objects(source)
+    after_env, after = objects(saved)
+    source_mesh = before[MESH_ID]
+    target_mesh = after[MESH_ID]
+    source_tree = source_mesh.read_typetree()
+    target_tree = target_mesh.read_typetree()
+    require(source_tree["m_Name"] == "NeutralRibbon", "Unexpected source mesh")
+    source_raw = source_mesh.get_raw_data()
+    target_raw = target_mesh.get_raw_data()
+    require(len(source_raw) == 960 and digest(source_raw) == MESH_RAW_SHA256, "Original Mesh raw layout differs")
+    vd = source_tree["m_VertexData"]
+    source_data = bytes(vd["m_DataSize"])
+    target_data = bytes(target_tree["m_VertexData"]["m_DataSize"])
+    require(vd["m_VertexCount"] == VERTEX_COUNT and len(source_data) == VERTEX_COUNT * VERTEX_STRIDE,
+            "Source six-vertex stream differs")
+    require(vd["m_Channels"][3] == {"stream": 0, "offset": COLOR_OFFSET, "format": 2, "dimension": 4},
+            "Source color channel differs from original four-byte UNorm8 layout")
+    require(all(row["stream"] == 0 for row in vd["m_Channels"] if row["dimension"]), "Expected one source vertex stream")
+    require(digest(source_data) == VERTEX_BUFFER_SHA256, "Source vertex buffer differs")
+    require(source_raw.find(source_data) == VERTEX_BUFFER_RAW_OFFSET
+            and source_raw.find(source_data, VERTEX_BUFFER_RAW_OFFSET + 1) == -1, "Source vertex buffer raw location differs")
+    require(struct.unpack("<12H", bytes(source_tree["m_IndexBuffer"])) == (0, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4),
+            "Source triangle indices differ")
+
+    colors_before = [list(source_data[index * VERTEX_STRIDE + COLOR_OFFSET:index * VERTEX_STRIDE + COLOR_OFFSET + 4])
+                     for index in range(VERTEX_COUNT)]
+    colors_after = [list(target_data[index * VERTEX_STRIDE + COLOR_OFFSET:index * VERTEX_STRIDE + COLOR_OFFSET + 4])
+                    for index in range(VERTEX_COUNT)]
+    require(colors_before == [ORIGINAL_RGBA] * VERTEX_COUNT, "Source masks differ from neutral fixture")
+    # This is the independent expected result: round(0.25 * 255) = 64.
+    expected_buffer = bytearray(source_data)
+    expected_buffer[COLOR_OFFSET] = 64
+    require(target_data == bytes(expected_buffer), "Saved vertex stream differs beyond vertex0 red=64")
+    expected_tree = copy.deepcopy(source_tree)
+    expected_tree["m_VertexData"]["m_DataSize"] = target_tree["m_VertexData"]["m_DataSize"]
+    require(target_tree == expected_tree, "Saved mesh has changes outside the one color byte")
+    expected_mesh = bytearray(source_raw)
+    expected_mesh[RAW_RED_OFFSET] = 64
+    require(target_raw == bytes(expected_mesh), "Saved raw Mesh must equal source with only raw byte456 changed to64")
+    changed = sorted(key for key in before if before[key].get_raw_data() != after[key].get_raw_data())
+    require(changed == [MESH_ID], "Objects changed outside the one intended Mesh: " + repr(changed))
+    require(source_path.read_bytes() == source, "Actual source file changed while the oracle was reading")
+
+    return {"schemaVersion": 1, "status": "PASS", "source_sha256": digest(source), "output_sha256": digest(saved),
+            "source_bytes": len(source), "output_bytes": len(saved), "private_prefix_samefile": True,
+            "sourcePreserved": True, "recipeSourceBound": True, "recipeExactSparseOutlineOnly": True,
+            "onlyIntendedMeshChanged": True, "exactRawRedByteDelta": True,
+            "allOtherRawObjectsByteIdentical": True, "allNonRedMeshDataByteIdentical": True,
+            "positionsWeightsIndicesNormalsMaterialsTexturesPreserved": True,
+            "serializedFileOrdinal": 0, "objectCount": len(before), "unchangedObjectCount": len(before) - 1,
+            "onlyChangedObjectIds": changed, "mesh": {"pathId": str(MESH_ID), "name": "NeutralRibbon", "vertexCount": VERTEX_COUNT,
+            "rawBytes": len(source_raw), "vertexStride": VERTEX_STRIDE, "colorOffset": COLOR_OFFSET,
+            "changedVertex": 0, "vertexBufferChangedByteOffsets": [COLOR_OFFSET], "rawMeshChangedByteOffsets": [RAW_RED_OFFSET],
+            "rgbaBefore": colors_before, "rgbaAfter": colors_after}, "recipeState": recipe["state"],
+            "inputPaths": {"source": str(source_path), "saved": str(saved_path), "recipe": str(recipe_path), "pythonPrefix": str(prefix)},
+            "oracle": "Independent audited fixture constants and UnityPy raw/typetree reads; no product planner, editor, or export result reuse",
+            "scope": "Exact serialized sparse outline Save on original six-vertex neutral fixture; no visible-width pixel claim"}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("source", "saved", "recipe", "report", "python_prefix"):
+        parser.add_argument(name, type=Path)
+    args = parser.parse_args()
+    require(args.report.resolve() not in {args.source.resolve(), args.saved.resolve(), args.recipe.resolve()},
+            "Report path must not overwrite an input")
+    try:
+        value = verify(args.source, args.saved, args.recipe, args.python_prefix)
+    except Exception as error:
+        value = {"schemaVersion": 1, "status": "FAIL", "error": type(error).__name__ + ": " + str(error)}
+        args.report.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(value), file=sys.stderr)
+        return 1
+    args.report.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(json.dumps(value, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+'''
+
+
 ACCESSORY_FIXTURE = r'''
 import hashlib,importlib.util,json,os,pathlib,sys
 app,helper,output,report,prefix=map(pathlib.Path,sys.argv[1:])
@@ -193,6 +394,152 @@ def prepare_game_physics_fixture(app, output):
             "scope": "Generated neutral serialized source; no game or user asset"}
 
 
+def prepare_detail_extended_fixtures(app, output):
+    records = {}
+    for key, resource, name, digest, size in (
+            ("detail", "viewer_persistence.unity", "detail-source.unity", DETAIL_FIXTURE_SHA, 72872),
+            ("gaze", "viewer_gaze.unity", "gaze-source.unity", GAZE_FIXTURE_SHA, 87216),
+            ("motion", "viewer_library_motion.unity", "library-motion.unity", LIBRARY_MOTION_SHA, 73488)):
+        source = app / "Contents/Resources/qa" / resource
+        raw = source.read_bytes()
+        require(len(raw) == size and sha256(source) == digest, "A packaged extended QA input differs from its audited source: " + resource)
+        target = output / "native-app-data" / name
+        target.write_bytes(raw)
+        require(sha256(target) == digest, "An extended QA input copy changed its source bytes")
+        records[key] = {"resource": resource, "bytes": size, "sha256": digest, "path": str(target)}
+    return {"status": "PASS_GENERATED_EXTENDED_INPUTS", "inputs": records,
+            "scope": "Own neutral serialized QA inputs; no game or user models"}
+
+
+def _native_checks(observed, names, label):
+    checks = observed.get("checks", {})
+    require(observed.get("status") == "PASS" and set(checks) == set(names)
+            and all(checks[name] is True for name in names), label + " must pass its exact reviewed check inventory")
+
+
+def _native_draw(observed, name="probe"):
+    frame = observed[name]
+    require(frame.get("ready") and frame.get("glError") == 0 and frame.get("nonBackgroundSamples", 0) >= 3,
+            "Actual native WebGL must draw the inspected source")
+
+
+def check_detail_report(observed):
+    _native_checks(observed, ("sparseOutline", "outlineUndoRedo", "sourceCataloguePreserved", "outlineSave",
+                   "meshZoom", "connectedSelection", "selectionUndoRedo", "viewOnlyPreservedGeometry"), "Native detail controls")
+    sparse = [{"id": "0:0:1", "factor": 1, "vertices": [{"vertex": 0, "value": .25}]}]
+    require(observed["sparse"] == sparse and observed["recipe"]["state"]["outlines"] == sparse
+            and observed["recipe"]["state"]["edits"] == [] and len(observed["catalogue"]["meshes"]) == 1,
+            "Native detail Save must retain the exact source vertex0 quarter-width recipe")
+    require(observed["seed"]["selectedVertices"] == [0] and sorted(observed["connected"]["selectedVertices"]) == list(range(6))
+            and observed["undone"]["selectedVertices"] == [0], "Native connected selection and Undo must use the actual six source vertices")
+    require(not observed["connected"]["edits"]["meshes"] and not observed["finalAuthoring"]["edits"]
+            and not observed["finalAuthoring"].get("outlines"), "Inspection and reset must not leave geometry or body edits")
+    views = {row["panel"]: row for row in observed["independentViews"]}
+    modify, delete = views["viewer-mesh-modify"], views["viewer-mesh-deleter"]
+    require(modify["zoom"] == 4 and modify["x"] == modify["y"] == -1.5 and delete["zoom"] == 2,
+            "Actual mesh inspectors must retain independent centre-anchored UV views")
+    _native_draw(observed)
+
+
+def inspect_detail_export(app, output, label, report):
+    observed = report.get("native_detail", {})
+    check_detail_report(observed)
+    source = Path(observed.get("source_path", ""))
+    require(observed.get("sourcePreserved") is True and source == output / "native-app-data/detail-source.unity"
+            and observed.get("source_sha256") == DETAIL_FIXTURE_SHA and sha256(source) == DETAIL_FIXTURE_SHA,
+            "Native detail inspection must preserve the exact clean source")
+    saved = observed["saved"]
+    require(saved["status"] == "done" and not saved["busy"] and not saved["error"]
+            and len(saved["previewPaths"]) == 1, "Native sparse outline export must publish one completed source copy")
+    recipe = Path(saved["recipePath"])
+    require(json.loads(recipe.read_text()) == observed["recipe"], "Fetched outline recipe must equal the actual saved file")
+    resources = app / "Contents/Resources"
+    prefix = resources / "runtime/arm64/python"
+    receipt = output / f"{label}-detail-oracle.json"
+    result = subprocess.run([str(prefix / "bin/python3"), "-I", "-B", "-c", DETAIL_OUTLINE_ORACLE,
+                             str(source), saved["previewPaths"][0], str(recipe), str(receipt), str(prefix)],
+                            env=private_environment(resources), cwd=output, capture_output=True, text=True, timeout=60)
+    (output / f"{label}-detail-oracle.stdout.txt").write_text(result.stdout)
+    (output / f"{label}-detail-oracle.stderr.txt").write_text(result.stderr)
+    require(result.returncode == 0 and receipt.is_file(), "Actual saved outline bytes failed the independent private-runtime oracle")
+    oracle = json.loads(receipt.read_text())
+    require(oracle["status"] == "PASS" and oracle["onlyChangedObjectIds"] == [1]
+            and oracle["allOtherRawObjectsByteIdentical"] and oracle["allNonRedMeshDataByteIdentical"],
+            "Actual sparse outline Save must change only one native red byte")
+    observed["serialized_oracle"] = oracle
+    require((output / "native-app-data/detail-controls.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), "Native detail PNG is missing")
+
+
+def check_extended_report(observed, paths):
+    import math
+    import re
+    _native_checks(observed, ("physicsFreshOn", "gazeOriginalPoses", "gazePausedAndReset", "poseComponentFilters",
+                   "breastAutomaticLimits", "breastDisableRestoresBaseline", "precisePhysicsEditing", "motionSourceSeparation",
+                   "motionReloadPreservesEdits", "importedMotionPlays", "modelChangeRetainsLibrary", "explicitClear"), "Extended native controls")
+    initial = observed["initial"]["state"]
+    require(initial["stats"]["meshes"] == 1 and initial["stats"]["vertices"] == 6 and initial["stats"]["triangles"] == 4
+            and initial["rig"]["expressions"] == [] and initial["rig"]["physics"]["swingBone"]
+            and initial["rig"]["physics"]["swingCollider"], "Fresh gaze source must retain its neutral mesh and enabled physics")
+    def eyes(state):
+        rows = [{key: row[key] for key in ("node", "position", "quaternion", "scale")}
+                for row in state["rig"]["bones"] if re.search(r"(?:^|/)(?:Left|Right)Eye[12]$", row["name"])]
+        require(len(rows) == 4 and all(math.isfinite(value) for row in rows for key in ("position", "quaternion", "scale") for value in row[key]),
+                "Four genuine source eye joints must expose finite actual transforms")
+        return rows
+    front, directed, returned, camera = (observed["gaze"][name] for name in ("front", "directed", "returned", "camera"))
+    require(eyes(front) != eyes(directed) and eyes(front) == eyes(returned)
+            and front["rig"]["time"] == directed["rig"]["time"] and not directed["rig"]["playing"],
+            "Paused source gaze must change actual eye transforms and restore them exactly")
+    gaze = directed["rig"]["expressionPanel"]["gaze"]
+    require(gaze["available"] and gaze["mode"] == "direction" and gaze["horizontal"] == .5 and gaze["vertical"] == -.25
+            and gaze["strength"] == .7 and camera["rig"]["expressionPanel"]["gaze"]["mode"] == "camera",
+            "Real source gaze controls must retain their exact numeric and camera settings")
+    breast = observed["breast"]
+    record, base, preset, limits = (breast[name] for name in ("record", "baseline", "preset", "limits"))
+    require(record["kind"] == "bone" and record["group"] == "breast" and preset["tier"] > 0,
+            "Pose filters and automatic limits must use the genuine breast SwingBone")
+    automatic = breast["automatic"]["state"]["rig"]["physics"]["breastAutoLimits"]
+    tiers = [row for row in automatic["tiers"] if row["id"] == record["id"]]
+    require(automatic["enabled"] and len(tiers) == 1 and tiers[0]["applied"] and tiers[0]["tier"] == preset["tier"],
+            "Actual original size recommendations must apply the selected tier once")
+    require(all(limits[key][0] == base[key][0] for key in ("lowRotationLimit", "highRotationLimit"))
+            and all(limits["lowRotationLimit"][axis] == base["lowRotationLimit"][axis] - preset["tier"]
+                    and limits["highRotationLimit"][axis] == base["highRotationLimit"][axis] + preset["tier"] for axis in (1, 2)),
+            "Breast automatic limits must preserve X and expand Y/Z exactly from the enabled baseline")
+    before, imported = observed["beforeLibrary"], observed["imported"]
+    physics_edits = [row for row in before["authoring"]["physics"] if row["id"] == record["id"]]
+    require(not before["state"]["rig"]["physics"]["breastAutoLimits"]["enabled"] and len(physics_edits) == 1
+            and physics_edits[0]["values"] == {"dragForce": .4}, "Disabling auto limits must leave only the precise manually authored drag")
+    require(observed["paths"] == paths and imported["state"]["paths"] == imported["state"]["loadedPaths"] == [paths["sourcePath"]]
+            and imported["state"]["motionLibraryPaths"] == imported["state"]["loadedMotionPaths"] == [paths["motionPath"]]
+            and imported["authoring"] == before["authoring"]
+            and imported["state"]["rig"]["expressionPanel"]["gaze"] == before["state"]["rig"]["expressionPanel"]["gaze"],
+            "Motion import must remain separate from model sources and preserve same-body edits/manual gaze")
+    played = observed["played"]["state"]["rig"]
+    require(played["selectedClip"] == "Native library motion" and played["time"] > .2 and not played["playing"],
+            "The actual imported motion must really advance and pause")
+    other, rebound, cleared = (observed[name]["state"] for name in ("other", "rebound", "cleared"))
+    require(other["paths"] == other["loadedPaths"] == [paths["otherBodyPath"]] and other["stats"]["meshes"] == 1
+            and other["motionLibraryPaths"] == [paths["motionPath"]] and "Native library motion" in other["rig"]["clipNames"]
+            and rebound["loadedMotionPaths"] == [paths["motionPath"]] and rebound["rig"]["expressionPanel"]["gaze"]["available"],
+            "Changing and returning the body must retain and rebind the real motion bank")
+    require(cleared["paths"] == [paths["sourcePath"]] and not cleared["motionLibraryPaths"] and not cleared["loadedMotionPaths"]
+            and "Native library motion" not in cleared["rig"]["clipNames"], "Explicit clear must remove only the imported motion library")
+    _native_draw(observed)
+
+
+def inspect_extended_workflow(output, report):
+    observed = report.get("native_extended", {})
+    paths = {"sourcePath": str(output / "native-app-data/gaze-source.unity"),
+             "motionPath": str(output / "native-app-data/library-motion.unity"),
+             "otherBodyPath": str(output / "native-app-data/game-physics.unity")}
+    check_extended_report(observed, paths)
+    require(observed.get("sourcePreserved") is True and all(sha256(Path(paths[key])) == digest for key, digest in
+                (("sourcePath", GAZE_FIXTURE_SHA), ("motionPath", LIBRARY_MOTION_SHA), ("otherBodyPath", GAME_PHYSICS_FIXTURE_SHA))),
+            "Extended native source, motion bank and other-body bytes must remain original")
+    require((output / "native-app-data/extended-controls.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), "Extended native PNG is missing")
+
+
 def check_game_physics_report(output, report):
     import math
     observed = report.get("native_game_physics", {})
@@ -209,7 +556,8 @@ def check_game_physics_report(output, report):
             "Native game-physics smoke must bind the exact preserved input")
     initial = observed["initial"]
     require(initial["physics"]["mode"] == "game" and initial["physics"]["frameRate"] == 30
-            and initial["physics"]["nativeAvailable"] and not initial["physics"]["nativeMissing"],
+            and initial["physics"]["nativeAvailable"] and not initial["physics"]["nativeMissing"]
+            and initial["physics"]["swingBone"] and initial["physics"]["swingCollider"],
             "Complete source inputs must select the original game engine and normal cadence")
     for key, job in (("single", "SwingBoneJob"), ("group", "SwingBoneGroupJob")):
         before, after = observed[key]["before"], observed[key]["after"]
@@ -386,6 +734,8 @@ def launch(app, output, label):
         require(not process_alive(pid), f"Owned {key} remained alive after app quit")
     inspect_accessory_export(app, output, label, report)
     check_game_physics_report(output, report)
+    inspect_detail_export(app, output, label, report)
+    inspect_extended_workflow(output, report)
     write_json(output / f"{label}.json", report)
     for image in directory.glob("*.png"):
         shutil.copy2(image, output / f"{label}-{image.name}")
@@ -400,6 +750,7 @@ def check(app, output, relocation):
     fixture = prepare_zip_fixture(app, output)
     accessory = prepare_accessory_fixture(app, output)
     game_physics = prepare_game_physics_fixture(app, output)
+    detail_extended = prepare_detail_extended_fixtures(app, output)
     first = launch(app, output, "first-launch")
     check_zip_edit_report(first, fixture)
     check_pose_body_report(first)
@@ -432,6 +783,7 @@ def check(app, output, relocation):
              "fractional_zip_input": fixture,
              "accessory_input": accessory,
              "game_physics_input": game_physics,
+             "detail_extended_inputs": detail_extended,
              "viewer_panel_width_persisted_across_relaunch": True,
              "viewer_files_width_persisted_across_relaunch": True,
              "space_and_unicode_path": " " in str(relocation) and any(ord(char) > 127 for char in str(relocation)),

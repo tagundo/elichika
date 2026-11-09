@@ -210,8 +210,8 @@ jobs:
           from pathlib import Path
           import re
           text = Path('evidence/native-instrumentation.txt').read_text()
-          # The reviewed inventory includes all three ModelViewerRigTest methods.
-          assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text) == ['32'] and 'FAILURES' not in text, text
+          # The reviewed inventory includes all five ModelViewerRigTest methods, including the new gaze/editor/library flow.
+          assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text) == ['33'] and 'FAILURES' not in text, text
           PY
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls-report.json > evidence/model-viewer-outline-controls-report.json
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls.png > evidence/model-viewer-outline-controls.png
@@ -232,8 +232,27 @@ jobs:
           assert all(report['checks'].get(name) is True for name in (
               'nativeDefault', 'singleJobAdvanced', 'groupJobAdvanced', 'pausedDebugPreserved',
               'seekPreservedParameters', 'modeSwitchPreservedParameters', 'frameRateRestored30')), report
+          assert report['initial']['physics']['swingBone'] is True and report['initial']['physics']['swingCollider'] is True, report
           assert Path('evidence/model-viewer-game-physics.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
           PY
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail-report.json > evidence/model-viewer-detail-report.json
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail.png > evidence/model-viewer-detail.png
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended-report.json > evidence/model-viewer-extended-report.json
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended.png > evidence/model-viewer-extended.png
+          python3 - <<'PYQA'
+          from pathlib import Path
+          import json
+          expected = {
+              'detail': ('sparseOutline', 'outlineUndoRedo', 'sourceCataloguePreserved', 'outlineSave', 'meshZoom', 'connectedSelection', 'selectionUndoRedo', 'viewOnlyPreservedGeometry'),
+              'extended': ('physicsFreshOn', 'gazeOriginalPoses', 'gazePausedAndReset', 'poseComponentFilters', 'breastAutomaticLimits', 'breastDisableRestoresBaseline', 'precisePhysicsEditing', 'motionSourceSeparation', 'motionReloadPreservesEdits', 'importedMotionPlays', 'modelChangeRetainsLibrary', 'explicitClear'),
+          }
+          for name, keys in expected.items():
+              report = json.loads(Path('evidence/model-viewer-' + name + '-report.json').read_text())
+              assert report['status'] == 'PASS' and report['sourcePreserved'] is True, report
+              assert set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
+              assert Path('evidence/model-viewer-' + name + '.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+          assert report['motionSourcePreserved'] is True and report['otherBodySourcePreserved'] is True
+          PYQA
 
       - name: Verify and measure mod-preserving parallel merges in the signed APK
         if: ${{ !inputs.focused_header_diagnostic }}
@@ -389,6 +408,10 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls.png > evidence/model-viewer-outline-controls.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-game-physics-report.json > evidence/model-viewer-game-physics-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-game-physics.png > evidence/model-viewer-game-physics.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail-report.json > evidence/model-viewer-detail-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail.png > evidence/model-viewer-detail.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended-report.json > evidence/model-viewer-extended-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended.png > evidence/model-viewer-extended.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader.png > evidence/model-viewer-shader.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-report.json > evidence/model-viewer-rig-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-resume-geometry.json > evidence/model-viewer-rig-resume-geometry.json 2>/dev/null || true

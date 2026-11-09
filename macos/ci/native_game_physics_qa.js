@@ -17,7 +17,8 @@
     var state = ModelViewer.getState();
     return clone({ physics: state.rig.physics, time: state.rig.time, playing: state.rig.playing,
       bones: state.rig.bones, authoring: ModelViewer.getAuthoringState(), catalogue: ModelViewer.getEditingMetadata().physics,
-      controls: { mode: document.getElementById('viewer-physics-mode').value,
+      controls: { bonesChecked: document.getElementById('viewer-physics-bones').checked, collidersChecked: document.getElementById('viewer-physics-colliders').checked,
+        mode: document.getElementById('viewer-physics-mode').value,
         frameRate: document.getElementById('viewer-physics-frame-rate').value,
         frameDisabled: document.getElementById('viewer-physics-frame-rate').disabled,
         profile: document.getElementById('viewer-physics-profile').value,
@@ -69,8 +70,8 @@
       return s.loaded && !s.loading && s.rig && s.rig.physics && s.rig.physics.nativeAvailable && document.getElementById('viewer-physics-mode');
     });
     var initial = snapshot();
-    assert(initial.physics.mode === 'game' && initial.physics.frameRate === 30 && initial.physics.nativeMissing.length === 0 && initial.controls.gameOptionEnabled,
-      'Complete original source data must default to game mode and 30 FPS');
+    assert(initial.physics.mode === 'game' && initial.physics.frameRate === 30 && initial.physics.nativeMissing.length === 0 && initial.controls.gameOptionEnabled && initial.physics.swingBone && initial.physics.swingCollider && initial.controls.bonesChecked && initial.controls.collidersChecked,
+      'Complete original source data must default to game mode, 30 FPS and both physics switches enabled');
     document.getElementById('viewer-adjustments').open = true;
     document.querySelectorAll('.viewer-physics-region').forEach(function (region) { region.open = true; });
     var controls = { mode: usable('viewer-physics-mode'), frame: usable('viewer-physics-frame-rate') };

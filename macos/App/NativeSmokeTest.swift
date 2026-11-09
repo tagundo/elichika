@@ -137,6 +137,8 @@ final class NativeSmokeTest {
                 "native_stored": UserDefaults.standard.integer(forKey: "viewerFilesWidth"),
                 "scope": "Native preference bridge and relaunch; the file sidebar appears only in a wide viewport"]
             try checkpoint("viewer-files-width-persisted")
+            try await checkDetailWorkflow(webView, directory: directory)
+            _ = try await openSmokeSource(webView, source: zipSource)
             let baseline = try await vertices(webView)
             _ = try await js(webView, "document.getElementById('viewer-adjustments').open=true;document.getElementById('viewer-body-adjustments').open=true;for(var parent=document.getElementById('viewer-node-editor');parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;}document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.boneInput('LeftUpLeg','scale','X',1.17);ViewerRigQa.boneInput('LeftUpLeg','scale','Y',1.234567);ViewerRigQa.boneInput('LeftUpLeg','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','mesh','change');document.getElementById('viewer-editor-node-tab').click();ViewerRigQa.boneInput('BreastSize','scale','Z',1.17);ViewerRigQa.input('viewer-save-method','node','change');document.getElementById('viewer-editor-mesh-tab').click();ViewerRigQa.input('viewer-node',ViewerRigQa.nodeId('LeftUpLeg'),'change');return true;")
             let fractionalControls = try await object(webView, """
@@ -234,6 +236,7 @@ final class NativeSmokeTest {
             try await checkMinimizedViewer(webView)
             try await checkAccessoryUnclip(webView, directory: directory)
             try await checkGamePhysics(webView, directory: directory)
+            try await checkExtendedWorkflow(webView, directory: directory)
             _ = try await model.request("/v1/server/start", method: "POST")
             try checkpoint("quit-server-start-requested")
             try await wait("the game server before quitting", timeout: 120) {
@@ -285,6 +288,76 @@ final class NativeSmokeTest {
             try? checkpoint("failed")
             Darwin.exit(1)
         }
+    }
+
+    private func openSmokeSource(_ webView: WKWebView, source: URL) async throws -> String {
+        let old = try await object(webView, "return JSON.stringify({id:ModelViewer.getState().modelId||''});")
+        let oldID = String(decoding: try JSONSerialization.data(withJSONObject: [old["id"] as? String ?? ""]), as: UTF8.self) + "[0]"
+        _ = try await js(webView, "var a=document.getElementById('viewer-auto-face');if(a&&a.checked)a.click();return true;")
+        let paths = try await model.authorize([source])
+        model.selectedSection = .viewer
+        model.browser(.assets).perform("openModel", paths: paths)
+        try await waitJS(webView, "the newly authorized native QA source", timeout: 120, expression:
+            "ModelViewer.getState().modelId!==" + oldID + "&&ModelViewer.getState().loaded&&!ModelViewer.getState().loading")
+        try await loaded(webView)
+        return paths[0]
+    }
+
+    private func checkDetailWorkflow(_ webView: WKWebView, directory: URL) async throws {
+        try checkpoint("native-detail-source")
+        let source = directory.appendingPathComponent("detail-source.unity")
+        let original = try Data(contentsOf: source)
+        let digest = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+        try require(digest == "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1",
+                    "The detail controls must use the exact clean neutral source.")
+        _ = try await openSmokeSource(webView, source: source)
+        let helper = try String(contentsOf: model.resourceDirectory.appendingPathComponent("qa/viewer_detail_qa.js"), encoding: .utf8)
+        _ = try await js(webView, helper + ";return true;")
+        var observed = try await object(webView, "return JSON.stringify(await NativeDetailQa.run());")
+        try require(observed["status"] as? String == "PASS", "Actual WebKit detail controls did not pass.")
+        try require(try Data(contentsOf: source) == original, "Outline/mesh detail inspection must preserve the source.")
+        observed["source_path"] = source.path
+        observed["source_sha256"] = digest
+        observed["sourcePreserved"] = true
+        report["native_detail"] = observed
+        try await snapshot(webView, directory.appendingPathComponent("detail-controls.png"))
+        try checkpoint("native-detail-passed")
+    }
+
+    private func checkExtendedWorkflow(_ webView: WKWebView, directory: URL) async throws {
+        try checkpoint("native-extended-source")
+        let source = directory.appendingPathComponent("gaze-source.unity")
+        let motion = directory.appendingPathComponent("library-motion.unity")
+        let otherBody = directory.appendingPathComponent("game-physics.unity")
+        let inputs: [(URL, String)] = [(source, "4058786fad837b3292bf1fdba0b9181719b7c7e9e756a705c266af146d113129"),
+            (motion, "b512951eaa10cc2cce1d53dca961ad3abbc5e731ce4c58a7b78ee9c4cc2ce7a9"),
+            (otherBody, "d619ef6e956d3b8557660ebbd070e8c998c0c0c82dc2fb97a8755c2a4d74e66e")]
+        let originals = try inputs.map { try Data(contentsOf: $0.0) }
+        for (index, item) in inputs.enumerated() {
+            let digest = SHA256.hash(data: originals[index]).map { String(format: "%02x", $0) }.joined()
+            try require(digest == item.1, "An extended native QA source changed.")
+        }
+        let paths = try await model.authorize([source, motion, otherBody])
+        _ = try await openSmokeSource(webView, source: source)
+        let options = ["sourcePath": paths[0], "motionPath": paths[1], "otherBodyPath": paths[2]]
+        let encoded = String(decoding: try JSONSerialization.data(withJSONObject: options), as: UTF8.self)
+        let helper = try String(contentsOf: model.resourceDirectory.appendingPathComponent("qa/viewer_extended_qa.js"), encoding: .utf8)
+        _ = try await js(webView, helper + ";return true;")
+        var observed = try await object(webView, "return JSON.stringify(await NativeExtendedQa.run(" + encoded + "));")
+        try require(observed["status"] as? String == "PASS", "Actual WebKit extended viewer controls did not pass.")
+        for (index, item) in inputs.enumerated() {
+            try require(try Data(contentsOf: item.0) == originals[index], "Extended viewer controls must preserve every input.")
+        }
+        observed["source_path"] = source.path
+        observed["source_sha256"] = inputs[0].1
+        observed["motion_path"] = motion.path
+        observed["motion_sha256"] = inputs[1].1
+        observed["other_body_path"] = otherBody.path
+        observed["other_body_sha256"] = inputs[2].1
+        observed["sourcePreserved"] = true
+        report["native_extended"] = observed
+        try await snapshot(webView, directory.appendingPathComponent("extended-controls.png"))
+        try checkpoint("native-extended-passed")
     }
 
     private func checkGamePhysics(_ webView: WKWebView, directory: URL) async throws {

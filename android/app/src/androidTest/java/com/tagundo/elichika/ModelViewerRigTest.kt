@@ -391,6 +391,14 @@ class ModelViewerRigTest {
         val catalogue = initial.getJSONArray("meshes")
         assertTrue("The fixture supplies original editable outline data", catalogue.length() > 0)
         run(webView, "document.querySelector('#viewer-outline-card > summary').click();")
+        val detail = runNativeHelper(session, "viewer_detail_qa.js", "NativeDetailQa.run()")
+        assertEquals("PASS", detail.getString("status"))
+        assertEquals(8, detail.getJSONObject("checks").length())
+        val detailKeys = detail.getJSONObject("checks").keys()
+        while (detailKeys.hasNext()) assertTrue(detail.getJSONObject("checks").getBoolean(detailKeys.next()))
+        persistReport("model-viewer-detail-report.json", detail.put("sourcePreserved", true))
+        saveScreenshot(session.activity, "model-viewer-detail.png")
+        run(webView, "document.getElementById('viewer-outline-card').open=true;")
 
         boneInput(webView, "BreastSize", "scale", "Y", 1.125)
         input(webView, "viewer-save-method", "node", "change")
@@ -466,7 +474,8 @@ class ModelViewerRigTest {
         fun snapshot(): JSONObject = evaluate(webView,
             "var s=ModelViewer.getState();return JSON.stringify({physics:s.rig.physics,time:s.rig.time,playing:s.rig.playing," +
                 "bones:s.rig.bones,authoring:ModelViewer.getAuthoringState(),catalogue:ModelViewer.getEditingMetadata().physics," +
-                "controls:{mode:document.getElementById('viewer-physics-mode').value,frameRate:document.getElementById('viewer-physics-frame-rate').value," +
+                "controls:{bonesChecked:document.getElementById('viewer-physics-bones').checked,collidersChecked:document.getElementById('viewer-physics-colliders').checked," +
+                "mode:document.getElementById('viewer-physics-mode').value,frameRate:document.getElementById('viewer-physics-frame-rate').value," +
                 "frameDisabled:document.getElementById('viewer-physics-frame-rate').disabled,profile:document.getElementById('viewer-physics-profile').value," +
                 "profileDisabled:document.getElementById('viewer-physics-profile').disabled," +
                 "gameOptionEnabled:!document.querySelector('#viewer-physics-mode option[value=game]').disabled}});")
@@ -529,6 +538,10 @@ class ModelViewerRigTest {
         assertEquals("Complete original data selects game physics by default", "game", initial.getJSONObject("physics").getString("mode"))
         assertEquals("Normal game cadence defaults to30 FPS", 30, initial.getJSONObject("physics").getInt("frameRate"))
         assertEquals(0, initial.getJSONObject("physics").getJSONArray("nativeMissing").length())
+        assertTrue("SwingBone must start enabled for a freshly loaded model", initial.getJSONObject("physics").getBoolean("swingBone"))
+        assertTrue("SwingCollider must start enabled for a freshly loaded model", initial.getJSONObject("physics").getBoolean("swingCollider"))
+        assertTrue("Fresh SwingBone checkbox must show enabled", initial.getJSONObject("controls").getBoolean("bonesChecked"))
+        assertTrue("Fresh SwingCollider checkbox must show enabled", initial.getJSONObject("controls").getBoolean("collidersChecked"))
         assertTrue(initial.getJSONObject("controls").getBoolean("gameOptionEnabled"))
         if (state(webView).getJSONObject("layout").getBoolean("expanded")) click(webView, "viewer-expand")
         run(webView, "document.getElementById('viewer-adjustments').open=true;" +
@@ -540,8 +553,7 @@ class ModelViewerRigTest {
         input(webView, "viewer-physics-frame-rate", "30", "change")
         input(webView, "viewer-motion", "Neutral MV scale override", "change")
         input(webView, "viewer-time", "0")
-        click(webView, "viewer-physics-bones")
-        click(webView, "viewer-physics-colliders")
+        run(webView, "['viewer-physics-bones','viewer-physics-colliders'].forEach(function(id){var c=document.getElementById(id);if(!c.checked)c.click();});")
         val ready = snapshot()
         assertReady(ready, "SwingBoneJob")
         assertTrue(ready.getJSONObject("physics").getBoolean("swingBone"))
@@ -645,7 +657,41 @@ class ModelViewerRigTest {
         println("MODEL_VIEWER_GAME_PHYSICS_REPORT=$report")
     }
 
-    private data class Session(val activity: MainActivity, val webView: WebView, val defaultPanels: JSONObject)
+    @Test
+    fun sourceGazePhysicsEditorsAndMotionLibraryUseRealNativeControls() = withRig("viewer_gaze.unity", "Neutral MV scale override", expectedExpressionCount = 0) { session ->
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assets = InstrumentationRegistry.getInstrumentation().context.assets
+        val motionBytes = assets.open("viewer_library_motion.unity").use { it.readBytes() }
+        val bodyBytes = assets.open("viewer_game_physics.unity").use { it.readBytes() }
+        val motion = File(context.filesDir, "native-library-${System.nanoTime()}.unity")
+        val other = File(context.filesDir, "native-other-body-${System.nanoTime()}.unity")
+        try {
+            motion.writeBytes(motionBytes); other.writeBytes(bodyBytes)
+            val paths = JSONObject().put("sourcePath", session.source.absolutePath).put("motionPath", motion.absolutePath).put("otherBodyPath", other.absolutePath)
+            val extended = runNativeHelper(session, "viewer_extended_qa.js", "NativeExtendedQa.run(" + paths.toString() + ")")
+            assertEquals("PASS", extended.getString("status"))
+            assertEquals(12, extended.getJSONObject("checks").length())
+            val keys = extended.getJSONObject("checks").keys()
+            while (keys.hasNext()) assertTrue(extended.getJSONObject("checks").getBoolean(keys.next()))
+            assertTrue("The motion bank source must remain immutable", motion.readBytes().contentEquals(motionBytes))
+            assertTrue("The alternative model source must remain immutable", other.readBytes().contentEquals(bodyBytes))
+            extended.put("sourcePreserved", true).put("motionSourcePreserved", true).put("otherBodySourcePreserved", true)
+            persistReport("model-viewer-extended-report.json", extended)
+            saveScreenshot(session.activity, "model-viewer-extended.png")
+            println("MODEL_VIEWER_EXTENDED_REPORT=$extended")
+        } finally { motion.delete(); other.delete() }
+    }
+
+    private fun runNativeHelper(session: Session, asset: String, invocation: String): JSONObject {
+        val helper = InstrumentationRegistry.getInstrumentation().context.assets.open(asset).bufferedReader().use { it.readText() }
+        run(session.webView, helper + ";window.__nativeFeatureQa={pending:true};Promise.resolve(" + invocation + ").then(function(result){window.__nativeFeatureQa={pending:false,result:result};},function(error){window.__nativeFeatureQa={pending:false,error:String(error.stack||error)};});")
+        waitForDom(session.webView, "the actual native feature probe " + asset, 180) {
+            "var p=window.__nativeFeatureQa;return JSON.stringify({ok:!!p&&!p.pending,error:p&&p.error||''});"
+        }
+        return evaluate(session.webView, "return JSON.stringify(window.__nativeFeatureQa.result);")
+    }
+
+    private data class Session(val activity: MainActivity, val webView: WebView, val defaultPanels: JSONObject, val source: File)
 
     private fun withRig(fixtureName: String = "viewer_rig.unity", clipName: String = "Neutral swing", expectedExpressionCount: Int = 1, check: (Session) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -704,7 +750,7 @@ class ModelViewerRigTest {
                     "p.nonBackgroundSamples>=3&&p.chromaticSamples>=3&&p.glError===0,probe:p});"
             }
             assertGameStopped()
-            check(Session(launched, browser, defaultPanels))
+            check(Session(launched, browser, defaultPanels, source))
             assertTrue("All rig, shader and scaling operations must preserve the source bytes", source.readBytes().contentEquals(fixture))
             assertGameStopped()
         } finally {

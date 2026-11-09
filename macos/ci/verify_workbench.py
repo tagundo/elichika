@@ -23,14 +23,16 @@ source = resources / 'python-app'
 sys.path.insert(0, str(source))
 from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
-from webtools.core import game_motions, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits
+from webtools.core import game_motions, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits, model_expressions
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
-                    model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime)
+                    model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions)
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
             'test_viewer_transplants.py', 'test_viewer_workbench_routes.py',
-            'test_physics_game_engine.py', 'test_physics_game_catalog.py', 'test_physics_game_runtime.py']
+            'test_physics_game_engine.py', 'test_physics_game_catalog.py', 'test_physics_game_runtime.py',
+            'test_viewer_mesh_selection.py', 'test_model_expressions.py', 'test_transplant_physics_graph.py',
+            'test_motion_audio_transport.py', 'test_viewer_motion_library.py', 'test_viewer_gaze.py']
 # Node drivers are test-only host tools. Stage their original scripts beside a
 # link to the actual app static directory, so every relative require executes
 # the packaged Three.js/math/collision/engine bytes instead of repository JS.
@@ -41,21 +43,24 @@ test_stage = stage / 'tests'; test_stage.mkdir()
 (stage / 'webtools/web').mkdir(parents=True)
 static = source / 'webtools/web/static'
 (stage / 'webtools/web/static').symlink_to(static, target_is_directory=True)
-staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py']
+staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py', 'test_viewer_mesh_selection.py', 'test_motion_audio_transport.py', 'test_viewer_gaze.py']
 staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.js',
     'viewer_game_physics_math_test.js', 'viewer_game_physics_collision_test.js',
     'viewer_game_physics_job_collision_test.js', 'viewer_game_physics_native_test.js',
-    'viewer_game_physics_initialization_test.js', 'viewer_game_physics_adapter_test.js']
+    'viewer_game_physics_initialization_test.js', 'viewer_game_physics_adapter_test.js',
+    'viewer_mesh_connected_zoom_test.js', 'viewer_gaze_test.js', 'viewer_motion_audio_transport_test.js']
 numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisions.json',
     'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
-    'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json']
+    'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json',
+    'game_physics_native_constructor.json']
 for name in staged_python + staged_drivers:
     shutil.copy2(test_source / name, test_stage / name)
 (test_stage / 'fixtures').mkdir()
 for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
 static_files = ['vendor/three-r128/three.min.js', 'viewer-physics.js',
-    'viewer-game-physics-math.js', 'viewer-game-physics-collision.js', 'viewer-game-physics.js']
+    'viewer-game-physics-math.js', 'viewer-game-physics-collision.js', 'viewer-game-physics.js',
+    'viewer-mesh-tools.js', 'viewer-motion-timeline.js', 'viewer-motion-audio.js']
 packaged_node_sources = {}
 for name in static_files:
     actual = (stage / 'webtools/web/static' / name).resolve()
@@ -82,9 +87,13 @@ explicit_cases = [
     'test_model_outlines.OutlineTests.test_mixed_or_unsupported_color_shader_is_not_writable',
     'test_model_outlines.OutlineTests.test_outline_only_export_recipe_restore_and_repeat_do_not_accumulate',
     'test_model_outlines.OutlineTests.test_vertex_and_body_edit_combination_preserves_outline_mask_basis',
+    'test_model_outlines.OutlineTests.test_sparse_vertex_width_grows_zero_masks_and_preserves_all_other_bytes',
+    'test_model_outlines.OutlineTests.test_detail_state_is_bounded_and_survives_recipe_restore',
+    'test_model_outlines.OutlineTests.test_runtime_member_face_requires_exact_original_body_binding',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_pair_uses_semantic_mesh_and_each_native_mask',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_paired_mod_zip_propagates_all_platform_variants',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_pair_rejects_missing_and_ambiguous_semantic_mesh',
+    'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_detail_pair_requires_verified_vertex_order_and_keeps_overrides',
 ]
 selected = unittest.defaultTestLoader.loadTestsFromNames(explicit_cases)
 assert selected.countTestCases() == len(explicit_cases)
@@ -98,16 +107,31 @@ def case_ids(tests):
 executed_cases = list(case_ids(suite))
 assert len(executed_cases) == len(set(executed_cases)), 'Duplicate packaged test selection'
 result = unittest.TextTestRunner(verbosity=2).run(suite)
+# Discovery may add the fixture directory to sys.path. Verify again after all
+# imports/execution, including direct costume scripts, so a test helper cannot
+# silently replace packaged production modules with repository sources.
+root_scripts = {path.stem for path in source.glob('*.py')}
+packaged_imports = {}
+for name, module in list(sys.modules.items()):
+    if not (name == 'webtools' or name.startswith('webtools.') or name in root_scripts):
+        continue
+    filename = getattr(module, '__file__', None)
+    if filename:
+        actual = pathlib.Path(filename).resolve()
+        assert actual.is_relative_to(source), (name, str(actual))
+        packaged_imports[name] = str(actual.relative_to(source))
 report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else 'FAIL',
           'tests': result.testsRun, 'skips': len(result.skipped), 'failures': len(result.failures),
           'errors': len(result.errors), 'patterns': patterns, 'packaged_sources': True,
           'packaged_modules': [module.__name__ for module in packaged_modules],
+          'executed_packaged_module_paths': packaged_imports,
           'explicit_cases': explicit_cases, 'executed_cases': executed_cases,
           'packaged_node_static_sources': packaged_node_sources,
           'staged_test_inputs': staged_test_inputs,
           'node_require_scope': 'Actual packaged static assets via isolated QA-only symlink; host Node is not an app runtime dependency',
-          'excluded_optional_cases': ['test_model_outlines.OutlineTests.test_actual_original_costumes_change_only_red_and_keep_textures_exact'],
-          'scope': 'Bundled interpreter and packaged workbench code with neutral round trips, outlines/paired ModZIP, original ARM64 numerical physics fixtures and source catalogue/runtime guards; no whole-client parity claim'}
+          'excluded_optional_cases': ['test_model_outlines.OutlineTests.test_actual_original_costumes_change_only_red_and_keep_textures_exact',
+              'test_model_outlines.OutlineTests.test_original_automatic_face_jaw_detail_saves_only_selected_red'],
+          'scope': 'Bundled interpreter and packaged workbench code with neutral round trips, detailed outlines/paired ModZIP, mesh selection/zoom, gaze poses, audio transport, motion-library isolation, transplant graph and original ARM64 numerical physics fixtures; no whole-client parity claim'}
 staged.cleanup()
 print('ELICHIKA_WORKBENCH_TESTS=' + json.dumps(report))
 sys.exit(0 if report['status'] == 'PASS' and result.testsRun else 1)
@@ -138,7 +162,7 @@ def check(repo, app, report):
     value = json.loads(lines[0].split('=', 1)[1]) if len(lines) == 1 else {'status': 'FAIL', 'error': 'Workbench report is missing'}
     value['host_qa_node'] = {'executable': str(node), 'version': node_version, 'isolated_path_entry': True,
                              'path_scope': 'Temporary node-only directory plus system executable directories',
-                             'purpose': 'Neutral Three.js physics solver regression',
+                             'purpose': 'Packaged physics, mesh topology/zoom and original-pose gaze regressions',
                              'app_runtime_dependency': False}
     write_json(report, value)
     require(result.returncode == 0 and value.get('status') == 'PASS', 'Packaged workbench tests failed; see workbench verification logs')
