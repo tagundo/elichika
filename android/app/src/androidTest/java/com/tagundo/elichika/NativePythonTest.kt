@@ -17,6 +17,12 @@ class NativePythonTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val python = EmbeddedPython.instance(context)
+        val hca = File(context.applicationInfo.nativeLibraryDir, "libelichika_hca.so")
+        assertTrue("The signed APK must include its local HCA decoder", hca.isFile)
+        val hcaDecoder = python.getModule("webtools.core.cri_audio_decode").callAttr("_native_library")
+        assertEquals("True", python.getModule("builtins").callAttr("bool", hcaDecoder).toString())
+        assertEquals(hca.absolutePath,
+            python.getModule("os").get("environ")!!.callAttr("get", "ELICHIKA_HCA_LIBRARY").toString())
         val mergeModule = python.getModule("types").callAttr("ModuleType", "android_payload_merge_benchmark")
         val mergeScript = instrumentation.context.assets.open("android_payload_merge_benchmark.py")
             .bufferedReader().use { it.readText() }

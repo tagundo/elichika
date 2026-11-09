@@ -4,6 +4,8 @@ Elichika's macOS companion packages the Go server, Python tools and the same web
 editor used by Android into `Elichika.app`. It supports Apple Silicon and macOS
 13 or later. The app includes its own Python interpreter, wheels, Go executable
 and ASTC encoder; users do not install Python, Go, Homebrew or pip.
+Linked game voices and music use the bundled ISC HCA decoder and play alongside
+their original motion timelines; no external audio converter is required.
 
 ## Shared code and native integration
 
@@ -41,6 +43,12 @@ server address and CDN address in Settings. To connect a phone on the same
 network, configure the desired listening address and the Mac's reachable CDN
 URL. The Python editor and native control endpoints remain private loopback
 services.
+
+The sidebar has separate, adjacent **Asset editing tools** and **3D model**
+items. They share one retained web editor, so switching keeps the loaded model,
+camera, pose, edits and file selection. The native sidebar replaces the duplicate
+web header. **Texture previews** lives in the asset tool list and retains its
+chosen folder and thumbnails while you use another tool.
 
 Use **Open** / **Command-O** for native model selection, **Command-S** to save
 body edits, and **Show in Finder** for selected or generated files. The editor

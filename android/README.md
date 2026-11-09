@@ -135,6 +135,10 @@ The Go binary, the bundled data payload and the embedded Python sources are
 - `app/src/main/jniLibs/arm64-v8a/libelichika.so` — the server, cross-compiled
   for `android/arm64` (NDK r28c, cgo and external linking with 16 KB alignment)
   from the normal (`!embedded`) build. ASTC uses the same NDK with flexible page sizes.
+- Gradle builds `libelichika_hca.so` from the bundled ISC HCA decoder before
+  packaging each selected app ABI. Its ELF segments are checked for 16 KB pages.
+  The embedded interpreter receives its exact `nativeLibraryDir` path, so game
+  motion voices and music decode locally without a phone FFmpeg installation.
 - `app/native-wheels/` — a source-pinned FreeType 2.9.1 wheel rebuilt with 16 KB
   alignment. Pillow's published Chaquopy dependency still uses 4 KB alignment;
   the local wheel preserves its ABI, SONAME and license. OpenBLAS 0.3.33 is also

@@ -77,6 +77,27 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertThrowsError(try NativeRequest.parse(["id": "panels-1", "action": "setPanelSettings", "panelScope": "viewer"]))
     }
 
+    func testNativeEditorNavigationKeepsAdjacentSurfacesAndRejectsUnknownViews() throws {
+        let sections = AppSection.allCases
+        let tools = try XCTUnwrap(sections.firstIndex(of: .assets))
+        XCTAssertEqual(sections[tools + 1], .model)
+        XCTAssertEqual(AppSection.assets.title("ko"), "에셋 편집 도구")
+        XCTAssertEqual(AppSection.model.title("ko"), "3D 모델")
+        XCTAssertEqual(EditorSurface.tools.section, .assets)
+        XCTAssertEqual(EditorSurface.viewer.section, .model)
+        XCTAssertEqual(EditorSurface.tools.command, "showTools")
+        XCTAssertEqual(EditorSurface.viewer.command, "showViewer")
+        for name in ["tools", "viewer"] {
+            let request = try NativeRequest.parse(["id": "editor-1", "action": "setEditorSurface", "editorSurface": name])
+            XCTAssertEqual(request.editorSurface?.rawValue, name)
+        }
+        let invalidViews: [Any] = ["gallery", "../outside", true, 1, ["tools"]]
+        for invalid in invalidViews {
+            XCTAssertThrowsError(try NativeRequest.parse(["id": "editor-1", "action": "setEditorSurface", "editorSurface": invalid]))
+        }
+        XCTAssertThrowsError(try NativeRequest.parse(["id": "editor-1", "action": "setEditorSurface"]))
+    }
+
     func testOptionalRuntimeStatusDoesNotInventRunningServer() throws {
         let value = try JSONDecoder().decode(RuntimeState.self, from: Data("{\"phase\":\"preparing\",\"prepared\":false}".utf8))
         XCTAssertFalse(value.serverRunning)

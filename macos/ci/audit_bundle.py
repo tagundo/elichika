@@ -72,6 +72,8 @@ def audit(app, required_architectures):
         for name in ("elichika", "astcenc"):
             binary = runtime_root / arch / "bin" / name
             require(binary in native and os.access(binary, os.X_OK), f"Missing private {name} for {arch}")
+        hca = runtime_root / arch / "bin/libelichika_hca.dylib"
+        require(hca in native, f"Missing private HCA audio decoder for {arch}")
     report_native = {}
     for binary, details in native.items():
         relative = binary.relative_to(app).as_posix()

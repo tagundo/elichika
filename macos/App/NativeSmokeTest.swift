@@ -76,6 +76,7 @@ final class NativeSmokeTest {
             report["native_file_bridge_and_authorization"] = true
             try checkpoint("model-rendered")
             try await checkPoseBodyStructure(webView)
+            try await checkNativeEditorNavigation(webView)
             let panelPreferenceFile = directory.appendingPathComponent("viewer-panel-width-expected.txt")
             let expectedPanelWidth = (try? String(contentsOf: panelPreferenceFile, encoding: .utf8))
                 .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -487,6 +488,38 @@ final class NativeSmokeTest {
         try require(child.terminationStatus == 0, "The bundled Python Mod ZIP inspection failed: " + String(decoding: failure.prefix(2048), as: UTF8.self))
         guard let decoded = try JSONSerialization.jsonObject(with: result) as? [String: Any], decoded["status"] as? String == "PASS" else { throw NativeError.invalidResponse }
         return decoded
+    }
+
+    private func checkNativeEditorNavigation(_ webView: WKWebView) async throws {
+        let before = try await editingSnapshot(webView)
+        let prepares = try await js(webView, "return performance.getEntriesByType('resource').filter(function(entry){return new URL(entry.name).pathname==='/api/viewer/prepare';}).length;") as? Int
+        let session = model.browser(.assets)
+        model.selectedSection = .assets
+        session.setEditorSurface(.tools)
+        try await waitJS(webView, "the native asset tool surface", timeout: 10, expression:
+            "document.getElementById('tab-tools').classList.contains('active')&&!ModelViewer.getState().visible")
+        try require(model.assetWebView === webView, "The asset tools and 3D sidebar must share one WebView.")
+        let tools = try await object(webView, """
+            return JSON.stringify({headerHidden:getComputedStyle(document.querySelector('body > header')).display==='none',
+              galleryInTools:document.querySelectorAll('#tool-list button[data-id="texture_previews"]').length===1,
+              noGalleryTab:document.querySelectorAll('.tab[data-tab="gallery"]').length===0});
+            """)
+        for key in ["headerHidden", "galleryInTools", "noGalleryTab"] {
+            try require(tools[key] as? Bool == true, "The native sidebar must replace duplicate web navigation: " + key)
+        }
+        model.selectedSection = .model
+        session.setEditorSurface(.viewer)
+        try await waitJS(webView, "the retained native 3D surface", timeout: 10, expression:
+            "document.getElementById('tab-viewer').classList.contains('active')&&ModelViewer.getState().visible")
+        try require(model.assetWebView === webView, "Returning to 3D must retain the same WebView.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+        let after = try await js(webView, "return performance.getEntriesByType('resource').filter(function(entry){return new URL(entry.name).pathname==='/api/viewer/prepare';}).length;") as? Int
+        try require(prepares != nil && prepares == after, "Native sidebar changes must not reload or prepare the model again.")
+        report["native_editor_navigation"] = ["status": "PASS", "single_webview": true,
+            "model_camera_authoring_preserved": true, "no_extra_prepare": true,
+            "header_hidden": true, "texture_previews_inside_tools": true,
+            "scope": "Actual native sidebar selection binding and the same cached WebKit document"]
+        try checkpoint("native-editor-navigation-preserved")
     }
 
     private func checkPoseBodyStructure(_ webView: WKWebView) async throws {

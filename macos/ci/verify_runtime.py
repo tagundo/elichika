@@ -56,6 +56,15 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'database_backup','database_restore','costume_scene_installer','costume_scene_clones','costume_scene_sources',
          'llas_asset_extractor','sifas_asset_crypto','payload_upgrade_progress','elichika_macos_memory','elichika_macos']
 for name in modules: importlib.import_module(name)
+from webtools.core import cri_audio_decode
+hca_library=private/'bin/libelichika_hca.dylib'
+assert pathlib.Path(os.environ['ELICHIKA_HCA_LIBRARY']).resolve()==hca_library
+assert hca_library.is_file()
+hca_native=cri_audio_decode._native_library()
+assert hca_native is not None, 'The packaged HCA decoder must load without host FFmpeg'
+hca_state=hca_native.clHCA_new()
+assert hca_state
+hca_native.clHCA_delete(hca_state)
 from payload_upgrade_progress import ProgressReporter
 payload_progress=[]
 report_progress=ProgressReporter(lambda raw: payload_progress.append(json.loads(raw)))
@@ -146,6 +155,7 @@ print('ELICHIKA_RUNTIME_PROBE=' + json.dumps({'status':'PASS','arch':platform.ma
     'python':platform.python_version(),'packages':packages,'registered_modules':modules,
     'interactive_installer_sources_compiled_not_executed':script_files,
     'private_prefix':True,'no_runtime_pip':True,'offline_imports':True,
+    'hca_decoder':{'native_loaded':True,'bundled_library':True},
     'numpy_blas':True,'clone_crypto':crypto_probe,'pillow_png':True,'lz4_brotli':True,'astc_encode_decode':True,
     'clientdb_memory_bridge':{'fresh_snapshot':True,'available_bytes':memory_bytes,
                             'environment_bytes':int(memory_environment['ELICHIKA_CLIENTDB_MEMORY_BYTES'])},
@@ -161,6 +171,7 @@ def private_environment(resources):
     environment.update(PATH="/usr/bin:/bin:/usr/sbin:/sbin", PYTHONDONTWRITEBYTECODE="1")
     environment["SSL_CERT_FILE"] = str(resources / "runtime/arm64/python/lib/python3.12/site-packages/certifi/cacert.pem")
     environment["REQUESTS_CA_BUNDLE"] = environment["SSL_CERT_FILE"]
+    environment["ELICHIKA_HCA_LIBRARY"] = str(resources / "runtime/arm64/bin/libelichika_hca.dylib")
     return environment
 
 

@@ -115,6 +115,10 @@ def check_zip_edit_report(report, fixture):
 
 
 def check_pose_body_report(report):
+    navigation = report.get("native_editor_navigation", {})
+    require(navigation.get("status") == "PASS" and all(navigation.get(key) is True for key in
+                ("single_webview", "model_camera_authoring_preserved", "no_extra_prepare", "header_hidden", "texture_previews_inside_tools")),
+            "Native asset tools and 3D navigation must retain one WebView and its current model state")
     structure = report.get("pose_body_panel_structure", {})
     require(structure.get("poseOpen") is False and all(structure.get(key) is True for key in
                 ("bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody")),

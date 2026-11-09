@@ -21,11 +21,14 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     private var fullscreenOwned = false
     private var viewerFullscreen = false
     private var currentLanguage: String
+    private var currentSurface: EditorSurface = .tools
+    private var surfaceApplied = false
     private var fullscreenCompletion: ((Result<Bool, Error>) -> Void)?
 
     init(model: AppModel, route: BrowserRoute) {
         self.model = model; self.route = route
         currentLanguage = model.language
+        currentSurface = model.selectedSection == .model ? .viewer : .tools
         bridgeEnabled = route == .content || route == .assets
         if let ready = model.connection {
             switch route {
@@ -39,8 +42,13 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = bridgeEnabled ? model.websiteDataStore : model.goWebsiteDataStore
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        if route == .assets {
+            // The editor starts audio from its motion clock, which can be
+            // several seconds after the user's Play click.
+            configuration.mediaTypesRequiringUserActionForPlayback = []
+        }
         if bridgeEnabled {
-            configuration.userContentController.addUserScript(Self.platformScript(language: model.language))
+            configuration.userContentController.addUserScript(Self.platformScript(language: model.language, editorSurface: route == .assets ? currentSurface : nil))
         }
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -63,8 +71,17 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         windowObservers.removeAll()
     }
 
+    func setEditorSurface(_ surface: EditorSurface) {
+        guard route == .assets else { return }
+        if currentSurface != surface { currentSurface = surface; surfaceApplied = false }
+        guard loaded, !surfaceApplied else { return }
+        surfaceApplied = true
+        webView.evaluateJavaScript("if(window.ElichikaDesktop)window.ElichikaDesktop.editorSurface='" + surface.rawValue + "';")
+        perform(surface.command)
+    }
+
     func perform(_ action: String, paths: [String]? = nil) {
-        guard bridgeEnabled, route == .assets, ["openModel", "saveModel", "showViewer"].contains(action) else { return }
+        guard bridgeEnabled, route == .assets, ["openModel", "saveModel", "showViewer", "showTools"].contains(action) else { return }
         guard loaded else { pendingPerform = (action, paths); return }
         let arguments: [String: Any] = ["action": action, "payload": paths.map { ["paths": $0] } ?? [:]]
         let data = try! JSONSerialization.data(withJSONObject: arguments)
@@ -76,12 +93,12 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         guard bridgeEnabled, ["en", "ko", "ja"].contains(language), language != currentLanguage else { return }
         currentLanguage = language
         webView.configuration.userContentController.removeAllUserScripts()
-        webView.configuration.userContentController.addUserScript(Self.platformScript(language: language))
+        webView.configuration.userContentController.addUserScript(Self.platformScript(language: language, editorSurface: route == .assets ? currentSurface : nil))
         let json = String(decoding: try! JSONSerialization.data(withJSONObject: [language]), as: UTF8.self)
         webView.evaluateJavaScript("(function(){const l=" + json + "[0];if(window.ElichikaDesktop)window.ElichikaDesktop.language=l;if(typeof changeLang==='function')changeLang(l);})();")
     }
 
-    private static func platformScript(language: String) -> WKUserScript {
+    private static func platformScript(language: String, editorSurface: EditorSurface?) -> WKUserScript {
         let storedWidth = UserDefaults.standard.integer(forKey: "viewerPanelWidth")
         let storedFilesWidth = UserDefaults.standard.integer(forKey: "viewerFilesWidth")
         var panelSettings: [String: Any] = [:]
@@ -91,8 +108,11 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
                 panelSettings[scope] = ["hidden": settings.hidden, "order": settings.order]
             }
         }
+        var capabilities = ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage", "setViewerPanelWidth", "setViewerFilesWidth", "setPanelSettings"]
+        if editorSurface != nil { capabilities.append("editorNavigation") }
         let metadata: [String: Any] = ["platform": "macos", "version": 1,
-            "capabilities": ["openFiles", "chooseDirectory", "reveal", "fullscreen", "setLanguage", "setViewerPanelWidth", "setViewerFilesWidth", "setPanelSettings"],
+            "capabilities": capabilities,
+            "editorSurface": editorSurface?.rawValue ?? "tools",
             "language": language, "viewerPanelWidth": (240...640).contains(storedWidth) ? storedWidth : 0,
             "viewerFilesWidth": (160...360).contains(storedFilesWidth) ? storedFilesWidth : 0,
             "panelSettings": panelSettings]
@@ -151,6 +171,11 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
                     if width == 0 { UserDefaults.standard.removeObject(forKey: "viewerFilesWidth") }
                     else { UserDefaults.standard.set(width, forKey: "viewerFilesWidth") }
                     result = ["width": width]
+                case .setEditorSurface:
+                    guard route == .assets, let surface = request.editorSurface else { throw NativeError.invalidMessage }
+                    currentSurface = surface; surfaceApplied = true
+                    model.selectedSection = surface.section
+                    result = ["editorSurface": surface.rawValue]
                 case .setPanelSettings:
                     guard let scope = request.panelScope, let settings = request.panelSettings else { throw NativeError.invalidMessage }
                     UserDefaults.standard.set(try JSONEncoder().encode(settings), forKey: "panelSettings." + scope)
@@ -250,6 +275,8 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
+        surfaceApplied = false
+        setEditorSurface(currentSurface)
         observeWindow()
         if let model { setLanguage(model.language) }
         if let (action, paths) = pendingPerform { pendingPerform = nil; perform(action, paths: paths) }
@@ -319,6 +346,13 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 struct WebPanel: NSViewRepresentable {
     @ObservedObject var model: AppModel
     let route: BrowserRoute
-    func makeNSView(context: Context) -> WKWebView { model.browser(route).webView }
-    func updateNSView(_ view: WKWebView, context: Context) {}
+    var editorSurface: EditorSurface? = nil
+    func makeNSView(context: Context) -> WKWebView {
+        let session = model.browser(route)
+        if let editorSurface { session.setEditorSurface(editorSurface) }
+        return session.webView
+    }
+    func updateNSView(_ view: WKWebView, context: Context) {
+        if let editorSurface { model.browser(route).setEditorSurface(editorSurface) }
+    }
 }

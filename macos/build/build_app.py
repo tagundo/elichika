@@ -118,6 +118,21 @@ def build_astc(commit, output, cache):
     shutil.copy2(matches[0], output)
 
 
+def build_hca(repo, output):
+    """Build the pinned local ISC decoder; runtime never borrows host FFmpeg."""
+    source = repo / "modtools/webtools/core/resources/cri_hca"
+    names = ("clhca.c", "clhca.h", "clhca_data.h", "LICENSE", "README.md")
+    for name in names:
+        require((source / name).is_file() and not (source / name).is_symlink(),
+                "The pinned HCA decoder source is missing: " + name)
+    run(["xcrun", "clang", "-O2", "-dynamiclib", "-arch", "arm64", "-mmacosx-version-min=13.0",
+         "-Wl,-install_name,@rpath/libelichika_hca.dylib", source / "clhca.c", "-o", output])
+    require(output.is_file(), "The private HCA decoder library was not built")
+    return {"decoder": "clHCA", "license": "ISC", "upstream": "vgmstream",
+            "commit": "6802153425adde134e49394fc653455166d7d2f2",
+            "sources": {name: sha256(source / name) for name in names}, "sha256": sha256(output)}
+
+
 def build(repo, shared, output, cache, version):
     repo, shared, output, cache = (Path(path).resolve() for path in (repo, shared, output, cache))
     require(sys.platform == "darwin" and platform.machine() == "arm64", "Build on an Apple Silicon macOS runner")
@@ -147,6 +162,7 @@ def build(repo, shared, output, cache, version):
                        MACOSX_DEPLOYMENT_TARGET="13.0")
     run(["go", "build", "-trimpath", "-o", binaries / "elichika", "."], cwd=repo, env=environment)
     build_astc(lock["astc_commit"], binaries / "astcenc", cache)
+    dependencies["hca"] = build_hca(repo, binaries / "libelichika_hca.dylib")
     scratch = cache / "swift-build"
     run(["swift", "build", "--package-path", repo / "macos", "--scratch-path", scratch,
          "--configuration", "release", "--product", "Elichika"])

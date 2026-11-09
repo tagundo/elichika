@@ -36,7 +36,13 @@ private class Backend {
     var heldRoot: File?=null
     var beforeApply: (File,File,String)->Unit = { _,_,_ -> }
     val modes=mutableListOf<String>()
+    val environment=mutableMapOf<String,String>()
     fun call(module: String, method: String, arguments: Array<out Any?>): String {
+        if (module=="os") {
+            check(method=="__setitem__" && arguments.size==2)
+            environment[arguments[0].toString()]=arguments[1].toString()
+            return "None"
+        }
         if (module=="elichika_launch") { check(heldRoot==null); launchCount++; launchRoot=File(arguments[0].toString()); return "None" }
         val root=File(arguments[0].toString())
         if (module=="costume_management") {
@@ -167,6 +173,8 @@ fun main(args: Array<String>) {
     ready.countDown(); racers.forEach { it.get() }; pool.shutdown()
     check(Python.starts.get()==1)
     check(backend.launchCount==0)
+    check(backend.environment["ELICHIKA_NATIVE_DIR"]==raceContext.applicationInfo.nativeLibraryDir)
+    check(backend.environment["ELICHIKA_HCA_LIBRARY"]==File(raceContext.applicationInfo.nativeLibraryDir,"libelichika_hca.so").absolutePath)
 
     val first=context(temporary,"fresh")
     val phases=mutableListOf<AssetInstaller.PreparationPhase>()

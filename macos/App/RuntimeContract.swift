@@ -142,7 +142,7 @@ enum IPAddress {
 }
 
 struct NativeRequest: Decodable {
-    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth, setPanelSettings }
+    enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth, setPanelSettings, setEditorSurface }
     let id: String
     let action: Action
     let multiple: Bool?
@@ -154,6 +154,7 @@ struct NativeRequest: Decodable {
     let width: Int?
     let panelScope: String?
     let panelSettings: PanelPreferences?
+    let editorSurface: EditorSurface?
 
     struct PanelPreferences: Codable {
         let hidden: [String]
@@ -181,6 +182,8 @@ struct NativeRequest: Decodable {
             guard let width = request.width, width == 0 || (240...640).contains(width) else { throw NativeError.invalidMessage }
         } else if request.action == .setViewerFilesWidth {
             guard let width = request.width, width == 0 || (160...360).contains(width) else { throw NativeError.invalidMessage }
+        } else if request.action == .setEditorSurface {
+            guard request.editorSurface != nil else { throw NativeError.invalidMessage }
         } else if request.action == .setPanelSettings {
             guard let scope = request.panelScope, ["viewer", "tools", "content"].contains(scope),
                   let settings = request.panelSettings, settings.isValid else { throw NativeError.invalidMessage }
@@ -206,15 +209,22 @@ enum NativeError: LocalizedError {
     }
 }
 
+enum EditorSurface: String, Codable {
+    case tools, viewer
+    var section: AppSection { self == .viewer ? .model : .assets }
+    var command: String { self == .viewer ? "showViewer" : "showTools" }
+}
+
 enum AppSection: String, CaseIterable, Identifiable {
-    case server, accounts, content, assets, settings
+    case server, accounts, content, assets, model, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .server: return "server.rack"
         case .accounts: return "person.crop.circle"
         case .content: return "externaldrive"
-        case .assets: return "cube.transparent"
+        case .assets: return "wrench.and.screwdriver"
+        case .model: return "cube.transparent"
         case .settings: return "gearshape"
         }
     }
@@ -223,7 +233,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             "server": ["Server", "서버", "サーバー"],
             "accounts": ["Accounts", "계정", "アカウント"],
             "content": ["Server content", "서버 콘텐츠", "サーバーコンテンツ"],
-            "assets": ["Asset editing", "에셋 편집", "アセット編集"],
+            "assets": ["Asset editing tools", "에셋 편집 도구", "アセット編集ツール"],
+            "model": ["3D model", "3D 모델", "3Dモデル"],
             "settings": ["Settings", "설정", "設定"],
         ]
         return strings[rawValue]![language == "ko" ? 1 : language == "ja" ? 2 : 0]

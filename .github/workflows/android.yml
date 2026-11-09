@@ -374,6 +374,7 @@ jobs:
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
           python3 android/ci/audit_native.py "$APK" --report android-native-layout.json
+          python3 android/ci/verify_hca_apk.py "$APK" --report android-hca-decoder.json
           python3 payload_revision.py verify-apk --apk "$APK" --report payload-revision-audit.json
           echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
@@ -382,7 +383,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-native-layout-evidence
-          path: android-native-layout.json
+          path: |
+            android-native-layout.json
+            android-hca-decoder.json
           if-no-files-found: warn
 
       - name: Upload final APK payload revision evidence

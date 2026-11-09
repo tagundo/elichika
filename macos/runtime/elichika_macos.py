@@ -369,6 +369,7 @@ class Runtime:
             raise ValueError("Unsupported CPU architecture.")
         self.binary = self.resources / "runtime" / self.arch / "bin/elichika"
         self.astcenc = self.resources / "runtime" / self.arch / "bin/astcenc"
+        self.hca = self.resources / "runtime" / self.arch / "bin/libelichika_hca.dylib"
         self._lock = threading.RLock()
         self._prepared = False
         self._phase = "preparing"
@@ -546,6 +547,7 @@ class Runtime:
         os.environ["SIFAS_LANG"] = self.language
         os.environ["ELICHIKA_TOOL_MODE"] = "cli"
         os.environ["ASTCENC_BIN"] = str(self.astcenc)
+        os.environ["ELICHIKA_HCA_LIBRARY"] = str(self.hca)
         temporary = self.data / "cache/tmp"
         temporary.mkdir(parents=True, exist_ok=True)
         os.environ["TMPDIR"] = str(temporary)

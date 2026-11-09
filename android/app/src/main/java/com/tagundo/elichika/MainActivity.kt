@@ -708,7 +708,12 @@ class MainActivity : AppCompatActivity() {
                 if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
                     WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
                 }
-                if (url == tabs[4].url) viewerFullscreen.attach(this)
+                if (url == tabs[4].url) {
+                    // The trusted local editor schedules timeline voice/music
+                    // after Play, often after WebView's short gesture window.
+                    settings.mediaPlaybackRequiresUserGesture = false
+                    viewerFullscreen.attach(this)
+                }
                 // Keep all navigation (links, form submits) inside the WebView instead
                 // of handing it to the system browser (Chrome), which is the default
                 // when no WebViewClient is set. Also track main-frame load failures so

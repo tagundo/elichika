@@ -17,6 +17,7 @@ val wheelAbi = appAbi.replace('-', '_')
 android {
     namespace = "com.tagundo.elichika"
     compileSdk = 34
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.tagundo.elichika"
@@ -101,7 +102,39 @@ android {
     sourceSets.getByName("androidTest").assets.srcDir(
         layout.buildDirectory.dir("generated/serverConfigTestAssets")
     )
+    // Always ship the CPU's local HCA decoder. Audio playback must work without
+    // an external FFmpeg installation on the phone or emulator.
+    sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/hca/jniLibs"))
 }
+
+val hcaSdkDirectory = androidComponents.sdkComponents.sdkDirectory
+val buildHcaDecoder by tasks.registering(Exec::class) {
+    val builder = rootProject.file("ci/build_hca.py")
+    val audit = rootProject.file("ci/audit_native.py")
+    val source = rootProject.file("../modtools/webtools/core/resources/cri_hca")
+    val output = layout.buildDirectory.file("generated/hca/jniLibs/$appAbi/libelichika_hca.so")
+    val report = layout.buildDirectory.file("generated/hca/reports/$appAbi.json")
+    inputs.file(builder)
+    inputs.file(audit)
+    inputs.dir(source)
+    inputs.property("appAbi", appAbi)
+    inputs.property("ndkVersion", android.ndkVersion)
+    outputs.file(output)
+    outputs.file(report)
+    doFirst {
+        // AGP's ndkDirectory provider is empty when no CMake/ndk-build model is
+        // configured. This small direct C build uses the same pinned SDK NDK.
+        val ndkRoot = providers.environmentVariable("ANDROID_NDK_ROOT").orNull
+            ?: providers.environmentVariable("ANDROID_NDK_HOME").orNull
+            ?: hcaSdkDirectory.get().asFile.resolve("ndk/${android.ndkVersion}").absolutePath
+        commandLine(providers.gradleProperty("buildPython").orElse("python3").get(),
+            builder.absolutePath, "--source", source.absolutePath, "--ndk", ndkRoot,
+            "--abi", appAbi, "--output", output.get().asFile.absolutePath,
+            "--report", report.get().asFile.absolutePath)
+    }
+}
+
+tasks.named("preBuild") { dependsOn(buildHcaDecoder) }
 
 val generateServerConfigTestPayload by tasks.registering(Exec::class) {
     val generator = rootProject.file("ci/generate_server_config_payload.py")

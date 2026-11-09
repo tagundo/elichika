@@ -64,7 +64,7 @@ final class AppModel: ObservableObject {
         configuration.httpShouldSetCookies = false
         configuration.connectionProxyDictionary = [:]
         http = URLSession(configuration: configuration, delegate: LocalControlSessionDelegate(), delegateQueue: nil)
-        if smokeDirectory != nil { selectedSection = .assets }
+        if smokeDirectory != nil { selectedSection = .model }
     }
 
     func text(_ en: String, _ ko: String, _ ja: String) -> String {
@@ -345,20 +345,23 @@ final class AppModel: ObservableObject {
 
     func perform(_ action: String) {
         guard ["openModel", "saveModel", "showViewer"].contains(action), toolsReady else { return }
-        selectedSection = .assets
+        selectedSection = .model
         let session = browser(.assets)
+        session.setEditorSurface(.viewer)
         session.perform(action)
     }
 
     func openDocuments(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        selectedSection = .assets
+        selectedSection = .model
         launch()
         Task {
             do {
                 try await waitForTools()
                 let paths = try await authorize(urls)
-                browser(.assets).perform("openModel", paths: paths)
+                let session = browser(.assets)
+                session.setEditorSurface(.viewer)
+                session.perform("openModel", paths: paths)
             } catch { message = error.localizedDescription }
         }
     }

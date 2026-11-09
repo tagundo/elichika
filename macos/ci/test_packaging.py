@@ -10,13 +10,30 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
-from build_app import bundle_versions
+from build_app import bundle_versions, build_hca
 from common import extract_python, readonly_tree, sha256, verified_download, writable_tree
 from audit_bundle import resolve_private, system_path
 from native_macho import allowed_runpath, loader_context, prune_external_runpaths
 
 
 class PackagingBoundaries(unittest.TestCase):
+    def test_hca_decoder_is_built_for_private_arm64_macos_runtime(self):
+        repo = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "libelichika_hca.dylib"
+            def compile_private(arguments):
+                self.assertEqual(arguments[:7], ["xcrun", "clang", "-O2", "-dynamiclib", "-arch", "arm64", "-mmacosx-version-min=13.0"])
+                self.assertIn("-Wl,-install_name,@rpath/libelichika_hca.dylib", arguments)
+                self.assertEqual(arguments[-1], output)
+                output.write_bytes(b"original native build fixture")
+            with patch("build_app.run", side_effect=compile_private) as compiler:
+                result = build_hca(repo, output)
+            compiler.assert_called_once()
+            self.assertEqual(result["license"], "ISC")
+            self.assertEqual(result["decoder"], "clHCA")
+            self.assertEqual(result["sha256"], sha256(output))
+            self.assertEqual(set(result["sources"]), {"clhca.c", "clhca.h", "clhca_data.h", "LICENSE", "README.md"})
+
     def test_app_container_can_move_while_all_signed_contents_stay_read_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve(); app = root / "Elichika.app"
