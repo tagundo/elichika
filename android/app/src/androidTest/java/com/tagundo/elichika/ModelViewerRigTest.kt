@@ -683,6 +683,7 @@ class ModelViewerRigTest {
     }
 
     private fun runNativeHelper(session: Session, asset: String, invocation: String): JSONObject {
+        if (state(session.webView).getJSONObject("layout").getBoolean("expanded")) click(session.webView, "viewer-expand")
         val helper = InstrumentationRegistry.getInstrumentation().context.assets.open(asset).bufferedReader().use { it.readText() }
         run(session.webView, helper + ";window.__nativeFeatureQa={pending:true};Promise.resolve(" + invocation + ").then(function(result){window.__nativeFeatureQa={pending:false,result:result};},function(error){window.__nativeFeatureQa={pending:false,error:String(error.stack||error)};});")
         waitForDom(session.webView, "the actual native feature probe " + asset, 180) {
