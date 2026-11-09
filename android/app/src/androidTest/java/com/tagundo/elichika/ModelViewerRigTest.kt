@@ -461,7 +461,7 @@ class ModelViewerRigTest {
     }
 
     @Test
-    fun gamePhysicsUsesOriginalJobsAndPreservesPausedAndSeekState() = withRig("viewer_game_physics.unity", "Neutral MV scale override") { session ->
+    fun gamePhysicsUsesOriginalJobsAndPreservesPausedAndSeekState() = withRig("viewer_game_physics.unity", "Neutral MV scale override", expectedExpressionCount = 0) { session ->
         val webView = session.webView
         fun snapshot(): JSONObject = evaluate(webView,
             "var s=ModelViewer.getState();return JSON.stringify({physics:s.rig.physics,time:s.rig.time,playing:s.rig.playing," +
@@ -647,7 +647,7 @@ class ModelViewerRigTest {
 
     private data class Session(val activity: MainActivity, val webView: WebView, val defaultPanels: JSONObject)
 
-    private fun withRig(fixtureName: String = "viewer_rig.unity", clipName: String = "Neutral swing", check: (Session) -> Unit) {
+    private fun withRig(fixtureName: String = "viewer_rig.unity", clipName: String = "Neutral swing", expectedExpressionCount: Int = 1, check: (Session) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val fixture = instrumentation.context.assets.open(fixtureName).use { it.readBytes() }
@@ -685,7 +685,7 @@ class ModelViewerRigTest {
             waitForDom(browser, "the genuine Unity skin, morph and animation") {
                 "var s=ModelViewer.getState();return JSON.stringify({ok:s.loaded&&!s.loading&&!s.contextLost&&" +
                     "!!s.rig&&s.rig.available&&s.stats.meshes===1&&s.stats.vertices===6&&s.stats.triangles===4&&" +
-                    "s.stats.textures===1&&s.rig.clipNames.indexOf(" + JSONObject.quote(clipName) + ")>=0&&s.rig.expressions.length===1," +
+                    "s.stats.textures===1&&s.rig.clipNames.indexOf(" + JSONObject.quote(clipName) + ")>=0&&s.rig.expressions.length===" + expectedExpressionCount + "," +
                     "error:s.error,state:s});"
             }
             val defaultPanels = evaluate(browser,
