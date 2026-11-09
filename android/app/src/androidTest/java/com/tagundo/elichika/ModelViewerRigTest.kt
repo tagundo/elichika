@@ -751,12 +751,20 @@ class ModelViewerRigTest {
                     "var card=document.getElementById(" + JSONObject.quote(id) + "),summary=card.querySelector('summary'),content=card.querySelector(" + JSONObject.quote(content) + ");" +
                         "if(!card.open||content.getBoundingClientRect().height<=0)" +
                         "throw new Error('The normal editing section must initially show its source controls');" +
-                        "summary.scrollIntoView({block:'center'});summary.click();" +
-                        "return JSON.stringify({id:card.id,open:card.open,summaryHeight:summary.getBoundingClientRect().height," +
+                        "summary.scrollIntoView({block:'center'});summary.click();summary.scrollIntoView({block:'center'});" +
+                        "var box=summary.getBoundingClientRect(),hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2)," +
+                        "coarse=matchMedia('(pointer:coarse)').matches,fine=matchMedia('(pointer:fine)').matches;" +
+                        "return JSON.stringify({id:card.id,open:card.open,summaryHeight:box.height,summaryWidth:box.width," +
+                        "coarse:coarse,pointer:coarse?'coarse':fine?'fine':'none',minimumTarget:coarse?44:34," +
+                        "hittable:hit===summary||summary.contains(hit),withinViewport:box.left>=0&&box.top>=0&&box.right<=innerWidth+1&&box.bottom<=innerHeight+1," +
                         "contentHeight:content.getBoundingClientRect().height,states:['viewer-common-adjustments','viewer-breast-card','viewer-skirt-card'].map(function(id){return {id:id,open:document.getElementById(id).open};})});")
                 assertFalse("Native details must hide its controls when collapsed", closed.getBoolean("open"))
                 assertEquals("Collapsed content must occupy no space on the native WebView", 0.0, closed.getDouble("contentHeight"), 1e-6)
-                assertTrue("A collapsed section keeps a 44 px summary target", closed.getDouble("summaryHeight") >= 44)
+                val minimumTarget = if (closed.getBoolean("coarse")) 44.0 else 34.0
+                assertTrue("A collapsed section must meet its actual pointer target policy: $closed",
+                    closed.getDouble("summaryHeight") + 1e-6 >= minimumTarget && closed.getDouble("summaryWidth") + 1e-6 >= minimumTarget)
+                assertTrue("A collapsed section must remain visible and hittable: $closed",
+                    closed.getBoolean("hittable") && closed.getBoolean("withinViewport"))
                 val sectionStates = closed.getJSONArray("states")
                 for (index in 0 until sectionStates.length()) {
                     val section = sectionStates.getJSONObject(index)
@@ -845,10 +853,12 @@ class ModelViewerRigTest {
                 var types=['keydown','keyup','click','toggle','focusin','focusout'];
                 types.forEach(function(type){document.addEventListener(type,observe,{capture:true,passive:true});});
                 window.__nativeDetailsKeyboard={key:$key,proof:null,dispose:function(){types.forEach(function(type){document.removeEventListener(type,observe,true);});},
-                  snapshot:function(){var box=summary.getBoundingClientRect(),hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2);
+                  snapshot:function(){var box=summary.getBoundingClientRect(),hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2),
+                    coarse=matchMedia('(pointer:coarse)').matches,fine=matchMedia('(pointer:fine)').matches;
                     return {id:card.id,open:card.open,contentHeight:card.querySelector($selector).getBoundingClientRect().height,
                       documentFocused:document.hasFocus(),summaryActive:document.activeElement===summary,connected:card.isConnected&&summary.isConnected,
                       hitSummary:hit===summary||summary.contains(hit),withinViewport:box.left>=0&&box.top>=0&&box.right<=innerWidth+1&&box.bottom<=innerHeight+1,
+                      coarse:coarse,pointer:coarse?'coarse':fine?'fine':'none',minimumTarget:coarse?44:34,
                       width:box.width,height:box.height,active:identity(document.activeElement),events:events.slice()};}};
                 summary.scrollIntoView({block:'center'});summary.focus();
                 """.trimIndent())
@@ -858,8 +868,8 @@ class ModelViewerRigTest {
                 var observer=window.__nativeDetailsKeyboard,dom=observer.snapshot(),native=$native;
                 var coherent=!!(native.resumed&&native.windowHasFocus&&native.webWindowHasFocus&&native.attached&&native.shown&&
                   native.webHasFocus&&(native.webIsFocused||native.currentFocusInsideWebView)&&
-                  dom.documentFocused&&dom.summaryActive&&dom.connected&&dom.hitSummary&&dom.withinViewport&&dom.width>=44&&dom.height>=44&&!dom.open);
-                var geometry=JSON.stringify({native:native,active:dom.active,width:dom.width,height:dom.height}),prior=observer.proof;
+                  dom.documentFocused&&dom.summaryActive&&dom.connected&&dom.hitSummary&&dom.withinViewport&&dom.width+1e-6>=dom.minimumTarget&&dom.height+1e-6>=dom.minimumTarget&&!dom.open);
+                var geometry=JSON.stringify({native:native,active:dom.active,pointer:dom.pointer,minimumTarget:dom.minimumTarget,width:dom.width,height:dom.height}),prior=observer.proof;
                 observer.proof=coherent?geometry:null;
                 return JSON.stringify({ok:!!(coherent&&prior===geometry),coherent:coherent,native:native,dom:dom});
                 """.trimIndent()
