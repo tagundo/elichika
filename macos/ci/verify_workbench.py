@@ -3,8 +3,10 @@
 import argparse
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 
 from verify_runtime import private_environment
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
@@ -74,11 +76,26 @@ def check(repo, app, report):
     resources = app / 'Contents/Resources'
     executable = resources / 'runtime/arm64/python/bin/python3'
     require(executable.is_file(), 'Bundled Python is missing for workbench verification')
-    result = subprocess.run([str(executable), '-I', '-B', '-c', PROBE, str(repo), str(resources)],
-        cwd=repo, env=private_environment(resources), capture_output=True, text=True, timeout=600)
+    # Node is a build-QA tool for the neutral Three.js solver regression. Give
+    # that test exactly one host executable without exposing host Python/pip or
+    # making Node a dependency of the signed app's runtime.
+    node = shutil.which('node')
+    require(node is not None, 'Host Node is required for the workbench physics regression')
+    node = Path(node).resolve()
+    node_version = subprocess.run([str(node), '--version'], capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+    with tempfile.TemporaryDirectory(prefix='elichika-workbench-node-') as directory:
+        (Path(directory) / 'node').symlink_to(node)
+        environment = private_environment(resources)
+        environment['PATH'] = directory + ':' + environment['PATH']
+        result = subprocess.run([str(executable), '-I', '-B', '-c', PROBE, str(repo), str(resources)],
+            cwd=repo, env=environment, capture_output=True, text=True, timeout=600)
     report.with_suffix('.txt').write_text(result.stdout + result.stderr, encoding='utf-8')
     lines = [line for line in result.stdout.splitlines() if line.startswith('ELICHIKA_WORKBENCH_TESTS=')]
     value = json.loads(lines[0].split('=', 1)[1]) if len(lines) == 1 else {'status': 'FAIL', 'error': 'Workbench report is missing'}
+    value['host_qa_node'] = {'executable': str(node), 'version': node_version, 'isolated_path_entry': True,
+                             'path_scope': 'Temporary node-only directory plus system executable directories',
+                             'purpose': 'Neutral Three.js physics solver regression',
+                             'app_runtime_dependency': False}
     write_json(report, value)
     require(result.returncode == 0 and value.get('status') == 'PASS', 'Packaged workbench tests failed; see workbench verification logs')
     return value
