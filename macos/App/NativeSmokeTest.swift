@@ -501,8 +501,9 @@ final class NativeSmokeTest {
             """)
         report["pose_body_panel_structure"] = structure
         try checkpoint("pose-body-panel-structure")
-        for key in ["poseOpen", "bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody"] {
-            try require(structure[key] as? Bool == true, "Pose and body must start as open, independent sibling panels with their own controls: " + key)
+        try require(structure["poseOpen"] as? Bool == false, "Pose and motion must start collapsed.")
+        for key in ["bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody"] {
+            try require(structure[key] as? Bool == true, "Pose and body must be independent sibling panels with their own controls: " + key)
         }
     }
 

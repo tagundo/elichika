@@ -116,9 +116,9 @@ def check_zip_edit_report(report, fixture):
 
 def check_pose_body_report(report):
     structure = report.get("pose_body_panel_structure", {})
-    require(all(structure.get(key) is True for key in
-                ("poseOpen", "bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody")),
-            "Actual WebKit must expose independent pose and body panels with their own controls")
+    require(structure.get("poseOpen") is False and all(structure.get(key) is True for key in
+                ("bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody")),
+            "Actual WebKit must start Pose collapsed and expose independent pose and body controls")
     panels = report.get("separate_pose_body_panels", {})
     require(panels.get("status") == "PASS" and len(panels.get("toggles", [])) == 4
             and panels.get("both_restored_open") is True
