@@ -1,4 +1,4 @@
-name: Read-only native WK distance diagnostic 2026.11.10.4
+name: Native WK HTML and WebAudio clock reference 2026.11.10.4
 
 on:
   push:
@@ -55,7 +55,7 @@ jobs:
           base='9ffb5c6c362dd883275c89f7308c0fd9376323bc'
           tools='46065d67a3114f85945ac9218eddb00c1c22380f'
           folder=Path(os.environ['QA_SOURCE'])
-          pins={'NativeWKDiagnostic.swift': '042c214e261f1e5db915025892f6b599f750f1c916fd520f1a605df60725792c', 'preload.js': '0c65965d7a27326600689c241a9a21dc6886ef23338399e0c9a441b85d5e6c85', 'probe.js': '7939b07e78ec2016f0422d2a8836cc875be8ca16d25c25a7ac50a986b116512b', 'run_native_diagnostic.py': 'b01dff7dc27f1f06a78eb8b6cd4991820ca49aa47bafe280814f5bf2e132ab90', 'config.json': 'bd1f1e20c8f98653483fa203aabf05de1f90b99e2c76af496f46f29f0476f8b9', 'README.txt': '8f1a3d042b0f6dd9631eea16c4d974c745dce2566912b0661baf82076ff8fc5e'}
+          pins={'NativeWKDiagnostic.swift': '042c214e261f1e5db915025892f6b599f750f1c916fd520f1a605df60725792c', 'preload.js': '5a2db37025e4b8e0c471d3c89abd6cebe2ac46394bccb0b42f113c73dc7dcc6a', 'probe.js': '2a1f8291d1ca6f85561f6f136c00124ce8dc6e63407f42ea034f2e421f006d38', 'run_native_diagnostic.py': '8a854e7f73e9e347e6c94fae880a088ff1341b4927f40342c61a47ce3bc2ef6d', 'config.json': '789f7e3b5c5321d62eacb53deb2e117a0bd15ec17423ed5d7d8fcd2dec0efdb4', 'README.txt': '656e4788b62a751abb3e6929d89718ecf69c1f769a1f9d67349c9bc52b293cd1'}
           assert os.environ['GITHUB_REPOSITORY']=='tagundo/elichika'
           assert os.environ['GITHUB_REF']=='refs/heads/codex/wk-distance-diagnostic-20261110-4'
           assert os.environ['GITHUB_EVENT_NAME'] in ('push','workflow_dispatch')
@@ -151,7 +151,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: native-wk-distance-20261110-4-${{ github.run_id }}
+          name: native-wk-webaudio-reference-20261110-4-${{ github.run_id }}
           retention-days: 3
           if-no-files-found: warn
           path: |

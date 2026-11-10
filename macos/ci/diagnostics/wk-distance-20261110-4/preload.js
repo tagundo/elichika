@@ -21,9 +21,14 @@
           state.frames.push({ phase: state.phase, at: begin, timestamp: timestamp, interval: interval,
             workMs: performance.now() - begin, rigTime: rig && rig.time, rigPlaying: rig && rig.playing,
             lastAudioClock: state.lastAudioClock,
+            rawOriginalAudioClock: state.rawOriginalAudioClock,
+            clockReadAt: state.clockReadAt,
+            clockKind: state.useReferenceClock ? 'webaudio-dsp-reference' : 'original-html-media',
+            reference: state.pcmReference ? state.pcmReference.snapshot() : null,
             physicsTiming: state.physics && state.physics.getTimingState ? state.physics.getTimingState() : null,
             media: state.audioElements.map(function (audio) { return { time: audio.currentTime, paused: audio.paused,
-              seeking: audio.seeking, ready: audio.readyState, ended: audio.ended }; }) });
+              seeking: audio.seeking, ready: audio.readyState, ended: audio.ended,
+              playbackRate: audio.playbackRate, networkState: audio.networkState }; }) });
         }
       }
     });

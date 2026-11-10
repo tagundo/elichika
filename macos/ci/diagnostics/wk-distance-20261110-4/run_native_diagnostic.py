@@ -155,6 +155,37 @@ def main() -> int:
         native = json.loads((native_output / "native-report.json").read_text())
         if native.get("status") != "PASS" or native.get("javascript", {}).get("status") != "PASS":
             raise RuntimeError("Native JavaScript diagnostic reported a failure")
+        javascript = native["javascript"]
+        reference = javascript.get("reference", {})
+        report["referenceExperimentStatus"] = reference.get("status")
+        report["referenceNativeWavSha256"] = reference.get("nativeWavSha256")
+        report["referenceSameHtmlSource"] = reference.get("input", {}).get("sameURL")
+        report["referenceExperimentValid"] = False
+        if reference.get("status") == "DSP_PHASE_OBSERVED":
+            phases = javascript.get("phases", [])
+            if len(phases) != 3 or any(phase.get("skipped") for phase in phases):
+                raise RuntimeError("Reference experiment did not execute all three controls")
+            baseline, dsp, returned = phases
+            checks = {
+                "no_context_during_baseline": bool(baseline.get("frames")) and all(frame.get("reference") is None for frame in baseline["frames"]),
+                "same_html_source_url": reference.get("input", {}).get("sameURL") is True,
+                "actual_pcm_sha256_recorded": isinstance(reference.get("nativeWavSha256"), str) and len(reference["nativeWavSha256"]) == 64,
+                "actual_dsp_only_reference": bool(dsp.get("frames")) and all(frame.get("reference", {}).get("contextState") == "running" and
+                    frame.get("reference", {}).get("sourceState") in {"playing", "scheduled"} and frame.get("rawOriginalAudioClock") is None and
+                    frame.get("clockKind") == "webaudio-dsp-reference" for frame in dsp["frames"]),
+                "closed_context_before_return_control": bool(returned.get("frames")) and all(frame.get("reference", {}).get("contextState") == "closed" for frame in returned["frames"]),
+                "original_clock_restored": javascript.get("restored", {}).get("originalPlaybackClock") is True,
+                "original_audio_enabled_restored": javascript.get("restored", {}).get("initialAudioEnabled") == javascript.get("restored", {}).get("actualAudioEnabled"),
+                "context_closed_finally": javascript.get("restored", {}).get("contextClosed") is True,
+            }
+            report["referenceExperimentChecks"] = checks
+            if not all(checks.values()):
+                raise RuntimeError("Reference experiment controls failed: " + ", ".join(key for key, value in checks.items() if not value))
+            report["referenceExperimentValid"] = True
+        else:
+            # A completed diagnostic with a blocked/suspended/unsupported context
+            # is not evidence that DSP playback worked. Keep that distinction.
+            report["referenceExperimentUnavailable"] = reference.get("error") or reference.get("invalid") or reference.get("status")
         report["status"] = "PASS"
     except Exception as error:
         report["status"] = "FAIL"
