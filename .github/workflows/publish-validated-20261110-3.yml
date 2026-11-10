@@ -1,0 +1,154 @@
+name: Publish exact validated 2026.11.10.3 applications
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/model-workbench-build-20261109]
+    paths: [.github/workflows/publish-validated-20261110-3.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-validated-v2026.11.10.3
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_REPO: tagundo/elichika
+    steps:
+      - name: Verify the exact approved validation runs and existing draft
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          assert os.environ['GITHUB_REPOSITORY'] == 'tagundo/elichika'
+          assert os.environ['GITHUB_EVENT_NAME'] in ('push','workflow_dispatch')
+          assert os.environ['GITHUB_REF'] == 'refs/heads/codex/model-workbench-build-20261109'
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/' + path]))
+          automation = api('commits/' + os.environ['GITHUB_SHA'])
+          assert [parent['sha'] for parent in automation['parents']] == ['e13fc00eebf306b18c5c38c4c18575a0b18b73eb']
+          assert [file['filename'] for file in automation['files']] == ['.github/workflows/publish-validated-20261110-3.yml']
+          runs = {
+              42828369332: 'e13fc00eebf306b18c5c38c4c18575a0b18b73eb',
+              42823421120: '086245f811719bbcb16148908494bfbac122c042',
+              42823420953: '086245f811719bbcb16148908494bfbac122c042',
+          }
+          for identity, commit in runs.items():
+              run = api(f'actions/runs/{identity}')
+              assert run['head_sha'] == commit and run['status'] == 'completed' and run['conclusion'] == 'success'
+          jobs = api('actions/runs/42828369332/jobs?per_page=100')['jobs']
+          required = {'build','native-compatibility / native-16k','android-upgrade / android','apk-audit / audit'}
+          assert {job['name'] for job in jobs if job['conclusion'] == 'success'} >= required
+          for identity, name, run in (
+              (13771013181,'elichika-release-apk',42828369332),
+              (13768807609,'elichika-macos-apple-silicon',42823421120),
+          ):
+              artifact = api(f'actions/artifacts/{identity}')
+              assert artifact['name'] == name and artifact['workflow_run']['id'] == run and not artifact['expired']
+          draft = api('releases/440492357')
+          assert draft['draft'] is True and draft['tag_name'] == 'v2026.11.10.3'
+          assert draft['target_commitish'] == 'e13fc00eebf306b18c5c38c4c18575a0b18b73eb'
+          assert hashlib.sha256(draft['body'].encode()).hexdigest() == '99f3adcf4c9752fe20b09ac3cd907517f72864a033c520afcdc9080e57f8cc63'
+          assert 'DRAFT' not in draft['body']
+          Path('approved-runs.json').write_text(json.dumps(runs, indent=2) + '\n')
+          PY
+
+      - name: Download the exact already-validated signed Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42828369332
+          path: input/android
+
+      - name: Download the exact already-validated Apple Silicon app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-macos-apple-silicon
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42823421120
+          path: input/macos
+
+      - name: Verify raw files, upload only matching bytes, and publish the existing draft
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          repo = 'tagundo/elichika'
+          tag = 'v2026.11.10.3'
+          def api(path, data=None):
+              command = ['gh','api','repos/' + repo + '/' + path]
+              if data is not None:
+                  command += ['--method','PATCH','--input','-']
+              raw = subprocess.check_output(command, input=json.dumps(data).encode() if data is not None else None)
+              return json.loads(raw)
+          expected = {
+              'elichika-2026.11.10.3.apk': (290498048,'cb2c8c192c1be911c62250cfaf5fda1bc169c13bb39bde96f83306b6355620ec'),
+              'Elichika-2026.11.10.3-AppleSilicon.app.zip': (304870111,'54ca2692a81176683c2e43c420ffba5ea611675f2ab4f80b477d0b5cdc613435'),
+          }
+          files = {}
+          for name, (size, digest) in expected.items():
+              matches = list(Path('input').rglob(name))
+              assert len(matches) == 1
+              path = matches[0]
+              assert path.stat().st_size == size
+              with path.open('rb') as stream:
+                  assert hashlib.file_digest(stream,'sha256').hexdigest() == digest
+              files[name] = path
+          sums = Path('SHA256SUMS')
+          sums.write_text(''.join(digest + '  ' + name + '\n' for name, (size,digest) in expected.items()))
+          assert hashlib.sha256(sums.read_bytes()).hexdigest() == '242bd6f9832dd49367f96a7e4eeb6772aea222cf6294b521fdc213e7dc3a5a78'
+          expected['SHA256SUMS'] = (sums.stat().st_size,hashlib.sha256(sums.read_bytes()).hexdigest())
+          files['SHA256SUMS'] = sums
+          draft = api('releases/440492357')
+          assert draft['draft'] and draft['tag_name'] == tag
+          assert draft['target_commitish'] == 'e13fc00eebf306b18c5c38c4c18575a0b18b73eb'
+          assert hashlib.sha256(draft['body'].encode()).hexdigest() == '99f3adcf4c9752fe20b09ac3cd907517f72864a033c520afcdc9080e57f8cc63'
+          present = {asset['name']: asset for asset in draft['assets']}
+          assert set(present) <= set(expected), 'Unexpected existing assets must never be removed or overwritten'
+          for name, asset in present.items():
+              size, digest = expected[name]
+              assert asset['size'] == size and asset['digest'] == 'sha256:' + digest and asset['state'] == 'uploaded'
+          for name, path in files.items():
+              if name not in present:
+                  subprocess.run(['gh','release','upload',tag,'--repo',repo,str(path)],check=True)
+          uploaded = api('releases/440492357')
+          assert {asset['name'] for asset in uploaded['assets']} == set(expected)
+          for asset in uploaded['assets']:
+              size, digest = expected[asset['name']]
+              assert asset['state'] == 'uploaded' and asset['size'] == size and asset['digest'] == 'sha256:' + digest
+          published = api('releases/440492357',{'draft':False,'prerelease':False,'make_latest':'true'})
+          assert published['draft'] is False and published['tag_name'] == tag
+          tag_ref = api('git/ref/tags/' + tag)['object']
+          if tag_ref['type'] == 'tag':
+              tag_ref = api('git/tags/' + tag_ref['sha'])['object']
+          assert tag_ref['type'] == 'commit' and tag_ref['sha'] == 'e13fc00eebf306b18c5c38c4c18575a0b18b73eb'
+          Path('publication-receipt.json').write_text(json.dumps({
+              'status':'PUBLISHED_EXACT_VALIDATED_FILES_WITHOUT_REBUILD',
+              'release':published,'tag_commit':tag_ref['sha'],
+              'validation_runs':json.loads(Path('approved-runs.json').read_text()),
+              'source_of_upload_credential':'GitHub Actions contents:write GITHUB_TOKEN',
+              'product_rebuilt':False,'main_merged':False,
+          },indent=2) + '\n')
+          print(published['html_url'])
+          PY
+
+      - name: Preserve publication receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-publication-receipt
+          path: |
+            approved-runs.json
+            publication-receipt.json
+            SHA256SUMS
+          if-no-files-found: warn
