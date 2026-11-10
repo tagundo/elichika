@@ -16,6 +16,7 @@ from adminui.tools.backup import run_backup
 from adminui.tools.reset import run_clear_packs
 from adminui.tools.costume_clone import character_choices, costume_options, run_costume_clone
 from adminui.tools.costume_delete import costume_delete_options, run_costume_delete
+from adminui.tools.costume_cdn import costume_cdn_options, run_costume_cdn
 from adminui.tools.installers import (
     options_for, run_camera, run_card, run_costume, run_db, run_dictionary, run_live, run_tower,
 )
@@ -146,6 +147,32 @@ TOOLS = [
         ],
     },
     {
+        "id": "restore_costume_cdn",
+        "label": "Restore Costume from CDN",
+        "description": ("Download the selected original costume again, verify it, and replace its local model packs. "
+                        "A recovery backup is kept; shared faces, custom costumes and extracted models are preserved."),
+        "run": run_costume_cdn,
+        "options": costume_cdn_options,
+        "fields": [
+            {"name": "region", "label": "Game region", "type": "select", "default": "gl",
+             "options": [{"value": "gl", "label": "Global (GL)"}, {"value": "jp", "label": "Japan (JP)"}]},
+            {"name": "platform", "label": "Asset platform", "type": "select", "default": "both",
+             "options": [{"value": "both", "label": "Both Android and iOS"},
+                         {"value": "android", "label": "Android"}, {"value": "ios", "label": "iOS"}]},
+            _char_field("character", "Character", "Pick a character to list their costumes — or use search below.",
+                        choices=_EXTRACT_CHARACTERS, required=False),
+            {"name": "search", "label": "Or search costumes", "type": "text",
+             "help": "Type part of a costume or character name to search across everyone."},
+            {"name": "costume", "label": "Original costume to restore", "type": "dynamic_select", "required": True,
+             "source": "costume", "depends_on": ["region", "platform", "character", "search"],
+             "help": "Only official costumes are listed. Custom costumes and clones have no original CDN package."},
+            {"name": "server_help", "label": "", "type": "help",
+             "help": "Downloads are checked first. In the app, replacement briefly stops a running server and restarts it on success. Failed or cancelled replacement stays stopped with a recovery backup. Standalone servers need a manual restart."},
+            {"name": "restore_help", "label": "", "type": "help",
+             "help": "After restoring, load the costume again through 3D Model → Game assets. Reimporting an already extracted file only reopens that copy. Restart the game/server to refresh its cache."},
+        ],
+    },
+    {
         "id": "extract_assets",
         "label": "Extract / Decrypt Assets",
         "description": ("Decrypt a character's costume model out of the game packs into the shared "
@@ -257,6 +284,10 @@ def _translate_field(field, lang):
     folder = f.pop("help_folder", None)
     if folder and "help" in f:
         f["help"] = f["help"].replace("{folder}", folder)
+    if "options" in f:
+        f["options"] = [dict(option, label=i18n.tr(option.get("label", ""), lang))
+                        if isinstance(option, dict) else i18n.tr(option, lang)
+                        for option in f["options"]]
     return f
 
 
@@ -273,6 +304,8 @@ def public_tools(lang=None):
                 tool[k] = i18n.tr(v, lang=lang)
             elif k == "fields":
                 tool[k] = [_translate_field(f, lang) for f in v]
+                if t["id"] == "restore_costume_cdn":
+                    next(field for field in tool[k] if field["name"] == "region")["default"] = "jp" if i18n.normalize(lang) == "ja" else "gl"
             else:
                 tool[k] = v
         out.append(tool)

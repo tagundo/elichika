@@ -11,6 +11,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 from common import require, write_json
 
 
+CDN_CHECKS = (Path(__file__).resolve().parents[2] /
+              "android/app/src/androidTest/assets/native_cdn_checks.py").read_text()
+CDN_PROBE = "cdn_namespace = {}\nexec(" + repr(CDN_CHECKS) + ", cdn_namespace)\n" + r'''
+cdn_index = resources / 'payload/assets/costume-cdn-index.json.gz'
+cdn_catalog_probe = cdn_namespace['check'](resources / 'payload',
+    hashlib.sha256(cdn_index.read_bytes()).hexdigest())
+cdn_catalog_probe['private_bundled_interpreter'] = True
+'''
+
+
 TEXTURE65_PROBE = r'''
 from types import SimpleNamespace
 from webtools.core import decode as texture_decode
@@ -105,6 +115,7 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'unity_costumemod_packer','skin_tone_changer','texture_importer',
          'assetbundle_IosApk_batch_import_plus','fix_sifas_bundle_export',
          'database_backup','database_restore','costume_scene_installer','costume_face_installer','costume_scene_clones','costume_scene_sources',
+         'costume_cdn_catalog','costume_cdn_restore','adminui.tools.costume_cdn',
          'llas_asset_extractor','sifas_asset_crypto','payload_upgrade_progress','elichika_macos_memory','elichika_macos']
 for name in modules: importlib.import_module(name)
 from webtools.core import cri_audio_decode
@@ -116,7 +127,7 @@ assert hca_native is not None, 'The packaged HCA decoder must load without host 
 hca_state=hca_native.clHCA_new()
 assert hca_state
 hca_native.clHCA_delete(hca_state)
-''' + TEXTURE65_PROBE + r'''
+''' + TEXTURE65_PROBE + CDN_PROBE + r'''
 from payload_upgrade_progress import ProgressReporter
 payload_progress=[]
 report_progress=ProgressReporter(lambda raw: payload_progress.append(json.loads(raw)))
@@ -209,6 +220,7 @@ print('ELICHIKA_RUNTIME_PROBE=' + json.dumps({'status':'PASS','arch':platform.ma
     'private_prefix':True,'no_runtime_pip':True,'offline_imports':True,
     'hca_decoder':{'native_loaded':True,'bundled_library':True},
     'texture65_decoder':texture65_probe,
+    'cdn_catalog':cdn_catalog_probe,
     'numpy_blas':True,'clone_crypto':crypto_probe,'pillow_png':True,'lz4_brotli':True,'astc_encode_decode':True,
     'clientdb_memory_bridge':{'fresh_snapshot':True,'available_bytes':memory_bytes,
                             'environment_bytes':int(memory_environment['ELICHIKA_CLIENTDB_MEMORY_BYTES'])},

@@ -45,6 +45,8 @@ def stage(repo, output):
     assets_commit = subprocess.check_output(
         ["git", "-C", str(repo / "assets"), "rev-parse", "HEAD"], text=True).strip()
     write_stock_index(repo / "assets", payload / "assets/costume-stock-index.json", assets_commit)
+    from costume_cdn_catalog import build_index
+    build_index(repo / "assets", payload / "assets/costume-cdn-index.json.gz", assets_commit)
     import payload_revision
     manifest = payload_revision.build_manifest(str(payload))
     write_json(output / "payload_revision.json", manifest)

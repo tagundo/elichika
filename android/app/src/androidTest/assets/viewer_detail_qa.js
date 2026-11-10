@@ -239,6 +239,78 @@
       outlineResults: outlineResults, outlineFallbackUnchanged: true,
       scope: 'WebGL Mouth occlusion backend adaptation, without claiming original-game shader implementation parity: actual native GPU Mouth-only GLSL3 MAIN and original BackSide OUTLINE compile, MSAA4/depth24 and both draw orders/front-rear occlusion; original baseline leak is observational, not required on every GPU.' };
   }
+  async function rimlightPreview() {
+    var key = 'elichika.viewer.rimlight.v1', checkbox = document.getElementById('viewer-rimlight');
+    assert(checkbox && typeof ModelViewer.captureCheckpoint === 'function' && typeof ModelViewer.restoreCheckpoint === 'function',
+      'The actual preview control and public model checkpoint APIs are required');
+    function snapshot() {
+      var current = state(), metadata = ModelViewer.getEditingMetadata();
+      return { checked: checkbox.checked, enabled: current.materials && current.materials.rimlightEnabled,
+        persisted: localStorage.getItem(key), modelId: current.modelId, paths: current.loadedPaths,
+        sourceFingerprint: metadata.sourceFingerprint, authoring: clone(ModelViewer.getAuthoringState()),
+        meshEdits: current.meshTools.edits };
+    }
+    function unchanged(before, after) {
+      assert(equal(before.paths, after.paths) && before.sourceFingerprint === after.sourceFingerprint &&
+        equal(before.authoring, after.authoring) && equal(before.meshEdits, after.meshEdits),
+        'A display-only Rim preference must retain source identity and every body/mesh export edit');
+    }
+    var checkpoint = ModelViewer.captureCheckpoint(), before = snapshot(), restored = false;
+    assert(before.checked === false && before.enabled === false && before.persisted !== 'true',
+      'A fresh native preview must start with Rimlight OFF');
+    assert(typeof before.sourceFingerprint === 'string' && /^[a-f0-9]{64}$/.test(before.sourceFingerprint),
+      'The display-only preview check must remain bound to an actual source fingerprint');
+    var target = usable('viewer-rimlight'), label = ViewerRigQa.control(target.parentElement, true),
+      coarse = matchMedia('(pointer:coarse)').matches, minimum = coarse ? 44 : 34;
+    assert(label.visible && label.withinViewport && label.hittable && label.width >= minimum && label.height >= minimum,
+      'The actual Rim checkbox label must retain the real pointer target policy: ' + JSON.stringify(label));
+    try {
+      await click('viewer-rimlight');
+      var on = snapshot();
+      assert(on.checked === true && on.enabled === true && on.persisted === 'true',
+        'The real native checkbox must enable the main controller and store the exact preference');
+      unchanged(before, on);
+      await ModelViewer.open(before.paths.slice());
+      await until('Rim ON survives a normal fresh model load', function () {
+        var current = ModelViewer.getState();
+        return current.loaded && !current.loading && current.modelId !== before.modelId &&
+          current.materials && current.materials.rimlightEnabled === true;
+      });
+      var reloadedOn = snapshot();
+      assert(reloadedOn.checked === true && reloadedOn.persisted === 'true', 'A model reload must keep the chosen Rim ON state');
+      unchanged(before, reloadedOn);
+      await click('viewer-rimlight');
+      var off = snapshot();
+      assert(off.checked === false && off.enabled === false && off.persisted === 'false',
+        'The actual checkbox must switch Rim OFF again without writing authored material settings');
+      unchanged(before, off);
+      var committed = await ModelViewer.restoreCheckpoint(checkpoint, ModelViewer.captureCheckpoint());
+      assert(committed === true, 'The original source/checkpoint must be restored through its public validated path');
+      await until('Rim OFF survives checkpoint reload', function () {
+        var current = ModelViewer.getState();
+        return current.loaded && !current.loading && current.materials && current.materials.rimlightEnabled === false;
+      });
+      var reloadedOff = snapshot();
+      assert(reloadedOff.checked === false && reloadedOff.persisted === 'false', 'A restored source must retain the chosen Rim OFF state');
+      unchanged(before, reloadedOff);
+      restored = true;
+      return { status: 'PASS', checks: { freshDefaultOff: true, realCheckboxAndStorage: true,
+        reloadKeepsOn: true, reloadKeepsOff: true, sourceAndAuthoringUnchanged: true },
+        before: before, on: on, reloadedOn: reloadedOn, off: off, reloadedOff: reloadedOff,
+        label: label, pointer: coarse ? 'coarse' : matchMedia('(pointer:fine)').matches ? 'fine' : 'none', minimumTarget: minimum,
+        sourcePixelDifferenceClaimed: false,
+        scope: 'Actual native WebView control/main-controller/storage and fresh-model/checkpoint reloads. The unchanged neutral Unity material has authored Rim intensity0, so this flow does not claim an ON/OFF pixel difference. Positive authored Rim pixels and independent thumbnail-default/Basic-donor boundaries have separate renderer coverage.' };
+    } finally {
+      if (!restored) {
+        // Failure cleanup restores the public source checkpoint; it never
+        // substitutes a retry or a direct checkbox assignment for an assertion.
+        try {
+          if (checkbox.checked !== before.checked) await click('viewer-rimlight');
+          await ModelViewer.restoreCheckpoint(checkpoint, ModelViewer.captureCheckpoint());
+        } catch (_) {}
+      }
+    }
+  }
   async function run() {
     var initial = state(), catalogue = clone(ModelViewer.getEditingMetadata().outlines), authoring = clone(ModelViewer.getAuthoringState());
     assert(initial.loaded && !initial.loading && catalogue.available && catalogue.meshes.length === 1,
@@ -333,12 +405,15 @@
     var mouthGpu = await mouthCentroidGpu();
     assert(equal(ModelViewer.getAuthoringState(), authoring) && equal(ModelViewer.getEditingMetadata().outlines, catalogue),
       'Independent GPU depth inspection must not alter the current source model or authoring');
+    var rimlight = await rimlightPreview();
+    assert(equal(ModelViewer.getAuthoringState(), authoring) && equal(ModelViewer.getEditingMetadata().outlines, catalogue),
+      'Display-only Rim toggles and source reloads must retain the original catalogue and clean authoring');
     var probe = ModelViewer.renderProbe(33);
     assert(probe.ready && probe.glError === 0 && probe.nonBackgroundSamples >= 3, 'The actual native renderer must still draw the source');
     return { status: 'PASS', checks: { mouthCentroidDepth: true, absoluteOutline: true, sparseOutline: true, outlineUndoRedo: true, sourceCataloguePreserved: true,
       outlineSave: true, meshZoom: true, connectedSelection: true, selectionUndoRedo: true, viewOnlyPreservedGeometry: true },
       mouthGpu: mouthGpu, catalogue: catalogue, absolute: absolute, absoluteSaved: absoluteSaved, absoluteRecipe: absoluteRecipe, sparse: sparse, saved: saved, recipe: recipe, seed: seed, connected: connected, undone: undone,
-      independentViews: views, uvColor: uvColor, finalAuthoring: clone(ModelViewer.getAuthoringState()), probe: probe,
+      independentViews: views, uvColor: uvColor, rimlight: rimlight, finalAuthoring: clone(ModelViewer.getAuthoringState()), probe: probe,
       scope: 'Actual native WebView controls, absolute all-vertex red37 Save/Undo/Redo and sparse outline Save and connected source selection/UV zoom; no trusted-pinch or visible-outline-width pixel claim.' };
   }
   window.NativeDetailQa = { run: run };

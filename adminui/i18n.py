@@ -377,3 +377,39 @@ _TABLES = {
             "sukusta/{folder} と …/addons のファイルがここに表示されます。Ctrl/Cmdを押しながら（またはドラッグで）複数選択すると順番にインストールされます。",
     },
 }
+
+_COSTUME_CDN_STRINGS = {
+    "Downloads are checked first. In the app, replacement briefly stops a running server and restarts it on success. Failed or cancelled replacement stays stopped with a recovery backup. Standalone servers need a manual restart.": ["먼저 다운로드를 검증합니다. 앱에서는 팩 교체 시 잠시 중지하며 성공하면 이전에 실행 중이던 서버를 다시 시작합니다. 교체 실패·취소 시 서버는 중지 상태로 두고 복구용 백업을 보존합니다. 별도로 실행한 서버는 직접 다시 시작하세요.", "最初にダウンロードを検証します。アプリではサーバーを一時停止し、置換が成功すれば元々実行中だったサーバーを再起動します。失敗・キャンセルの場合は停止したまま復旧用バックアップを保持します。単独起動したサーバーは手動で再起動してください。"],
+    "The original CDN download failed. Check your connection and retry: ": ["CDN 원본 다운로드에 실패했습니다. 연결 상태를 확인한 뒤 다시 시도하세요: ", "CDNの元データ取得に失敗しました。接続を確認して再試行してください: "],
+    "The downloaded original model could not be verified: ": ["다운로드한 원본 모델을 검증하지 못했습니다: ", "取得した元モデルを検証できませんでした: "],
+    "Restore Costume from CDN": ["코스튬 원본을 CDN에서 다시 받기", "衣装の元データをCDNから再取得"],
+    "Download the selected original costume again, verify it, and replace its local model packs. A recovery backup is kept; shared faces, custom costumes and extracted models are preserved.": ["선택한 원본 코스튬을 다시 받아 검증한 뒤 로컬 모델 팩을 복구합니다. 복구용 백업을 남기며 공유 얼굴·사용자 코스튬·추출한 모델은 보존합니다.", "選んだ元の衣装を再取得・検証してローカルモデルパックを復元します。復旧用バックアップを残し、共有顔・カスタム衣装・抽出済みモデルは保持します。"],
+    "Original costume to restore": ["원본을 다시 받을 코스튬", "再取得する元の衣装"],
+    "Only official costumes are listed. Custom costumes and clones have no original CDN package.": ["공식 원본 코스튬만 표시합니다. 사용자 코스튬과 복제에는 공식 CDN 원본이 없습니다.", "公式の元衣装のみ表示します。カスタム衣装や複製に公式CDNの元データはありません。"],
+    "Game region": ["게임 지역", "ゲーム地域"],
+    "Asset platform": ["에셋 플랫폼", "アセットのプラットフォーム"],
+    "Both Android and iOS": ["Android와 iOS 모두", "AndroidとiOSの両方"],
+    "Global (GL)": ["글로벌 (GL)", "グローバル (GL)"],
+    "Japan (JP)": ["일본 (JP)", "日本 (JP)"],
+    "After restoring, load the costume again through 3D Model → Game assets. Reimporting an already extracted file only reopens that copy. Restart the game/server to refresh its cache.": ["복구 후 3D 모델 → 게임 에셋에서 코스튬을 다시 불러오세요. 이미 추출한 파일을 reimport하면 그 사본만 다시 엽니다. 게임·서버의 캐시 갱신을 위해 다시 시작하세요.", "復元後は3Dモデル → ゲームアセットから衣装を読み直してください。抽出済みファイルのreimportはそのコピーを開き直すだけです。ゲーム・サーバーも再起動してキャッシュを更新してください。"],
+    "Choose an original costume to restore.": ["원본을 복구할 코스튬을 선택하세요.", "元データを復元する衣装を選んでください。"],
+    "Downloading the original costume pack: ": ["코스튬 원본 팩 다운로드 중: ", "元の衣装パックをダウンロード中: "],
+    "Original costume restored. Load it again through Game assets; already-open models and unsaved edits were preserved.": ["코스튬 원본을 복구했습니다. 게임 에셋에서 다시 불러오세요. 현재 열어 둔 모델과 저장하지 않은 편집은 보존했습니다.", "衣装の元データを復元しました。ゲームアセットから読み直してください。開いているモデルと未保存の編集は保持しました。"],
+    "This is not an original CDN costume. Custom costumes and clones cannot be restored from the official CDN.": ["공식 CDN 원본 코스튬이 아닙니다. 사용자 코스튬과 복제는 공식 CDN에서 복구할 수 없습니다.", "公式CDNの元衣装ではありません。カスタム衣装や複製は公式CDNから復元できません。"],
+    "This costume's database mapping differs from the official original. Restore its original database mapping or remove the replacing mod before downloading its original packs.": ["이 코스튬의 DB 연결이 공식 원본과 다릅니다. 원본 DB 연결을 복구하거나 이를 대체한 모드를 제거한 뒤 원본 팩을 다시 받으세요.", "この衣装のDB参照が公式の元データと異なります。元のDB参照を復元するか置き換えたModを削除してから再取得してください。"],
+    "This costume's model metadata differs from the official original. Restore the original database mapping or remove the replacing mod first; no packs were changed.": ["이 코스튬의 모델 메타데이터가 공식 원본과 다릅니다. 원본 DB 연결을 복구하거나 대체 모드를 먼저 제거하세요. 팩은 변경하지 않았습니다.", "衣装モデルの情報が公式の元データと異なります。元のDB参照を復元するか置換Modを先に削除してください。パックは変更していません。"],
+    "This costume's package mapping differs from the official original. Restore its original database mapping first; no packs were changed.": ["이 코스튬의 팩 연결이 공식 원본과 다릅니다. 원본 DB 연결을 먼저 복구하세요. 팩은 변경하지 않았습니다.", "衣装パックの参照が公式の元データと異なります。先に元のDB参照を復元してください。パックは変更していません。"],
+    "A custom costume shares this original model. Give that costume independent assets before restoring the shared source.": ["사용자 코스튬이 이 원본 모델을 공유하고 있습니다. 해당 코스튬을 독립 에셋으로 분리한 뒤 공유 원본을 복구하세요.", "カスタム衣装がこの元モデルを共有しています。独立したアセットに分離してから共有元データを復元してください。"],
+    "Costume download cancelled; existing files were preserved.": ["코스튬 다운로드를 취소했습니다. 기존 파일을 보존했습니다.", "衣装のダウンロードをキャンセルしました。既存ファイルは保持しました。"],
+    "The original CDN package is incomplete. Retry the download.": ["CDN 원본 팩을 끝까지 받지 못했습니다. 다시 시도하세요.", "CDNの元パックを最後まで取得できませんでした。再試行してください。"],
+    "The downloaded original model could not be verified.": ["다운로드한 원본 모델을 검증하지 못했습니다.", "取得した元モデルを検証できませんでした。"],
+    "The original CDN could not provide package ": ["CDN에서 다음 원본 팩을 받지 못했습니다: ", "CDNから次の元パックを取得できませんでした: "],
+    "Downloading the original costume took too long. Retry when the connection is stable.": ["원본 코스튬 다운로드 시간이 초과되었습니다. 연결 상태를 확인한 뒤 다시 시도하세요.", "元衣装のダウンロードがタイムアウトしました。接続を確認して再試行してください。"],
+    "The original CDN package exceeds its verified size.": ["CDN 팩 크기가 검증된 범위를 초과했습니다. 기존 파일은 보존합니다.", "CDNパックが検証済みサイズを超えています。既存ファイルは保持します。"],
+    "The costume catalogue changed during its download. Retry the operation.": ["다운로드 중 코스튬 카탈로그가 바뀌었습니다. 다시 시도하세요.", "取得中に衣装カタログが変更されました。再試行してください。"],
+    "A costume pack changed during the download. Retry the operation.": ["다운로드 중 로컬 코스튬 팩이 변경되었습니다. 다시 시도하세요.", "取得中にローカル衣装パックが変更されました。再試行してください。"],
+    "The restored costume pack did not match its verified download.": ["복구된 팩이 검증한 다운로드와 일치하지 않아 되돌렸습니다.", "復元したパックが検証済みダウンロードと一致しないため元に戻しました。"],
+}
+for _source, _values in _COSTUME_CDN_STRINGS.items():
+    for _lang, _text in zip(("ko", "ja"), _values):
+        _TABLES[_lang][_source] = _text

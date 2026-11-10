@@ -146,12 +146,16 @@ function renderForm() {
 
   // auto-load dynamic selects that don't depend on another field
   for (const field of tool.fields) {
-    if (field.type === "dynamic_select" && (!field.depends_on || tool.id === "costume_delete")) loadOptions(field);
+    if (field.type === "dynamic_select" && (!field.depends_on || tool.id === "costume_delete" || tool.id === "restore_costume_cdn")) loadOptions(field);
   }
 }
 
 function renderField(field) {
   const wrap = el("div", { class: "field" + (field.type === "checkbox" ? " checkbox" : "") });
+  if (field.type === "help") {
+    wrap.appendChild(el("p", { class: "help", text: field.help || field.label || "" }));
+    return wrap;
+  }
   const id = "f_" + field.name;
 
   if (field.type === "checkbox") {

@@ -82,6 +82,9 @@ jobs:
           python3 -m unittest discover -s ../tests -p 'test_costume_clone*.py' -v
           python3 -m unittest discover -s ../tests -p test_costume_private_faces.py -v
           python3 -m unittest discover -s ../tests -p test_costume_face_management.py -v
+          python3 -m unittest discover -s ../tests -p test_costume_cdn_catalog.py -v
+          python3 -m unittest discover -s ../tests -p test_costume_cdn_restore.py -v
+          python3 -m unittest discover -s ../tests -p test_costume_cdn_packaging.py -v
           python3 -m unittest discover -s ../tests -p test_shared_asset_crypto.py -v
           python3 -m unittest discover -s ../tests -p test_pack_lookup.py -v
           python3 -m unittest discover -s ../tests -p test_costume_scene_clones.py -v
@@ -183,6 +186,7 @@ jobs:
           mkdir -p "$EVIDENCE_DIR"
           EVIDENCE_DIR="$EVIDENCE_DIR/costume-delete" node ../tests/adminui_costume_delete_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/tool-log" node ../tests/adminui_log_batch_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/costume-cdn" node ../tests/adminui_costume_cdn_browser.js
           python3 -m webtools --no-browser --host 127.0.0.1 --port 8898 > "$EVIDENCE_DIR/server.log" 2>&1 &
           viewer_server_pid=$!
           trap 'kill "$viewer_server_pid" 2>/dev/null || true' EXIT
@@ -202,6 +206,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/framing" node tests/viewer_framing_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/compensation" node tests/viewer_compensation_browser.js
           node tests/sifas_material_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/rimlight-display" node tests/viewer_rimlight_browser.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mouth-centroid" node tests/viewer_mouth_depth_browser_test.js
           node tests/viewer_quality_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js

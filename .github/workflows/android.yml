@@ -198,7 +198,8 @@ jobs:
           # Protect official IDs when removing legacy mods without receipts.
           # Build from this clean initialized checkout, never the installed DBs.
           python3 bin/build_costume_stock_index.py --repo . \
-            --output "$PAY/assets/costume-stock-index.json"
+            --output "$PAY/assets/costume-stock-index.json" \
+            --cdn-output "$PAY/assets/costume-cdn-index.json.gz"
           python3 payload_revision.py create --payload "$PAY" \
             --output android/app/src/main/assets/payload_revision.json
           python3 payload_revision.py verify --payload "$PAY" \
@@ -225,7 +226,8 @@ jobs:
           # The mandatory installer must be our reviewed module, even if a tools
           # checkout happens to ship a module with the same name.
           cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py payload_upgrade_progress.py \
-            costume_management.py costume_scene_installer.py costume_face_installer.py costume_scene_clones.py costume_scene_sources.py sifas_asset_crypto.py "$PY/"
+            costume_management.py costume_scene_installer.py costume_face_installer.py costume_scene_clones.py costume_scene_sources.py \
+            costume_cdn_catalog.py costume_cdn_restore.py sifas_asset_crypto.py "$PY/"
           cmp payload_db_upgrade.py "$PY/payload_db_upgrade.py"
           cmp database_maintenance.py "$PY/database_maintenance.py"
           cmp payload_file_hash.py "$PY/payload_file_hash.py"

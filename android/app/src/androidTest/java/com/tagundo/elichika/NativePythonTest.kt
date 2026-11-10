@@ -107,6 +107,22 @@ class NativePythonTest {
             decoded65.put("native_java_bridge", true)
             File(context.filesDir, "native-texture65-report.json").writeText(decoded65.toString(2))
             println("ANDROID_TEXTURE65_NATIVE_REPORT=$decoded65")
+            val cdnModule = python.getModule("types").callAttr("ModuleType", "_native_cdn_qa")
+            val cdnScript = instrumentation.context.assets.open("native_cdn_checks.py")
+                .bufferedReader().use { it.readText() }
+            python.getModule("builtins").callAttr("exec", cdnScript, cdnModule.get("__dict__"))
+            val cdnPayload = context.assets.open("payload/assets/costume-cdn-index.json.gz").use { it.readBytes() }
+            val cdnSha = java.security.MessageDigest.getInstance("SHA-256").digest(cdnPayload)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val cdnResult = cdnModule.callAttr("check", context.filesDir.canonicalPath, cdnSha)
+            val cdnReport = JSONObject(python.getModule("json").callAttr("dumps", cdnResult).toString())
+            assertEquals("PASS_BUNDLED_CATALOG_READ_ONLY_PLAN", cdnReport.getString("status"))
+            assertTrue(cdnReport.getBoolean("source_preserved"))
+            assertEquals(0, cdnReport.getInt("network_requests"))
+            cdnReport.put("apk_sha256", PayloadFileHasher.sha256File(context.applicationInfo.sourceDir))
+            cdnReport.put("native_java_bridge", true)
+            File(context.filesDir, "native-cdn-catalog-report.json").writeText(cdnReport.toString(2))
+            println("ANDROID_CDN_CATALOG_NATIVE_REPORT=$cdnReport")
             for (key in listOf("ssl_and_certificates", "sqlite_unicode", "ctypes",
                 "numpy_linear_algebra", "pillow_png_jpeg_freetype", "unitypy_binary_io",
                 "fsspec_memory_io", "adminui_and_webtools_imports", "astc_encode_decode", "bundled_suit_preview",

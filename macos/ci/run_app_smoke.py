@@ -818,6 +818,23 @@ def check_detail_report(observed):
     require(color["chosen"] == "#14b87a" and color["restored"] == color["before"] == color["persisted"]
         and color["authoringPreserved"] is True and color["viewsPreserved"] is True,
         "UV overlay color must synchronize/persist independently of source textures and mesh edits")
+    rim = observed["rimlight"]
+    require(rim["status"] == "PASS" and set(rim["checks"]) == {
+        "freshDefaultOff", "realCheckboxAndStorage", "reloadKeepsOn", "reloadKeepsOff", "sourceAndAuthoringUnchanged"}
+        and all(value is True for value in rim["checks"].values())
+        and rim["sourcePixelDifferenceClaimed"] is False,
+        "Native Rim control must preserve the zero-intensity source without claiming a pixel difference")
+    for name, enabled in (("before", False), ("on", True), ("reloadedOn", True), ("off", False), ("reloadedOff", False)):
+        value = rim[name]
+        require(value["checked"] is enabled and value["enabled"] is enabled
+            and (name == "before" or value["persisted"] == str(enabled).lower())
+            and all(value[key] == rim["before"][key] for key in ("paths", "sourceFingerprint", "authoring", "meshEdits")),
+            "Actual Rim ON/OFF/model reloads must retain every source-bound authoring value")
+    require(rim["minimumTarget"] == (44 if rim["pointer"] == "coarse" else 34)
+        and all(rim["label"][key] is True for key in ("visible", "withinViewport", "hittable"))
+        and rim["label"]["width"] >= rim["minimumTarget"] and rim["label"]["height"] >= rim["minimumTarget"]
+        and rim["before"]["modelId"] != rim["reloadedOn"]["modelId"],
+        "Native Rim persistence must use a real new model and a usable actual checkbox label")
     _native_draw(observed)
 
 

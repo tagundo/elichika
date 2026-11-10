@@ -25,10 +25,13 @@ from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
 from webtools.core import game_motions, game_motion_audio, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace, viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, member_identity
 import transplant_bundle_io, costume_face_installer, costume_scene_installer, costume_clone, costume_management
+import costume_cdn_catalog, costume_cdn_restore
+from adminui.tools import costume_cdn as cdn_admin
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
                     model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace,
                     viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, transplant_bundle_io, game_motion_audio,
-                    costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity)
+                    costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
+                    costume_cdn_catalog, costume_cdn_restore, cdn_admin)
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
@@ -117,6 +120,9 @@ installer_management_test = installer_tests / 'test_costume_face_management.py'
 shutil.copy2(repo / 'tests' / installer_management_test.name, installer_management_test)
 installer_clone_fixture = installer_tests / 'test_costume_clone.py'
 shutil.copy2(repo / 'tests' / installer_clone_fixture.name, installer_clone_fixture)
+cdn_test_paths = [installer_tests / name for name in ('test_costume_cdn_catalog.py', 'test_costume_cdn_restore.py')]
+for path in cdn_test_paths:
+    shutil.copy2(repo / 'tests' / path.name, path)
 sys.path.insert(0, str(installer_tests))
 installer_audits = installer_stage / 'audits'; installer_audits.mkdir()
 os.environ['ELICHIKA_QA_INSTALLER_SOURCE'] = str(source)
@@ -147,7 +153,7 @@ def _audit_packaged_installer():
 atexit.register(_audit_packaged_installer)
 """, encoding='utf-8')
 installer_input_hashes = {str(path.relative_to(installer_stage)): hashlib.sha256(path.read_bytes()).hexdigest()
-                          for path in (installer_test, installer_management_test, installer_clone_fixture,
+                          for path in (installer_test, installer_management_test, installer_clone_fixture, *cdn_test_paths,
                               *(installer_fixture / fixture.name for fixture in installer_fixtures),
                               installer_stage / 'sitecustomize.py')}
 installer_spec = importlib.util.spec_from_file_location('test_packaged_costume_private_faces', installer_test)
@@ -158,6 +164,17 @@ management_spec = importlib.util.spec_from_file_location('test_packaged_costume_
 management_module = importlib.util.module_from_spec(management_spec)
 sys.modules[management_spec.name] = management_module
 management_spec.loader.exec_module(management_module)
+cdn_modules = []
+for path in cdn_test_paths:
+    # The restore fixture imports assets_fixture from this exact staged catalog
+    # test. Preserve that module name while every production import stays under
+    # the real packaged source root audited above and again after execution.
+    name = path.stem
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    cdn_modules.append(module)
 suite = unittest.TestSuite()
 for pattern in patterns:
     if pattern in staged_python:
@@ -170,6 +187,8 @@ for pattern in patterns:
         suite.addTests(unittest.defaultTestLoader.discover(str(test_source), pattern=pattern))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(installer_module))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(management_module))
+for module in cdn_modules:
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
 # Select neutral methods explicitly: the same outline class also provides an
 # opt-in preservation check requiring private original game assets. It is not
 # a universally available packaged-runtime fixture, and skips remain failures.
@@ -248,7 +267,7 @@ for child in installer_child_runs:
 root_scripts = {path.stem for path in source.glob('*.py')}
 packaged_imports = {}
 for name, module in list(sys.modules.items()):
-    if not (name == 'webtools' or name.startswith('webtools.') or name in root_scripts):
+    if not (name in ('webtools', 'adminui') or name.startswith(('webtools.', 'adminui.')) or name in root_scripts):
         continue
     filename = getattr(module, '__file__', None)
     if filename:
@@ -277,6 +296,9 @@ report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else
           'staged_test_inputs': staged_test_inputs,
           'installer_staged_test_inputs': installer_input_hashes,
           'packaged_installer_child_runs': installer_child_runs,
+          'packaged_cdn_test_cases': {module.__name__: unittest.defaultTestLoader.loadTestsFromModule(module).countTestCases()
+                                      for module in cdn_modules},
+          'cdn_test_scope': 'Generated pristine official-index/SQLite fixtures and explicit downloader boundaries from the staged tests; actual bundled immutable-index read-only plan has a separate private-runtime probe. No live official-CDN restore claim from mocked network IO.',
           'derived_identity_test_scope': 'Generated neutral graft fixtures test typed source/hash binding at an explicitly mocked original-identity verification boundary; they are not registered as original game imports',
           'node_require_scope': 'Actual packaged static assets via isolated QA-only symlink; host Node is not an app runtime dependency',
           'excluded_optional_cases': ['test_model_outlines.OutlineTests.test_actual_original_costumes_change_only_red_and_keep_textures_exact',

@@ -216,6 +216,25 @@ jobs:
           assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text) == ['35'] and 'FAILURES' not in text, text
           PY
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-texture65-report.json > evidence/native-texture65-report.json
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-cdn-catalog-report.json > evidence/native-cdn-catalog-report.json
+          python3 - <<'PY'
+          import gzip, hashlib, json, os, zipfile
+          from pathlib import Path
+          report = json.loads(Path('evidence/native-cdn-catalog-report.json').read_text())
+          assert report['status'] == 'PASS_BUNDLED_CATALOG_READ_ONLY_PLAN', report
+          assert report['native_java_bridge'] is True and report['source_preserved'] is True, report
+          assert report['network_requests'] == 0 and report['read_only_database_connections'] >= 4, report
+          assert report['apk_sha256'] == os.environ['EXPECTED_CANDIDATE_SHA'], report
+          apks = list(Path('candidate').glob('*.apk')); assert len(apks) == 1
+          with zipfile.ZipFile(apks[0]) as apk:
+              raw = apk.read('assets/payload/assets/costume-cdn-index.json.gz')
+          original = json.loads(gzip.decompress(raw))
+          assert report['index_sha256'] == hashlib.sha256(raw).hexdigest() and report['index_bytes'] == len(raw), report
+          assert report['source_commit'] == original['source_commit'], report
+          assert report['original_costumes'] == {region: len(original['regions'][region]['suits']) for region in ('gl','jp')}, report
+          assert [(row['region'], row['platforms']) for row in report['plans']] == [('gl',['android']),('jp',['ios'])], report
+          assert all(row['packs'] and row['models'] and row['catalogs'] and row['source_commit'] == report['source_commit'] for row in report['plans']), report
+          PY
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json, os, zipfile
@@ -565,6 +584,9 @@ jobs:
           adb -s 127.0.0.1:5555 logcat -d > evidence/logcat.txt 2>&1 || true
           if [ ! -s evidence/native-texture65-report.json ]; then
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-texture65-report.json > evidence/native-texture65-report.json 2>/dev/null || true
+          fi
+          if [ ! -s evidence/native-cdn-catalog-report.json ]; then
+            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-cdn-catalog-report.json > evidence/native-cdn-catalog-report.json 2>/dev/null || true
           fi
           adb -s 127.0.0.1:5555 shell dumpsys webviewupdate > evidence/webview-provider.txt 2>&1 || true
           adb -s 127.0.0.1:5555 exec-out cat /sdcard/Download/sukusta/logs/elichika.log > evidence/server-console.txt 2>/dev/null || true
