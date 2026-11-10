@@ -201,6 +201,7 @@ jobs:
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/runtime-optimization" node tests/viewer_runtime_optimization_browser.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-projection-cache" node tests/viewer_mesh_projection_cache_browser.js
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/motion-audio-lookup" node tests/viewer_motion_audio_lookup_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/layout" node tests/viewer_layout_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/portrait-scroll" node tests/viewer_portrait_scroll_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/pose-body" node tests/viewer_pose_body_browser.js

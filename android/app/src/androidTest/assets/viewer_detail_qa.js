@@ -316,6 +316,11 @@
     assert(initial.loaded && !initial.loading && catalogue.available && catalogue.meshes.length === 1,
       'The real neutral source must provide one authorized outline mesh');
     assert(!(authoring.outlines || []).length && !authoring.edits.length, 'Start with a clean source model');
+    var includeFace = document.getElementById('viewer-mod-include-face');
+    assert(includeFace && includeFace.type === 'checkbox' && includeFace.checked === false,
+      'A fresh model must leave costume face and mouth inclusion off by default');
+    var modFaceDefault = { checked: includeFace.checked, disabled: includeFace.disabled,
+      scope: 'Actual shared Mod ZIP checkbox default; automatic face completion has its own unchanged control.' };
     var identity = catalogue.meshes[0].id;
     await input('viewer-outline-mesh', identity, 'change');
     await input('viewer-outline-absolute', '37'); await click('viewer-outline-absolute-apply');
@@ -413,7 +418,8 @@
     return { status: 'PASS', checks: { mouthCentroidDepth: true, absoluteOutline: true, sparseOutline: true, outlineUndoRedo: true, sourceCataloguePreserved: true,
       outlineSave: true, meshZoom: true, connectedSelection: true, selectionUndoRedo: true, viewOnlyPreservedGeometry: true },
       mouthGpu: mouthGpu, catalogue: catalogue, absolute: absolute, absoluteSaved: absoluteSaved, absoluteRecipe: absoluteRecipe, sparse: sparse, saved: saved, recipe: recipe, seed: seed, connected: connected, undone: undone,
-      independentViews: views, uvColor: uvColor, rimlight: rimlight, finalAuthoring: clone(ModelViewer.getAuthoringState()), probe: probe,
+      independentViews: views, uvColor: uvColor, rimlight: rimlight, modFaceDefault: modFaceDefault,
+      finalAuthoring: clone(ModelViewer.getAuthoringState()), probe: probe,
       scope: 'Actual native WebView controls, absolute all-vertex red37 Save/Undo/Redo and sparse outline Save and connected source selection/UV zoom; no trusted-pinch or visible-outline-width pixel claim.' };
   }
   window.NativeDetailQa = { run: run };
