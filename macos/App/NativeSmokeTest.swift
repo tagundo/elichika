@@ -230,6 +230,7 @@ final class NativeSmokeTest {
             report["second_export"] = second
             try checkpoint("saved-model-snapshot")
             try await checkModPackage(webView, sourceZIP: zipSource, sourceZIPHash: zipHash, previousExport: second)
+            try await checkThumbnailWorkflow(webView, directory: directory, sourceZIP: zipSource, sourceZIPHash: zipHash)
             let preservedSource = try Data(contentsOf: source), preservedZIP = try Data(contentsOf: zipSource)
             try require(preservedSource == original && preservedZIP == originalZIP,
                         "Saving the installer ZIP must preserve both original fixture files.")
@@ -237,6 +238,8 @@ final class NativeSmokeTest {
             try await checkAccessoryUnclip(webView, directory: directory)
             try await checkGamePhysics(webView, directory: directory)
             try await checkExtendedWorkflow(webView, directory: directory)
+            try await checkPartSelectionWorkflow(webView, directory: directory)
+            try await checkThumbnailUpdaterWorkflow(webView, directory: directory)
             _ = try await model.request("/v1/server/start", method: "POST")
             try checkpoint("quit-server-start-requested")
             try await wait("the game server before quitting", timeout: 120) {
@@ -301,6 +304,118 @@ final class NativeSmokeTest {
             "ModelViewer.getState().modelId!==" + oldID + "&&ModelViewer.getState().loaded&&!ModelViewer.getState().loading")
         try await loaded(webView)
         return paths[0]
+    }
+
+    private func sendNativePointer(_ request: [String: Any], webView: WKWebView) throws -> [String: Any] {
+        guard let point = request["point"] as? [String: Double], let viewport = request["viewport"] as? [String: Double],
+              let x = point["x"], let y = point["y"], let width = viewport["width"], let height = viewport["height"],
+              let window = webView.window else { throw NativeError.invalidResponse }
+        try require(width > 0 && height > 0 && x.isFinite && y.isFinite && x >= 0 && y >= 0 && x < width && y < height,
+                    "Actual donor input must identify a finite visible CSS point.")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(webView)
+        let bounds = webView.bounds
+        let local = NSPoint(x: bounds.minX + CGFloat(x / width) * bounds.width,
+                            y: webView.isFlipped ? bounds.minY + CGFloat(y / height) * bounds.height : bounds.maxY - CGFloat(y / height) * bounds.height)
+        let location = webView.convert(local, to: nil)
+        let number = request["id"] as? Int ?? 0
+        guard let down = NSEvent.mouseEvent(with: .leftMouseDown, location: location, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+                eventNumber: number * 2, clickCount: 1, pressure: 1),
+              let up = NSEvent.mouseEvent(with: .leftMouseUp, location: location, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime + 0.01, windowNumber: window.windowNumber, context: nil,
+                eventNumber: number * 2 + 1, clickCount: 1, pressure: 0) else { throw NativeError.invalidResponse }
+        window.sendEvent(down)
+        window.sendEvent(up)
+        return ["id": number, "target": request["target"] ?? "", "css": point, "viewport": viewport,
+                "webViewBounds": ["width": bounds.width, "height": bounds.height], "webViewFlipped": webView.isFlipped,
+                "windowPoint": ["x": location.x, "y": location.y],
+                "method": "NSWindow.sendEvent NSEvent leftMouseDown/leftMouseUp; DOM isTrusted is independently required"]
+    }
+
+    private func checkPartSelectionWorkflow(_ webView: WKWebView, directory: URL) async throws {
+        try checkpoint("native-part-selection-source")
+        let source = directory.appendingPathComponent("part-target.unity"), donor = directory.appendingPathComponent("part-donor.unity")
+        let inputs: [(URL, String)] = [(source, "fe6f3c7749f116faad61152ee6f76978a4200e409dd5c0c577ce505a33f3a7f8"),
+            (donor, "de4e0e267f9435f626b0a1e7d556375f6fe2d12a7da22227ce7dbd373fd42d89")]
+        let originals = try inputs.map { try Data(contentsOf: $0.0) }
+        for (index, input) in inputs.enumerated() {
+            try require(originals[index].count == 81847 && SHA256.hash(data: originals[index]).map { String(format: "%02x", $0) }.joined() == input.1,
+                        "Native partial graft must use the exact original neutral target and donor bytes.")
+        }
+        let paths = try await model.authorize([source, donor])
+        _ = try await js(webView, "var a=document.getElementById('viewer-auto-face');if(a&&a.checked)a.click();return true;")
+        model.selectedSection = .viewer
+        model.browser(.assets).perform("openModel", paths: [paths[0]])
+        try await loaded(webView, expectedVertices: 60, expectedTriangles: 20)
+        let options = ["sourcePath": paths[0], "donorPath": paths[1]]
+        let encoded = String(decoding: try JSONSerialization.data(withJSONObject: options), as: UTF8.self)
+        let helper = try String(contentsOf: model.resourceDirectory.appendingPathComponent("qa/viewer_part_selection_qa.js"), encoding: .utf8)
+        _ = try await js(webView, helper + ";window.__nativePartResult=null;window.__nativePartError='';" +
+            "NativePartQa.run(" + encoded + ").then(function(value){window.__nativePartResult=value;},function(error){window.__nativePartError=String(error.stack||error);});return true;")
+        var handled = Set<Int>(), events: [[String: Any]] = []
+        try await wait("actual native trusted donor model and UV input", timeout: 300) {
+            let pending = try await self.object(webView, "return JSON.stringify({error:window.__nativePartError||'',done:!!window.__nativePartResult,pointer:window.__nativePartPointer||null});")
+            if let error = pending["error"] as? String, !error.isEmpty { throw NativeError.service(error) }
+            if pending["done"] as? Bool == true { return true }
+            if let request = pending["pointer"] as? [String: Any], request["pending"] as? Bool == true,
+               let id = request["id"] as? Int, !handled.contains(id) {
+                events.append(try self.sendNativePointer(request, webView: webView))
+                handled.insert(id)
+            }
+            return false
+        }
+        var observed = try await object(webView, "return JSON.stringify(window.__nativePartResult);")
+        try require(observed["status"] as? String == "PASS" && events.count == 6,
+                    "Actual native partial graft must pass all hierarchy, source face and trusted pointer assertions.")
+        for (index, input) in inputs.enumerated() {
+            try require(try Data(contentsOf: input.0) == originals[index], "Partial graft must preserve both original source files.")
+        }
+        observed["source_path"] = source.path
+        observed["source_sha256"] = inputs[0].1
+        observed["donor_path"] = donor.path
+        observed["donor_sha256"] = inputs[1].1
+        observed["sourcePreserved"] = true
+        observed["nativeEvents"] = events
+        report["native_part_selection"] = observed
+        try await snapshot(webView, directory.appendingPathComponent("part-selection-controls.png"))
+        try checkpoint("native-part-selection-passed")
+    }
+
+    private func checkThumbnailUpdaterWorkflow(_ webView: WKWebView, directory: URL) async throws {
+        try checkpoint("native-thumbnail-updater-source")
+        let root = URL(fileURLWithPath: model.libraryDirectory).appendingPathComponent("native-thumbnail-inputs")
+        let source = root.appendingPathComponent("member6/viewer_thumbnail_member_6.zip")
+        let other = root.appendingPathComponent("member201/viewer_thumbnail_member_201.zip")
+        let inputs: [(URL, String, Int)] = [(source, "e60eb0fa3e6e1860bb956e70337c23908faab3f2a9c66192531b645b971538f7", 17405),
+            (other, "473fb2c5a57c95b5259ada0c3bf88eaf7db4586f8c662d4f03cfeaceb48fa969", 17421)]
+        let originals = try inputs.map { try Data(contentsOf: $0.0) }
+        for (index, input) in inputs.enumerated() {
+            try require(originals[index].count == input.2 && SHA256.hash(data: originals[index]).map { String(format: "%02x", $0) }.joined() == input.1,
+                        "The updater must use the exact separate member6/member201 neutral installer ZIPs.")
+        }
+        let output = URL(fileURLWithPath: model.libraryDirectory).appendingPathComponent("native-thumbnail-updates")
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let authorized = try await model.authorize([source, other, output])
+        let options: [String: Any] = ["paths": Array(authorized.prefix(2)), "outDirectory": authorized[2], "expectedOwners": [6, 201]]
+        let encoded = String(decoding: try JSONSerialization.data(withJSONObject: options), as: UTF8.self)
+        model.selectedSection = .assets
+        model.browser(.assets).setEditorSurface(.tools)
+        try await waitJS(webView, "the native updater tools surface", timeout: 15, expression:
+            "document.getElementById('tab-tools').classList.contains('active')")
+        let helper = try String(contentsOf: model.resourceDirectory.appendingPathComponent("qa/viewer_thumbnail_updater_qa.js"), encoding: .utf8)
+        _ = try await js(webView, helper + ";return true;")
+        var observed = try await object(webView, "return JSON.stringify(await NativeThumbnailUpdaterQa.run(" + encoded + "));")
+        try require(observed["status"] as? String == "PASS", "Actual native shared multi-selection and thumbnail updater did not pass.")
+        for (index, input) in inputs.enumerated() {
+            try require(try Data(contentsOf: input.0) == originals[index], "The updater must preserve both original installer ZIPs.")
+        }
+        observed["source_sha256"] = inputs.map { $0.1 }
+        observed["sourcePreserved"] = true
+        report["native_thumbnail_updater"] = observed
+        try await snapshot(webView, directory.appendingPathComponent("thumbnail-updater-controls.png"))
+        try checkpoint("native-thumbnail-updater-passed")
     }
 
     private func checkDetailWorkflow(_ webView: WKWebView, directory: URL) async throws {
@@ -588,12 +703,15 @@ final class NativeSmokeTest {
             if(name.value!==automatic||ModelViewer.getState().persistence.modNameManual)throw new Error('Automatic name must restore the real edit-based suggestion');
             name.value=\(quotedName);name.dispatchEvent(new Event('input',{bubbles:true}));
             expose(owner);owner.value='6';owner.dispatchEvent(new Event('change',{bubbles:true}));
+            var thumbnailMode=document.getElementById('viewer-mod-thumbnail-mode');expose(thumbnailMode);
+            thumbnailMode.value='texture';thumbnailMode.dispatchEvent(new Event('change',{bubbles:true}));
+            if(ModelViewer.getState().persistence.thumbnailMode!=='texture')throw new Error('Preserve the ordinary texture Mod ZIP gate before automatic 3D thumbnail QA');
             var button=document.getElementById('viewer-save-mod');expose(button);
             await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
             var rect=button.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
             if(button.disabled||rect.width<34||rect.height<34||!(hit===button||button.contains(hit))||name.value.length!==120||owner.value!=='6')throw new Error('The actual Save mod ZIP button and explicit owner must be usable');
             return JSON.stringify({automaticName:automatic,automaticLength:automaticLength,manualName:name.value,manualLength:name.value.length,characterId:Number(owner.value),
-              oldJob:ModelViewer.getState().persistence.jobId,buttonTarget:{width:rect.width,height:rect.height,hittable:true},
+              oldJob:ModelViewer.getState().persistence.jobId,thumbnailMode:ModelViewer.getState().persistence.thumbnailMode,buttonTarget:{width:rect.width,height:rect.height,hittable:true},
               installRequests:performance.getEntriesByType('resource').filter(function(entry){return entry.name.includes('/api/viewer/edit/install');}).length});
             """)
         report["viewer_mod_package_controls"] = setup
@@ -628,6 +746,24 @@ final class NativeSmokeTest {
             "receipt_sha256": digest, "package_path": packagePath, "inspection": inspected,
             "scope": "Actual native WebKit Save mod ZIP and bundled Python inspection; Add to game is not invoked"]
         try checkpoint("mod-package-inspected")
+    }
+
+    private func checkThumbnailWorkflow(_ webView: WKWebView, directory: URL, sourceZIP: URL, sourceZIPHash: String) async throws {
+        try checkpoint("native-thumbnail-controls")
+        let original = try Data(contentsOf: sourceZIP)
+        let helper = try String(contentsOf: model.resourceDirectory.appendingPathComponent("qa/viewer_thumbnail_qa.js"), encoding: .utf8)
+        _ = try await js(webView, helper + ";return true;")
+        var observed = try await object(webView, "return JSON.stringify(await NativeThumbnailQa.run({characterId:6,reeditOriginal:true}));")
+        try require(observed["status"] as? String == "PASS", "Actual WebKit automatic 3D thumbnail controls did not pass.")
+        try require(try Data(contentsOf: sourceZIP) == original &&
+                    SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined() == sourceZIPHash,
+                    "Automatic thumbnail saving must preserve the actual source ZIP.")
+        observed["source_path"] = sourceZIP.path
+        observed["source_sha256"] = sourceZIPHash
+        observed["sourcePreserved"] = true
+        report["native_thumbnail"] = observed
+        try await snapshot(webView, directory.appendingPathComponent("thumbnail-controls.png"))
+        try checkpoint("native-thumbnail-saved")
     }
 
     private func inspectModPackage(_ path: String, edited: String, previous: String, source: URL, sourceHash: String,
@@ -752,6 +888,7 @@ final class NativeSmokeTest {
             var pose=document.getElementById('viewer-adjustments'),body=document.getElementById('viewer-body-adjustments');
             var expression=document.getElementById('viewer-expression-adjustments');
             return JSON.stringify({poseOpen:pose.open,bodyOpen:body.open,
+              accessoryOpen:document.getElementById('viewer-accessory-card').open,
               siblings:pose.parentElement===body.parentElement&&body.parentElement===expression.parentElement,
               separate:!pose.contains(body)&&!body.contains(pose)&&!body.contains(expression),
               motionOwnedByPose:['viewer-motion','viewer-play','viewer-time'].every(function(id){return pose.contains(document.getElementById(id))&&!body.contains(document.getElementById(id));}),
@@ -760,9 +897,48 @@ final class NativeSmokeTest {
         report["pose_body_panel_structure"] = structure
         try checkpoint("pose-body-panel-structure")
         try require(structure["poseOpen"] as? Bool == false, "Pose and motion must start collapsed.")
+        try require(structure["accessoryOpen"] as? Bool == true, "The accessory panel must start open before smoke helpers expose controls.")
         for key in ["bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody"] {
             try require(structure[key] as? Bool == true, "Pose and body must be independent sibling panels with their own controls: " + key)
         }
+        try await checkFreshFileHeader(webView)
+    }
+
+    private func checkFreshFileHeader(_ webView: WKWebView) async throws {
+        let observed = try await object(webView, """
+            var state=ModelViewer.getState(),model=document.getElementById('viewer-model-files'),motions=document.getElementById('viewer-motion-files');
+            var list=document.getElementById('viewer-file-list'),motionList=document.getElementById('viewer-motion-file-list');
+            var name=document.getElementById('viewer-model-file-name'),count=document.getElementById('viewer-model-file-count');
+            var badge=document.getElementById('viewer-model-options-count'),motionCount=document.getElementById('viewer-motion-file-count');
+            var workspaceBadge=document.getElementById('viewer-workspace-model-count');
+            var options=document.getElementById('viewer-file-options'),summary=model.querySelector('summary'),gear=options.querySelector('summary');
+            function rect(node){var r=node.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};}
+            var files={modelPaths:Array.from(list.querySelectorAll('li > span')).map(function(row){return row.title;}),
+              motionPaths:Array.from(motionList.querySelectorAll('li > span')).map(function(row){return row.title;}),modelName:name.textContent,
+              modelCount:Number(count.textContent),modelCountHidden:count.hidden,modelBadge:Number(badge.textContent),modelBadgeHidden:badge.hidden,
+              motionCount:Number(motionCount.textContent),motionHidden:motions.hidden,modelListOwned:model.contains(list),
+              motionListOwned:motions.contains(motionList)&&document.getElementById('viewer-adjustments').contains(motions),
+              compactEmbedded:model.classList.contains('viewer-model-files-embedded'),modelHeaderHeight:summary.getBoundingClientRect().height,
+              fileActionsHeight:document.querySelector('.viewer-file-actions').getBoundingClientRect().height,badgePosition:getComputedStyle(badge).position,
+              workspaceCount:Number(workspaceBadge.textContent),workspaceCountHidden:workspaceBadge.hidden,workspaceBadgePosition:getComputedStyle(workspaceBadge).position};
+            if(JSON.stringify(files.modelPaths)!==JSON.stringify(state.paths)||JSON.stringify(files.motionPaths)!==JSON.stringify(state.motionLibraryPaths)||
+              !files.modelListOwned||!files.motionListOwned||model.contains(motionList)||files.modelCount!==state.paths.length||files.modelBadge!==state.paths.length||
+              files.modelName!==state.paths[0].split('/').pop()||files.modelCountHidden!==(state.paths.length<2)||files.modelBadgeHidden!==(state.paths.length<2)||
+              files.workspaceCount!==state.paths.length||files.workspaceCountHidden!==(state.paths.length<2)||files.workspaceBadgePosition!=='absolute'||
+              files.motionCount!==state.motionLibraryPaths.length||files.motionHidden!==!state.motionLibraryPaths.length)throw new Error('Fresh native model and motion lists must remain separate and source-bound');
+            var style=getComputedStyle(name),layout={viewport:{width:innerWidth,height:innerHeight},summary:rect(summary),name:rect(name),gear:rect(gear),
+              nameOverflow:style.overflow,nameWhiteSpace:style.whiteSpace,nameTextOverflow:style.textOverflow,
+              summaryDisplay:getComputedStyle(summary).display,embeddedInOptions:options.contains(model),badgePosition:files.badgePosition};
+            if(layout.badgePosition!=='absolute'||files.fileActionsHeight<=0)throw new Error('The compact model count must not create another flow row');
+            if(files.compactEmbedded){if(!layout.embeddedInOptions||layout.summaryDisplay!=='none')throw new Error('Compact model files must be inside model options');}
+            else if(layout.summary.width<=0||layout.summary.height<32||layout.name.width<=0||layout.name.left<layout.summary.left-1||layout.name.right>layout.summary.right+1||
+              layout.nameOverflow!=='hidden'||layout.nameWhiteSpace!=='nowrap'||layout.nameTextOverflow!=='ellipsis')throw new Error('The actual model header must stay bounded and truncate long names');
+            return JSON.stringify({status:'PASS',statePaths:state.paths,stateMotionPaths:state.motionLibraryPaths,files:files,layout:layout,
+              scope:'Actual native fresh model header, source-bound file lists and measured desktop layout; no360px native-window claim.'});
+            """)
+        try require(observed["status"] as? String == "PASS", "The actual fresh native file header must pass.")
+        report["native_file_header"] = observed
+        try checkpoint("native-file-header-source-and-layout")
     }
 
     private func editingSnapshot(_ webView: WKWebView) async throws -> [String: Any] {

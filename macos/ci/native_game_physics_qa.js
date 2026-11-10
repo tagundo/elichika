@@ -70,12 +70,13 @@
       return s.loaded && !s.loading && s.rig && s.rig.physics && s.rig.physics.nativeAvailable && document.getElementById('viewer-physics-mode');
     });
     var initial = snapshot();
-    assert(initial.physics.mode === 'game' && initial.physics.frameRate === 30 && initial.physics.nativeMissing.length === 0 && initial.controls.gameOptionEnabled && initial.physics.swingBone && initial.physics.swingCollider && initial.controls.bonesChecked && initial.controls.collidersChecked,
-      'Complete original source data must default to game mode, 30 FPS and both physics switches enabled');
+    assert(initial.physics.mode === 'game' && initial.physics.frameRate === 0 && initial.controls.frameRate === '0' && initial.physics.nativeMissing.length === 0 && initial.controls.gameOptionEnabled && initial.physics.swingBone && initial.physics.swingCollider && initial.controls.bonesChecked && initial.controls.collidersChecked,
+      'Complete original source data must default to game mode, display refresh rate and both physics switches enabled');
     document.getElementById('viewer-adjustments').open = true;
     document.querySelectorAll('.viewer-physics-region').forEach(function (region) { region.open = true; });
     var controls = { mode: usable('viewer-physics-mode'), frame: usable('viewer-physics-frame-rate') };
     await input('viewer-physics-frame-rate', '60'); assert(snapshot().physics.frameRate === 60, 'Actual 60 FPS setting must apply');
+    await input('viewer-physics-frame-rate', '0'); assert(snapshot().physics.frameRate === 0, 'Actual display refresh setting must apply');
     await input('viewer-physics-frame-rate', '30');
     var clip = 'Neutral MV scale override';
     assert(Array.prototype.some.call(document.getElementById('viewer-motion').options, function (option) { return option.value === clip; }),

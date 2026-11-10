@@ -70,6 +70,21 @@ GAME_PHYSICS_FIXTURE_SHA = "d619ef6e956d3b8557660ebbd070e8c998c0c0c82dc2fb97a875
 DETAIL_FIXTURE_SHA = "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1"
 GAZE_FIXTURE_SHA = "4058786fad837b3292bf1fdba0b9181719b7c7e9e756a705c266af146d113129"
 LIBRARY_MOTION_SHA = "b512951eaa10cc2cce1d53dca961ad3abbc5e731ce4c58a7b78ee9c4cc2ce7a9"
+PART_TARGET_SHA = "fe6f3c7749f116faad61152ee6f76978a4200e409dd5c0c577ce505a33f3a7f8"
+PART_DONOR_SHA = "de4e0e267f9435f626b0a1e7d556375f6fe2d12a7da22227ce7dbd373fd42d89"
+UPDATER_INPUTS = (("member6", "viewer_thumbnail_member_6.zip", "e60eb0fa3e6e1860bb956e70337c23908faab3f2a9c66192531b645b971538f7", 17405, 6),
+                  ("member201", "viewer_thumbnail_member_201.zip", "473fb2c5a57c95b5259ada0c3bf88eaf7db4586f8c662d4f03cfeaceb48fa969", 17421, 201))
+THUMBNAIL_ORACLE = r'''
+import json,pathlib,runpy,sys
+spec,resources,output=(pathlib.Path(value) for value in sys.argv[1:])
+assert pathlib.Path(sys.prefix).samefile(resources/'runtime/arm64/python')
+observed=json.loads(spec.read_text())
+oracle=runpy.run_path(str(resources/'qa/viewer_thumbnail_oracle.py'))
+result=json.loads(oracle['inspect_json'](spec.read_text(),str(resources/'python-app/webtools/web/static/thumbnail-sdk'),
+                                     observed['source_path'],observed['source_sha256']))
+result['private_prefix_samefile']=True;result['python_executable']=sys.executable
+output.write_text(json.dumps(result,indent=2,ensure_ascii=False)+'\n');print(json.dumps(result,ensure_ascii=False))
+'''
 DETAIL_OUTLINE_ORACLE = r'''
 #!/usr/bin/env python3
 """Independent oracle for NativeDetailQa's actual outline-only Unity export.
@@ -411,6 +426,38 @@ def prepare_detail_extended_fixtures(app, output):
             "scope": "Own neutral serialized QA inputs; no game or user models"}
 
 
+def prepare_part_fixtures(app, output):
+    records = {}
+    for key, resource, name, digest in (
+            ("target", "viewer_part_target.unity", "part-target.unity", PART_TARGET_SHA),
+            ("donor", "viewer_part_donor.unity", "part-donor.unity", PART_DONOR_SHA)):
+        source = app / "Contents/Resources/qa" / resource
+        raw = source.read_bytes()
+        require(len(raw) == 81847 and sha256(source) == digest, "The packaged neutral partial graft source changed: " + resource)
+        target = output / "native-app-data" / name
+        target.write_bytes(raw)
+        require(sha256(target) == digest, "The copied neutral partial graft source changed")
+        records[key] = {"resource": resource, "bytes": len(raw), "sha256": digest, "path": str(target)}
+    return {"status": "PASS_ORIGINAL_NEUTRAL_PART_INPUTS", "inputs": records,
+            "scope": "Own neutral serialized target/donor; no game or user models"}
+
+
+def prepare_updater_fixtures(app, output):
+    records = []
+    root = output / "native-app-data/sukusta/native-thumbnail-inputs"
+    for folder, name, digest, size, member in UPDATER_INPUTS:
+        source = app / "Contents/Resources/qa" / name
+        raw = source.read_bytes()
+        require(len(raw) == size and sha256(source) == digest, "A packaged member-specific thumbnail updater ZIP changed: " + name)
+        target = root / folder / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        require(sha256(target) == digest, "A native updater ZIP copy changed")
+        records.append({"resource": name, "path": str(target), "sha256": digest, "bytes": size, "character_id": member})
+    return {"status": "PASS_ORIGINAL_NEUTRAL_MEMBER_ZIPS", "inputs": records,
+            "scope": "Two own neutral legacy installer ZIPs in separate source folders; original comments/opaque payloads retained"}
+
+
 def _native_checks(observed, names, label):
     checks = observed.get("checks", {})
     require(observed.get("status") == "PASS" and set(checks) == set(names)
@@ -421,6 +468,251 @@ def _native_draw(observed, name="probe"):
     frame = observed[name]
     require(frame.get("ready") and frame.get("glError") == 0 and frame.get("nonBackgroundSamples", 0) >= 3,
             "Actual native WebGL must draw the inspected source")
+
+
+def check_file_lists(files, model_paths, motion_paths):
+    import math
+    import re
+    require(model_paths and files["modelPaths"] == model_paths and files["motionPaths"] == motion_paths
+            and files["modelName"] == re.split(r"[\\/]", model_paths[0])[-1]
+            and files["modelCount"] == files["modelBadge"] == len(model_paths)
+            and files["modelCountHidden"] is (len(model_paths) < 2) and files["modelBadgeHidden"] is (len(model_paths) < 2),
+            "Actual model header rows, name and counts must identify only the selected model files")
+    require(files["motionCount"] == len(motion_paths) and files["motionHidden"] is (not motion_paths)
+            and files["modelListOwned"] is True and files["motionListOwned"] is True
+            and files["workspaceCount"] == len(model_paths) and files["workspaceCountHidden"] is (len(model_paths) < 2)
+            and files["workspaceBadgePosition"] == "absolute",
+            "Imported motions must have an independent accurate count/list inside Pose")
+    require(files["badgePosition"] == "absolute" and all(math.isfinite(files[key]) and files[key] >= 0
+                for key in ("modelHeaderHeight", "fileActionsHeight")), "Actual model badge and header geometry must remain outside extra flow rows")
+
+
+def check_fresh_file_header(observed):
+    require(observed.get("status") == "PASS" and observed["stateMotionPaths"] == [], "The native fresh header must start without imported motion rows")
+    files, layout = observed["files"], observed["layout"]
+    check_file_lists(files, observed["statePaths"], observed["stateMotionPaths"])
+    require(layout["badgePosition"] == "absolute" and files["fileActionsHeight"] > 0
+            and layout["viewport"]["width"] > 0 and layout["viewport"]["height"] > 0,
+            "Actual native header controls must occupy measured layout with an absolute count badge")
+    if files["compactEmbedded"]:
+        require(layout["embeddedInOptions"] and layout["summaryDisplay"] == "none", "Compact model file rows must be embedded in model options")
+    else:
+        outer, name = layout["summary"], layout["name"]
+        require(outer["width"] > 0 and outer["height"] >= 32 and name["width"] > 0 and name["left"] >= outer["left"] - 1 and name["right"] <= outer["right"] + 1
+                and layout["nameOverflow"] == "hidden" and layout["nameWhiteSpace"] == "nowrap" and layout["nameTextOverflow"] == "ellipsis",
+                "The actual native model filename must remain bounded with the intended overflow policy")
+
+
+def check_updater_report(observed):
+    _native_checks(observed, ("selectedFilesMode", "multipleFilesOnce", "sourcePathsPreserved", "actualToolRun", "twoAutomaticRenders",
+                   "manifestRecipients", "qualityCameraTemplate", "previewReceipts", "twoCompletedOutputs", "viewerPreserved"), "Native existing-ZIP thumbnail updater")
+    require(observed["before"] == observed["after"] and observed["expectedOwners"] == [6, 201]
+            and not observed["before"]["pose"]["playing"] and observed["done"]["status"] == "done"
+            and observed["request"]["mode"] == "multi" and observed["request"]["in_paths"] == "\n".join(observed["paths"])
+            and observed["request"]["thumbnail_plan"],
+            "Actual native updater must run one completed two-ZIP job and preserve the paused source viewer")
+    selection = observed["selection"]
+    require(selection["kind"] == "native-authorized-result-adapter" and selection["before"] == []
+            and selection["after"] == observed["paths"] and len(selection["requests"]) == 1
+            and selection["requests"][0]["action"] == "openFiles" and selection["requests"][0]["options"]["multiple"] is True,
+            "Actual common native Add files must request multiple:true once and commit the two authorized ZIP paths once; OS dialog is not exercised")
+    require(len(observed["receipts"]) == len(observed["renders"]) == len(observed["rendererState"]["receipts"]) == 2
+            and not observed["rendererState"]["busy"] and observed["rendererState"]["last"]["count"] == observed["rendererState"]["last"]["total"] == 2,
+            "Both source ZIPs must finish actual automatic WebGL renders and completed updater outputs")
+    quality = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2}
+    for index, owner in enumerate((6, 201)):
+        result, rendered = observed["receipts"][index], observed["renders"][index]
+        receipt, render = rendered["receipt"], rendered["render"]
+        require(result["source_path"] == observed["paths"][index] and result["output_path"] != result["source_path"]
+                and result["character_id"] == receipt["characterId"] == owner
+                and result["thumbnail_sha256"] == receipt["sha256"] and result["cache_key"] == receipt["cacheKey"]
+                and result["profile_digest"] == receipt["profileDigest"] and receipt["quality"] == quality
+                and receipt == observed["rendererState"]["receipts"][index],
+                "Each completed updater ZIP must bind its original source, manifest recipient and actual PNG/template/cache")
+        require(render["quality"]["enabled"] is True and render["quality"]["ready"] is True and render["material"]["enabled"] is True
+                and render["subjectPixels"] > 0 and render["triangles"] > 0 and render["visibleMeshes"] > 0
+                and render["pose"] == "source-rest" and render["animation"] is False and render["camera"] == observed["profile"]["camera"]
+                and rendered["preview"]["src"] == rendered["png"] and rendered["preview"]["sha256"] == receipt["sha256"],
+                "Both real updater previews must contain source-rest SifasMaterial triangles under the SDK orthographic camera")
+    require(observed["renders"][0]["receipt"]["sha256"] != observed["renders"][1]["receipt"]["sha256"]
+            and observed["renders"][0]["receipt"]["cacheKey"] != observed["renders"][1]["receipt"]["cacheKey"],
+            "Different source ZIPs and two genuine manifest recipients must produce distinct actual PNGs and bindings")
+
+
+def inspect_updater_export(app, output, label, report):
+    observed = report.get("native_thumbnail_updater", {})
+    check_updater_report(observed)
+    root = output / "native-app-data/sukusta/native-thumbnail-inputs"
+    expected = [str(root / folder / name) for folder, name, _, _, _ in UPDATER_INPUTS]
+    require(observed["paths"] == expected and observed.get("sourcePreserved") is True
+            and observed["source_sha256"] == [digest for _, _, digest, _, _ in UPDATER_INPUTS]
+            and all(sha256(Path(path)) == record[2] for path, record in zip(expected, UPDATER_INPUTS)),
+            "Actual native updater must preserve the two independently pinned member ZIPs in separate source folders")
+    resources = app / "Contents/Resources"
+    prefix = resources / "runtime/arm64/python"
+    spec = output / f"{label}-thumbnail-updater-spec.json"
+    write_json(spec, observed)
+    code = """import pathlib,runpy,sys
+spec,resources=(pathlib.Path(value) for value in sys.argv[1:])
+assert pathlib.Path(sys.prefix).samefile(resources/'runtime/arm64/python')
+oracle=runpy.run_path(str(resources/'qa/viewer_thumbnail_updater_oracle.py'))
+print(oracle['inspect_json'](spec.read_text(),str(resources/'python-app/webtools/web/static/thumbnail-sdk')))
+"""
+    result = subprocess.run([str(prefix / "bin/python3"), "-I", "-B", "-c", code, str(spec), str(resources)],
+                            env=private_environment(resources), cwd=output, capture_output=True, text=True, timeout=60)
+    (output / f"{label}-thumbnail-updater-oracle.stdout.txt").write_text(result.stdout)
+    (output / f"{label}-thumbnail-updater-oracle.stderr.txt").write_text(result.stderr)
+    require(result.returncode == 0, "Actual updated installer ZIPs failed the independent private-runtime preservation/PNG/member/cache oracle")
+    oracle = json.loads(result.stdout)
+    require(oracle["status"] == "PASS" and len(oracle["outputs"]) == 2
+            and all(row["original_zip_unchanged"] and row["all_original_payloads_preserved"]
+                    and row["manifest_only_thumbnail_literal_changed"] and row["zip_comment_exact"]
+                    and row["actual_zip_preview_png_byte_identical"] and row["source_member_template_quality_bound"] for row in oracle["outputs"]),
+            "Each actual ZIP must preserve originals, payloads/comment and manifest bytes except the thumbnail literal while binding the exact new PNG")
+    for row in oracle["outputs"]:
+        actual = Path(row["output_path"])
+        copied = output / f"{label}-thumbnail-updated-{row['character_id']}.zip"
+        require(sha256(actual) == row["output_sha256"], "The actual updater output changed after its independent inspection")
+        shutil.copy2(actual, copied)
+        require(sha256(copied) == row["output_sha256"], "The downloadable actual updater ZIP copy changed")
+        row["evidence_zip"] = str(copied)
+    write_json(output / f"{label}-thumbnail-updater-oracle.json", oracle)
+    observed["serialized_oracle"] = oracle
+    require((output / "native-app-data/thumbnail-updater-controls.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), "Native existing-ZIP updater PNG is missing")
+
+
+def check_thumbnail_report(observed):
+    import math
+    _native_checks(observed, ("modeControl", "restoredEdits", "freshSave", "sdkCameraTemplate", "highQuality3D",
+                   "sourceRestPose", "previewReceipt", "packageThumbnail", "sourceStatePreserved", "noInstallRequested"), "Native automatic 3D thumbnail")
+    before, after, receipt, render = (observed[key] for key in ("before", "after", "receipt", "render"))
+    require(before == after and before["authoring"]["edits"] and before["sourceFingerprint"]
+            and not before["pose"]["playing"] and before["characterId"] == 6,
+            "Native automatic thumbnail saving must preserve the source, authored body and paused preview")
+    require(observed["options"] == {"characterId": 6, "reeditOriginal": True}
+            and observed["persistence"]["thumbnailMode"] == "3d" and observed["jobId"] != observed["previousJob"]
+            and not observed["persistence"]["busy"] and observed["persistence"]["status"] == "done",
+            "Actual 3D selection must save a new completed installer job after ordinary texture packaging")
+    quality = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2}
+    require(receipt["quality"] == quality and render["quality"]["enabled"] is True and render["quality"]["ready"] is True
+            and math.isfinite(render["quality"]["actualSamples"]) and render["quality"]["actualSamples"] >= 0
+            and render["material"]["enabled"] is True and render["subjectPixels"] > 0 and render["triangles"] > 0
+            and render["visibleMeshes"] > 0 and render["pose"] == "source-rest" and render["animation"] is False,
+            "Actual WKWebView high-quality source-rest rendering must expose visible SifasMaterial costume triangles")
+    pack = observed["response"]["mod_package"]
+    require(pack["installable"] is True and pack["character_id"] == receipt["characterId"] == 6
+            and pack["thumbnail"]["mode"] == "3d" and pack["thumbnail"]["sha256"] == receipt["sha256"]
+            and pack["thumbnail"]["quality"] == quality and pack["thumbnail"]["cacheKey"] == receipt["cacheKey"]
+            and pack["thumbnail"]["profileDigest"] == receipt["profileDigest"]
+            and observed["preview"]["sha256"] == receipt["sha256"]
+            and observed["preview"]["width"] == observed["preview"]["height"] == receipt["size"]
+            and 64 <= receipt["size"] <= 1024,
+            "The actual preview and authoritative ZIP must identify the same size, PNG, owner and source-bound render")
+    require(observed["installRequestsBefore"] == observed["installRequestsAfter"]
+            and not observed["response"].get("installed"), "Automatic thumbnail Save must not install a mod")
+    _native_draw(observed)
+
+
+def check_part_report(observed):
+    import math
+    _native_checks(observed, ("fullHierarchy", "multipleRoots", "exactChildExclusion", "boneSelectionUndoRedo",
+                   "trustedModelBonePick", "trustedModelFacePick", "trustedUVPaintErase", "faceSelectionUndoRedo",
+                   "sourceBoundSubmission", "actualGraftReopened", "actualGraftUndoRedo", "donorAndTargetRendered"), "Native partial graft controls")
+    selected = observed["selected"]
+    require(selected["selectedFaces"] == selected["highlightedFaces"] == [0, 5, 19]
+            and observed["request"]["triangleIndices"] == [0, 5, 19]
+            and observed["request"]["partSelectionMode"] == "triangles"
+            and observed["request"]["donorSha256"] == observed["inspected"]["donorSha256"]
+            and observed["request"]["donorSelectionFingerprint"] == observed["inspected"]["donorSelectionFingerprint"]
+            and observed["request"]["donorRenderer"] == observed["inspected"]["donorRenderer"]
+            and observed["request"]["donorMesh"] == observed["inspected"]["donorMesh"],
+            "Actual partial graft must submit the exact original donor mesh/renderer/material fingerprint and source faces")
+    require(observed["original"]["stats"]["vertices"] == 60 and observed["original"]["stats"]["triangles"] == 20
+            and observed["saved"]["stats"]["triangles"] == observed["final"]["stats"]["triangles"] == 23
+            and observed["saved"]["loadedPaths"] == observed["final"]["loadedPaths"] == [observed["outputPath"]],
+            "Actual saved graft and Redo must reopen exactly the three added source triangles")
+    pointers = [observed["bonePointer"], observed["scenePointer"], *observed["texturePointers"]]
+    events = observed["nativeEvents"]
+    require(len(pointers) == len(events) == 6 and len({row["id"] for row in events}) == 6,
+            "Actual native partial selection must send exactly six distinct native pointer strokes")
+    for pointer, native in zip(pointers, events):
+        request, event = pointer["request"], pointer["event"]
+        require(event["trusted"] is True and event["pointerType"] == "mouse" and request["id"] == native["id"]
+                and request["target"] == native["target"] and native["method"].startswith("NSWindow.sendEvent NSEvent")
+                and all(math.isfinite(event[key]) and abs(event[key] - request["point"][axis]) <= 1.1
+                        for key, axis in (("clientX", "x"), ("clientY", "y"))),
+                "Each actual WebKit donor pointer must be trusted and land on its measured source triangle/UV point")
+    donor = observed["donorProbe"]
+    require(donor["glError"] == 0 and donor["nonBackgroundSamples"] > 0 and donor["width"] > 0 and donor["height"] > 0,
+            "Actual donor WebGL must visibly draw original source triangles")
+    _native_draw(observed, "finalProbe")
+
+
+def inspect_thumbnail_export(app, output, label, report):
+    observed = report.get("native_thumbnail", {})
+    check_thumbnail_report(observed)
+    require(observed.get("sourcePreserved") is True and Path(observed["source_path"]) == output / "native-app-data/분수 의상.zip"
+            and sha256(Path(observed["source_path"])) == observed["source_sha256"], "The native automatic thumbnail must preserve its actual original ZIP")
+    resources = app / "Contents/Resources"
+    prefix = resources / "runtime/arm64/python"
+    spec = output / f"{label}-thumbnail-spec.json"
+    receipt = output / f"{label}-thumbnail-oracle.json"
+    write_json(spec, observed)
+    result = subprocess.run([str(prefix / "bin/python3"), "-I", "-B", "-c", THUMBNAIL_ORACLE,
+                             str(spec), str(resources), str(receipt)], env=private_environment(resources), cwd=output,
+                            capture_output=True, text=True, timeout=60)
+    (output / f"{label}-thumbnail-oracle.stdout.txt").write_text(result.stdout)
+    (output / f"{label}-thumbnail-oracle.stderr.txt").write_text(result.stderr)
+    require(result.returncode == 0 and receipt.is_file(), "Actual ZIP thumbnail failed the independent private-runtime PNG/source/template binding oracle")
+    oracle = json.loads(receipt.read_text())
+    require(oracle["status"] == "PASS" and oracle["actual_zip_preview_png_byte_identical"]
+            and oracle["profile_assets_independently_hashed"] and oracle["normalized_state_sources_member_template_quality_bound"],
+            "Actual PNG bytes, saved model, source hashes and source/state/member/template/quality binding must match")
+    observed["serialized_oracle"] = oracle
+    require((output / "native-app-data/thumbnail-controls.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), "Native 3D thumbnail PNG is missing")
+
+
+def inspect_part_export(app, output, label, report):
+    observed = report.get("native_part_selection", {})
+    check_part_report(observed)
+    paths = {"sourcePath": str(output / "native-app-data/part-target.unity"),
+             "donorPath": str(output / "native-app-data/part-donor.unity")}
+    require(observed["paths"] == paths and observed.get("sourcePreserved") is True
+            and observed["source_path"] == paths["sourcePath"] and observed["donor_path"] == paths["donorPath"]
+            and observed["source_sha256"] == sha256(Path(paths["sourcePath"])) == PART_TARGET_SHA
+            and observed["donor_sha256"] == sha256(Path(paths["donorPath"])) == PART_DONOR_SHA,
+            "Actual native partial graft must preserve the exact independently pinned target and donor files")
+    resources = app / "Contents/Resources"
+    prefix = resources / "runtime/arm64/python"
+    spec = output / f"{label}-part-spec.json"
+    write_json(spec, observed)
+    code = """import pathlib,runpy,sys
+spec,resources=(pathlib.Path(value) for value in sys.argv[1:])
+assert pathlib.Path(sys.prefix).samefile(resources/'runtime/arm64/python')
+oracle=runpy.run_path(str(resources/'qa/viewer_part_oracle.py'))
+print(oracle['inspect_json'](spec.read_text()))
+"""
+    result = subprocess.run([str(prefix / "bin/python3"), "-I", "-B", "-c", code, str(spec), str(resources)],
+                            env=private_environment(resources), cwd=output, capture_output=True, text=True, timeout=60)
+    (output / f"{label}-part-oracle.stdout.txt").write_text(result.stdout)
+    (output / f"{label}-part-oracle.stderr.txt").write_text(result.stderr)
+    require(result.returncode == 0, "Actual native saved partial graft failed the independent private-runtime serialized mesh oracle")
+    oracle = json.loads(result.stdout)
+    require(oracle["status"] == "PASS" and oracle["sourcePreserved"] and oracle["donorPreserved"]
+            and oracle["selectedOriginalFaces"] == [0, 5, 19] and oracle["outputVertices"] == 69 and oracle["outputTriangles"] == 23
+            and oracle["targetVerticesPreserved"] == 60 and oracle["unrelatedTargetObjectsExact"] == 49
+            and oracle["donorUVColorAndSkinExact"] and oracle["originalBindPosesExact"] and oracle["allLocalPPtrsResolve"]
+            and oracle["donorTexturesExact"] and oracle["maximumDonorPositionNormalError"] < .00002,
+            "Actual serialized partial graft must preserve every target channel and exactly add the selected donor faces/UV/color/skin")
+    actual = Path(observed["outputPath"])
+    copied = output / f"{label}-part-result.unity"
+    require(sha256(actual) == oracle["outputSha256"], "The actual partial graft changed after its independent inspection")
+    shutil.copy2(actual, copied)
+    require(sha256(copied) == oracle["outputSha256"], "The downloadable actual partial-graft copy changed")
+    oracle["evidence_model"] = str(copied)
+    write_json(output / f"{label}-part-oracle.json", oracle)
+    observed["serialized_oracle"] = oracle
+    require((output / "native-app-data/part-selection-controls.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), "Native partial-selection PNG is missing")
 
 
 def check_detail_report(observed):
@@ -476,6 +768,20 @@ def check_extended_report(observed, paths):
     _native_checks(observed, ("physicsFreshOn", "gazeOriginalPoses", "gazePausedAndReset", "poseComponentFilters",
                    "breastAutomaticLimits", "breastDisableRestoresBaseline", "precisePhysicsEditing", "motionSourceSeparation",
                    "motionReloadPreservesEdits", "importedMotionPlays", "modelChangeRetainsLibrary", "explicitClear"), "Extended native controls")
+    ui_checks = observed.get("uiChecks", {})
+    expected_ui = {"accessoryFreshOpen", "modelOnlyHeader", "motionOnlyPoseList", "modelHeaderUnchangedOnMotionImport",
+                   "modelHeaderTracksBodyChange", "modelHeaderRestored", "motionListCleared", "multipleModelCounts"}
+    require(set(ui_checks) == expected_ui and all(ui_checks[key] is True for key in expected_ui)
+            and observed["freshDefaults"]["accessoryOpen"] is True,
+            "Actual fresh accessory, source counts and model/motion UI checks must retain the eight reviewed assertions")
+    for key in ("initial", "beforeLibrary", "imported", "played", "other", "rebound", "cleared", "multiple", "final"):
+        snapshot = observed[key]
+        check_file_lists(snapshot["files"], snapshot["state"]["paths"], snapshot["state"]["motionLibraryPaths"])
+    before_files, imported_files = observed["beforeLibrary"]["files"], observed["imported"]["files"]
+    require(before_files["modelPaths"] == imported_files["modelPaths"] and before_files["modelName"] == imported_files["modelName"]
+            and before_files["modelHeaderHeight"] == imported_files["modelHeaderHeight"]
+            and before_files["fileActionsHeight"] == imported_files["fileActionsHeight"],
+            "Importing motion must preserve the actual model header and its measured height")
     initial = observed["initial"]["state"]
     require(initial["stats"]["meshes"] == 1 and initial["stats"]["vertices"] == 6 and initial["stats"]["triangles"] == 4
             and initial["rig"]["expressions"] == [] and initial["rig"]["physics"]["swingBone"]
@@ -525,6 +831,11 @@ def check_extended_report(observed, paths):
             "Changing and returning the body must retain and rebind the real motion bank")
     require(cleared["paths"] == [paths["sourcePath"]] and not cleared["motionLibraryPaths"] and not cleared["loadedMotionPaths"]
             and "Native library motion" not in cleared["rig"]["clipNames"], "Explicit clear must remove only the imported motion library")
+    multiple, final = observed["multiple"]["state"], observed["final"]["state"]
+    require(multiple["paths"] == multiple["loadedPaths"] == [paths["sourcePath"], paths["otherBodyPath"]]
+            and not multiple["motionLibraryPaths"] and not multiple["loadedMotionPaths"]
+            and final["paths"] == final["loadedPaths"] == [paths["sourcePath"]] and not final["motionLibraryPaths"],
+            "Actual two-model selection must update all three model counts and restore one model without imported motions")
     _native_draw(observed)
 
 
@@ -555,10 +866,11 @@ def check_game_physics_report(output, report):
             and observed.get("source_sha256") == GAME_PHYSICS_FIXTURE_SHA and sha256(source) == GAME_PHYSICS_FIXTURE_SHA,
             "Native game-physics smoke must bind the exact preserved input")
     initial = observed["initial"]
-    require(initial["physics"]["mode"] == "game" and initial["physics"]["frameRate"] == 30
+    require(initial["physics"]["mode"] == "game" and initial["physics"]["frameRate"] == 0
+            and initial["controls"]["frameRate"] == "0"
             and initial["physics"]["nativeAvailable"] and not initial["physics"]["nativeMissing"]
             and initial["physics"]["swingBone"] and initial["physics"]["swingCollider"],
-            "Complete source inputs must select the original game engine and normal cadence")
+            "Complete source inputs must select the original game engine and display refresh cadence")
     for key, job in (("single", "SwingBoneJob"), ("group", "SwingBoneGroupJob")):
         before, after = observed[key]["before"], observed[key]["after"]
         a, b = before["physics"]["solver"], after["physics"]["solver"]
@@ -662,8 +974,9 @@ def check_pose_body_report(report):
             "Native Tools/3D navigation must preserve the live renderer and unsaved edits")
     structure = report.get("pose_body_panel_structure", {})
     require(structure.get("poseOpen") is False and all(structure.get(key) is True for key in
-                ("bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody")),
+                ("bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody", "accessoryOpen")),
             "Actual WebKit must start Pose collapsed and expose independent pose and body controls")
+    check_fresh_file_header(report.get("native_file_header", {}))
     panels = report.get("separate_pose_body_panels", {})
     require(panels.get("status") == "PASS" and len(panels.get("toggles", [])) == 4
             and panels.get("both_restored_open") is True
@@ -736,6 +1049,9 @@ def launch(app, output, label):
     check_game_physics_report(output, report)
     inspect_detail_export(app, output, label, report)
     inspect_extended_workflow(output, report)
+    inspect_thumbnail_export(app, output, label, report)
+    inspect_part_export(app, output, label, report)
+    inspect_updater_export(app, output, label, report)
     write_json(output / f"{label}.json", report)
     for image in directory.glob("*.png"):
         shutil.copy2(image, output / f"{label}-{image.name}")
@@ -751,6 +1067,8 @@ def check(app, output, relocation):
     accessory = prepare_accessory_fixture(app, output)
     game_physics = prepare_game_physics_fixture(app, output)
     detail_extended = prepare_detail_extended_fixtures(app, output)
+    part_inputs = prepare_part_fixtures(app, output)
+    updater_inputs = prepare_updater_fixtures(app, output)
     first = launch(app, output, "first-launch")
     check_zip_edit_report(first, fixture)
     check_pose_body_report(first)
@@ -784,6 +1102,8 @@ def check(app, output, relocation):
              "accessory_input": accessory,
              "game_physics_input": game_physics,
              "detail_extended_inputs": detail_extended,
+             "part_selection_inputs": part_inputs,
+             "thumbnail_updater_inputs": updater_inputs,
              "viewer_panel_width_persisted_across_relaunch": True,
              "viewer_files_width_persisted_across_relaunch": True,
              "space_and_unicode_path": " " in str(relocation) and any(ord(char) > 127 for char in str(relocation)),

@@ -210,8 +210,8 @@ jobs:
           from pathlib import Path
           import re
           text = Path('evidence/native-instrumentation.txt').read_text()
-          # The reviewed inventory includes all five ModelViewerRigTest methods, including the new gaze/editor/library flow.
-          assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text) == ['33'] and 'FAILURES' not in text, text
+          # Preserve every prior case and add native partial graft + multi-ZIP updater cases.
+          assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text) == ['35'] and 'FAILURES' not in text, text
           PY
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls-report.json > evidence/model-viewer-outline-controls-report.json
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls.png > evidence/model-viewer-outline-controls.png
@@ -233,6 +233,7 @@ jobs:
               'nativeDefault', 'singleJobAdvanced', 'groupJobAdvanced', 'pausedDebugPreserved',
               'seekPreservedParameters', 'modeSwitchPreservedParameters', 'frameRateRestored30')), report
           assert report['initial']['physics']['swingBone'] is True and report['initial']['physics']['swingCollider'] is True, report
+          assert report['initial']['physics']['frameRate'] == 0 and report['initial']['controls']['frameRate'] == '0', report
           assert Path('evidence/model-viewer-game-physics.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
           PY
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail-report.json > evidence/model-viewer-detail-report.json
@@ -252,7 +253,93 @@ jobs:
               assert set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
               assert Path('evidence/model-viewer-' + name + '.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
           assert report['motionSourcePreserved'] is True and report['otherBodySourcePreserved'] is True
+          ui_keys = ('accessoryFreshOpen', 'modelOnlyHeader', 'motionOnlyPoseList', 'modelHeaderUnchangedOnMotionImport', 'modelHeaderTracksBodyChange', 'modelHeaderRestored', 'motionListCleared', 'multipleModelCounts')
+          assert set(report['uiChecks']) == set(ui_keys) and all(report['uiChecks'][key] is True for key in ui_keys), report
+          assert report['freshDefaults']['accessoryOpen'] is True, report
+          for snapshot in ('initial', 'beforeLibrary', 'imported', 'played', 'other', 'rebound', 'cleared', 'multiple', 'final'):
+              value = report[snapshot]
+              assert value['files']['modelPaths'] == value['state']['paths'] and value['files']['motionPaths'] == value['state']['motionLibraryPaths'], value
+              assert value['files']['modelCount'] == len(value['state']['paths']) and value['files']['motionCount'] == len(value['state']['motionLibraryPaths']), value
+              assert value['files']['modelListOwned'] is True and value['files']['motionListOwned'] is True, value
           PYQA
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection-report.json > evidence/model-viewer-part-selection-report.json
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection.png > evidence/model-viewer-part-selection.png
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-result.unity > evidence/model-viewer-part-result.unity
+          python3 - <<'PYPART'
+          from pathlib import Path
+          import hashlib, json
+          report = json.loads(Path('evidence/model-viewer-part-selection-report.json').read_text())
+          keys = ('fullHierarchy', 'multipleRoots', 'exactChildExclusion', 'boneSelectionUndoRedo', 'trustedModelBonePick', 'trustedModelFacePick', 'trustedUVPaintErase', 'faceSelectionUndoRedo', 'sourceBoundSubmission', 'actualGraftReopened', 'actualGraftUndoRedo', 'donorAndTargetRendered')
+          assert report['status'] == 'PASS' and set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
+          assert report['sourcePreserved'] is True and report['donorPreserved'] is True, report
+          assert report['selected']['selectedFaces'] == report['request']['triangleIndices'] == [0, 5, 19], report
+          assert report['serialized']['status'] == 'PASS' and report['serialized']['outputVertices'] == 69 and report['serialized']['outputTriangles'] == 23, report
+          assert report['serialized']['targetVerticesPreserved'] == 60 and report['serialized']['unrelatedTargetObjectsExact'] == 49, report
+          assert all(report['serialized'][key] is True for key in ('donorUVColorAndSkinExact', 'originalBindPosesExact', 'allLocalPPtrsResolve', 'donorTexturesExact')), report
+          assert len(report['nativeInputs']) == 6 and len({row['id'] for row in report['nativeInputs']}) == 6, report
+          assert all(row['event']['trusted'] is True for row in [report['bonePointer'], report['scenePointer']] + report['texturePointers']), report
+          assert Path('evidence/model-viewer-part-selection.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+          assert hashlib.sha256(Path('evidence/model-viewer-part-result.unity').read_bytes()).hexdigest() == report['serialized']['outputSha256'], report
+          PYPART
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-report.json > evidence/model-viewer-thumbnail-report.json
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail.png > evidence/model-viewer-thumbnail.png
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-controls.png > evidence/model-viewer-thumbnail-controls.png
+          python3 - <<'PYTHUMB'
+          from pathlib import Path
+          import hashlib, json, struct
+          report = json.loads(Path('evidence/model-viewer-thumbnail-report.json').read_text())
+          keys = ('modeControl', 'restoredEdits', 'freshSave', 'sdkCameraTemplate', 'highQuality3D', 'sourceRestPose', 'previewReceipt', 'packageThumbnail', 'sourceStatePreserved', 'noInstallRequested')
+          assert report['status'] == 'PASS' and report['sourcePreserved'] is True, report
+          assert set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
+          inspected = report['serialized']
+          assert inspected['status'] == 'PASS' and all(inspected[key] is True for key in ('actual_zip_preview_png_byte_identical', 'source_files_unchanged', 'source_recipe_hashes_match', 'saved_model_bytes_match', 'profile_assets_independently_hashed', 'normalized_state_sources_member_template_quality_bound', 'safe_installer_structure')), report
+          png = Path('evidence/model-viewer-thumbnail.png').read_bytes()
+          assert png.startswith(b'\x89PNG\r\n\x1a\n') and len(png) == report['receipt']['bytes'], report
+          assert struct.unpack('>II', png[16:24]) == (report['receipt']['size'],) * 2, report
+          assert hashlib.sha256(png).hexdigest() == report['receipt']['sha256'] == inspected['png_sha256'], report
+          assert Path('evidence/model-viewer-thumbnail-controls.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+          PYTHUMB
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater-report.json > evidence/model-viewer-thumbnail-updater-report.json
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater.png > evidence/model-viewer-thumbnail-updater.png
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-6.zip > evidence/model-viewer-thumbnail-updated-6.zip
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-201.zip > evidence/model-viewer-thumbnail-updated-201.zip
+          python3 - <<'PYUPDATER'
+          from pathlib import Path
+          import ast, hashlib, json, zipfile
+          report = json.loads(Path('evidence/model-viewer-thumbnail-updater-report.json').read_text())
+          keys = ('selectedFilesMode', 'multipleFilesOnce', 'sourcePathsPreserved', 'actualToolRun', 'twoAutomaticRenders', 'manifestRecipients', 'qualityCameraTemplate', 'previewReceipts', 'twoCompletedOutputs', 'viewerPreserved')
+          assert report['status'] == 'PASS' and report['sourcePreserved'] is True and report['viewerSourcePreserved'] is True, report
+          assert set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
+          assert report['selection']['kind'] == 'browser-checkbox-picker' and report['selection']['commits'] == 1 and len(report['selection']['observations']) == 2, report
+          assert report['serialized']['status'] == 'PASS' and len(report['serialized']['outputs']) == len(report['renders']) == len(report['receipts']) == 2, report
+          def manifest(raw):
+              values = {}; literal = None; lines = raw.splitlines(keepends=True)
+              for node in ast.parse(raw.decode('utf-8')).body:
+                  assert isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                  key = node.targets[0].id; assert key not in values; values[key] = ast.literal_eval(node.value)
+                  if key == 'thumbnail_file':
+                      start = sum(map(len, lines[:node.value.lineno - 1])) + node.value.col_offset
+                      end = sum(map(len, lines[:node.value.end_lineno - 1])) + node.value.end_col_offset
+                      literal = raw[:start] + b'__THUMBNAIL_LITERAL__' + raw[end:]
+              assert literal is not None
+              return values, literal
+          for index, member in enumerate((6, 201)):
+              observed = report['serialized']['outputs'][index]; receipt = report['receipts'][index]
+              assert observed['character_id'] == receipt['character_id'] == member, report
+              assert all(observed[key] is True for key in ('original_zip_unchanged', 'all_original_payloads_preserved', 'manifest_only_thumbnail_literal_changed', 'zip_comment_exact', 'actual_zip_preview_png_byte_identical', 'source_member_template_quality_bound')), observed
+              path = Path('evidence/model-viewer-thumbnail-updated-' + str(member) + '.zip')
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == observed['output_sha256'] == receipt['sha256']
+              source = Path('android/app/src/androidTest/assets/viewer_thumbnail_member_' + str(member) + '.zip')
+              with zipfile.ZipFile(source) as old, zipfile.ZipFile(path) as new:
+                  assert new.testzip() is None and old.comment == new.comment and old.comment
+                  old_values, old_mask = manifest(old.read('modinstall.txt')); new_values, new_mask = manifest(new.read('modinstall.txt'))
+                  assert old_mask == new_mask and old_values['chara_id'] == new_values['chara_id'] == member
+                  assert new.namelist()[:len(old.namelist())] == old.namelist()
+                  assert [name for name in new.namelist() if name not in old.namelist()] == [receipt['thumbnail_member']]
+                  assert all(new.read(name) == old.read(name) for name in old.namelist() if name != 'modinstall.txt')
+                  assert hashlib.sha256(new.read(receipt['thumbnail_member'])).hexdigest() == receipt['thumbnail_sha256'] == report['renders'][index]['receipt']['sha256']
+          assert Path('evidence/model-viewer-thumbnail-updater.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+          PYUPDATER
 
       - name: Verify and measure mod-preserving parallel merges in the signed APK
         if: ${{ !inputs.focused_header_diagnostic }}
@@ -412,6 +499,16 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail.png > evidence/model-viewer-detail.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended-report.json > evidence/model-viewer-extended-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended.png > evidence/model-viewer-extended.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection-report.json > evidence/model-viewer-part-selection-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection.png > evidence/model-viewer-part-selection.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-result.unity > evidence/model-viewer-part-result.unity 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-report.json > evidence/model-viewer-thumbnail-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail.png > evidence/model-viewer-thumbnail.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-controls.png > evidence/model-viewer-thumbnail-controls.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater-report.json > evidence/model-viewer-thumbnail-updater-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater.png > evidence/model-viewer-thumbnail-updater.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-6.zip > evidence/model-viewer-thumbnail-updated-6.zip 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-201.zip > evidence/model-viewer-thumbnail-updated-201.zip 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader.png > evidence/model-viewer-shader.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-report.json > evidence/model-viewer-rig-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-resume-geometry.json > evidence/model-viewer-rig-resume-geometry.json 2>/dev/null || true

@@ -22,7 +22,36 @@
   async function input(id, value, event) { var target = usable(id); target.value = String(value); target.dispatchEvent(new Event(event || 'input', { bubbles: true })); await settle(); }
   async function click(id) { usable(id).click(); await settle(); }
   function state() { return clone(ModelViewer.getState()); }
-  function snapshot() { return { state: state(), authoring: clone(ModelViewer.getAuthoringState()), catalogue: clone(ModelViewer.getEditingMetadata().physics) }; }
+  function fileLists() {
+    var observed = state(), model = document.getElementById('viewer-model-files'), motions = document.getElementById('viewer-motion-files');
+    var list = document.getElementById('viewer-file-list'), motionList = document.getElementById('viewer-motion-file-list');
+    var name = document.getElementById('viewer-model-file-name'), count = document.getElementById('viewer-model-file-count');
+    var badge = document.getElementById('viewer-model-options-count'), motionCount = document.getElementById('viewer-motion-file-count');
+    var workspaceBadge = document.getElementById('viewer-workspace-model-count');
+    assert(model && motions && list && motionList && name && count && badge && motionCount && workspaceBadge, 'Model and motion files require separate actual controls');
+    var modelPaths = Array.prototype.map.call(list.querySelectorAll('li > span'), function (row) { return row.title; });
+    var motionPaths = Array.prototype.map.call(motionList.querySelectorAll('li > span'), function (row) { return row.title; });
+    var result = { modelPaths: modelPaths, motionPaths: motionPaths, modelName: name.textContent,
+      modelCount: Number(count.textContent), modelCountHidden: count.hidden, modelBadge: Number(badge.textContent), modelBadgeHidden: badge.hidden,
+      motionCount: Number(motionCount.textContent), motionHidden: motions.hidden, modelListOwned: model.contains(list),
+      motionListOwned: motions.contains(motionList) && document.getElementById('viewer-adjustments').contains(motions),
+      compactEmbedded: model.classList.contains('viewer-model-files-embedded'),
+      modelHeaderHeight: model.querySelector('summary').getBoundingClientRect().height,
+      fileActionsHeight: document.querySelector('.viewer-file-actions').getBoundingClientRect().height,
+      badgePosition: getComputedStyle(badge).position, workspaceCount: Number(workspaceBadge.textContent), workspaceCountHidden: workspaceBadge.hidden,
+      workspaceBadgePosition: getComputedStyle(workspaceBadge).position };
+    assert(equal(modelPaths, observed.paths) && equal(motionPaths, observed.motionLibraryPaths), 'Visible file rows must identify exact selected model paths and retained motion paths separately');
+    assert(result.modelListOwned && result.motionListOwned && !model.contains(motionList), 'Imported motion filenames belong only to the Pose/Motion list');
+    assert(result.modelName === observed.paths[0].split(/[\\/]/).pop() && result.modelCount === observed.paths.length && result.modelBadge === observed.paths.length,
+      'The model header name, total count and compact badge must describe selected model files only');
+    assert(result.modelCountHidden === (observed.paths.length < 2) && result.modelBadgeHidden === (observed.paths.length < 2), 'Multiple model files must have an accurate header and compact options count');
+    assert(result.workspaceCount === observed.paths.length && result.workspaceCountHidden === (observed.paths.length < 2) && result.workspaceBadgePosition === 'absolute',
+      'The Workspace drawer count must indicate additional model files without counting imported motions');
+    assert(result.motionCount === observed.motionLibraryPaths.length && result.motionHidden === !observed.motionLibraryPaths.length,
+      'The separate imported motion list must expose its exact count and disappear after clear');
+    return result;
+  }
+  function snapshot() { return { state: state(), authoring: clone(ModelViewer.getAuthoringState()), catalogue: clone(ModelViewer.getEditingMetadata().physics), files: fileLists() }; }
   function eyeVectors(observed) { return observed.rig.bones.filter(function (bone) { return /(?:^|\/)(?:Left|Right)Eye[12]$/.test(bone.name); }).map(function (bone) { return { node: bone.node, position: bone.position, quaternion: bone.quaternion, scale: bone.scale }; }); }
   function values(record) {
     var result = clone(record.values), prefix = '[data-physics-component=' + JSON.stringify(record.id) + ']';
@@ -31,13 +60,17 @@
       else result[field.dataset.physicsField][Number(field.dataset.physicsAxis)] = Number(field.value);
     }); return result;
   }
-  async function open(path) {
-    var old = ModelViewer.getState().modelId; await openModelViewer([path]);
+  async function openPaths(paths) {
+    var old = ModelViewer.getState().modelId; await openModelViewer(paths);
     await until('the newly opened source model', function () { var s = ModelViewer.getState(); return s.loaded && !s.loading && s.modelId !== old; }); await settle();
   }
+  async function open(path) { return openPaths([path]); }
   async function run(paths) {
     assert(paths && paths.sourcePath && paths.motionPath && paths.otherBodyPath, 'Three explicit authorized source paths are required');
     var initial = snapshot(), catalogue = ModelViewer.getEditingMetadata().physics;
+    var accessory = document.getElementById('viewer-accessory-card');
+    assert(accessory && accessory.open, 'The accessory panel must be open on a fresh model before any helper exposes controls');
+    var freshDefaults = { accessoryOpen: accessory.open };
     assert(initial.state.stats.meshes === 1 && initial.state.stats.vertices === 6 && initial.state.stats.triangles === 4 && initial.state.rig.expressions.length === 0,
       'The new neutral fixture must retain the original ribbon and zero-morph contract');
     assert(initial.state.rig.physics.swingBone && initial.state.rig.physics.swingCollider && document.getElementById('viewer-physics-bones').checked && document.getElementById('viewer-physics-colliders').checked, 'Both physics switches must be enabled on a fresh model');
@@ -82,8 +115,12 @@
     await input('viewer-save-method', 'node', 'change');
     await input('viewer-gaze-mode', 'direction', 'change'); await input('viewer-gaze-horizontal-number', '40');
     var beforeLibrary = snapshot();
-    await ModelViewer.addMotion([paths.motionPath]); await until('the imported motion bank', function () { var s = ModelViewer.getState(); return s.loaded && !s.loading && s.rig.clipNames.indexOf('Native library motion') >= 0; });
+    await ModelViewer.addMotion([paths.motionPath]); await until('the imported motion bank', function () { var s = ModelViewer.getState(); return s.loaded && !s.loading && s.rig.clipNames.indexOf('Native library motion') >= 0; }); await settle();
     var imported = snapshot();
+    assert(equal(imported.files.modelPaths, beforeLibrary.files.modelPaths) && imported.files.modelName === beforeLibrary.files.modelName && imported.files.modelCount === beforeLibrary.files.modelCount,
+      'Importing a motion must not rename or add rows to the model header');
+    assert(imported.files.modelHeaderHeight === beforeLibrary.files.modelHeaderHeight && imported.files.fileActionsHeight === beforeLibrary.files.fileActionsHeight && imported.files.badgePosition === 'absolute',
+      'The separate motion list and compact model-count badge must not add header height');
     assert(equal(imported.state.paths, [paths.sourcePath]) && equal(imported.state.loadedPaths, [paths.sourcePath]) && equal(imported.state.motionLibraryPaths, [paths.motionPath]) && equal(imported.state.loadedMotionPaths, [paths.motionPath]),
       'The imported animation bank must remain separate from model/editing sources');
     assert(equal(imported.authoring, beforeLibrary.authoring) && equal(imported.state.rig.expressionPanel.gaze, beforeLibrary.state.rig.expressionPanel.gaze),
@@ -98,15 +135,23 @@
     assert(rebound.state.rig.expressionPanel.gaze.available && rebound.state.rig.clipNames.indexOf('Native library motion') >= 0 && equal(rebound.state.loadedMotionPaths, [paths.motionPath]),
       'Returning to the source must rebind the retained motion and genuine gaze poses');
     await click('viewer-clear-motion-library');
-    await until('the explicit motion-library clear', function () { var s = ModelViewer.getState(); return !s.loading && !s.motionLibraryPaths.length && !s.loadedMotionPaths.length && s.rig.clipNames.indexOf('Native library motion') < 0; });
-    var cleared = snapshot(), probe = ModelViewer.renderProbe(33);
+    await until('the explicit motion-library clear', function () { var s = ModelViewer.getState(); return !s.loading && !s.motionLibraryPaths.length && !s.loadedMotionPaths.length && s.rig.clipNames.indexOf('Native library motion') < 0; }); await settle();
+    var cleared = snapshot();
+    await openPaths([paths.sourcePath, paths.otherBodyPath]); var multiple = snapshot();
+    assert(equal(multiple.files.modelPaths, [paths.sourcePath, paths.otherBodyPath]) && multiple.files.modelCount === 2 && !multiple.files.modelCountHidden &&
+      multiple.files.modelBadge === 2 && !multiple.files.modelBadgeHidden && multiple.files.workspaceCount === 2 && !multiple.files.workspaceCountHidden && !multiple.files.motionPaths.length,
+      'Two genuine selected models must be visible in the header, compact options and Workspace counts independently of cleared motions');
+    await open(paths.sourcePath); var final = snapshot(), probe = ModelViewer.renderProbe(33);
     assert(probe.ready && probe.glError === 0 && probe.nonBackgroundSamples >= 3, 'Actual native WebGL must still draw the source after all reloads');
     return { status: 'PASS', checks: { physicsFreshOn: true, gazeOriginalPoses: true, gazePausedAndReset: true, poseComponentFilters: true,
       breastAutomaticLimits: true, breastDisableRestoresBaseline: true, precisePhysicsEditing: true, motionSourceSeparation: true,
       motionReloadPreservesEdits: true, importedMotionPlays: true, modelChangeRetainsLibrary: true, explicitClear: true },
+      uiChecks: { accessoryFreshOpen: true, modelOnlyHeader: true, motionOnlyPoseList: true, modelHeaderUnchangedOnMotionImport: true,
+        modelHeaderTracksBodyChange: true, modelHeaderRestored: true, motionListCleared: true, multipleModelCounts: true },
+      freshDefaults: freshDefaults,
       paths: clone(paths), initial: initial, gaze: { front: front, directed: directed, returned: returned, camera: cameraGaze },
       breast: { record: breast, baseline: base, preset: preset, automatic: automated, limits: limits },
-      beforeLibrary: beforeLibrary, imported: imported, played: played, other: other, rebound: rebound, cleared: cleared, probe: probe,
+      beforeLibrary: beforeLibrary, imported: imported, played: played, other: other, rebound: rebound, cleared: cleared, multiple: multiple, final: final, probe: probe,
       scope: 'Actual native controls/Save-independent authoring, source pose transforms and retained motion playback. Neutral eye joints are auxiliary and zero-weight; no visible pupil or whole-game parity claim.' };
   }
   window.NativeExtendedQa = { run: run };

@@ -7,6 +7,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Environment
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -212,6 +215,207 @@ class ViewerPersistenceTest {
             source.delete()
             preferences.edit().apply { if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide") }.commit()
         }
+    }
+
+    @Test
+    fun partialCostumeHierarchyAndNativeModelUVSelectionSaveExactSourceFaces() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val assets = instrumentation.context.assets
+        val targetBytes = assets.open("viewer_part_target.unity").use { it.readBytes() }
+        val donorBytes = assets.open("viewer_part_donor.unity").use { it.readBytes() }
+        assertEquals("fe6f3c7749f116faad61152ee6f76978a4200e409dd5c0c577ce505a33f3a7f8", sha256(targetBytes))
+        assertEquals("de4e0e267f9435f626b0a1e7d556375f6fe2d12a7da22227ce7dbd373fd42d89", sha256(donorBytes))
+        val source = File(context.filesDir, "viewer-part-target-${System.nanoTime()}.unity")
+        val donor = File(context.filesDir, "viewer-part-donor-${System.nanoTime()}.unity")
+        val preferences = context.getSharedPreferences("elichika", Context.MODE_PRIVATE)
+        val hadGuide = preferences.contains("seen_guide")
+        val seenGuide = preferences.getBoolean("seen_guide", false)
+        var activity: MainActivity? = null
+        var browser: WebView? = null
+        try {
+            grantPermissions(context)
+            assertGameStopped()
+            File(context.cacheDir, "model-viewer-part-selection-report.json").delete()
+            File(context.cacheDir, "model-viewer-part-selection.png").delete()
+            source.writeBytes(targetBytes); donor.writeBytes(donorBytes)
+            preferences.edit().putBoolean("seen_guide", true).commit()
+            val launched = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+            activity = launched
+            instrumentation.runOnMainSync { NativeTabsQa.tab(launched, MainActivity.TAB_MODEL_VIEWER).select() }
+            val webView = waitForWebView(launched)
+            browser = webView
+            waitForDom(webView, "the actual partial graft interface") {
+                "return JSON.stringify({ok:typeof openModelViewer==='function'&&!!window.THREE&&!!window.ModelViewer&&!!document.getElementById('viewer-part-transplant')});"
+            }
+            run(webView, assets.open("viewer_rig_qa.js").bufferedReader().use { it.readText() })
+            run(webView, "document.getElementById('viewer-auto-face').checked=false;openModelViewer([" + JSONObject.quote(source.absolutePath) + "]);")
+            waitForDom(webView, "the original serialized 60-vertex target and framebuffer") {
+                "var s=ModelViewer.getState(),p=s.loaded?ModelViewer.renderProbe(33):{ready:false};return JSON.stringify({ok:s.loaded&&!s.loading&&" +
+                    "s.stats.meshes===1&&s.stats.vertices===60&&s.stats.triangles===20&&s.stats.textures===1&&" +
+                    "p.ready&&p.nonBackgroundSamples>0&&p.glError===0,error:s.error,state:s,probe:p});"
+            }
+            run(webView, "if(ModelViewer.getState().layout.expanded)document.getElementById('viewer-expand').click();")
+            val paths = JSONObject().put("sourcePath", source.absolutePath).put("donorPath", donor.absolutePath)
+            val helper = assets.open("viewer_part_selection_qa.js").bufferedReader().use { it.readText() }
+            run(webView, helper + ";window.__nativePartQa={pending:true};NativePartQa.run(" + paths.toString() + ")" +
+                ".then(function(result){window.__nativePartQa={pending:false,result:result};},function(error){window.__nativePartQa={pending:false,error:String(error.stack||error)};});")
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(300)
+            var lastPointer = -1
+            var completed: JSONObject? = null
+            val inputs = JSONArray()
+            while (System.nanoTime() < deadline) {
+                val observation = evaluate(webView, "return JSON.stringify({test:window.__nativePartQa,pointer:window.__nativePartPointer||null});")
+                val test = observation.getJSONObject("test")
+                if (test.optString("error").isNotEmpty()) throw AssertionError(test.getString("error"))
+                if (!test.getBoolean("pending")) { completed = test.getJSONObject("result"); break }
+                val pointer = observation.optJSONObject("pointer")
+                if (pointer != null && pointer.optBoolean("pending") && pointer.getInt("id") != lastPointer) {
+                    lastPointer = pointer.getInt("id")
+                    inputs.put(sendPartPointer(webView, pointer))
+                }
+                Thread.sleep(30)
+            }
+            val report = completed ?: throw AssertionError("The actual native partial graft flow did not complete")
+            assertEquals("PASS", report.getString("status"))
+            val checks = report.getJSONObject("checks")
+            assertEquals(12, checks.length())
+            for (key in listOf("fullHierarchy", "multipleRoots", "exactChildExclusion", "boneSelectionUndoRedo", "trustedModelBonePick", "trustedModelFacePick", "trustedUVPaintErase", "faceSelectionUndoRedo", "sourceBoundSubmission", "actualGraftReopened", "actualGraftUndoRedo", "donorAndTargetRendered")) assertTrue(key, checks.getBoolean(key))
+            assertEquals("Every actual native pointer request must be exercised once", 6, inputs.length())
+            val python = EmbeddedPython.instance(context)
+            val module = python.getModule("types").callAttr("ModuleType", "_viewer_part_selection_native_oracle")
+            val oracle = assets.open("viewer_part_oracle.py").bufferedReader().use { it.readText() }
+            python.getModule("builtins").callAttr("exec", oracle, module.get("__dict__"))
+            val inspected = JSONObject(module.callAttr("inspect_json", report.toString()).toString())
+            assertEquals("PASS", inspected.getString("status"))
+            assertTrue(source.readBytes().contentEquals(targetBytes) && donor.readBytes().contentEquals(donorBytes))
+            report.put("serialized", inspected).put("nativeInputs", inputs).put("sourcePreserved", true).put("donorPreserved", true)
+            File(report.getString("outputPath")).copyTo(File(context.cacheDir, "model-viewer-part-result.unity"), overwrite = true)
+            File(context.cacheDir, "model-viewer-part-selection-report.json").writeText(report.toString(2))
+            instrumentation.waitForIdleSync()
+            val image = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("The native partial graft result must produce a screenshot")
+            try { File(context.cacheDir, "model-viewer-part-selection.png").outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+            finally { image.recycle() }
+            assertGameStopped()
+            println("MODEL_VIEWER_PART_SELECTION_REPORT=$report")
+        } finally {
+            browser?.let { runCatching { run(it, "if(window.ViewerRigQa)ViewerRigQa.dispose();") } }
+            instrumentation.runOnMainSync { activity?.finish() }
+            source.delete(); donor.delete()
+            preferences.edit().apply { if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide") }.commit()
+        }
+    }
+
+    @Test
+    fun existingModZIPsUseOneMultiPickerAndPreservePayloadsWhenReplacing3DThumbnails() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val assets = instrumentation.context.assets
+        val root = File(context.filesDir, "thumbnail-updater-native-${System.nanoTime()}")
+        val source = File(root, "source.unity")
+        val fixtures = listOf(
+            Triple("viewer_thumbnail_member_6.zip", "e60eb0fa3e6e1860bb956e70337c23908faab3f2a9c66192531b645b971538f7", "member6"),
+            Triple("viewer_thumbnail_member_201.zip", "473fb2c5a57c95b5259ada0c3bf88eaf7db4586f8c662d4f03cfeaceb48fa969", "member201")
+        )
+        val preferences = context.getSharedPreferences("elichika", Context.MODE_PRIVATE)
+        val hadGuide = preferences.contains("seen_guide")
+        val seenGuide = preferences.getBoolean("seen_guide", false)
+        var activity: MainActivity? = null
+        var browser: WebView? = null
+        try {
+            grantPermissions(context)
+            assertGameStopped()
+            root.mkdirs()
+            for (name in listOf("model-viewer-thumbnail-updater-report.json", "model-viewer-thumbnail-updater.png", "model-viewer-thumbnail-updated-6.zip", "model-viewer-thumbnail-updated-201.zip")) File(context.cacheDir, name).delete()
+            val neutral = assets.open("viewer_persistence.unity").use { it.readBytes() }
+            assertEquals("0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1", sha256(neutral))
+            source.writeBytes(neutral)
+            val paths = JSONArray()
+            val originals = fixtures.map { (asset, expected, folder) ->
+                val bytes = assets.open(asset).use { it.readBytes() }
+                assertEquals(expected, sha256(bytes))
+                val path = File(root, "$folder/$asset"); path.parentFile!!.mkdirs(); path.writeBytes(bytes)
+                paths.put(path.absolutePath)
+                path to bytes
+            }
+            val output = File(root, "outputs"); output.mkdirs()
+            preferences.edit().putBoolean("seen_guide", true).commit()
+            val launched = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+            activity = launched
+            instrumentation.runOnMainSync { NativeTabsQa.tab(launched, MainActivity.TAB_MODEL_VIEWER).select() }
+            val webView = waitForWebView(launched)
+            browser = webView
+            waitForDom(webView, "the actual packaged existing-ZIP thumbnail tool") {
+                "return JSON.stringify({ok:typeof openModelViewer==='function'&&!!window.ViewerThumbnails&&typeof ViewerThumbnails.prepareUpdater==='function'&&" +
+                    "!!document.querySelector('#tool-list button[data-id=\"costume_thumbnail_replace\"]')});"
+            }
+            run(webView, assets.open("viewer_rig_qa.js").bufferedReader().use { it.readText() })
+            run(webView, "document.getElementById('viewer-auto-face').checked=false;")
+            open(webView, source.absolutePath)
+            val options = JSONObject().put("paths", paths).put("outDirectory", output.absolutePath).put("expectedOwners", JSONArray().put(6).put(201))
+            val helper = assets.open("viewer_thumbnail_updater_qa.js").bufferedReader().use { it.readText() }
+            run(webView, helper + ";window.__nativeUpdaterQa={pending:true};NativeThumbnailUpdaterQa.run(" + options.toString() + ")" +
+                ".then(function(result){window.__nativeUpdaterQa={pending:false,result:result};},function(error){window.__nativeUpdaterQa={pending:false,error:String(error.stack||error)};});")
+            val report = waitForDom(webView, "one actual multi-picker and two source-bound 3D ZIP replacements", 360) {
+                "var q=window.__nativeUpdaterQa;return JSON.stringify({ok:q&&!q.pending&&!q.error,error:q&&q.error||'',result:q&&q.result});"
+            }.getJSONObject("result")
+            assertEquals("PASS", report.getString("status"))
+            val checks = report.getJSONObject("checks")
+            assertEquals(10, checks.length())
+            for (key in listOf("selectedFilesMode", "multipleFilesOnce", "sourcePathsPreserved", "actualToolRun", "twoAutomaticRenders", "manifestRecipients", "qualityCameraTemplate", "previewReceipts", "twoCompletedOutputs", "viewerPreserved")) assertTrue(key, checks.getBoolean(key))
+            assertEquals("The actual Android checkbox picker must be exercised", "browser-checkbox-picker", report.getJSONObject("selection").getString("kind"))
+            val python = EmbeddedPython.instance(context)
+            val module = python.getModule("types").callAttr("ModuleType", "_viewer_thumbnail_updater_native_oracle")
+            python.getModule("builtins").callAttr("exec", assets.open("viewer_thumbnail_updater_oracle.py").bufferedReader().use { it.readText() }, module.get("__dict__"))
+            val sdk = python.getModule("webtools.core.viewer_thumbnails").get("_ASSETS").toString()
+            val inspected = JSONObject(module.callAttr("inspect_json", report.toString(), sdk).toString())
+            assertEquals("PASS", inspected.getString("status"))
+            assertEquals(2, inspected.getJSONArray("outputs").length())
+            for (index in originals.indices) {
+                assertTrue("Every updater input ZIP must remain byte-identical", originals[index].first.readBytes().contentEquals(originals[index].second))
+                val receipt = report.getJSONArray("receipts").getJSONObject(index)
+                val member = receipt.getInt("character_id")
+                File(receipt.getString("output_path")).copyTo(File(context.cacheDir, "model-viewer-thumbnail-updated-$member.zip"), overwrite = true)
+            }
+            assertTrue("The unrelated existing preview source must remain immutable", source.readBytes().contentEquals(neutral))
+            report.put("serialized", inspected).put("sourcePreserved", true).put("viewerSourcePreserved", true)
+            File(context.cacheDir, "model-viewer-thumbnail-updater-report.json").writeText(report.toString(2))
+            instrumentation.waitForIdleSync()
+            val image = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("The actual updater UI must produce a screenshot")
+            try { File(context.cacheDir, "model-viewer-thumbnail-updater.png").outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+            finally { image.recycle() }
+            assertGameStopped()
+            println("MODEL_VIEWER_THUMBNAIL_UPDATER_REPORT=$report")
+        } finally {
+            browser?.let { runCatching { run(it, "if(window.ViewerRigQa)ViewerRigQa.dispose();") } }
+            instrumentation.runOnMainSync { activity?.finish() }
+            root.deleteRecursively()
+            preferences.edit().apply { if (hadGuide) putBoolean("seen_guide", seenGuide) else remove("seen_guide") }.commit()
+        }
+    }
+
+    private fun sendPartPointer(webView: WebView, request: JSONObject): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val width = request.getJSONObject("viewport").getDouble("width")
+        val point = request.getJSONObject("point")
+        val location = IntArray(2)
+        var nativeWidth = 0
+        instrumentation.runOnMainSync { webView.getLocationOnScreen(location); nativeWidth = webView.width; webView.requestFocus() }
+        assertTrue(width > 0 && nativeWidth > 0)
+        val scale = nativeWidth / width
+        val x = (location[0] + point.getDouble("x") * scale).toFloat()
+        val y = (location[1] + point.getDouble("y") * scale).toFloat()
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
+        val up = MotionEvent.obtain(downTime, downTime + 60, MotionEvent.ACTION_UP, x, y, 0)
+        try {
+            down.source = InputDevice.SOURCE_TOUCHSCREEN; up.source = InputDevice.SOURCE_TOUCHSCREEN
+            instrumentation.sendPointerSync(down); SystemClock.sleep(60); instrumentation.sendPointerSync(up)
+        } finally { down.recycle(); up.recycle() }
+        instrumentation.waitForIdleSync()
+        return JSONObject().put("id", request.getInt("id")).put("target", request.getString("target"))
+            .put("css", point).put("viewportWidth", width).put("webViewWidth", nativeWidth).put("scale", scale)
+            .put("screenX", x.toDouble()).put("screenY", y.toDouble()).put("source", "Instrumentation.sendPointerSync/SOURCE_TOUCHSCREEN")
     }
 
     private fun exerciseNativeAssetNavigation(activity: MainActivity, webView: WebView, authoring: JSONObject): JSONObject {
@@ -726,6 +930,10 @@ class ViewerPersistenceTest {
         assertEquals("6", form.getString("owner"))
         assertEquals(name, form.getString("name"))
         assertTrue(form.getBoolean("manual"))
+        showModField(webView, "viewer-mod-thumbnail-mode")
+        input(webView, "viewer-mod-thumbnail-mode", "texture", "change")
+        assertEquals("The original ordinary package check must keep its texture thumbnail path", "texture",
+            evaluate(webView, "return JSON.stringify(ModelViewer.getState().persistence);").getString("thumbnailMode"))
         val clicked = clickVisible(webView, "viewer-save-mod")
         assertTrue("The real package action must immediately disable duplicate requests",
             clicked.getBoolean("disabled") && clicked.getJSONObject("state").getJSONObject("persistence").getBoolean("busy"))
@@ -767,6 +975,9 @@ class ViewerPersistenceTest {
         python.getModule("builtins").callAttr("exec", packageInspectionScript, module.get("__dict__"))
         val inspected = JSONObject(module.callAttr("inspect_json", spec.toString()).toString())
         assertTrue(inspected.getBoolean("safeInstallerArchive"))
+        // Preserve the ordinary texture package oracle, then exercise a second
+        // real save with source-bound automatic 3D rendering and PNG output.
+        val automaticThumbnail = exerciseAutomaticThumbnail(context, webView, source, sourceBytes)
         // Open the installer ZIP itself, then compare its actual serialized skin
         // with the original intended hybrid result using the existing threshold.
         open(webView, packageFile.absolutePath)
@@ -778,8 +989,47 @@ class ViewerPersistenceTest {
         assertGameStopped()
         return JSONObject().put("displayName", name).put("explicitOwner", 6).put("ownerControl", ownerControl)
             .put("nameControl", nameControl).put("inspection", inspected).put("sourcePreserved", true)
+            .put("automatic3DThumbnail", automaticThumbnail)
             .put("installerZipReopened", true).put("hybridSkinMaximumDifference", maxDifference(intended, packagedVertices))
             .put("scope", "Package-only actual WebView/SSE/bundled Python; no game installation or user database writes")
+    }
+
+    private fun exerciseAutomaticThumbnail(context: Context, webView: WebView, source: File, sourceBytes: ByteArray): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val assets = instrumentation.context.assets
+        for (name in listOf("model-viewer-thumbnail-report.json", "model-viewer-thumbnail.png", "model-viewer-thumbnail-controls.png")) File(context.cacheDir, name).delete()
+        run(webView, "if(ModelViewer.getState().layout.expanded)document.getElementById('viewer-expand').click();")
+        val helper = assets.open("viewer_thumbnail_qa.js").bufferedReader().use { it.readText() }
+        run(webView, helper + ";window.__nativeThumbnailQa={pending:true};NativeThumbnailQa.run({characterId:6,reeditOriginal:true})" +
+            ".then(function(result){window.__nativeThumbnailQa={pending:false,result:result};},function(error){window.__nativeThumbnailQa={pending:false,error:String(error.stack||error)};});")
+        val observed = waitForDom(webView, "the actual high-quality SDK automatic 3D Mod ZIP save", 300) {
+            "var q=window.__nativeThumbnailQa;return JSON.stringify({ok:q&&!q.pending&&!q.error,error:q&&q.error||'',result:q&&q.result});"
+        }.getJSONObject("result")
+        assertEquals("PASS", observed.getString("status"))
+        val checks = observed.getJSONObject("checks")
+        assertEquals(10, checks.length())
+        for (key in listOf("modeControl", "restoredEdits", "freshSave", "sdkCameraTemplate", "highQuality3D", "sourceRestPose", "previewReceipt", "packageThumbnail", "sourceStatePreserved", "noInstallRequested")) assertTrue(key, checks.getBoolean(key))
+        val python = EmbeddedPython.instance(context)
+        val module = python.getModule("types").callAttr("ModuleType", "_viewer_thumbnail_native_oracle")
+        val oracle = assets.open("viewer_thumbnail_oracle.py").bufferedReader().use { it.readText() }
+        python.getModule("builtins").callAttr("exec", oracle, module.get("__dict__"))
+        val sdkDirectory = python.getModule("webtools.core.viewer_thumbnails").get("_ASSETS").toString()
+        val inspected = JSONObject(module.callAttr("inspect_json", observed.toString(), sdkDirectory, source.absolutePath, sha256(sourceBytes)).toString())
+        assertEquals("PASS", inspected.getString("status"))
+        assertTrue(inspected.getBoolean("actual_zip_preview_png_byte_identical"))
+        assertTrue(inspected.getBoolean("normalized_state_sources_member_template_quality_bound"))
+        assertTrue(source.readBytes().contentEquals(sourceBytes))
+        observed.put("serialized", inspected).put("sourcePreserved", true)
+        File(context.cacheDir, "model-viewer-thumbnail-report.json").writeText(observed.toString(2))
+        val png = android.util.Base64.decode(observed.getString("previewPNG").substringAfter(','), android.util.Base64.DEFAULT)
+        File(context.cacheDir, "model-viewer-thumbnail.png").writeBytes(png)
+        instrumentation.waitForIdleSync()
+        val image = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("The actual 3D thumbnail controls must produce a screenshot")
+        try { File(context.cacheDir, "model-viewer-thumbnail-controls.png").outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+        finally { image.recycle() }
+        assertGameStopped()
+        println("MODEL_VIEWER_THUMBNAIL_REPORT=$observed")
+        return observed
     }
 
     private fun showModField(webView: WebView, id: String): JSONObject {
@@ -816,6 +1066,7 @@ class ViewerPersistenceTest {
                 evaluate(webView, "return JSON.stringify(ModelViewer.getAuthoringState());").getJSONArray("edits").toString())
             showModField(webView, "viewer-mod-character"); input(webView, "viewer-mod-character", "6")
             showModField(webView, "viewer-mod-name"); input(webView, "viewer-mod-name", name, "input")
+            showModField(webView, "viewer-mod-thumbnail-mode"); input(webView, "viewer-mod-thumbnail-mode", "texture", "change")
             val modelBefore = evaluate(webView, "return JSON.stringify({id:ModelViewer.getState().modelId,body:ModelViewer.getAuthoringState()});")
             // Limit loaded game data to the real Korean user path. Go still
             // regenerates/verifies every GL/JP platform manifest on startup.

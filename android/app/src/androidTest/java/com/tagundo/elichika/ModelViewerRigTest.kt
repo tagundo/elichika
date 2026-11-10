@@ -536,7 +536,8 @@ class ModelViewerRigTest {
         }
         val initial = snapshot()
         assertEquals("Complete original data selects game physics by default", "game", initial.getJSONObject("physics").getString("mode"))
-        assertEquals("Normal game cadence defaults to30 FPS", 30, initial.getJSONObject("physics").getInt("frameRate"))
+        assertEquals("Fresh physics preview follows display refresh rate", 0, initial.getJSONObject("physics").getInt("frameRate"))
+        assertEquals("0", initial.getJSONObject("controls").getString("frameRate"))
         assertEquals(0, initial.getJSONObject("physics").getJSONArray("nativeMissing").length())
         assertTrue("SwingBone must start enabled for a freshly loaded model", initial.getJSONObject("physics").getBoolean("swingBone"))
         assertTrue("SwingCollider must start enabled for a freshly loaded model", initial.getJSONObject("physics").getBoolean("swingCollider"))
@@ -550,6 +551,8 @@ class ModelViewerRigTest {
         val frameControl = showControl("viewer-physics-frame-rate")
         input(webView, "viewer-physics-frame-rate", "60", "change")
         assertEquals(60, snapshot().getJSONObject("physics").getInt("frameRate"))
+        input(webView, "viewer-physics-frame-rate", "0", "change")
+        assertEquals(0, snapshot().getJSONObject("physics").getInt("frameRate"))
         input(webView, "viewer-physics-frame-rate", "30", "change")
         input(webView, "viewer-motion", "Neutral MV scale override", "change")
         input(webView, "viewer-time", "0")
@@ -673,6 +676,12 @@ class ModelViewerRigTest {
             assertEquals(12, extended.getJSONObject("checks").length())
             val keys = extended.getJSONObject("checks").keys()
             while (keys.hasNext()) assertTrue(extended.getJSONObject("checks").getBoolean(keys.next()))
+            val uiChecks = extended.getJSONObject("uiChecks")
+            assertEquals(8, uiChecks.length())
+            for (key in listOf("accessoryFreshOpen", "modelOnlyHeader", "motionOnlyPoseList", "modelHeaderUnchangedOnMotionImport", "modelHeaderTracksBodyChange", "modelHeaderRestored", "motionListCleared", "multipleModelCounts")) {
+                assertTrue("The native file lists and initial panel must retain their real ownership: $key", uiChecks.getBoolean(key))
+            }
+            assertTrue(extended.getJSONObject("freshDefaults").getBoolean("accessoryOpen"))
             assertTrue("The motion bank source must remain immutable", motion.readBytes().contentEquals(motionBytes))
             assertTrue("The alternative model source must remain immutable", other.readBytes().contentEquals(bodyBytes))
             extended.put("sourcePreserved", true).put("motionSourcePreserved", true).put("otherBodySourcePreserved", true)

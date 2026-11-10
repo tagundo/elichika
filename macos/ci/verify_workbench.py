@@ -23,16 +23,18 @@ source = resources / 'python-app'
 sys.path.insert(0, str(source))
 from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
-from webtools.core import game_motions, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits, model_expressions
+from webtools.core import game_motions, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
-                    model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions)
+                    model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace)
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
             'test_viewer_transplants.py', 'test_viewer_workbench_routes.py',
             'test_physics_game_engine.py', 'test_physics_game_catalog.py', 'test_physics_game_runtime.py',
             'test_viewer_mesh_selection.py', 'test_model_expressions.py', 'test_transplant_physics_graph.py',
-            'test_motion_audio_transport.py', 'test_viewer_motion_library.py', 'test_viewer_gaze.py']
+            'test_motion_audio_transport.py', 'test_viewer_motion_library.py', 'test_viewer_gaze.py',
+            'test_viewer_thumbnails.py', 'test_viewer_thumbnail_roles.py', 'test_mod_thumbnail_replace.py',
+            'test_viewer_thumbnail_saved_settings.py']
 # Node drivers are test-only host tools. Stage their original scripts beside a
 # link to the actual app static directory, so every relative require executes
 # the packaged Three.js/math/collision/engine bytes instead of repository JS.
@@ -43,12 +45,13 @@ test_stage = stage / 'tests'; test_stage.mkdir()
 (stage / 'webtools/web').mkdir(parents=True)
 static = source / 'webtools/web/static'
 (stage / 'webtools/web/static').symlink_to(static, target_is_directory=True)
-staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py', 'test_viewer_mesh_selection.py', 'test_motion_audio_transport.py', 'test_viewer_gaze.py']
+staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py', 'test_viewer_mesh_selection.py', 'test_motion_audio_transport.py', 'test_viewer_gaze.py', 'test_viewer_thumbnail_saved_settings.py']
 staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.js',
     'viewer_game_physics_math_test.js', 'viewer_game_physics_collision_test.js',
     'viewer_game_physics_job_collision_test.js', 'viewer_game_physics_native_test.js',
     'viewer_game_physics_initialization_test.js', 'viewer_game_physics_adapter_test.js',
-    'viewer_mesh_connected_zoom_test.js', 'viewer_gaze_test.js', 'viewer_motion_audio_transport_test.js']
+    'viewer_mesh_connected_zoom_test.js', 'viewer_gaze_test.js', 'viewer_motion_audio_transport_test.js',
+    'viewer_transplant_bone_selection_test.js', 'viewer_thumbnail_saved_settings_test.js']
 numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisions.json',
     'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
     'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json',
@@ -60,7 +63,7 @@ for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
 static_files = ['vendor/three-r128/three.min.js', 'viewer-physics.js',
     'viewer-game-physics-math.js', 'viewer-game-physics-collision.js', 'viewer-game-physics.js',
-    'viewer-mesh-tools.js', 'viewer-motion-timeline.js', 'viewer-motion-audio.js']
+    'viewer-mesh-tools.js', 'viewer-motion-timeline.js', 'viewer-motion-audio.js', 'viewer-transplants.js', 'viewer-thumbnails.js']
 packaged_node_sources = {}
 for name in static_files:
     actual = (stage / 'webtools/web/static' / name).resolve()
@@ -96,10 +99,21 @@ explicit_cases = [
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_detail_pair_requires_verified_vertex_order_and_keeps_overrides',
     'test_model_edits.ModelEditTests.test_legacy_recipe_restores_when_only_verified_outline_companions_were_added',
     'test_model_edits.ModelEditTests.test_legacy_recipe_cannot_omit_selected_sources_or_edit_unbound_companions',
+    'test_model_scaling.ScalingTests.test_unexported_face_helpers_do_not_block_unrelated_body_saving',
 ]
 selected = unittest.defaultTestLoader.loadTestsFromNames(explicit_cases)
 assert selected.countTestCases() == len(explicit_cases)
 suite.addTests(selected)
+class PackagedPartSelectionTests(unittest.TestCase):
+    def test_actual_packaged_bone_hierarchy_union_and_exclusions(self):
+        import subprocess
+        script = test_stage / 'viewer_transplant_bone_selection_test.js'
+        actual = (static / 'viewer-transplants.js').resolve()
+        assert actual.is_relative_to(source)
+        result = subprocess.run(['node', str(script), str(actual)], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('PASS: actual subtree expansion, multi-root union, exact child exclusions and explicit own-bone selection', result.stdout)
+suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(PackagedPartSelectionTests))
 def case_ids(tests):
     for item in tests:
         if isinstance(item, unittest.TestSuite):
@@ -133,7 +147,7 @@ report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else
           'node_require_scope': 'Actual packaged static assets via isolated QA-only symlink; host Node is not an app runtime dependency',
           'excluded_optional_cases': ['test_model_outlines.OutlineTests.test_actual_original_costumes_change_only_red_and_keep_textures_exact',
               'test_model_outlines.OutlineTests.test_original_automatic_face_jaw_detail_saves_only_selected_red'],
-          'scope': 'Bundled interpreter and packaged workbench code with neutral round trips, detailed outlines/paired ModZIP, mesh selection/zoom, gaze poses, audio transport, motion-library isolation, transplant graph and original ARM64 numerical physics fixtures; no whole-client parity claim'}
+          'scope': 'Bundled interpreter and packaged workbench code with neutral round trips, detailed outlines/paired ModZIP, mesh selection/zoom, gaze poses, audio transport, motion-library isolation, source-bound thumbnail receipts/ZIP PNG and typed head roles, multi-bone/surface graft graph and original ARM64 numerical physics fixtures; no whole-client parity claim'}
 staged.cleanup()
 print('ELICHIKA_WORKBENCH_TESTS=' + json.dumps(report))
 sys.exit(0 if report['status'] == 'PASS' and result.testsRun else 1)

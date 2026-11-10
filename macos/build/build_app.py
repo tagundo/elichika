@@ -159,7 +159,11 @@ def build(repo, shared, output, cache, version):
     shutil.copy2(repo / "android/app/src/androidTest/assets/viewer_rig_qa.js", qa / "viewer_rig_qa.js")
     shutil.copy2(repo / "android/app/src/androidTest/assets/viewer_game_physics.unity", qa / "viewer_game_physics.unity")
     shutil.copy2(repo / "macos/ci/native_game_physics_qa.js", qa / "native_game_physics_qa.js")
-    for name in ("viewer_detail_qa.js", "viewer_extended_qa.js", "viewer_gaze.unity", "viewer_library_motion.unity"):
+    for name in ("viewer_detail_qa.js", "viewer_extended_qa.js", "viewer_gaze.unity", "viewer_library_motion.unity",
+                 "viewer_thumbnail_qa.js", "viewer_thumbnail_oracle.py", "viewer_part_selection_qa.js", "viewer_part_oracle.py",
+                 "viewer_part_target.unity", "viewer_part_donor.unity",
+                 "viewer_thumbnail_member_6.zip", "viewer_thumbnail_member_201.zip",
+                 "viewer_thumbnail_updater_qa.js", "viewer_thumbnail_updater_oracle.py"):
         shutil.copy2(repo / "android/app/src/androidTest/assets" / name, qa / name)
     dependencies = vendor_python(lock["architectures"]["arm64"], private, cache, repo)
     environment = dict(os.environ, CGO_ENABLED="0", GOOS="darwin", GOARCH="arm64",
