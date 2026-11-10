@@ -14,6 +14,9 @@ from pathlib import Path
 import re
 import sqlite3
 import tempfile
+import threading
+import time
+from types import MappingProxyType
 
 
 INDEX_PATH = "assets/costume-cdn-index.json.gz"
@@ -25,6 +28,13 @@ _COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 _PACK = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
 _CATALOG = re.compile(r"asset_([ai])_([a-z]{2})\.db\Z")
 _SUIT = re.compile(r"suit:([1-9][0-9]{0,11})\Z")
+
+# Option lists need only a few costume fields, rather than every platform's
+# model/cipher record. Keep one small, immutable projection; the full index is
+# still validated afresh when a restore is planned.
+_SUIT_CACHE_TTL_SECONDS = 60
+_suit_cache_lock = threading.Lock()
+_suit_cache = None
 
 
 class CatalogError(ValueError):
@@ -272,6 +282,49 @@ def load_index(root):
         raise
     except (OSError, EOFError, ValueError, TypeError, KeyError) as exc:
         raise CatalogError("The bundled official costume CDN index could not be read.") from exc
+
+
+def _suit_cache_identity(root):
+    root = Path(root).resolve(strict=True)
+    path = root / INDEX_PATH
+    if (path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root)
+            or not 0 < path.stat().st_size <= MAX_COMPRESSED_BYTES):
+        raise CatalogError("The bundled official costume CDN index is missing. Update the app before restoring costumes.")
+    info = path.stat()
+    return root, (str(path), info.st_dev, info.st_ino, info.st_size,
+                  info.st_mtime_ns, info.st_ctime_ns)
+
+
+def load_suit_rows(root):
+    """Return immutable ``region -> (id, owner, name)`` rows for option lists.
+
+    A changed/replaced file is revalidated immediately. The TTL also bounds the
+    lifetime of a match when a filesystem supplies coarse metadata timestamps.
+    Serialising cold loads prevents concurrent HTTP requests from each parsing
+    the complete index. Callers never share its large mutable mapping.
+    """
+    global _suit_cache
+    with _suit_cache_lock:
+        root, identity = _suit_cache_identity(root)
+        now = time.monotonic()
+        if _suit_cache is not None:
+            previous, expires, rows = _suit_cache
+            if identity == previous and now < expires:
+                return rows
+        _suit_cache = None
+        index = load_index(root)
+        if _suit_cache_identity(root)[1] != identity:
+            raise CatalogError("The bundled official costume CDN index could not be read.")
+        compact = _json({region: tuple(
+            (sid, suit["owner"], suit["name"]) for sid, suit in data["suits"].items()
+        ) for region, data in index["regions"].items()})
+        # Do not keep the parsed index's small strings alive: scattered strings
+        # can pin its much larger allocator arenas even after its dicts go away.
+        del index
+        rows = MappingProxyType({region: tuple(map(tuple, values))
+                                 for region, values in json.loads(compact).items()})
+        _suit_cache = (identity, time.monotonic() + _SUIT_CACHE_TTL_SECONDS, rows)
+        return rows
 
 
 def catalog_select(index, region, platform, language="en"):

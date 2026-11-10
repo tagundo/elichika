@@ -3,11 +3,14 @@ import copy
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import costume_cdn_catalog as catalog
@@ -171,6 +174,114 @@ class OfficialCostumeCdnCatalogTests(unittest.TestCase):
         self.index_path.symlink_to(external)
         with self.assertRaisesRegex(catalog.CatalogError, "missing"):
             catalog.load_index(self.runtime)
+
+    def test_option_projection_is_immutable_and_reuses_only_small_rows(self):
+        self.build()
+        with patch.object(catalog, "load_index", wraps=catalog.load_index) as load:
+            rows = catalog.load_suit_rows(self.runtime)
+            self.assertIs(catalog.load_suit_rows(self.runtime), rows)
+        self.assertEqual(load.call_count, 1)
+        self.assertEqual(rows["gl"][0], ("10", 1, "k.official"))
+        with self.assertRaises(TypeError): rows["gl"] = ()
+        with self.assertRaises(TypeError): rows["gl"][0][1] = 9
+        self.assertTrue(all(isinstance(region, tuple) and all(len(row) == 3 for row in region)
+                            for region in rows.values()))
+
+    def test_option_projection_revalidates_atomic_index_replacement(self):
+        self.build()
+        rows = catalog.load_suit_rows(self.runtime)
+        with sqlite3.connect(self.source / "db/gl/masterdata.db") as db:
+            db.execute("UPDATE m_suit SET name='k.replaced' WHERE id=10")
+        self.build()
+        replaced = catalog.load_suit_rows(self.runtime)
+        self.assertIsNot(replaced, rows)
+        self.assertEqual(replaced["gl"][0][2], "k.replaced")
+
+    def test_option_projection_rejects_tampering_even_with_restored_mtime(self):
+        self.build()
+        catalog.load_suit_rows(self.runtime)
+        before, packed = self.index_path.stat(), self.index_path.read_bytes()
+        bad = bytearray(packed); bad[-8] ^= 1
+        self.index_path.write_bytes(bad)
+        os.utime(self.index_path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        with self.assertRaises(catalog.CatalogError): catalog.load_suit_rows(self.runtime)
+        self.assertIsNone(catalog._suit_cache)
+        self.index_path.write_bytes(packed)
+        self.assertEqual(catalog.load_suit_rows(self.runtime)["gl"][0][0], "10")
+
+    def test_option_projection_ttl_revalidates_unchanged_file(self):
+        self.build()
+        with patch.object(catalog.time, "monotonic", return_value=100) as clock, \
+                patch.object(catalog, "load_index", wraps=catalog.load_index) as load:
+            first = catalog.load_suit_rows(self.runtime)
+            clock.return_value = 100 + catalog._SUIT_CACHE_TTL_SECONDS - 1
+            self.assertIs(catalog.load_suit_rows(self.runtime), first)
+            clock.return_value += 1
+            self.assertIsNot(catalog.load_suit_rows(self.runtime), first)
+        self.assertEqual(load.call_count, 2)
+
+    def test_option_projection_ttl_detects_corruption_with_coarse_file_metadata(self):
+        self.build()
+        identity = catalog._suit_cache_identity(self.runtime)
+        with patch.object(catalog, "_suit_cache_identity", return_value=identity), \
+                patch.object(catalog.time, "monotonic", return_value=100) as clock:
+            catalog.load_suit_rows(self.runtime)
+            self.index_path.write_bytes(b"corrupt gzip hidden by coarse metadata")
+            clock.return_value = 100 + catalog._SUIT_CACHE_TTL_SECONDS
+            with self.assertRaises(catalog.CatalogError): catalog.load_suit_rows(self.runtime)
+        self.assertIsNone(catalog._suit_cache)
+
+    def test_concurrent_cold_option_requests_share_one_validation(self):
+        self.build()
+        entered, release = threading.Event(), threading.Event()
+        original = catalog.load_index
+        def blocked(root):
+            entered.set()
+            if not release.wait(5): raise RuntimeError("test load was not released")
+            return original(root)
+        with patch.object(catalog, "load_index", side_effect=blocked) as load, ThreadPoolExecutor(max_workers=8) as pool:
+            requests = [pool.submit(catalog.load_suit_rows, self.runtime) for _ in range(8)]
+            try:
+                self.assertTrue(entered.wait(2))
+            finally:
+                release.set()
+            rows = [request.result(timeout=5) for request in requests]
+        self.assertEqual(load.call_count, 1)
+        self.assertTrue(all(row is rows[0] for row in rows))
+
+    def test_option_projection_rejects_file_changed_during_validation(self):
+        self.build()
+        original = catalog.load_index
+        def replaced(root):
+            value = original(root)
+            replacement = self.index_path.with_suffix(".replacement")
+            replacement.write_bytes(self.index_path.read_bytes())
+            os.replace(replacement, self.index_path)
+            return value
+        with patch.object(catalog, "load_index", side_effect=replaced):
+            with self.assertRaises(catalog.CatalogError): catalog.load_suit_rows(self.runtime)
+        self.assertIsNone(catalog._suit_cache)
+        self.assertEqual(catalog.load_suit_rows(self.runtime)["jp"][0][0], "10")
+
+    def test_option_projection_cache_is_bounded_to_one_runtime(self):
+        self.build()
+        other = self.root / "second-runtime"
+        catalog.build_index(self.source, other / catalog.INDEX_PATH, COMMIT)
+        with patch.object(catalog, "load_index", wraps=catalog.load_index) as load:
+            catalog.load_suit_rows(self.runtime)
+            catalog.load_suit_rows(other)
+            catalog.load_suit_rows(self.runtime)
+        self.assertEqual(load.call_count, 3)
+        self.assertEqual(catalog._suit_cache[0][0], str(self.index_path))
+
+    def test_option_projection_never_uses_cached_rows_for_linked_file(self):
+        self.build()
+        catalog.load_suit_rows(self.runtime)
+        external = self.root / "external.gz"
+        self.index_path.rename(external)
+        self.index_path.symlink_to(external)
+        with self.assertRaisesRegex(catalog.CatalogError, "missing"):
+            catalog.load_suit_rows(self.runtime)
 
 
 if __name__ == "__main__":

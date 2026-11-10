@@ -113,6 +113,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
           python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
           python3 -m unittest discover -s tests -p test_model_edits.py -v
+          python3 -m unittest discover -s tests -p test_model_edit_dependencies.py -v
           python3 -m unittest discover -s tests -p 'test_model_accessory_unclip*.py' -v
           python3 -m unittest discover -s tests -p 'test_viewer_scene*.py' -v
           python3 -m unittest discover -s tests -p test_viewer_execution_model_graph.py -v
@@ -199,6 +200,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/runtime-optimization" node tests/viewer_runtime_optimization_browser.js
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-projection-cache" node tests/viewer_mesh_projection_cache_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/layout" node tests/viewer_layout_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/portrait-scroll" node tests/viewer_portrait_scroll_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/pose-body" node tests/viewer_pose_body_browser.js

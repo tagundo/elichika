@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 import uuid
 
 from database_maintenance import guard
-from costume_cdn_catalog import load_index, catalog_select
+from costume_cdn_catalog import load_index, load_suit_rows, catalog_select
 
 MAX_PACK_BYTES = 64 * 1024 * 1024
 MAX_TOTAL_BYTES = 256 * 1024 * 1024
@@ -53,18 +53,18 @@ def _readonly(path):
     return sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
 
 
-def _region(index, requested, language):
+def _region(regions, requested, language):
     if requested not in (None, "", "gl", "jp"):
         raise ValueError("Choose a valid game region.")
     value = requested or ("jp" if language == "ja" else "gl")
-    if value not in index["regions"]:
+    if value not in regions:
         raise ValueError("The selected game region is unavailable.")
     return value
 
 
 def costume_options(root=".", *, region=None, platform="both", character="", search="", language="en"):
-    index = load_index(root)
-    region = _region(index, region, language)
+    suits = load_suit_rows(root)
+    region = _region(suits, region, language)
     if platform not in ("both", "android", "ios"):
         raise ValueError("Choose Android, iOS, or both platforms.")
     if character and (not isinstance(character, str) or not character.isdigit()):
@@ -77,11 +77,11 @@ def costume_options(root=".", *, region=None, platform="both", character="", sea
     dictionary = _dictionary_conn(extractor, os.fspath(root), language)
     rows = []
     try:
-        for sid, suit in index["regions"][region]["suits"].items():
-            if character and str(suit["owner"]) != character and not query:
+        for sid, owner, name in suits[region]:
+            if character and str(owner) != character and not query:
                 continue
-            title = extractor.real_costume_name(dictionary, suit["name"]) or str(sid)
-            member = members.get(suit["owner"], str(suit["owner"]))
+            title = extractor.real_costume_name(dictionary, name) or str(sid)
+            member = members.get(owner, str(owner))
             if query and query not in (member + " " + title + " " + sid).casefold():
                 continue
             rows.append({"value": "suit:" + sid, "label": member + " — " + title})
@@ -98,7 +98,7 @@ def _same_descriptor(row, expected):
 def plan_restore(root, *, suit, region=None, platform="both", language="en"):
     root = Path(root).resolve(strict=True)
     index = load_index(root)
-    region = _region(index, region, language)
+    region = _region(index["regions"], region, language)
     match = re.fullmatch(r"suit:([1-9][0-9]{0,11})", str(suit))
     selected = match[1] if match else None
     original = index["regions"][region]["suits"].get(selected)
@@ -324,9 +324,9 @@ def _retire_selections(root, packs, models):
         if not folder.is_dir() or folder.is_symlink():
             continue
         for path in folder.glob(".selection-*.json"):
-            if path.is_symlink() or path.stat().st_size > 8192:
-                continue
             try:
+                if path.is_symlink() or path.stat().st_size > 8192:
+                    continue
                 value = json.loads(path.read_text())
                 sources = value.get("source", [])
                 sources = [sources] if isinstance(sources, dict) else sources

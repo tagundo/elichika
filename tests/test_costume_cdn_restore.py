@@ -200,6 +200,44 @@ class CostumeCdnRestoreTests(unittest.TestCase):
         self.assertTrue(unrelated.exists())
         self.assertEqual(old.read_bytes(), b"unsaved custom extracted model")
 
+    def test_selection_removed_between_glob_and_stat_does_not_rollback_restored_packs(self):
+        f = self.fixture
+        cached = f.root / ".viewer-cache/models"
+        cached.mkdir(parents=True)
+        removed, selected = (cached / name for name in (".selection-removed.json", ".selection-selected.json"))
+        for path in (removed, selected):
+            path.write_text(json.dumps({"source": [{"path": str(f.library / "packs/body")}]}))
+        original = Path.glob
+        def concurrent_eviction(folder, pattern):
+            for path in original(folder, pattern):
+                if path == removed: path.unlink()
+                yield path
+        with patch.object(Path, "glob", concurrent_eviction):
+            result = self.run_restore()
+        self.assertEqual(result["status"], "restored")
+        receipt = json.loads(Path(result["receipt"]).read_text())
+        self.assertEqual(receipt["state"], "complete")
+        self.assertIn(str(selected), receipt["retired_selection_manifests"])
+        for directory in (f.library / "packs", f.root / "static"):
+            self.assertEqual((directory / "body").read_bytes(), f.original["body"])
+
+    def test_warm_option_projection_preserves_live_locales_and_dictionary_updates(self):
+        f = self.fixture
+        for region, language, text in (("gl", "ko", "한국어 의상"), ("gl", "en", "English costume"), ("jp", "ja", "日本語の衣装")):
+            path = f.root / f"assets/db/{region}/dictionary_{language}_k.db"
+            with sqlite3.connect(path) as db:
+                db.execute("CREATE TABLE m_dictionary(id TEXT PRIMARY KEY,message TEXT)")
+                db.execute("INSERT INTO m_dictionary VALUES('official',?)", (text,))
+        for language, text in (("ko", "한국어 의상"), ("ja", "日本語の衣装"), ("en", "English costume")):
+            rows = restore.costume_options(f.root, character="1", language=language)
+            self.assertEqual(len(rows), 1)
+            self.assertTrue(rows[0]["label"].endswith(text))
+        with sqlite3.connect(f.root / "assets/db/gl/dictionary_ko_k.db") as db:
+            db.execute("UPDATE m_dictionary SET message='바뀐 의상'")
+        rows = restore.costume_options(f.root, language="ko", character="1", search="바뀐")
+        self.assertEqual([row["value"] for row in rows], ["suit:10"])
+        self.assertTrue(rows[0]["label"].endswith("바뀐 의상"))
+
     def test_mutated_runtime_catalog_is_not_used_as_official_download_metadata(self):
         with sqlite3.connect(self.fixture.root / "assets/db/gl/asset_a_en.db") as db:
             db.execute("UPDATE member_model SET key1=99 WHERE asset_path='root'")
