@@ -1,0 +1,57 @@
+{
+  "fixture": {
+    "region": "gl",
+    "character": 203,
+    "costume": "suit:102031001",
+    "label": "NijigasakiHighUniformWinter (ch0203_co0002)",
+    "expectedOriginalBodySha256": "b619706c5697f771bb2a8c746379f1b2c7860d12ea5b68dbb3fd7dfaeb0e5774",
+    "expectedViewerSha256": "21f6f730ebbe53b6c29947f34af660de466e31bab17e9fbe20621c9c2ff74202",
+    "goldMesh": "Body",
+    "goldFirstVertex": 0,
+    "goldVertexCount": 344,
+    "goldSourceTriangleRange": [
+      0,
+      327
+    ]
+  },
+  "gameImport": {
+    "region": "gl",
+    "character": 203,
+    "costume": "suit:102031001"
+  },
+  "expectedStats": {
+    "meshes": 8,
+    "vertices": 9633,
+    "triangles": 12338,
+    "materials": 2,
+    "textures": 22
+  },
+  "expectedClip": "ch0301_GEN_preview1_L",
+  "target": [
+    0,
+    1.285,
+    0.06
+  ],
+  "direction": [
+    0,
+    0,
+    1
+  ],
+  "fov": 45,
+  "oldNear": 0.0010104429347505169,
+  "fixedNear": 0.1,
+  "shots": [
+    {
+      "name": "neck-close",
+      "distance": 0.57019094
+    },
+    {
+      "name": "neck-normal",
+      "distance": 1.42547735
+    },
+    {
+      "name": "neck-far",
+      "distance": 2.85095471
+    }
+  ]
+}

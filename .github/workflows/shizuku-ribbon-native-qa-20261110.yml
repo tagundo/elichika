@@ -1,0 +1,176 @@
+name: Native WK Shizuku winter gold ribbon QA 2026.11.10
+
+on:
+  push:
+    branches: [codex/shizuku-ribbon-native-qa-20261110]
+    paths:
+      - .github/workflows/shizuku-ribbon-native-qa-20261110.yml
+      - macos/ci/diagnostics/shizuku-ribbon-20261110/**
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: native-shizuku-ribbon-20261110
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONDONTWRITEBYTECODE: '1'
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+      QA_SOURCE: macos/ci/diagnostics/shizuku-ribbon-20261110
+    steps:
+      - name: Check out only the reviewed QA host source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+
+      - name: Use a pinned host Python for diagnostic orchestration
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify QA-only diff and the already published .4 application
+        run: |
+          set -euo pipefail
+          export QA_EVIDENCE="$RUNNER_TEMP/shizuku-ribbon-evidence"
+          printf 'QA_EVIDENCE=%s\n' "$QA_EVIDENCE" >> "$GITHUB_ENV"
+          test "$(uname -m)" = arm64
+          mkdir -p "$QA_EVIDENCE"
+          uname -a > "$QA_EVIDENCE/host.txt"
+          sw_vers >> "$QA_EVIDENCE/host.txt"
+          xcodebuild -version >> "$QA_EVIDENCE/host.txt"
+          system_profiler SPDisplaysDataType -json > "$QA_EVIDENCE/host-gpu.json"
+          python3 - <<'PYCODE'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          base='d61b1a43890faa3291926dd11de22834a28f5bb9'
+          tools='efe26a4bcb6d27e1476cc17499e43141b05619a1'
+          folder=Path(os.environ['QA_SOURCE'])
+          pins={'NativeWKDiagnostic.swift': '042c214e261f1e5db915025892f6b599f750f1c916fd520f1a605df60725792c', 'README.txt': 'dab8f0350470c519e54d77959ba9428a8c71ec9d7e0c877dd2dd7cfae9f0be3a', 'config.json': '3943123ec209d6b2a1e144faa172aaa32e6255a6335a1ef2b34881bb8371588f', 'preload.js': 'f354ad0432018c7b8b42d0dc0742727d2a5449ba5ffccb1a74ed52dbd96fab00', 'probe.js': '6465495db778a864e34f52455c64de5c02884b53711311246cd26831e23df7e2', 'run_native_diagnostic.py': 'b96f938b31346cc3956e1e01cb41779fff4c3ef99f7e0f7eb2ed8944757102b4'}
+          assert os.environ['GITHUB_REPOSITORY']=='tagundo/elichika'
+          assert os.environ['GITHUB_REF']=='refs/heads/codex/shizuku-ribbon-native-qa-20261110'
+          assert os.environ['GITHUB_EVENT_NAME']=='push'
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD')==os.environ['GITHUB_SHA']
+          assert git('rev-parse','HEAD^')==base
+          assert git('rev-list','--count',base+'..HEAD')=='1'
+          expected={str(folder/name) for name in pins}|{'.github/workflows/shizuku-ribbon-native-qa-20261110.yml'}
+          changes=[line.split('\t') for line in git('diff','--name-status',base,'HEAD').splitlines()]
+          assert {row[1] for row in changes}==expected and all(row[0]=='A' for row in changes),changes
+          assert git('rev-parse',base+':modtools')==tools
+          for name,digest in pins.items():assert hashlib.sha256((folder/name).read_bytes()).hexdigest()==digest,name
+          def api(path):return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/'+path]))
+          run=api('actions/runs/42879663129')
+          assert run['head_sha']==base and run['status']=='completed' and run['conclusion']=='success'
+          artifact=api('actions/artifacts/13793918055')
+          assert artifact['name']=='elichika-macos-apple-silicon' and not artifact['expired']
+          assert artifact['workflow_run']['id']==42879663129 and artifact['workflow_run']['head_sha']==base
+          assert artifact['size_in_bytes']==304909199 and artifact['digest']=='sha256:d21476af7b2d96808f4ae03aaa15b134362b1b432090e5e265b5f7f92d75c5a0'
+          Path(os.environ['QA_EVIDENCE'],'input-source-guards.json').write_text(json.dumps({'status':'PASS','QA_commit':os.environ['GITHUB_SHA'],'app_source':base,'tools':tools,'artifact':artifact,'harness_sha256':pins,'scope':'Separate QA-only WK host; no Elichika rebuild or product changes; not shipped AppKit container or user Mac FPS'},indent=2)+'\n')
+          PYCODE
+
+      - name: Download the exact already-published .4 app
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-macos-apple-silicon
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42879663129
+          path: ${{ runner.temp }}/shizuku-ribbon-input
+
+      - name: Verify raw app archive and preserve its file hashes
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          import hashlib,json,os,subprocess,zipfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP']);files=list((root/'shizuku-ribbon-input').rglob('Elichika-2026.11.10.4-AppleSilicon.app.zip'))
+          assert len(files)==1
+          archive=files[0]
+          assert archive.stat().st_size==304908780
+          with archive.open('rb') as stream:assert hashlib.file_digest(stream,'sha256').hexdigest()=='bffb95a60190f9acc02f8d3813e3e79aba095785933febf61193be68fcb62a0b'
+          with zipfile.ZipFile(archive) as zipped:assert zipped.testzip() is None
+          destination=root/'shizuku-ribbon-app';destination.mkdir(exist_ok=False)
+          subprocess.run(['/usr/bin/ditto','-x','-k',str(archive),str(destination)],check=True)
+          apps=list(destination.glob('*.app'));assert len(apps)==1
+          app=apps[0];subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict','--verbose=2',str(app)],check=True)
+          values={}
+          for path in sorted(app.rglob('*')):
+              if path.is_symlink():values[str(path.relative_to(app))]={'symlink':os.readlink(path)}
+              elif path.is_file():
+                  with path.open('rb') as stream:values[str(path.relative_to(app))]={'bytes':path.stat().st_size,'sha256':hashlib.file_digest(stream,'sha256').hexdigest()}
+          Path(os.environ['QA_EVIDENCE'],'app-files-before.json').write_text(json.dumps(values,indent=2)+'\n')
+          with open(os.environ['GITHUB_ENV'],'a') as output:output.write('QA_APP='+str(app)+'\n')
+          PYCODE
+
+      - name: Compile only the standalone visible WK diagnostic host
+        run: |
+          set -euo pipefail
+          qa_sdk="$(xcrun --sdk macosx --show-sdk-path)"
+          xcrun --sdk macosx swiftc -parse-as-library -swift-version 5 -O \
+            -target arm64-apple-macos13.0 -sdk "$qa_sdk" \
+            "$QA_SOURCE/NativeWKDiagnostic.swift" -framework AppKit -framework WebKit \
+            -o "$RUNNER_TEMP/shizuku-ribbon-host" \
+            > "$QA_EVIDENCE/host-build.stdout.txt" 2> "$QA_EVIDENCE/host-build.stderr.txt"
+          xcrun --sdk macosx --show-sdk-path > "$QA_EVIDENCE/selected-sdk.txt"
+
+      - name: Run native WK with the unchanged private backend and official CDN inputs
+        run: |
+          set -euo pipefail
+          env -u GH_TOKEN -u GITHUB_TOKEN python3 "$QA_SOURCE/run_native_diagnostic.py" \
+            --app "$QA_APP" --host "$RUNNER_TEMP/shizuku-ribbon-host" \
+            --config "$QA_SOURCE/config.json" --output "$QA_EVIDENCE" --timeout 900
+
+      - name: Verify the app bytes and signature remain unchanged
+        if: always() && env.QA_APP != ''
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          app=Path(os.environ['QA_APP']);output=Path(os.environ['QA_EVIDENCE']);values={}
+          archives=list((Path(os.environ['RUNNER_TEMP'])/'shizuku-ribbon-input').rglob('Elichika-2026.11.10.4-AppleSilicon.app.zip'));assert len(archives)==1
+          with archives[0].open('rb') as stream:assert hashlib.file_digest(stream,'sha256').hexdigest()=='bffb95a60190f9acc02f8d3813e3e79aba095785933febf61193be68fcb62a0b'
+          for path in sorted(app.rglob('*')):
+              if path.is_symlink():values[str(path.relative_to(app))]={'symlink':os.readlink(path)}
+              elif path.is_file():
+                  with path.open('rb') as stream:values[str(path.relative_to(app))]={'bytes':path.stat().st_size,'sha256':hashlib.file_digest(stream,'sha256').hexdigest()}
+          before=json.loads((output/'app-files-before.json').read_text());unchanged=values==before
+          (output/'app-bytes-unchanged.json').write_text(json.dumps({'unchanged':unchanged,'files':len(values),'scope':'Unmodified validated .app bytes and symlink targets; only standalone QA host compiled'},indent=2)+'\n')
+          assert unchanged
+          subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict','--verbose=2',str(app)],check=True)
+          PYCODE
+
+      - name: Upload bounded diagnostic evidence without private runtime data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-wk-shizuku-ribbon-20261110-${{ github.run_id }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/shizuku-ribbon-evidence/*.json
+            ${{ runner.temp }}/shizuku-ribbon-evidence/*.txt
+            ${{ runner.temp }}/shizuku-ribbon-evidence/backend.log
+            ${{ runner.temp }}/shizuku-ribbon-evidence/native/*.json
+            ${{ runner.temp }}/shizuku-ribbon-evidence/native/*.png
+
+      - name: Remove only the owned disposable runtime and header files
+        if: always()
+        run: |
+          python3 - <<'PYCODE'
+          import os,shutil
+          from pathlib import Path
+          temp=Path(os.environ['RUNNER_TEMP']).resolve();owned=Path(os.environ['QA_EVIDENCE']).resolve()/'private-work'
+          assert owned.is_relative_to(temp) and owned.name=='private-work'
+          if owned.exists():shutil.rmtree(owned)
+          PYCODE
