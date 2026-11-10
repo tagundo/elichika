@@ -120,6 +120,7 @@ jobs:
           python3 macos/build/build_payload.py --repo . --output "$RUNNER_TEMP/elichika-macos-shared"
 
       - name: Build self-contained signed app with private Python and executables
+        id: bundle_build
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -135,6 +136,32 @@ jobs:
           python3 macos/ci/audit_bundle.py \
             --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" --arch arm64 \
             --report "$RUNNER_TEMP/macos-evidence/bundle-before-launch.json"
+
+      - name: Preserve the signed candidate before mandatory execution gates
+        if: ${{ always() && steps.bundle_build.outcome == 'success' }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, sys
+          sys.path.insert(0, 'macos/build')
+          from common import archive_app, write_json
+          temporary = pathlib.Path(os.environ['RUNNER_TEMP'])
+          destination = temporary / 'macos-candidate'
+          destination.mkdir(exist_ok=True)
+          name = 'Elichika-' + os.environ['ELICHIKA_MAC_VERSION'] + '-UNVALIDATED-AppleSilicon.app.zip'
+          receipt = archive_app(temporary / 'elichika-macos-built/Elichika.app', destination / name)
+          receipt.update(status='UNVALIDATED_CANDIDATE_NOT_FOR_DELIVERY', source_commit=os.environ['GITHUB_SHA'],
+                         workflow_run=os.environ['GITHUB_RUN_ID'], mandatory_execution_gates='PENDING')
+          write_json(destination / 'candidate-manifest.json', receipt)
+          PY
+
+      - name: Upload candidate for exact-byte diagnostic reruns
+        if: ${{ always() && steps.bundle_build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-macos-unvalidated-candidate
+          path: ${{ runner.temp }}/macos-candidate/
+          if-no-files-found: error
+          compression-level: 0
 
       - name: Test bundled interpreter, native codecs and HTTPS without runtime installation
         run: |

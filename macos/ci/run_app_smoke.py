@@ -648,10 +648,35 @@ def check_part_report(observed):
     _native_draw(observed, "finalProbe")
 
 
+def preserve_native_output_evidence(output, label, report):
+    """Retain only this neutral QA flow's outputs before independent oracles."""
+    library = (output / "native-app-data/sukusta").resolve()
+    paths = [(f"thumbnail-{index}", path) for index, path in enumerate(
+        report["native_thumbnail"]["response"]["output_paths"])]
+    paths.append(("part-result", report["native_part_selection"]["outputPath"]))
+    for index, receipt in enumerate(report["native_thumbnail_updater"]["receipts"]):
+        paths.extend(((f"updater-source-{index}", receipt["source_path"]),
+                      (f"updater-output-{index}", receipt["output_path"])))
+    copied = []
+    for name, value in paths:
+        source = Path(value).resolve()
+        require(source.is_relative_to(library) and source.is_file()
+                and source.suffix.lower() in (".zip", ".json", ".unity"),
+                "Raw QA output must be an existing neutral fixture result inside its test library")
+        destination = output / (label + "-raw-" + name + source.suffix)
+        expected = sha256(source)
+        shutil.copy2(source, destination)
+        require(sha256(destination) == sha256(source) == expected,
+                "The preserved raw QA output must match the actual native result")
+        copied.append({"source": str(source), "evidence": str(destination),
+                       "sha256": expected, "bytes": destination.stat().st_size})
+    write_json(output / (label + "-raw-output-manifest.json"), copied)
+
+
 def inspect_thumbnail_export(app, output, label, report):
     observed = report.get("native_thumbnail", {})
     check_thumbnail_report(observed)
-    require(observed.get("sourcePreserved") is True and Path(observed["source_path"]) == output / "native-app-data/분수 의상.zip"
+    require(observed.get("sourcePreserved") is True and Path(observed["source_path"]).samefile(output / "native-app-data/분수 의상.zip")
             and sha256(Path(observed["source_path"])) == observed["source_sha256"], "The native automatic thumbnail must preserve its actual original ZIP")
     resources = app / "Contents/Resources"
     prefix = resources / "runtime/arm64/python"
@@ -1045,6 +1070,7 @@ def launch(app, output, label):
         while process_alive(pid) and time.monotonic() < deadline:
             time.sleep(.2)
         require(not process_alive(pid), f"Owned {key} remained alive after app quit")
+    preserve_native_output_evidence(output, label, report)
     inspect_accessory_export(app, output, label, report)
     check_game_physics_report(output, report)
     inspect_detail_export(app, output, label, report)
