@@ -1,0 +1,260 @@
+{
+  "fixture": {
+    "name": "Official Eli Mermaid festa vol.1 + CHASE dance, downloaded through packaged normal game import",
+    "parentSource": "9ffb5c6c362dd883275c89f7308c0fd9376323bc",
+    "toolsSource": "46065d67a3114f85945ac9218eddb00c1c22380f",
+    "expectedOriginalBodySha256": "cbfae69d2f37e5b8b2240f905e59289580ce73836fca3f46c421e9bc5da5404c",
+    "distanceMatrixSource": "distance-artifacts/dpr1-final/report.json setup"
+  },
+  "gameImport": {
+    "region": "gl",
+    "character": 2,
+    "costume": "suit:400022007",
+    "search": "CHASE",
+    "motion": "mv:12008:1200801",
+    "performer": 1
+  },
+  "shots": [
+    {
+      "name": "far-near-original",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 5.791180400361722,
+      "headRelative": true
+    },
+    {
+      "name": "far-near-0.01",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 5.791180400361722,
+      "near": 0.01,
+      "headRelative": true
+    },
+    {
+      "name": "far-near-0.03",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 5.791180400361722,
+      "near": 0.03,
+      "headRelative": true
+    },
+    {
+      "name": "far-near-0.10",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 5.791180400361722,
+      "near": 0.1,
+      "headRelative": true
+    },
+    {
+      "name": "normal-near-original",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 2.895590200180861,
+      "headRelative": true
+    },
+    {
+      "name": "normal-near-0.01",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 2.895590200180861,
+      "near": 0.01,
+      "headRelative": true
+    },
+    {
+      "name": "normal-near-0.03",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 2.895590200180861,
+      "near": 0.03,
+      "headRelative": true
+    },
+    {
+      "name": "normal-near-0.10",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 2.895590200180861,
+      "near": 0.1,
+      "headRelative": true
+    },
+    {
+      "name": "close-near-original",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 0.34,
+      "headRelative": true
+    },
+    {
+      "name": "close-near-0.01",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 0.34,
+      "near": 0.01,
+      "headRelative": true
+    },
+    {
+      "name": "close-near-0.03",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 0.34,
+      "near": 0.03,
+      "headRelative": true
+    },
+    {
+      "name": "close-near-0.10",
+      "time": 58.5,
+      "target": [
+        -0.010963688578075777,
+        1.3587102793610288,
+        1.193982096798052
+      ],
+      "direction": [
+        -0.36969269695004975,
+        -0.0671181605592657,
+        0.9267267463200458
+      ],
+      "distance": 0.34,
+      "near": 0.1,
+      "headRelative": true
+    }
+  ],
+  "phases": [
+    {
+      "name": "dance-audio-on",
+      "audio": true,
+      "time": 50,
+      "durationMs": 12000
+    },
+    {
+      "name": "dance-audio-off-diagnostic",
+      "audio": false,
+      "time": 50,
+      "durationMs": 12000
+    },
+    {
+      "name": "home-after-dance",
+      "clip": "home",
+      "audio": true,
+      "time": 0,
+      "durationMs": 2500
+    },
+    {
+      "name": "dance-after-home",
+      "audio": true,
+      "time": 50,
+      "durationMs": 5000
+    },
+    {
+      "name": "home-after-second-dance",
+      "clip": "home",
+      "audio": true,
+      "time": 0,
+      "durationMs": 2500
+    },
+    {
+      "name": "dance-after-second-home",
+      "audio": true,
+      "time": 50,
+      "durationMs": 5000
+    }
+  ]
+}
