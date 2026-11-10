@@ -14,8 +14,10 @@ from pathlib import Path
 import platform
 import plistlib
 import re
+import shlex
 import shutil
 import sys
+import tempfile
 
 from common import (BUILD_ROOT, copy_tree, clean_python_bytecode, extract_python,
                     readonly_tree, require, run, sha256, sign_bundle,
@@ -139,14 +141,29 @@ def build_texture65(repo, output):
     helper = repo / "modtools/webtools/core/resources/texture65_decoder/build.py"
     require(helper.is_file() and not helper.is_symlink(), "The pinned format65 decoder builder is missing")
     report = output.parent.parent / "texture65-build.json"
-    run([sys.executable, helper, "--target", "macos", "--output", output, "--report", report])
+    compiler = Path(run(["xcrun", "--sdk", "macosx", "--find", "clang++"], capture=True).strip())
+    sdk = Path(run(["xcrun", "--sdk", "macosx", "--show-sdk-path"], capture=True).strip())
+    require(compiler.is_file() and sdk.is_dir(), "The selected macOS C++ compiler/SDK is unavailable")
+    # An absolute Xcode clang++ does not acquire xcrun's SDK environment.
+    # Keep the shared/Android builder bytes untouched while supplying the SDK
+    # explicitly to every Mac compilation through its existing --cxx interface.
+    with tempfile.TemporaryDirectory(prefix="elichika-texture65-compiler-") as directory:
+        launcher = Path(directory) / "clang++"
+        launcher.write_text("#!/bin/sh\nexec " + shlex.quote(str(compiler)) + " -isysroot "
+                            + shlex.quote(str(sdk)) + ' "$@"\n')
+        launcher.chmod(0o755)
+        launcher_sha = sha256(launcher)
+        run([sys.executable, helper, "--target", "macos", "--output", output, "--report", report,
+             "--cxx", launcher])
     require(output.is_file() and os.access(output, os.X_OK), "The private format65 decoder executable was not built")
     require(report.is_file() and report.stat().st_size <= 256 * 1024, "The format65 native build receipt is missing")
     receipt = json.loads(report.read_text())
     require(receipt.get("status") == "PASS" and receipt.get("target") == "macos"
             and receipt.get("sha256") == sha256(output), "The format65 build receipt does not match its executable")
     return {"decoder": "Unity ETC2_RGBA8Crunched", "format": 65, "isolated_cli": True,
-            "sha256": sha256(output), "build": receipt}
+            "sha256": sha256(output), "build": receipt,
+            "toolchain": {"compiler": str(compiler), "sdk": str(sdk), "explicit_sysroot": True,
+                          "launcher_sha256": launcher_sha}}
 
 
 def build(repo, shared, output, cache, version):

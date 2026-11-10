@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 from pathlib import Path
+import shlex
 import sys
 import tarfile
 import tempfile
@@ -178,10 +179,23 @@ class PackagingBoundaries(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "arm64/bin/texture65"
             output.parent.mkdir(parents=True)
-            def compile_private(arguments):
+            sdk = Path(directory) / "Mac SDK with spaces.sdk"
+            sdk.mkdir()
+            compiler = Path(directory) / "Xcode toolchain clang++"
+            compiler.write_bytes(b"selected compiler fixture")
+            def compile_private(arguments, *, capture=False):
+                if arguments == ["xcrun", "--sdk", "macosx", "--find", "clang++"]:
+                    return str(compiler) + "\n"
+                if arguments == ["xcrun", "--sdk", "macosx", "--show-sdk-path"]:
+                    return str(sdk) + "\n"
                 self.assertEqual(Path(arguments[1]), repo / "modtools/webtools/core/resources/texture65_decoder/build.py")
                 self.assertEqual(arguments[2:4], ["--target", "macos"])
                 self.assertEqual(arguments[4:6], ["--output", output])
+                self.assertEqual(arguments[-2], "--cxx")
+                launcher = Path(arguments[-1])
+                self.assertTrue(os.access(launcher, os.X_OK))
+                self.assertEqual(shlex.split(launcher.read_text().splitlines()[1]),
+                                 ["exec", str(compiler), "-isysroot", str(sdk), "$@"])
                 output.write_bytes(b"private scalar executable fixture")
                 output.chmod(0o755)
                 Path(arguments[7]).write_text(json.dumps({"status": "PASS", "target": "macos", "sha256": sha256(output)}))
@@ -190,13 +204,23 @@ class PackagingBoundaries(unittest.TestCase):
             self.assertEqual(report["format"], 65)
             self.assertTrue(report["isolated_cli"])
             self.assertEqual(report["sha256"], sha256(output))
+            self.assertEqual(report["toolchain"]["sdk"], str(sdk))
+            self.assertTrue(report["toolchain"]["explicit_sysroot"])
 
     def test_format65_builder_rejects_a_receipt_for_a_different_binary(self):
         repo = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "arm64/bin/texture65"
             output.parent.mkdir(parents=True)
-            def compile_private(arguments):
+            sdk = Path(directory) / "Mac SDK.sdk"
+            sdk.mkdir()
+            compiler = Path(directory) / "clang++"
+            compiler.write_bytes(b"selected compiler fixture")
+            def compile_private(arguments, *, capture=False):
+                if arguments == ["xcrun", "--sdk", "macosx", "--find", "clang++"]:
+                    return str(compiler) + "\n"
+                if arguments == ["xcrun", "--sdk", "macosx", "--show-sdk-path"]:
+                    return str(sdk) + "\n"
                 output.write_bytes(b"private scalar executable fixture")
                 output.chmod(0o755)
                 Path(arguments[7]).write_text(json.dumps({"status": "PASS", "target": "macos", "sha256": "0" * 64}))
