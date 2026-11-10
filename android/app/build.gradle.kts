@@ -1,3 +1,16 @@
+import com.android.build.api.artifact.SingleArtifact
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import java.nio.file.Files
+import java.util.zip.GZIPInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -7,6 +20,66 @@ plugins {
     // the modding tools need the native wheels.
     id("com.chaquo.python")
 }
+
+// BEGIN canonical CDN gzip preservation
+// AGP's asset merger expands *.gz and drops the suffix before AAPT sees it.
+// Keep this signed catalog's exact path/bytes using the public assets artifact.
+abstract class PreserveCdnCatalogAssets : DefaultTask() {
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val mergedAssets: DirectoryProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val canonicalGzip: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputAssets: DirectoryProperty
+
+    @TaskAction
+    fun preserve() {
+        val input = mergedAssets.get().asFile
+        val output = outputAssets.get().asFile
+        val canonical = canonicalGzip.get().asFile.readBytes()
+        require(canonical.size >= 2 && canonical[0] == 0x1f.toByte() && canonical[1] == 0x8b.toByte()) {
+            "The original CDN catalog must remain gzip data"
+        }
+        val relative = "payload/assets/costume-cdn-index.json.gz"
+        val unpacked = input.resolve(relative.removeSuffix(".gz"))
+        val alreadyPreserved = input.resolve(relative)
+        if (alreadyPreserved.isFile) {
+            require(alreadyPreserved.readBytes().contentEquals(canonical) && !unpacked.exists()) {
+                "The merged CDN catalog differs from its canonical source"
+            }
+        } else {
+            val decoded = GZIPInputStream(canonical.inputStream()).use { it.readNBytes(64 * 1024 * 1024 + 1) }
+            require(decoded.size <= 64 * 1024 * 1024 && unpacked.isFile &&
+                    unpacked.readBytes().contentEquals(decoded)) {
+                "The merged CDN catalog is missing or unexpectedly changed"
+            }
+        }
+        require(input.canonicalFile != output.canonicalFile && !output.toPath().startsWith(input.toPath()))
+        require(input.walkTopDown().none { Files.isSymbolicLink(it.toPath()) })
+        if (output.exists()) require(output.deleteRecursively())
+        require(input.copyRecursively(output, overwrite = true))
+        val expandedOutput = output.resolve(relative.removeSuffix(".gz"))
+        if (expandedOutput.exists()) require(expandedOutput.delete())
+        output.resolve(relative).apply { parentFile.mkdirs(); writeBytes(canonical) }
+    }
+}
+
+androidComponents.onVariants { variant ->
+    val preserve = tasks.register<PreserveCdnCatalogAssets>(
+        "preserve${variant.name.replaceFirstChar { it.uppercaseChar() }}CdnCatalogAssets"
+    ) {
+        canonicalGzip.set(project.layout.projectDirectory.file(
+            "src/main/assets/payload/assets/costume-cdn-index.json.gz"))
+    }
+    variant.artifacts.use(preserve).wiredWithDirectories(
+        PreserveCdnCatalogAssets::mergedAssets, PreserveCdnCatalogAssets::outputAssets
+    ).toTransform(SingleArtifact.ASSETS)
+}
+// END canonical CDN gzip preservation
 
 // The phone build remains ARM64. A native x86_64 build lets an x86 emulator
 // exercise the same server subprocess and Python tools without ARM translation.
