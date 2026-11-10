@@ -51,24 +51,49 @@
   function map(mesh) { return mesh.geometry.userData.viewerMesh || mesh.userData.viewerMesh || {}; }
   function bodyMeshes(capture) { var d = donor(); return meshes(capture).filter(function (mesh) { var m = map(mesh); return m.mesh && m.mesh.source === 0 && String(m.mesh.id) === d.donorMesh && String(m.renderer) === d.donorRenderer; }); }
   function sceneFace(capture) {
-    var candidates = bodyMeshes(capture), all = meshes(capture);
+    var candidates = bodyMeshes(capture), all = meshes(capture), canvas = capture.renderer.domElement, rect = canvas.getBoundingClientRect(), pixels = [];
+    function margin(point, triangle) {
+      var area = (triangle[1][0] - triangle[0][0]) * (triangle[2][1] - triangle[0][1]) - (triangle[1][1] - triangle[0][1]) * (triangle[2][0] - triangle[0][0]);
+      if (Math.abs(area) < .000001) return -1;
+      var sign = area > 0 ? 1 : -1, result = Infinity;
+      for (var edge = 0; edge < 3; edge++) {
+        var a = triangle[edge], b = triangle[(edge + 1) % 3], dx = b[0] - a[0], dy = b[1] - a[1];
+        var distance = sign * (dx * (point[1] - a[1]) - dy * (point[0] - a[0])) / Math.hypot(dx, dy);
+        if (distance < 0) return -1; result = Math.min(result, distance);
+      }
+      return result;
+    }
     for (var m = 0; m < candidates.length; m++) {
       var mesh = candidates[m], index = mesh.geometry.index, mapping = map(mesh);
       assert(mapping.vertexOrder === 'identity', 'The actual donor source must expose verified original face ordering');
       for (var offset = 0; offset < index.count; offset += 3) {
         var ids = [0, 1, 2].map(function (slot) { return index.getX(offset + slot); });
-        var centre = ids.reduce(function (sum, id) { return sum.add(ViewerMeshRuntime.vertexWorld(mesh, id)); }, new THREE.Vector3()).divideScalar(3);
-        var projected = centre.clone().project(capture.camera); if (projected.z < -1 || projected.z > 1) continue;
-        var ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(projected.x, projected.y), capture.camera);
-        var hits = all.map(function (other) { return ViewerMeshRuntime.raycastMesh(ray.ray, other); }).filter(Boolean).sort(function (a, b) { return a.distance - b.distance; });
-        if (!hits.length || hits[0].object !== mesh || hits[0].faceIndex !== offset / 3) continue;
-        var hit = hits[0], si = mesh.geometry.attributes.skinIndex, sw = mesh.geometry.attributes.skinWeight, weights = {};
-        [hit.face.a, hit.face.b, hit.face.c].forEach(function (v, corner) { ['X', 'Y', 'Z', 'W'].forEach(function (axis) { var b = mesh.skeleton.bones[si['get' + axis](v)]; if (b) { var name = b.userData.originalName || b.name; weights[name] = (weights[name] || 0) + sw['get' + axis](v) * hit.barycoord.getComponent(corner); } }); });
-        return { mesh: mesh, sourceFace: mapping.firstFace + offset / 3, bone: Object.keys(weights).sort(function (a, b) { return weights[b] - weights[a]; })[0],
-          fraction: [(projected.x + 1) / 2, (1 - projected.y) / 2] };
+        var projected = ids.map(function (id) { return ViewerMeshRuntime.vertexWorld(mesh, id).project(capture.camera); });
+        if (projected.some(function (point) { return point.z < -1 || point.z > 1; })) continue;
+        var triangle = projected.map(function (point) { return [rect.left + (point.x + 1) * rect.width / 2, rect.top + (1 - point.y) * rect.height / 2]; });
+        var lengths = [0, 1, 2].map(function (corner) { var a = triangle[(corner + 1) % 3], b = triangle[(corner + 2) % 3]; return Math.hypot(b[0] - a[0], b[1] - a[1]); });
+        var total = lengths[0] + lengths[1] + lengths[2]; if (!total) continue;
+        var centres = [[0, 1].map(function (axis) { return triangle.reduce(function (sum, point, corner) { return sum + point[axis] * lengths[corner]; }, 0) / total; }),
+          [0, 1].map(function (axis) { return (triangle[0][axis] + triangle[1][axis] + triangle[2][axis]) / 3; })];
+        centres.forEach(function (centre) { for (var dx = -2; dx <= 2; dx++) for (var dy = -2; dy <= 2; dy++) {
+          var point = [Math.round(centre[0]) + dx, Math.round(centre[1]) + dy], padding = margin(point, triangle);
+          if (padding >= .75 && document.elementFromPoint(point[0], point[1]) === canvas) pixels.push({ mesh: mesh, localFace: offset / 3, sourceFace: mapping.firstFace + offset / 3, point: point, margin: padding });
+        } });
       }
     }
-    throw new Error('No actual visible source donor triangle can receive native input');
+    pixels.sort(function (a, b) { return b.margin - a.margin; });
+    for (var candidate = 0; candidate < pixels.length; candidate++) {
+      var pixel = pixels[candidate], ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2((pixel.point[0] - rect.left) / rect.width * 2 - 1, -(pixel.point[1] - rect.top) / rect.height * 2 + 1), capture.camera);
+      var hits = all.map(function (other) { return ViewerMeshRuntime.raycastMesh(ray.ray, other); }).filter(Boolean).sort(function (a, b) { return a.distance - b.distance; });
+      if (!hits.length || hits[0].object !== pixel.mesh || hits[0].faceIndex !== pixel.localFace) continue;
+      var hit = hits[0], si = pixel.mesh.geometry.attributes.skinIndex, sw = pixel.mesh.geometry.attributes.skinWeight, weights = {};
+      [hit.face.a, hit.face.b, hit.face.c].forEach(function (v, corner) { ['X', 'Y', 'Z', 'W'].forEach(function (axis) { var b = pixel.mesh.skeleton.bones[si['get' + axis](v)]; if (b) { var name = b.userData.originalName || b.name; weights[name] = (weights[name] || 0) + sw['get' + axis](v) * hit.barycoord.getComponent(corner); } }); });
+      return { capture: capture, mesh: pixel.mesh, sourceFace: pixel.sourceFace, bone: Object.keys(weights).sort(function (a, b) { return weights[b] - weights[a]; })[0],
+        point: { x: pixel.point[0], y: pixel.point[1] }, margin: pixel.margin,
+        fraction: [(pixel.point[0] - rect.left) / rect.width, (pixel.point[1] - rect.top) / rect.height] };
+    }
+    throw new Error('No visible integer CSS pixel safely hits an original donor triangle');
   }
   function textureFace(capture, sourceFace) {
     var selected = bodyMeshes(capture).find(function (mesh) { var m = map(mesh); return sourceFace >= m.firstFace && sourceFace < m.firstFace + m.faceCount; });
@@ -79,7 +104,7 @@
     var centre = points.reduce(function (sum, uv) { return sum.add(uv); }, new THREE.Vector2()).divideScalar(3), view = donor().textureView;
     return { sourceFace: sourceFace, fraction: [view.x + centre.x * view.zoom, view.y + centre.y * view.zoom] };
   }
-  async function nativeClick(element, fraction, kind) {
+  async function nativeClick(element, fraction, kind, sceneSelection) {
     expose(element); await settle();
     for (var attempt = 0; attempt < 5; attempt++) {
       var rect = element.getBoundingClientRect(), x = rect.left + rect.width * fraction[0], y = rect.top + rect.height * fraction[1];
@@ -92,6 +117,10 @@
       var pane = scroller.getBoundingClientRect(); scroller.scrollTop += y - (Math.max(0, pane.top) + Math.min(height, pane.bottom)) / 2; await settle();
     }
     rect = element.getBoundingClientRect(); x = rect.left + rect.width * fraction[0]; y = rect.top + rect.height * fraction[1]; hit = document.elementFromPoint(x, y);
+    if (sceneSelection) {
+      Object.assign(sceneSelection, sceneFace(sceneSelection.capture));
+      x = sceneSelection.point.x; y = sceneSelection.point.y; hit = document.elementFromPoint(x, y);
+    }
     assert(x >= 0 && x <= width && y >= 0 && y <= height && hit === element, 'The actual native pointer point must hit its visible donor canvas');
     var observed = null;
     function record(event, scope) {
@@ -108,6 +137,7 @@
     var eventTypes = ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'touchcancel'];
     eventTypes.forEach(function (name) { global.addEventListener(name, recordWindow, true); document.addEventListener(name, recordDocument, true); });
     var request = { pending: true, id: ++sequence, target: kind, point: { x: x, y: y }, viewport: { width: width, height: height }, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+    if (sceneSelection) request.sourcePixel = { face: sceneSelection.sourceFace, bone: sceneSelection.bone, margin: sceneSelection.margin };
     global.__nativePartPointer = request;
     if (diagnostic) diagnostic.lastPointer = copy(request);
     try { await until('native trusted donor pointer input ' + kind, function () { return !!observed; }); assert(observed.trusted, 'The donor selection must come from actual native input'); await settle(); }
@@ -154,11 +184,11 @@
       await click(prefix + '-selection-clear'); await click(prefix + '-include-children');
       var height = panel.querySelector('input[type=range][aria-label]'); height.value = '180'; height.dispatchEvent(new Event('input', { bubbles: true })); await settle();
       expose(capture.renderer.domElement); await settle(); var visible = sceneFace(capture);
-      var bonePointer = await nativeClick(capture.renderer.domElement, visible.fraction, 'scene-bone');
+      var bonePointer = await nativeClick(capture.renderer.domElement, visible.fraction, 'scene-bone', visible);
       assert(equal(donor().selectedBones, [visible.bone]), 'A native donor-model pick must select its genuine source skin bone');
       await click(prefix + '-selection-clear'); await input(prefix + '-selection-mode', 'triangles'); await input(prefix + '-scene-action', 'connected');
       expose(capture.renderer.domElement); await settle(); visible = sceneFace(capture);
-      var scenePointer = await nativeClick(capture.renderer.domElement, visible.fraction, 'scene-face'), sceneSelected = donor();
+      var scenePointer = await nativeClick(capture.renderer.domElement, visible.fraction, 'scene-face', visible), sceneSelected = donor();
       assert(equal(sceneSelected.selectedFaces, [visible.sourceFace]) && equal(sceneSelected.highlightedFaces, [visible.sourceFace]), 'A native 3D connected pick must identify the exact disconnected original source face');
       var donorProbe = probe(capture);
       await click(prefix + '-selection-undo'); assert(!donor().selectedFaces.length, '3D selection Undo must restore the original empty mask');
