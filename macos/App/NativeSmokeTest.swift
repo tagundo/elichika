@@ -275,6 +275,19 @@ final class NativeSmokeTest {
             report["status"] = "FAIL"
             report["error"] = error.localizedDescription
             if let webView = model.assetWebView {
+                report["native_part_failure_diagnostic"] = try? await object(webView, """
+                    function describe(node){if(!node)return null;var r=node.getBoundingClientRect();return {tag:node.tagName,id:node.id||'',classes:String(node.className||''),rect:{left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};}
+                    var s=ModelViewer.getState(),panel=document.getElementById('viewer-part-transplant'),d=window.__nativePartDiagnostic||null;
+                    var pointer=window.__nativePartPointer||(d&&d.lastPointer)||null,point=pointer&&(pointer.point||(pointer.request&&pointer.request.point));
+                    var canvases=panel?Array.from(panel.querySelectorAll('canvas')).map(describe):[];
+                    return JSON.stringify({diagnostic:d,pointer:pointer,transplants:s.transplants,loaded:s.loaded,loading:s.loading,modelId:s.modelId,paths:s.paths,stats:s.stats,
+                      activeElement:describe(document.activeElement),canvases:canvases,hit:point?describe(document.elementFromPoint(point.x,point.y)):null,
+                      status:panel?Array.from(panel.querySelectorAll('[role=status]')).map(function(node){return node.textContent;}):[],
+                      log:panel&&panel.querySelector('.viewer-transplant-log')?panel.querySelector('.viewer-transplant-log').textContent:'',
+                      viewport:{width:innerWidth,height:innerHeight,visualWidth:window.visualViewport&&visualViewport.width,visualHeight:window.visualViewport&&visualViewport.height}});
+                    """)
+                report["native_part_failure_window"] = nativePointerEnvironment(webView)
+                try? await snapshot(webView, directory.appendingPathComponent("failure.png"))
                 report["accessory_failure_diagnostic"] = try? await object(webView, """
                     var s=ModelViewer.getState(),m=ModelViewer.getEditingMetadata(),a=document.getElementById('viewer-accessory-enabled');
                     return JSON.stringify({step:window.__nativeAccessoryStep||'',loaded:s.loaded,loading:s.loading,
@@ -334,6 +347,51 @@ final class NativeSmokeTest {
                 "method": "NSWindow.sendEvent NSEvent leftMouseDown/leftMouseUp; DOM isTrusted is independently required"]
     }
 
+    private func nativePointerEnvironment(_ webView: WKWebView, request: [String: Any]? = nil) -> [String: Any] {
+        func rect(_ value: NSRect) -> [String: CGFloat] {
+            ["x": value.origin.x, "y": value.origin.y, "width": value.width, "height": value.height]
+        }
+        func describe(_ view: NSView?) -> [String: Any] {
+            guard let view else { return ["class": "none"] }
+            return ["class": String(describing: type(of: view)), "identifier": view.identifier?.rawValue ?? "",
+                    "frame": rect(view.frame), "bounds": rect(view.bounds), "hidden": view.isHidden]
+        }
+        let mouse = NSEvent.mouseLocation
+        var value: [String: Any] = ["mouseScreen": ["x": mouse.x, "y": mouse.y], "appActive": NSApplication.shared.isActive,
+            "keyWindow": NSApplication.shared.keyWindow?.windowNumber ?? -1,
+            "modalWindow": NSApplication.shared.modalWindow?.windowNumber ?? -1,
+            "webView": describe(webView), "webViewFlipped": webView.isFlipped]
+        guard let window = webView.window else { return value }
+        value["window"] = ["number": window.windowNumber, "key": window.isKeyWindow, "visible": window.isVisible,
+                           "frame": rect(window.frame), "content": describe(window.contentView)]
+        let mouseWindow = window.convertPoint(fromScreen: mouse)
+        value["mouseWindow"] = ["x": mouseWindow.x, "y": mouseWindow.y]
+        if let point = request?["point"] as? [String: Double], let viewport = request?["viewport"] as? [String: Double],
+           let x = point["x"], let y = point["y"], let width = viewport["width"], let height = viewport["height"], width > 0, height > 0 {
+            let bounds = webView.bounds
+            let local = NSPoint(x: bounds.minX + CGFloat(x / width) * bounds.width,
+                y: webView.isFlipped ? bounds.minY + CGFloat(y / height) * bounds.height : bounds.maxY - CGFloat(y / height) * bounds.height)
+            let location = webView.convert(local, to: nil)
+            value["requestedLocalPoint"] = ["x": local.x, "y": local.y]
+            value["requestedWindowPoint"] = ["x": location.x, "y": location.y]
+            if let content = window.contentView {
+                let hit = content.hitTest(content.superview?.convert(location, from: nil) ?? location)
+                value["requestedHitView"] = describe(hit)
+                value["requestedHitInsideWebView"] = hit === webView || hit?.isDescendant(of: webView) == true
+            }
+        }
+        return value
+    }
+
+    private func recordNativePartProgress(_ webView: WKWebView, phase: String, pointer: [String: Any]?,
+                                          events: [[String: Any]], attempts: [[String: Any]], handled: Set<Int>) async {
+        let diagnostic = try? await object(webView, "return JSON.stringify(window.__nativePartDiagnostic||{});")
+        report["native_part_progress"] = ["phase": phase, "pointer": pointer ?? [:], "diagnostic": diagnostic ?? [:],
+            "nativeEvents": events, "nativeAttempts": attempts, "handledIDs": handled.sorted(),
+            "window": nativePointerEnvironment(webView, request: pointer)]
+        try? checkpoint("native-part-progress-" + phase)
+    }
+
     private func checkPartSelectionWorkflow(_ webView: WKWebView, directory: URL) async throws {
         try checkpoint("native-part-selection-source")
         let source = directory.appendingPathComponent("part-target.unity"), donor = directory.appendingPathComponent("part-donor.unity")
@@ -353,16 +411,27 @@ final class NativeSmokeTest {
         let encoded = String(decoding: try JSONSerialization.data(withJSONObject: options), as: UTF8.self)
         let helper = try String(contentsOf: model.resourceDirectory.appendingPathComponent("qa/viewer_part_selection_qa.js"), encoding: .utf8)
         _ = try await js(webView, helper + ";window.__nativePartResult=null;window.__nativePartError='';" +
-            "NativePartQa.run(" + encoded + ").then(function(value){window.__nativePartResult=value;},function(error){window.__nativePartError=String(error.stack||error);});return true;")
-        var handled = Set<Int>(), events: [[String: Any]] = []
+            "NativePartQa.run(" + encoded + ").then(function(value){window.__nativePartResult=value;},function(error){window.__nativePartError=[String(error&&error.message||error),String(error&&error.stack||'')].join('\\n');});return true;")
+        var handled = Set<Int>(), events: [[String: Any]] = [], attempts: [[String: Any]] = []
+        var lastProgress = "", progressCount = 0
         try await wait("actual native trusted donor model and UV input", timeout: 300) {
-            let pending = try await self.object(webView, "return JSON.stringify({error:window.__nativePartError||'',done:!!window.__nativePartResult,pointer:window.__nativePartPointer||null});")
+            let pending = try await self.object(webView, "return JSON.stringify({error:window.__nativePartError||'',done:!!window.__nativePartResult,pointer:window.__nativePartPointer||null,phase:window.__nativePartDiagnostic&&window.__nativePartDiagnostic.phase||'awaiting-helper'});")
+            let phase = pending["phase"] as? String ?? "awaiting-helper"
+            let pointer = pending["pointer"] as? [String: Any]
+            let progress = phase + ":" + String(pointer?["id"] as? Int ?? 0)
+            if progress != lastProgress && progressCount < 64 {
+                lastProgress = progress; progressCount += 1
+                await self.recordNativePartProgress(webView, phase: phase, pointer: pointer, events: events, attempts: attempts, handled: handled)
+            }
             if let error = pending["error"] as? String, !error.isEmpty { throw NativeError.service(error) }
             if pending["done"] as? Bool == true { return true }
-            if let request = pending["pointer"] as? [String: Any], request["pending"] as? Bool == true,
+            if let request = pointer, request["pending"] as? Bool == true,
                let id = request["id"] as? Int, !handled.contains(id) {
+                attempts.append(["id": id, "request": request, "before": self.nativePointerEnvironment(webView, request: request)])
+                await self.recordNativePartProgress(webView, phase: "pointer-\(id)-before", pointer: request, events: events, attempts: attempts, handled: handled)
                 events.append(try self.sendNativePointer(request, webView: webView))
                 handled.insert(id)
+                await self.recordNativePartProgress(webView, phase: "pointer-\(id)-after", pointer: request, events: events, attempts: attempts, handled: handled)
             }
             return false
         }
