@@ -195,6 +195,8 @@ jobs:
             --report "$RUNNER_TEMP/macos-evidence/workbench-tests.json"
 
       - name: Exercise actual app, shared 3D editing, clean quit and relocated relaunch
+        env:
+          ELICHIKA_NATIVE_PCM_GAME_QA: "1"
         run: |
           python3 macos/ci/run_app_smoke.py \
             --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" \

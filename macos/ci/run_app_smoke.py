@@ -1046,6 +1046,179 @@ def check_game_physics_report(output, report):
             "Actual native game-physics screenshot is missing")
 
 
+def check_native_pcm_report(app, output, report):
+    import math
+    observed = report.get("native_pcm_audio", {})
+    require(observed.get("status") == "PASS" and observed.get("source_preserved") is True,
+            "Actual native PCM transport and model-source preservation must pass")
+    require(observed.get("platform", {}).get("native") is True
+            and observed["platform"].get("platform") == "macos", "PCM must use the actual native Mac bridge")
+    checks = observed.get("checks", {})
+    require(all(checks.get(key) is True for key in ("actualNativeBridge", "actualContextAndSource",
+                "unchangedClockAndFactory", "pausedDecode", "authoredOffsets", "actualGainMuteVolume",
+                "pausedClocks", "seekOffset", "sourceRecreated", "narrowFixtureBoundary", "buffersReleased",
+                "sourceAndPreferencesRestored")), "All generated native PCM lifecycle checks must pass")
+    resources = app / "Contents/Resources"
+    require(observed.get("helper_sha256") == sha256(resources / "qa/native_pcm_qa.js"),
+            "Actual Mac PCM helper must match its signed packaged source")
+    actual_sources = observed.get("product_source_sha256", {})
+    require(set(actual_sources) == {"viewer-native-pcm-player.js", "viewer-motion-audio.js"}
+            and all(actual_sources[name] == sha256(resources / "python-app/webtools/web/static" / name)
+                    for name in actual_sources), "Actual Mac PCM module/controller must match packaged source bytes")
+    source = Path(observed.get("source_path", ""))
+    require(source == output / "native-app-data/game-physics.unity"
+            and observed.get("source_sha256") == GAME_PHYSICS_FIXTURE_SHA and sha256(source) == GAME_PHYSICS_FIXTURE_SHA,
+            "Generated PCM playback must preserve the existing actual model input")
+    fixture = observed.get("fixture", {})
+    fixture_url = "/api/viewer/game/motions/audio/00000000000000000000000000000004.wav"
+    require(fixture == {"url": fixture_url, "sha256": "499c7e73a47caaba4343a94768dc4a46ebbae50d5c94499d418fb4fc162c1023",
+                        "encodedBytes": 705644, "sampleRate": 44100, "channels": 2, "bits": 16, "frames": 176400, "duration": 4},
+            "Use the exact generated stereo PCM fixture, independently hashed before the native run")
+    calls = observed.get("fetchCalls", [])
+    require(len(calls) == 2 and all(call == {"url": fixture_url, "credentials": "same-origin"} for call in calls)
+            and observed.get("unexpectedFetches") == [], "Only the one exact generated fixture URL may bypass real fetch")
+    rounds = observed.get("rounds", [])
+    require(len(rounds) == 2 and [row.get("playbackRate") for row in rounds] == [1, 1]
+            and [row.get("offset") for row in rounds] == [.25, .5],
+            "Actual unit-rate PCM transport must exercise both authored offsets")
+    for row in rounds:
+        rate, offset = row["playbackRate"], row["offset"]
+        ready, playing = row["ready"], row["playing"]
+        decoded = ready["audio"]["tracks"][0]
+        require(decoded["backend"] == "web-audio-pcm" and decoded["readyState"] >= 2
+                and decoded["player"]["fallbackReason"] is None and decoded["player"]["decodedBytes"] > 0
+                and ready["audio"]["paused"] and not ready["rig"]["playing"]
+                and abs(decoded["time"] - offset) <= .002, "Decode must complete paused using the actual PCM backend")
+        player = playing["audio"]["tracks"][0]["player"]
+        require(player["contextState"] == "running" and player["sourceActive"] and player["sourceStarts"] >= 1
+                and math.isfinite(player["contextTime"]) and player["contextTime"] >= player["sourceEpoch"]
+                and abs(player["sourceRate"] - rate) < 1e-6 and abs(player["gain"] - .4) < 1e-6
+                and math.isfinite(playing["clock"]) and abs(playing["clock"] - playing["rig"]["time"]) < .04,
+                "Actual context/source/gain must provide the unmodified mapped playback clock")
+        require(player["bufferChannels"] == 2 and player["bufferSampleRate"] > 0
+                and abs(player["bufferDuration"] - 4) < 1 / player["bufferSampleRate"]
+                and player["decodedBytes"] == round(player["bufferDuration"] * player["bufferSampleRate"]) * 8,
+                "Actual decode must preserve stereo duration and report its exact resampled buffer storage")
+        muted, volume = row["muted"], row["volume"]
+        require(muted["audio"]["muted"] and muted["audio"]["tracks"][0]["player"]["gain"] == 0
+                and muted["audio"]["tracks"][0]["player"]["sourceActive"]
+                and not volume["audio"]["muted"] and abs(volume["audio"]["tracks"][0]["player"]["gain"] - .2) < 1e-6,
+                "Mute/unmute/volume must change the actual gain and preserve the playing source")
+        paused, held, seeked, resumed = (row[name] for name in ("paused", "held", "seeked", "resumed"))
+        require(not held["rig"]["playing"] and held["audio"]["paused"]
+                and held["rig"]["time"] == paused["rig"]["time"]
+                and abs(held["audio"]["time"] - paused["audio"]["time"]) < 1e-9
+                and not held["audio"]["tracks"][0]["player"]["sourceActive"], "Paused rig and media clocks must remain unchanged")
+        require(not seeked["rig"]["playing"] and abs(seeked["rig"]["time"] - .75) < 1e-7
+                and abs(seeked["audio"]["time"] - (offset + .75 * rate)) <= .002
+                and resumed["audio"]["tracks"][0]["player"]["sourceStarts"] > paused["audio"]["tracks"][0]["player"]["sourceStarts"]
+                and not resumed["rig"]["playing"] and not resumed["audio"]["tracks"][0]["player"]["sourceActive"],
+                "Actual seek must preserve authored offsets and recreate then stop the real source")
+    final = observed.get("final", {})
+    manager = final.get("manager", {})
+    require(final.get("audio", {}).get("tracks") == [] and manager.get("players") == 0
+            and manager.get("retainedDecodedBytes") == manager.get("reservedDecodedBytes") == manager.get("queued") == 0
+            and manager.get("decoding") is False, "Clear must release all PCM players, buffers and pending reservations")
+
+
+def check_native_pcm_game_report(app, output, report, required):
+    import math
+    import re
+    observed = report.get("native_pcm_game_audio", {})
+    if not required:
+        require(observed.get("status") == "NOT_REQUESTED" and observed.get("enabled") is False,
+                "The official workload is explicitly first-launch-only; all relocated native checks still run")
+        return
+    require(observed.get("status") == "PASS" and observed.get("enabled") is True
+            and observed.get("captured") is True and not observed.get("failure") and not observed.get("restoreFailure"),
+            "The required actual official PCM game workload must pass; inspect its precise failure stage")
+    require(observed.get("platform", {}).get("native") is True and observed["platform"].get("platform") == "macos"
+            and observed.get("originalAPIsPreserved") is True, "Official PCM playback must use the real Mac bridge and unchanged transport APIs")
+    resources = app / "Contents/Resources"
+    require(observed.get("helper_sha256") == sha256(resources / "qa/native_pcm_qa.js"), "Official workload must use the signed helper source")
+    sources = observed.get("product_source_sha256", {})
+    require(set(sources) == {"viewer-native-pcm-player.js", "viewer-motion-audio.js"}
+            and all(sources[name] == sha256(resources / "python-app/webtools/web/static" / name) for name in sources),
+            "Official workload must exercise the exact packaged module/controller bytes")
+    loaded = observed.get("loaded", {})
+    require(loaded.get("clip") == "game-timeline:mv:mv:12008:1200801:1" and 103 < loaded.get("duration", 0) < 104
+            and loaded.get("stats") == {"meshes": 8, "vertices": 11410, "triangles": 14169, "materials": 2, "textures": 39}
+            and loaded.get("quality", {}).get("enabled") is True and loaded["quality"].get("actualSamples") == 4,
+            "The official Eli/CHASE workload must retain the original full mesh/texture load and HQ AA4")
+    physics = loaded.get("physics", {})
+    require(physics.get("mode") == "game" and physics.get("frameRate") == 0 and physics.get("swingBone") is True
+            and physics.get("swingCollider") is True and physics.get("nativeAvailable") is True,
+            "The actual original game physics must stay at its default enabled settings")
+    audio = loaded.get("audio", {})
+    require(audio.get("source") == "game" and audio.get("enabled") is True and len(audio.get("tracks", [])) == 1,
+            "One original linked game music cue must drive the real transport")
+    track = audio["tracks"][0]
+    require(track.get("cue") == "music_2008" and track.get("backend") == "web-audio-pcm"
+            and track.get("readyState", 0) >= 2 and 103 < track.get("duration", 0) < 104
+            and track.get("startTime") == 0 and track["player"].get("fallbackReason") is None
+            and track["player"].get("bufferChannels") == 2 and 0 < track["player"].get("decodedBytes", 0) <= 64 * 1024 * 1024,
+            "The original music cue must decode into the bounded native PCM backend")
+    library = output / "native-app-data/sukusta"
+    body = observed.get("official_body", {})
+    body_path = Path(body.get("path", "")).resolve()
+    require(body_path.is_relative_to((library / "extracted/game-models").resolve())
+            and body_path.name == "ch0002_suit400022007_primary.unity" and body.get("preserved") is True
+            and body.get("bytes") == 1034160
+            and body.get("sha256") == sha256(body_path) == "cbfae69d2f37e5b8b2240f905e59289580ce73836fca3f46c421e9bc5da5404c",
+            "The actual official body bytes must match the audited original input")
+    original = observed.get("originalPCM", {})
+    digest, pcm = original.get("sha256", ""), original.get("pcm", {})
+    require(re.fullmatch(r"[a-f0-9]{64}", digest) is not None
+            and re.fullmatch(r"/api/viewer/game/motions/audio/[a-f0-9]{32}\.wav", original.get("path", "")) is not None
+            and original.get("status") == 200 and pcm.get("format") == 1 and pcm.get("channels") == 2
+            and pcm.get("sampleRate") == 44100 and pcm.get("bits") == 16 and pcm.get("blockAlign") == 4
+            and 103 < pcm.get("duration", 0) < 104 and 0 < pcm.get("encodedBytes", 0) <= 32 * 1024 * 1024,
+            "Record the same-job original encoded stereo PCM identity; do not substitute the host decoder hash")
+    cached = observed.get("same_job_cached_pcm", [])
+    require(cached and all(Path(item["path"]).resolve().is_relative_to((library / "extracted/game-motions/audio").resolve())
+                and item["sha256"] == digest == sha256(Path(item["path"]))
+                and item["bytes"] == pcm["encodedBytes"] == Path(item["path"]).stat().st_size for item in cached),
+            "The observed original response must match this same native job's actual cached WAV bytes")
+    samples = observed.get("samples", [])
+    steady = [sample for sample in samples if sample.get("elapsed", 0) >= 1000]
+    require(len(steady) >= 100 and steady[-1]["elapsed"] - steady[0]["elapsed"] >= 10000,
+            "Collect at least ten steady seconds within the actual twelve-second playback")
+    intervals = [right["at"] - left["at"] for left, right in zip(steady, steady[1:])]
+    require(all(math.isfinite(value) and value > 0 for value in intervals)
+            and max(intervals) <= 300 and sum(value <= 50 for value in intervals) / len(intervals) >= .6,
+            "Actual rAF sampling must distinguish a clock hold from a scheduling gap")
+    first = steady[0]
+    require(all(sample.get("playing") is True and sample.get("hidden") is False
+                and sample.get("contextState") == "running" and sample.get("sourceActive") is True
+                and math.isfinite(sample["clock"]) and math.isfinite(sample["contextTime"])
+                and sample.get("sourceRate") == 1
+                and all(sample[field] == first[field] for field in ("sourceStarts", "sourceGeneration", "seeks", "revision"))
+                for sample in steady), "The actual DSP source must remain running without frame seeks, restarts or transport changes")
+    holds, start = [], 0
+    for index in range(1, len(steady) + 1):
+        if index < len(steady) and steady[index]["at"] - steady[index - 1]["at"] <= 50 and steady[index]["rigTime"] == steady[index - 1]["rigTime"]:
+            continue
+        if index - start > 1:
+            holds.append(steady[index - 1]["at"] - steady[start]["at"])
+        start = index
+    require(max(holds, default=0) <= 50 and steady[-1]["clock"] - first["clock"] > 10
+            and max(abs(sample["rigTime"] - sample["clock"]) for sample in steady) <= .12,
+            "Independent raw-sample analysis must show no qualified steady rig hold over 50ms and bounded DSP alignment")
+    before, after = observed.get("before", {}), observed.get("after", {})
+    require(after["physics"]["solver"]["totalNativeSteps"] > before["physics"]["solver"]["totalNativeSteps"] + 30
+            and after["physics"]["swingBone"] is True and after["physics"]["swingCollider"] is True
+            and after["rig"]["playing"] is False and after["audio"]["paused"] is True,
+            "Original native physics must advance during the music and both transports must pause afterwards")
+    cleared, restored = observed.get("cleared", {}), observed.get("restored", {})
+    require(cleared.get("players") == cleared.get("retainedDecodedBytes") == cleared.get("reservedDecodedBytes") == cleared.get("queued") == 0
+            and cleared.get("decoding") is False and all(restored.get(key) is True for key in
+                ("checkpoint", "authoring", "meshState", "camera", "motionInputs", "preferences"))
+            and restored.get("paths") == observed["original"]["paths"]
+            and restored.get("selectedClip") == observed["original"]["selectedClip"]
+            and abs(restored.get("time", -1) - observed["original"]["time"]) < 1e-7,
+            "The official release-only check must release its buffers and restore the owned checkpoint and preferences")
+
+
 def prepare_zip_fixture(app, output):
     """Make one real ZIP input using the shipped interpreter, outside the app."""
     directory = output / "native-app-data"
@@ -1151,12 +1324,17 @@ def launch(app, output, label):
     directory.mkdir(exist_ok=True)
     report_file = directory / "native-smoke.json"
     report_file.unlink(missing_ok=True)
+    game_required = os.environ.get("ELICHIKA_NATIVE_PCM_GAME_QA") == "1" and label == "first-launch"
+    environment = private_environment(app / "Contents/Resources")
+    environment.pop("ELICHIKA_NATIVE_PCM_GAME_QA", None)
+    if game_required:
+        environment["ELICHIKA_NATIVE_PCM_GAME_QA"] = "1"
     with stdout.open("w") as out, stderr.open("w") as err:
         child = subprocess.Popen([str(app / "Contents/MacOS/Elichika"), "--smoke-test", str(directory)],
-                                 cwd=output, env=private_environment(app / "Contents/Resources"),
+                                 cwd=output, env=environment,
                                  stdout=out, stderr=err, start_new_session=True)
         try:
-            code = child.wait(timeout=600)
+            code = child.wait(timeout=900 if game_required else 600)
         except subprocess.TimeoutExpired:
             os.killpg(child.pid, signal.SIGTERM)
             try:
@@ -1181,6 +1359,8 @@ def launch(app, output, label):
     preserve_native_output_evidence(output, label, report)
     inspect_accessory_export(app, output, label, report)
     check_game_physics_report(output, report)
+    check_native_pcm_report(app, output, report)
+    check_native_pcm_game_report(app, output, report, required=game_required)
     inspect_detail_export(app, output, label, report)
     inspect_extended_workflow(output, report)
     inspect_thumbnail_export(app, output, label, report)

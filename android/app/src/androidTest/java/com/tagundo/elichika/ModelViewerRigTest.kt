@@ -649,6 +649,17 @@ class ModelViewerRigTest {
         assertEquals("30", restored.getJSONObject("controls").getString("frameRate"))
         assertFalse(restored.getJSONObject("controls").getBoolean("frameDisabled"))
         assertEquals(physicsEdits.toString(), restored.getJSONObject("authoring").getJSONArray("physics").toString())
+        run(webView, "window.__nativeUnknownPhysicsResult=null;ViewerRigQa.unknownMotionPhysicsTransitions().then(function(result){" +
+            "window.__nativeUnknownPhysicsResult={ok:true,result:result};},function(error){window.__nativeUnknownPhysicsResult=" +
+            "{ok:false,message:String(error.message||error),stack:String(error.stack||'')};});")
+        waitForDom(webView, "the full-AUTO known and unknown motion metadata transition", 180) {
+            "var r=window.__nativeUnknownPhysicsResult;if(r&&!r.ok)throw new Error(r.message+' '+r.stack);return JSON.stringify({ok:!!r&&r.ok});"
+        }
+        val unknownTransitions = evaluate(webView, "return JSON.stringify(window.__nativeUnknownPhysicsResult.result);")
+        assertEquals("PASS", unknownTransitions.getString("status"))
+        assertTrue(unknownTransitions.getBoolean("fullAuto"))
+        assertTrue(unknownTransitions.getBoolean("authoringAndSourcePreserved"))
+        assertTrue(unknownTransitions.getBoolean("originalPreviewRestored"))
         val probe = evaluate(webView, "return JSON.stringify(ModelViewer.renderProbe(33));")
         assertTrue("The actual native WebGL renderer remains ready", probe.getBoolean("ready"))
         assertEquals(0, probe.getInt("glError"))
@@ -657,7 +668,7 @@ class ModelViewerRigTest {
             .put("paused", paused).put("debugOn", debugOn).put("debugHeld", debugHeld).put("debugOff", debugOff)
             .put("parameterControl", parameterControl).put("authored", authored).put("seeked", seeked)
             .put("modeControl", modeControl).put("frameControl", frameControl).put("enhancedControl", enhancedControl)
-            .put("enhanced", enhanced).put("restored", restored).put("probe", probe).put("sourcePreserved", true)
+            .put("enhanced", enhanced).put("restored", restored).put("unknownTransitions", unknownTransitions).put("probe", probe).put("sourcePreserved", true)
             .put("checks", JSONObject().put("nativeDefault", true).put("singleJobAdvanced", true).put("groupJobAdvanced", true)
                 .put("pausedDebugPreserved", true).put("seekPreservedParameters", true)
                 .put("modeSwitchPreservedParameters", true).put("frameRateRestored30", true))

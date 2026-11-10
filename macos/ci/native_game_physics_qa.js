@@ -125,6 +125,7 @@
     await input('viewer-physics-mode', 'game'); var restored = snapshot(); ready(restored, 'SwingBoneGroupJob');
     assert(restored.physics.frameRate === 30 && !restored.controls.frameDisabled && equal(restored.authoring.physics, edits),
       'Returning to the original job must preserve cadence and edits');
+    var unknownTransitions = await ViewerRigQa.unknownMotionPhysicsTransitions();
     if (!document.getElementById('viewer-physics-show-colliders').checked) await click('viewer-physics-show-colliders');
     var final = snapshot(), framebuffer = ModelViewer.renderProbe(33);
     assert(framebuffer.ready && framebuffer.glError === 0 && framebuffer.nonBackgroundSamples >= 3,
@@ -134,7 +135,7 @@
         seekPreservedParameters: true, modeSwitchPreservedParameters: true, frameRateRestored30: true },
       paused: { before: paused, debugOn: debugOn, held: held, debugOff: debugOff, cacheAndPosePreserved: true },
       seek: { before: authored, after: seeked, parameterControl: parameterControl, userPhysicsAndCataloguePreserved: true },
-      enhanced: enhanced, restored: restored, final: final, framebuffer: framebuffer,
+      enhanced: enhanced, restored: restored, unknownTransitions: unknownTransitions, final: final, framebuffer: framebuffer,
       sourceCataloguePreserved: equal(final.catalogue, initial.catalogue),
       scope: 'Actual WKWebView controls, original single/group job outputs, pause/seek lifecycle and WebGL draw. No full Unity scheduler or whole-game rendering parity claim.' };
   }

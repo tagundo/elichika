@@ -14,7 +14,7 @@ from common import require, write_json
 
 
 PROBE = r'''
-import hashlib, importlib.util, json, os, pathlib, shutil, sys, tempfile, unittest
+import hashlib, importlib.util, json, os, pathlib, shutil, subprocess, sys, tempfile, unittest
 repo, resources = (pathlib.Path(value).resolve() for value in sys.argv[1:3])
 # macOS exposes temporary folders through /var aliases. These source-bound
 # fixtures must use real paths, as the app's authenticated routes already do.
@@ -78,9 +78,10 @@ staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.j
     'viewer_game_physics_math_test.js', 'viewer_game_physics_collision_test.js',
     'viewer_game_physics_job_collision_test.js', 'viewer_game_physics_native_test.js',
     'viewer_game_physics_initialization_test.js', 'viewer_game_physics_adapter_test.js',
+    'viewer_game_physics_motion_metadata_test.js',
     'viewer_mesh_connected_zoom_test.js', 'viewer_gaze_test.js', 'viewer_motion_audio_transport_test.js',
     'viewer_transplant_bone_selection_test.js', 'viewer_thumbnail_saved_settings_test.js',
-    'viewer_motion_performance_test.js']
+    'viewer_motion_performance_test.js', 'viewer_native_pcm_test.js', 'viewer_native_pcm_controller_test.js']
 numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisions.json',
     'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
     'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json',
@@ -92,7 +93,7 @@ for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
 static_files = ['vendor/three-r128/three.min.js', 'viewer-physics.js',
     'viewer-game-physics-math.js', 'viewer-game-physics-collision.js', 'viewer-game-physics.js',
-    'viewer-mesh-tools.js', 'viewer-motion-timeline.js', 'viewer-motion-audio.js', 'viewer-transplants.js', 'viewer-thumbnails.js']
+    'viewer-mesh-tools.js', 'viewer-motion-timeline.js', 'viewer-motion-audio.js', 'viewer-native-pcm-player.js', 'viewer-transplants.js', 'viewer-thumbnails.js']
 packaged_node_sources = {}
 for name in static_files:
     actual = (stage / 'webtools/web/static' / name).resolve()
@@ -250,6 +251,42 @@ def case_ids(tests):
             yield item.id()
 executed_cases = list(case_ids(suite))
 assert len(executed_cases) == len(set(executed_cases)), 'Duplicate packaged test selection'
+# Keep the original unittest inventory intact. This additional six-case Node
+# probe exercises the same signed source bytes through the staged static link.
+metadata_environment = dict(os.environ)
+for name in ('PRODUCT_ROOT', 'PHYSICS_SOURCE', 'EVIDENCE_FILE'):
+    metadata_environment.pop(name, None)
+metadata_result = subprocess.run(['node', str(test_stage / 'viewer_game_physics_motion_metadata_test.js')],
+    env=metadata_environment, capture_output=True, text=True, timeout=60)
+assert metadata_result.returncode == 0, metadata_result.stdout + metadata_result.stderr
+metadata_probe = json.loads(metadata_result.stdout.strip())
+assert metadata_probe['status'] == 'PASS' and len(metadata_probe['cases']) == 6
+assert all(case['pass'] is True for case in metadata_probe['cases'])
+assert pathlib.Path(metadata_probe['source']).resolve() == (static / 'viewer-game-physics.js').resolve()
+metadata_probe['engine_source_sha256'] = hashlib.sha256((static / 'viewer-game-physics.js').read_bytes()).hexdigest()
+metadata_probe['controller_source_sha256'] = hashlib.sha256((static / 'viewer-physics.js').read_bytes()).hexdigest()
+metadata_probe['probe_is_additional_unittest'] = False
+pcm_probes = {}
+for driver, marker, expected in (
+        ('viewer_native_pcm_test.js', 'NATIVE_PCM_PLAYER_PASS', 22),
+        ('viewer_native_pcm_controller_test.js', 'NATIVE_PCM_CONTROLLER_PASS', 13)):
+    pcm_environment = dict(os.environ)
+    for name in ('VIEWER_PCM_SCRIPT', 'VIEWER_AUDIO_SCRIPT'):
+        pcm_environment.pop(name, None)
+    pcm_result = subprocess.run(['node', str(test_stage / driver)], env=pcm_environment,
+        capture_output=True, text=True, timeout=60)
+    assert pcm_result.returncode == 0, pcm_result.stdout + pcm_result.stderr
+    assert marker + '\n' in pcm_result.stdout
+    pcm_probe = json.loads(pcm_result.stdout.split(marker + '\n', 1)[1].strip())
+    assert pcm_probe['status'] == 'PASS' and len(pcm_probe['checks']) == expected
+    assert len({item['name'] for item in pcm_probe['checks']}) == expected
+    assert all(item['pass'] is True for item in pcm_probe['checks'])
+    expected_source = 'viewer-native-pcm-player.js' if driver == 'viewer_native_pcm_test.js' else 'viewer-motion-audio.js'
+    assert pathlib.Path(pcm_probe['script']).resolve() == (static / expected_source).resolve()
+    pcm_probe['product_source_sha256'] = {name: hashlib.sha256((static / name).read_bytes()).hexdigest()
+        for name in ('viewer-native-pcm-player.js', 'viewer-motion-audio.js')}
+    pcm_probe['probe_is_additional_unittest'] = False
+    pcm_probes[driver] = pcm_probe
 result = unittest.TextTestRunner(verbosity=2).run(suite)
 assert sys.modules['test_texture65_decode'].NativeTexture65Tests.binary.resolve() == texture65.resolve()
 installer_child_runs = [json.loads(path.read_text()) for path in sorted(installer_audits.glob('*.json'))]
@@ -281,6 +318,8 @@ report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else
           'executed_packaged_module_paths': packaged_imports,
           'explicit_cases': explicit_cases, 'executed_cases': executed_cases,
           'packaged_node_static_sources': packaged_node_sources,
+          'physics_motion_metadata_node_probe': metadata_probe,
+          'native_pcm_node_probes': pcm_probes,
           'packaged_astc_cli': {'path': str(astc.relative_to(resources)),
                                 'sha256': hashlib.sha256(astc.read_bytes()).hexdigest(),
                                 'actual_rgba_mip_sizes': [4, 128, 256, 512]},

@@ -196,6 +196,7 @@ def build(repo, shared, output, cache, version):
     shutil.copy2(repo / "android/app/src/androidTest/assets/viewer_rig_qa.js", qa / "viewer_rig_qa.js")
     shutil.copy2(repo / "android/app/src/androidTest/assets/viewer_game_physics.unity", qa / "viewer_game_physics.unity")
     shutil.copy2(repo / "macos/ci/native_game_physics_qa.js", qa / "native_game_physics_qa.js")
+    shutil.copy2(repo / "macos/ci/native_pcm_qa.js", qa / "native_pcm_qa.js")
     for name in ("viewer_detail_qa.js", "viewer_extended_qa.js", "viewer_gaze.unity", "viewer_library_motion.unity",
                  "viewer_thumbnail_qa.js", "viewer_thumbnail_oracle.py", "viewer_part_selection_qa.js", "viewer_part_oracle.py",
                  "viewer_part_target.unity", "viewer_part_donor.unity",

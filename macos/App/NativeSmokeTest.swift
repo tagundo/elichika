@@ -237,9 +237,15 @@ final class NativeSmokeTest {
             try await checkMinimizedViewer(webView)
             try await checkAccessoryUnclip(webView, directory: directory)
             try await checkGamePhysics(webView, directory: directory)
+            try await checkNativePCM(webView, directory: directory)
             try await checkExtendedWorkflow(webView, directory: directory)
             try await checkPartSelectionWorkflow(webView, directory: directory)
             try await checkThumbnailUpdaterWorkflow(webView, directory: directory)
+            if ProcessInfo.processInfo.environment["ELICHIKA_NATIVE_PCM_GAME_QA"] == "1" {
+                try await checkNativePCMGame(webView, directory: directory)
+            } else {
+                report["native_pcm_game_audio"] = ["status": "NOT_REQUESTED", "enabled": false]
+            }
             _ = try await model.request("/v1/server/start", method: "POST")
             try checkpoint("quit-server-start-requested")
             try await wait("the game server before quitting", timeout: 120) {
@@ -606,6 +612,81 @@ final class NativeSmokeTest {
         report["native_game_physics"] = observed
         try await snapshot(webView, directory.appendingPathComponent("game-physics.png"))
         try checkpoint("native-game-physics-passed")
+    }
+
+    private func checkNativePCM(_ webView: WKWebView, directory: URL) async throws {
+        try checkpoint("native-pcm-audio-started")
+        let source = directory.appendingPathComponent("game-physics.unity")
+        let original = try Data(contentsOf: source)
+        let digest = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+        try require(digest == "d619ef6e956d3b8557660ebbd070e8c998c0c0c82dc2fb97a8755c2a4d74e66e",
+                    "The PCM transport must use the existing original neutral model.")
+        let helperURL = model.resourceDirectory.appendingPathComponent("qa/native_pcm_qa.js")
+        let helper = try String(contentsOf: helperURL, encoding: .utf8)
+        _ = try await js(webView, helper + ";return true;")
+        var observed = try await object(webView, "return JSON.stringify(await NativePCMQa.run());")
+        try require(observed["status"] as? String == "PASS", "The actual native PCM transport checks failed.")
+        try require(try Data(contentsOf: source) == original, "Audio transport must preserve original model bytes.")
+        var sources: [String: String] = [:]
+        for name in ["viewer-native-pcm-player.js", "viewer-motion-audio.js"] {
+            let bytes = try Data(contentsOf: model.resourceDirectory.appendingPathComponent("python-app/webtools/web/static/" + name))
+            sources[name] = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        }
+        let helperBytes = try Data(contentsOf: helperURL)
+        observed["helper_sha256"] = SHA256.hash(data: helperBytes).map { String(format: "%02x", $0) }.joined()
+        observed["product_source_sha256"] = sources
+        observed["source_path"] = source.path
+        observed["source_sha256"] = digest
+        observed["source_preserved"] = true
+        report["native_pcm_audio"] = observed
+        try checkpoint("native-pcm-audio-passed")
+    }
+
+    private func checkNativePCMGame(_ webView: WKWebView, directory: URL) async throws {
+        try checkpoint("native-official-pcm-game-started")
+        var observed = try await object(webView, "return JSON.stringify(await NativePCMQa.runGame());")
+        observed["enabled"] = true
+        report["native_pcm_game_audio"] = observed
+        try require(observed["status"] as? String == "PASS", "The actual official Eli/CHASE PCM workload failed; see its network/import/engine stage.")
+        let loaded = observed["loaded"] as? [String: Any] ?? [:]
+        let paths = loaded["paths"] as? [String] ?? []
+        let library = URL(fileURLWithPath: model.libraryDirectory, isDirectory: true).standardizedFileURL
+        try require(paths.count == 1, "The official workload must use one original Eli body input.")
+        let source = URL(fileURLWithPath: paths[0]).standardizedFileURL
+        try require(source.path.hasPrefix(library.path + "/extracted/game-models/") && source.lastPathComponent == "ch0002_suit400022007_primary.unity",
+                    "The official Eli body must come from this smoke test's own normal game import.")
+        let body = try Data(contentsOf: source)
+        let bodyHash = SHA256.hash(data: body).map { String(format: "%02x", $0) }.joined()
+        try require(bodyHash == "cbfae69d2f37e5b8b2240f905e59289580ce73836fca3f46c421e9bc5da5404c",
+                    "The actual Eli workload must preserve the original audited body bytes.")
+        let pcm = observed["originalPCM"] as? [String: Any] ?? [:]
+        let pcmFormat = pcm["pcm"] as? [String: Any] ?? [:]
+        guard let inputHash = pcm["sha256"] as? String, inputHash.count == 64,
+              let inputBytes = pcmFormat["encodedBytes"] as? Int else {
+            throw NativeError.invalidResponse
+        }
+        let audioDirectory = library.appendingPathComponent("extracted/game-motions/audio", isDirectory: true)
+        var matches: [[String: Any]] = []
+        for file in try FileManager.default.contentsOfDirectory(at: audioDirectory, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) where file.pathExtension == "wav" {
+            let values = try file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            guard values.isRegularFile == true, values.fileSize == inputBytes, inputBytes <= 32 * 1024 * 1024 else { continue }
+            let bytes = try Data(contentsOf: file)
+            let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+            if digest == inputHash { matches.append(["path": file.path, "sha256": digest, "bytes": bytes.count]) }
+        }
+        try require(!matches.isEmpty, "The observed real linked response must match this same job's original cached PCM WAV bytes.")
+        observed["official_body"] = ["path": source.path, "bytes": body.count, "sha256": bodyHash, "preserved": true]
+        observed["same_job_cached_pcm"] = matches
+        let helper = try Data(contentsOf: model.resourceDirectory.appendingPathComponent("qa/native_pcm_qa.js"))
+        observed["helper_sha256"] = SHA256.hash(data: helper).map { String(format: "%02x", $0) }.joined()
+        var product: [String: String] = [:]
+        for name in ["viewer-native-pcm-player.js", "viewer-motion-audio.js"] {
+            let bytes = try Data(contentsOf: model.resourceDirectory.appendingPathComponent("python-app/webtools/web/static/" + name))
+            product[name] = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        }
+        observed["product_source_sha256"] = product
+        report["native_pcm_game_audio"] = observed
+        try checkpoint("native-official-pcm-game-passed")
     }
 
     private func checkAccessoryUnclip(_ webView: WKWebView, directory: URL) async throws {
