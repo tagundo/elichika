@@ -896,9 +896,8 @@ class ModelViewerRigTest {
             assertEquals("Collapsed expressions must occupy only their summary and chrome",
                 closed.getDouble("summaryHeight") + closed.getDouble("chromeHeight"), closed.getDouble("sectionHeight"), 1.0)
             assertRetained(retained, state(webView))
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { webView.requestFocus() }
-            run(webView, "document.querySelector('#viewer-expression-adjustments > summary').focus();")
-            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+            val expressionKeyboard = JSONArray()
+            reopenDetailsWithNativeEnter(session, "viewer-expression-adjustments", "#viewer-expression-panel", expressionKeyboard)
             val reopened = waitForDom(webView, "the independently reopened expression panel", 15) {
                 "var section=document.getElementById('viewer-expression-adjustments');return JSON.stringify({ok:section.open&&" +
                     "section.getBoundingClientRect().height>section.querySelector('summary').getBoundingClientRect().height+40," +
@@ -914,7 +913,7 @@ class ModelViewerRigTest {
             val normalRendering = waitForDom(webView, "the real renderer after independent panel reopening", 30) {
                 "var probe=ModelViewer.renderProbe(33);return JSON.stringify({ok:probe.ready&&probe.glError===0&&probe.nonBackgroundSamples>=3,probe:probe});"
             }
-            return JSONObject().put("controls", controls).put("closed", closed).put("keyboardReopened", reopened)
+            return JSONObject().put("controls", controls).put("closed", closed).put("keyboardReopened", reopened).put("keyboardDiagnostics", expressionKeyboard)
                 .put("pixelViewport", "fixed expanded viewport before layout changes").put("referenceFrame", referenceFrame)
                 .put("normalRendering", normalRendering)
                 .put("actualMorphPixelsChanged", changed).put("restoredPixels", restored).put("bodyAndCameraPreserved", true)
@@ -1053,6 +1052,7 @@ class ModelViewerRigTest {
                 .put("windowHasFocus", activity.hasWindowFocus()).put("webWindowHasFocus", webView.hasWindowFocus())
                 .put("attached", webView.isAttachedToWindow).put("shown", webView.isShown)
                 .put("webHasFocus", webView.hasFocus()).put("webIsFocused", webView.isFocused)
+                .put("webScrollX", webView.scrollX).put("webScrollY", webView.scrollY)
                 .put("currentFocusInsideWebView", focusInside)
                 .put("focusClass", activity.currentFocus?.javaClass?.name ?: "none")
                 .put("imeVisible", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
@@ -1073,9 +1073,19 @@ class ModelViewerRigTest {
         val report = JSONObject().put("id", id).put("status", "WAITING_FOR_FOCUS").put("hardwareEnterCalls", 0)
             .put("nativeBefore", keyboardNativeState(session))
         attempts.put(report)
-        fun persist() = persistReport("model-viewer-section-keyboard.json", JSONObject().put("attempts", attempts))
+        fun persist() {
+            persistReport("model-viewer-section-keyboard.json", JSONObject().put("attempts", attempts))
+            println("MODEL_VIEWER_DETAILS_KEYBOARD=$report")
+        }
         try {
             instrumentation.runOnMainSync { webView.requestFocus() }
+            instrumentation.waitForIdleSync()
+            val nativeReady = waitForDom(webView, "the native WebView focus before selecting the $id DOM summary", 15) {
+                val native = keyboardNativeState(session)
+                "var native=$native;return JSON.stringify({ok:!!(native.resumed&&native.windowHasFocus&&native.webWindowHasFocus&&native.attached&&native.shown&&" +
+                    "native.webHasFocus&&(native.webIsFocused||native.currentFocusInsideWebView)),native:native,x:scrollX,y:scrollY});"
+            }
+            report.put("nativeFocusReady", nativeReady)
             run(webView, """
                 if(window.__nativeDetailsKeyboard)window.__nativeDetailsKeyboard.dispose();
                 var card=document.getElementById($target),summary=card.querySelector('summary'),events=[];
@@ -1093,15 +1103,16 @@ class ModelViewerRigTest {
                 }
                 var types=['keydown','keyup','click','toggle','focusin','focusout'];
                 types.forEach(function(type){document.addEventListener(type,observe,{capture:true,passive:true});});
-                window.__nativeDetailsKeyboard={key:$key,proof:null,dispose:function(){types.forEach(function(type){document.removeEventListener(type,observe,true);});},
+                window.__nativeDetailsKeyboard={key:$key,proof:null,frames:0,dispose:function(){types.forEach(function(type){document.removeEventListener(type,observe,true);});},
                   snapshot:function(){var box=summary.getBoundingClientRect(),hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2),
                     coarse=matchMedia('(pointer:coarse)').matches,fine=matchMedia('(pointer:fine)').matches;
-                    return {id:card.id,open:card.open,contentHeight:card.querySelector($selector).getBoundingClientRect().height,
+                    return {id:card.id,open:card.open,x:scrollX,y:scrollY,contentHeight:card.querySelector($selector).getBoundingClientRect().height,
                       documentFocused:document.hasFocus(),summaryActive:document.activeElement===summary,connected:card.isConnected&&summary.isConnected,
                       hitSummary:hit===summary||summary.contains(hit),withinViewport:box.left>=0&&box.top>=0&&box.right<=innerWidth+1&&box.bottom<=innerHeight+1,
                       coarse:coarse,pointer:coarse?'coarse':fine?'fine':'none',minimumTarget:coarse?44:34,
                       width:box.width,height:box.height,active:identity(document.activeElement),events:events.slice()};}};
                 summary.scrollIntoView({block:'center'});summary.focus();
+                requestAnimationFrame(function(){window.__nativeDetailsKeyboard.frames=1;requestAnimationFrame(function(){window.__nativeDetailsKeyboard.frames=2;});});
                 """.trimIndent())
             val ready = waitForDom(webView, "native and DOM keyboard focus for $id in two observations", 15) {
                 val native = keyboardNativeState(session)
@@ -1109,7 +1120,7 @@ class ModelViewerRigTest {
                 var observer=window.__nativeDetailsKeyboard,dom=observer.snapshot(),native=$native;
                 var coherent=!!(native.resumed&&native.windowHasFocus&&native.webWindowHasFocus&&native.attached&&native.shown&&
                   native.webHasFocus&&(native.webIsFocused||native.currentFocusInsideWebView)&&
-                  dom.documentFocused&&dom.summaryActive&&dom.connected&&dom.hitSummary&&dom.withinViewport&&dom.width+1e-6>=dom.minimumTarget&&dom.height+1e-6>=dom.minimumTarget&&!dom.open);
+                  observer.frames===2&&dom.documentFocused&&dom.summaryActive&&dom.connected&&dom.hitSummary&&dom.withinViewport&&dom.width+1e-6>=dom.minimumTarget&&dom.height+1e-6>=dom.minimumTarget&&!dom.open);
                 var geometry=JSON.stringify({native:native,active:dom.active,pointer:dom.pointer,minimumTarget:dom.minimumTarget,width:dom.width,height:dom.height}),prior=observer.proof;
                 observer.proof=coherent?geometry:null;
                 return JSON.stringify({ok:!!(coherent&&prior===geometry),coherent:coherent,native:native,dom:dom});

@@ -258,6 +258,10 @@ class ViewerPersistenceTest {
                     "p.ready&&p.nonBackgroundSamples>0&&p.glError===0,error:s.error,state:s,probe:p});"
             }
             run(webView, "if(ModelViewer.getState().layout.expanded)document.getElementById('viewer-expand').click();")
+            // Native focus may restore the previously focused toolbar's scroll.
+            // Finish that before the helper measures donor canvas coordinates.
+            instrumentation.runOnMainSync { webView.requestFocus() }
+            instrumentation.waitForIdleSync()
             val paths = JSONObject().put("sourcePath", source.absolutePath).put("donorPath", donor.absolutePath)
             val helper = assets.open("viewer_part_selection_qa.js").bufferedReader().use { it.readText() }
             run(webView, helper + ";window.__nativePartQa={pending:true};NativePartQa.run(" + paths.toString() + ")" +
@@ -434,28 +438,39 @@ class ViewerPersistenceTest {
         val beforeFocus = geometry()
         val location = intArrayOf(beforeFocus.getInt("locationX"), beforeFocus.getInt("locationY"))
         val nativeWidth = beforeFocus.getInt("width")
-        instrumentation.runOnMainSync { webView.requestFocus() }
+        // The helper has already exposed and measured the actual donor canvas.
+        // Changing focus here can scroll it away before the native event arrives.
         instrumentation.waitForIdleSync()
         val afterFocus = geometry()
         assertTrue(width > 0 && nativeWidth > 0)
         val scale = nativeWidth / width
         val x = (location[0] + point.getDouble("x") * scale).toFloat()
         val y = (location[1] + point.getDouble("y") * scale).toFloat()
-        val dom = evaluate(webView, "var p=" + point.toString() + ",v=window.visualViewport,t=document.elementFromPoint(p.x,p.y);return JSON.stringify({innerWidth:innerWidth,innerHeight:innerHeight,dpr:devicePixelRatio,visualViewport:v?{width:v.width,height:v.height,offsetLeft:v.offsetLeft,offsetTop:v.offsetTop,scale:v.scale}:null,target:t?{tag:t.tagName,id:t.id,className:typeof t.className==='string'?t.className:''}:null,active:document.activeElement?{tag:document.activeElement.tagName,id:document.activeElement.id}:null});")
+        val dom = evaluate(webView, "var p=" + point.toString() + ",expected=" + request.getJSONObject("rect").toString() + ",v=window.visualViewport,t=document.elementFromPoint(p.x,p.y),r=t&&t.getBoundingClientRect();" +
+            "return JSON.stringify({innerWidth:innerWidth,innerHeight:innerHeight,dpr:devicePixelRatio,visualViewport:v?{width:v.width,height:v.height,offsetLeft:v.offsetLeft,offsetTop:v.offsetTop,scale:v.scale}:null," +
+            "actualDonorCanvas:!!(t&&t.tagName==='CANVAS'&&t.closest('#viewer-part-transplant'))," +
+            "sameMeasuredRect:!!r&&['left','top','width','height'].every(function(k){return Math.abs(r[k]-expected[k])<=1;})," +
+            "target:t?{tag:t.tagName,id:t.id,className:typeof t.className==='string'?t.className:'',rect:{left:r.left,top:r.top,width:r.width,height:r.height}}:null," +
+            "active:document.activeElement?{tag:document.activeElement.tagName,id:document.activeElement.id}:null});")
         val diagnostic = JSONObject().put("id", request.getInt("id")).put("target", request.getString("target")).put("css", point)
             .put("viewportWidth", width).put("webViewWidth", nativeWidth).put("scale", scale).put("screenX", x.toDouble()).put("screenY", y.toDouble())
             .put("beforeFocus", beforeFocus).put("afterFocus", afterFocus).put("domBeforeSend", dom)
+            .put("toolType", MotionEvent.TOOL_TYPE_FINGER)
             .put("source", "Instrumentation.sendPointerSync/SOURCE_TOUCHSCREEN")
         val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
         File(cache, "model-viewer-part-last-input.json").writeText(diagnostic.toString(2))
         println("MODEL_VIEWER_PART_NATIVE_INPUT=$diagnostic")
+        assertTrue("Native donor input must still hit the exact measured donor canvas: $diagnostic", dom.getBoolean("actualDonorCanvas") && dom.getBoolean("sameMeasuredRect"))
         val visible = afterFocus.getJSONObject("visible"); val window = afterFocus.getJSONObject("windowVisible")
         assertTrue("The real native point must be inside the visible WebView before injection: $diagnostic", afterFocus.getBoolean("globalVisible") &&
             x >= visible.getInt("left") && x < visible.getInt("right") && y >= visible.getInt("top") && y < visible.getInt("bottom") &&
             x >= window.getInt("left") && x < window.getInt("right") && y >= window.getInt("top") && y < window.getInt("bottom"))
         val downTime = SystemClock.uptimeMillis()
-        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
-        val up = MotionEvent.obtain(downTime, downTime + 60, MotionEvent.ACTION_UP, x, y, 0)
+        val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }
+        val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = 1f; size = 1f }
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+        coordinates.pressure = 0f
+        val up = MotionEvent.obtain(downTime, downTime + 60, MotionEvent.ACTION_UP, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
         try {
             down.source = InputDevice.SOURCE_TOUCHSCREEN; up.source = InputDevice.SOURCE_TOUCHSCREEN
             instrumentation.sendPointerSync(down); SystemClock.sleep(60); instrumentation.sendPointerSync(up)
