@@ -69,7 +69,7 @@ def audit(app, required_architectures):
     for arch in architectures:
         python = (runtime_root / arch / "python/bin/python3").resolve()
         require(python in native, f"Portable Python is missing for {arch}")
-        for name in ("elichika", "astcenc"):
+        for name in ("elichika", "astcenc", "texture65"):
             binary = runtime_root / arch / "bin" / name
             require(binary in native and os.access(binary, os.X_OK), f"Missing private {name} for {arch}")
         hca = runtime_root / arch / "bin/libelichika_hca.dylib"

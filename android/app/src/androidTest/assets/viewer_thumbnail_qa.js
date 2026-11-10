@@ -30,6 +30,7 @@
       authoring: clone(ModelViewer.getAuthoringState()),
       pose: { time: rig.time, selectedClip: rig.selectedClip, playing: rig.playing },
       characterId: Number(document.getElementById('viewer-mod-character').value),
+      include_face_edits: !!document.getElementById('viewer-mod-include-face').checked,
       name: document.getElementById('viewer-mod-name').value,
       variant: document.getElementById('viewer-mod-variant').value || null,
       counterpartPath: document.getElementById('viewer-mod-counterpart').title || null };

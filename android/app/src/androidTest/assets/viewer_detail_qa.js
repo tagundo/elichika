@@ -22,6 +22,223 @@
   async function input(id, value, event) { var target = usable(id); target.value = String(value); target.dispatchEvent(new Event(event || 'input', { bubbles: true })); await settle(); }
   async function click(id) { usable(id).click(); await settle(); }
   function state() { return clone(ModelViewer.getState()); }
+  function createNeutralSifasScene(T, fixture, options) {
+    options = options || {};
+    var scene = new T.Scene(), root = new T.Group(), geometry = new T.BufferGeometry();
+    var camera = new T.Camera(); camera.projectionMatrix.identity();
+    camera.matrixAutoUpdate = false; camera.matrix.identity(); camera.updateMatrixWorld(true);
+    camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+    var texture = new T.DataTexture(new Uint8Array(fixture.texture.rgba), 2, 1, T.RGBAFormat);
+    texture.minFilter = texture.magFilter = T.NearestFilter;
+    texture.wrapS = texture.wrapT = T.ClampToEdgeWrapping;
+    texture.generateMipmaps = false; texture.encoding = T.LinearEncoding; texture.needsUpdate = true;
+    var original = new T.MeshBasicMaterial({ map: texture });
+    original.name = 'Neutral shared source material';
+    original.userData.sifas = { version: 1, shader: 'AS/Member', pipeline: 'gamma',
+      colors: {}, floats: { _CullMode: 2, _OutlineStencilComp: 8 }, features: {},
+      textures: { _MainTex: { index: 0, filterMode: 0 } } };
+    var mesh = new T.Mesh(geometry, original); mesh.name = 'NeutralMouthPatch'; mesh.frustumCulled = false;
+    if (options.role !== null) mesh.userData.viewerFacialRole = options.role || 'mouth';
+    root.add(mesh); scene.add(root);
+    function setOrder(order) {
+      var position = [], normal = [], uv = [], color = [];
+      (order || [0, 1]).forEach(function (index) {
+        var triangle = fixture.clipTriangles[index];
+        var vertices = options.reverseWinding ? [triangle.vertices[0], triangle.vertices[2], triangle.vertices[1]] : triangle.vertices;
+        vertices.forEach(function (point) {
+          position.push.apply(position, point); normal.push(0, 0, 1);
+          uv.push.apply(uv, triangle.uv); color.push(0, 1, 1, 1);
+        });
+      });
+      geometry.setAttribute('position', new T.Float32BufferAttribute(position, 3));
+      geometry.setAttribute('normal', new T.Float32BufferAttribute(normal, 3));
+      geometry.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+      geometry.setAttribute('_sifas_color', new T.Float32BufferAttribute(color, 4));
+    }
+    setOrder([0, 1]);
+    var occluders = [];
+    function addOccluder(kind) {
+      var z = kind === 'front' ? -0.4 : 0.95;
+      var g = new T.BufferGeometry();
+      g.setAttribute('position', new T.Float32BufferAttribute(
+        fixture.clipTriangles[0].vertices.flatMap(function (p) { return [p[0], p[1], z]; }), 3));
+      var m = new T.MeshBasicMaterial({ color: 0x0000ff, depthTest: true, depthWrite: true, side: T.FrontSide });
+      var o = new T.Mesh(g, m); o.name = 'Neutral opaque ' + kind + ' occluder'; o.frustumCulled = false;
+      // This is an independent opaque reference plane, not a facial material.
+      scene.add(o); occluders.push(o); return o;
+    }
+    function removeOccluders() {
+      occluders.forEach(function (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); }); occluders = [];
+    }
+    return { scene: scene, root: root, mesh: mesh, camera: camera, geometry: geometry,
+      texture: texture, originalMaterial: original, setOrder: setOrder,
+      addOccluder: addOccluder, removeOccluders: removeOccluders,
+      dispose: function () { removeOccluders(); geometry.dispose(); original.dispose(); texture.dispose(); } };
+  }
+  async function mouthOutlineCentroidGpu(T, fixture) {
+    var results = [], fallbackPrograms = {};
+    for (var mode of [{ name: 'webgl2-mouth', webgl2: true, role: 'mouth' },
+                     { name: 'webgl2-original', webgl2: true, role: null },
+                     { name: 'webgl1-mouth', webgl2: false, role: 'mouth' },
+                     { name: 'webgl1-original', webgl2: false, role: null }]) {
+      var canvas = document.createElement('canvas'), attrs = { antialias: true, alpha: false, depth: true, stencil: true, preserveDrawingBuffer: true };
+      var context = canvas.getContext(mode.webgl2 ? 'webgl2' : 'webgl', attrs);
+      assert(context, 'The native GPU must provide the requested actual OUTLINE ' + mode.name + ' context');
+      var renderer = new T.WebGLRenderer({ canvas: canvas, context: context, antialias: true, alpha: false, depth: true, stencil: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1); renderer.setSize(64, 64, false); renderer.setClearColor(0x000000, 1);
+      renderer.toneMapping = T.NoToneMapping; renderer.outputEncoding = T.LinearEncoding;
+      // Reverse the standalone source winding so the actual BackSide outline
+      // pass draws. Occluders retain the independently authored CCW winding.
+      var scene = createNeutralSifasScene(T, fixture, { role: mode.role, reverseWinding: true }), controller;
+      try {
+        var samples = context.getParameter(context.SAMPLES), depthBits = context.getParameter(context.DEPTH_BITS);
+        assert(!!renderer.capabilities.isWebGL2 === mode.webgl2 && samples === 4 && depthBits === 24,
+          'OUTLINE requires actual native MSAA4/depth24: ' + JSON.stringify({ mode: mode.name, samples: samples, depthBits: depthBits }));
+        controller = SifasMaterial.apply(scene.root, renderer, { enabled: true, mouthCentroidDepth: !!renderer.capabilities.isWebGL2 });
+        await controller.ready;
+        var main = Array.isArray(scene.mesh.material) ? scene.mesh.material[0] : scene.mesh.material;
+        var helper = scene.mesh.children.find(function (child) { return child.userData.sifasOutline; });
+        assert(helper && helper.visible && helper.geometry === scene.geometry, 'The actual SifasMaterial OUTLINE helper must draw the original geometry');
+        var outline = Array.isArray(helper.material) ? helper.material[0] : helper.material;
+        // Hide only this QA scene's main material. Keep the real outline
+        // stencil/depth/BackSide state and its native color/width attributes.
+        main.visible = false;
+        assert(outline.side === T.BackSide && outline.depthTest && outline.depthWrite && outline.stencilFunc === T.AlwaysStencilFunc,
+          'OUTLINE inspection must retain its real BackSide/depth/stencil behavior');
+        var colors = Array.from(scene.geometry.getAttribute('_sifas_color').array);
+        assert(colors.length === 24 && colors.every(function (value, index) { return value === (index % 4 === 0 ? 0 : 1); }),
+          'Native outline widthR0/G1 must prevent both XY extrusion and Z push without modifying the shader');
+        var enabled = /centroid/.test(outline.vertexShader) && /vSifasMouthClipZW/.test(outline.fragmentShader) && /gl_FragDepth/.test(outline.fragmentShader);
+        assert(enabled === (mode.webgl2 && mode.role === 'mouth'), 'Only verified Mouth WebGL2 OUTLINE may use centroid depth');
+        var originalProgramUnchanged = !enabled && outline.vertexShader === SifasMaterial.outlineVertexShader && outline.fragmentShader === SifasMaterial.outlineFragmentShader;
+        assert(enabled || originalProgramUnchanged, 'Unmarked/WebGL1 OUTLINE source must remain the complete original program');
+        function readPixel() {
+          var pixel = new Uint8Array(4); context.readPixels(32, 31, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixel);
+          var error = context.getError();
+          assert(error === 0, 'Actual production OUTLINE must compile/draw without GL errors: ' + mode.name);
+          return { rgba: Array.from(pixel), glError: error };
+        }
+        function compiledOutline() {
+          return renderer.info.programs.filter(function (program) {
+            return /vSifasOutlineColor/.test(context.getShaderSource(program.fragmentShader) || '');
+          }).map(function (program) {
+            var source = context.getShaderSource(program.fragmentShader) || '';
+            return { version: source.split('\n')[0], linked: context.getProgramParameter(program.program, context.LINK_STATUS) === true,
+              centroidDepth: /vSifasMouthClipZW/.test(source) && /gl_FragDepth/.test(source), outlinePass: true };
+          });
+        }
+        scene.setOrder([0, 1]); scene.geometry.setDrawRange(0, 3);
+        renderer.render(scene.scene, scene.camera);
+        var frontReference = readPixel(), frontReferenceProgram = compiledOutline();
+        assert(frontReference.rgba[0] > 0 && frontReference.rgba[1] === 0 && frontReference.rgba[2] === 0 && frontReference.rgba[3] === 255,
+          'The independent front reference must come from the actual nonblack red OUTLINE pass');
+        scene.geometry.setDrawRange(0, 6);
+        var observations = [];
+        for (var order of [[0, 1], [1, 0]]) {
+          scene.setOrder(order);
+          for (var occluder of [null, 'front', 'rear']) {
+            scene.removeOccluders();
+            if (occluder) {
+              var opaque = scene.addOccluder(occluder); opaque.renderOrder = order[0] ? -1 : 2;
+              var position = opaque.geometry.getAttribute('position'), a = new T.Vector3().fromBufferAttribute(position, 0),
+                b = new T.Vector3().fromBufferAttribute(position, 1), c = new T.Vector3().fromBufferAttribute(position, 2);
+              assert(new T.Vector3().crossVectors(b.sub(a), c.sub(a)).z > 0 && opaque.material.side === T.FrontSide && opaque.material.depthTest && opaque.material.depthWrite,
+                'The independent opaque occluder must keep CCW/FrontSide winding and ordinary depth');
+            }
+            renderer.render(scene.scene, scene.camera);
+            var pixel = readPixel(), programs = compiledOutline();
+            assert(programs.length > 0 && programs.every(function (program) {
+              return program.linked && program.centroidDepth === enabled && (!enabled || /^#version 300 es/.test(program.version));
+            }), 'Actual linked OUTLINE programs must expose the scoped GLSL300 centroid branch');
+            if (enabled) assert(equal(pixel.rgba, occluder === 'front' ? [0, 0, 255, 255] : frontReference.rgba),
+              'Mouth OUTLINE must retain true front/rear occlusion for both source orders: ' + JSON.stringify({ order: order, occluder: occluder, rgba: pixel.rgba, frontReference: frontReference.rgba }));
+            observations.push({ order: order, occluder: occluder, rgba: pixel.rgba, glError: pixel.glError, compiledOutline: programs });
+          }
+        }
+        fallbackPrograms[mode.name] = renderer.info.programs.filter(function (program) {
+          return /vSifasOutlineColor/.test(context.getShaderSource(program.fragmentShader) || '');
+        }).map(function (program) { return { vertex: context.getShaderSource(program.vertexShader), fragment: context.getShaderSource(program.fragmentShader) }; });
+        results.push({ name: mode.name, actualWebGL2: !!renderer.capabilities.isWebGL2, version: context.getParameter(context.VERSION),
+          samples: samples, depthBits: depthBits, vertices: scene.geometry.getAttribute('position').count, triangles: 2,
+          side: 'BackSide', depthTest: outline.depthTest, depthWrite: outline.depthWrite, stencilAlways: outline.stencilFunc === T.AlwaysStencilFunc,
+          mainHidden: !main.visible, nativeVertexColor: [0, 1, 1, 1], verifiedRole: mode.role, meshName: scene.mesh.name,
+          centroidCompiled: enabled, originalProgramUnchanged: originalProgramUnchanged,
+          frontReferenceRGBA: frontReference.rgba, frontReferenceProgram: frontReferenceProgram, observations: observations });
+      } finally {
+        if (controller) controller.dispose(); scene.dispose(); renderer.dispose(); renderer.forceContextLoss();
+      }
+    }
+    var fallback = results.find(function (row) { return row.name === 'webgl1-mouth'; }), original = results.find(function (row) { return row.name === 'webgl1-original'; });
+    assert(equal(fallback.observations, original.observations) && equal(fallback.frontReferenceRGBA, original.frontReferenceRGBA) &&
+      equal(fallbackPrograms['webgl1-mouth'], fallbackPrograms['webgl1-original']),
+      'WebGL1 OUTLINE fallback must retain actual original program sources and all six rendered outputs');
+    return results;
+  }
+  async function mouthCentroidGpu() {
+    var T = window.THREE;
+    assert(T && window.SifasMaterial, 'Actual packaged Three.js and SifasMaterial are required');
+    var fixture = { clipTriangles: [
+      { uv: [.25, .5], vertices: [[-.125, .125, 0], [-.125, -.1875, 0], [.1875, .125, 0]] },
+      { uv: [.75, .5], vertices: [[-.03125, .033854166666666664, .8], [.0625, -.09114583333333333, .8], [.068359375, -.09114583333333333, .3]] }
+    ], texture: { rgba: [255, 0, 0, 255, 0, 255, 0, 255] } };
+    var results = [];
+    for (var mode of [{ name: 'webgl2-mouth', webgl2: true, role: 'mouth' },
+                     { name: 'webgl2-original', webgl2: true, role: null },
+                     { name: 'webgl1-mouth', webgl2: false, role: 'mouth' },
+                     { name: 'webgl1-original', webgl2: false, role: null }]) {
+      var canvas = document.createElement('canvas'), attrs = { antialias: true, alpha: false, depth: true, stencil: true, preserveDrawingBuffer: true };
+      var context = canvas.getContext(mode.webgl2 ? 'webgl2' : 'webgl', attrs);
+      assert(context, 'The native GPU must provide the requested actual ' + mode.name + ' context');
+      var renderer = new T.WebGLRenderer({ canvas: canvas, context: context, antialias: true, alpha: false, depth: true, stencil: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1); renderer.setSize(64, 64, false); renderer.setClearColor(0x000000, 1);
+      renderer.toneMapping = T.NoToneMapping; renderer.outputEncoding = T.LinearEncoding;
+      var scene = createNeutralSifasScene(T, fixture, { role: mode.role }), controller;
+      try {
+        assert(!!renderer.capabilities.isWebGL2 === mode.webgl2, 'GPU capability must reflect the real native context');
+        var samples = context.getParameter(context.SAMPLES), depthBits = context.getParameter(context.DEPTH_BITS);
+        assert(samples === 4 && depthBits === 24, 'Native thin-triangle fixture requires actual MSAA4/depth24: ' + JSON.stringify({ mode: mode.name, samples: samples, depthBits: depthBits }));
+        controller = SifasMaterial.apply(scene.root, renderer, { enabled: true, mouthCentroidDepth: !!renderer.capabilities.isWebGL2 });
+        await controller.ready;
+        var main = Array.isArray(scene.mesh.material) ? scene.mesh.material[0] : scene.mesh.material;
+        var enabled = /centroid/.test(main.vertexShader) && /vSifasMouthClipZW/.test(main.fragmentShader) && /gl_FragDepth/.test(main.fragmentShader);
+        assert(enabled === (mode.webgl2 && mode.role === 'mouth'), 'Only verified Mouth WebGL2 MAIN may compile the centroid depth path');
+        var observations = [];
+        for (var order of [[0, 1], [1, 0]]) {
+          scene.setOrder(order);
+          for (var occluder of [null, 'front', 'rear']) {
+            scene.removeOccluders(); if (occluder) scene.addOccluder(occluder).renderOrder = order[0] ? -1 : 2;
+            renderer.render(scene.scene, scene.camera);
+            var compiled = renderer.info.programs.filter(function (program) {
+              var source = context.getShaderSource(program.fragmentShader) || '';
+              return /vSifasMouthClipZW/.test(source) && /gl_FragDepth/.test(source);
+            }).map(function (program) { return { version: (context.getShaderSource(program.fragmentShader) || '').split('\n')[0],
+              linked: context.getProgramParameter(program.program, context.LINK_STATUS) === true }; });
+            assert(enabled ? compiled.length > 0 && compiled.every(function (program) { return /^#version 300 es/.test(program.version) && program.linked; }) : compiled.length === 0,
+              'The real WebGL program must link GLSL300 centroid MAIN only for Mouth WebGL2');
+            var pixel = new Uint8Array(4); context.readPixels(32, 31, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixel);
+            var rgba = Array.from(pixel), error = context.getError();
+            assert(error === 0, 'Actual production shader must compile/draw without GL errors: ' + mode.name);
+            if (enabled) assert(equal(rgba, occluder === 'front' ? [0, 0, 255, 255] : [255, 0, 0, 255]),
+              'Mouth centroid must preserve true front/rear occlusion with both original triangle orders: ' + JSON.stringify({ order: order, occluder: occluder, rgba: rgba }));
+            observations.push({ order: order, occluder: occluder, rgba: rgba, glError: error, compiledMain: compiled });
+          }
+        }
+        results.push({ name: mode.name, actualWebGL2: !!renderer.capabilities.isWebGL2, version: context.getParameter(context.VERSION), samples: samples,
+          depthBits: depthBits, vertices: scene.geometry.getAttribute('position').count, triangles: 2,
+          verifiedRole: mode.role, meshName: scene.mesh.name, centroidCompiled: enabled,
+          observations: observations });
+      } finally {
+        if (controller) controller.dispose(); scene.dispose(); renderer.dispose(); renderer.forceContextLoss();
+      }
+    }
+    var fallback = results.find(function (x) { return x.name === 'webgl1-mouth'; }), original = results.find(function (x) { return x.name === 'webgl1-original'; });
+    assert(equal(fallback.observations, original.observations), 'WebGL1 fallback must retain the complete original shader output, including original MSAA sample behavior');
+    var outlineResults = await mouthOutlineCentroidGpu(T, fixture);
+    return { status: 'PASS', backendAdaptation: true, originalGameShaderParityEstablished: false, source: 'Independent rational six-vertex/two-triangle scene, original texture colors and actual packaged SifasMaterial.apply',
+      targetPixelTopLeft: [32, 32], viewport: [64, 64], results: results, fallbackUnchanged: true,
+      outlineResults: outlineResults, outlineFallbackUnchanged: true,
+      scope: 'WebGL Mouth occlusion backend adaptation, without claiming original-game shader implementation parity: actual native GPU Mouth-only GLSL3 MAIN and original BackSide OUTLINE compile, MSAA4/depth24 and both draw orders/front-rear occlusion; original baseline leak is observational, not required on every GPU.' };
+  }
   async function run() {
     var initial = state(), catalogue = clone(ModelViewer.getEditingMetadata().outlines), authoring = clone(ModelViewer.getAuthoringState());
     assert(initial.loaded && !initial.loading && catalogue.available && catalogue.meshes.length === 1,
@@ -113,11 +330,14 @@
     await click('viewer-mesh-modify-undo'); await click('viewer-mesh-modify-undo');
     await click('viewer-mesh-modify-fit-texture'); await click('viewer-mesh-deleter-fit-texture');
     document.getElementById('viewer-mesh-modify').open = false; document.getElementById('viewer-mesh-deleter').open = false;
+    var mouthGpu = await mouthCentroidGpu();
+    assert(equal(ModelViewer.getAuthoringState(), authoring) && equal(ModelViewer.getEditingMetadata().outlines, catalogue),
+      'Independent GPU depth inspection must not alter the current source model or authoring');
     var probe = ModelViewer.renderProbe(33);
     assert(probe.ready && probe.glError === 0 && probe.nonBackgroundSamples >= 3, 'The actual native renderer must still draw the source');
-    return { status: 'PASS', checks: { absoluteOutline: true, sparseOutline: true, outlineUndoRedo: true, sourceCataloguePreserved: true,
+    return { status: 'PASS', checks: { mouthCentroidDepth: true, absoluteOutline: true, sparseOutline: true, outlineUndoRedo: true, sourceCataloguePreserved: true,
       outlineSave: true, meshZoom: true, connectedSelection: true, selectionUndoRedo: true, viewOnlyPreservedGeometry: true },
-      catalogue: catalogue, absolute: absolute, absoluteSaved: absoluteSaved, absoluteRecipe: absoluteRecipe, sparse: sparse, saved: saved, recipe: recipe, seed: seed, connected: connected, undone: undone,
+      mouthGpu: mouthGpu, catalogue: catalogue, absolute: absolute, absoluteSaved: absoluteSaved, absoluteRecipe: absoluteRecipe, sparse: sparse, saved: saved, recipe: recipe, seed: seed, connected: connected, undone: undone,
       independentViews: views, uvColor: uvColor, finalAuthoring: clone(ModelViewer.getAuthoringState()), probe: probe,
       scope: 'Actual native WebView controls, absolute all-vertex red37 Save/Undo/Redo and sparse outline Save and connected source selection/UV zoom; no trusted-pinch or visible-outline-width pixel claim.' };
   }

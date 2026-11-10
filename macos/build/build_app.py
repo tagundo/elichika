@@ -133,6 +133,22 @@ def build_hca(repo, output):
             "sources": {name: sha256(source / name) for name in names}, "sha256": sha256(output)}
 
 
+
+def build_texture65(repo, output):
+    """Build the isolated, pinned Unity format65 scalar decoder CLI."""
+    helper = repo / "modtools/webtools/core/resources/texture65_decoder/build.py"
+    require(helper.is_file() and not helper.is_symlink(), "The pinned format65 decoder builder is missing")
+    report = output.parent.parent / "texture65-build.json"
+    run([sys.executable, helper, "--target", "macos", "--output", output, "--report", report])
+    require(output.is_file() and os.access(output, os.X_OK), "The private format65 decoder executable was not built")
+    require(report.is_file() and report.stat().st_size <= 256 * 1024, "The format65 native build receipt is missing")
+    receipt = json.loads(report.read_text())
+    require(receipt.get("status") == "PASS" and receipt.get("target") == "macos"
+            and receipt.get("sha256") == sha256(output), "The format65 build receipt does not match its executable")
+    return {"decoder": "Unity ETC2_RGBA8Crunched", "format": 65, "isolated_cli": True,
+            "sha256": sha256(output), "build": receipt}
+
+
 def build(repo, shared, output, cache, version):
     repo, shared, output, cache = (Path(path).resolve() for path in (repo, shared, output, cache))
     require(sys.platform == "darwin" and platform.machine() == "arm64", "Build on an Apple Silicon macOS runner")
@@ -153,6 +169,9 @@ def build(repo, shared, output, cache, version):
         copy_tree(shared / name, resources / name)
     shutil.copy2(shared / "payload_revision.json", resources / "payload_revision.json")
     source_files = copy_python_sources(repo, resources / "python-app")
+    for name in ("neutral65.crn", "neutral65.json"):
+        fixture = resources / "python-app/webtools/core/resources/texture65_decoder/fixtures" / name
+        require(fixture.is_file() and not fixture.is_symlink(), "The neutral format65 runtime fixture is missing: " + name)
     qa = resources / "qa"
     qa.mkdir()
     shutil.copy2(repo / "modtools/tests/fixtures/viewer_persistence.unity", qa / "viewer_persistence.unity")
@@ -171,6 +190,7 @@ def build(repo, shared, output, cache, version):
     run(["go", "build", "-trimpath", "-o", binaries / "elichika", "."], cwd=repo, env=environment)
     build_astc(lock["astc_commit"], binaries / "astcenc", cache)
     dependencies["hca"] = build_hca(repo, binaries / "libelichika_hca.dylib")
+    dependencies["texture65"] = build_texture65(repo, binaries / "texture65")
     scratch = cache / "swift-build"
     run(["swift", "build", "--package-path", repo / "macos", "--scratch-path", scratch,
          "--configuration", "release", "--product", "Elichika"])

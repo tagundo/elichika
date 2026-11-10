@@ -14,7 +14,7 @@ import urllib.request
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
-from build_app import bundle_versions, build_hca
+from build_app import bundle_versions, build_hca, build_texture65
 from common import extract_python, readonly_tree, sha256, verified_download, writable_tree
 from audit_bundle import resolve_private, system_path
 from native_macho import allowed_runpath, loader_context, prune_external_runpaths
@@ -173,6 +173,36 @@ class LockedDownloads(unittest.TestCase):
 
 
 class PackagingBoundaries(unittest.TestCase):
+    def test_format65_builder_uses_pinned_private_macos_target_and_matching_receipt(self):
+        repo = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "arm64/bin/texture65"
+            output.parent.mkdir(parents=True)
+            def compile_private(arguments):
+                self.assertEqual(Path(arguments[1]), repo / "modtools/webtools/core/resources/texture65_decoder/build.py")
+                self.assertEqual(arguments[2:4], ["--target", "macos"])
+                self.assertEqual(arguments[4:6], ["--output", output])
+                output.write_bytes(b"private scalar executable fixture")
+                output.chmod(0o755)
+                Path(arguments[7]).write_text(json.dumps({"status": "PASS", "target": "macos", "sha256": sha256(output)}))
+            with patch("build_app.run", side_effect=compile_private):
+                report = build_texture65(repo, output)
+            self.assertEqual(report["format"], 65)
+            self.assertTrue(report["isolated_cli"])
+            self.assertEqual(report["sha256"], sha256(output))
+
+    def test_format65_builder_rejects_a_receipt_for_a_different_binary(self):
+        repo = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "arm64/bin/texture65"
+            output.parent.mkdir(parents=True)
+            def compile_private(arguments):
+                output.write_bytes(b"private scalar executable fixture")
+                output.chmod(0o755)
+                Path(arguments[7]).write_text(json.dumps({"status": "PASS", "target": "macos", "sha256": "0" * 64}))
+            with patch("build_app.run", side_effect=compile_private), self.assertRaisesRegex(RuntimeError, "does not match"):
+                build_texture65(repo, output)
+
     def test_hca_decoder_is_built_for_private_arm64_macos_runtime(self):
         repo = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:

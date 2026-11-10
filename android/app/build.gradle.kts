@@ -105,6 +105,8 @@ android {
     // Always ship the CPU's local HCA decoder. Audio playback must work without
     // an external FFmpeg installation on the phone or emulator.
     sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/hca/jniLibs"))
+    // Executable PIE: Android extracts this into nativeLibraryDir beside ASTC.
+    sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/texture65/jniLibs"))
 }
 
 val hcaSdkDirectory = androidComponents.sdkComponents.sdkDirectory
@@ -134,7 +136,31 @@ val buildHcaDecoder by tasks.registering(Exec::class) {
     }
 }
 
-tasks.named("preBuild") { dependsOn(buildHcaDecoder) }
+val buildTexture65Decoder by tasks.registering(Exec::class) {
+    val builder = rootProject.file("ci/build_texture65.py")
+    val audit = rootProject.file("ci/audit_native.py")
+    val source = rootProject.file("../modtools/webtools/core/resources/texture65_decoder")
+    val output = layout.buildDirectory.file("generated/texture65/jniLibs/$appAbi/libelichika_texture65.so")
+    val report = layout.buildDirectory.file("generated/texture65/reports/$appAbi.json")
+    inputs.file(builder)
+    inputs.file(audit)
+    inputs.dir(source)
+    inputs.property("appAbi", appAbi)
+    inputs.property("ndkVersion", android.ndkVersion)
+    outputs.file(output)
+    outputs.file(report)
+    doFirst {
+        val ndkRoot = providers.environmentVariable("ANDROID_NDK_ROOT").orNull
+            ?: providers.environmentVariable("ANDROID_NDK_HOME").orNull
+            ?: hcaSdkDirectory.get().asFile.resolve("ndk/${android.ndkVersion}").absolutePath
+        commandLine(providers.gradleProperty("buildPython").orElse("python3").get(),
+            builder.absolutePath, "--source", source.absolutePath, "--ndk", ndkRoot,
+            "--abi", appAbi, "--output", output.get().asFile.absolutePath,
+            "--report", report.get().asFile.absolutePath)
+    }
+}
+
+tasks.named("preBuild") { dependsOn(buildHcaDecoder, buildTexture65Decoder) }
 
 val generateServerConfigTestPayload by tasks.registering(Exec::class) {
     val generator = rootProject.file("ci/generate_server_config_payload.py")

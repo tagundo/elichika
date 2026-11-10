@@ -11,6 +11,49 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 from common import require, write_json
 
 
+TEXTURE65_PROBE = r'''
+from types import SimpleNamespace
+from webtools.core import decode as texture_decode
+import time
+texture65_binary=private/'bin/texture65'
+assert pathlib.Path(os.environ['ELICHIKA_TEXTURE65_BIN']).resolve()==texture65_binary.resolve()
+assert texture65_binary.is_file() and os.access(texture65_binary,os.X_OK)
+texture65_fixture=resources/'python-app/webtools/core/resources/texture65_decoder/fixtures'
+texture65_source=texture65_fixture/'neutral65.crn'
+texture65_meta=json.loads((texture65_fixture/'neutral65.json').read_text())
+assert (texture65_meta['width'],texture65_meta['height'],texture65_meta['texture_format'])==(16,16,65)
+texture65_encoded=texture65_source.read_bytes()
+texture65_source_sha=hashlib.sha256(texture65_encoded).hexdigest()
+assert texture65_source_sha==texture65_meta['encoded_sha256']
+with tempfile.TemporaryDirectory(prefix='elichika-unitycrunch-test-') as texture65_directory:
+    texture65_output=pathlib.Path(texture65_directory)/'decoded.rgba'
+    real_run([str(texture65_binary),'16','16',str(texture65_source),str(texture65_output)],
+             check=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15)
+    texture65_raw=texture65_output.read_bytes()
+assert len(texture65_raw)==16*16*4
+assert hashlib.sha256(texture65_raw).hexdigest()==texture65_meta['rgba_unflipped_sha256']
+texture65_zero_rgb=sum(texture65_raw[i+3]==0 and any(texture65_raw[i:i+3]) for i in range(0,len(texture65_raw),4))
+texture65_partial=sum(0<texture65_raw[i+3]<255 for i in range(0,len(texture65_raw),4))
+assert texture65_zero_rgb==texture65_meta['zero_alpha_nonzero_rgb_pixels']>0
+assert texture65_partial==texture65_meta['partial_alpha_pixels']>0
+for texture65_space in (0,1):
+    texture65_texture=SimpleNamespace(m_Width=16,m_Height=16,m_TextureFormat=65,
+        m_ImageCount=1,m_TextureDimension=2,m_ColorSpace=texture65_space,
+        image_data=texture65_encoded,get_image_data=lambda:texture65_encoded)
+    texture65_image=texture_decode._android_image(texture65_texture,time.monotonic()+15)
+    assert texture65_image.mode=='RGBA' and texture65_image.size==(16,16)
+    assert hashlib.sha256(texture65_image.tobytes()).hexdigest()==texture65_meta['rgba_display_sha256']
+assert hashlib.sha256(texture65_source.read_bytes()).hexdigest()==texture65_source_sha
+texture65_probe={'status':'PASS_PRIVATE_EXECUTABLE_EXACT_RGBA','format':65,'width':16,'height':16,
+    'executable_sha256':hashlib.sha256(texture65_binary.read_bytes()).hexdigest(),
+    'encoded_sha256':texture65_source_sha,'rgba_unflipped_sha256':texture65_meta['rgba_unflipped_sha256'],
+    'rgba_display_sha256':texture65_meta['rgba_display_sha256'],
+    'one_vertical_flip':True,'color_space_preserved':True,'straight_alpha':True,
+    'zero_alpha_nonzero_rgb_pixels':texture65_zero_rgb,'partial_alpha_pixels':texture65_partial,
+    'source_unchanged':True,'private_executable':True,'neutral_fixture':True}
+'''
+
+
 PROBE = r'''
 import ast, hashlib, importlib, importlib.util, io, json, os, pathlib, platform, socket, subprocess, sys, tempfile
 resources = pathlib.Path(sys.argv[1]).resolve()
@@ -73,6 +116,7 @@ assert hca_native is not None, 'The packaged HCA decoder must load without host 
 hca_state=hca_native.clHCA_new()
 assert hca_state
 hca_native.clHCA_delete(hca_state)
+''' + TEXTURE65_PROBE + r'''
 from payload_upgrade_progress import ProgressReporter
 payload_progress=[]
 report_progress=ProgressReporter(lambda raw: payload_progress.append(json.loads(raw)))
@@ -164,6 +208,7 @@ print('ELICHIKA_RUNTIME_PROBE=' + json.dumps({'status':'PASS','arch':platform.ma
     'interactive_installer_sources_compiled_not_executed':script_files,
     'private_prefix':True,'no_runtime_pip':True,'offline_imports':True,
     'hca_decoder':{'native_loaded':True,'bundled_library':True},
+    'texture65_decoder':texture65_probe,
     'numpy_blas':True,'clone_crypto':crypto_probe,'pillow_png':True,'lz4_brotli':True,'astc_encode_decode':True,
     'clientdb_memory_bridge':{'fresh_snapshot':True,'available_bytes':memory_bytes,
                             'environment_bytes':int(memory_environment['ELICHIKA_CLIENTDB_MEMORY_BYTES'])},
@@ -174,12 +219,14 @@ print('ELICHIKA_RUNTIME_PROBE=' + json.dumps({'status':'PASS','arch':platform.ma
 def private_environment(resources):
     environment = dict(os.environ)
     for name in list(environment):
-        if name.startswith("DYLD_") or name in {"PYTHONHOME", "PYTHONPATH", "PYTHONUSERBASE", "VIRTUAL_ENV", "CONDA_PREFIX"}:
+        if name.startswith("DYLD_") or name in {"PYTHONHOME", "PYTHONPATH", "PYTHONUSERBASE", "VIRTUAL_ENV", "CONDA_PREFIX",
+                                                "ELICHIKA_TEXTURE65_TEST_BIN"}:
             environment.pop(name, None)
     environment.update(PATH="/usr/bin:/bin:/usr/sbin:/sbin", PYTHONDONTWRITEBYTECODE="1")
     environment["SSL_CERT_FILE"] = str(resources / "runtime/arm64/python/lib/python3.12/site-packages/certifi/cacert.pem")
     environment["REQUESTS_CA_BUNDLE"] = environment["SSL_CERT_FILE"]
     environment["ELICHIKA_HCA_LIBRARY"] = str(resources / "runtime/arm64/bin/libelichika_hca.dylib")
+    environment["ELICHIKA_TEXTURE65_BIN"] = str(resources / "runtime/arm64/bin/texture65")
     return environment
 
 

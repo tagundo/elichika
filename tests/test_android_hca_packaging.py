@@ -122,6 +122,7 @@ fun main() {
     check(State.starts.get()==1)
     check(State.environment["ELICHIKA_NATIVE_DIR"]==context.applicationInfo.nativeLibraryDir)
     check(State.environment["ELICHIKA_HCA_LIBRARY"]==File(context.applicationInfo.nativeLibraryDir,"libelichika_hca.so").absolutePath)
+    check(State.environment["ELICHIKA_TEXTURE65_BIN"]==File(context.applicationInfo.nativeLibraryDir,"libelichika_texture65.so").absolutePath)
     println("ANDROID_HCA_PYTHON_BRIDGE_PASS")
 }
 '''}

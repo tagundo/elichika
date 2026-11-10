@@ -32,7 +32,7 @@ packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_tran
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
-            'test_viewer_transplants.py', 'test_viewer_workbench_routes.py',
+            'test_viewer_transplants.py', 'test_viewer_transplant_paths.py', 'test_viewer_workbench_routes.py',
             'test_physics_game_engine.py', 'test_physics_game_catalog.py', 'test_physics_game_runtime.py',
             'test_viewer_mesh_selection.py', 'test_model_expressions.py', 'test_transplant_physics_graph.py',
             'test_motion_audio_transport.py', 'test_viewer_motion_library.py', 'test_viewer_gaze.py',
@@ -40,12 +40,26 @@ patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_
             'test_viewer_thumbnail_saved_settings.py',
             'test_viewer_combined_exports.py', 'test_physics_derived_runtime.py',
             'test_transplant_seams_and_io.py', 'test_model_viewer_conversion_cache.py',
-            'test_viewer_reimport.py', 'test_viewer_mesh_signed_skin.py']
+            'test_viewer_reimport.py', 'test_viewer_mesh_signed_skin.py', 'test_texture65_decode.py',
+            'test_viewer_facial_role_metadata.py']
 # The app already requires its own ASTC CLI. Exercise the new worker bound and
 # real mip pixel round trip with that exact executable, never a host fallback.
 astc = resources / 'runtime/arm64/bin/astcenc'
 assert astc.is_file(), 'Packaged ASTC CLI is missing for mip/worker verification'
 os.environ['ASTCENC_HOST_TEST_BIN'] = str(astc)
+# Exercise the actual private decoder. A missing packaged binary fails before
+# discovery, so the portable tests cannot compile or select a host fallback.
+texture65 = resources / 'runtime/arm64/bin/texture65'
+assert texture65.is_file() and os.access(texture65, os.X_OK), 'Packaged UnityCrunch decoder is missing'
+os.environ['ELICHIKA_TEXTURE65_BIN'] = str(texture65)
+os.environ['ELICHIKA_TEXTURE65_TEST_BIN'] = str(texture65)
+texture65_fixture = source / 'webtools/core/resources/texture65_decoder/fixtures'
+texture65_meta = json.loads((texture65_fixture / 'neutral65.json').read_text())
+texture65_encoded = (texture65_fixture / 'neutral65.crn').read_bytes()
+assert hashlib.sha256(texture65_encoded).hexdigest() == texture65_meta['encoded_sha256']
+texture65_mips = json.loads((texture65_fixture / 'neutral65-mips.json').read_text())
+assert hashlib.sha256((texture65_fixture / 'neutral65-mips.crn').read_bytes()).hexdigest() == texture65_mips['encoded_sha256']
+assert texture65_mips['mip_count'] == 5 and [(row['level'], row['width'], row['height']) for row in texture65_mips['levels']] == [(level, 16 >> level, 16 >> level) for level in range(5)]
 # Node drivers are test-only host tools. Stage their original scripts beside a
 # link to the actual app static directory, so every relative require executes
 # the packaged Three.js/math/collision/engine bytes instead of repository JS.
@@ -218,6 +232,7 @@ def case_ids(tests):
 executed_cases = list(case_ids(suite))
 assert len(executed_cases) == len(set(executed_cases)), 'Duplicate packaged test selection'
 result = unittest.TextTestRunner(verbosity=2).run(suite)
+assert sys.modules['test_texture65_decode'].NativeTexture65Tests.binary.resolve() == texture65.resolve()
 installer_child_runs = [json.loads(path.read_text()) for path in sorted(installer_audits.glob('*.json'))]
 expected_cli_runs = unittest.defaultTestLoader.loadTestsFromTestCase(installer_module.PrivateFaceInstallerTests).countTestCases()
 assert len(installer_child_runs) == expected_cli_runs, ('Installer CLI audit count', len(installer_child_runs), expected_cli_runs)
@@ -250,6 +265,15 @@ report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else
           'packaged_astc_cli': {'path': str(astc.relative_to(resources)),
                                 'sha256': hashlib.sha256(astc.read_bytes()).hexdigest(),
                                 'actual_rgba_mip_sizes': [4, 128, 256, 512]},
+          'packaged_texture65_cli': {'path': str(texture65.relative_to(resources)),
+                                    'sha256': hashlib.sha256(texture65.read_bytes()).hexdigest(),
+                                    'fixture': str(texture65_fixture.relative_to(source)),
+                                    'encoded_sha256': texture65_meta['encoded_sha256'],
+                                    'rgba_unflipped_sha256': texture65_meta['rgba_unflipped_sha256'],
+                                    'rgba_display_sha256': texture65_meta['rgba_display_sha256'],
+                                    'mip_encoded_sha256': texture65_mips['encoded_sha256'],
+                                    'mip_levels': texture65_mips['levels'],
+                                    'test_cases': 6, 'host_compiler_fallback': False},
           'staged_test_inputs': staged_test_inputs,
           'installer_staged_test_inputs': installer_input_hashes,
           'packaged_installer_child_runs': installer_child_runs,
@@ -257,7 +281,7 @@ report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else
           'node_require_scope': 'Actual packaged static assets via isolated QA-only symlink; host Node is not an app runtime dependency',
           'excluded_optional_cases': ['test_model_outlines.OutlineTests.test_actual_original_costumes_change_only_red_and_keep_textures_exact',
               'test_model_outlines.OutlineTests.test_original_automatic_face_jaw_detail_saves_only_selected_red'],
-          'scope': 'Bundled interpreter and packaged workbench code with neutral round trips, absolute/detailed outlines and paired ModZIP, signed mesh skin weights, combined mesh/body/physics/face saves and restore, isolated native Body/Face dependency graphs, derived physics proof, seam coverage and bundle I/O, bounded conversion/reimport caches and actual ASTC mip pixels, dense timeline/gaze/audio transport, source-bound thumbnails, multi-bone/surface grafts and original ARM64 numerical physics fixtures; no whole-client parity or device FPS claim'}
+          'scope': 'Bundled interpreter and packaged workbench code with neutral round trips, absolute/detailed outlines and paired ModZIP, signed mesh skin weights, combined mesh/body/physics/face saves and restore, isolated native Body/Face dependency graphs, derived physics proof, seam coverage and bundle I/O, bounded conversion/reimport caches and actual ASTC mip pixels, actual private format65 CLI exact RGBA and failure/cache bounds, dense timeline/gaze/audio transport, source-bound thumbnails, multi-bone/surface grafts and original ARM64 numerical physics fixtures; no whole-client parity or device FPS claim'}
 staged.cleanup()
 print('ELICHIKA_WORKBENCH_TESTS=' + json.dumps(report))
 sys.exit(0 if report['status'] == 'PASS' and result.testsRun else 1)

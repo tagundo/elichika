@@ -311,6 +311,14 @@ jobs:
             --work "$RUNNER_TEMP/openblas-build" \
             --wheel android/app/native-wheels/chaquopy_openblas-0.3.33-1-py3-none-android_24_arm64_v8a.whl
 
+      - name: Build bounded format65 texture decoder (android/arm64)
+        working-directory: android
+        run: >-
+          ./gradlew :app:buildTexture65Decoder --no-daemon --stacktrace
+          -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}"
+          -PappVersionName="${{ steps.ver.outputs.name }}"
+          -PappVersionCode="${{ steps.ver.outputs.code }}"
+
       - name: Build debug APK
         working-directory: android
         run: >-
@@ -381,6 +389,7 @@ jobs:
           APK=android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
           python3 android/ci/audit_native.py "$APK" --report android-native-layout.json
           python3 android/ci/verify_hca_apk.py "$APK" --report android-hca-decoder.json
+          python3 android/ci/verify_texture65_apk.py "$APK" --report android-texture65-decoder.json
           python3 payload_revision.py verify-apk --apk "$APK" --report payload-revision-audit.json
           echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
@@ -392,6 +401,8 @@ jobs:
           path: |
             android-native-layout.json
             android-hca-decoder.json
+            android-texture65-decoder.json
+            android/app/build/generated/texture65/reports/*.json
           if-no-files-found: warn
 
       - name: Upload final APK payload revision evidence

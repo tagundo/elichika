@@ -196,6 +196,8 @@ jobs:
 
       - name: Exercise Python, console, multiwindow and service configuration
         if: ${{ !inputs.focused_header_diagnostic }}
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
         run: |
           set -euo pipefail
           adb -s 127.0.0.1:5555 install -r instrumentation/*.apk
@@ -212,6 +214,44 @@ jobs:
           text = Path('evidence/native-instrumentation.txt').read_text()
           # Preserve every prior case and add native partial graft + multi-ZIP updater cases.
           assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text) == ['35'] and 'FAILURES' not in text, text
+          PY
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-texture65-report.json > evidence/native-texture65-report.json
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os, zipfile
+          report = json.loads(Path('evidence/native-texture65-report.json').read_text())
+          assert report['status'] == 'PASS' and report['native_java_bridge'] is True, report
+          assert report['application_id'] == 'com.tagundo.elichika', report
+          assert report['apk_sha256'] == os.environ['EXPECTED_CANDIDATE_SHA'], report
+          apks = list(Path('candidate').glob('*.apk'))
+          assert len(apks) == 1
+          with apks[0].open('rb') as stream:
+              assert hashlib.file_digest(stream, 'sha256').hexdigest() == report['apk_sha256']
+          with zipfile.ZipFile(apks[0]) as archive:
+              assert hashlib.sha256(archive.read('lib/arm64-v8a/libelichika_texture65.so')).hexdigest() == report['executable_sha256']
+          assert report['unity_format'] == 65 and report['crn_format'] == 12, report
+          assert report['width'] == report['height'] == 16 and report['rgba_bytes'] == 1024, report
+          assert report['fixture_sha256'] == 'd22610a543c19f361d896ce8225e800a0507154867760615673265b2cfb1b577', report
+          assert report['rgba_sha256'] == '76a9cba0c36c189f976ac41793d14055407929beb4f142d17a2f8867dd6e479e', report
+          assert report['display_rgba_sha256'] == '57b0febf48dfd82df66c88426f7677107ad0d48cf588233f044b59d6d817ebf9', report
+          assert all(report[key] is True for key in ('production_single_flip', 'transparent_rgb_retained', 'invalid_dimensions_refused')), report
+          mip_goldens = (
+              (16, '67d75a329b0a72e9544ddc71e0e83f6a4cc74582a694209b1a9981d8d7bf70cf', '86057308524be9a5e43a22adcb7ac4380572c5cb95a6ab22e00b6ecaa78af44c'),
+              (8, '4408294f1905631d095f012c88d90abb0504046e7e3274026d6e324e5ffd9496', '8405f5e5f26e562990376fb5fe60e46aadd9878294633309813d27d73ebeaebf'),
+              (4, '7c176380ab026186839a000dc6a9ff5975a67378bdcd5deb613619ef0b1e80c4', '524eba9b0228fd65ce9143e7e237ac28b29417fa9a6c74cd32b2a4da636baea6'),
+              (2, '7108bd2cae8b5c04b49f297e74ad12bbd298512018ba945cdd1bab9ecf220d7a', '45dd93b604b1017fe8849a75df63a5354c734c3a2f10947226f9ded5ae5188f9'),
+              (1, '2c1d418829ea5941ce3ceca05e9adeba65e1ad1ad52e67972955f726d550fc31', '2c1d418829ea5941ce3ceca05e9adeba65e1ad1ad52e67972955f726d550fc31'),
+          )
+          authored = report['authored_mips']
+          assert authored['fixture_sha256'] == '0ef12426c6703f658a12c7fc04f1fdbae73ca5d44164d965080be42a34db2552', report
+          assert len(authored['levels']) == 5, report
+          for level, (dimension, unflipped, displayed) in enumerate(mip_goldens):
+              actual = authored['levels'][level]
+              assert actual['level'] == level and actual['width'] == actual['height'] == dimension, report
+              assert actual['rgba_bytes'] == dimension * dimension * 4, report
+              assert actual['rgba_sha256'] == unflipped and actual['display_rgba_sha256'] == displayed, report
+              assert actual['production_single_flip'] is True, report
+          assert authored['invalid_level_refused'] is True and authored['invalid_python_level_refused'] is True, report
           PY
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls-report.json > evidence/model-viewer-outline-controls-report.json
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls.png > evidence/model-viewer-outline-controls.png
@@ -246,7 +286,7 @@ jobs:
           from pathlib import Path
           import json
           expected = {
-              'detail': ('absoluteOutline', 'sparseOutline', 'outlineUndoRedo', 'sourceCataloguePreserved', 'outlineSave', 'meshZoom', 'connectedSelection', 'selectionUndoRedo', 'viewOnlyPreservedGeometry'),
+              'detail': ('mouthCentroidDepth', 'absoluteOutline', 'sparseOutline', 'outlineUndoRedo', 'sourceCataloguePreserved', 'outlineSave', 'meshZoom', 'connectedSelection', 'selectionUndoRedo', 'viewOnlyPreservedGeometry'),
               'extended': ('physicsFreshOn', 'gazeOriginalPoses', 'gazePausedAndReset', 'poseComponentFilters', 'breastAutomaticLimits', 'breastDisableRestoresBaseline', 'precisePhysicsEditing', 'motionSourceSeparation', 'motionReloadPreservesEdits', 'importedMotionPlays', 'modelChangeRetainsLibrary', 'explicitClear'),
           }
           for name, keys in expected.items():
@@ -259,6 +299,37 @@ jobs:
           assert detail['absoluteRecipe']['state']['outlines'] == detail['absolute'], detail
           assert detail['uvColor']['chosen'] == '#14b87a' and detail['uvColor']['before'] == detail['uvColor']['restored'] == detail['uvColor']['persisted'], detail
           assert detail['uvColor']['authoringPreserved'] is True and detail['uvColor']['viewsPreserved'] is True, detail
+          gpu = detail['mouthGpu']
+          assert gpu['status'] == 'PASS' and gpu['backendAdaptation'] is True and gpu['originalGameShaderParityEstablished'] is False, gpu
+          assert gpu['fallbackUnchanged'] is True and gpu['viewport'] == [64, 64] and gpu['targetPixelTopLeft'] == [32, 32], gpu
+          modes = {row['name']: row for row in gpu['results']}
+          assert set(modes) == {'webgl2-mouth', 'webgl2-original', 'webgl1-mouth', 'webgl1-original'}, gpu
+          for name, row in modes.items():
+              assert row['actualWebGL2'] is name.startswith('webgl2') and row['samples'] == 4 and row['depthBits'] == 24, row
+              assert row['vertices'] == 6 and row['triangles'] == 2 and len(row['observations']) == 6, row
+              assert row['centroidCompiled'] is (name == 'webgl2-mouth'), row
+              for item in row['observations']:
+                  assert item['glError'] == 0, item
+                  if name == 'webgl2-mouth':
+                      assert item['compiledMain'] and all(program['version'].startswith('#version 300 es') and program['linked'] is True for program in item['compiledMain']), item
+                      assert item['rgba'] == ([0, 0, 255, 255] if item['occluder'] == 'front' else [255, 0, 0, 255]), item
+          assert modes['webgl1-mouth']['observations'] == modes['webgl1-original']['observations'], gpu
+          outline = {row['name']: row for row in gpu['outlineResults']}
+          assert set(outline) == set(modes) and gpu['outlineFallbackUnchanged'] is True, gpu
+          for name, row in outline.items():
+              adapted = name == 'webgl2-mouth'
+              assert row['actualWebGL2'] is name.startswith('webgl2') and row['samples'] == 4 and row['depthBits'] == 24, row
+              assert row['vertices'] == 6 and row['triangles'] == 2 and row['side'] == 'BackSide' and len(row['observations']) == 6, row
+              assert all(row[key] is True for key in ('depthTest', 'depthWrite', 'stencilAlways', 'mainHidden')), row
+              assert row['nativeVertexColor'] == [0, 1, 1, 1] and row['centroidCompiled'] is adapted and (adapted or row['originalProgramUnchanged'] is True), row
+              reference = row['frontReferenceRGBA']
+              assert len(reference) == 4 and reference[0] > 0 and reference[1:] == [0, 0, 255], row
+              for item in row['observations']:
+                  assert item['glError'] == 0 and item['compiledOutline'], item
+                  assert all(program['linked'] is True and program['outlinePass'] is True and program['centroidDepth'] is adapted and (not adapted or program['version'].startswith('#version 300 es')) for program in item['compiledOutline']), item
+                  if adapted:
+                      assert item['rgba'] == ([0, 0, 255, 255] if item['occluder'] == 'front' else reference), item
+          assert outline['webgl1-mouth']['observations'] == outline['webgl1-original']['observations'] and outline['webgl1-mouth']['frontReferenceRGBA'] == outline['webgl1-original']['frontReferenceRGBA'], gpu
           assert json.loads(Path('evidence/model-viewer-absolute-outline-recipe.json').read_text()) == detail['absoluteRecipe'], detail
           assert Path('evidence/model-viewer-absolute-outline.unity').stat().st_size > 0
           assert report['motionSourcePreserved'] is True and report['otherBodySourcePreserved'] is True
@@ -492,6 +563,9 @@ jobs:
           mkdir -p evidence
           docker logs android-release-smoke > evidence/container.log 2>&1 || true
           adb -s 127.0.0.1:5555 logcat -d > evidence/logcat.txt 2>&1 || true
+          if [ ! -s evidence/native-texture65-report.json ]; then
+            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-texture65-report.json > evidence/native-texture65-report.json 2>/dev/null || true
+          fi
           adb -s 127.0.0.1:5555 shell dumpsys webviewupdate > evidence/webview-provider.txt 2>&1 || true
           adb -s 127.0.0.1:5555 exec-out cat /sdcard/Download/sukusta/logs/elichika.log > evidence/server-console.txt 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true

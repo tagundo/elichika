@@ -42,6 +42,10 @@ def inspect_json(encodedReport, sdkDirectory, sourcePath, sourceSHA):
     assert receipt['quality']==pack['thumbnail']['quality']==quality
     binding={'token':before['editingToken'],'state':recipe['state'],'sources':recipe['sources'],
              'character_id':before['characterId'],'counterpart_path':before['counterpartPath'],'selected_variant':before['variant']}
+    include_face_edits=before.get('include_face_edits')
+    if include_face_edits is not None:
+        assert type(include_face_edits) is bool
+        binding['include_face_edits']=include_face_edits
     cache=sha(canonical({'kind':'viewer','binding':binding,'source':originals,'targetMember':before['characterId'],
                         'profile':profile_digest,'size':receipt['size'],'quality':quality}))
     assert cache==receipt['cacheKey']==pack['thumbnail']['cacheKey']

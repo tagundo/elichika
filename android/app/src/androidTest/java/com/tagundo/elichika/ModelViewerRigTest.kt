@@ -393,7 +393,9 @@ class ModelViewerRigTest {
         run(webView, "document.querySelector('#viewer-outline-card > summary').click();")
         val detail = runNativeHelper(session, "viewer_detail_qa.js", "NativeDetailQa.run()")
         assertEquals("PASS", detail.getString("status"))
-        assertEquals(9, detail.getJSONObject("checks").length())
+        assertEquals(10, detail.getJSONObject("checks").length())
+        assertEquals(4, detail.getJSONObject("mouthGpu").getJSONArray("outlineResults").length())
+        assertTrue(detail.getJSONObject("mouthGpu").getBoolean("outlineFallbackUnchanged"))
         val detailKeys = detail.getJSONObject("checks").keys()
         while (detailKeys.hasNext()) assertTrue(detail.getJSONObject("checks").getBoolean(detailKeys.next()))
         assertTrue("Native all-vertex outline Save must pass", detail.getJSONObject("checks").getBoolean("absoluteOutline"))
@@ -1102,6 +1104,13 @@ class ModelViewerRigTest {
                     "native.webHasFocus&&(native.webIsFocused||native.currentFocusInsideWebView)),native:native,x:scrollX,y:scrollY});"
             }
             report.put("nativeFocusReady", nativeReady)
+            // Expanded-view exit restores its captured focus/scroll on a frame.
+            // Settle that layout work before choosing the next keyboard target.
+            run(webView, "window.__nativeDetailsLayout={key:$key,frames:0};requestAnimationFrame(function(){" +
+                "window.__nativeDetailsLayout.frames=1;requestAnimationFrame(function(){window.__nativeDetailsLayout.frames=2;});});")
+            report.put("layoutFramesReady", waitForDom(webView, "the existing layout focus restoration before selecting the $id DOM summary", 15) {
+                "var frame=window.__nativeDetailsLayout;return JSON.stringify({ok:!!(frame&&frame.key===$key&&frame.frames===2),layoutFrame:frame});"
+            })
             run(webView, """
                 if(window.__nativeDetailsKeyboard)window.__nativeDetailsKeyboard.dispose();
                 var card=document.getElementById($target),summary=card.querySelector('summary'),events=[];

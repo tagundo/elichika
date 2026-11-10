@@ -544,6 +544,37 @@ def run(args, report):
     assert cli["server"]["exit_codes"] == {"4096": 143, "16384": 143}
     cli["server"]["controlled_sigterm_after_successful_requests"] = True
     assert functional["4096"]["python"]["astc_sha256"] == functional["16384"]["python"]["astc_sha256"], "ASTC output differs by page size"
+    texture65_sha = libraries["libelichika_texture65.so"]["sha256"]
+    mip_goldens = (
+        (16, "67d75a329b0a72e9544ddc71e0e83f6a4cc74582a694209b1a9981d8d7bf70cf", "86057308524be9a5e43a22adcb7ac4380572c5cb95a6ab22e00b6ecaa78af44c"),
+        (8, "4408294f1905631d095f012c88d90abb0504046e7e3274026d6e324e5ffd9496", "8405f5e5f26e562990376fb5fe60e46aadd9878294633309813d27d73ebeaebf"),
+        (4, "7c176380ab026186839a000dc6a9ff5975a67378bdcd5deb613619ef0b1e80c4", "524eba9b0228fd65ce9143e7e237ac28b29417fa9a6c74cd32b2a4da636baea6"),
+        (2, "7108bd2cae8b5c04b49f297e74ad12bbd298512018ba945cdd1bab9ecf220d7a", "45dd93b604b1017fe8849a75df63a5354c734c3a2f10947226f9ded5ae5188f9"),
+        (1, "2c1d418829ea5941ce3ceca05e9adeba65e1ad1ad52e67972955f726d550fc31", "2c1d418829ea5941ce3ceca05e9adeba65e1ad1ad52e67972955f726d550fc31"),
+    )
+    for page in (4096, 16384):
+        decoded = functional[str(page)]["python"]["texture65_decode"]
+        assert decoded["status"] == "PASS" and decoded["unity_format"] == 65 and decoded["crn_format"] == 12
+        assert decoded["width"] == decoded["height"] == 16 and decoded["rgba_bytes"] == 1024
+        assert decoded["executable_sha256"] == texture65_sha, "Executed format65 bytes differ from the original APK"
+        assert decoded["fixture_sha256"] == "d22610a543c19f361d896ce8225e800a0507154867760615673265b2cfb1b577"
+        assert decoded["rgba_sha256"] == "76a9cba0c36c189f976ac41793d14055407929beb4f142d17a2f8867dd6e479e"
+        assert decoded["display_rgba_sha256"] == "57b0febf48dfd82df66c88426f7677107ad0d48cf588233f044b59d6d817ebf9"
+        assert decoded["production_single_flip"] is True and decoded["transparent_rgb_retained"] is True
+        assert decoded["invalid_dimensions_refused"] is True
+        authored = decoded["authored_mips"]
+        assert authored["fixture_sha256"] == "0ef12426c6703f658a12c7fc04f1fdbae73ca5d44164d965080be42a34db2552"
+        assert len(authored["levels"]) == 5
+        for level, (dimension, unflipped, displayed) in enumerate(mip_goldens):
+            actual = authored["levels"][level]
+            assert actual["level"] == level and actual["width"] == actual["height"] == dimension
+            assert actual["rgba_bytes"] == dimension * dimension * 4
+            assert actual["rgba_sha256"] == unflipped and actual["display_rgba_sha256"] == displayed
+            assert actual["production_single_flip"] is True
+        assert authored["invalid_level_refused"] is True and authored["invalid_python_level_refused"] is True
+    cli["texture65"] = {"status": "PASS", "sha256": texture65_sha,
+        "page_sizes": [4096, 16384], "exact_rgba_and_production_flip": True,
+        "authored_mip_dimensions": [16, 8, 4, 2, 1], "authored_mips_exact_and_invalid_refused": True}
     report.update({"diagnostic_status": "COMPLETE", "strict_native_16k_compatibility": "PASS",
                    "guest_page_size": 16384, "positive_16k_control": "PASS", "negative_4k_control": "PASS",
                    "four_k_baseline": "PASS", "libraries": results, "native_executables": cli,

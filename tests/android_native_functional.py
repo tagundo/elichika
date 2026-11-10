@@ -148,6 +148,122 @@ def gallery_png_checks(temporary):
         return hashlib.sha256(png).hexdigest()
 
 
+def texture65_checks(astcenc, temporary):
+    """Decode authored CC0 Crunch bytes with the actual packaged PIE and UI path."""
+    from importlib.resources import files
+    from types import SimpleNamespace
+    from webtools.core import decode
+
+    resource = files("webtools.core").joinpath("resources/texture65_decoder/fixtures")
+    compressed = resource.joinpath("neutral65.crn").read_bytes()
+    expected = resource.joinpath("neutral65.rgba").read_bytes()
+    fixture_sha = "d22610a543c19f361d896ce8225e800a0507154867760615673265b2cfb1b577"
+    raw_sha = "76a9cba0c36c189f976ac41793d14055407929beb4f142d17a2f8867dd6e479e"
+    displayed_sha = "57b0febf48dfd82df66c88426f7677107ad0d48cf588233f044b59d6d817ebf9"
+    assert len(compressed) == 366 and hashlib.sha256(compressed).hexdigest() == fixture_sha
+    assert len(expected) == 1024 and hashlib.sha256(expected).hexdigest() == raw_sha
+    # This five-level CRN has a joint palette. Its level0 intentionally differs
+    # from the single-level fixture; freeze the independent whole-pixel goldens.
+    mip_goldens = (
+        (16, "67d75a329b0a72e9544ddc71e0e83f6a4cc74582a694209b1a9981d8d7bf70cf", "86057308524be9a5e43a22adcb7ac4380572c5cb95a6ab22e00b6ecaa78af44c"),
+        (8, "4408294f1905631d095f012c88d90abb0504046e7e3274026d6e324e5ffd9496", "8405f5e5f26e562990376fb5fe60e46aadd9878294633309813d27d73ebeaebf"),
+        (4, "7c176380ab026186839a000dc6a9ff5975a67378bdcd5deb613619ef0b1e80c4", "524eba9b0228fd65ce9143e7e237ac28b29417fa9a6c74cd32b2a4da636baea6"),
+        (2, "7108bd2cae8b5c04b49f297e74ad12bbd298512018ba945cdd1bab9ecf220d7a", "45dd93b604b1017fe8849a75df63a5354c734c3a2f10947226f9ded5ae5188f9"),
+        (1, "2c1d418829ea5941ce3ceca05e9adeba65e1ad1ad52e67972955f726d550fc31", "2c1d418829ea5941ce3ceca05e9adeba65e1ad1ad52e67972955f726d550fc31"),
+    )
+    mip_source = resource.joinpath("neutral65-mips.crn").read_bytes()
+    mip_metadata = json.loads(resource.joinpath("neutral65-mips.json").read_text())
+    mip_fixture_sha = "0ef12426c6703f658a12c7fc04f1fdbae73ca5d44164d965080be42a34db2552"
+    assert len(mip_source) == 487 and hashlib.sha256(mip_source).hexdigest() == mip_fixture_sha
+    assert mip_metadata["encoded_sha256"] == mip_fixture_sha and mip_metadata["mip_count"] == 5
+    assert [(row["width"], row["rgba_unflipped_sha256"], row["rgba_display_sha256"])
+        for row in mip_metadata["levels"]] == list(mip_goldens)
+    executable = Path(astcenc).resolve().with_name("libelichika_texture65.so")
+    assert executable.is_file() and os.access(executable, os.X_OK)
+    # The Java bridge sets this from nativeLibraryDir. The bare ARM VM has no
+    # Java bridge, so it uses the same APK directory as its ASTC executable.
+    previous = os.environ.get("ELICHIKA_TEXTURE65_BIN")
+    if previous is not None:
+        assert Path(previous).resolve() == executable, "Texture decoder escaped the APK native directory"
+    os.environ["ELICHIKA_TEXTURE65_BIN"] = str(executable)
+    try:
+        with tempfile.TemporaryDirectory(prefix="texture65-native-", dir=temporary) as directory:
+            source, target = Path(directory) / "neutral.crn", Path(directory) / "neutral.rgba"
+            source.write_bytes(compressed)
+            result = subprocess.run([str(executable), "16", "16", str(source), str(target)],
+                capture_output=True, timeout=30)
+            assert result.returncode == 0, (result.returncode, result.stderr.decode(errors="replace"))
+            raw = target.read_bytes()
+            assert raw == expected, "Format65 changed straight RGBA, transparent RGB or row orientation"
+            # Exact production field-to-image path, including its single Unity
+            # vertical flip; never Texture2D.image or an in-process C decoder.
+            texture = SimpleNamespace(m_Width=16, m_Height=16, m_TextureFormat=65,
+                m_ImageCount=1, m_TextureDimension=2, image_data=compressed,
+                get_image_data=lambda: compressed)
+            image = decode._android_image(texture, time.monotonic() + 30)
+            assert image.mode == "RGBA" and image.size == (16, 16)
+            assert hashlib.sha256(image.tobytes()).hexdigest() == displayed_sha
+            assert image.tobytes() == b"".join(expected[row * 64:(row + 1) * 64] for row in reversed(range(16)))
+            pixels = [raw[index:index + 4] for index in range(0, len(raw), 4)]
+            assert len(set(pixels)) == 177
+            assert sum(pixel[3] == 0 for pixel in pixels) == 33
+            assert sum(pixel[3] == 255 for pixel in pixels) == 32
+            assert sum(0 < pixel[3] < 255 for pixel in pixels) == 191
+            assert all(any(pixel[:3]) for pixel in pixels if pixel[3] == 0)
+            invalid = Path(directory) / "invalid.rgba"
+            refused = subprocess.run([str(executable), "8193", "16", str(source), str(invalid)],
+                capture_output=True, timeout=30)
+            assert refused.returncode != 0 and not invalid.exists(), "Format65 input bounds were not enforced"
+            mip_input = Path(directory) / "authored-mips.crn"
+            mip_input.write_bytes(mip_source)
+            levels = []
+            for level, (dimension, unflipped, displayed) in enumerate(mip_goldens):
+                output = Path(directory) / ("mip-" + str(level) + ".rgba")
+                result = subprocess.run([str(executable), "16", "16", str(mip_input), str(output), "--mip", str(level)],
+                    capture_output=True, timeout=30)
+                assert result.returncode == 0, (level, result.returncode, result.stderr.decode(errors="replace"))
+                mip_raw = output.read_bytes()
+                assert len(mip_raw) == dimension * dimension * 4
+                assert hashlib.sha256(mip_raw).hexdigest() == unflipped, ("Incorrect authored mip pixels", level)
+                proxy = SimpleNamespace(m_Width=dimension, m_Height=dimension, m_TextureFormat=65,
+                    m_ImageCount=1, m_TextureDimension=2, image_data=mip_source, get_image_data=lambda: mip_source,
+                    _texture65_source_width=16, _texture65_source_height=16, _texture65_mip=level)
+                mip_image = decode._android_image(proxy, time.monotonic() + 30)
+                assert mip_image.size == (dimension, dimension) and mip_image.mode == "RGBA"
+                assert hashlib.sha256(mip_image.tobytes()).hexdigest() == displayed
+                stride = dimension * 4
+                assert mip_image.tobytes() == b"".join(mip_raw[row * stride:(row + 1) * stride]
+                    for row in reversed(range(dimension))), ("Authored mip was not flipped exactly once", level)
+                levels.append({"level": level, "width": dimension, "height": dimension,
+                    "rgba_bytes": len(mip_raw), "rgba_sha256": unflipped,
+                    "display_rgba_sha256": displayed, "production_single_flip": True})
+            invalid_mip = Path(directory) / "invalid-mip.rgba"
+            refused_mip = subprocess.run([str(executable), "16", "16", str(mip_input), str(invalid_mip), "--mip", "5"],
+                capture_output=True, timeout=30)
+            assert refused_mip.returncode != 0 and not invalid_mip.exists(), "An absent authored mip was accepted"
+            proxy._texture65_mip = 5
+            try:
+                decode._android_image(proxy, time.monotonic() + 30)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Production decoder accepted an absent authored mip")
+    finally:
+        if previous is None:
+            os.environ.pop("ELICHIKA_TEXTURE65_BIN", None)
+        else:
+            os.environ["ELICHIKA_TEXTURE65_BIN"] = previous
+    return {"status": "PASS", "unity_format": 65, "crn_format": 12,
+        "width": 16, "height": 16, "pixels": 256, "rgba_bytes": 1024,
+        "fixture_sha256": fixture_sha, "rgba_sha256": raw_sha,
+        "display_rgba_sha256": displayed_sha, "production_single_flip": True,
+        "transparent_rgb_retained": True, "invalid_dimensions_refused": True,
+        "authored_mips": {"fixture_sha256": mip_fixture_sha, "levels": levels,
+            "invalid_level_refused": True, "invalid_python_level_refused": True},
+        "executable": str(executable), "executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+        "scope": "Actual bundled subprocess and production texture-image path using authored CC0 data; no original game asset or game identity."}
+
+
 def clone_bundle_checks(preview):
     """Exercise the shipped clone serializer through the embedded UnityPy runtime."""
     import UnityPy
@@ -373,6 +489,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
                         - np.asarray(image, dtype=float)).mean()
     assert difference < 40, "ASTC roundtrip changed image content excessively"
     gallery_sha256 = gallery_png_checks(temporary)
+    texture65_report = texture65_checks(astcenc, temporary)
     return {"python": sys.version.split()[0], "ssl_and_certificates": True,
             "sqlite_unicode": True, "ctypes": True, "numpy_linear_algebra": True,
             "compression_roundtrips": 6, "openblas_config": blas_config, "pillow_png_jpeg_freetype": True,
@@ -380,6 +497,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
             "unitypy_binary_io": True, "fsspec_memory_io": True,
             "beginner_mesh_percentages": True,
             "gallery_thumbnail_png": True, "gallery_png_sha256": gallery_sha256,
+            "texture65_decode": texture65_report,
             "adminui_and_webtools_imports": True, "astc_encode_decode": True,
             "bundled_suit_preview": True,
             "clone_bundle_isolation": True, "clone_bundle_report": clone_report,

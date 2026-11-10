@@ -751,7 +751,7 @@ print(oracle['inspect_json'](spec.read_text()))
 
 
 def check_detail_report(observed):
-    _native_checks(observed, ("absoluteOutline", "sparseOutline", "outlineUndoRedo", "sourceCataloguePreserved", "outlineSave",
+    _native_checks(observed, ("mouthCentroidDepth", "absoluteOutline", "sparseOutline", "outlineUndoRedo", "sourceCataloguePreserved", "outlineSave",
                    "meshZoom", "connectedSelection", "selectionUndoRedo", "viewOnlyPreservedGeometry"), "Native detail controls")
     absolute = [{"id": "0:0:1", "factor": 1, "absolute": 37}]
     require(observed["absolute"] == absolute and observed["absoluteRecipe"]["state"]["outlines"] == absolute
@@ -768,6 +768,52 @@ def check_detail_report(observed):
     modify, delete = views["viewer-mesh-modify"], views["viewer-mesh-deleter"]
     require(modify["zoom"] == 4 and modify["x"] == modify["y"] == -1.5 and delete["zoom"] == 2,
             "Actual mesh inspectors must retain independent centre-anchored UV views")
+    gpu = observed["mouthGpu"]
+    require(gpu["status"] == "PASS" and gpu["backendAdaptation"] is True and gpu["originalGameShaderParityEstablished"] is False
+        and gpu["fallbackUnchanged"] is True and gpu["viewport"] == [64, 64]
+        and gpu["targetPixelTopLeft"] == [32, 32], "Actual native Mouth GPU evidence is incomplete")
+    modes = {row["name"]: row for row in gpu["results"]}
+    require(set(modes) == {"webgl2-mouth", "webgl2-original", "webgl1-mouth", "webgl1-original"},
+        "Native GPU must exercise Mouth and untagged original controls in both actual context versions")
+    for name, row in modes.items():
+        require(row["actualWebGL2"] is name.startswith("webgl2") and row["samples"] == 4 and row["depthBits"] == 24
+            and row["vertices"] == 6 and row["triangles"] == 2 and len(row["observations"]) == 6
+            and row["centroidCompiled"] is (name == "webgl2-mouth"),
+            "Only the actual WebGL2 Mouth MAIN may compile centroid depth; original/fallback data must remain unchanged")
+        for item in row["observations"]:
+            require(item["glError"] == 0, "Native centroid/original GPU program must compile without GL errors")
+            if name == "webgl2-mouth":
+                require(item["compiledMain"] and all(program["version"].startswith("#version 300 es") and program["linked"] is True
+                    for program in item["compiledMain"]), "The actual Mouth WebGL2 GLSL300 MAIN must link on the native GPU")
+                require(item["rgba"] == ([0, 0, 255, 255] if item["occluder"] == "front" else [255, 0, 0, 255]),
+                    "Actual production Mouth shader must preserve opaque front/rear occlusion in both draw orders")
+    require(modes["webgl1-mouth"]["observations"] == modes["webgl1-original"]["observations"],
+        "Actual WebGL1 Mouth fallback must preserve the original program's complete framebuffer results")
+    outline = {row["name"]: row for row in gpu["outlineResults"]}
+    require(set(outline) == set(modes) and gpu["outlineFallbackUnchanged"] is True,
+        "Actual native GPU must also exercise all four original/marked BackSide OUTLINE paths")
+    for name, row in outline.items():
+        adapted = name == "webgl2-mouth"
+        require(row["actualWebGL2"] is name.startswith("webgl2") and row["samples"] == 4 and row["depthBits"] == 24
+            and row["vertices"] == 6 and row["triangles"] == 2 and row["side"] == "BackSide"
+            and all(row[key] is True for key in ("depthTest", "depthWrite", "stencilAlways", "mainHidden"))
+            and row["nativeVertexColor"] == [0, 1, 1, 1] and row["centroidCompiled"] is adapted
+            and (adapted or row["originalProgramUnchanged"] is True) and len(row["observations"]) == 6,
+            "Mouth OUTLINE adaptation must retain native geometry, width/color, BackSide, depth and stencil behavior")
+        reference = row["frontReferenceRGBA"]
+        require(len(reference) == 4 and reference[0] > 0 and reference[1:] == [0, 0, 255],
+            "OUTLINE reference must be a real nonblack red pixel from the independently authored front triangle")
+        for item in row["observations"]:
+            require(item["glError"] == 0 and item["compiledOutline"] and all(program["linked"] is True
+                and program["outlinePass"] is True and program["centroidDepth"] is adapted
+                and (not adapted or program["version"].startswith("#version 300 es"))
+                for program in item["compiledOutline"]), "Actual native OUTLINE programs must compile in the correct scope")
+            if adapted:
+                require(item["rgba"] == ([0, 0, 255, 255] if item["occluder"] == "front" else reference),
+                    "Actual Mouth OUTLINE must preserve the full front reference and independent opaque occlusion in both orders")
+    require(outline["webgl1-mouth"]["observations"] == outline["webgl1-original"]["observations"]
+        and outline["webgl1-mouth"]["frontReferenceRGBA"] == outline["webgl1-original"]["frontReferenceRGBA"],
+        "Actual WebGL1 OUTLINE fallback must preserve original output")
     color = observed["uvColor"]
     require(color["chosen"] == "#14b87a" and color["restored"] == color["before"] == color["persisted"]
         and color["authoringPreserved"] is True and color["viewsPreserved"] is True,

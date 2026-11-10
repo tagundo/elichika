@@ -36,7 +36,9 @@ jobs:
         run: python3 assets/tests/validate_localization.py
 
       - name: Check the APK native-layout release gate
-        run: python3 -m unittest discover -s tests -p test_android_native_audit.py -v
+        run: |
+          python3 -m unittest discover -s tests -p test_android_native_audit.py -v
+          python3 -m unittest discover -s tests -p test_android_texture65_packaging.py -v
 
       - name: Check costume extraction and installer lifecycle
         run: |
@@ -90,11 +92,14 @@ jobs:
           python3 -m unittest discover -s ../tests -p test_android_python_launch.py -v
           python3 -m pip install "certifi==2026.10.23"
           python3 -m unittest discover -s ../tests -p 'test_macos_runtime*.py' -v
+          python3 -m unittest discover -s ../tests -p test_macos_texture65_packaging.py -v
           python3 -m unittest discover -s ../android/ci -p 'test_patch_unitypy_*.py' -v
           python3 -m unittest discover -s tests -p test_mesh_editor.py -v
           python3 -m unittest discover -s tests -p test_gallery_decode.py -v
+          python3 -m unittest discover -s tests -p test_texture65_decode.py -v
           python3 -m unittest discover -s tests -p test_model_viewer.py -v
           python3 -m unittest discover -s tests -p test_model_faces.py -v
+          python3 -m unittest discover -s tests -p test_viewer_facial_role_metadata.py -v
           python3 -m unittest discover -s tests -p test_face_cache_prune.py -v
           python3 -m unittest discover -s tests -p test_mesh_baker_chunks.py -v
           python3 -m unittest discover -s tests -p test_model_skinning.py -v
@@ -113,6 +118,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_viewer_zip_replacement.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_package.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_flow.py -v
+          python3 -m unittest discover -s tests -p test_viewer_transplant_paths.py -v
           python3 -m unittest discover -s tests -p test_viewer_body_controls.py -v
           python3 -m unittest discover -s tests -p 'test_game_models*.py' -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
@@ -196,6 +202,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/framing" node tests/viewer_framing_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/compensation" node tests/viewer_compensation_browser.js
           node tests/sifas_material_browser.js
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mouth-centroid" node tests/viewer_mouth_depth_browser_test.js
           node tests/viewer_quality_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
