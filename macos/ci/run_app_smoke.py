@@ -638,7 +638,7 @@ def check_part_report(observed):
     for pointer, native in zip(pointers, events):
         request, event = pointer["request"], pointer["event"]
         require(event["trusted"] is True and event["pointerType"] == "mouse" and request["id"] == native["id"]
-                and request["target"] == native["target"] and native["method"].startswith("NSWindow.sendEvent NSEvent")
+                and request["target"] == native["target"] and native["method"].startswith("NSApplication.postEvent NSEvent")
                 and all(math.isfinite(event[key]) and abs(event[key] - request["point"][axis]) <= 1.1
                         for key, axis in (("clientX", "x"), ("clientY", "y"))),
                 "Each actual WebKit donor pointer must be trusted and land on its measured source triangle/UV point")

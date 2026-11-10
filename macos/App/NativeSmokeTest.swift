@@ -319,7 +319,7 @@ final class NativeSmokeTest {
         return paths[0]
     }
 
-    private func sendNativePointer(_ request: [String: Any], webView: WKWebView) throws -> [String: Any] {
+    private func sendNativePointer(_ request: [String: Any], webView: WKWebView) async throws -> [String: Any] {
         guard let point = request["point"] as? [String: Double], let viewport = request["viewport"] as? [String: Double],
               let x = point["x"], let y = point["y"], let width = viewport["width"], let height = viewport["height"],
               let window = webView.window else { throw NativeError.invalidResponse }
@@ -328,6 +328,29 @@ final class NativeSmokeTest {
         NSApplication.shared.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(webView)
+        @MainActor func focused() -> Bool {
+            guard NSApplication.shared.isActive, window.isVisible, window.isKeyWindow,
+                  NSApplication.shared.keyWindow === window else { return false }
+            guard let responder = window.firstResponder as? NSView else { return false }
+            return responder === webView || responder.isDescendant(of: webView)
+        }
+        try await wait("the active key window and WebKit first responder before native input", timeout: 10) {
+            if NSApplication.shared.isActive && window.isKeyWindow { window.makeFirstResponder(webView) }
+            return focused()
+        }
+        _ = try await js(webView, "await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});return true;")
+        try require(focused(), "Native pointer input requires the active visible key window and actual WebKit first responder.")
+        let readyWindow = nativePointerEnvironment(webView, request: request)
+        try require(readyWindow["requestedHitInsideWebView"] as? Bool == true,
+                    "Native pointer input must still hit the actual WebKit view after focus and event-loop readiness.")
+        let encodedPoint = String(decoding: try JSONSerialization.data(withJSONObject: point), as: UTF8.self)
+        let readyDOM = try await object(webView, """
+            var p=\(encodedPoint),hit=document.elementFromPoint(p.x,p.y),v=window.visualViewport;
+            function describe(n){if(!n)return null;var r=n.getBoundingClientRect();return {tag:n.tagName,id:n.id||'',classes:String(n.className||''),rect:{left:r.left,top:r.top,width:r.width,height:r.height}};}
+            return JSON.stringify({hit:describe(hit),active:describe(document.activeElement),
+                canvases:Array.from(document.querySelectorAll('#viewer-part-transplant canvas')).map(describe),
+                viewport:{width:innerWidth,height:innerHeight,offsetLeft:v&&v.offsetLeft,offsetTop:v&&v.offsetTop,scale:v&&v.scale}});
+            """)
         let bounds = webView.bounds
         let local = NSPoint(x: bounds.minX + CGFloat(x / width) * bounds.width,
                             y: webView.isFlipped ? bounds.minY + CGFloat(y / height) * bounds.height : bounds.maxY - CGFloat(y / height) * bounds.height)
@@ -339,12 +362,15 @@ final class NativeSmokeTest {
               let up = NSEvent.mouseEvent(with: .leftMouseUp, location: location, modifierFlags: [],
                 timestamp: ProcessInfo.processInfo.systemUptime + 0.01, windowNumber: window.windowNumber, context: nil,
                 eventNumber: number * 2 + 1, clickCount: 1, pressure: 0) else { throw NativeError.invalidResponse }
-        window.sendEvent(down)
-        window.sendEvent(up)
+        NSApplication.shared.postEvent(down, atStart: false)
+        NSApplication.shared.postEvent(up, atStart: false)
+        try await Task.sleep(nanoseconds: 20_000_000)
         return ["id": number, "target": request["target"] ?? "", "css": point, "viewport": viewport,
                 "webViewBounds": ["width": bounds.width, "height": bounds.height], "webViewFlipped": webView.isFlipped,
                 "windowPoint": ["x": location.x, "y": location.y],
-                "method": "NSWindow.sendEvent NSEvent leftMouseDown/leftMouseUp; DOM isTrusted is independently required"]
+                "readyWindow": readyWindow,
+                "readyDOM": readyDOM,
+                "method": "NSApplication.postEvent NSEvent leftMouseDown/leftMouseUp FIFO; DOM isTrusted is independently required"]
     }
 
     private func nativePointerEnvironment(_ webView: WKWebView, request: [String: Any]? = nil) -> [String: Any] {
@@ -364,6 +390,13 @@ final class NativeSmokeTest {
         guard let window = webView.window else { return value }
         value["window"] = ["number": window.windowNumber, "key": window.isKeyWindow, "visible": window.isVisible,
                            "frame": rect(window.frame), "content": describe(window.contentView)]
+        if let responder = window.firstResponder {
+            value["firstResponderClass"] = String(describing: type(of: responder))
+            if let view = responder as? NSView {
+                value["firstResponder"] = describe(view)
+                value["firstResponderInsideWebView"] = view === webView || view.isDescendant(of: webView)
+            }
+        }
         let mouseWindow = window.convertPoint(fromScreen: mouse)
         value["mouseWindow"] = ["x": mouseWindow.x, "y": mouseWindow.y]
         if let point = request?["point"] as? [String: Double], let viewport = request?["viewport"] as? [String: Double],
@@ -429,7 +462,7 @@ final class NativeSmokeTest {
                let id = request["id"] as? Int, !handled.contains(id) {
                 attempts.append(["id": id, "request": request, "before": self.nativePointerEnvironment(webView, request: request)])
                 await self.recordNativePartProgress(webView, phase: "pointer-\(id)-before", pointer: request, events: events, attempts: attempts, handled: handled)
-                events.append(try self.sendNativePointer(request, webView: webView))
+                events.append(try await self.sendNativePointer(request, webView: webView))
                 handled.insert(id)
                 await self.recordNativePartProgress(webView, phase: "pointer-\(id)-after", pointer: request, events: events, attempts: attempts, handled: handled)
             }
