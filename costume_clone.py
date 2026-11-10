@@ -277,6 +277,25 @@ def _validate_scene_targets(scene, targets, use_no_mask):
         raise ValueError("A shared-board Rina costume must use its board default; choose the board option.")
 
 
+def _private_face_source(suit_ids):
+    """Only explicit managed provenance enables pruning copied source packs.
+
+    Older arbitrary clones retain their conservative download mappings. A new
+    managed Face/Mouth clone owns its entire model closure and can release the
+    donor's copied model packs without making deletion retain unused files.
+    """
+    selected = set(suit_ids)
+    for path in Path(".costume-management/receipts").glob("*.json"):
+        if path.is_symlink() or path.stat().st_size > 8*1024*1024:
+            raise ValueError("A costume ownership receipt cannot be verified.")
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        source = receipt.get("source", {})
+        if (receipt.get("state") == "committed" and selected.intersection(receipt.get("suit_ids", ()))
+                and (source.get("generated_private_face") is True or source.get("private_face_origin") is True)):
+            return True
+    return False
+
+
 def clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_backup=True,
                   *, before_write=None):
     """Clone one costume under the installation's cooperative mutation guard."""
@@ -366,6 +385,11 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
         canonical_options = dict(shared_roots=scene_source["canonical_model_paths"],
             retained_textures={region: {row["thumbnail_image_asset_path"] for row in value[0].values()
                 if row.get("thumbnail_image_asset_path")} for region, value in metadata.items()}) if scene_source is not None else {}
+        private_face_source = _private_face_source(original_ids)
+        if private_face_source:
+            canonical_options.update(private_source=True,
+                retained_textures={region:{row["thumbnail_image_asset_path"] for row in value[0].values()
+                    if row.get("thumbnail_image_asset_path")} for region,value in metadata.items()})
         assets = prepare_clone_assets(region_models, new_id,
             {region: {sid: id_map[sid] for sid in value[0]}
              for region, value in metadata.items()}, log=log, **canonical_options)
@@ -437,6 +461,8 @@ def _clone_costume(src_id, costume_id, tgt_id, use_no_mask=False, log=print, do_
         source_receipt = dict(member_id=src_id, suit_id=costume_id, target_member_id=tgt_id,
                 use_no_mask=bool(use_no_mask), source_suit_ids=sorted(original_ids),
                 metadata_sha256=hashlib.sha256(json.dumps(donor_metadata, sort_keys=True).encode()).hexdigest())
+        if private_face_source:
+            source_receipt["private_face_origin"] = True
         if canonical_archive is not None:
             source_receipt["canonical_scene"] = canonical_archive.source
             owned_files.append(canonical_archive.descriptor())

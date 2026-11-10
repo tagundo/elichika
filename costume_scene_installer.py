@@ -678,6 +678,16 @@ def _stage_databases(plan, stage):
             destination.execute("PRAGMA journal_mode=DELETE")
             for item in (item for item in plan.rows if item["db"] == relative):
                 _insert(destination, item["table"], item["row"])
+            for item in getattr(plan, "updates", ()):
+                if item["db"] == relative:
+                    columns = list(item["after"])
+                    before = item["before"]
+                    changed = destination.execute('UPDATE "' + item["table"] + '" SET ' +
+                        ','.join('"' + key + '"=?' for key in columns) + ' WHERE ' +
+                        ' AND '.join('"' + key + '" IS ?' for key in before),
+                        [item["after"][key] for key in columns] + list(before.values())).rowcount
+                    if changed != 1:
+                        raise ValueError("A saved costume selection changed during installation.")
             if relative in plan.shared_updates:
                 mappings = destination.execute("SELECT * FROM m_asset_package_mapping WHERE package_key='main' ORDER BY pack_name").fetchall()
                 destination.execute("UPDATE m_asset_package SET pack_num=?,version=? WHERE package_key='main'",
@@ -694,12 +704,30 @@ def _stage_databases(plan, stage):
 def install_package(path, expected_sha256=None, *, root=".", do_backup=True, log=print):
     """Install one complete scene package; caller must hold its server pause."""
     from database_maintenance import guard
-    from costume_management import begin_install
     root = Path(root).resolve()
     with guard(root):
         decoded = read_package(path, expected_sha256)
         producer_package_sha256 = decoded["sha256"]
         plan = prepare_package(decoded, root)
+        return publish_plan(plan, path, producer_package_sha256, do_backup=do_backup, log=log)
+
+
+def publish_plan(plan, path, producer_package_sha256, *, do_backup=True, log=print,
+                 kind="scene", label=None, source_metadata=None, should_stop=lambda: False):
+    """Publish an already validated, exact insertion plan with durable ownership.
+
+    Scene and generated private-face installers share the same staging,
+    absent-before-write receipt, file publication and rollback boundary.
+    Callers keep their source validation and server pause; no archive code runs.
+    """
+    from database_maintenance import guard
+    from costume_management import begin_install
+    root = Path(plan.root).resolve()
+    def check_cancelled():
+        if should_stop():
+            raise InterruptedError("Costume installation was cancelled.")
+    with guard(root):
+        check_cancelled()
         decoded = plan.decoded
         if do_backup:
             if root != Path.cwd().resolve():
@@ -714,9 +742,9 @@ def install_package(path, expected_sha256=None, *, root=".", do_backup=True, log
         complete = False
         try:
             snapshots = _stage_databases(plan, stage)
+            check_cancelled()
             source_archive = plan.files["source_archive"]["path"]
-            receipt = begin_install(kind="scene", label=decoded["manifest"]["display_name"],
-                source={"package_sha256": decoded["sha256"], "archive_path": str(source_archive),
+            ownership_source = {"package_sha256": decoded["sha256"], "archive_path": str(source_archive),
                         "producer_package_sha256": producer_package_sha256,
                         "manifest": decoded["manifest"], "createdSuitFamily": [plan.suit_id],
                         "runtime_model_paths": plan.runtime_model_paths,
@@ -727,11 +755,15 @@ def install_package(path, expected_sha256=None, *, root=".", do_backup=True, log
                         "main_model_path": plan.main_model_path,
                         "authoring_face_reuse": plan.authoring_face_reuse,
                         "execution_identity_rebased": decoded.get("execution_identity_rebased", False),
-                        "rollback_directory": str(stage), "publication": "staged-databases-v1"},
+                        "rollback_directory": str(stage), "publication": "staged-databases-v1"}
+            ownership_source.update(source_metadata or {})
+            receipt = begin_install(kind=kind, label=label or decoded["manifest"]["display_name"],
+                source=ownership_source,
                 owned_rows=[item for item in plan.rows if item["db"] != "userdata.db"],
                 owned_files=[{key: (str(value[key]) if key == "path" else value[key])
                               for key in ("path", "sha256", "size")} for value in plan.files.values()], root=root)
             for value in plan.files.values():
+                check_cancelled()
                 destination = value["path"]
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 with destination.open("xb") as stream:
@@ -741,6 +773,7 @@ def install_package(path, expected_sha256=None, *, root=".", do_backup=True, log
                     os.fsync(stream.fileno())
                 _sync_directory(destination.parent)
             for relative in sorted(plan.db_paths):
+                check_cancelled()
                 original = root / relative
                 if _hash_file(original) != snapshots[relative]:
                     raise ValueError("A game database changed during scene installation.")
@@ -758,9 +791,10 @@ def install_package(path, expected_sha256=None, *, root=".", do_backup=True, log
                 _sync_directory(original.parent)
             if _hash_file(_safe_file(path)) != producer_package_sha256:
                 raise ValueError("The scene package changed during installation.")
+            check_cancelled()
             receipt.commit()
             complete = True
-            log("Rina scene costume installed: " + str(plan.suit_id))
+            log(("Rina scene costume installed: " if kind == "scene" else "Costume installed: ") + str(plan.suit_id))
             return {"installed": True, "suit_id": plan.suit_id,
                     "receipt_path": str(receipt.path), "package_sha256": decoded["sha256"],
                     "producer_package_sha256": producer_package_sha256,

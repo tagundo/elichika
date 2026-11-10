@@ -204,6 +204,7 @@ class CloneAssets:
         self.plain_packs = {}
         self.copied_source_packs = {}
         self.required_source_packs = {}
+        self.retained_texture_packs = {}
         self.created = []
         self.commit_started = False
         self.destination = _pack_directory()
@@ -237,6 +238,17 @@ class CloneAssets:
             # when a shared shader or retained thumbnail still requires them.
             for pack in self.copied_source_packs.get(conn, set()) - self.required_source_packs.get(conn, set()):
                 mapping.pop(pack, None)
+            # Managed Face clones retain a shared thumbnail descriptor rather
+            # than copying its pixels. Give their own suit download package
+            # that pack too: the donor's owned main-package mapping can be
+            # removed independently when its costume is deleted.
+            for pack in self.retained_texture_packs.get(conn, ()):
+                candidates = _rows(conn, 'm_asset_package_mapping', 'pack_name', pack)
+                identities = {(row['file_size'], row.get('metapack_name'), row.get('metapack_offset', 0))
+                              for row in candidates}
+                if len(identities) != 1:
+                    raise ValueError('retained thumbnail has missing or conflicting download mappings')
+                mapping.setdefault(pack, dict(candidates[0], package_key='suit:' + str(new_id)))
             for old_path, new_path, pack, size in records:
                 rows.append((conn, "member_model", dict(asset_path=new_path, pack_name=pack,
                     head="0", size=size, key1="0", key2="0")))
@@ -282,7 +294,7 @@ class CloneAssets:
 
 
 def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared_roots=None,
-                         retained_textures=None):
+                         retained_textures=None, private_source=False):
     """Resolve/validate native bundles before publishing clone packs or mutating DBs.
 
     Source pack resolution may populate the local download cache during this
@@ -316,7 +328,30 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared
                     ("m_asset_package_mapping", {"package_key", "pack_name", "file_size", "metapack_name", "metapack_offset", "category"})):
                     if not required.issubset(_columns(conn, table)):
                         raise ValueError("invalid clone asset catalog " + str(path) + ": " + table)
-                catalogs.append((region, path, conn, _model_closure(conn, models, path)))
+                catalogs.append((region, path, conn, models))
+        # A native costume mod can legitimately be Android-only or iOS-only.
+        # Its master rows are shared, while the other native catalogs have no
+        # root models at all. Skip only a WHOLE absent platform; a missing
+        # locale, one missing Rina variant, or a broken dependency still fails
+        # before publishing any clone files or database rows.
+        native_catalogs = {}
+        for region, path, conn, roots in catalogs:
+            counts = [len(_rows(conn, 'member_model', 'asset_path', model)) for model in roots]
+            if any(counts) and not all(count == 1 for count in counts):
+                _model_closure(conn, roots, path)  # retain its precise error
+            native = 'ios' if path.name.startswith('asset_i_') else 'android'
+            native_catalogs.setdefault(native, []).append((region, path, conn, roots, bool(counts) and all(count == 1 for count in counts)))
+        catalogs = []
+        for native, group in native_catalogs.items():
+            if not any(row[4] for row in group):
+                log('source costume has no ' + native + ' models; native clone catalogs skipped')
+                continue
+            for region, path, conn, roots, present in group:
+                if not present:
+                    _model_closure(conn, roots, path)
+                catalogs.append((region, path, conn, _model_closure(conn, roots, path)))
+        if not catalogs:
+            raise ValueError('source costume has no models in any native asset catalog')
         # Logical model identities agree across the platform/language catalogs.
         shared_keys = {}
         if shared_roots is not None:
@@ -361,7 +396,7 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared
             resolver = extractor.PackResolver(roots, str(plan.destination), extractor.DEFAULT_CDN_BASE, conn)
             originals = {}
             source_descriptors = {}
-            if shared_roots is not None:
+            if shared_roots is not None or private_source:
                 plan.copied_source_packs[conn] = {
                     row["pack_name"] for old in models for row in _rows(conn, "member_model", "asset_path", old)}
                 required = set()
@@ -384,7 +419,10 @@ def prepare_clone_assets(region_models, new_id, source_ids, log=print, *, shared
                         pending.extend(row["dependency"] for row in _rows(conn, "shader_dependency", "asset_path", shader))
                 if retained_textures and "pack_name" in _columns(conn, "texture"):
                     for texture in retained_textures.get(region, ()):
-                        required.update(row["pack_name"] for row in _rows(conn, "texture", "asset_path", texture))
+                        packs = {row["pack_name"] for row in _rows(conn, "texture", "asset_path", texture)}
+                        required.update(packs)
+                        if private_source:
+                            plan.retained_texture_packs.setdefault(conn, set()).update(packs)
                 plan.required_source_packs[conn] = required
             for old in models:
                 row = conn.execute("SELECT pack_name,head,size,key1,key2 FROM member_model WHERE asset_path=?", (old,)).fetchone()

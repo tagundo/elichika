@@ -238,13 +238,15 @@ jobs:
           PY
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail-report.json > evidence/model-viewer-detail-report.json
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail.png > evidence/model-viewer-detail.png
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-absolute-outline.unity > evidence/model-viewer-absolute-outline.unity
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-absolute-outline-recipe.json > evidence/model-viewer-absolute-outline-recipe.json
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended-report.json > evidence/model-viewer-extended-report.json
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended.png > evidence/model-viewer-extended.png
           python3 - <<'PYQA'
           from pathlib import Path
           import json
           expected = {
-              'detail': ('sparseOutline', 'outlineUndoRedo', 'sourceCataloguePreserved', 'outlineSave', 'meshZoom', 'connectedSelection', 'selectionUndoRedo', 'viewOnlyPreservedGeometry'),
+              'detail': ('absoluteOutline', 'sparseOutline', 'outlineUndoRedo', 'sourceCataloguePreserved', 'outlineSave', 'meshZoom', 'connectedSelection', 'selectionUndoRedo', 'viewOnlyPreservedGeometry'),
               'extended': ('physicsFreshOn', 'gazeOriginalPoses', 'gazePausedAndReset', 'poseComponentFilters', 'breastAutomaticLimits', 'breastDisableRestoresBaseline', 'precisePhysicsEditing', 'motionSourceSeparation', 'motionReloadPreservesEdits', 'importedMotionPlays', 'modelChangeRetainsLibrary', 'explicitClear'),
           }
           for name, keys in expected.items():
@@ -252,6 +254,13 @@ jobs:
               assert report['status'] == 'PASS' and report['sourcePreserved'] is True, report
               assert set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
               assert Path('evidence/model-viewer-' + name + '.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+          detail = json.loads(Path('evidence/model-viewer-detail-report.json').read_text())
+          assert detail['absolute'] == [{'id': '0:0:1', 'factor': 1, 'absolute': 37}], detail
+          assert detail['absoluteRecipe']['state']['outlines'] == detail['absolute'], detail
+          assert detail['uvColor']['chosen'] == '#14b87a' and detail['uvColor']['before'] == detail['uvColor']['restored'] == detail['uvColor']['persisted'], detail
+          assert detail['uvColor']['authoringPreserved'] is True and detail['uvColor']['viewsPreserved'] is True, detail
+          assert json.loads(Path('evidence/model-viewer-absolute-outline-recipe.json').read_text()) == detail['absoluteRecipe'], detail
+          assert Path('evidence/model-viewer-absolute-outline.unity').stat().st_size > 0
           assert report['motionSourcePreserved'] is True and report['otherBodySourcePreserved'] is True
           ui_keys = ('accessoryFreshOpen', 'modelOnlyHeader', 'motionOnlyPoseList', 'modelHeaderUnchangedOnMotionImport', 'modelHeaderTracksBodyChange', 'modelHeaderRestored', 'motionListCleared', 'multipleModelCounts')
           assert set(report['uiChecks']) == set(ui_keys) and all(report['uiChecks'][key] is True for key in ui_keys), report

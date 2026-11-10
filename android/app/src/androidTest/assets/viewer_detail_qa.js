@@ -29,6 +29,25 @@
     assert(!(authoring.outlines || []).length && !authoring.edits.length, 'Start with a clean source model');
     var identity = catalogue.meshes[0].id;
     await input('viewer-outline-mesh', identity, 'change');
+    await input('viewer-outline-absolute', '37'); await click('viewer-outline-absolute-apply');
+    var absolute = clone(ModelViewer.getAuthoringState().outlines);
+    assert(equal(absolute, [{ id: identity, factor: 1, absolute: 37 }]),
+      'Absolute width must author one compact native red37 value for every source vertex');
+    assert(state().outlines.absoluteWidth === 37 && equal(ModelViewer.getEditingMetadata().outlines, catalogue),
+      'Absolute preview retains its native value and original catalogue');
+    var absoluteOldJob = state().persistence.jobId;
+    await click('viewer-save');
+    await until('actual absolute outline export', function () { var p = ModelViewer.getState().persistence; if (p.status === 'error') throw new Error(p.error); return !p.busy && p.status === 'done' && p.jobId && p.jobId !== absoluteOldJob && p.previewPaths.length === 1; });
+    var absoluteSaved = state().persistence;
+    var absoluteResponse = await fetch('/api/download?path=' + encodeURIComponent(absoluteSaved.recipePath));
+    assert(absoluteResponse.ok, 'The absolute Save must publish its actual source-bound recipe');
+    var absoluteRecipe = await absoluteResponse.json();
+    assert(equal(absoluteRecipe.state.outlines, absolute), 'The actual absolute recipe must preserve native red37');
+    await click('viewer-outline-undo');
+    assert(!(ModelViewer.getAuthoringState().outlines || []).length, 'Absolute Undo restores all original vertex widths');
+    await click('viewer-outline-redo'); assert(equal(ModelViewer.getAuthoringState().outlines, absolute), 'Absolute Redo restores the compact all-vertex value');
+    await click('viewer-outline-undo');
+    assert(equal(ModelViewer.getAuthoringState(), authoring), 'Absolute Save and inspection must not leave unrelated edits');
     await input('viewer-outline-vertex-index', '0'); await input('viewer-outline-vertex-width', '25');
     await click('viewer-outline-vertex-apply');
     var sparse = clone(ModelViewer.getAuthoringState().outlines);
@@ -76,6 +95,19 @@
     var views = state().meshTools.textureViews;
     assert(views.find(function (row) { return row.panel === 'viewer-mesh-deleter'; }).zoom === 2 && views.find(function (row) { return row.panel === 'viewer-mesh-modify'; }).zoom === 4,
       'Both mesh panels retain independent texture views');
+    var colorBefore = ViewerUVColor.get(), colorState = state().meshTools;
+    await input('viewer-mesh-modify-uv-color', '#14b87a');
+    assert(ViewerUVColor.get() === '#14b87a' && document.getElementById('viewer-mesh-deleter-uv-color').value === '#14b87a' &&
+      localStorage.getItem('elichika.viewer.uv-color.v1') === '#14b87a', 'UV color controls must synchronize and persist the display preference');
+    var colorAfter = state().meshTools;
+    assert(equal(colorAfter.edits, colorState.edits) && equal(colorAfter.selectedVertices, colorState.selectedVertices) &&
+      equal(colorAfter.textureViews, colorState.textureViews) && equal(ModelViewer.getAuthoringState(), authoring),
+      'UV overlay colors cannot change mesh edits, selection, zoom or original texture data');
+    await input('viewer-mesh-modify-uv-color', colorBefore);
+    assert(ViewerUVColor.get() === colorBefore && document.getElementById('viewer-mesh-deleter-uv-color').value === colorBefore,
+      'Restoring the display color must synchronize all inspectors');
+    var uvColor = { before: colorBefore, chosen: '#14b87a', restored: ViewerUVColor.get(),
+      persisted: localStorage.getItem('elichika.viewer.uv-color.v1'), authoringPreserved: true, viewsPreserved: true };
     assert(state().meshTools.edits.meshes.length === 0 && equal(ModelViewer.getAuthoringState(), authoring),
       'Viewing textures and selecting connected vertices must not write geometry or body edits');
     await click('viewer-mesh-modify-undo'); await click('viewer-mesh-modify-undo');
@@ -83,11 +115,11 @@
     document.getElementById('viewer-mesh-modify').open = false; document.getElementById('viewer-mesh-deleter').open = false;
     var probe = ModelViewer.renderProbe(33);
     assert(probe.ready && probe.glError === 0 && probe.nonBackgroundSamples >= 3, 'The actual native renderer must still draw the source');
-    return { status: 'PASS', checks: { sparseOutline: true, outlineUndoRedo: true, sourceCataloguePreserved: true,
+    return { status: 'PASS', checks: { absoluteOutline: true, sparseOutline: true, outlineUndoRedo: true, sourceCataloguePreserved: true,
       outlineSave: true, meshZoom: true, connectedSelection: true, selectionUndoRedo: true, viewOnlyPreservedGeometry: true },
-      catalogue: catalogue, sparse: sparse, saved: saved, recipe: recipe, seed: seed, connected: connected, undone: undone,
-      independentViews: views, finalAuthoring: clone(ModelViewer.getAuthoringState()), probe: probe,
-      scope: 'Actual native WebView controls, sparse outline Save and connected source selection/UV zoom; no trusted-pinch or visible-outline-width pixel claim.' };
+      catalogue: catalogue, absolute: absolute, absoluteSaved: absoluteSaved, absoluteRecipe: absoluteRecipe, sparse: sparse, saved: saved, recipe: recipe, seed: seed, connected: connected, undone: undone,
+      independentViews: views, uvColor: uvColor, finalAuthoring: clone(ModelViewer.getAuthoringState()), probe: probe,
+      scope: 'Actual native WebView controls, absolute all-vertex red37 Save/Undo/Redo and sparse outline Save and connected source selection/UV zoom; no trusted-pinch or visible-outline-width pixel claim.' };
   }
   window.NativeDetailQa = { run: run };
 }());

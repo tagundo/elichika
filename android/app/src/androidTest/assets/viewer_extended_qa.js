@@ -53,6 +53,14 @@
   }
   function snapshot() { return { state: state(), authoring: clone(ModelViewer.getAuthoringState()), catalogue: clone(ModelViewer.getEditingMetadata().physics), files: fileLists() }; }
   function eyeVectors(observed) { return observed.rig.bones.filter(function (bone) { return /(?:^|\/)(?:Left|Right)Eye[12]$/.test(bone.name); }).map(function (bone) { return { node: bone.node, position: bone.position, quaternion: bone.quaternion, scale: bone.scale }; }); }
+  function gazeOwner() {
+    var holder = document.getElementById('viewer-expression-gaze'), host = document.getElementById('viewer-pose-gaze');
+    var result = { pose: !!holder && document.getElementById('viewer-adjustments').contains(holder),
+      expression: !!holder && document.getElementById('viewer-expression-adjustments').contains(holder),
+      body: !!holder && document.getElementById('viewer-body-adjustments').contains(holder), host: !!holder && !!host && host.contains(holder) };
+    assert(result.pose && !result.expression && !result.body && result.host, 'All real gaze controls must belong only to the Pose panel');
+    return result;
+  }
   function values(record) {
     var result = clone(record.values), prefix = '[data-physics-component=' + JSON.stringify(record.id) + ']';
     document.querySelectorAll(prefix + '[data-physics-field]').forEach(function (field) {
@@ -76,6 +84,7 @@
     assert(initial.state.rig.physics.swingBone && initial.state.rig.physics.swingCollider && document.getElementById('viewer-physics-bones').checked && document.getElementById('viewer-physics-colliders').checked, 'Both physics switches must be enabled on a fresh model');
     var gaze = initial.state.rig.expressionPanel.gaze;
     assert(gaze && gaze.available && gaze.mode === 'motion', 'Real source eye pose clips must enable gaze, independently of morph channels');
+    var gazeOwnership = gazeOwner();
     await input('viewer-gaze-mode', 'front', 'change'); var front = state(), frontEyes = eyeVectors(front);
     assert(frontEyes.length === 4, 'The source must expose four genuine eye joints');
     await input('viewer-gaze-mode', 'direction', 'change');
@@ -85,6 +94,22 @@
     assert(directed.rig.time === front.rig.time && !directed.rig.playing, 'Paused gaze editing must not advance the playhead');
     assert(directed.rig.expressionPanel.gaze.mode === 'direction' && directed.rig.expressionPanel.gaze.horizontal === .5 && directed.rig.expressionPanel.gaze.vertical === -.25 && directed.rig.expressionPanel.gaze.strength === .7,
       'Actual gaze numeric controls must retain precise settings');
+    var posePanel = document.getElementById('viewer-adjustments'), poseSummary = posePanel.querySelector('summary');
+    var gazeAuthoring = clone(ModelViewer.getAuthoringState()), gazeFolds = [];
+    assert(posePanel.open, 'Editing real gaze controls must expose their owning Pose panel');
+    for (var fold = 0; fold < 2; fold++) {
+      poseSummary.scrollIntoView({ block: 'center' }); await settle();
+      var target = ViewerRigQa.control(poseSummary, false);
+      assert(target.visible && target.withinViewport && target.hittable, 'The real Pose summary must be visible and usable for gaze folding');
+      poseSummary.click(); await settle();
+      var folded = state();
+      assert(posePanel.open === (fold === 1), 'The real Pose summary must close then reopen its own controls');
+      assert(equal(folded.rig.expressionPanel.gaze, directed.rig.expressionPanel.gaze) && equal(eyeVectors(folded), directedEyes) &&
+        folded.rig.time === directed.rig.time && folded.rig.playing === directed.rig.playing && equal(ModelViewer.getAuthoringState(), gazeAuthoring),
+        'Folding Pose must preserve manual gaze, actual source eye transforms, paused time and all authoring');
+      gazeFolds.push({ open: posePanel.open, gaze: clone(folded.rig.expressionPanel.gaze), eyes: eyeVectors(folded),
+        time: folded.rig.time, playing: folded.rig.playing, authoring: clone(ModelViewer.getAuthoringState()), summary: target, owner: gazeOwner() });
+    }
     await input('viewer-gaze-mode', 'front', 'change'); var returned = state();
     assert(equal(eyeVectors(returned), frontEyes), 'Front gaze restores the exact source eye transforms');
     await input('viewer-gaze-mode', 'camera', 'change'); var cameraGaze = state();
@@ -149,7 +174,8 @@
       uiChecks: { accessoryFreshOpen: true, modelOnlyHeader: true, motionOnlyPoseList: true, modelHeaderUnchangedOnMotionImport: true,
         modelHeaderTracksBodyChange: true, modelHeaderRestored: true, motionListCleared: true, multipleModelCounts: true },
       freshDefaults: freshDefaults,
-      paths: clone(paths), initial: initial, gaze: { front: front, directed: directed, returned: returned, camera: cameraGaze },
+      paths: clone(paths), initial: initial, gaze: { front: front, directed: directed, returned: returned, camera: cameraGaze,
+        owner: gazeOwnership, folds: gazeFolds, foldAuthoring: gazeAuthoring },
       breast: { record: breast, baseline: base, preset: preset, automatic: automated, limits: limits },
       beforeLibrary: beforeLibrary, imported: imported, played: played, other: other, rebound: rebound, cleared: cleared, multiple: multiple, final: final, probe: probe,
       scope: 'Actual native controls/Save-independent authoring, source pose transforms and retained motion playback. Neutral eye joints are auxiliary and zero-weight; no visible pupil or whole-game parity claim.' };

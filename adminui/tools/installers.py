@@ -204,6 +204,15 @@ def _install_one(job, key, spec, chosen, do_backup, *, source_path=None, expecte
             if callable(add_output):
                 add_output(result["receipt_path"])
             return True
+        from costume_face_installer import is_generated_face_package, install_package as install_face
+        if is_generated_face_package(src):
+            result = install_face(src, expected_sha256, do_backup=do_backup, log=job.log,
+                                  should_stop=job.should_stop)
+            job.face_install_result = result
+            add_output = getattr(job, "add_output", None)
+            if callable(add_output):
+                add_output(result["receipt_path"])
+            return True
     scans = _dirs(spec)
     for d in scans:
         os.makedirs(d, exist_ok=True)

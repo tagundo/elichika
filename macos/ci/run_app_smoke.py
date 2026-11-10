@@ -178,7 +178,7 @@ def objects(raw):
     return environment, result
 
 
-def verify(source_path, saved_path, recipe_path, prefix):
+def verify(source_path, saved_path, recipe_path, prefix, *, absolute=False):
     require(os.path.samefile(sys.prefix, prefix), "Oracle must run with the specified bundled Python prefix")
     require(source_path.resolve() != saved_path.resolve(), "Saved model must be a new file")
     source = source_path.read_bytes()
@@ -196,7 +196,10 @@ def verify(source_path, saved_path, recipe_path, prefix):
     expected_originals = [{"name": source_path.name, "sha256": SOURCE_SHA256}]
     require(exact_json(recipe["sources"], expected_sources), "Recipe source identity differs from the actual clean input")
     require(exact_json(recipe["originals"], expected_originals), "Recipe original identity differs from the actual clean input")
-    require(exact_json(recipe["state"], EXPECTED_STATE), "Recipe is not exactly the intended sparse outline-only state")
+    expected_state = copy.deepcopy(EXPECTED_STATE)
+    if absolute:
+        expected_state["outlines"] = [{"id": "0:0:1", "factor": 1.0, "absolute": 37}]
+    require(exact_json(recipe["state"], expected_state), "Recipe is not exactly the intended outline-only state")
     require(recipe["nodeIdentities"] == [], "Outline-only recipe must not carry body node identities")
 
     before_env, before = objects(source)
@@ -230,13 +233,17 @@ def verify(source_path, saved_path, recipe_path, prefix):
     require(colors_before == [ORIGINAL_RGBA] * VERTEX_COUNT, "Source masks differ from neutral fixture")
     # This is the independent expected result: round(0.25 * 255) = 64.
     expected_buffer = bytearray(source_data)
-    expected_buffer[COLOR_OFFSET] = 64
+    changed_vertices = list(range(VERTEX_COUNT)) if absolute else [0]
+    expected_red = 37 if absolute else 64
+    for vertex in changed_vertices:
+        expected_buffer[vertex * VERTEX_STRIDE + COLOR_OFFSET] = expected_red
     require(target_data == bytes(expected_buffer), "Saved vertex stream differs beyond vertex0 red=64")
     expected_tree = copy.deepcopy(source_tree)
     expected_tree["m_VertexData"]["m_DataSize"] = target_tree["m_VertexData"]["m_DataSize"]
     require(target_tree == expected_tree, "Saved mesh has changes outside the one color byte")
     expected_mesh = bytearray(source_raw)
-    expected_mesh[RAW_RED_OFFSET] = 64
+    for vertex in changed_vertices:
+        expected_mesh[RAW_RED_OFFSET + vertex * VERTEX_STRIDE] = expected_red
     require(target_raw == bytes(expected_mesh), "Saved raw Mesh must equal source with only raw byte456 changed to64")
     changed = sorted(key for key in before if before[key].get_raw_data() != after[key].get_raw_data())
     require(changed == [MESH_ID], "Objects changed outside the one intended Mesh: " + repr(changed))
@@ -244,14 +251,16 @@ def verify(source_path, saved_path, recipe_path, prefix):
 
     return {"schemaVersion": 1, "status": "PASS", "source_sha256": digest(source), "output_sha256": digest(saved),
             "source_bytes": len(source), "output_bytes": len(saved), "private_prefix_samefile": True,
-            "sourcePreserved": True, "recipeSourceBound": True, "recipeExactSparseOutlineOnly": True,
+            "sourcePreserved": True, "recipeSourceBound": True, "recipeExactSparseOutlineOnly": not absolute, "recipeExactAbsoluteOutlineOnly": absolute,
             "onlyIntendedMeshChanged": True, "exactRawRedByteDelta": True,
             "allOtherRawObjectsByteIdentical": True, "allNonRedMeshDataByteIdentical": True,
             "positionsWeightsIndicesNormalsMaterialsTexturesPreserved": True,
             "serializedFileOrdinal": 0, "objectCount": len(before), "unchangedObjectCount": len(before) - 1,
             "onlyChangedObjectIds": changed, "mesh": {"pathId": str(MESH_ID), "name": "NeutralRibbon", "vertexCount": VERTEX_COUNT,
             "rawBytes": len(source_raw), "vertexStride": VERTEX_STRIDE, "colorOffset": COLOR_OFFSET,
-            "changedVertex": 0, "vertexBufferChangedByteOffsets": [COLOR_OFFSET], "rawMeshChangedByteOffsets": [RAW_RED_OFFSET],
+            "changedVertex": None if absolute else 0, "changedVertices": changed_vertices,
+            "vertexBufferChangedByteOffsets": [COLOR_OFFSET + vertex * VERTEX_STRIDE for vertex in changed_vertices],
+            "rawMeshChangedByteOffsets": [RAW_RED_OFFSET + vertex * VERTEX_STRIDE for vertex in changed_vertices],
             "rgbaBefore": colors_before, "rgbaAfter": colors_after}, "recipeState": recipe["state"],
             "inputPaths": {"source": str(source_path), "saved": str(saved_path), "recipe": str(recipe_path), "pythonPrefix": str(prefix)},
             "oracle": "Independent audited fixture constants and UnityPy raw/typetree reads; no product planner, editor, or export result reuse",
@@ -262,11 +271,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("source", "saved", "recipe", "report", "python_prefix"):
         parser.add_argument(name, type=Path)
+    parser.add_argument("--absolute", action="store_true")
     args = parser.parse_args()
     require(args.report.resolve() not in {args.source.resolve(), args.saved.resolve(), args.recipe.resolve()},
             "Report path must not overwrite an input")
     try:
-        value = verify(args.source, args.saved, args.recipe, args.python_prefix)
+        value = verify(args.source, args.saved, args.recipe, args.python_prefix, absolute=args.absolute)
     except Exception as error:
         value = {"schemaVersion": 1, "status": "FAIL", "error": type(error).__name__ + ": " + str(error)}
         args.report.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
@@ -741,8 +751,11 @@ print(oracle['inspect_json'](spec.read_text()))
 
 
 def check_detail_report(observed):
-    _native_checks(observed, ("sparseOutline", "outlineUndoRedo", "sourceCataloguePreserved", "outlineSave",
+    _native_checks(observed, ("absoluteOutline", "sparseOutline", "outlineUndoRedo", "sourceCataloguePreserved", "outlineSave",
                    "meshZoom", "connectedSelection", "selectionUndoRedo", "viewOnlyPreservedGeometry"), "Native detail controls")
+    absolute = [{"id": "0:0:1", "factor": 1, "absolute": 37}]
+    require(observed["absolute"] == absolute and observed["absoluteRecipe"]["state"]["outlines"] == absolute
+            and observed["absoluteRecipe"]["state"]["edits"] == [], "Native absolute Save must retain compact native red37 for all source vertices")
     sparse = [{"id": "0:0:1", "factor": 1, "vertices": [{"vertex": 0, "value": .25}]}]
     require(observed["sparse"] == sparse and observed["recipe"]["state"]["outlines"] == sparse
             and observed["recipe"]["state"]["edits"] == [] and len(observed["catalogue"]["meshes"]) == 1,
@@ -755,6 +768,10 @@ def check_detail_report(observed):
     modify, delete = views["viewer-mesh-modify"], views["viewer-mesh-deleter"]
     require(modify["zoom"] == 4 and modify["x"] == modify["y"] == -1.5 and delete["zoom"] == 2,
             "Actual mesh inspectors must retain independent centre-anchored UV views")
+    color = observed["uvColor"]
+    require(color["chosen"] == "#14b87a" and color["restored"] == color["before"] == color["persisted"]
+        and color["authoringPreserved"] is True and color["viewsPreserved"] is True,
+        "UV overlay color must synchronize/persist independently of source textures and mesh edits")
     _native_draw(observed)
 
 
@@ -784,6 +801,23 @@ def inspect_detail_export(app, output, label, report):
             and oracle["allOtherRawObjectsByteIdentical"] and oracle["allNonRedMeshDataByteIdentical"],
             "Actual sparse outline Save must change only one native red byte")
     observed["serialized_oracle"] = oracle
+    absolute = observed["absoluteSaved"]
+    absolute_recipe = Path(absolute["recipePath"])
+    require(json.loads(absolute_recipe.read_text()) == observed["absoluteRecipe"], "Absolute recipe must equal the actual saved file")
+    absolute_receipt = output / f"{label}-absolute-outline-oracle.json"
+    absolute_result = subprocess.run([str(prefix / "bin/python3"), "-I", "-B", "-c", DETAIL_OUTLINE_ORACLE,
+        str(source), absolute["previewPaths"][0], str(absolute_recipe), str(absolute_receipt), str(prefix), "--absolute"],
+        env=private_environment(resources), cwd=output, capture_output=True, text=True, timeout=60)
+    (output / f"{label}-absolute-outline.stdout.txt").write_text(absolute_result.stdout)
+    (output / f"{label}-absolute-outline.stderr.txt").write_text(absolute_result.stderr)
+    require(absolute_result.returncode == 0 and absolute_receipt.is_file(), "Native absolute red37 Save failed independent raw-byte verification")
+    absolute_oracle = json.loads(absolute_receipt.read_text())
+    require(absolute_oracle["status"] == "PASS" and absolute_oracle["recipeExactAbsoluteOutlineOnly"]
+        and absolute_oracle["mesh"]["changedVertices"] == list(range(6))
+        and absolute_oracle["mesh"]["rgbaAfter"] == [[37, 255, 0, 255]] * 6
+        and absolute_oracle["allOtherRawObjectsByteIdentical"] and absolute_oracle["allNonRedMeshDataByteIdentical"],
+        "Absolute width must change exactly six native red bytes while preserving every other object/channel")
+    observed["absolute_serialized_oracle"] = absolute_oracle
     require((output / "native-app-data/detail-controls.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), "Native detail PNG is missing")
 
 
@@ -825,6 +859,17 @@ def check_extended_report(observed, paths):
     require(gaze["available"] and gaze["mode"] == "direction" and gaze["horizontal"] == .5 and gaze["vertical"] == -.25
             and gaze["strength"] == .7 and camera["rig"]["expressionPanel"]["gaze"]["mode"] == "camera",
             "Real source gaze controls must retain their exact numeric and camera settings")
+    owner = observed["gaze"]["owner"]
+    folds = observed["gaze"]["folds"]
+    require(owner == {"pose": True, "expression": False, "body": False, "host": True}
+            and len(folds) == 2 and [row["open"] for row in folds] == [False, True],
+            "Actual gaze controls must belong only to Pose and its real summary must close then reopen")
+    for row in folds:
+        require(row["owner"] == owner and row["gaze"] == gaze and row["eyes"] == eyes(directed)
+                and row["time"] == directed["rig"]["time"] and row["playing"] == directed["rig"]["playing"]
+                and row["authoring"] == observed["gaze"]["foldAuthoring"]
+                and all(row["summary"][key] is True for key in ("visible", "withinViewport", "hittable")),
+                "Pose folding must preserve exact source eye transforms, gaze, paused time and all authoring")
     breast = observed["breast"]
     record, base, preset, limits = (breast[name] for name in ("record", "baseline", "preset", "limits"))
     require(record["kind"] == "bone" and record["group"] == "breast" and preset["tier"] > 0,

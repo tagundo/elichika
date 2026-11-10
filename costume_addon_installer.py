@@ -449,7 +449,7 @@ DEPENDENCIES = {1: [('face_or', 'C', '{#'),
 
 # DEPENDENCIES 형식:
 #   ('dep',     target, value) -> 무조건 (target_path, value) 삽입
-#   ('face_or', target, value) -> facedynamic 파일이 있으면 (costume_path, facedynamic_path) 삽입,
+#   ('face_or', target, value) -> facedynamic 파일이 있으면 (target_path, facedynamic_path) 삽입,
 #                                 없으면 (target_path, value) 삽입
 #   target: 'C' = costume_path, 'R' = rina_unmask_costume_path (리나 가면 해제 전용)
 
@@ -908,11 +908,26 @@ def insert_dependencies(cursor, chara, costume_path, facedynamic_path, rina_path
         if kind == 'face_or' and has_facedynamic:
             cursor.execute(
                 "INSERT INTO main.member_model_dependency (asset_path, dependency) VALUES (?, ?);",
-                (costume_path, facedynamic_path))
+                (targets[target], facedynamic_path))
         else:
             cursor.execute(
                 "INSERT INTO main.member_model_dependency (asset_path, dependency) VALUES (?, ?);",
                 (targets[target], value))
+
+
+def facedynamic_for_db(ctx, db_path):
+    """Return this platform's optional private face, never the other platform's.
+
+    A single-platform archive uses the unsuffixed manifest field even on iOS.
+    Older dual-platform archives may contain only an Android custom face; iOS
+    then keeps the character's public default dependency instead of receiving
+    an incompatible Android pack. Asset paths are shared only where a private
+    face actually exists; no existing public member_model row is replaced.
+    """
+    suffix = '_ios' if ctx.get('dual') and db_platform(db_path) == 'ios' else ''
+    present = ctx.get('has_facedynamic' + suffix, False)
+    return (ctx.get('facedynamic_filename' + suffix),
+            ctx.get('facedynamic_size' + suffix)) if present else (None, None)
 
 
 def insert_asset_records(db_path, ctx, first_db=False):
@@ -930,6 +945,7 @@ def insert_asset_records(db_path, ctx, first_db=False):
     costume_size = ctx['costume_size_ios'] if use_ios else ctx['costume_size']
     rina_filename = ctx.get('rina_filename_ios') if use_ios else ctx.get('rina_filename')
     rina_size = ctx.get('rina_size_ios') if use_ios else ctx.get('rina_size')
+    facedynamic_filename, facedynamic_size = facedynamic_for_db(ctx, db_path)
 
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -941,16 +957,20 @@ def insert_asset_records(db_path, ctx, first_db=False):
                 print(f"This costume already exists in the database (skip)")
                 return False
 
-        if ctx['has_facedynamic']:
-            if first_db:
-                ctx['facedynamic_path'] = unique_asset_path(cursor, 'member_model')
+        if first_db and (ctx['has_facedynamic'] or ctx.get('has_facedynamic_ios')):
+            ctx['facedynamic_path'] = unique_asset_path(cursor, 'member_model')
+        if facedynamic_filename:
             cursor.execute("INSERT INTO main.m_asset_pack (pack_name, auto_delete) VALUES (?, '0');",
-                           (ctx['facedynamic_filename'],))
+                           (facedynamic_filename,))
             cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
-                           (ctx['facedynamic_path'], ctx['facedynamic_filename'], ctx['facedynamic_size']))
+                           (ctx['facedynamic_path'], facedynamic_filename, facedynamic_size))
 
         if first_db:
             ctx['costume_path'] = unique_asset_path(cursor, 'member_model')
+            while ctx['costume_path'] == ctx['facedynamic_path']:
+                # The face may exist only in the later iOS catalog, so it is
+                # not necessarily present in this database's member_model yet.
+                ctx['costume_path'] = unique_asset_path(cursor, 'member_model')
 
         if ctx['has_thumbnail']:
             if first_db:
@@ -973,12 +993,14 @@ def insert_asset_records(db_path, ctx, first_db=False):
 
         if ctx['chara_id'] == 209:
             if first_db:
-                ctx['rina_path'] = unique_asset_path(cursor, 'texture')
+                ctx['rina_path'] = unique_asset_path(cursor, 'member_model')
+                while ctx['rina_path'] == ctx['facedynamic_path']:
+                    ctx['rina_path'] = unique_asset_path(cursor, 'member_model')
             cursor.execute("INSERT INTO main.member_model (asset_path, pack_name, head, size, key1, key2) VALUES (?, ?, '0', ?, '0', '0');",
                            (ctx['rina_path'], rina_filename, rina_size))
 
         insert_dependencies(cursor, ctx['chara_id'], ctx['costume_path'],
-                            ctx['facedynamic_path'], ctx['rina_path'], ctx['has_facedynamic'])
+                            ctx['facedynamic_path'], ctx['rina_path'], bool(facedynamic_filename))
     return True
 
 
@@ -991,6 +1013,7 @@ def insert_package_records(db_path, ctx):
     costume_size = ctx['costume_size_ios'] if use_ios else ctx['costume_size']
     rina_filename = ctx.get('rina_filename_ios') if use_ios else ctx.get('rina_filename')
     rina_size = ctx.get('rina_size_ios') if use_ios else ctx.get('rina_size')
+    facedynamic_filename, facedynamic_size = facedynamic_for_db(ctx, db_path)
 
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -1016,8 +1039,8 @@ def insert_package_records(db_path, ctx):
         if ctx['chara_id'] == 209:
             map_costume(rina_filename, rina_size)
             pack_num += 1
-        if ctx['has_facedynamic']:
-            map_costume(ctx['facedynamic_filename'], ctx['facedynamic_size'])
+        if facedynamic_filename:
+            map_costume(facedynamic_filename, facedynamic_size)
             pack_num += 1
         cursor.execute("INSERT INTO main.m_asset_package (package_key, version, pack_num) VALUES (?, ?, ?);",
                        (package_key_costume, fresh_version, str(pack_num)))
@@ -1046,6 +1069,7 @@ rina_unmask_costume_file = ""
 thumbnail_file = ""
 # 듀얼 플랫폼(합본) 애드온용 - 구버전 인스톨러는 이 변수를 몰라 무시한다
 costume_file_ios = ""
+costume_facedynamic_file_ios = ""
 rina_unmask_costume_file_ios = ""
 chara_id = None
 chara_id_append = None
@@ -1166,6 +1190,14 @@ for nested_root, dirs, nested_files in os.walk(nested_path_batch):
 
 # ---- 애드온별 설치 루프 ----
 for mass_addon in batch_proccess_list:
+    # Generated private-face ZIPs have an exact literal schema and a managed
+    # ownership receipt. Unknown legacy archives retain the original path.
+    from costume_face_installer import is_generated_face_package, install_package as install_face_package
+    if is_generated_face_package(mass_addon):
+        install_face_package(mass_addon, root=os.getcwd(), do_backup=False)
+        mod_installed = True
+        installed_count += 1
+        continue
     if os.path.exists(temp_directory):
         print(f"cleaning up temp folder")
         shutil.rmtree(temp_directory, ignore_errors=True)
@@ -1174,6 +1206,10 @@ for mass_addon in batch_proccess_list:
     # 듀얼 플랫폼 변수는 애드온 간 이월되면 위험하므로 매번 초기화한다
     # (구형 애드온 zip의 modinstall.txt에는 이 변수가 없어 리셋되지 않기 때문)
     costume_file_ios = ""
+    # Optional faces belong to one archive only. Omitting the field in the
+    # next addon must not inherit a previous costume's edited face.
+    costume_facedynamic_file = ""
+    costume_facedynamic_file_ios = ""
     rina_unmask_costume_file_ios = ""
 
     with open(mass_addon, 'rb') as zip_file:
@@ -1236,12 +1272,26 @@ for mass_addon in batch_proccess_list:
 
     # ---- 듀얼 플랫폼(합본) 애드온: iOS 번들 처리 ----
     is_dual_platform = costume_file_ios != ""
+    if costume_facedynamic_file_ios and not is_dual_platform:
+        print('An iOS facedynamic companion requires costume_file_ios; '
+              'single-platform iOS addons use costume_facedynamic_file. Skipping addon.')
+        shutil.rmtree(temp_directory, ignore_errors=True)
+        continue
     if is_dual_platform:
         start_encrypt1_ios, costume_filename_ios, costume_filesize_ios, encrypted_costume_ios = crc32_prefix_rename(costume_file_ios)
         if not valid_pack_filename(costume_filename_ios):
             print('Invalid iOS Costume Filename, Exiting.')
             shutil.rmtree(temp_directory, ignore_errors=True)
             continue
+
+        if costume_facedynamic_file_ios:
+            start_encrypt4_ios, facedynamic_costume_filename_ios, facedynamic_costume_size_ios, encrypted_facedynamic_ios = crc32_prefix_rename(costume_facedynamic_file_ios)
+            if not valid_pack_filename(facedynamic_costume_filename_ios):
+                print('Invalid iOS Facedynamic Filename, Exiting.')
+                shutil.rmtree(temp_directory, ignore_errors=True)
+                continue
+        elif costume_facedynamic_file:
+            print('WARNING: no iOS facedynamic file - iOS keeps its public default face')
 
         rina_has_own_ios_file = False
         if chara_id == 209:
@@ -1335,6 +1385,8 @@ for mass_addon in batch_proccess_list:
         encrypt_to_static(start_encrypt3, encrypted_rina_unmask, "rina unmask costume")
     if is_dual_platform:
         encrypt_to_static(start_encrypt1_ios, encrypted_costume_ios, "costume (ios)")
+        if costume_facedynamic_file_ios:
+            encrypt_to_static(start_encrypt4_ios, encrypted_facedynamic_ios, "facedynamic (ios)")
         if chara_id == 209 and rina_has_own_ios_file:
             encrypt_to_static(start_encrypt3_ios, encrypted_rina_unmask_ios, "rina unmask costume (ios)")
     print("assets encrypted")
@@ -1347,6 +1399,9 @@ for mass_addon in batch_proccess_list:
         'has_facedynamic': costume_facedynamic_file != "",
         'facedynamic_filename': facedynamic_costume_filename if costume_facedynamic_file != "" else None,
         'facedynamic_size': facedynamic_costume_size if costume_facedynamic_file != "" else None,
+        'has_facedynamic_ios': is_dual_platform and costume_facedynamic_file_ios != "",
+        'facedynamic_filename_ios': facedynamic_costume_filename_ios if (is_dual_platform and costume_facedynamic_file_ios) else None,
+        'facedynamic_size_ios': facedynamic_costume_size_ios if (is_dual_platform and costume_facedynamic_file_ios) else None,
         'has_thumbnail': thumbnail_file != "",
         'thumbnail_filename': thumbnail_costume_filename if thumbnail_file != "" else None,
         'thumbnail_size': thumbnail_costume_size if thumbnail_file != "" else None,

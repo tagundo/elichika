@@ -225,7 +225,7 @@ jobs:
           # The mandatory installer must be our reviewed module, even if a tools
           # checkout happens to ship a module with the same name.
           cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py payload_upgrade_progress.py \
-            costume_management.py costume_scene_installer.py costume_scene_clones.py costume_scene_sources.py sifas_asset_crypto.py "$PY/"
+            costume_management.py costume_scene_installer.py costume_face_installer.py costume_scene_clones.py costume_scene_sources.py sifas_asset_crypto.py "$PY/"
           cmp payload_db_upgrade.py "$PY/payload_db_upgrade.py"
           cmp database_maintenance.py "$PY/database_maintenance.py"
           cmp payload_file_hash.py "$PY/payload_file_hash.py"
@@ -233,6 +233,7 @@ jobs:
           cmp payload_upgrade_progress.py "$PY/payload_upgrade_progress.py"
           cmp costume_management.py "$PY/costume_management.py"
           cmp costume_scene_installer.py "$PY/costume_scene_installer.py"
+          cmp costume_face_installer.py "$PY/costume_face_installer.py"
           cmp costume_scene_clones.py "$PY/costume_scene_clones.py"
           cmp costume_scene_sources.py "$PY/costume_scene_sources.py"
           cmp sifas_asset_crypto.py "$PY/sifas_asset_crypto.py"
