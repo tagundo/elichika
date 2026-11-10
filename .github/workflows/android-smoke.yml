@@ -502,10 +502,12 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection-report.json > evidence/model-viewer-part-selection-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection.png > evidence/model-viewer-part-selection.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-result.unity > evidence/model-viewer-part-result.unity 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-last-input.json > evidence/model-viewer-part-last-input.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-report.json > evidence/model-viewer-thumbnail-report.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail.png > evidence/model-viewer-thumbnail.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-controls.png > evidence/model-viewer-thumbnail-controls.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater-report.json > evidence/model-viewer-thumbnail-updater-report.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater-paths.json > evidence/model-viewer-thumbnail-updater-paths.json 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater.png > evidence/model-viewer-thumbnail-updater.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-6.zip > evidence/model-viewer-thumbnail-updated-6.zip 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-201.zip > evidence/model-viewer-thumbnail-updated-201.zip 2>/dev/null || true

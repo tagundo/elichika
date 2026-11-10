@@ -1,17 +1,36 @@
 /* QA only: original neutral donor, native pointer input and real Unity graft. */
 (function (global) {
   'use strict';
-  var prefix = 'viewer-part-transplant', sequence = 0;
+  var prefix = 'viewer-part-transplant', sequence = 0, diagnostic = null;
   function assert(value, message) { if (!value) throw new Error(message); }
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
   function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function state() { return copy(ModelViewer.getState()); }
   function donor() { return state().transplants.donors.find(function (row) { return row.operation === 'part'; }); }
   function wait(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+  function targetDescription(target) { return target ? { tag: target.tagName || '', id: target.id || '', className: typeof target.className === 'string' ? target.className : '' } : null; }
+  function observePhase(message) {
+    if (!diagnostic) return;
+    diagnostic.phase = message; diagnostic.history.push({ phase: message, elapsed: performance.now() - diagnostic.started });
+    if (diagnostic.history.length > 80) diagnostic.history.shift();
+    var current = state();
+    diagnostic.state = { modelId: current.modelId, loaded: current.loaded, loading: current.loading, error: current.error,
+      contextLost: current.contextLost, stats: current.stats, paths: current.paths, transplants: current.transplants };
+    diagnostic.donor = donor();
+    var panel = document.getElementById(prefix);
+    diagnostic.panelText = panel ? panel.innerText.slice(-16000) : '';
+    diagnostic.canvases = Array.prototype.map.call(document.querySelectorAll('#' + prefix + ' canvas'), function (canvas) {
+      var r = canvas.getBoundingClientRect(); return { target: targetDescription(canvas), rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }, width: canvas.width, height: canvas.height };
+    });
+    var point = diagnostic.lastPointer && diagnostic.lastPointer.point;
+    diagnostic.elementAtRequestedPoint = point ? targetDescription(document.elementFromPoint(point.x, point.y)) : null;
+  }
   async function settle() { await new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); }); }
   async function until(message, condition) {
+    observePhase(message);
     var end = Date.now() + 150000;
-    while (Date.now() < end) { if (condition()) return; await wait(25); }
+    while (Date.now() < end) { if (condition()) { observePhase(message + ': completed'); return; } await wait(25); }
+    observePhase(message + ': timed out');
     throw new Error('Timed out: ' + message + ': ' + JSON.stringify(state()));
   }
   function expose(element) {
@@ -75,12 +94,24 @@
     rect = element.getBoundingClientRect(); x = rect.left + rect.width * fraction[0]; y = rect.top + rect.height * fraction[1]; hit = document.elementFromPoint(x, y);
     assert(x >= 0 && x <= width && y >= 0 && y <= height && hit === element, 'The actual native pointer point must hit its visible donor canvas');
     var observed = null;
-    function record(event) { if (event.target === element) observed = { trusted: event.isTrusted, pointerType: event.pointerType, clientX: event.clientX, clientY: event.clientY }; }
-    document.addEventListener('pointerup', record, true);
+    function record(event, scope) {
+      var touch = event.changedTouches && event.changedTouches[0];
+      var value = { type: event.type, scope: scope, trusted: event.isTrusted, pointerType: event.pointerType || '',
+        pointerId: event.pointerId === undefined ? null : event.pointerId, button: event.button === undefined ? null : event.button,
+        clientX: touch ? touch.clientX : event.clientX === undefined ? null : event.clientX,
+        clientY: touch ? touch.clientY : event.clientY === undefined ? null : event.clientY, target: targetDescription(event.target) };
+      if (diagnostic) { diagnostic.lastEvent = copy(value); diagnostic.events.push(copy(value)); if (diagnostic.events.length > 96) diagnostic.events.shift(); }
+      if (scope === 'document' && event.type === 'pointerup' && event.target === element) observed = value;
+    }
+    function recordWindow(event) { record(event, 'window'); }
+    function recordDocument(event) { record(event, 'document'); }
+    var eventTypes = ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'touchcancel'];
+    eventTypes.forEach(function (name) { global.addEventListener(name, recordWindow, true); document.addEventListener(name, recordDocument, true); });
     var request = { pending: true, id: ++sequence, target: kind, point: { x: x, y: y }, viewport: { width: width, height: height }, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
     global.__nativePartPointer = request;
+    if (diagnostic) diagnostic.lastPointer = copy(request);
     try { await until('native trusted donor pointer input ' + kind, function () { return !!observed; }); assert(observed.trusted, 'The donor selection must come from actual native input'); await settle(); }
-    finally { request.pending = false; document.removeEventListener('pointerup', record, true); }
+    finally { request.pending = false; eventTypes.forEach(function (name) { global.removeEventListener(name, recordWindow, true); document.removeEventListener(name, recordDocument, true); }); }
     return { request: copy(request), event: observed };
   }
   function probe(capture) {
@@ -95,11 +126,13 @@
   }
   async function run(paths) {
     assert(paths && paths.sourcePath && paths.donorPath, 'Two explicit original neutral source paths are required');
+    diagnostic = { phase: 'starting', started: performance.now(), history: [], lastPointer: null, lastEvent: null, events: [], requests: [], captureCount: 0 };
+    global.__nativePartDiagnostic = diagnostic; observePhase('starting');
     var original = state(), originalAuthoring = copy(ModelViewer.getAuthoringState()), captures = [], requests = [];
     assert(original.loaded && original.loadedPaths[0] === paths.sourcePath && original.stats.vertices === 60 && original.stats.triangles === 20, 'The selected target must be the actual serialized 60-vertex costume');
     var Renderer = THREE.WebGLRenderer, picker = global.openPicker, fetch = global.fetch;
-    THREE.WebGLRenderer = new Proxy(Renderer, { construct: function (target, args) { var renderer = Reflect.construct(target, args), render = renderer.render; renderer.render = function (scene, camera) { if (renderer.domElement.closest('#' + prefix) && !captures.some(function (entry) { return entry.renderer === renderer; })) captures.push({ renderer: renderer, scene: scene, camera: camera, originalRender: render }); return render.apply(renderer, arguments); }; return renderer; } });
-    global.fetch = function (url, options) { if (String(url).endsWith('/api/viewer/transplant/run')) requests.push(JSON.parse(options.body)); return fetch.apply(this, arguments); };
+    THREE.WebGLRenderer = new Proxy(Renderer, { construct: function (target, args) { var renderer = Reflect.construct(target, args), render = renderer.render; renderer.render = function (scene, camera) { if (renderer.domElement.closest('#' + prefix) && !captures.some(function (entry) { return entry.renderer === renderer; })) { captures.push({ renderer: renderer, scene: scene, camera: camera, originalRender: render }); diagnostic.captureCount = captures.length; } return render.apply(renderer, arguments); }; return renderer; } });
+    global.fetch = function (url, options) { if (String(url).endsWith('/api/viewer/transplant/run')) { requests.push(JSON.parse(options.body)); diagnostic.requests = copy(requests); } return fetch.apply(this, arguments); };
     try {
       var panel = document.getElementById(prefix); panel.open = true;
       // Only OS file chooser selection is supplied by QA. The actual donor
@@ -160,7 +193,10 @@
         bonePointer: bonePointer, scenePointer: scenePointer, texturePointers: texturePointers, sceneSelected: sceneSelected, selected: selected,
         request: payload, saved: saved, final: state(), donorProbe: donorProbe, finalProbe: finalProbe,
         scope: 'Actual serialized neutral target/donor, original hierarchy/skin, trusted native canvas input, authenticated graft and reopen/Undo/Redo. QA supplies the authorized OS chooser result; the OS file dialog is not exercised.' };
-    } finally { captures.forEach(function (capture) { capture.renderer.render = capture.originalRender; }); THREE.WebGLRenderer = Renderer; global.openPicker = picker; global.fetch = fetch; global.__nativePartPointer = null; }
+    } catch (error) {
+      diagnostic.error = { message: String(error.message || error), stack: String(error.stack || ''), name: String(error.name || '') };
+      observePhase(diagnostic.phase); throw error;
+    } finally { diagnostic.finished = true; captures.forEach(function (capture) { capture.renderer.render = capture.originalRender; }); THREE.WebGLRenderer = Renderer; global.openPicker = picker; global.fetch = fetch; global.__nativePartPointer = null; }
   }
   global.NativePartQa = { run: run };
 }(window));

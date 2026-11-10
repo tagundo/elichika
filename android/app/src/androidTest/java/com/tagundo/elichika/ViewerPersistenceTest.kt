@@ -233,6 +233,8 @@ class ViewerPersistenceTest {
         val seenGuide = preferences.getBoolean("seen_guide", false)
         var activity: MainActivity? = null
         var browser: WebView? = null
+        val nativeInputs = JSONArray()
+        var lastPartObservation: JSONObject? = null
         try {
             grantPermissions(context)
             assertGameStopped()
@@ -263,9 +265,10 @@ class ViewerPersistenceTest {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(300)
             var lastPointer = -1
             var completed: JSONObject? = null
-            val inputs = JSONArray()
+            val inputs = nativeInputs
             while (System.nanoTime() < deadline) {
                 val observation = evaluate(webView, "return JSON.stringify({test:window.__nativePartQa,pointer:window.__nativePartPointer||null});")
+                lastPartObservation = observation
                 val test = observation.getJSONObject("test")
                 if (test.optString("error").isNotEmpty()) throw AssertionError(test.getString("error"))
                 if (!test.getBoolean("pending")) { completed = test.getJSONObject("result"); break }
@@ -298,6 +301,9 @@ class ViewerPersistenceTest {
             finally { image.recycle() }
             assertGameStopped()
             println("MODEL_VIEWER_PART_SELECTION_REPORT=$report")
+        } catch (failure: Throwable) {
+            browser?.let { preserveNativeQaFailure(context, it, "model-viewer-part-selection", failure, nativeInputs, lastPartObservation) }
+            throw failure
         } finally {
             browser?.let { runCatching { run(it, "if(window.ViewerRigQa)ViewerRigQa.dispose();") } }
             instrumentation.runOnMainSync { activity?.finish() }
@@ -331,13 +337,20 @@ class ViewerPersistenceTest {
             assertEquals("0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1", sha256(neutral))
             source.writeBytes(neutral)
             val paths = JSONArray()
+            val pathDiagnostics = JSONArray()
+            val pythonPaths = EmbeddedPython.instance(context).getModule("os.path")
             val originals = fixtures.map { (asset, expected, folder) ->
                 val bytes = assets.open(asset).use { it.readBytes() }
                 assertEquals(expected, sha256(bytes))
                 val path = File(root, "$folder/$asset"); path.parentFile!!.mkdirs(); path.writeBytes(bytes)
-                paths.put(path.absolutePath)
+                val realPath = pythonPaths.callAttr("realpath", path.absolutePath).toString()
+                assertEquals("Java canonicalPath must match the actual embedded Android os.path.realpath", realPath, path.canonicalPath)
+                pathDiagnostics.put(JSONObject().put("absolutePath", path.absolutePath).put("canonicalPath", path.canonicalPath).put("pythonRealPath", realPath).put("sha256", expected))
+                paths.put(path.canonicalPath)
                 path to bytes
             }
+            File(context.cacheDir, "model-viewer-thumbnail-updater-paths.json").writeText(pathDiagnostics.toString(2))
+            println("THUMBNAIL_UPDATER_ANDROID_SOURCE_PATHS=$pathDiagnostics")
             val output = File(root, "outputs"); output.mkdirs()
             preferences.edit().putBoolean("seen_guide", true).commit()
             val launched = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
@@ -378,7 +391,7 @@ class ViewerPersistenceTest {
                 File(receipt.getString("output_path")).copyTo(File(context.cacheDir, "model-viewer-thumbnail-updated-$member.zip"), overwrite = true)
             }
             assertTrue("The unrelated existing preview source must remain immutable", source.readBytes().contentEquals(neutral))
-            report.put("serialized", inspected).put("sourcePreserved", true).put("viewerSourcePreserved", true)
+            report.put("serialized", inspected).put("sourcePreserved", true).put("viewerSourcePreserved", true).put("pathDiagnostics", pathDiagnostics)
             File(context.cacheDir, "model-viewer-thumbnail-updater-report.json").writeText(report.toString(2))
             instrumentation.waitForIdleSync()
             val image = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("The actual updater UI must produce a screenshot")
@@ -386,6 +399,9 @@ class ViewerPersistenceTest {
             finally { image.recycle() }
             assertGameStopped()
             println("MODEL_VIEWER_THUMBNAIL_UPDATER_REPORT=$report")
+        } catch (failure: Throwable) {
+            browser?.let { preserveNativeQaFailure(context, it, "model-viewer-thumbnail-updater", failure, JSONArray(), null) }
+            throw failure
         } finally {
             browser?.let { runCatching { run(it, "if(window.ViewerRigQa)ViewerRigQa.dispose();") } }
             instrumentation.runOnMainSync { activity?.finish() }
@@ -398,13 +414,45 @@ class ViewerPersistenceTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val width = request.getJSONObject("viewport").getDouble("width")
         val point = request.getJSONObject("point")
-        val location = IntArray(2)
-        var nativeWidth = 0
-        instrumentation.runOnMainSync { webView.getLocationOnScreen(location); nativeWidth = webView.width; webView.requestFocus() }
+        fun geometry(): JSONObject {
+            val location = IntArray(2); val inWindow = IntArray(2)
+            val visible = android.graphics.Rect(); val window = android.graphics.Rect()
+            var observed = JSONObject()
+            instrumentation.runOnMainSync {
+                webView.getLocationOnScreen(location); webView.getLocationInWindow(inWindow)
+                val visibleResult = webView.getGlobalVisibleRect(visible); webView.getWindowVisibleDisplayFrame(window)
+                val insets = webView.rootWindowInsets
+                observed = JSONObject().put("locationX", location[0]).put("locationY", location[1]).put("windowX", inWindow[0]).put("windowY", inWindow[1])
+                    .put("width", webView.width).put("height", webView.height).put("scrollX", webView.scrollX).put("scrollY", webView.scrollY)
+                    .put("hasFocus", webView.hasFocus()).put("isFocused", webView.isFocused).put("windowFocus", webView.hasWindowFocus()).put("globalVisible", visibleResult)
+                    .put("visible", JSONObject().put("left", visible.left).put("top", visible.top).put("right", visible.right).put("bottom", visible.bottom))
+                    .put("windowVisible", JSONObject().put("left", window.left).put("top", window.top).put("right", window.right).put("bottom", window.bottom))
+                    .put("insets", JSONObject().put("top", insets?.systemWindowInsetTop ?: -1).put("bottom", insets?.systemWindowInsetBottom ?: -1))
+            }
+            return observed
+        }
+        val beforeFocus = geometry()
+        val location = intArrayOf(beforeFocus.getInt("locationX"), beforeFocus.getInt("locationY"))
+        val nativeWidth = beforeFocus.getInt("width")
+        instrumentation.runOnMainSync { webView.requestFocus() }
+        instrumentation.waitForIdleSync()
+        val afterFocus = geometry()
         assertTrue(width > 0 && nativeWidth > 0)
         val scale = nativeWidth / width
         val x = (location[0] + point.getDouble("x") * scale).toFloat()
         val y = (location[1] + point.getDouble("y") * scale).toFloat()
+        val dom = evaluate(webView, "var p=" + point.toString() + ",v=window.visualViewport,t=document.elementFromPoint(p.x,p.y);return JSON.stringify({innerWidth:innerWidth,innerHeight:innerHeight,dpr:devicePixelRatio,visualViewport:v?{width:v.width,height:v.height,offsetLeft:v.offsetLeft,offsetTop:v.offsetTop,scale:v.scale}:null,target:t?{tag:t.tagName,id:t.id,className:typeof t.className==='string'?t.className:''}:null,active:document.activeElement?{tag:document.activeElement.tagName,id:document.activeElement.id}:null});")
+        val diagnostic = JSONObject().put("id", request.getInt("id")).put("target", request.getString("target")).put("css", point)
+            .put("viewportWidth", width).put("webViewWidth", nativeWidth).put("scale", scale).put("screenX", x.toDouble()).put("screenY", y.toDouble())
+            .put("beforeFocus", beforeFocus).put("afterFocus", afterFocus).put("domBeforeSend", dom)
+            .put("source", "Instrumentation.sendPointerSync/SOURCE_TOUCHSCREEN")
+        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+        File(cache, "model-viewer-part-last-input.json").writeText(diagnostic.toString(2))
+        println("MODEL_VIEWER_PART_NATIVE_INPUT=$diagnostic")
+        val visible = afterFocus.getJSONObject("visible"); val window = afterFocus.getJSONObject("windowVisible")
+        assertTrue("The real native point must be inside the visible WebView before injection: $diagnostic", afterFocus.getBoolean("globalVisible") &&
+            x >= visible.getInt("left") && x < visible.getInt("right") && y >= visible.getInt("top") && y < visible.getInt("bottom") &&
+            x >= window.getInt("left") && x < window.getInt("right") && y >= window.getInt("top") && y < window.getInt("bottom"))
         val downTime = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
         val up = MotionEvent.obtain(downTime, downTime + 60, MotionEvent.ACTION_UP, x, y, 0)
@@ -413,9 +461,20 @@ class ViewerPersistenceTest {
             instrumentation.sendPointerSync(down); SystemClock.sleep(60); instrumentation.sendPointerSync(up)
         } finally { down.recycle(); up.recycle() }
         instrumentation.waitForIdleSync()
-        return JSONObject().put("id", request.getInt("id")).put("target", request.getString("target"))
-            .put("css", point).put("viewportWidth", width).put("webViewWidth", nativeWidth).put("scale", scale)
-            .put("screenX", x.toDouble()).put("screenY", y.toDouble()).put("source", "Instrumentation.sendPointerSync/SOURCE_TOUCHSCREEN")
+        return diagnostic
+    }
+
+    private fun preserveNativeQaFailure(context: Context, webView: WebView, prefix: String, failure: Throwable, inputs: JSONArray, observation: JSONObject?) {
+        val report = JSONObject().put("status", "FAIL").put("error", failure.toString()).put("stack", failure.stackTraceToString())
+            .put("nativeInputs", inputs).put("lastObservation", observation ?: JSONObject.NULL)
+        runCatching { report.put("browser", evaluate(webView, "return JSON.stringify({part:window.__nativePartDiagnostic||null,pointer:window.__nativePartPointer||null,state:window.ModelViewer?ModelViewer.getState():null,picker:{crumb:document.getElementById('picker-crumb').textContent,entries:Array.from(document.querySelectorAll('#picker-entries input[data-path]')).map(function(e){return {path:e.dataset.path,checked:e.checked};})}});")) }
+            .onFailure { report.put("diagnosticError", it.toString()) }
+        File(context.cacheDir, "$prefix-report.json").writeText(report.toString(2))
+        runCatching {
+            val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return@runCatching
+            try { File(context.cacheDir, "$prefix.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) } } finally { image.recycle() }
+        }
+        println("NATIVE_NEW_FEATURE_FAILURE=$report")
     }
 
     private fun exerciseNativeAssetNavigation(activity: MainActivity, webView: WebView, authoring: JSONObject): JSONObject {
