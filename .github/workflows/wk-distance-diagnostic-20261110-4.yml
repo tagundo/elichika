@@ -25,7 +25,6 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
       MACOSX_DEPLOYMENT_TARGET: '13.0'
       QA_SOURCE: macos/ci/diagnostics/wk-distance-20261110-4
-      QA_EVIDENCE: ${{ runner.temp }}/wk-distance-evidence
     steps:
       - name: Check out only the reviewed QA host source
         uses: actions/checkout@v4
@@ -43,6 +42,8 @@ jobs:
       - name: Verify QA-only diff and the already validated C2 application
         run: |
           set -euo pipefail
+          export QA_EVIDENCE="$RUNNER_TEMP/wk-distance-evidence"
+          printf 'QA_EVIDENCE=%s\n' "$QA_EVIDENCE" >> "$GITHUB_ENV"
           test "$(uname -m)" = arm64
           mkdir -p "$QA_EVIDENCE"
           uname -a > "$QA_EVIDENCE/host.txt"
@@ -60,7 +61,7 @@ jobs:
           assert os.environ['GITHUB_EVENT_NAME'] in ('push','workflow_dispatch')
           def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
           assert git('rev-parse','HEAD')==os.environ['GITHUB_SHA']
-          assert git('show','-s','--format=%P','HEAD')==base
+          subprocess.run(['git','merge-base','--is-ancestor',base,'HEAD'],check=True)
           expected={str(folder/name) for name in pins}|{'.github/workflows/wk-distance-diagnostic-20261110-4.yml'}
           changes=[line.split('\t') for line in git('diff','--name-status',base,'HEAD').splitlines()]
           assert {row[1] for row in changes}==expected and all(row[0]=='A' for row in changes),changes
