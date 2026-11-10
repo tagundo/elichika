@@ -1,13 +1,17 @@
 """Check native APK compatibility and isolated guest runtime helpers."""
 
 import importlib.util
+import copy
 import io
+import json
 from pathlib import Path
 import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 import zipfile
 
 
@@ -125,6 +129,78 @@ for combination, expected in [((3, 3, 3), [11, 12, 13]),
     assert [skill[0] for skill in skills if eligible(skill, combination)] == expected
 """, str(root / "python/app")], cwd=root / "runtime", capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class NativeReportAggregationTests(unittest.TestCase):
+    """Synthetic host-only reports exercise the real post-VM aggregation code."""
+    def run_reports(self, mutate=None):
+        fixture_root = Path(__file__).resolve().parents[1] / "modtools/webtools/core/resources/texture65_decoder/fixtures"
+        base = json.loads((fixture_root / "neutral65.json").read_text())
+        mips = json.loads((fixture_root / "neutral65-mips.json").read_text())
+        codec_sha = "a" * 64
+        decoded = {"status": "PASS", "unity_format": 65, "crn_format": 12,
+            "width": 16, "height": 16, "rgba_bytes": 1024,
+            "executable_sha256": codec_sha, "fixture_sha256": base["encoded_sha256"],
+            "rgba_sha256": base["rgba_unflipped_sha256"],
+            "display_rgba_sha256": base["rgba_display_sha256"],
+            "production_single_flip": True, "transparent_rgb_retained": True,
+            "invalid_dimensions_refused": True,
+            "authored_mips": {"fixture_sha256": mips["encoded_sha256"],
+                "invalid_level_refused": True, "invalid_python_level_refused": True,
+                "levels": [{"level": row["level"], "width": row["width"], "height": row["height"],
+                    "rgba_bytes": row["rgba_bytes"], "rgba_sha256": row["rgba_unflipped_sha256"],
+                    "display_rgba_sha256": row["rgba_display_sha256"], "production_single_flip": True}
+                    for row in mips["levels"]]}}
+        report = {"unchanged_native_libraries": {"libelichika_texture65.so": {"sha256": codec_sha}}}
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(evidence=Path(directory))
+            def guest(command, output, **options):
+                page = int(Path(command[command.index("-kernel") + 1]).name)
+                data = {"status": "PASS", "page_size": page,
+                    "python": {"astc_sha256": "same-synthetic-ASTC", "texture65_decode": copy.deepcopy(decoded)}}
+                if mutate:
+                    mutate(page, data)
+                lines = ["GUEST_ENV_READY", "BEGIN_ANDROID_16K_PROBE", f"PAGE_SIZE={page}",
+                    f"CONTROL_PAGE_SIZE={page}", "LOAD_OK /probe/control-16384.so",
+                    ("LOAD_OK" if page == 4096 else "LOAD_FAIL") + " /probe/control-4096.so",
+                    *["LOAD_OK /probe/" + name for name in ("libcrypto_chaquopy.so", "libsqlite3_chaquopy.so", "libssl_chaquopy.so")],
+                    "NATIVE_FUNCTIONAL_REPORT=" + json.dumps(data), "PYTHON_FUNCTIONAL_EXIT=0",
+                    "SERVER_ALIVE_BEFORE_STOP=0", "SERVER_STOP_SIGNAL=TERM", "SERVER_EXEC_EXIT=143",
+                    "ASTC_EXEC_EXIT=0", "END_ANDROID_16K_PROBE"]
+                output.write_text("\n".join(lines) + "\n")
+            with patch.object(native_runner, "prepare", return_value=(Path("16384"), Path("synthetic-initramfs"))), \
+                    patch.object(native_runner, "four_k_kernel", return_value=Path("4096")), \
+                    patch.object(native_runner, "command", side_effect=guest) as commands:
+                native_runner.run(args, report)
+                self.assertEqual(commands.call_count, 2)
+        return report
+
+    def test_both_guest_reports_use_the_recorded_apk_library_hash(self):
+        report = self.run_reports()
+        self.assertEqual(report["diagnostic_status"], "COMPLETE")
+        self.assertEqual(set(report["functional"]), {"4096", "16384"})
+        self.assertEqual(report["native_executables"]["texture65"]["sha256"], "a" * 64)
+
+    def test_mismatched_executed_codec_hash_is_rejected(self):
+        def mutate(page, data):
+            if page == 16384:
+                data["python"]["texture65_decode"]["executable_sha256"] = "b" * 64
+        with self.assertRaisesRegex(AssertionError, "original APK"):
+            self.run_reports(mutate)
+
+    def test_changed_mip_pixels_are_rejected(self):
+        def mutate(page, data):
+            if page == 4096:
+                data["python"]["texture65_decode"]["authored_mips"]["levels"][3]["rgba_sha256"] = "b" * 64
+        with self.assertRaises(AssertionError):
+            self.run_reports(mutate)
+
+    def test_failed_guest_report_is_rejected(self):
+        def mutate(page, data):
+            if page == 16384:
+                data["status"] = "FAIL"
+        with self.assertRaises(AssertionError):
+            self.run_reports(mutate)
 
 
 if __name__ == "__main__":

@@ -544,7 +544,7 @@ def run(args, report):
     assert cli["server"]["exit_codes"] == {"4096": 143, "16384": 143}
     cli["server"]["controlled_sigterm_after_successful_requests"] = True
     assert functional["4096"]["python"]["astc_sha256"] == functional["16384"]["python"]["astc_sha256"], "ASTC output differs by page size"
-    texture65_sha = libraries["libelichika_texture65.so"]["sha256"]
+    texture65_sha = report["unchanged_native_libraries"]["libelichika_texture65.so"]["sha256"]
     mip_goldens = (
         (16, "67d75a329b0a72e9544ddc71e0e83f6a4cc74582a694209b1a9981d8d7bf70cf", "86057308524be9a5e43a22adcb7ac4380572c5cb95a6ab22e00b6ecaa78af44c"),
         (8, "4408294f1905631d095f012c88d90abb0504046e7e3274026d6e324e5ffd9496", "8405f5e5f26e562990376fb5fe60e46aadd9878294633309813d27d73ebeaebf"),
