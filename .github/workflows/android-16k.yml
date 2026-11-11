@@ -42,6 +42,23 @@ jobs:
           name: elichika-release-apk
           path: candidate
 
+      - name: Select Ubuntu-signature-verified ARM64 BusyBox mirror
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,sys,tempfile
+          from pathlib import Path
+          sys.path.insert(0,'android/ci')
+          import prepare_ubuntu_apt as helper
+          attempts=[]
+          with tempfile.TemporaryDirectory(prefix='busybox-mirror-') as temporary:
+              base=helper.verified_mirror(helper.ROOTS['arm64'],['noble'],Path(temporary),attempts)
+          Path('evidence/busybox-mirror.json').write_text(json.dumps({'status':'PASS_UBUNTU_SIGNED_ARM64_MIRROR','base':base,'attempts':attempts},indent=2)+'\n')
+          with open(os.environ['GITHUB_ENV'],'a') as env:env.write('ELICHIKA_UBUNTU_PORTS_BASE='+base+'\n')
+          print(json.dumps({'status':'PASS_UBUNTU_SIGNED_ARM64_MIRROR','base':base}))
+          PY
+
+
       - name: Run original APK server, Python packages and ASTC on both kernels
         run: >-
           python3 -u tests/android_16k_native.py

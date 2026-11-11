@@ -174,7 +174,7 @@ jobs:
 
   viewer-webgl:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - name: Checkout viewer sources
         uses: actions/checkout@v4
@@ -210,6 +210,7 @@ jobs:
           node tests/texture_color_worker_test.js
           node tests/texture_paint_engine_test.js
           node tests/texture_paint_layers_test.js
+          node tests/texture_uv_selection_test.js
           node tests/texture_png_test.js
           node tests/sifas_texture_override_test.js
           node tests/viewer_texture_tools_test.js
@@ -233,6 +234,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/runtime-optimization" node tests/viewer_runtime_optimization_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/interaction-tools" node tests/viewer_interaction_tools_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/physics-lifecycle" node tests/viewer_physics_lifecycle_browser.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-projection-cache" node tests/viewer_mesh_projection_cache_browser.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/motion-audio-lookup" node tests/viewer_motion_audio_lookup_browser.js
@@ -251,6 +253,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-editors" node tests/viewer_texture_tools_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-layers" node tests/viewer_texture_layers_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-workspace" node tests/viewer_texture_workspace_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-panel-expand" node tests/texture_panel_expand_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/mod-packages" node tests/viewer_mod_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/minimize" node tests/viewer_minimize_browser.js

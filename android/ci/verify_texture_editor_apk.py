@@ -17,7 +17,9 @@ STATIC_FILES = tuple("webtools/web/" + name for name in (
     "static/viewer-persistence.js", "static/sifas-material.js",
     "static/viewer-uv-color.js", "static/texture-png.js",
     "static/texture-color-math.js", "static/texture-color-worker.js",
-    "static/texture-paint-engine.js", "static/viewer-texture-tools.js",
+    "static/texture-paint-engine.js", "static/texture-uv-selection.js",
+    "static/viewer-interaction-tools.js", "static/viewer-interaction-tools.css",
+    "static/viewer-mesh-tools.js", "static/viewer-transplants.js", "static/viewer-texture-tools.js",
     "static/viewer-texture-tools.css", "static/texture-panel-expand.js",
     "static/texture-panel-expand.css", "static/vendor/fflate-0.8.2/fflate.min.js",
     "static/vendor/fflate-0.8.2/LICENSE"))
