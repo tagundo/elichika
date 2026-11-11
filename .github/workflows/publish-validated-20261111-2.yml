@@ -1,0 +1,457 @@
+name: Publish exact validated 2026.11.11.2 applications
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/publish-validated-20261111-2]
+    paths: [.github/workflows/publish-validated-20261111-2.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-validated-v2026.11.11.2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_REPO: tagundo/elichika
+    steps:
+      - name: Verify the exact approved validation runs and existing draft
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, subprocess
+          from pathlib import Path
+          assert os.environ['GITHUB_REPOSITORY'] == 'tagundo/elichika'
+          assert os.environ['GITHUB_EVENT_NAME'] in ('push','workflow_dispatch')
+          assert os.environ['GITHUB_REF'] == 'refs/heads/codex/publish-validated-20261111-2'
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/' + path]))
+          """Resolve all run attempts; accept only the one specifically approved C3 retry."""
+          import hashlib
+          import json
+          
+          GENERAL_RUN = 42955622870
+          GENERAL_SOURCE = '9a3640d69a6d411b659cef599f5dcd26c61892e3'
+          RETAINED_GENERAL_JOBS = {'windows-upgrades': 130309901939, 'tests': 130309902228}
+          FAILED_WEBGL_JOB = 130309902462
+          NEW_WEBGL_JOB = 130313560052
+          GENERAL_CARRIED_ALIASES = {'windows-upgrades': 130313597038, 'tests': 130313561548}
+          JOB_FIELDS = ('id', 'name', 'run_attempt', 'status', 'conclusion')
+          
+          
+          def normalize_job(job):
+              row = {name: job[name] for name in JOB_FIELDS}
+              assert type(row['id']) is int and row['id'] > 0
+              assert isinstance(row['name'], str) and row['name']
+              assert type(row['run_attempt']) is int and row['run_attempt'] >= 1
+              return row
+          
+          
+          def latest_jobs_by_name(jobs):
+              latest, attempts = {}, set()
+              for job in jobs:
+                  row = normalize_job(job)
+                  key = (row['name'], row['run_attempt'])
+                  assert key not in attempts, 'Duplicate job name in the same run attempt'
+                  attempts.add(key)
+                  if row['name'] not in latest or row['run_attempt'] > latest[row['name']]['run_attempt']:
+                      latest[row['name']] = row
+              return latest
+          
+          
+          def verify_general_history(run, jobs, expected=None):
+              assert run['id'] == GENERAL_RUN and run['head_sha'] == GENERAL_SOURCE
+              assert run['head_branch'] == 'codex/model-workbench-build-20261109'
+              assert run['path'] == '.github/workflows/tests.yml'
+              assert run['status'] == 'completed' and run['conclusion'] == 'success'
+              assert run['run_attempt'] == 2, 'Exactly one new run attempt is authorized'
+              history = sorted((normalize_job(job) for job in jobs), key=lambda row: row['id'])
+              assert len(history) == 6 and len({row['id'] for row in history}) == 6
+              if expected is not None:
+                  assert history == sorted((normalize_job(job) for job in expected), key=lambda row: row['id'])
+              by_id = {row['id']: row for row in history}
+              raw_by_id = {row['id']: row for row in jobs}
+              assert set(by_id) == set(RETAINED_GENERAL_JOBS.values()) | set(GENERAL_CARRIED_ALIASES.values()) | {FAILED_WEBGL_JOB, NEW_WEBGL_JOB}
+              assert all(row['run_id'] == GENERAL_RUN and row['head_sha'] == GENERAL_SOURCE for row in jobs)
+              for name, identity in RETAINED_GENERAL_JOBS.items():
+                  assert by_id[identity] == {'id': identity, 'name': name, 'run_attempt': 1,
+                                             'status': 'completed', 'conclusion': 'success'}
+              assert by_id[FAILED_WEBGL_JOB] == {'id': FAILED_WEBGL_JOB, 'name': 'viewer-webgl',
+                                                'run_attempt': 1, 'status': 'completed', 'conclusion': 'failure'}
+              webgl = [row for row in history if row['name'] == 'viewer-webgl']
+              assert len(webgl) == 2 and {row['run_attempt'] for row in webgl} == {1, 2}
+              new = next(row for row in webgl if row['run_attempt'] == 2)
+              assert new['id'] == NEW_WEBGL_JOB and new['status'] == 'completed' and new['conclusion'] == 'success'
+              carried = {}
+              for name, identity in RETAINED_GENERAL_JOBS.items():
+                  alias_id = GENERAL_CARRIED_ALIASES[name]
+                  assert by_id[alias_id] == {'id': alias_id, 'name': name, 'run_attempt': 2,
+                                             'status': 'completed', 'conclusion': 'success'}
+                  original, alias = raw_by_id[identity], raw_by_id[alias_id]
+                  for key in ('started_at', 'completed_at', 'steps'):
+                      assert original[key] == alias[key], 'Carried job differs from its original successful execution'
+                  assert original['completed_at'] < raw_by_id[NEW_WEBGL_JOB]['started_at']
+                  carried[name] = {'original_id': identity, 'carried_alias_id': alias_id,
+                                   'started_at': original['started_at'], 'completed_at': original['completed_at'],
+                                   'steps_sha256': hashlib.sha256(json.dumps(original['steps'], sort_keys=True).encode()).hexdigest(),
+                                   'full_steps_and_timestamps_equal': True, 'completed_before_retry': True}
+              latest = latest_jobs_by_name(history)
+              assert set(latest) == {'tests', 'windows-upgrades', 'viewer-webgl'}
+              assert all(row['status'] == 'completed' and row['conclusion'] == 'success' for row in latest.values())
+              for name, identity in GENERAL_CARRIED_ALIASES.items():
+                  assert latest[name]['id'] == identity
+              assert latest['viewer-webgl']['run_attempt'] == 2
+              return {'status': 'PASS_EXACT_C3_GENERAL_SINGLE_JOB_RETRY_WITH_RETAINED_SUCCESSES',
+                      'run': GENERAL_RUN, 'source_parent': GENERAL_SOURCE, 'run_attempt': 2,
+                      'all_attempt_jobs': history, 'effective_jobs': latest,
+                      'carried_forward_success_aliases': carried,
+                      'failed_attempt1_preserved': True, 'previous_successful_jobs_preserved': True,
+                      'new_webgl_attempts': 1, 'mixed_heads_allowed': False, 'failed_assertions_waived': False}
+          def all_run_jobs(identity):
+              jobs, page = [], 1
+              while True:
+                  batch = api(f'actions/runs/{identity}/jobs?filter=all&per_page=100&page={page}')['jobs']
+                  jobs.extend(batch)
+                  if len(batch) < 100:
+                      return jobs
+                  page += 1
+          automation = api('commits/' + os.environ['GITHUB_SHA'])
+          assert [parent['sha'] for parent in automation['parents']] == ['9a3640d69a6d411b659cef599f5dcd26c61892e3']
+          assert [file['filename'] for file in automation['files']] == ['.github/workflows/publish-validated-20261111-2.yml']
+          runs = {
+              42955623872: '9a3640d69a6d411b659cef599f5dcd26c61892e3',
+              42955623286: '9a3640d69a6d411b659cef599f5dcd26c61892e3',
+              42955622870: '9a3640d69a6d411b659cef599f5dcd26c61892e3',
+          }
+          for identity, commit in runs.items():
+              run = api(f'actions/runs/{identity}')
+              assert run['head_sha'] == commit and run['status'] == 'completed' and run['conclusion'] == 'success'
+              assert run['head_branch'] == 'codex/model-workbench-build-20261109'
+              expected_path, required_jobs = {
+                  42955623872: ('.github/workflows/android.yml', {'build','native-compatibility / native-16k','android-upgrade / android','apk-audit / audit'}),
+                  42955623286: ('.github/workflows/macos.yml', {'apple-silicon'}),
+                  42955622870: ('.github/workflows/tests.yml', {'tests','windows-upgrades','viewer-webgl'}),
+              }[identity]
+              assert run['path'] == expected_path
+              complete_history = all_run_jobs(identity)
+              effective = latest_jobs_by_name(complete_history)
+              assert {name for name, job in effective.items() if job['status'] == 'completed' and job['conclusion'] == 'success'} >= required_jobs
+              if identity == 42955622870:
+                  general_validation = verify_general_history(run, complete_history, [{'id': 130309901939, 'run_id': 42955622870, 'workflow_name': 'Server regression tests', 'head_branch': 'codex/model-workbench-build-20261109', 'run_url': 'https://api.github.com/repos/tagundo/elichika/actions/runs/42955622870', 'run_attempt': 1, 'node_id': 'CR_kwDOS2ah6c8AAAAeVxNOcw', 'head_sha': '9a3640d69a6d411b659cef599f5dcd26c61892e3', 'url': 'https://api.github.com/repos/tagundo/elichika/actions/jobs/130309901939', 'html_url': 'https://github.com/tagundo/elichika/actions/runs/42955622870/job/130309901939', 'status': 'completed', 'conclusion': 'success', 'created_at': '2026-11-11T03:53:03Z', 'started_at': '2026-11-11T03:53:06Z', 'completed_at': '2026-11-11T03:54:16Z', 'name': 'windows-upgrades', 'steps': [{'name': 'Set up job', 'status': 'completed', 'conclusion': 'success', 'number': 1, 'started_at': '2026-11-11T03:53:07Z', 'completed_at': '2026-11-11T03:53:08Z'}, {'name': 'Checkout server', 'status': 'completed', 'conclusion': 'success', 'number': 2, 'started_at': '2026-11-11T03:53:08Z', 'completed_at': '2026-11-11T03:53:15Z'}, {'name': 'Set up Go', 'status': 'completed', 'conclusion': 'success', 'number': 3, 'started_at': '2026-11-11T03:53:15Z', 'completed_at': '2026-11-11T03:53:46Z'}, {'name': 'Test real Windows database upgrades', 'status': 'completed', 'conclusion': 'success', 'number': 4, 'started_at': '2026-11-11T03:53:46Z', 'completed_at': '2026-11-11T03:54:10Z'}, {'name': 'Post Set up Go', 'status': 'completed', 'conclusion': 'success', 'number': 7, 'started_at': '2026-11-11T03:54:10Z', 'completed_at': '2026-11-11T03:54:11Z'}, {'name': 'Post Checkout server', 'status': 'completed', 'conclusion': 'success', 'number': 8, 'started_at': '2026-11-11T03:54:11Z', 'completed_at': '2026-11-11T03:54:13Z'}, {'name': 'Complete job', 'status': 'completed', 'conclusion': 'success', 'number': 9, 'started_at': '2026-11-11T03:54:13Z', 'completed_at': '2026-11-11T03:54:13Z'}], 'check_run_url': 'https://api.github.com/repos/tagundo/elichika/check-runs/130309901939', 'labels': ['windows-latest'], 'runner_id': 1000001956, 'runner_name': 'GitHub Actions 1000001956', 'runner_group_id': 0, 'runner_group_name': 'GitHub Actions'}, {'id': 130309902228, 'run_id': 42955622870, 'workflow_name': 'Server regression tests', 'head_branch': 'codex/model-workbench-build-20261109', 'run_url': 'https://api.github.com/repos/tagundo/elichika/actions/runs/42955622870', 'run_attempt': 1, 'node_id': 'CR_kwDOS2ah6c8AAAAeVxNPlA', 'head_sha': '9a3640d69a6d411b659cef599f5dcd26c61892e3', 'url': 'https://api.github.com/repos/tagundo/elichika/actions/jobs/130309902228', 'html_url': 'https://github.com/tagundo/elichika/actions/runs/42955622870/job/130309902228', 'status': 'completed', 'conclusion': 'success', 'created_at': '2026-11-11T03:53:03Z', 'started_at': '2026-11-11T03:53:06Z', 'completed_at': '2026-11-11T04:03:10Z', 'name': 'tests', 'steps': [{'name': 'Set up job', 'status': 'completed', 'conclusion': 'success', 'number': 1, 'started_at': '2026-11-11T03:53:06Z', 'completed_at': '2026-11-11T03:53:07Z'}, {'name': 'Checkout server and asset history', 'status': 'completed', 'conclusion': 'success', 'number': 2, 'started_at': '2026-11-11T03:53:07Z', 'completed_at': '2026-11-11T03:53:23Z'}, {'name': 'Set up Go', 'status': 'completed', 'conclusion': 'success', 'number': 3, 'started_at': '2026-11-11T03:53:23Z', 'completed_at': '2026-11-11T03:53:41Z'}, {'name': 'Set up Python for pinned mesh and image dependencies', 'status': 'completed', 'conclusion': 'success', 'number': 4, 'started_at': '2026-11-11T03:53:41Z', 'completed_at': '2026-11-11T03:53:42Z'}, {'name': 'Validate SQL migrations and animation mappings', 'status': 'completed', 'conclusion': 'success', 'number': 5, 'started_at': '2026-11-11T03:53:42Z', 'completed_at': '2026-11-11T03:53:56Z'}, {'name': 'Validate locale text and existing-install upgrades', 'status': 'completed', 'conclusion': 'success', 'number': 6, 'started_at': '2026-11-11T03:53:56Z', 'completed_at': '2026-11-11T03:54:23Z'}, {'name': 'Check the APK native-layout release gate', 'status': 'completed', 'conclusion': 'success', 'number': 7, 'started_at': '2026-11-11T03:54:23Z', 'completed_at': '2026-11-11T03:54:23Z'}, {'name': 'Check costume extraction and installer lifecycle', 'status': 'completed', 'conclusion': 'success', 'number': 8, 'started_at': '2026-11-11T03:54:23Z', 'completed_at': '2026-11-11T03:54:48Z'}, {'name': 'Check mod-preserving payload updates and recovery', 'status': 'completed', 'conclusion': 'success', 'number': 9, 'started_at': '2026-11-11T03:54:48Z', 'completed_at': '2026-11-11T03:55:07Z'}, {'name': 'Check model picker, mesh editing and texture preview regressions', 'status': 'completed', 'conclusion': 'success', 'number': 10, 'started_at': '2026-11-11T03:55:07Z', 'completed_at': '2026-11-11T03:59:31Z'}, {'name': 'Run all Go tests with default vet checks', 'status': 'completed', 'conclusion': 'success', 'number': 11, 'started_at': '2026-11-11T03:59:31Z', 'completed_at': '2026-11-11T04:03:06Z'}, {'name': 'Post Set up Python for pinned mesh and image dependencies', 'status': 'completed', 'conclusion': 'success', 'number': 20, 'started_at': '2026-11-11T04:03:06Z', 'completed_at': '2026-11-11T04:03:06Z'}, {'name': 'Post Set up Go', 'status': 'completed', 'conclusion': 'success', 'number': 21, 'started_at': '2026-11-11T04:03:06Z', 'completed_at': '2026-11-11T04:03:07Z'}, {'name': 'Post Checkout server and asset history', 'status': 'completed', 'conclusion': 'success', 'number': 22, 'started_at': '2026-11-11T04:03:07Z', 'completed_at': '2026-11-11T04:03:07Z'}, {'name': 'Complete job', 'status': 'completed', 'conclusion': 'success', 'number': 23, 'started_at': '2026-11-11T04:03:07Z', 'completed_at': '2026-11-11T04:03:07Z'}], 'check_run_url': 'https://api.github.com/repos/tagundo/elichika/check-runs/130309902228', 'labels': ['ubuntu-latest'], 'runner_id': 1000001957, 'runner_name': 'GitHub Actions 1000001957', 'runner_group_id': 0, 'runner_group_name': 'GitHub Actions'}, {'id': 130309902462, 'run_id': 42955622870, 'workflow_name': 'Server regression tests', 'head_branch': 'codex/model-workbench-build-20261109', 'run_url': 'https://api.github.com/repos/tagundo/elichika/actions/runs/42955622870', 'run_attempt': 1, 'node_id': 'CR_kwDOS2ah6c8AAAAeVxNQfg', 'head_sha': '9a3640d69a6d411b659cef599f5dcd26c61892e3', 'url': 'https://api.github.com/repos/tagundo/elichika/actions/jobs/130309902462', 'html_url': 'https://github.com/tagundo/elichika/actions/runs/42955622870/job/130309902462', 'status': 'completed', 'conclusion': 'failure', 'created_at': '2026-11-11T03:53:03Z', 'started_at': '2026-11-11T03:53:06Z', 'completed_at': '2026-11-11T03:56:27Z', 'name': 'viewer-webgl', 'steps': [{'name': 'Set up job', 'status': 'completed', 'conclusion': 'success', 'number': 1, 'started_at': '2026-11-11T03:53:07Z', 'completed_at': '2026-11-11T03:53:08Z'}, {'name': 'Checkout viewer sources', 'status': 'completed', 'conclusion': 'success', 'number': 2, 'started_at': '2026-11-11T03:53:08Z', 'completed_at': '2026-11-11T03:53:23Z'}, {'name': 'Set up Python', 'status': 'completed', 'conclusion': 'success', 'number': 3, 'started_at': '2026-11-11T03:53:23Z', 'completed_at': '2026-11-11T03:53:23Z'}, {'name': 'Set up Node', 'status': 'completed', 'conclusion': 'success', 'number': 4, 'started_at': '2026-11-11T03:53:23Z', 'completed_at': '2026-11-11T03:53:24Z'}, {'name': 'Install browser test dependencies', 'status': 'completed', 'conclusion': 'success', 'number': 5, 'started_at': '2026-11-11T03:53:24Z', 'completed_at': '2026-11-11T03:54:06Z'}, {'name': 'Exercise real WebGL pose, scaling and game materials', 'status': 'completed', 'conclusion': 'failure', 'number': 6, 'started_at': '2026-11-11T03:54:06Z', 'completed_at': '2026-11-11T03:56:23Z'}, {'name': 'Upload neutral WebGL evidence', 'status': 'completed', 'conclusion': 'success', 'number': 7, 'started_at': '2026-11-11T03:56:23Z', 'completed_at': '2026-11-11T03:56:25Z'}, {'name': 'Post Set up Node', 'status': 'completed', 'conclusion': 'skipped', 'number': 12, 'started_at': '2026-11-11T03:56:25Z', 'completed_at': '2026-11-11T03:56:25Z'}, {'name': 'Post Set up Python', 'status': 'completed', 'conclusion': 'skipped', 'number': 13, 'started_at': '2026-11-11T03:56:25Z', 'completed_at': '2026-11-11T03:56:25Z'}, {'name': 'Post Checkout viewer sources', 'status': 'completed', 'conclusion': 'success', 'number': 14, 'started_at': '2026-11-11T03:56:25Z', 'completed_at': '2026-11-11T03:56:25Z'}, {'name': 'Complete job', 'status': 'completed', 'conclusion': 'success', 'number': 15, 'started_at': '2026-11-11T03:56:25Z', 'completed_at': '2026-11-11T03:56:26Z'}], 'check_run_url': 'https://api.github.com/repos/tagundo/elichika/check-runs/130309902462', 'labels': ['ubuntu-24.04'], 'runner_id': 1000001959, 'runner_name': 'GitHub Actions 1000001959', 'runner_group_id': 0, 'runner_group_name': 'GitHub Actions'}, {'id': 130313560052, 'run_id': 42955622870, 'workflow_name': 'Server regression tests', 'head_branch': 'codex/model-workbench-build-20261109', 'run_url': 'https://api.github.com/repos/tagundo/elichika/actions/runs/42955622870', 'run_attempt': 2, 'node_id': 'CR_kwDOS2ah6c8AAAAeV0sf9A', 'head_sha': '9a3640d69a6d411b659cef599f5dcd26c61892e3', 'url': 'https://api.github.com/repos/tagundo/elichika/actions/jobs/130313560052', 'html_url': 'https://github.com/tagundo/elichika/actions/runs/42955622870/job/130313560052', 'status': 'completed', 'conclusion': 'success', 'created_at': '2026-11-11T04:03:48Z', 'started_at': '2026-11-11T04:03:51Z', 'completed_at': '2026-11-11T04:16:32Z', 'name': 'viewer-webgl', 'steps': [{'name': 'Set up job', 'status': 'completed', 'conclusion': 'success', 'number': 1, 'started_at': '2026-11-11T04:03:52Z', 'completed_at': '2026-11-11T04:03:53Z'}, {'name': 'Checkout viewer sources', 'status': 'completed', 'conclusion': 'success', 'number': 2, 'started_at': '2026-11-11T04:03:53Z', 'completed_at': '2026-11-11T04:04:09Z'}, {'name': 'Set up Python', 'status': 'completed', 'conclusion': 'success', 'number': 3, 'started_at': '2026-11-11T04:04:09Z', 'completed_at': '2026-11-11T04:04:10Z'}, {'name': 'Set up Node', 'status': 'completed', 'conclusion': 'success', 'number': 4, 'started_at': '2026-11-11T04:04:10Z', 'completed_at': '2026-11-11T04:04:10Z'}, {'name': 'Install browser test dependencies', 'status': 'completed', 'conclusion': 'success', 'number': 5, 'started_at': '2026-11-11T04:04:10Z', 'completed_at': '2026-11-11T04:04:50Z'}, {'name': 'Exercise real WebGL pose, scaling and game materials', 'status': 'completed', 'conclusion': 'success', 'number': 6, 'started_at': '2026-11-11T04:04:50Z', 'completed_at': '2026-11-11T04:16:26Z'}, {'name': 'Upload neutral WebGL evidence', 'status': 'completed', 'conclusion': 'success', 'number': 7, 'started_at': '2026-11-11T04:16:26Z', 'completed_at': '2026-11-11T04:16:29Z'}, {'name': 'Post Set up Node', 'status': 'completed', 'conclusion': 'success', 'number': 12, 'started_at': '2026-11-11T04:16:29Z', 'completed_at': '2026-11-11T04:16:29Z'}, {'name': 'Post Set up Python', 'status': 'completed', 'conclusion': 'success', 'number': 13, 'started_at': '2026-11-11T04:16:29Z', 'completed_at': '2026-11-11T04:16:29Z'}, {'name': 'Post Checkout viewer sources', 'status': 'completed', 'conclusion': 'success', 'number': 14, 'started_at': '2026-11-11T04:16:29Z', 'completed_at': '2026-11-11T04:16:30Z'}, {'name': 'Complete job', 'status': 'completed', 'conclusion': 'success', 'number': 15, 'started_at': '2026-11-11T04:16:30Z', 'completed_at': '2026-11-11T04:16:30Z'}], 'check_run_url': 'https://api.github.com/repos/tagundo/elichika/check-runs/130313560052', 'labels': ['ubuntu-24.04'], 'runner_id': 1000001964, 'runner_name': 'GitHub Actions 1000001964', 'runner_group_id': 0, 'runner_group_name': 'GitHub Actions'}, {'id': 130313561548, 'run_id': 42955622870, 'workflow_name': 'Server regression tests', 'head_branch': 'codex/model-workbench-build-20261109', 'run_url': 'https://api.github.com/repos/tagundo/elichika/actions/runs/42955622870', 'run_attempt': 2, 'node_id': 'CR_kwDOS2ah6c8AAAAeV0slzA', 'head_sha': '9a3640d69a6d411b659cef599f5dcd26c61892e3', 'url': 'https://api.github.com/repos/tagundo/elichika/actions/jobs/130313561548', 'html_url': 'https://github.com/tagundo/elichika/actions/runs/42955622870/job/130313561548', 'status': 'completed', 'conclusion': 'success', 'created_at': '2026-11-11T04:03:48Z', 'started_at': '2026-11-11T03:53:06Z', 'completed_at': '2026-11-11T04:03:10Z', 'name': 'tests', 'steps': [{'name': 'Set up job', 'status': 'completed', 'conclusion': 'success', 'number': 1, 'started_at': '2026-11-11T03:53:06Z', 'completed_at': '2026-11-11T03:53:07Z'}, {'name': 'Checkout server and asset history', 'status': 'completed', 'conclusion': 'success', 'number': 2, 'started_at': '2026-11-11T03:53:07Z', 'completed_at': '2026-11-11T03:53:23Z'}, {'name': 'Set up Go', 'status': 'completed', 'conclusion': 'success', 'number': 3, 'started_at': '2026-11-11T03:53:23Z', 'completed_at': '2026-11-11T03:53:41Z'}, {'name': 'Set up Python for pinned mesh and image dependencies', 'status': 'completed', 'conclusion': 'success', 'number': 4, 'started_at': '2026-11-11T03:53:41Z', 'completed_at': '2026-11-11T03:53:42Z'}, {'name': 'Validate SQL migrations and animation mappings', 'status': 'completed', 'conclusion': 'success', 'number': 5, 'started_at': '2026-11-11T03:53:42Z', 'completed_at': '2026-11-11T03:53:56Z'}, {'name': 'Validate locale text and existing-install upgrades', 'status': 'completed', 'conclusion': 'success', 'number': 6, 'started_at': '2026-11-11T03:53:56Z', 'completed_at': '2026-11-11T03:54:23Z'}, {'name': 'Check the APK native-layout release gate', 'status': 'completed', 'conclusion': 'success', 'number': 7, 'started_at': '2026-11-11T03:54:23Z', 'completed_at': '2026-11-11T03:54:23Z'}, {'name': 'Check costume extraction and installer lifecycle', 'status': 'completed', 'conclusion': 'success', 'number': 8, 'started_at': '2026-11-11T03:54:23Z', 'completed_at': '2026-11-11T03:54:48Z'}, {'name': 'Check mod-preserving payload updates and recovery', 'status': 'completed', 'conclusion': 'success', 'number': 9, 'started_at': '2026-11-11T03:54:48Z', 'completed_at': '2026-11-11T03:55:07Z'}, {'name': 'Check model picker, mesh editing and texture preview regressions', 'status': 'completed', 'conclusion': 'success', 'number': 10, 'started_at': '2026-11-11T03:55:07Z', 'completed_at': '2026-11-11T03:59:31Z'}, {'name': 'Run all Go tests with default vet checks', 'status': 'completed', 'conclusion': 'success', 'number': 11, 'started_at': '2026-11-11T03:59:31Z', 'completed_at': '2026-11-11T04:03:06Z'}, {'name': 'Post Set up Python for pinned mesh and image dependencies', 'status': 'completed', 'conclusion': 'success', 'number': 20, 'started_at': '2026-11-11T04:03:06Z', 'completed_at': '2026-11-11T04:03:06Z'}, {'name': 'Post Set up Go', 'status': 'completed', 'conclusion': 'success', 'number': 21, 'started_at': '2026-11-11T04:03:06Z', 'completed_at': '2026-11-11T04:03:07Z'}, {'name': 'Post Checkout server and asset history', 'status': 'completed', 'conclusion': 'success', 'number': 22, 'started_at': '2026-11-11T04:03:07Z', 'completed_at': '2026-11-11T04:03:07Z'}, {'name': 'Complete job', 'status': 'completed', 'conclusion': 'success', 'number': 23, 'started_at': '2026-11-11T04:03:07Z', 'completed_at': '2026-11-11T04:03:07Z'}], 'check_run_url': 'https://api.github.com/repos/tagundo/elichika/check-runs/130313561548', 'labels': ['ubuntu-latest'], 'runner_id': 1000001957, 'runner_name': 'GitHub Actions 1000001957', 'runner_group_id': None, 'runner_group_name': 'GitHub Actions'}, {'id': 130313597038, 'run_id': 42955622870, 'workflow_name': 'Server regression tests', 'head_branch': 'codex/model-workbench-build-20261109', 'run_url': 'https://api.github.com/repos/tagundo/elichika/actions/runs/42955622870', 'run_attempt': 2, 'node_id': 'CR_kwDOS2ah6c8AAAAeV0uwbg', 'head_sha': '9a3640d69a6d411b659cef599f5dcd26c61892e3', 'url': 'https://api.github.com/repos/tagundo/elichika/actions/jobs/130313597038', 'html_url': 'https://github.com/tagundo/elichika/actions/runs/42955622870/job/130313597038', 'status': 'completed', 'conclusion': 'success', 'created_at': '2026-11-11T04:03:54Z', 'started_at': '2026-11-11T03:53:06Z', 'completed_at': '2026-11-11T03:54:16Z', 'name': 'windows-upgrades', 'steps': [{'name': 'Set up job', 'status': 'completed', 'conclusion': 'success', 'number': 1, 'started_at': '2026-11-11T03:53:07Z', 'completed_at': '2026-11-11T03:53:08Z'}, {'name': 'Checkout server', 'status': 'completed', 'conclusion': 'success', 'number': 2, 'started_at': '2026-11-11T03:53:08Z', 'completed_at': '2026-11-11T03:53:15Z'}, {'name': 'Set up Go', 'status': 'completed', 'conclusion': 'success', 'number': 3, 'started_at': '2026-11-11T03:53:15Z', 'completed_at': '2026-11-11T03:53:46Z'}, {'name': 'Test real Windows database upgrades', 'status': 'completed', 'conclusion': 'success', 'number': 4, 'started_at': '2026-11-11T03:53:46Z', 'completed_at': '2026-11-11T03:54:10Z'}, {'name': 'Post Set up Go', 'status': 'completed', 'conclusion': 'success', 'number': 7, 'started_at': '2026-11-11T03:54:10Z', 'completed_at': '2026-11-11T03:54:11Z'}, {'name': 'Post Checkout server', 'status': 'completed', 'conclusion': 'success', 'number': 8, 'started_at': '2026-11-11T03:54:11Z', 'completed_at': '2026-11-11T03:54:13Z'}, {'name': 'Complete job', 'status': 'completed', 'conclusion': 'success', 'number': 9, 'started_at': '2026-11-11T03:54:13Z', 'completed_at': '2026-11-11T03:54:13Z'}], 'check_run_url': 'https://api.github.com/repos/tagundo/elichika/check-runs/130313597038', 'labels': ['windows-latest'], 'runner_id': 1000001956, 'runner_name': 'GitHub Actions 1000001956', 'runner_group_id': None, 'runner_group_name': 'GitHub Actions'}])
+                  general_complete_history = complete_history
+              else:
+                  assert run['run_attempt'] == 1 and all(job['run_attempt'] == 1 for job in complete_history)
+          source_tree = api('git/trees/9a3640d69a6d411b659cef599f5dcd26c61892e3')['tree']
+          source_links = {entry['path']: entry for entry in source_tree if entry['mode'] == '160000'}
+          assert source_links['modtools']['sha'] == 'eed6e92bb34c4952f49d29c345506ac8b4a9be06'
+          assert source_links['assets']['sha'] == '1b0154db2976ba345fb30f3516018bb04d408ce1'
+          # Freeze all diagnostic inputs to this new product source. The
+          # outside-app wrapper never replaces or retries the original gate.
+          qa_sources = {'macos/ci/run_app_smoke.py': '2a7bc218edb2c95b764f63bc7405bab430beb1edc9041e821243cb4700c96b3f', 'macos/ci/diagnose_app_smoke.py': '85aea638c31abb6133ec16c1cd83b405e4185911edf286ee595db889f9e29a9a', 'macos/ci/native_pcm_qa.js': '61fa22b362a51718a82b1403b414088b9a14ab7fed24434cf64578c8d7811517'}
+          for path, expected in qa_sources.items():
+              blob = api('contents/' + path + '?ref=9a3640d69a6d411b659cef599f5dcd26c61892e3')
+              assert blob['type'] == 'file' and blob['encoding'] == 'base64'
+              assert hashlib.sha256(base64.b64decode(blob['content'])).hexdigest() == expected
+          jobs = latest_jobs_by_name(all_run_jobs(42955623872))
+          required = {'build','native-compatibility / native-16k','android-upgrade / android','apk-audit / audit'}
+          assert {name for name, job in jobs.items() if job['status'] == 'completed' and job['conclusion'] == 'success'} >= required
+          browser = api('actions/artifacts/13828121423')
+          assert browser['name'] == 'viewer-webgl-evidence' and browser['workflow_run']['id'] == 42955622870 and not browser['expired']
+          assert browser['size_in_bytes'] == 18246043
+          assert browser['digest'] == 'sha256:18b5fe6a1edf3c86982e2c1186a402cf81df59371378455bbc04e3a8456fd17e'
+          new_webgl = next(job for job in general_complete_history if job['id'] == general_validation['effective_jobs']['viewer-webgl']['id'])
+          assert browser['created_at'] >= new_webgl['started_at'], 'Browser evidence must come from the fresh successful attempt2 job'
+          general_validation['browser_artifact'] = {key: browser[key] for key in ('id', 'name', 'size_in_bytes', 'digest', 'created_at')}
+          for identity, name, run in (
+              (13826959705,'elichika-release-apk',42955623872),
+              (13827387458,'elichika-macos-apple-silicon',42955623286),
+              (13827966092,'elichika-macos-evidence',42955623286),
+          ):
+              artifact = api(f'actions/artifacts/{identity}')
+              assert artifact['name'] == name and artifact['workflow_run']['id'] == run and not artifact['expired']
+              same_name = [item for item in api(f'actions/runs/{run}/artifacts?per_page=100')['artifacts'] if item['name'] == name and not item['expired']]
+              assert len(same_name) == 1 and same_name[0]['id'] == identity
+          existing_tag = subprocess.run(['gh','api','repos/tagundo/elichika/git/ref/tags/v2026.11.11.2'],capture_output=True,text=True)
+          if existing_tag.returncode:
+              assert str(json.loads(existing_tag.stdout).get('status')) == '404', existing_tag.stderr
+          else:
+              tag_object = json.loads(existing_tag.stdout)['object']
+              for _ in range(8):
+                  if tag_object['type'] != 'tag':
+                      break
+                  tag_object = api('git/tags/' + tag_object['sha'])['object']
+              assert tag_object['type'] == 'commit' and tag_object['sha'] == '9a3640d69a6d411b659cef599f5dcd26c61892e3'
+          draft = api('releases/441238265')
+          assert draft['draft'] is True and draft['tag_name'] == 'v2026.11.11.2'
+          assert draft['target_commitish'] == '9a3640d69a6d411b659cef599f5dcd26c61892e3'
+          assert hashlib.sha256(draft['body'].encode()).hexdigest() == '7bcf5e307d036127915563a8ec4731c440d0cd3eb7719fabfa6f26caf29c4111'
+          assert 'DRAFT' not in draft['body']
+          Path('approved-runs.json').write_text(json.dumps(runs, indent=2) + '\n')
+          Path('root-accepted-audits.json').write_text(json.dumps({"android": "c06b50a0257550da5a75ccb741b8211b6fb3156892b439f8a9b0954671e953e9", "general": "cefad62355e46fd98844b7dddc27d5b8b3b41379720293953fbd9f8757cd873c", "macos": "1855021a345105b3180830ae55e77a10d26ca1fff6614e36e63bdc919774e7ee"}, indent=2) + '\n')
+          general_validation['root_accepted_retry_receipt_sha256'] = '19c74e3c654a99fd59169bd1defb0adf15c327acd7113d33a6958cccebbb3b85'
+          Path('general-effective-jobs.json').write_text(json.dumps(general_validation, indent=2) + '\n')
+          PY
+
+      - name: Download the exact already-validated signed Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42955623872
+          path: input/android
+
+      - name: Download the exact already-validated Apple Silicon app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-macos-apple-silicon
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42955623286
+          path: input/macos
+
+      - name: Download the exact new native Mac execution evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-macos-evidence
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42955623286
+          path: input/macos-evidence
+
+      - name: Verify pinned source-bound native Mac reports and retained regressions
+        run: |
+          python3 - <<'PY'
+          """Verify the new full-success native Mac run and exact archive before publishing."""
+          from pathlib import Path
+          import hashlib
+          import json
+          import re
+          
+          VERSION = '2026.11.11.2'
+          REQUIRED_REPORTS = {
+              'app-build.json', 'app-archive.json', 'bundle-before-launch.json',
+              'bundle-after-relaunch.json', 'bundle-provenance.json', 'private-runtime.json',
+              'workbench-tests.json', 'bundled-runtime-tests.txt', 'swift-tests.txt',
+              'app-smoke-summary.json', 'first-launch.json', 'relocated-relaunch.json',
+              'first-launch-part-oracle.json', 'relocated-relaunch-part-oracle.json',
+              'host-diagnostic-summary.json',
+          }
+          NEW_CASES = {
+              'test_model_outlines.OutlineTests.' + name for name in (
+                  'test_arbitrary_mesh_gameobject_material_names_preserve_outline_eligibility',
+                  'test_preview_visible_unsupported_meshes_have_reasons_and_are_not_writable',
+                  'test_standalone_preview_mesh_and_invalid_renderer_binding_are_distinguished',
+                  'test_inventory_distinguishes_layout_name_and_limit_failures_without_omission',
+                  'test_float32_outlines_preserve_precision_format_and_every_non_red_byte',
+                  'test_float32_nonfinite_and_out_of_range_masks_remain_excluded',
+              )
+          } | {
+              'test_outline_inventory_sessions.OutlineInventorySessionTests.' + name for name in (
+                  'test_actual_static_renderer_inventory_without_edit_session',
+                  'test_unavailable_rig_cannot_authorize_supplied_bone_metadata',
+                  'test_unavailable_preview_still_rejects_changed_source_bytes',
+                  'test_available_flag_without_writable_nodes_preserves_inventory_only',
+                  'test_http_static_rig_inventory_is_reported_but_export_stays_unavailable',
+                  'test_preview_only_and_nonrigged_prepare_do_not_register_inventory',
+              )
+          }
+          
+          
+          def digest(path):
+              with Path(path).open('rb') as stream:
+                  return hashlib.file_digest(stream, 'sha256').hexdigest()
+          
+          
+          def verify(root, pins, archive):
+              root, archive = Path(root), Path(archive)
+              assert pins['version'] == VERSION
+              assert pins['candidate'] == 3
+              assert pins['source_parent'] == '9a3640d69a6d411b659cef599f5dcd26c61892e3'
+              assert pins['source_tools'] == 'eed6e92bb34c4952f49d29c345506ac8b4a9be06'
+              assert re.fullmatch('[0-9a-f]{40}', pins['source_parent'])
+              assert re.fullmatch('[0-9a-f]{40}', pins['source_tools'])
+              hashes = pins['report_hashes']
+              assert REQUIRED_REPORTS <= set(hashes)
+              for name, value in hashes.items():
+                  assert Path(name).name == name and re.fullmatch('[0-9a-f]{64}', value)
+                  path = root / name
+                  assert path.is_file() and not path.is_symlink()
+                  assert digest(path) == value, name
+              def read(name):
+                  return json.loads((root / name).read_text())
+              build = read('app-build.json')
+              assert build['version'] == VERSION and build['architecture'] == 'arm64'
+              assert build['source']['parent_commit'] == pins['source_parent']
+              assert build['source']['modtools_commit'] == pins['source_tools']
+              receipt = read('app-archive.json')
+              assert receipt['name'] == archive.name == 'Elichika-' + VERSION + '-AppleSilicon.app.zip'
+              assert receipt['bytes'] == archive.stat().st_size == pins['archive_bytes']
+              assert receipt['sha256'] == digest(archive) == pins['archive_sha256']
+              before, after = read('bundle-before-launch.json'), read('bundle-after-relaunch.json')
+              assert before == after, 'The built signed app changed during native launches'
+              assert before['status'] == 'PASS_SELF_CONTAINED_SIGNED_BUNDLE'
+              assert before['version'] == VERSION and before['architectures'] == ['arm64']
+              assert before['source']['parent_commit'] == pins['source_parent']
+              assert before['source']['modtools_commit'] == pins['source_tools']
+              qa_sources = pins['qa_source_hashes']
+              assert set(qa_sources) == {'macos/ci/run_app_smoke.py', 'macos/ci/diagnose_app_smoke.py', 'macos/ci/native_pcm_qa.js'}
+              assert all(re.fullmatch('[0-9a-f]{64}', value) for value in qa_sources.values())
+              provenance = read('bundle-provenance.json')
+              assert provenance['source']['parent_commit'] == pins['source_parent']
+              assert provenance['source']['modtools_commit'] == pins['source_tools']
+              # The PCM observer is an intentionally changed signed QA resource; production
+              # PCM modules have independent source inventories in the accepted audit.
+              assert provenance['qa_files']['native_pcm_qa.js'] == qa_sources['macos/ci/native_pcm_qa.js']
+              observer = read('host-diagnostic-summary.json')
+              assert observer['status'] == 'ORIGINAL_GATE_RESULT_UNCHANGED'
+              assert observer['original_exit_code'] == 0
+              assert observer['original_gate_sha256'] == qa_sources['macos/ci/run_app_smoke.py']
+              for name in ('same_gate_bytes_after', 'no_active_probe_before_original_exit', 'no_retry'):
+                  assert observer[name] is True
+              assert 'post_failure' not in observer and 'post_failure_error' not in observer
+              assert read('private-runtime.json')['status'] == 'PASS'
+              workbench = read('workbench-tests.json')
+              assert workbench['status'] == 'PASS' and workbench['packaged_sources'] is True
+              assert workbench['skips'] == workbench['failures'] == workbench['errors'] == 0
+              cases = workbench['executed_cases']
+              assert len(cases) == len(set(cases)) == workbench['tests'] >= 366
+              retained = pins['retained_11_1_case_ids']
+              assert len(retained) == len(set(retained)) == 354
+              assert set(retained) <= set(cases), 'A previously validated native workbench case is missing'
+              assert NEW_CASES <= set(cases), 'Native Float32/inventory regressions did not execute'
+              runtime = (root / 'bundled-runtime-tests.txt').read_text()
+              counts = re.findall(r'Ran (\d+) tests? in ', runtime)
+              assert counts and int(counts[-1]) >= 44 and re.search(r'^OK\s*$', runtime, re.M)
+              assert 'skipped=' not in runtime and '... skipped ' not in runtime
+              swift = (root / 'swift-tests.txt').read_text()
+              counts = re.findall(r'Executed (\d+) tests?, with 0 failures', swift)
+              assert counts and int(counts[-1]) >= 17
+              smoke = read('app-smoke-summary.json')
+              assert smoke['status'] == 'PASS_FINAL_APP_LAUNCH_RELOCATION_AND_RELAUNCH'
+              for name in ('readonly_app_signature_preserved', 'no_host_python_or_homebrew_path',
+                           'original_app_path_removed', 'space_and_unicode_path'):
+                  assert smoke[name] is True
+              for launch in ('first-launch', 'relocated-relaunch'):
+                  assert read(launch + '.json')['status'] == 'PASS'
+                  part = read(launch + '-part-oracle.json')
+                  assert part['status'] == 'PASS'
+                  assert part['outputSubmeshes'] == part['originalMaterialSlots'] == 1
+                  assert part['addedMaterialObjects'] == part['addedTextureObjects'] == 0
+                  for name in ('sourcePreserved', 'donorPreserved', 'donorUVColorAndSkinExact'):
+                      assert part[name] is True
+              return {'status': 'PASS_FULL_NEW_SOURCE_BOUND_MAC_RUN', 'version': VERSION,
+                      'source_parent': pins['source_parent'], 'source_tools': pins['source_tools'],
+                      'archive_bytes': receipt['bytes'], 'archive_sha256': receipt['sha256'],
+                      'workbench_tests': workbench['tests'], 'retained_11_1_cases': len(retained),
+                      'new_required_cases': len(NEW_CASES), 'signed_app_unchanged': True,
+                      'first_and_relocated_native_launch': True, 'report_hashes': hashes,
+                      'outside_app_observer_preserves_successful_original_gate': True,
+                      'qa_source_hashes': qa_sources,
+                      'catalog_stall_cause_fixed_claim': False}
+          pins = {'status': 'PINNED_CANDIDATE3_FULL_NATIVE_EVIDENCE_PENDING_ROOT_ACCEPTANCE', 'candidate': 3, 'version': '2026.11.11.2', 'source_parent': '9a3640d69a6d411b659cef599f5dcd26c61892e3', 'source_tools': 'eed6e92bb34c4952f49d29c345506ac8b4a9be06', 'archive_bytes': 304943748, 'archive_sha256': 'cab36d12ca5809eaaa26a6df758bbfa57f94c736857f244b0ba97ddc08e26a79', 'report_hashes': {'app-archive.json': '3d7cd0a021b1920f1f06d1dbbbaf5288a2b211d585c279305ecfb97f6c41abb3', 'app-build.json': 'ffc7f757e0db5dc7e5958c40a465afd007874f92bd5fd7a9d5ef5b5320b533ce', 'app-smoke-summary.json': 'b11d9ec1c7ffc74d5fcb493a17de06217920e9e201be634145646d7efeabb802', 'bundle-after-relaunch.json': '5800363b165ada16390926f327de68017b079b9ea630ebf0d03a0ad1c0d38e70', 'bundle-before-launch.json': '5800363b165ada16390926f327de68017b079b9ea630ebf0d03a0ad1c0d38e70', 'bundle-provenance.json': '2e4b3299f2f818118f8abfdf07d83324110018b08c562329a66b92ecfdf4d8ed', 'bundled-runtime-tests.txt': '2a1171fa19dba82a8bcdfd2af30aa4c837a3e96aeb10ccfe0381311451697c9a', 'first-launch-part-oracle.json': '0036f077aa9733e9b7774c4346f7dafeb3e7d5292aa336ec55d31763dcdbbccf', 'first-launch.json': '4f7aa3e72e652c340030df62c187613ba2d50a045bcf2df901bebac66c6977ab', 'host-diagnostic-summary.json': 'd87f91c290dd9dba97f9effc3e434d3b11c1923253ecb9e78c872d7ae74e3368', 'private-runtime.json': 'bf8f07eddca8d817b3c7e2f0b6a5b3f318c8c40a9a5df25bc4a313804a702aec', 'relocated-relaunch-part-oracle.json': 'e6490886f72abe6a80adbe1c628f81432594e202d5e2437d04044cde3dd2263b', 'relocated-relaunch.json': 'b599673457960857f80b8e583d106c7825798e2fc7d8e7017f618cc5716406f9', 'swift-tests.txt': '779b666b6a67c69231749e6f0697377463d3349f4ff6f413526b3890ba6cd845', 'workbench-tests.json': '2ae83a52c7c8388402ae852379b5708011c7b270c3dc79bdccf9cb5cf7f5a4ff'}, 'retained_11_1_case_ids': ['test_game_motions.GameMotionTests.test_cancelled_job_publishes_nothing', 'test_game_motions.GameMotionTests.test_categories_use_actual_relations_and_date_windows', 'test_game_motions.GameMotionTests.test_changed_cache_is_preserved_and_not_reused', 'test_game_motions.GameMotionTests.test_companion_dependencies_and_mv_identity_are_exact', 'test_game_motions.GameMotionTests.test_downloaded_motion_uses_bounded_existing_decryptor', 'test_game_motions.GameMotionTests.test_failed_download_reports_exact_stage_pack_and_http_reason', 'test_game_motions.GameMotionTests.test_import_decrypts_all_clips_without_changing_sources_and_reuses_cache', 'test_game_motions.GameMotionTests.test_invalid_requests_cannot_supply_file_paths_or_wrong_types', 'test_game_motions.GameMotionTests.test_missing_action_timeline_is_not_replaced_by_unsynchronized_clips', 'test_game_motions.GameMotionTests.test_missing_or_too_many_dependencies_are_reported', 'test_game_motions.GameMotionTests.test_missing_pack_does_not_download_without_option_and_cleans_partial_output', 'test_game_motions.GameMotionTests.test_original_style_action_retains_more_than_six_selected_bundles', 'test_game_motions.GameMotionTests.test_picker_invalidates_when_master_changes_only_in_sqlite_wal', 'test_game_motions.GameMotionTests.test_picker_reuses_choices_but_not_mutable_public_results_or_changed_dictionary', 'test_game_motions.GameMotionTests.test_same_size_source_pack_change_with_restored_mtime_is_not_reused', 'test_game_motions.GameMotionTests.test_solo_and_mv_stage_only_assets_and_all_catalog_pages_are_accessible', 'test_viewer_physics.PhysicsTests.test_absolute_edits_do_not_compound_and_restore_from_preserved_original', 'test_viewer_physics.PhysicsTests.test_breast_size_tiers_match_the_existing_tool_and_texture_identity', 'test_viewer_physics.PhysicsTests.test_catalog_verifies_classes_source_ids_and_capsule_ends', 'test_viewer_physics.PhysicsTests.test_empty_snapshot_requires_explicit_allow_empty', 'test_viewer_physics.PhysicsTests.test_enhanced_solver_constrained_surfaces_and_live_mesh_edits', 'test_viewer_physics.PhysicsTests.test_legacy_schema_uses_only_verified_native_constructor_defaults', 'test_viewer_physics.PhysicsTests.test_manager_bits_resolve_when_variant_omits_pointer_membership', 'test_viewer_physics.PhysicsTests.test_mesh_delete_retains_simultaneous_physics_edits', 'test_viewer_physics.PhysicsTests.test_native_counterpart_maps_physics_by_unique_full_bone_hierarchy', 'test_viewer_physics.PhysicsTests.test_physics_only_export_roundtrips_fields_and_preserves_geometry_originals', 'test_viewer_physics.PhysicsTests.test_physics_only_mod_package_dispatches_real_native_counterpart_mapping', 'test_viewer_physics.PhysicsTests.test_rejects_unknown_ids_duplicate_edits_nonfinite_and_reversed_limits', 'test_viewer_mesh_tools.InfluenceTests.test_duplicates_top_four_and_zero_sum', 'test_viewer_mesh_tools.MeshRoundtripTests.test_archive_alternative_models_cannot_be_silently_left_unedited', 'test_viewer_mesh_tools.MeshRoundtripTests.test_body_edits_are_preserved_in_same_mesh_export', 'test_viewer_mesh_tools.MeshRoundtripTests.test_data_has_original_uv_texture_bones_and_not_generated_coordinates', 'test_viewer_mesh_tools.MeshRoundtripTests.test_delete_only_painted_faces_preserves_vertex_and_morph_identity', 'test_viewer_mesh_tools.MeshRoundtripTests.test_invalid_selection_weights_and_positions_publish_nothing', 'test_viewer_mesh_tools.MeshRoundtripTests.test_malformed_body_state_is_rejected_even_without_body_edits', 'test_viewer_mesh_tools.MeshRoundtripTests.test_multi_material_ranges_and_deletion_preserve_other_material_faces', 'test_viewer_mesh_tools.MeshRoundtripTests.test_positions_and_weights_roundtrip_and_normalize', 'test_viewer_mesh_tools.MeshRoundtripTests.test_repeated_exports_always_start_from_original', 'test_viewer_mesh_tools.MeshRoundtripTests.test_undo_can_save_a_restored_original_copy', 'test_viewer_mesh_tools.MeshRoundtripTests.test_verified_outline_companion_cannot_be_used_as_a_mesh_edit_source', 'test_viewer_mesh_tools.MeshRoundtripTests.test_vertex_and_new_weights_are_inputs_to_body_mesh_bake', 'test_viewer_mesh_tools.MeshRoundtripTests.test_zip_members_and_original_comments_remain_intact', 'test_viewer_transplants.ViewerTransplantTests.test_colour_matching_is_opt_in_and_options_are_strict', 'test_viewer_transplants.ViewerTransplantTests.test_complete_bone_hierarchy_and_original_skin_are_available', 'test_viewer_transplants.ViewerTransplantTests.test_donor_bytes_are_snapshotted_before_the_background_job', 'test_viewer_transplants.ViewerTransplantTests.test_explicit_renderer_identity_is_kept_when_two_renderers_share_one_mesh', 'test_viewer_transplants.ViewerTransplantTests.test_failed_runtime_receipt_does_not_publish_a_partial_graft', 'test_viewer_transplants.ViewerTransplantTests.test_inspection_returns_real_donor_part_roots', 'test_viewer_transplants.ViewerTransplantTests.test_invalid_cut_values_and_extra_paths_are_rejected_before_writes', 'test_viewer_transplants.ViewerTransplantTests.test_invalid_mesh_channel_is_rejected_before_donor_or_output_writes', 'test_viewer_transplants.ViewerTransplantTests.test_mesh_edits_are_baked_before_each_graft_and_retained_outside_replaced_geometry', 'test_viewer_transplants.ViewerTransplantTests.test_mismatched_platform_donor_does_not_publish_a_result', 'test_viewer_transplants.ViewerTransplantTests.test_multiple_roots_copy_the_union_with_real_children_once', 'test_viewer_transplants.ViewerTransplantTests.test_paired_target_archive_is_refused_instead_of_leaving_stale_models', 'test_viewer_transplants.ViewerTransplantTests.test_part_uv_options_defaults_and_values_are_forwarded_unchanged', 'test_viewer_transplants.ViewerTransplantTests.test_real_full_transplant_preserves_current_breast_body_edit', 'test_viewer_transplants.ViewerTransplantTests.test_real_lower_body_swap_replaces_only_the_selected_vertical_band', 'test_viewer_transplants.ViewerTransplantTests.test_real_part_transplant_supports_an_unedited_wearer', 'test_viewer_transplants.ViewerTransplantTests.test_runtime_receipt_binds_the_published_output_and_original_sources', 'test_viewer_transplants.ViewerTransplantTests.test_separate_surface_patches_preserve_exact_source_uvs', 'test_viewer_transplants.ViewerTransplantTests.test_surface_and_bone_selections_are_bound_to_the_original_donor', 'test_viewer_transplants.ViewerTransplantTests.test_surface_patches_bake_each_source_texture_into_original_game_material', 'test_viewer_transplants.ViewerTransplantTests.test_turning_off_child_selection_copies_only_the_selected_bones', 'test_viewer_transplants.ViewerTransplantTests.test_verified_auto_face_outline_companion_survives_body_and_mesh_preexport', 'test_viewer_transplants.ViewerTransplantTests.test_zip_surface_selection_uses_the_zip_identity_and_one_selected_model', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_canonical_native_root_accepts_only_verified_system_alias_prefix', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_changed_donor_after_validation_rolls_back_output_and_receipt', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_changed_selection_hash_and_unchanged_strict_reader_reject_links', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_configured_os_alias_inspects_selects_grafts_and_reloads_typed_physics', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_external_alias_cannot_become_a_trusted_root', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_leaf_and_interior_links_below_trusted_root_are_rejected', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_native_runtime_root_without_home_can_publish_a_graft', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_native_selected_directory_root_rejects_interior_and_leaf_links', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_native_selected_file_root_does_not_authorize_its_parent_or_sibling', 'test_viewer_transplant_paths.ViewerTransplantPathTests.test_source_bound_partial_face_selection_keeps_the_checked_canonical_donor', 'test_viewer_workbench_routes.ViewerWorkbenchRealMeshHTTPTests.test_forged_identity_and_invalid_body_state_cannot_write', 'test_viewer_workbench_routes.ViewerWorkbenchRealMeshHTTPTests.test_triangle_delete_writes_only_new_serialized_copy', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_all_feature_posts_reject_extra_paths_and_cross_origin_calls', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_expired_sessions_permissions_and_timeouts_have_correct_status', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_invalid_tokens_do_not_reach_backends', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_large_source_bound_part_mask_reaches_validation_with_a_fixed_upper_bound', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_mesh_routes_forward_identity_and_fixed_output_folder', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_motion_catalog_bounds_queries_and_preserves_keyword_signature', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_motion_import_validates_before_job_and_uses_app_context', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_output_symlinks_cannot_redirect_motion_imports', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_repeated_origin_and_unbounded_bodies_rejected_before_reading', 'test_viewer_workbench_routes.ViewerWorkbenchRouteTests.test_transplant_routes_use_strict_signatures_and_validate_before_job', 'test_graft_texture_atlas.GameAtlasTests.test_authored_mips_including_one_pixel_survive_and_shared_tail_averages', 'test_graft_texture_atlas.GameAtlasTests.test_auxiliary_slot_uses_common_layout_at_its_own_native_scale', 'test_graft_texture_atlas.GameAtlasTests.test_default_decoder_uses_isolated_codecs_on_desktop_too', 'test_graft_texture_atlas.GameAtlasTests.test_duplicate_materials_are_identity_and_repeated_donors_share_one_cell', 'test_graft_texture_atlas.GameAtlasTests.test_incompatible_active_shader_input_and_samplers_are_actionable', 'test_graft_texture_atlas.GameAtlasTests.test_limits_fail_before_decoding_and_inputs_are_unchanged', 'test_graft_texture_atlas.GameAtlasTests.test_normal_driven_matcap_difference_is_rejected', 'test_graft_texture_atlas.GameAtlasTests.test_repeat_and_mirror_domains_copy_whole_periods_without_borders', 'test_graft_texture_atlas.GameAtlasTests.test_retained_wearer_rim_profile_accepts_stock_differences', 'test_graft_texture_atlas.GameAtlasTests.test_touching_cells_copy_asymmetric_pixels_with_no_padding_or_st_transform', 'test_graft_atlas_geometry.AtlasGeometryTests.test_every_failure_keeps_caller_mesh_unchanged', 'test_graft_atlas_geometry.AtlasGeometryTests.test_float16_uv_and_base_vertex_are_supported', 'test_graft_atlas_geometry.AtlasGeometryTests.test_identical_affine_tiles_reuse_shared_original_and_split_rows', 'test_graft_atlas_geometry.AtlasGeometryTests.test_identity_has_no_uv_inset_padding_or_unreferenced_vertex_removal', 'test_graft_atlas_geometry.AtlasGeometryTests.test_native_mesh_typetree_reopens_as_one_submesh_with_valid_morph_indices', 'test_graft_atlas_geometry.AtlasGeometryTests.test_shared_vertices_split_and_all_non_uv_bytes_skin_and_morphs_survive', 'test_graft_atlas_geometry.AtlasGeometryTests.test_uint32_indices_retained_and_unreferenced_original_rows_preserved', 'test_graft_game_compat.GraftGameCompatTests.test_distinct_material_textures_bake_without_gutters_and_keep_original_material', 'test_graft_game_compat.GraftGameCompatTests.test_donor_rim_map_adds_known_target_texture_property_without_new_material', 'test_graft_game_compat.GraftGameCompatTests.test_empty_uv_conflict_falls_back_to_atlas_with_reason', 'test_graft_game_compat.GraftGameCompatTests.test_empty_uv_reuse_patches_unoccupied_faces_without_moving_uvs', 'test_graft_game_compat.GraftGameCompatTests.test_float16_uv_bounds_and_flattening_use_original_coordinates', 'test_graft_game_compat.GraftGameCompatTests.test_game_bone_cap_and_bind_pose_alignment_fail_before_mutation', 'test_graft_game_compat.GraftGameCompatTests.test_geometry_failure_after_atlas_preflight_is_atomic', 'test_graft_game_compat.GraftGameCompatTests.test_identical_sources_flatten_without_copying_textures_or_changing_material', 'test_graft_game_compat.GraftGameCompatTests.test_incompatible_shader_failure_does_not_mutate_objects_or_working_trees', 'test_graft_game_compat.GraftGameCompatTests.test_optional_relocation_preserves_native_main_and_rim_pixels_with_rectangular_donor', 'test_graft_game_compat.GraftGameCompatTests.test_relocation_requires_enabled_primary_reuse_without_mutation', 'test_graft_game_compat.GraftGameCompatTests.test_shared_target_material_is_rejected_before_atlas_construction', 'test_graft_game_compat.GraftGameCompatTests.test_unexpected_serializer_failure_rolls_back_new_textures_and_pending_data', 'test_graft_uv_reuse.EmptyUVReuseTests.test_conflicting_selected_donor_pixels_decline_but_equal_pixels_can_share', 'test_graft_uv_reuse.EmptyUVReuseTests.test_decode_and_mask_memory_budgets_are_checked_before_decode', 'test_graft_uv_reuse.EmptyUVReuseTests.test_disjoint_island_keeps_uvs_dimensions_and_every_unselected_pixel', 'test_graft_uv_reuse.EmptyUVReuseTests.test_every_authored_mip_is_patched_directly_and_other_texels_are_original', 'test_graft_uv_reuse.EmptyUVReuseTests.test_identical_texture_sets_skip_coverage_and_decoding_even_with_shared_uvs', 'test_graft_uv_reuse.EmptyUVReuseTests.test_native_resolution_mismatch_and_outside_uvs_fall_back_without_resizing', 'test_graft_uv_reuse.EmptyUVReuseTests.test_overlapping_bounding_boxes_with_disjoint_triangles_are_allowed', 'test_graft_uv_reuse.EmptyUVReuseTests.test_repeat_boundary_contributors_are_checked_and_copied_at_opposite_edge', 'test_graft_uv_reuse.EmptyUVReuseTests.test_sampler_footprint_rejects_nearby_pixels_and_coverage_budget_is_bounded', 'test_graft_uv_reuse.EmptyUVReuseTests.test_unused_opaque_black_pixels_are_vacant_by_geometry', 'test_graft_uv_reuse.EmptyUVReuseTests.test_used_receiver_uvs_decline_even_when_receiver_pixels_are_transparent', 'test_graft_uv_reuse.RelocatedUVReuseTests.test_different_aspect_native_pixels_and_uv_scale_preserve_linear_samples', 'test_graft_uv_reuse.RelocatedUVReuseTests.test_free_same_coordinates_remain_identity_with_relocation_enabled', 'test_graft_uv_reuse.RelocatedUVReuseTests.test_multiple_donors_claim_different_free_areas_and_leave_receiver_untouched', 'test_graft_uv_reuse.RelocatedUVReuseTests.test_occupied_same_coordinates_move_only_when_secondary_option_is_enabled', 'test_graft_uv_reuse.RelocatedUVReuseTests.test_slot_ratio_mismatch_and_full_receiver_fall_back', 'test_graft_active_textures.ActiveGraftTextureTests.test_skin_matching_changes_used_map_and_preserves_retained_old_map_bytes', 'test_graft_active_textures.ActiveGraftTextureTests.test_thumbnail_uses_active_main_over_old_exact_name_and_same_name_copy', 'test_reuse_empty_uv_options.ReuseEmptyUVToolTests.test_asset_tool_and_legacy_checkbox_are_localized', 'test_reuse_empty_uv_options.ReuseEmptyUVToolTests.test_asset_tool_rejects_non_boolean_uv_reuse_before_loading_or_writing', 'test_reuse_empty_uv_options.ReuseEmptyUVToolTests.test_part_tool_uv_defaults_and_existing_physics_defaults_are_kept', 'test_physics_game_engine.OriginalGamePhysicsEngineTests.test_native_collision_equations', 'test_physics_game_engine.OriginalGamePhysicsEngineTests.test_native_initialization_cache_lifecycle', 'test_physics_game_engine.OriginalGamePhysicsEngineTests.test_native_job_collision_profiles', 'test_physics_game_engine.OriginalGamePhysicsEngineTests.test_native_unity_quaternion_equations', 'test_physics_game_engine.OriginalGamePhysicsEngineTests.test_native_whole_jobs_and_safe_correct', 'test_physics_game_engine.OriginalGamePhysicsEngineTests.test_scene_adapter_lifecycle', 'test_physics_game_catalog.GamePhysicsCatalogueTests.test_knee_discovery_uses_source_activation_and_original_dfs_last_match', 'test_physics_game_catalog.GamePhysicsCatalogueTests.test_legacy_source_missing_native_facts_is_explicitly_unavailable', 'test_physics_game_catalog.GamePhysicsCatalogueTests.test_original_flags_and_order_survive_the_real_preview_session', 'test_physics_game_catalog.GamePhysicsCatalogueTests.test_unresolved_slots_are_not_compacted_or_rebound_to_another_source', 'test_physics_game_runtime.GamePhysicsRuntimeTests.test_absent_and_nullable_rows_have_the_original_false_default', 'test_physics_game_runtime.GamePhysicsRuntimeTests.test_changed_or_conflicting_import_receipt_never_becomes_a_guess', 'test_physics_game_runtime.GamePhysicsRuntimeTests.test_song_switch_and_costume_exception_are_distinct_native_inputs', 'test_physics_game_runtime.GamePhysicsRuntimeTests.test_unverified_filename_and_invalid_database_value_stay_unknown', 'test_physics_game_runtime.GamePhysicsRuntimeTests.test_verified_exception_is_scoped_to_its_own_model', 'test_viewer_mesh_selection.MeshSelectionJavaScriptTests.test_connected_components_and_texture_view_coordinates', 'test_model_expressions.ExpressionCatalogTests.test_099_auxiliary_and_arbitrary_numbers_remain_advanced_raw_channels', 'test_model_expressions.ExpressionCatalogTests.test_ambiguous_or_unrelated_bones_fail_closed_without_losing_raw_morphs', 'test_model_expressions.ExpressionCatalogTests.test_canonical_labels_preserve_every_original_node_index_name_and_default', 'test_model_expressions.ExpressionCatalogTests.test_closed_eyelids_group_the_original_left_right_auxiliary_morphs', 'test_model_expressions.ExpressionCatalogTests.test_complete_eye_pose_uses_exact_original_face_and_all_coupled_operations', 'test_model_expressions.ExpressionCatalogTests.test_custom_non_morph_iris_never_receives_original_eye_bone_recipe', 'test_model_expressions.ExpressionCatalogTests.test_gaze_does_not_require_morph_channels_and_never_invents_missing_eye_poses', 'test_model_expressions.ExpressionCatalogTests.test_gaze_uses_the_displayed_characters_verified_pose_bank', 'test_model_expressions.ExpressionCatalogTests.test_invalid_optional_eye_rotation_never_produces_a_bone_recipe', 'test_model_expressions.ExpressionCatalogTests.test_loaded_original_eye_clips_get_names_without_promoting_partial_or_gaze_controls', 'test_model_expressions.ExpressionCatalogTests.test_missing_optional_recipe_keeps_named_shapes_and_original_channels', 'test_model_expressions.ExpressionCatalogTests.test_other_owner_or_face_hash_never_receives_207_bone_recipes', 'test_model_expressions.ExpressionCatalogTests.test_shared_eyelid_shape_is_open_eyelids_not_a_fake_gaze_control', 'test_model_expressions.ExpressionCatalogTests.test_split_renderers_share_one_control_but_ambiguous_same_mesh_shapes_do_not', 'test_model_expressions.ExpressionCatalogTests.test_truncated_original_face_never_emits_incomplete_eye_or_full_face_recipe', 'test_model_expressions.ExpressionCatalogTests.test_unknown_models_remain_raw_and_optional_catalog_is_bounded', 'test_model_expressions.ExpressionCatalogTests.test_viewer_face_combinations_are_explicit_not_claimed_original_whole_face_clips', 'test_transplant_physics_graph.TransplantPhysicsGraphTests.test_full_and_part_keep_unweighted_tips_typed_siblings_and_lod_indices', 'test_transplant_physics_graph.TransplantPhysicsGraphTests.test_full_and_part_reuse_only_the_immutable_donor_and_keep_exact_output', 'test_transplant_physics_graph.TransplantPhysicsGraphTests.test_shared_donor_keeps_saved_physics_and_provenance_without_reopening_source', 'test_motion_audio_transport.MotionAudioTransportTests.test_continuous_clock_and_transport_discontinuities', 'test_viewer_motion_library.MotionLibraryHTTPGuardTests.test_http_motion_inputs_are_bounded_and_jailed_independently_of_models', 'test_viewer_motion_library.RetainedMotionLibraryTests.test_motion_limit_is_separate_from_eight_model_slots_and_invalid_inputs_fail_before_build', 'test_viewer_motion_library.RetainedMotionLibraryTests.test_trusted_game_descriptor_is_retained_and_changed_bank_loses_trust', 'test_viewer_motion_library.RetainedMotionLibraryTests.test_two_clip_banks_bind_to_each_new_body_without_changing_its_identity', 'test_viewer_gaze.GazeEngineTests.test_original_gaze_targets_axes_pose_rebinding_and_property_ownership', 'test_viewer_gaze.SerializedGazeTests.test_neutral_original_format_bank_has_real_bound_iris_joints_without_extra_geometry', 'test_viewer_thumbnails.ViewerThumbnailTests.test_custom_image_bypasses_texture_decode_and_preserves_model', 'test_viewer_thumbnails.ViewerThumbnailTests.test_jail_and_default_texture_path', 'test_viewer_thumbnails.ViewerThumbnailTests.test_receipt_binds_actual_source_recipient_and_png', 'test_viewer_thumbnails.ViewerThumbnailTests.test_recipient_and_options_invalidate_old_thumbnail', 'test_viewer_thumbnails.ViewerThumbnailTests.test_rejects_missing_render_bad_png_and_wrong_size', 'test_viewer_thumbnails.ViewerThumbnailTests.test_repeated_completed_plans_and_accessed_batch_remain_usable', 'test_viewer_thumbnails.ViewerThumbnailTests.test_replace_zip_thumbnail_preserves_all_original_assets', 'test_viewer_thumbnails.ViewerThumbnailTests.test_selected_file_plan_supports_actual_single_subruns', 'test_viewer_thumbnails.ViewerThumbnailTests.test_source_change_after_render_is_rejected', 'test_viewer_thumbnail_roles.ThumbnailRoleTests.test_ambiguous_or_circular_transform_hierarchy_preserves_geometry', 'test_viewer_thumbnail_roles.ThumbnailRoleTests.test_exact_manager_head_subtree_excludes_head_but_keeps_body_using_head_joint', 'test_viewer_thumbnail_roles.ThumbnailRoleTests.test_external_cab_head_reference_requires_one_exact_loaded_asset', 'test_viewer_thumbnail_roles.ThumbnailRoleTests.test_pointer_type_and_cross_file_cab_are_checked_without_path_id_guessing', 'test_viewer_thumbnail_roles.ThumbnailRoleTests.test_real_neutral_costume_mesh_names_never_authorize_head_removal', 'test_viewer_thumbnail_roles.ThumbnailRoleTests.test_standalone_native_face_and_hair_components_use_exact_root_not_labels', 'test_viewer_thumbnail_roles.ThumbnailRoleTests.test_wrong_script_namespace_assembly_or_class_preserves_all_geometry', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_cancel_and_final_archive_limits_leave_no_partial_output', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_dynamic_manifest_is_rejected_without_executing_or_publishing', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_ordinary_legacy_default_primary_has_no_explicit_archive_variant_choice', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_other_zip_member_variant_size_and_changed_source_receipts_are_rejected', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_real_single_and_common_multi_adapters_register_each_new_zip_output', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_scene_execution_graph_dependencies_are_loaded_but_not_selected_as_costume_roots', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_scene_recipient_reference_hash_and_every_nonthumbnail_resource_are_preserved', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_scene_render_uses_current_selected_role_not_canonical_unedited_original', 'test_mod_thumbnail_replace.ModThumbnailReplaceTests.test_single_new_copy_preserves_models_settings_old_png_comment_and_directory', 'test_viewer_thumbnail_saved_settings.ThumbnailSavedSettingsTests.test_verified_saved_endpoints_are_absolute_and_independent', 'test_viewer_combined_exports.CombinedExportTests.test_actual_graft_packages_without_a_dummy_body_edit', 'test_viewer_combined_exports.CombinedExportTests.test_combined_recipe_restores_both_channels_from_preserved_originals', 'test_viewer_combined_exports.CombinedExportTests.test_combined_restore_rejects_forged_source_member_mesh_and_ranges', 'test_viewer_combined_exports.CombinedExportTests.test_derived_owner_is_a_hint_and_does_not_create_original_game_receipts', 'test_viewer_combined_exports.CombinedExportTests.test_empty_mesh_channel_preserves_the_legacy_thumbnail_binding', 'test_viewer_combined_exports.CombinedExportTests.test_existing_face_reference_is_preserved_when_omitted_and_disabled_only_explicitly', 'test_viewer_combined_exports.CombinedExportTests.test_face_graph_is_isolated_per_platform_for_ios_and_dual_rina', 'test_viewer_combined_exports.CombinedExportTests.test_face_graph_rewrites_dependencies_and_refuses_dangling_explicit_exclusion', 'test_viewer_combined_exports.CombinedExportTests.test_face_inclusion_changes_thumbnail_binding_and_forged_companion_is_rejected', 'test_viewer_combined_exports.CombinedExportTests.test_full_face_bundle_and_installer_reference_for_multiple_members', 'test_viewer_combined_exports.CombinedExportTests.test_including_already_baked_face_and_explicit_exclusion', 'test_viewer_combined_exports.CombinedExportTests.test_mesh_body_physics_and_outline_share_one_real_serialized_export', 'test_viewer_combined_exports.CombinedExportTests.test_mia_lanzhu_runtime_owner_is_encoded_as_legacy_native_manifest_for_face_and_body', 'test_viewer_combined_exports.CombinedExportTests.test_pair_limit_and_failed_package_cleanup_do_not_publish_partial_mesh_outputs', 'test_viewer_combined_exports.CombinedExportTests.test_verified_non_rina_derived_body_with_rina_texture_and_automatic_face_needs_no_rina_pair', 'test_viewer_combined_exports.CombinedExportTests.test_viewer_thumbnail_export_and_receipt_bind_the_actual_mesh_channel', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_changed_donor_snapshot_is_rejected_before_receipt_publication', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_changed_output_and_unrecorded_equal_copy_stay_unknown', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_changed_parent_and_receipt_replay_do_not_authenticate_output', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_cyclic_receipt_is_bounded_and_does_not_fake_complete_mapping', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_mixed_manager_restores_each_verified_component_after_restart', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_regular_save_retains_runtime_and_target_without_counterpart_identity', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_repeated_saves_do_not_exhaust_the_derived_parent_depth', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_unknown_or_malformed_provenance_does_not_block_edit_save', 'test_physics_derived_runtime.DerivedPhysicsRuntimeTests.test_unresolved_typed_component_never_inherits_a_default_flag', 'test_transplant_seams_and_io.CutBoundaryTests.test_only_wholly_interior_wearer_faces_are_removed', 'test_transplant_seams_and_io.CutBoundaryTests.test_opposite_diagonals_leave_no_missing_surface_at_either_plane', 'test_transplant_seams_and_io.CutBoundaryTests.test_real_boundary_graft_keeps_original_surface_uv_and_skin', 'test_transplant_seams_and_io.CutBoundaryTests.test_real_unity_opposite_diagonal_graft_fills_the_reported_lower_cut_hole', 'test_transplant_seams_and_io.WorkingBundleTests.test_working_file_is_uncompressed_and_final_matches_original_bundle_bytes', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_expired_and_evicted_textures_redecode_without_unbounded_memory', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_invalid_or_failed_decodes_do_not_become_successful_cached_images', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_mip_prefetch_does_not_decode_past_combined_pixel_budget', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_mip_workers_overlap_at_most_two_and_register_exact_pixels_in_order', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_normalization_is_immutable_source_bound_and_reimportable', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_pixels_are_immutable_content_addressed_and_source_changes_are_immediate', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_reimport_bypasses_cache_then_retains_fresh_successful_bytes', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_repeat_prepare_rebuilds_fresh_rig_metadata_and_tokens', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_source_shape_format_and_decoder_identity_are_part_of_texture_key', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_unsupported_texture_layouts_do_not_read_pixels_to_construct_cache_keys', 'test_model_viewer_conversion_cache.ConversionCacheTests.test_zip_temporary_paths_share_pixels_but_keep_current_clip_source_identity', 'test_viewer_reimport.GameReimportTests.test_cached_and_forced_imports_keep_originals_and_create_new_verified_copy', 'test_viewer_reimport.ReimportRouteTests.test_actual_http_reimport_rereads_pixels_and_creates_fresh_editing_tokens', 'test_viewer_reimport.ReimportRouteTests.test_game_import_rejects_non_boolean_reimport_before_catalog_or_job', 'test_viewer_reimport.ReimportRouteTests.test_prepare_reimport_is_strict_and_forwarded_only_when_enabled', 'test_viewer_mesh_signed_skin.SignedSkinTests.test_native_signed_channel_exports_and_preserves_every_other_payload', 'test_viewer_mesh_signed_skin.SignedSkinTests.test_negative_out_of_range_overflow_and_boolean_indices_publish_nothing', 'test_viewer_mesh_signed_skin.SignedSkinTests.test_signed32_pack_overflow_rejects_before_saving_object', 'test_texture65_decode.DecoderBoundaryTests.test_bounds_and_layout_reject_before_encoded_stream_access', 'test_texture65_decode.DecoderBoundaryTests.test_failure_signal_timeout_bad_output_and_recovery_release_slot', 'test_texture65_decode.DecoderBoundaryTests.test_missing_decoder_does_not_enter_optional_native_python_codec', 'test_texture65_decode.NativeTexture65Tests.test_authored_asymmetric_rgba_exact_one_flip_straight_alpha_and_color_space', 'test_texture65_decode.NativeTexture65Tests.test_content_decoder_identity_and_reimport_cache_never_publish_failure', 'test_texture65_decode.NativeTexture65Tests.test_native_interface_output_length_header_mismatch_crc_and_exclusive_output', 'test_viewer_facial_role_metadata.FacialRoleMetadataTests.test_an_unrelated_mesh_named_mouth_does_not_change_its_material_role', 'test_viewer_facial_role_metadata.FacialRoleMetadataTests.test_explicit_native_face_keeps_role_with_automatic_face_discovery_disabled', 'test_viewer_facial_role_metadata.FacialRoleMetadataTests.test_native_facial_source_does_not_tag_other_parts_or_a_named_mouth_in_another_source', 'test_viewer_facial_role_metadata.FacialRoleMetadataTests.test_private_face_on_zip_reopen_retains_native_container_role', 'test_viewer_facial_role_metadata.FacialRoleMetadataTests.test_private_unrelated_or_mismatched_container_cannot_declare_a_mouth', 'test_model_edit_dependencies.SelectedDependencyTests.test_edit_environment_rejects_unselected_dependency_files', 'test_model_edit_dependencies.SelectedDependencyTests.test_embedded_cross_cab_shader_and_resource_remain_resolvable', 'test_model_edit_dependencies.SelectedDependencyTests.test_missing_shader_never_searches_working_directory', 'test_model_edit_dependencies.SelectedDependencyTests.test_original_member_fingerprint_survives_missing_external_shader', 'test_packaged_costume_private_faces.PrivateFaceInstallerTests.test_actual_cli_dual_and_rina_unmasked_use_platform_private_faces', 'test_packaged_costume_private_faces.PrivateFaceInstallerTests.test_actual_cli_lanzhu_legacy_id_keeps_target_member_and_private_face', 'test_packaged_costume_private_faces.PrivateFaceInstallerTests.test_actual_cli_mia_legacy_id_keeps_target_member_and_private_face', 'test_packaged_costume_private_faces.PrivateFaceInstallerTests.test_actual_cli_older_dual_without_ios_face_keeps_public_ios_face', 'test_packaged_costume_private_faces.PrivateFaceInstallerTests.test_actual_cli_single_android_face_is_costume_local', 'test_packaged_costume_private_faces.PrivateFaceInstallerTests.test_actual_cli_single_ios_face_is_costume_local', 'test_packaged_costume_private_faces.PrivateFaceInstallerTests.test_batch_omitted_faces_do_not_inherit_previous_archive_face', 'test_packaged_costume_private_faces.PrivateFaceInstallerTests.test_suffix_face_without_dual_body_is_skipped_before_pack_or_database_writes', 'test_packaged_costume_private_faces.PrivateFaceRoutingTests.test_every_member_single_and_dual_platform_faces_change_only_fresh_model_dependencies', 'test_packaged_costume_private_faces.PrivateFaceRoutingTests.test_ios_only_face_reserves_private_path_before_first_android_catalog_insert', 'test_packaged_costume_face_management.FaceManagementTests.test_android_face_original_then_clone_delete_and_same_zip_reinstall', 'test_packaged_costume_face_management.FaceManagementTests.test_android_rina_clone_then_original_delete', 'test_packaged_costume_face_management.FaceManagementTests.test_clone_sharing_a_custom_thumbnail_keeps_the_source_graph', 'test_packaged_costume_face_management.FaceManagementTests.test_external_face_dependency_preserves_shared_private_graph', 'test_packaged_costume_face_management.FaceManagementTests.test_ios_face_clone_then_original_delete', 'test_packaged_costume_face_management.FaceManagementTests.test_ios_rina_original_then_clone_delete', 'test_packaged_costume_face_management.FaceManagementTests.test_legacy_names_are_not_promoted_to_managed_face_ownership', 'test_packaged_costume_face_management.FaceManagementTests.test_one_missing_native_locale_face_dependency_refuses_clone_before_publication', 'test_packaged_costume_face_management.FaceManagementTests.test_public_face_outgoing_dependency_is_shared_then_cloned_independently', 'test_packaged_costume_face_management.FaceManagementTests.test_publication_fault_restores_every_database_and_private_face_file', 'test_packaged_costume_face_management.FaceManagementTests.test_wearer_identity_overrides_rina_donor_body_texture_names', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_bounded_reader_rejects_excessive_decompressed_data', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_changed_original_record_is_rejected_by_payload_digest', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_concurrent_cold_option_requests_share_one_validation', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_failed_source_build_preserves_previous_bundled_index', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_installed_database_changes_never_replace_original_descriptors', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_locale_fallback_never_changes_region_or_platform', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_missing_index_has_no_mutable_database_or_network_fallback', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_official_source_is_read_only_and_gzip_is_byte_deterministic', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_option_projection_cache_is_bounded_to_one_runtime', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_option_projection_is_immutable_and_reuses_only_small_rows', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_option_projection_never_uses_cached_rows_for_linked_file', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_option_projection_rejects_file_changed_during_validation', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_option_projection_rejects_tampering_even_with_restored_mtime', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_option_projection_revalidates_atomic_index_replacement', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_option_projection_ttl_detects_corruption_with_coarse_file_metadata', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_option_projection_ttl_revalidates_unchanged_file', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_pack_sharing_uses_only_proven_official_suit_packages', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_rehashed_unsafe_pack_and_false_sharing_records_are_rejected', 'test_costume_cdn_catalog.OfficialCostumeCdnCatalogTests.test_source_commit_and_external_symlink_are_not_accepted', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_bad_encrypted_bundle_is_rejected_before_any_publish', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_cancel_during_publication_rolls_back_all_changed_files', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_concurrent_pack_change_while_downloading_is_preserved_and_blocks_publication', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_custom_suit_and_legacy_clone_reference_are_protected', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_download_failure_never_enters_server_publication_context', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_failed_replacement_rolls_back_all_prior_replacements_and_retains_backup', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_failed_second_download_changes_no_existing_pack', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_linked_pack_does_not_modify_the_link_target', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_localized_registry_defaults_follow_language_and_help_is_not_a_form_input', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_mutated_runtime_catalog_is_not_used_as_official_download_metadata', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_restores_both_active_caches_both_platforms_and_keeps_database_and_unrelated_files', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_retired_only_matching_selection_and_keeps_unsaved_extracted_copies', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_selection_removed_between_glob_and_stat_does_not_rollback_restored_packs', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_shared_pack_preserves_every_unselected_section_byte', 'test_costume_cdn_restore.CostumeCdnRestoreTests.test_warm_option_projection_preserves_live_locales_and_dictionary_updates', 'test_costume_cdn_restore.DownloadValidationTests.test_metapack_range_must_match_selected_pack_exactly', 'test_costume_cdn_restore.DownloadValidationTests.test_network_failure_reports_actionable_reason', 'test_costume_cdn_restore.DownloadValidationTests.test_truncated_and_overlong_downloads_are_rejected', 'test_model_outlines.OutlineTests.test_catalogue_rounding_clamp_masks_and_exact_unrelated_bytes', 'test_model_outlines.OutlineTests.test_rejects_forged_duplicate_nonfinite_bool_and_unknown_settings', 'test_model_outlines.OutlineTests.test_mixed_or_unsupported_color_shader_is_not_writable', 'test_model_outlines.OutlineTests.test_outline_only_export_recipe_restore_and_repeat_do_not_accumulate', 'test_model_outlines.OutlineTests.test_vertex_and_body_edit_combination_preserves_outline_mask_basis', 'test_model_outlines.OutlineTests.test_sparse_vertex_width_grows_zero_masks_and_preserves_all_other_bytes', 'test_model_outlines.OutlineTests.test_detail_state_is_bounded_and_survives_recipe_restore', 'test_model_outlines.OutlineTests.test_runtime_member_face_requires_exact_original_body_binding', 'test_model_outlines.OutlineTests.test_absolute_raw_width_sets_every_vertex_and_preserves_source_and_other_channels', 'test_model_outlines.OutlineTests.test_sparse_vertex_override_after_absolute_width_keeps_native_rounding', 'test_model_outlines.OutlineTests.test_diagnostic_sources_match_captured_bytes_and_change_with_new_model', 'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_pair_uses_semantic_mesh_and_each_native_mask', 'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_paired_mod_zip_propagates_all_platform_variants', 'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_pair_rejects_missing_and_ambiguous_semantic_mesh', 'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_detail_pair_requires_verified_vertex_order_and_keeps_overrides', 'test_viewer_mod_pair_edits.PairedBodyEditTests.test_absolute_outline_pair_sets_both_platform_masks_to_the_native_byte_value', 'test_model_edits.ModelEditTests.test_legacy_recipe_restores_when_only_verified_outline_companions_were_added', 'test_model_edits.ModelEditTests.test_legacy_recipe_cannot_omit_selected_sources_or_edit_unbound_companions', 'test_model_scaling.ScalingTests.test_unexported_face_helpers_do_not_block_unrelated_body_saving', 'test_gallery_decode.SafeDecoderTests.test_astc_cli_workers_are_bounded_and_scaled_to_mip_size', 'test_gallery_decode.SafeDecoderTests.test_actual_astc_mip_sizes_keep_exact_rgba_with_bounded_workers', 'test_game_motion_audio.MouthEnvelopeTests.test_integer_pcm_reduction_keeps_original_voice_envelope', 'test_game_motion_audio.MouthEnvelopeTests.test_warm_reuse_still_hashes_current_bytes_and_returns_independent_values', 'test_game_motion_audio.MouthEnvelopeTests.test_full_scale_pcm_and_truncated_voice_are_handled', '__main__.PackagedPartSelectionTests.test_actual_packaged_bone_hierarchy_union_and_exclusions', '__main__.PackagedMotionTimelineTests.test_actual_packaged_dense_body_facial_and_gaze_playhead'], 'qa_source_hashes': {'macos/ci/run_app_smoke.py': '2a7bc218edb2c95b764f63bc7405bab430beb1edc9041e821243cb4700c96b3f', 'macos/ci/diagnose_app_smoke.py': '85aea638c31abb6133ec16c1cd83b405e4185911edf286ee595db889f9e29a9a', 'macos/ci/native_pcm_qa.js': '61fa22b362a51718a82b1403b414088b9a14ab7fed24434cf64578c8d7811517'}}
+          matches = list(Path('input/macos').rglob('Elichika-2026.11.11.2-AppleSilicon.app.zip'))
+          assert len(matches) == 1
+          result = verify(Path('input/macos-evidence'), pins, matches[0])
+          Path('source-bound-mac-validation.json').write_text(json.dumps(result, indent=2) + '\n')
+          PY
+
+      - name: Verify raw files, upload only matching bytes, and publish the existing draft
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          repo = 'tagundo/elichika'
+          tag = 'v2026.11.11.2'
+          def api(path, data=None):
+              command = ['gh','api','repos/' + repo + '/' + path]
+              if data is not None:
+                  command += ['--method','PATCH','--input','-']
+              raw = subprocess.check_output(command, input=json.dumps(data).encode() if data is not None else None)
+              return json.loads(raw)
+          expected = {
+              'elichika-2026.11.11.2.apk': (290580408,'66d8d195b343e524aec723f096b1b788f8e75500ade24f3748f36fc6f7da1fc5'),
+              'Elichika-2026.11.11.2-AppleSilicon.app.zip': (304943748,'cab36d12ca5809eaaa26a6df758bbfa57f94c736857f244b0ba97ddc08e26a79'),
+          }
+          files = {}
+          for name, (size, digest) in expected.items():
+              matches = list(Path('input').rglob(name))
+              assert len(matches) == 1
+              path = matches[0]
+              assert path.stat().st_size == size
+              with path.open('rb') as stream:
+                  assert hashlib.file_digest(stream,'sha256').hexdigest() == digest
+              files[name] = path
+          sums = Path('SHA256SUMS')
+          sums.write_text(''.join(digest + '  ' + name + '\n' for name, (size,digest) in expected.items()))
+          assert hashlib.sha256(sums.read_bytes()).hexdigest() == '332f4f9f396283f233d84039b67c6eace558f1fbe6ab55be3b603379fe05e229'
+          expected['SHA256SUMS'] = (sums.stat().st_size,hashlib.sha256(sums.read_bytes()).hexdigest())
+          files['SHA256SUMS'] = sums
+          draft = api('releases/441238265')
+          assert draft['draft'] and draft['tag_name'] == tag
+          assert draft['target_commitish'] == '9a3640d69a6d411b659cef599f5dcd26c61892e3'
+          assert hashlib.sha256(draft['body'].encode()).hexdigest() == '7bcf5e307d036127915563a8ec4731c440d0cd3eb7719fabfa6f26caf29c4111'
+          present = {asset['name']: asset for asset in draft['assets']}
+          assert set(present) <= set(expected), 'Unexpected existing assets must never be removed or overwritten'
+          for name, asset in present.items():
+              size, digest = expected[name]
+              assert asset['size'] == size and asset['digest'] == 'sha256:' + digest and asset['state'] == 'uploaded'
+          for name, path in files.items():
+              if name not in present:
+                  subprocess.run(['gh','release','upload',tag,'--repo',repo,str(path)],check=True)
+          uploaded = api('releases/441238265')
+          assert {asset['name'] for asset in uploaded['assets']} == set(expected)
+          for asset in uploaded['assets']:
+              size, digest = expected[asset['name']]
+              assert asset['state'] == 'uploaded' and asset['size'] == size and asset['digest'] == 'sha256:' + digest
+          # Ensure a correct immutable tag exists before public publication. Never retarget an existing tag.
+          tag_read = subprocess.run(['gh','api','repos/' + repo + '/git/ref/tags/' + tag],capture_output=True,text=True)
+          if tag_read.returncode:
+              assert str(json.loads(tag_read.stdout).get('status')) == '404', tag_read.stderr
+              created = subprocess.run(['gh','api','repos/' + repo + '/git/refs','--method','POST','--input','-'],input=json.dumps({'ref':'refs/tags/' + tag,'sha':'9a3640d69a6d411b659cef599f5dcd26c61892e3'}),capture_output=True,text=True)
+              if created.returncode:
+                  assert str(json.loads(created.stdout).get('status')) == '422', created.stderr
+          tag_before_publish = api('git/ref/tags/' + tag)['object']
+          for _ in range(8):
+              if tag_before_publish['type'] != 'tag':
+                  break
+              tag_before_publish = api('git/tags/' + tag_before_publish['sha'])['object']
+          assert tag_before_publish['type'] == 'commit' and tag_before_publish['sha'] == '9a3640d69a6d411b659cef599f5dcd26c61892e3'
+          published = api('releases/441238265',{'draft':False,'prerelease':False,'make_latest':'true'})
+          assert published['draft'] is False and published['tag_name'] == tag
+          tag_ref = api('git/ref/tags/' + tag)['object']
+          if tag_ref['type'] == 'tag':
+              tag_ref = api('git/tags/' + tag_ref['sha'])['object']
+          assert tag_ref['type'] == 'commit' and tag_ref['sha'] == '9a3640d69a6d411b659cef599f5dcd26c61892e3'
+          Path('publication-receipt.json').write_text(json.dumps({
+              'status':'PUBLISHED_EXACT_VALIDATED_FILES_WITHOUT_REBUILD',
+              'release':published,'tag_commit':tag_ref['sha'],
+              'validation_runs':json.loads(Path('approved-runs.json').read_text()),
+              'root_accepted_audit_sha256':json.loads(Path('root-accepted-audits.json').read_text()),
+              'general_effective_jobs':json.loads(Path('general-effective-jobs.json').read_text()),
+              'mac_source_bound_qa':json.loads(Path('source-bound-mac-validation.json').read_text()),
+              'source_of_upload_credential':'GitHub Actions contents:write GITHUB_TOKEN',
+              'product_rebuilt':False,'main_merged':False,
+          },indent=2) + '\n')
+          print(published['html_url'])
+          PY
+
+      - name: Preserve publication receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-publication-receipt
+          path: |
+            approved-runs.json
+            root-accepted-audits.json
+            general-effective-jobs.json
+            source-bound-mac-validation.json
+            publication-receipt.json
+            SHA256SUMS
+          if-no-files-found: warn
