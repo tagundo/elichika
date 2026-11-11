@@ -25,6 +25,7 @@ MODULES = (
     "webtools/server", "webtools/core/viewer_texture_tools",
     "webtools/core/texture_image_io", "webtools/core/texture_project_io",
     "webtools/core/model_edits", "webtools/core/model_viewer",
+    "webtools/core/viewer_mesh_tools", "webtools/core/viewer_transplants",
     "webtools/core/viewer_mod_flow", "webtools/core/viewer_mod_pair_edits",
     "webtools/core/viewer_mod_package", "webtools/core/viewer_mod_sources",
     "costume_face_installer", "costume_scene_installer", "costume_scene_clones",
