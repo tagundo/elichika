@@ -278,6 +278,12 @@ struct AssetNavigationState {
     init(desired: AssetEditorSection = .tools) { self.desired = desired }
     var needsUpdate: Bool { sent != desired }
     mutating func select(_ section: AssetEditorSection) { desired = section }
+    mutating func selectFromRender(_ section: AssetEditorSection,
+                                   currentSelection: AssetEditorSection?) -> Bool {
+        guard currentSelection == section else { return false }
+        select(section)
+        return true
+    }
     mutating func pageReady() { sent = nil }
     mutating func markSent(_ section: AssetEditorSection) {
         if section == desired { sent = section }

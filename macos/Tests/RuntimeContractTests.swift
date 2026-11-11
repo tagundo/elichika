@@ -234,6 +234,66 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertFalse(navigation.needsUpdate)
     }
 
+    func testStaleRenderedAssetSectionCannotReplaceCurrentPageSelection() {
+        for (current, stale) in [(AssetEditorSection.viewer, AssetEditorSection.tools),
+                                 (AssetEditorSection.tools, AssetEditorSection.viewer)] {
+            var navigation = AssetNavigationState(desired: stale)
+            navigation.markSent(stale)
+            navigation.pageChanged(current)
+
+            XCTAssertFalse(navigation.selectFromRender(stale, currentSelection: current))
+            XCTAssertEqual(navigation.desired, current)
+            XCTAssertEqual(navigation.sent, current)
+            XCTAssertFalse(navigation.needsUpdate)
+
+            // A subsequent user selection of the other tab still takes effect.
+            XCTAssertTrue(navigation.selectFromRender(stale, currentSelection: stale))
+            XCTAssertEqual(navigation.desired, stale)
+            XCTAssertTrue(navigation.needsUpdate)
+            navigation.markSent(stale)
+            XCTAssertFalse(navigation.needsUpdate)
+        }
+    }
+
+    func testHiddenEditorRenderCannotChangeNavigationOrAcknowledgeReadiness() {
+        var navigation = AssetNavigationState(desired: .viewer)
+        navigation.markSent(.viewer)
+        for rendered in AssetEditorSection.allCases {
+            XCTAssertFalse(navigation.selectFromRender(rendered, currentSelection: nil))
+            XCTAssertEqual(navigation.desired, .viewer)
+            XCTAssertEqual(navigation.sent, .viewer)
+            XCTAssertFalse(navigation.needsUpdate)
+        }
+        navigation.pageReady()
+        XCTAssertFalse(navigation.selectFromRender(.tools, currentSelection: nil))
+        XCTAssertEqual(navigation.desired, .viewer)
+        XCTAssertNil(navigation.sent)
+        XCTAssertTrue(navigation.needsUpdate)
+    }
+
+    func testCurrentRenderedNavigationRetainsRetryAndPageReadyTransitions() {
+        var navigation = AssetNavigationState()
+        navigation.markSent(.tools)
+        XCTAssertTrue(navigation.selectFromRender(.viewer, currentSelection: .viewer))
+        navigation.markSent(.viewer)
+        navigation.retry(.viewer)
+        XCTAssertNil(navigation.sent)
+        XCTAssertTrue(navigation.needsUpdate)
+
+        XCTAssertFalse(navigation.selectFromRender(.tools, currentSelection: .viewer))
+        XCTAssertEqual(navigation.desired, .viewer)
+        XCTAssertNil(navigation.sent)
+        navigation.pageReady()
+        XCTAssertTrue(navigation.selectFromRender(.viewer, currentSelection: .viewer))
+        XCTAssertTrue(navigation.needsUpdate)
+        navigation.markSent(.viewer)
+        XCTAssertFalse(navigation.needsUpdate)
+
+        navigation.retry(.tools)
+        XCTAssertEqual(navigation.sent, .viewer)
+        XCTAssertFalse(navigation.needsUpdate)
+    }
+
     func testAssetSectionBridgeAcceptsOnlyKnownSectionsAndEvents() throws {
         for section in AssetEditorSection.allCases {
             for event in ["ready", "change"] {

@@ -72,7 +72,12 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     }
 
     func setEditorSurface(_ surface: EditorSurface) {
-        showAssetSection(surface)
+        // SwiftUI can deliver a render formed before the page changed tabs.
+        // Use the live selection so that render cannot send the old tab back.
+        guard route == .assets,
+              assetNavigation.selectFromRender(surface,
+                  currentSelection: model?.selectedSection?.assetEditorSection) else { return }
+        applyAssetSection()
     }
 
     func perform(_ action: String, paths: [String]? = nil) {
