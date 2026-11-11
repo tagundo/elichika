@@ -26,20 +26,20 @@ ensure_tk_stub()
 from webtools.core import game_motions, game_motion_audio, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace, viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, member_identity
 import transplant_bundle_io, costume_face_installer, costume_scene_installer, costume_clone, costume_management
 import costume_cdn_catalog, costume_cdn_restore
-import graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse
+import graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale
 from adminui.tools import costume_cdn as cdn_admin
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
                     model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace,
                     viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, transplant_bundle_io, game_motion_audio,
                     costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
                     costume_cdn_catalog, costume_cdn_restore, cdn_admin,
-                    graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse)
+                    graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale)
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
             'test_viewer_transplants.py', 'test_viewer_transplant_paths.py', 'test_viewer_workbench_routes.py',
             'test_graft_texture_atlas.py', 'test_graft_atlas_geometry.py', 'test_graft_game_compat.py',
-            'test_graft_uv_reuse.py',
+            'test_graft_uv_reuse.py', 'test_graft_uv_texture_upscale.py',
             'test_graft_active_textures.py',
             'test_reuse_empty_uv_options.py',
             'test_physics_game_engine.py', 'test_physics_game_catalog.py', 'test_physics_game_runtime.py',
