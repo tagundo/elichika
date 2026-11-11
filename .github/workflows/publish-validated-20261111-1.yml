@@ -1,0 +1,375 @@
+name: Publish exact validated 2026.11.11.1 applications
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/publish-validated-20261111-1]
+    paths: [.github/workflows/publish-validated-20261111-1.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-validated-v2026.11.11.1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_REPO: tagundo/elichika
+    steps:
+      - name: Verify product runs, source-bound Mac QA, and the existing draft
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          assert os.environ['GITHUB_REPOSITORY'] == 'tagundo/elichika'
+          assert os.environ['GITHUB_EVENT_NAME'] in ('push','workflow_dispatch')
+          assert os.environ['GITHUB_REF'] == 'refs/heads/codex/publish-validated-20261111-1'
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api','repos/tagundo/elichika/' + path]))
+          automation = api('commits/' + os.environ['GITHUB_SHA'])
+          assert [parent['sha'] for parent in automation['parents']] == ['24c38811ff36878e03b223e46bdeb3bd5e6f5fd1']
+          assert [file['filename'] for file in automation['files']] == ['.github/workflows/publish-validated-20261111-1.yml']
+          product = '24c38811ff36878e03b223e46bdeb3bd5e6f5fd1'
+          qa_head = '9c0ccbe83b5cab65b7ba7ec779e5f8e3bace834c'
+          successful = {
+              42932031593: (product, '.github/workflows/android.yml', 'codex/model-workbench-build-20261109', {'build','native-compatibility / native-16k','android-upgrade / android','apk-audit / audit'}),
+              42932031000: (product, '.github/workflows/tests.yml', 'codex/model-workbench-build-20261109', {'tests','windows-upgrades','viewer-webgl'}),
+              42936296970: (qa_head, '.github/workflows/mac-candidate-diagnostic-20261111-1.yml', 'codex/mac-candidate-diagnostic-20261111-1', {'diagnose-exact-candidate'}),
+          }
+          for identity, (commit, path, branch, required) in successful.items():
+              run = api(f'actions/runs/{identity}')
+              assert run['head_sha'] == commit and run['path'] == path and run['head_branch'] == branch
+              assert run['status'] == 'completed' and run['conclusion'] == 'success'
+              jobs = api(f'actions/runs/{identity}/jobs?per_page=100')['jobs']
+              assert {job['name'] for job in jobs if job['conclusion'] == 'success'} >= required
+          original_mac = api('actions/runs/42932031709')
+          assert original_mac['head_sha'] == product and original_mac['path'] == '.github/workflows/macos.yml'
+          assert original_mac['status'] == 'completed' and original_mac['conclusion'] == 'failure'
+          qa = api('commits/' + qa_head)
+          assert [item['sha'] for item in qa['parents']] == [product]
+          qa_files = {
+              '.github/workflows/mac-candidate-diagnostic-20261111-1.yml': '644c1bfd23317a29cbecd5e2ac4752f00ff20d346c01e95b2e2498edb8883b80',
+              'macos/ci/diagnose_candidate_host.py': 'b2949b333cc5e8b4e64fd0939c41eee11e86e74b6f2d33b0ec04384e88b78265',
+          }
+          assert {item['filename'] for item in qa['files']} == set(qa_files)
+          import base64
+          for item in qa['files']:
+              assert item['status'] == 'added'
+              blob = api('git/blobs/' + item['sha'])
+              assert hashlib.sha256(base64.b64decode(blob['content'])).hexdigest() == qa_files[item['filename']]
+          source_tree = api('git/trees/' + product)['tree']
+          source_links = {entry['path']: entry for entry in source_tree if entry['mode'] == '160000'}
+          assert source_links['modtools']['sha'] == '326c45dbc52eac4da1684c8b5a6ec4dd301869f6'
+          assert source_links['assets']['sha'] == '1b0154db2976ba345fb30f3516018bb04d408ce1'
+          for identity, name, run, head, size, digest in (
+              (13817168203, 'elichika-release-apk', 42932031593, product, None, None),
+              (13816434735, 'elichika-macos-unvalidated-candidate', 42932031709, product, 304939429, '57d553df45e0ce0f09b1e4c7d892c8316e41f380e3760e88773da3e512edf63a'),
+              (13818787797, 'mac-candidate-diagnostic-20261111-1-evidence', 42936296970, qa_head, 5592978, '56a5e5cd8ee370ef20613115939cf754246c08a268dce161815f519d1471dc74'),
+          ):
+              artifact = api(f'actions/artifacts/{identity}')
+              assert artifact['name'] == name and artifact['workflow_run']['id'] == run
+              assert artifact['workflow_run']['head_sha'] == head and not artifact['expired']
+              if size is not None:
+                  assert artifact['size_in_bytes'] == size and artifact['digest'] == 'sha256:' + digest
+              matches = [item for item in api(f'actions/runs/{run}/artifacts?per_page=100')['artifacts'] if item['name'] == name and not item['expired']]
+              assert len(matches) == 1 and matches[0]['id'] == identity
+          validation_facts = {
+              'product_parent': product,
+              'root_accepted_audit_sha256': {"android": "cc4aa74bfe718d45208b1f89d87b8ced7834064ae2de9a55d65b83e85d5a660b", "general": "de494cb99552252b16b9b816aba1ee5afe82bf0206a1cb40c568520811deec77", "macos": "d826735387f98b6503ef167336047362934b4d39c8808b5994893141be843f60"},
+              'android': {'run': 42932031593, 'head': product, 'conclusion': 'success'},
+              'general': {'run': 42932031000, 'head': product, 'conclusion': 'success'},
+              'original_mac_candidate_build': {'run': 42932031709, 'head': product, 'conclusion': 'failure', 'candidate_artifact': 13816434735},
+              'mac_same_byte_full_validation': {'run': 42936296970, 'head': qa_head, 'product_parent': product, 'conclusion': 'success', 'evidence_artifact': 13818787797},
+          }
+          existing_tag = subprocess.run(['gh','api','repos/tagundo/elichika/git/ref/tags/v2026.11.11.1'],capture_output=True,text=True)
+          if existing_tag.returncode:
+              assert str(json.loads(existing_tag.stdout).get('status')) == '404', existing_tag.stderr
+          else:
+              tag_object = json.loads(existing_tag.stdout)['object']
+              for _ in range(8):
+                  if tag_object['type'] != 'tag':
+                      break
+                  tag_object = api('git/tags/' + tag_object['sha'])['object']
+              assert tag_object['type'] == 'commit' and tag_object['sha'] == '24c38811ff36878e03b223e46bdeb3bd5e6f5fd1'
+          draft = api('releases/441133397')
+          assert draft['draft'] is True and draft['tag_name'] == 'v2026.11.11.1'
+          assert draft['target_commitish'] == '24c38811ff36878e03b223e46bdeb3bd5e6f5fd1'
+          assert hashlib.sha256(draft['body'].encode()).hexdigest() == 'c16084c66c81bd0435c37bb32a0cb742987e2be4b6845d6201b3b2766cb05b54'
+          assert 'DRAFT' not in draft['body']
+          Path('approved-runs.json').write_text(json.dumps(validation_facts, indent=2) + '\n')
+          PY
+
+      - name: Download the exact already-validated signed Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42932031593
+          path: input/android
+
+      - name: Download the original signed Mac candidate without rebuilding
+        uses: actions/download-artifact@v4
+        with:
+          name: elichika-macos-unvalidated-candidate
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42932031709
+          path: input/mac-candidate
+
+      - name: Download the full same-byte native Mac validation evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-candidate-diagnostic-20261111-1-evidence
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 42936296970
+          path: input/mac-evidence
+
+      - name: Verify full original Mac gates and promote only the exact archive bytes
+        run: |
+          python3 - <<'PY'
+          """Read-only checks for complete QA validation of the original signed Mac bytes."""
+          from pathlib import Path
+          import hashlib
+          import json
+          import re
+          import zipfile
+          
+          PRODUCT = '24c38811ff36878e03b223e46bdeb3bd5e6f5fd1'
+          TOOLS = '326c45dbc52eac4da1684c8b5a6ec4dd301869f6'
+          TREE = '2d4655911f9d3b353fac1a8748b0e3ae6777795a'
+          QA_HEAD = '9c0ccbe83b5cab65b7ba7ec779e5f8e3bace834c'
+          MAC_SHA = '192c2bfaf7c2fe1bc149f1cd208ec5187ef1b3417337a2f70b990d2145a23db4'
+          MAC_BYTES = 304938704
+          MAC_INNER_NAME = 'Elichika-2026.11.11.1-UNVALIDATED-AppleSilicon.app.zip'
+          REQUIRED_REPORTS = (
+              'candidate-binding.json', 'host-diagnostic-summary.json', 'bundle-provenance.json',
+              'bundle-before-launch.json', 'bundle-after-relaunch.json', 'bundle-after-diagnostic.json',
+              'private-runtime.json', 'workbench-tests.json', 'bundled-runtime-tests.txt', 'swift-tests.txt',
+              'first-launch.json', 'relocated-relaunch.json', 'app-smoke-summary.json',
+              'first-launch-part-oracle.json', 'relocated-relaunch-part-oracle.json',
+          )
+          
+          
+          def sha(path):
+              with Path(path).open('rb') as stream:
+                  return hashlib.file_digest(stream, 'sha256').hexdigest()
+          
+          
+          def verify(evidence, report_hashes, inner_archive):
+              evidence, inner_archive = Path(evidence), Path(inner_archive)
+              assert set(report_hashes) == set(REQUIRED_REPORTS)
+              for name, expected in report_hashes.items():
+                  assert re.fullmatch('[0-9a-f]{64}', expected) and sha(evidence / name) == expected, name
+              def report(name):
+                  return json.loads((evidence / name).read_text())
+              binding = report('candidate-binding.json')
+              expected_binding = {
+                  'candidate_build_run': 42932031709, 'candidate_artifact': 13816434735,
+                  'candidate_outer_sha256': '57d553df45e0ce0f09b1e4c7d892c8316e41f380e3760e88773da3e512edf63a',
+                  'candidate_inner_sha256': MAC_SHA, 'parent': PRODUCT, 'tools': TOOLS,
+                  'diagnostic_workflow_sha': QA_HEAD, 'diagnostic_run': '42936296970',
+                  'signed_resources_modified': False, 'original_smoke_timeout_seconds': 120,
+              }
+              assert all(binding[key] == value for key, value in expected_binding.items())
+              host = report('host-diagnostic-summary.json')
+              assert host['status'] == 'PASS_UNCHANGED_SMOKE_WITH_EXTERNAL_DIAGNOSTICS'
+              assert host['smoke_exit_code'] == 0 and host['signed_resources_modified'] is False
+              assert host['ui_secrets_extracted'] is False and host['same_original_catalog_timeout_seconds'] == 120
+              assert host['original_smoke_sha256'] == '2a7bc218edb2c95b764f63bc7405bab430beb1edc9041e821243cb4700c96b3f'
+              source = {'parent_commit': PRODUCT, 'modtools_commit': TOOLS, 'parent_tree': TREE}
+              before, after, diagnostic_after = [report(name) for name in
+                  ('bundle-before-launch.json', 'bundle-after-relaunch.json', 'bundle-after-diagnostic.json')]
+              for item in (before, after, diagnostic_after):
+                  assert item['status'] == 'PASS_SELF_CONTAINED_SIGNED_BUNDLE'
+                  assert item['version'] == '2026.11.11.1' and item['source'] == source
+                  assert item['architectures'] == ['arm64'] and item['signature'] == 'ad-hoc'
+                  assert item['shared_source_files'] == 233
+              assert before['native_images'] == after['native_images'] == diagnostic_after['native_images']
+              provenance = report('bundle-provenance.json')
+              assert provenance['source'] == source and provenance['version'] == '2026.11.11.1'
+              assert provenance['architectures'] == ['arm64']
+              runtime = report('private-runtime.json')
+              assert runtime['status'] == 'PASS' and runtime['arch'] == 'arm64'
+              for key in ('private_prefix', 'offline_imports', 'pillow_png', 'numpy_blas',
+                          'astc_encode_decode', 'lz4_brotli', 'no_runtime_pip'):
+                  assert runtime[key] is True, key
+              workbench = report('workbench-tests.json')
+              assert workbench['status'] == 'PASS' and workbench['tests'] == 354
+              assert workbench['errors'] == workbench['failures'] == workbench['skips'] == 0
+              assert workbench['packaged_sources'] is True
+              assert len(workbench['executed_cases']) == len(set(workbench['executed_cases'])) == 354
+              bundled = (evidence / 'bundled-runtime-tests.txt').read_text()
+              assert re.search(r'Ran 44 tests in [0-9.]+s\s+OK\s*$', bundled)
+              assert 'skipped=' not in bundled and '... skipped ' not in bundled
+              swift = (evidence / 'swift-tests.txt').read_text()
+              assert "Test Suite 'All tests' passed" in swift and 'Executed 17 tests, with 0 failures' in swift
+              features = ('native_accessory_unclip', 'native_detail', 'native_editor_navigation',
+                  'native_extended', 'native_file_header', 'native_game_physics', 'native_part_selection',
+                  'native_pcm_audio', 'native_thumbnail', 'native_thumbnail_updater',
+                  'separate_pose_body_panels', 'viewer_minimize_validation', 'viewer_mod_package_validation')
+              first, relocated = report('first-launch.json'), report('relocated-relaunch.json')
+              for item in (first, relocated):
+                  assert item['status'] == 'PASS'
+                  for key in ('native_file_bridge_and_authorization', 'source_preserved', 'source_zip_preserved',
+                              'server_stopped', 'runtime_terminated', 'normal_app_quit_with_running_server'):
+                      assert item[key] is True, key
+                  for key in features:
+                      assert item[key]['status'] == 'PASS', key
+              pcm = first['native_pcm_game_audio']
+              assert pcm['enabled'] is True and pcm['status'] == 'PASS' and pcm['originalAPIsPreserved'] is True
+              assert pcm['descriptor']['motion'] == 'mv:12008:1200801' and pcm['descriptor']['category'] == 'mv'
+              assert Path(pcm['official_body']['path']).name == 'ch0002_suit400022007_primary.unity'
+              assert pcm['official_body']['preserved'] is True
+              assert pcm['official_body']['sha256'] == 'cbfae69d2f37e5b8b2240f905e59289580ce73836fca3f46c421e9bc5da5404c'
+              assert pcm['timing']['steadyDurationMs'] >= 10000 and pcm['timing']['steadyFrames'] > 0
+              assert relocated['native_pcm_game_audio']['status'] == 'NOT_REQUESTED'
+              summary = report('app-smoke-summary.json')
+              assert summary['status'] == 'PASS_FINAL_APP_LAUNCH_RELOCATION_AND_RELAUNCH'
+              assert summary['first'] == first and summary['relocated'] == relocated
+              for key in ('no_host_python_or_homebrew_path', 'original_app_path_removed',
+                          'readonly_app_signature_preserved', 'space_and_unicode_path',
+                          'viewer_files_width_persisted_across_relaunch', 'viewer_panel_width_persisted_across_relaunch'):
+                  assert summary[key] is True, key
+              for name in ('first-launch-part-oracle.json', 'relocated-relaunch-part-oracle.json'):
+                  oracle = report(name)
+                  assert oracle['status'] == 'PASS' and oracle['originalMaterialSlots'] == oracle['outputSubmeshes'] == 1
+                  assert oracle['addedMaterialObjects'] == oracle['addedTextureObjects'] == 0
+                  assert oracle['outputTriangles'] == 23 and oracle['outputVertices'] == 69
+                  assert oracle['sourcePreserved'] is True and oracle['donorPreserved'] is True
+                  assert oracle['allLocalPPtrsResolve'] is True and oracle['donorUVColorAndSkinExact'] is True
+              assert inner_archive.stat().st_size == MAC_BYTES and sha(inner_archive) == MAC_SHA
+              with zipfile.ZipFile(inner_archive) as archive:
+                  assert archive.testzip() is None
+                  assert len(archive.namelist()) == len(set(archive.namelist()))
+                  assert all(not Path(name).is_absolute() and '..' not in Path(name).parts for name in archive.namelist())
+                  archived_provenance = json.loads(archive.read('Elichika.app/Contents/Resources/bundle-provenance.json'))
+                  assert archived_provenance == provenance
+                  for name, attestation in after['native_images'].items():
+                      assert hashlib.sha256(archive.read('Elichika.app/' + name)).hexdigest() == attestation['sha256'], name
+              return {'status': 'PASS_EXACT_ORIGINAL_MAC_CANDIDATE_FULL_SOURCE_BOUND_QA',
+                  'product_parent': PRODUCT, 'product_tools': TOOLS,
+                  'original_mac_build': {'run': 42932031709, 'conclusion': 'failure', 'artifact': 13816434735},
+                  'successful_same_byte_validation': {'run': 42936296970, 'head': QA_HEAD},
+                  'archive_sha256': MAC_SHA, 'archive_bytes': MAC_BYTES,
+                  'workbench_tests': 354, 'bundled_runtime_tests': 44, 'swift_tests': 17,
+                  'native_first_and_relocated_launch': True, 'official_eli_chase': True,
+                  'signed_resources_modified': False, 'application_rebuilt': False,
+                  'report_hashes': report_hashes}
+          import shutil
+          report_hashes = {"app-smoke-summary.json": "2507b2da5ab77f93934ce970d7e6e0eba16e5fc5fa42452847210f9e4c8d60a5", "bundle-after-diagnostic.json": "d94265f37d11a5de9dee0b86e39a1a3e3bdd9c1c2b433f69a44e8ff6e390e1cd", "bundle-after-relaunch.json": "d94265f37d11a5de9dee0b86e39a1a3e3bdd9c1c2b433f69a44e8ff6e390e1cd", "bundle-before-launch.json": "d94265f37d11a5de9dee0b86e39a1a3e3bdd9c1c2b433f69a44e8ff6e390e1cd", "bundle-provenance.json": "e7ddf44357de185910b3d0e6ff33684d7a21152a04f17a38b19e068ffb7af2bb", "bundled-runtime-tests.txt": "d64531f33e89dea6e722f6afba1ec206e5720574b925631d46128d78cb7bdd53", "candidate-binding.json": "94c94fe1fe519b3d13fcd113237ffb6e4114d5cb98db5daa0d7d68757363cabf", "first-launch-part-oracle.json": "e90e5c1884c6a76f12b93b4c8e62e03fdacccd225d352c6a413f717dae971b64", "first-launch.json": "5af73574fa11ca78c39ef98ed7055d30b5778f3acf7e4cd39124b202302a5399", "host-diagnostic-summary.json": "9064d76d8a3efd154559b97efb92db5669d5a7dd5e21561b2b4e53cb72c2d5b1", "private-runtime.json": "26b984bd686d4c640fc85807127341a263c732fbfc60402cbb5c9ea05079ea69", "relocated-relaunch-part-oracle.json": "91410b1b16472a04d747b13b2c53b09e996ddb3373a892f9964192acbe70fc73", "relocated-relaunch.json": "7f682651175a6bf3863e93aa8fda550739bd319f229e994594f086a370923049", "swift-tests.txt": "4af654e5cbeb035c0a8f9eb7e7f585a98d4578cfeb19516221d179fd7f4136dc", "workbench-tests.json": "356a81bdc7b73572d5d636674a947746e755b756aa17763d89b653da7ecbf025"}
+          evidence = Path('input/mac-evidence')
+          inner_matches = list(Path('input/mac-candidate').rglob(MAC_INNER_NAME))
+          manifest_matches = list(Path('input/mac-candidate').rglob('candidate-manifest.json'))
+          assert len(inner_matches) == len(manifest_matches) == 1
+          inner = inner_matches[0]
+          manifest = json.loads(manifest_matches[0].read_text())
+          assert manifest['status'] == 'UNVALIDATED_CANDIDATE_NOT_FOR_DELIVERY'
+          assert manifest['mandatory_execution_gates'] == 'PENDING'
+          assert manifest['source_commit'] == PRODUCT and manifest['workflow_run'] == '42932031709'
+          assert manifest['bytes'] == MAC_BYTES and manifest['sha256'] == MAC_SHA
+          validation = verify(evidence, report_hashes, inner)
+          Path('source-bound-mac-validation.json').write_text(json.dumps(validation, indent=2) + '\n')
+          promoted = Path('input/macos/Elichika-2026.11.11.1-AppleSilicon.app.zip')
+          promoted.parent.mkdir(parents=True, exist_ok=True)
+          assert not promoted.exists()
+          shutil.copyfile(inner, promoted)
+          assert promoted.stat().st_size == MAC_BYTES and sha(promoted) == MAC_SHA
+          PY
+
+      - name: Verify raw files, upload only matching bytes, and publish the existing draft
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          repo = 'tagundo/elichika'
+          tag = 'v2026.11.11.1'
+          def api(path, data=None):
+              command = ['gh','api','repos/' + repo + '/' + path]
+              if data is not None:
+                  command += ['--method','PATCH','--input','-']
+              raw = subprocess.check_output(command, input=json.dumps(data).encode() if data is not None else None)
+              return json.loads(raw)
+          expected = {
+              'elichika-2026.11.11.1.apk': (290573060,'3424e83c8d1e70a0a0b251c6e741ef24efebca70f2ad8cd22338af9dac572a52'),
+              'Elichika-2026.11.11.1-AppleSilicon.app.zip': (304938704,'192c2bfaf7c2fe1bc149f1cd208ec5187ef1b3417337a2f70b990d2145a23db4'),
+          }
+          files = {}
+          for name, (size, digest) in expected.items():
+              matches = list(Path('input').rglob(name))
+              assert len(matches) == 1
+              path = matches[0]
+              assert path.stat().st_size == size
+              with path.open('rb') as stream:
+                  assert hashlib.file_digest(stream,'sha256').hexdigest() == digest
+              files[name] = path
+          sums = Path('SHA256SUMS')
+          sums.write_text(''.join(digest + '  ' + name + '\n' for name, (size,digest) in expected.items()))
+          assert hashlib.sha256(sums.read_bytes()).hexdigest() == '5546feec14a188b436c184a8b579253417a473ce1e2c9761cb5a21647837207e'
+          expected['SHA256SUMS'] = (sums.stat().st_size,hashlib.sha256(sums.read_bytes()).hexdigest())
+          files['SHA256SUMS'] = sums
+          draft = api('releases/441133397')
+          assert draft['draft'] and draft['tag_name'] == tag
+          assert draft['target_commitish'] == '24c38811ff36878e03b223e46bdeb3bd5e6f5fd1'
+          assert hashlib.sha256(draft['body'].encode()).hexdigest() == 'c16084c66c81bd0435c37bb32a0cb742987e2be4b6845d6201b3b2766cb05b54'
+          present = {asset['name']: asset for asset in draft['assets']}
+          assert set(present) <= set(expected), 'Unexpected existing assets must never be removed or overwritten'
+          for name, asset in present.items():
+              size, digest = expected[name]
+              assert asset['size'] == size and asset['digest'] == 'sha256:' + digest and asset['state'] == 'uploaded'
+          for name, path in files.items():
+              if name not in present:
+                  subprocess.run(['gh','release','upload',tag,'--repo',repo,str(path)],check=True)
+          uploaded = api('releases/441133397')
+          assert {asset['name'] for asset in uploaded['assets']} == set(expected)
+          for asset in uploaded['assets']:
+              size, digest = expected[asset['name']]
+              assert asset['state'] == 'uploaded' and asset['size'] == size and asset['digest'] == 'sha256:' + digest
+          # Ensure a correct immutable tag exists before public publication. Never retarget an existing tag.
+          tag_read = subprocess.run(['gh','api','repos/' + repo + '/git/ref/tags/' + tag],capture_output=True,text=True)
+          if tag_read.returncode:
+              assert str(json.loads(tag_read.stdout).get('status')) == '404', tag_read.stderr
+              created = subprocess.run(['gh','api','repos/' + repo + '/git/refs','--method','POST','--input','-'],input=json.dumps({'ref':'refs/tags/' + tag,'sha':'24c38811ff36878e03b223e46bdeb3bd5e6f5fd1'}),capture_output=True,text=True)
+              if created.returncode:
+                  assert str(json.loads(created.stdout).get('status')) == '422', created.stderr
+          tag_before_publish = api('git/ref/tags/' + tag)['object']
+          for _ in range(8):
+              if tag_before_publish['type'] != 'tag':
+                  break
+              tag_before_publish = api('git/tags/' + tag_before_publish['sha'])['object']
+          assert tag_before_publish['type'] == 'commit' and tag_before_publish['sha'] == '24c38811ff36878e03b223e46bdeb3bd5e6f5fd1'
+          published = api('releases/441133397',{'draft':False,'prerelease':False,'make_latest':'true'})
+          assert published['draft'] is False and published['tag_name'] == tag
+          tag_ref = api('git/ref/tags/' + tag)['object']
+          if tag_ref['type'] == 'tag':
+              tag_ref = api('git/tags/' + tag_ref['sha'])['object']
+          assert tag_ref['type'] == 'commit' and tag_ref['sha'] == '24c38811ff36878e03b223e46bdeb3bd5e6f5fd1'
+          Path('publication-receipt.json').write_text(json.dumps({
+              'status':'PUBLISHED_EXACT_VALIDATED_FILES_WITHOUT_REBUILD',
+              'release':published,'tag_commit':tag_ref['sha'],
+              'validation_runs':json.loads(Path('approved-runs.json').read_text()),
+              'source_bound_mac_validation':json.loads(Path('source-bound-mac-validation.json').read_text()),
+              'source_of_upload_credential':'GitHub Actions contents:write GITHUB_TOKEN',
+              'product_rebuilt':False,'main_merged':False,
+          },indent=2) + '\n')
+          print(published['html_url'])
+          PY
+
+      - name: Preserve publication receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-publication-receipt
+          path: |
+            approved-runs.json
+            source-bound-mac-validation.json
+            publication-receipt.json
+            SHA256SUMS
+          if-no-files-found: warn
