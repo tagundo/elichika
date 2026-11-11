@@ -1,4 +1,4 @@
-name: Frozen C2 WebGL regression
+name: Frozen C2 remaining WebGL regression
 
 on:
   workflow_dispatch:
@@ -53,21 +53,6 @@ jobs:
         run: |
           export NODE_PATH="$RUNNER_TEMP/viewer-browser/node_modules"
           mkdir -p "$EVIDENCE_DIR"
-          node tests/texture_color_math_test.js
-          node tests/texture_color_worker_test.js
-          node tests/texture_paint_engine_test.js
-          node tests/texture_paint_layers_test.js
-          node tests/texture_png_test.js
-          node tests/sifas_texture_override_test.js
-          node tests/viewer_texture_tools_test.js
-          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node tests/viewer_texture_persistence_order_test.js
-          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node tests/viewer_texture_layers_rollback_test.js
-          node tests/viewer_game_physics_motion_metadata_test.js
-          node tests/viewer_native_pcm_test.js
-          node tests/viewer_native_pcm_controller_test.js
-          EVIDENCE_DIR="$EVIDENCE_DIR/costume-delete" node ../tests/adminui_costume_delete_browser.js
-          EVIDENCE_DIR="$EVIDENCE_DIR/tool-log" node ../tests/adminui_log_batch_browser.js
-          EVIDENCE_DIR="$EVIDENCE_DIR/costume-cdn" node ../tests/adminui_costume_cdn_browser.js
           python3 -m webtools --no-browser --host 127.0.0.1 --port 8898 > "$EVIDENCE_DIR/server.log" 2>&1 &
           viewer_server_pid=$!
           trap 'kill "$viewer_server_pid" 2>/dev/null || true' EXIT
@@ -76,43 +61,141 @@ jobs:
             sleep 1
           done
           curl --fail --silent "$VIEWER_URL/api/tools" > /dev/null
-          EVIDENCE_DIR="$EVIDENCE_DIR/navigation" node tests/viewer_navigation_browser.js
-          EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js
-          node tests/viewer_rig_browser.js
-          EVIDENCE_DIR="$EVIDENCE_DIR/runtime-optimization" node tests/viewer_runtime_optimization_browser.js
+          qa_failures=0
+          set +e
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/physics-lifecycle" node tests/viewer_physics_lifecycle_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_physics_lifecycle_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-projection-cache" node tests/viewer_mesh_projection_cache_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_mesh_projection_cache_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/motion-audio-lookup" node tests/viewer_motion_audio_lookup_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_motion_audio_lookup_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/layout" node tests/viewer_layout_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_layout_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/portrait-scroll" node tests/viewer_portrait_scroll_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_portrait_scroll_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/pose-body" node tests/viewer_pose_body_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_pose_body_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/vertical" node tests/viewer_vertical_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_vertical_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/framing" node tests/viewer_framing_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_framing_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/compensation" node tests/viewer_compensation_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_compensation_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           node tests/sifas_material_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/sifas_material_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/rimlight-display" node tests/viewer_rimlight_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_rimlight_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mouth-centroid" node tests/viewer_mouth_depth_browser_test.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_mouth_depth_browser_test.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/camera-depth" node tests/viewer_camera_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_camera_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           node tests/viewer_quality_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_quality_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_variant_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_persistence_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-editors" node tests/viewer_texture_tools_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_texture_tools_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-layers" node tests/viewer_texture_layers_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_texture_layers_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-panel-expand" node tests/texture_panel_expand_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/texture_panel_expand_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/mod-packages" node tests/viewer_mod_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_mod_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/minimize" node tests/viewer_minimize_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_minimize_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/compact-layout" node tests/viewer_compact_layout_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_compact_layout_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/body-controls" node tests/viewer_body_controls_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_body_controls_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/thumbnails" node tests/viewer_thumbnail_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_thumbnail_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/outline-diagnostics" node tests/viewer_outline_diagnostics_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_outline_diagnostics_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/outline-inventory" node tests/viewer_outline_inventory_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_outline_inventory_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/compact-buttons" node tests/viewer_compact_buttons_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_compact_buttons_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/compact-controls" node tests/viewer_compact_controls_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_compact_controls_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/game-assets" node tests/viewer_game_assets_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_game_assets_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/transplant-game-assets" node tests/transplant_game_assets_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/transplant_game_assets_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/transplants" node tests/viewer_transplants_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_transplants_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/macos" node tests/viewer_macos_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_macos_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
           EVIDENCE_DIR="$EVIDENCE_DIR/resolution" node tests/viewer_resolution_browser.js
+          qa_status=$?
+          printf '%s\t%s\n' "$qa_status" 'tests/viewer_resolution_browser.js' | tee -a "$EVIDENCE_DIR/continuation-status.tsv"
+          if [ "$qa_status" -ne 0 ]; then qa_failures=$((qa_failures + 1)); fi
+          test "$qa_failures" -eq 0
 
       - name: Upload neutral WebGL evidence
         if: always()
