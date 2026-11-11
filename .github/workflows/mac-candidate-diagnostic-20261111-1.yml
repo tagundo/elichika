@@ -1,0 +1,163 @@
+name: Diagnose exact 2026.11.11.1 Mac candidate
+run-name: Same-byte Mac diagnostic for 24c3881 / 326c45d
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/mac-candidate-diagnostic-20261111-1]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose-exact-candidate:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      GIT_OPTIONAL_LOCKS: '0'
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+      ORIGINAL_PARENT: 24c38811ff36878e03b223e46bdeb3bd5e6f5fd1
+      ORIGINAL_TOOLS: 326c45dbc52eac4da1684c8b5a6ec4dd301869f6
+      ELICHIKA_NATIVE_PCM_GAME_QA: '1'
+    steps:
+      - name: Check out original unchanged validation harness
+        uses: actions/checkout@v4
+        with:
+          ref: 24c38811ff36878e03b223e46bdeb3bd5e6f5fd1
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Check out only the external diagnostic monitor
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: qa-definition
+          sparse-checkout: macos/ci/diagnose_candidate_host.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run original native Swift tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/mac-candidate-diagnostic-20261111-1/evidence"
+          swift test --package-path macos --scratch-path "$RUNNER_TEMP/diagnostic-swift-tests" > "$RUNNER_TEMP/mac-candidate-diagnostic-20261111-1/evidence/swift-tests.txt" 2>&1
+
+      - name: Retrieve and verify the exact failed-run candidate bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          export DIAG_ROOT="$RUNNER_TEMP/mac-candidate-diagnostic-20261111-1"
+          mkdir -p "$DIAG_ROOT/evidence" "$DIAG_ROOT/unpacked" "$DIAG_ROOT/delivery"
+          echo "DIAG_ROOT=$DIAG_ROOT" >> "$GITHUB_ENV"
+          gh api repos/tagundo/elichika/actions/artifacts/13816434735 > "$DIAG_ROOT/candidate-artifact-metadata.json"
+          gh api repos/tagundo/elichika/actions/artifacts/13816434735/zip > "$DIAG_ROOT/candidate-raw.zip"
+          gh api repos/tagundo/elichika/actions/artifacts/13817582921/zip > "$DIAG_ROOT/prior-evidence-raw.zip"
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,zipfile
+          root=pathlib.Path(os.environ['DIAG_ROOT'])
+          meta=json.loads((root/'candidate-artifact-metadata.json').read_text())
+          assert meta['id']==13816434735 and meta['workflow_run']['id']==42932031709
+          assert meta['workflow_run']['head_sha']==os.environ['ORIGINAL_PARENT']
+          raw=root/'candidate-raw.zip'
+          with raw.open('rb') as stream: digest=hashlib.file_digest(stream,'sha256').hexdigest()
+          assert raw.stat().st_size==304939429 and digest=='57d553df45e0ce0f09b1e4c7d892c8316e41f380e3760e88773da3e512edf63a'
+          assert meta['digest']=='sha256:'+digest
+          with zipfile.ZipFile(raw) as archive:
+              assert archive.testzip() is None
+              expected={'candidate-manifest.json','Elichika-2026.11.11.1-UNVALIDATED-AppleSilicon.app.zip'}
+              assert set(archive.namelist())==expected
+              archive.extractall(root/'candidate')
+          inner=root/'candidate/Elichika-2026.11.11.1-UNVALIDATED-AppleSilicon.app.zip'
+          with inner.open('rb') as stream: inner_hash=hashlib.file_digest(stream,'sha256').hexdigest()
+          assert inner.stat().st_size==304938704 and inner_hash=='192c2bfaf7c2fe1bc149f1cd208ec5187ef1b3417337a2f70b990d2145a23db4'
+          previous=root/'prior-evidence-raw.zip'
+          assert hashlib.sha256(previous.read_bytes()).hexdigest()=='2602aa6a2a5b64cbc26b40d1c721985e23f5f28ce378a0271b79b3987600d2dd'
+          with zipfile.ZipFile(previous) as archive:
+              assert archive.testzip() is None
+              (root/'evidence/app-build.json').write_bytes(archive.read('app-build.json'))
+              (root/'evidence/original-failed-native-report.json').write_bytes(archive.read('native-app-data/native-smoke.json'))
+          binding={'candidate_build_run':42932031709,'candidate_artifact':13816434735,
+                   'candidate_outer_sha256':digest,'candidate_inner_sha256':inner_hash,
+                   'parent':os.environ['ORIGINAL_PARENT'],'tools':os.environ['ORIGINAL_TOOLS'],
+                   'diagnostic_workflow_sha':os.environ['GITHUB_SHA'],'diagnostic_run':os.environ['GITHUB_RUN_ID'],
+                   'signed_resources_modified':False,'original_smoke_timeout_seconds':120}
+          (root/'evidence/candidate-binding.json').write_text(json.dumps(binding,indent=2)+'\n')
+          PY
+          ditto -x -k "$DIAG_ROOT/candidate/Elichika-2026.11.11.1-UNVALIDATED-AppleSilicon.app.zip" "$DIAG_ROOT/unpacked"
+          echo "DIAG_APP=$DIAG_ROOT/unpacked/Elichika.app" >> "$GITHUB_ENV"
+          cp "$DIAG_ROOT/unpacked/Elichika.app/Contents/Resources/bundle-provenance.json" "$DIAG_ROOT/evidence/bundle-provenance.json"
+          python3 - <<'PY'
+          import json,os,pathlib
+          value=json.loads((pathlib.Path(os.environ['DIAG_ROOT'])/'evidence/bundle-provenance.json').read_text())
+          assert value['source']['parent_commit']==os.environ['ORIGINAL_PARENT']
+          assert value['source']['modtools_commit']==os.environ['ORIGINAL_TOOLS']
+          assert value['version']=='2026.11.11.1' and value['architectures']==['arm64']
+          PY
+
+      - name: Verify original signed bundle and private runtime
+        run: |
+          python3 macos/ci/audit_bundle.py --app "$DIAG_APP" --arch arm64 --report "$DIAG_ROOT/evidence/bundle-before-launch.json"
+          python3 macos/ci/verify_runtime.py --app "$DIAG_APP" --network --report "$DIAG_ROOT/evidence/private-runtime.json"
+
+      - name: Run unchanged bundled desktop runtime tests
+        run: |
+          python3 - <<'PY'
+          import os,pathlib,subprocess,sys
+          sys.path.insert(0,'macos/ci')
+          from verify_runtime import private_environment
+          root=pathlib.Path(os.environ['DIAG_ROOT'])
+          resources=pathlib.Path(os.environ['DIAG_APP'])/'Contents/Resources'
+          result=subprocess.run([str(resources/'runtime/arm64/python/bin/python3'),'-I','-B','-m','unittest','discover','-s','tests','-p','test_macos_runtime*.py','-v'],env=private_environment(resources),text=True,capture_output=True,timeout=300)
+          evidence=result.stdout+result.stderr
+          (root/'evidence/bundled-runtime-tests.txt').write_text(evidence)
+          print(evidence,end='')
+          if result.returncode or 'skipped=' in evidence or '... skipped ' in evidence:
+              raise SystemExit('Bundled runtime tests must pass without skips')
+          PY
+
+      - name: Run unchanged packaged workbench gates
+        run: |
+          python3 macos/ci/verify_workbench.py --repo . --app "$DIAG_APP" --report "$DIAG_ROOT/evidence/workbench-tests.json"
+
+      - name: Run full original native gate with external observation
+        run: |
+          python3 qa-definition/macos/ci/diagnose_candidate_host.py --repo "$GITHUB_WORKSPACE" --app "$DIAG_APP" --evidence "$DIAG_ROOT/evidence" --relocation "$DIAG_ROOT/이동한 Elichika 앱/Elichika.app"
+          python3 macos/ci/audit_bundle.py --app "$DIAG_ROOT/이동한 Elichika 앱/Elichika.app" --arch arm64 --report "$DIAG_ROOT/evidence/bundle-after-relaunch.json"
+          python3 - <<'PY'
+          import json,os,pathlib,hashlib
+          root=pathlib.Path(os.environ['DIAG_ROOT'])
+          before=json.loads((root/'evidence/bundle-before-launch.json').read_text())
+          after=json.loads((root/'evidence/bundle-after-relaunch.json').read_text())
+          assert before['native_images']==after['native_images']
+          assert before['source']==after['source'] and before['shared_source_files']==after['shared_source_files']
+          inner=root/'candidate/Elichika-2026.11.11.1-UNVALIDATED-AppleSilicon.app.zip'
+          with inner.open('rb') as stream: value=hashlib.file_digest(stream,'sha256').hexdigest()
+          assert value=='192c2bfaf7c2fe1bc149f1cd208ec5187ef1b3417337a2f70b990d2145a23db4'
+          PY
+
+      - name: Preserve signature audit after any diagnostic outcome
+        if: always()
+        run: |
+          if [ -d "$DIAG_ROOT/이동한 Elichika 앱/Elichika.app" ]; then
+            python3 macos/ci/audit_bundle.py --app "$DIAG_ROOT/이동한 Elichika 앱/Elichika.app" --arch arm64 --report "$DIAG_ROOT/evidence/bundle-after-diagnostic.json"
+          elif [ -d "$DIAG_APP" ]; then
+            python3 macos/ci/audit_bundle.py --app "$DIAG_APP" --arch arm64 --report "$DIAG_ROOT/evidence/bundle-after-diagnostic.json"
+          fi
+
+      - name: Upload exact-byte diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-candidate-diagnostic-20261111-1-evidence
+          path: |
+            ${{ runner.temp }}/mac-candidate-diagnostic-20261111-1/evidence/
+            !${{ runner.temp }}/mac-candidate-diagnostic-20261111-1/evidence/native-app-data/application-support/**
+            !${{ runner.temp }}/mac-candidate-diagnostic-20261111-1/evidence/native-app-data/sukusta/**
+          if-no-files-found: error
