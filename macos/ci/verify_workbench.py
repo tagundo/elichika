@@ -26,16 +26,22 @@ ensure_tk_stub()
 from webtools.core import game_motions, game_motion_audio, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace, viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, member_identity
 import transplant_bundle_io, costume_face_installer, costume_scene_installer, costume_clone, costume_management
 import costume_cdn_catalog, costume_cdn_restore
+import graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse
 from adminui.tools import costume_cdn as cdn_admin
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
                     model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace,
                     viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, transplant_bundle_io, game_motion_audio,
                     costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
-                    costume_cdn_catalog, costume_cdn_restore, cdn_admin)
+                    costume_cdn_catalog, costume_cdn_restore, cdn_admin,
+                    graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse)
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
             'test_viewer_transplants.py', 'test_viewer_transplant_paths.py', 'test_viewer_workbench_routes.py',
+            'test_graft_texture_atlas.py', 'test_graft_atlas_geometry.py', 'test_graft_game_compat.py',
+            'test_graft_uv_reuse.py',
+            'test_graft_active_textures.py',
+            'test_reuse_empty_uv_options.py',
             'test_physics_game_engine.py', 'test_physics_game_catalog.py', 'test_physics_game_runtime.py',
             'test_viewer_mesh_selection.py', 'test_model_expressions.py', 'test_transplant_physics_graph.py',
             'test_motion_audio_transport.py', 'test_viewer_motion_library.py', 'test_viewer_gaze.py',
@@ -204,6 +210,7 @@ explicit_cases = [
     'test_model_outlines.OutlineTests.test_runtime_member_face_requires_exact_original_body_binding',
     'test_model_outlines.OutlineTests.test_absolute_raw_width_sets_every_vertex_and_preserves_source_and_other_channels',
     'test_model_outlines.OutlineTests.test_sparse_vertex_override_after_absolute_width_keeps_native_rounding',
+    'test_model_outlines.OutlineTests.test_diagnostic_sources_match_captured_bytes_and_change_with_new_model',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_pair_uses_semantic_mesh_and_each_native_mask',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_paired_mod_zip_propagates_all_platform_variants',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_pair_rejects_missing_and_ambiguous_semantic_mesh',

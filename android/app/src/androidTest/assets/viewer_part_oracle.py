@@ -1,5 +1,4 @@
 """Independent serialized oracle for the original neutral native graft pair."""
-import copy
 import hashlib
 import json
 import math
@@ -94,17 +93,6 @@ def verify_pointers(value, source):
             verify_pointers(item, source)
 
 
-def normalized_material(tree, source):
-    tree = copy.deepcopy(tree)
-    for _, value in tree["m_SavedProperties"]["m_TexEnvs"]:
-        pointer = value["m_Texture"]
-        if pointer["m_FileID"] == 0 and pointer["m_PathID"]:
-            texture = source[pointer["m_PathID"]]
-            assert texture.type.name == "Texture2D"
-            value["m_Texture"] = {"texture_raw_sha256": sha(texture.get_raw_data())}
-    return tree
-
-
 def inspect_json(encoded):
     report = json.loads(encoded)
     assert report["status"] == "PASS" and report["selected"]["selectedFaces"] == [0, 5, 19]
@@ -119,6 +107,14 @@ def inspect_json(encoded):
     assert tm["m_VertexData"]["m_VertexCount"] == dm["m_VertexData"]["m_VertexCount"] == 60
     assert sm["m_VertexData"]["m_VertexCount"] == 69 and len(indices(sm)) == 69
     assert indices(sm)[:60] == indices(tm) and indices(sm)[60:] == list(range(60, 69))
+    # The game's Body merge reads only submesh zero and sharedMaterial. All
+    # retained and inserted faces must be in that original material slot.
+    assert len(tr["m_Materials"]) == len(sr["m_Materials"]) == 1, "Body needs its original single material slot"
+    assert sr["m_Materials"] == tr["m_Materials"], "The original Body material pointer changed"
+    assert len(sm["m_SubMeshes"]) == 1, "Body needs one combined submesh"
+    submesh = sm["m_SubMeshes"][0]
+    assert (submesh["firstByte"], submesh["indexCount"], submesh.get("baseVertex", 0),
+            submesh.get("topology", 0)) == (0, 69, 0, 0), "Submesh zero must contain every graft triangle"
     assert sm["m_BindPose"] == tm["m_BindPose"]
     assert set(ta) == set(da) == set(sa) == {0, 1, 3, 4, 12, 13}
     for channel in ta:
@@ -142,12 +138,15 @@ def inspect_json(encoded):
         if original.type.name not in {"Mesh", "SkinnedMeshRenderer", "MonoBehaviour"}:
             assert saved[path_id].get_raw_data() == original.get_raw_data(), ("Unrelated target object changed", path_id)
             unchanged.append(path_id)
-    original_materials = [normalized_material(obj.read_typetree(), donor) for obj in donor.values() if obj.type.name == "Material"]
     added_materials = [obj for path_id, obj in saved.items() if path_id not in target and obj.type.name == "Material"]
-    assert len(added_materials) == 1 and normalized_material(added_materials[0].read_typetree(), saved) in original_materials
-    donor_textures = [sha(obj.get_raw_data()) for obj in donor.values() if obj.type.name == "Texture2D"]
-    added_textures = [sha(obj.get_raw_data()) for path_id, obj in saved.items() if path_id not in target and obj.type.name == "Texture2D"]
-    assert len(added_textures) == 1 and added_textures == donor_textures
+    assert not added_materials, "Game-compatible grafting must not add a Material object"
+    # This pair differs only in positions and vertex colors. Its identical
+    # material textures reuse the original UVs/texture with no atlas growth.
+    donor_textures = sorted(sha(obj.get_raw_data()) for obj in donor.values() if obj.type.name == "Texture2D")
+    target_textures = sorted(sha(obj.get_raw_data()) for obj in target.values() if obj.type.name == "Texture2D")
+    assert donor_textures == target_textures, "The native identity-atlas fixture textures changed"
+    added_textures = [obj for path_id, obj in saved.items() if path_id not in target and obj.type.name == "Texture2D"]
+    assert not added_textures, "Identical source textures must not create another atlas texture"
     for obj in saved.values():
         verify_pointers(obj.read_typetree(), saved)
     assert report["request"]["donorSha256"] == EXPECTED["donorPath"]
@@ -159,4 +158,6 @@ def inspect_json(encoded):
         "targetVerticesPreserved": 60, "selectedOriginalFaces": [0, 5, 19], "outputVertices": 69, "outputTriangles": 23,
         "unrelatedTargetObjectsExact": len(unchanged), "donorUVColorAndSkinExact": True,
         "originalBindPosesExact": True, "allLocalPPtrsResolve": True, "donorTexturesExact": True,
+        "originalMaterialSlots": 1, "outputSubmeshes": 1,
+        "addedMaterialObjects": 0, "addedTextureObjects": 0, "atlasIdentity": True,
         "maximumDonorPositionNormalError": maximum})

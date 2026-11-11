@@ -87,6 +87,7 @@ jobs:
           python3 -m unittest discover -s ../tests -p test_costume_cdn_packaging.py -v
           python3 -m unittest discover -s ../tests -p test_shared_asset_crypto.py -v
           python3 -m unittest discover -s ../tests -p test_pack_lookup.py -v
+          python3 -m unittest discover -s ../tests -p test_viewer_part_oracle.py -v
           python3 -m unittest discover -s ../tests -p test_costume_scene_clones.py -v
           python3 -m unittest discover -s ../tests -p test_costume_scene_sources.py -v
           python3 -m unittest discover -s ../tests -p test_costume_scene_clone_interop.py -v
@@ -123,6 +124,12 @@ jobs:
           python3 -m unittest discover -s tests -p test_viewer_mod_package.py -v
           python3 -m unittest discover -s tests -p test_viewer_mod_flow.py -v
           python3 -m unittest discover -s tests -p test_viewer_transplant_paths.py -v
+          python3 -m unittest discover -s tests -p 'test_graft_*.py' -v
+          python3 -m unittest discover -s tests -p test_reuse_empty_uv_options.py -v
+          python3 -m unittest discover -s tests -p test_transplant_geometry_regressions.py -v
+          python3 -m unittest discover -s tests -p test_transplant_seams_and_io.py -v
+          python3 -m unittest discover -s tests -p test_transplant_physics_graph.py -v
+          python3 -m unittest discover -s tests -p test_viewer_transplants.py -v
           python3 -m unittest discover -s tests -p test_viewer_body_controls.py -v
           python3 -m unittest discover -s tests -p 'test_game_models*.py' -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
@@ -223,6 +230,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/minimize" node tests/viewer_minimize_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/compact-layout" node tests/viewer_compact_layout_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/body-controls" node tests/viewer_body_controls_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/outline-diagnostics" node tests/viewer_outline_diagnostics_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/game-assets" node tests/viewer_game_assets_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/transplant-game-assets" node tests/transplant_game_assets_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/macos" node tests/viewer_macos_browser.js

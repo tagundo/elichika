@@ -112,6 +112,8 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'sifas_node_scaling','sifas_mesh_baker','sifas_breast_tuner','skirt_length_changer',
          'hips_size_changer','Upleg_SwingCollider_changer','sifas_accessory_unclip',
          'costume_transplant','costume_part_transplant','lower_body_swap','transplant_bundle_io',
+         'graft_texture_atlas','graft_atlas_geometry','graft_game_compat',
+         'graft_uv_reuse',
          'unity_costumemod_packer','skin_tone_changer','texture_importer',
          'assetbundle_IosApk_batch_import_plus','fix_sifas_bundle_export',
          'database_backup','database_restore','costume_scene_installer','costume_face_installer','costume_scene_clones','costume_scene_sources',
