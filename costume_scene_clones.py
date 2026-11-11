@@ -15,10 +15,9 @@ def _sha(raw):
 
 
 def _shared(manifest):
-    from costume_scene_installer import _codec
+    from costume_scene_installer import _codec, _shared_capabilities_valid
     codec = _codec()
-    if (manifest.get("version") != codec.SHARED_VERSION or
-            manifest.get("requires") != [codec.SHARED_CAPABILITY]):
+    if not _shared_capabilities_valid(manifest):
         raise ValueError("Cloning scene-specific HOME/MV costumes requires re-exporting the source as shared-board v2.")
     return codec
 
@@ -30,6 +29,7 @@ def _catalog_name(conn):
 def canonical_clone_candidates(*, root="."):
     """Cheap listing index only; selecting a source still verifies everything."""
     from costume_management import _read_receipt, ManagementError
+    from costume_scene_installer import _shared_capabilities_valid
     root = Path(root).resolve()
     result = set()
     for path in (root / ".costume-management/receipts").glob("*.json"):
@@ -45,8 +45,7 @@ def canonical_clone_candidates(*, root="."):
             if not isinstance(manifest, dict):
                 continue
             archive = Path(scene["archive_path"])
-            if (scene.get("version") == 2 and manifest.get("version") == 2 and
-                    manifest.get("requires") == ["rina-shared-board-v2"] and manifest.get("character_id") == 209 and
+            if (scene.get("version") == 2 and _shared_capabilities_valid(manifest) and manifest.get("character_id") == 209 and
                     type(manifest.get("target_member_id")) is int and
                     manifest.get("default_variant") in ("primary", "unmasked") and
                     archive.parent == root / ".costume-management/sources" and

@@ -94,6 +94,7 @@ jobs:
           python3 -m unittest discover -s ../tests -p test_costume_scene_clones.py -v
           python3 -m unittest discover -s ../tests -p test_costume_scene_sources.py -v
           python3 -m unittest discover -s ../tests -p test_costume_scene_clone_interop.py -v
+          python3 -m unittest discover -s ../tests -p test_costume_scene_face_authoring.py -v
           python3 -c 'import hashlib, sys; from pathlib import Path; from UnityPy.helpers import TypeTreeHelper; actual = hashlib.sha256(Path(TypeTreeHelper.__file__).read_bytes()).hexdigest(); actual == "355179e62b14d2f638947e057979d15815a9cadd3a3d868d8b809455193a290b" or sys.exit("Expected pristine UnityPy1.25.0 TypeTreeHelper, got " + actual)'
           # Exercise the real guarded Android launcher after model dependencies are installed.
           python3 -m unittest discover -s ../tests -p test_android_python_launch.py -v
@@ -118,6 +119,9 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
           python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
           python3 -m unittest discover -s tests -p test_model_edits.py -v
+          python3 -m unittest discover -s tests -p test_viewer_texture_tools.py -v
+          python3 -m unittest discover -s tests -p test_texture_image_io.py -v
+          python3 -m unittest discover -s tests -p test_texture_project_io.py -v
           python3 -m unittest discover -s tests -p test_model_outlines.py -v
           python3 -m unittest discover -s tests -p test_outline_inventory_sessions.py -v
           python3 -m unittest discover -s tests -p test_model_edit_dependencies.py -v
@@ -202,6 +206,15 @@ jobs:
         run: |
           export NODE_PATH="$RUNNER_TEMP/viewer-browser/node_modules"
           mkdir -p "$EVIDENCE_DIR"
+          node tests/texture_color_math_test.js
+          node tests/texture_color_worker_test.js
+          node tests/texture_paint_engine_test.js
+          node tests/texture_paint_layers_test.js
+          node tests/texture_png_test.js
+          node tests/sifas_texture_override_test.js
+          node tests/viewer_texture_tools_test.js
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node tests/viewer_texture_persistence_order_test.js
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node tests/viewer_texture_layers_rollback_test.js
           node tests/viewer_game_physics_motion_metadata_test.js
           node tests/viewer_native_pcm_test.js
           node tests/viewer_native_pcm_controller_test.js
@@ -236,6 +249,9 @@ jobs:
           node tests/viewer_quality_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-editors" node tests/viewer_texture_tools_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-layers" node tests/viewer_texture_layers_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-panel-expand" node tests/texture_panel_expand_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/mod-packages" node tests/viewer_mod_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/minimize" node tests/viewer_minimize_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/compact-layout" node tests/viewer_compact_layout_browser.js

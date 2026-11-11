@@ -859,8 +859,8 @@ def _scene_donor_dependencies(root,install_id,suit_ids,*,selected_install_ids=()
                 if not isinstance(canonical,dict) or canonical.get("version")!=2:
                     raise ManagementError("Unverifiable canonical clone donor")
                 manifest=canonical.get("manifest")
-                if (not isinstance(manifest,dict) or manifest.get("version")!=2 or
-                        manifest.get("requires")!=["rina-shared-board-v2"] or manifest.get("character_id")!=209):
+                from costume_scene_installer import _shared_capabilities_valid
+                if (not _shared_capabilities_valid(manifest) or manifest.get("character_id")!=209):
                     raise ManagementError("Unverifiable canonical clone authoring manifest")
             elif other.get("kind")=="scene":
                 manifest=source.get("manifest") if isinstance(source,dict) else None

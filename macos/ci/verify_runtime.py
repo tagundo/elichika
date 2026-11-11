@@ -102,6 +102,9 @@ from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
 modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.registry',
          'webtools.core.model_accessory_unclip','webtools.core.model_edits',
+         'webtools.core.viewer_texture_tools',
+         'webtools.core.texture_image_io',
+         'webtools.core.texture_project_io',
          'webtools.core.model_outlines', 'webtools.core.viewer_thumbnails', 'webtools.core.viewer_thumbnail_roles',
          'webtools.core.mod_thumbnail_replace',
          'webtools.core.viewer_mod_flow', 'webtools.core.viewer_mod_package',

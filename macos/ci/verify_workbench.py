@@ -28,7 +28,11 @@ import transplant_bundle_io, costume_installer_defaults, costume_face_installer,
 import costume_cdn_catalog, costume_cdn_restore
 import graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale
 from adminui.tools import costume_cdn as cdn_admin
+from webtools.core import viewer_texture_tools, texture_image_io, texture_project_io
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
+                    viewer_texture_tools,
+                    texture_image_io,
+                    texture_project_io,
                     model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace,
                     viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, transplant_bundle_io, game_motion_audio,
                     costume_installer_defaults, costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
@@ -37,6 +41,9 @@ packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_tran
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
+            'test_viewer_texture_tools.py', 'test_viewer_scene_texture_edits.py',
+            'test_texture_image_io.py',
+            'test_texture_project_io.py',
             'test_viewer_transplants.py', 'test_viewer_transplant_paths.py', 'test_viewer_workbench_routes.py',
             'test_graft_texture_atlas.py', 'test_graft_atlas_geometry.py', 'test_graft_game_compat.py',
             'test_graft_uv_reuse.py', 'test_graft_uv_texture_upscale.py',
@@ -88,7 +95,8 @@ staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.j
     'viewer_game_physics_motion_metadata_test.js',
     'viewer_mesh_connected_zoom_test.js', 'viewer_gaze_test.js', 'viewer_motion_audio_transport_test.js',
     'viewer_transplant_bone_selection_test.js', 'viewer_thumbnail_saved_settings_test.js',
-    'viewer_motion_performance_test.js', 'viewer_native_pcm_test.js', 'viewer_native_pcm_controller_test.js']
+    'viewer_motion_performance_test.js', 'viewer_native_pcm_test.js', 'viewer_native_pcm_controller_test.js',
+    'texture_paint_engine_test.js', 'texture_paint_layers_test.js']
 numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisions.json',
     'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
     'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json',
@@ -99,6 +107,10 @@ for name in staged_python + staged_drivers:
 for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
 static_files = ['vendor/three-r128/three.min.js', 'viewer-physics.js',
+    'texture-png.js', 'texture-color-math.js', 'texture-color-worker.js',
+    'texture-paint-engine.js', 'viewer-texture-tools.js', 'viewer-texture-tools.css',
+    'texture-panel-expand.js', 'texture-panel-expand.css',
+    'vendor/fflate-0.8.2/fflate.min.js',
     'viewer-game-physics-math.js', 'viewer-game-physics-collision.js', 'viewer-game-physics.js',
     'viewer-mesh-tools.js', 'viewer-motion-timeline.js', 'viewer-motion-audio.js', 'viewer-native-pcm-player.js', 'viewer-transplants.js', 'viewer-thumbnails.js']
 packaged_node_sources = {}
@@ -257,6 +269,37 @@ class PackagedMotionTimelineTests(unittest.TestCase):
         self.assertEqual(report['after']['frames'], 1000)
         self.assertIn('not device FPS', report['scope'])
 suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(PackagedMotionTimelineTests))
+texture_paint_node_probes = {}
+class PackagedTexturePaintTests(unittest.TestCase):
+    def run_driver(self, name):
+        script = test_stage / name
+        actual = (static / 'texture-paint-engine.js').resolve()
+        assert actual.is_relative_to(source)
+        result = subprocess.run(['node', str(script)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return script, actual, result.stdout.strip()
+
+    def test_actual_packaged_paint_masks_history_and_clipboard_contracts(self):
+        import re
+        script, actual, output = self.run_driver('texture_paint_engine_test.js')
+        marker = re.fullmatch(r'PASS: ([0-9]+) texture paint compositing, flood, masking, preview and reversible-edit contracts', output)
+        self.assertIsNotNone(marker, output)
+        self.assertEqual(int(marker.group(1)), 39)
+        texture_paint_node_probes['engine'] = dict(status='PASS', cases=39,
+            driver_sha256=hashlib.sha256(script.read_bytes()).hexdigest(),
+            engine_source_sha256=hashlib.sha256(actual.read_bytes()).hexdigest())
+
+    def test_actual_packaged_layer_pixels_and_project_undo_contracts(self):
+        script, actual, output = self.run_driver('texture_paint_layers_test.js')
+        probe = json.loads(output)
+        self.assertEqual(probe['status'], 'PASS')
+        self.assertEqual(probe['cases'], 18)
+        self.assertEqual(len(probe['names']), 18)
+        self.assertEqual(len(set(probe['names'])), 18)
+        texture_paint_node_probes['layers'] = dict(status='PASS', cases=18, names=probe['names'],
+            driver_sha256=hashlib.sha256(script.read_bytes()).hexdigest(),
+            engine_source_sha256=hashlib.sha256(actual.read_bytes()).hexdigest())
+suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(PackagedTexturePaintTests))
 def case_ids(tests):
     for item in tests:
         if isinstance(item, unittest.TestSuite):
@@ -332,6 +375,7 @@ report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else
           'executed_packaged_module_paths': packaged_imports,
           'explicit_cases': explicit_cases, 'executed_cases': executed_cases,
           'packaged_node_static_sources': packaged_node_sources,
+          'texture_paint_node_probes': texture_paint_node_probes,
           'physics_motion_metadata_node_probe': metadata_probe,
           'native_pcm_node_probes': pcm_probes,
           'packaged_astc_cli': {'path': str(astc.relative_to(resources)),

@@ -51,13 +51,21 @@ def _safe_file(path):
     return path
 
 
-def _codec():
+def _codec_module():
     # Desktop development keeps modtools as a submodule; app payloads flatten it.
     child = Path(__file__).resolve().parent / "modtools"
     if child.is_dir() and str(child) not in sys.path:
         sys.path.insert(0, str(child))
     from webtools.core import viewer_scene_format
     return viewer_scene_format
+
+
+def _codec():
+    return _codec_module()
+
+
+def _shared_capabilities_valid(manifest):
+    return _codec_module().shared_capabilities_valid(manifest)
 
 
 def is_scene_package(path):
@@ -278,7 +286,7 @@ def _routing_contract(manifest):
     shared = version == 2
     if shared:
         target, variant = manifest.get("target_member_id"), manifest.get("default_variant")
-        if (manifest.get("requires") != ["rina-shared-board-v2"]
+        if (not _shared_capabilities_valid(manifest)
                 or type(target) is not int or not 0 < target < 2**31
                 or variant not in ("primary", "unmasked") or target == 209 and variant != "primary"):
             raise ValueError("The shared-board target/default routing contract is invalid.")
@@ -423,11 +431,48 @@ def _rebase_execution_graph(decoded, namespace):
             "execution_identity_rebased": True}
 
 
+def _private_face_contract(manifest, files):
+    """Private logical keys must also have private Unity cache identities."""
+    from costume_clone_assets import _bundle_metadata
+    for platform, authoring in manifest.get("face_authoring", {}).items():
+        runtime = manifest["dependencies"][platform]["facedynamic"]
+        if runtime is None:
+            continue
+        original = _bundle_metadata(files[authoring["original"]["member"]])
+        edited = _bundle_metadata(files[runtime["member"]])
+        original_cabs = {name.lower() for name in original[0]}
+        edited_cabs = {name.lower() for name in edited[0]}
+        original_names = {name.lower() for _, name in original[1]}
+        edited_names = {name.lower() for _, name in edited[1]}
+        if original_cabs.intersection(edited_cabs) or original_names.intersection(edited_names):
+            raise ValueError("The edited face must use private Unity identities; re-export with this costume's face edits included.")
+        active_cabs, active_names = set(edited_cabs), set(edited_names)
+        for role in ("mv_board", "mv_unmasked"):
+            ref = manifest["platforms"][platform][role]
+            body = _bundle_metadata(files[ref["member"]])
+            body_cabs = {name.lower() for name in body[0]}
+            body_names = {name.lower() for _, name in body[1]}
+            if active_cabs.intersection(body_cabs) or active_names.intersection(body_names):
+                raise ValueError("The private face and runtime costume models must use distinct Unity identities.")
+            active_cabs.update(body_cabs)
+            active_names.update(body_names)
+            externals = tuple(path.lower() for path in body[2])
+            dependencies = {name.lower() for name in body[3]}
+            if (any(cab in path for cab in original_cabs for path in externals) or
+                    original_names.intersection(dependencies)):
+                raise ValueError("The runtime costume still references the original face instead of its private edited face.")
+            if role == "mv_unmasked" and not (any(cab in path for cab in edited_cabs for path in externals) or
+                                               edited_names.intersection(dependencies)):
+                raise ValueError("The bare runtime costume is not bound to its private edited face.")
+
+
 def prepare_package(decoded, root="."):
     """Pure catalogue preflight; no pack, database or journal is written here."""
     manifest, files = decoded["manifest"], decoded["files"]
     shared, target, variant, aliases = _routing_contract(manifest)
     graph = _graph_contract(manifest)
+    if not graph:
+        _private_face_contract(manifest, files)
     plan = ScenePlan(root, decoded)
     if graph:
         decoded = _rebase_execution_graph(decoded, plan.install_key)
@@ -526,7 +571,8 @@ def prepare_package(decoded, root="."):
             # In graph mode the private runtime face is a graph node. The
             # separate facedynamic resource remains canonical authoring input.
             authoring_face = manifest.get("dependencies", {}).get(platform, {}).get("facedynamic")
-            face_reuse = authoring_face if shared and not graph else None
+            face_authoring = manifest.get("face_authoring", {}).get(platform)
+            face_reuse = authoring_face if shared and not graph and not face_authoring else None
             face = None if graph or face_reuse else authoring_face
             if face:
                 values["facedynamic"] = face
@@ -561,6 +607,16 @@ def prepare_package(decoded, root="."):
                                                    platform=platform, region=region, source_suit_id=source_suit)
                             reused_face = proof["asset_path"]
                             plan.authoring_face_reuse.append({"database": relative, **proof})
+                        private_face_source = None
+                        if face and face_authoring:
+                            # The edited face has a private runtime CAB. Admit
+                            # its public dependency closure only after proving
+                            # the separate immutable original against the CDN.
+                            from costume_scene_sources import face_preflight
+                            proof = face_preflight(db, files[face_authoring["original"]["member"]], root=plan.root,
+                                                   platform=platform, region=region, source_suit_id=source_suit)
+                            private_face_source = proof["asset_path"]
+                            plan.authoring_face_reuse.append({"database": relative, "runtime_private": True, **proof})
                         package_key = "suit:" + str(plan.suit_id)
                         mapping = {}
                         for role, (pack_name, size) in pack_records[platform].items():
@@ -589,8 +645,10 @@ def prepare_package(decoded, root="."):
                             else:
                                 label = "R" if role == "mv_unmasked" else "C"
                                 outgoing = [value for _, target, value in defaults["DEPENDENCIES"][209] if target == label]
-                            if role == "mv_unmasked" and face:
-                                outgoing = [value for value in outgoing if value != "Z$"] + [face_path]
+                            if face and private_face_source and (private_face_source in outgoing or role == "mv_unmasked"):
+                                outgoing = [value for value in outgoing if value != private_face_source] + [face_path]
+                            elif role == "mv_unmasked" and face:
+                                outgoing = [value for value in outgoing if value != (private_face_source or "Z$")] + [face_path]
                             elif role == "mv_unmasked" and reused_face:
                                 outgoing = [value for value in outgoing if value != "Z$"] + [reused_face]
                             logical = plan.model_paths[role]
@@ -598,6 +656,9 @@ def prepare_package(decoded, root="."):
                             for dependency in outgoing:
                                 if dependency not in dependencies[logical]:
                                     dependencies[logical].append(dependency)
+                        if private_face_source:
+                            dependencies[face_path] = [row[0] for row in db.execute(
+                                "SELECT dependency FROM member_model_dependency WHERE asset_path=?", (private_face_source,))]
                         if graph:
                             for key, node in graph[platform]["nodes"].items():
                                 logical = graph_paths[platform][key]

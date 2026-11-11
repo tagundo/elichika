@@ -343,6 +343,13 @@ jobs:
           d=android/app/build/outputs/apk/debug
           mv "$d/app-debug.apk" "$d/elichika-${{ steps.ver.outputs.name }}-debug.apk"
 
+      - name: Bind debug texture editor resources and Python code to reviewed sources
+        run: |
+          python3 -m unittest discover -s tests -p test_android_texture_editor_packaging.py -v
+          python3 android/ci/verify_texture_editor_apk.py \
+            "android/app/build/outputs/apk/debug/elichika-${{ steps.ver.outputs.name }}-debug.apk" \
+            --report android-debug-texture-editor.json
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -392,6 +399,12 @@ jobs:
           mv "$d/app-release.apk" "$d/elichika-${{ steps.ver.outputs.name }}.apk"
           ls -la "$d"
 
+      - name: Bind release texture editor resources and Python code to reviewed sources
+        run: |
+          python3 android/ci/verify_texture_editor_apk.py \
+            "android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk" \
+            --report android-texture-editor.json
+
       - name: Reject incompatible native files in the actual APK
         id: layout
         run: |
@@ -414,6 +427,8 @@ jobs:
             android-hca-decoder.json
             android-texture65-decoder.json
             android-installer-resources.json
+            android-debug-texture-editor.json
+            android-texture-editor.json
             android/app/build/generated/texture65/reports/*.json
           if-no-files-found: warn
 
