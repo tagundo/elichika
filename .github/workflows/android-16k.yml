@@ -21,6 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select reachable Ubuntu-signature-verified package mirrors
+        run: |
+          mkdir -p evidence
+          sudo env ELICHIKA_APT_EVIDENCE="$PWD/evidence" python3 android/ci/prepare_ubuntu_apt.py
+
       - name: Prepare software ARM VM and official 16KB Android image
         run: |
           set -euo pipefail

@@ -195,7 +195,7 @@ jobs:
         run: |
           python3 -m pip install "numpy==1.26.2" "Pillow==11.0.0" "UnityPy==1.25.0"
           npm install --prefix "$RUNNER_TEMP/viewer-browser" --no-audit --no-fund --ignore-scripts playwright@1.56.1
-          "$RUNNER_TEMP/viewer-browser/node_modules/.bin/playwright" install --with-deps chromium
+          "$RUNNER_TEMP/viewer-browser/node_modules/.bin/playwright" install chromium
 
       - name: Exercise real WebGL pose, scaling and game materials
         working-directory: modtools
