@@ -33,14 +33,36 @@
     observePhase(message + ': timed out');
     throw new Error('Timed out: ' + message + ': ' + JSON.stringify(state()));
   }
-  function expose(element) {
+  async function expose(element) {
     assert(element, 'Missing actual part selection control');
-    for (var parent = element.parentElement; parent; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true;
-    element.scrollIntoView({ block: 'center' }); return element;
+    // Open the real Settings/Selection controls before inspecting or clicking
+    // fields moved out of the canvas. Never override their hidden state or CSS.
+    for (var parent = element.parentElement; parent; parent = parent.parentElement)
+      if (parent.tagName === 'DETAILS' && !parent.classList.contains('uv-selection-menu')) parent.open = true;
+    await settle();
+    async function activate(button) {
+      assert(button, 'The actual donor UV drawer must provide its navigation button');
+      button.scrollIntoView({ block: 'center' }); await settle();
+      var observed = ViewerRigQa.control(button, true);
+      assert(!observed.disabled && observed.visible && observed.withinViewport && observed.hittable,
+        'Actual donor UV navigation must be usable: ' + JSON.stringify(observed));
+      button.click(); await settle();
+    }
+    var menus = Array.prototype.slice.call(document.querySelectorAll('.uv-selection-menu[open]'));
+    for (var i = 0; i < menus.length; i++)
+      if (!menus[i].contains(element) && menus[i].getClientRects().length) await activate(menus[i].querySelector('summary'));
+    var inspectors = Array.prototype.slice.call(document.querySelectorAll('.uv-edit-inspector:not([hidden])'));
+    for (var j = 0; j < inspectors.length; j++)
+      if (!inspectors[j].contains(element) && inspectors[j].getClientRects().length) await activate(inspectors[j].querySelector('.uv-inspector-heading button'));
+    var inspector = element.closest('.uv-edit-inspector');
+    if (inspector && inspector.hidden) await activate(inspector.closest('.uv-edit-workspace').querySelector('[data-uv-settings]'));
+    var menu = element.closest('.uv-selection-menu');
+    if (menu && !menu.open) await activate(menu.querySelector('summary'));
+    element.scrollIntoView({ block: 'center' }); await settle(); return element;
   }
   async function usable(element) {
     if (typeof element === 'string') element = document.getElementById(element);
-    expose(element); await settle(); var observed = ViewerRigQa.control(element, true);
+    await expose(element); var observed = ViewerRigQa.control(element, true);
     assert(!observed.disabled && observed.visible && observed.withinViewport && observed.hittable, 'The actual part control must be usable: ' + JSON.stringify(observed));
     return element;
   }
@@ -105,7 +127,7 @@
     return { sourceFace: sourceFace, fraction: [view.x + centre.x * view.zoom, view.y + centre.y * view.zoom] };
   }
   async function nativeClick(element, fraction, kind, sceneSelection) {
-    expose(element); await settle();
+    await expose(element);
     for (var attempt = 0; attempt < 5; attempt++) {
       var rect = element.getBoundingClientRect(), x = rect.left + rect.width * fraction[0], y = rect.top + rect.height * fraction[1];
       var viewport = global.visualViewport, width = viewport ? viewport.width : innerWidth, height = viewport ? viewport.height : innerHeight;
@@ -183,11 +205,11 @@
       await click(prefix + '-selection-redo'); assert(equal(donor().selectedBones, excluded.selectedBones), 'Redo restores the exact child exclusion');
       await click(prefix + '-selection-clear'); await click(prefix + '-include-children');
       var height = panel.querySelector('input[type=range][aria-label]'); height.value = '180'; height.dispatchEvent(new Event('input', { bubbles: true })); await settle();
-      expose(capture.renderer.domElement); await settle(); var visible = sceneFace(capture);
+      await expose(capture.renderer.domElement); var visible = sceneFace(capture);
       var bonePointer = await nativeClick(capture.renderer.domElement, visible.fraction, 'scene-bone', visible);
       assert(equal(donor().selectedBones, [visible.bone]), 'A native donor-model pick must select its genuine source skin bone');
       await click(prefix + '-selection-clear'); await input(prefix + '-selection-mode', 'triangles'); await input(prefix + '-scene-action', 'connected');
-      expose(capture.renderer.domElement); await settle(); visible = sceneFace(capture);
+      await expose(capture.renderer.domElement); visible = sceneFace(capture);
       var scenePointer = await nativeClick(capture.renderer.domElement, visible.fraction, 'scene-face', visible), sceneSelected = donor();
       assert(equal(sceneSelected.selectedFaces, [visible.sourceFace]) && equal(sceneSelected.highlightedFaces, [visible.sourceFace]), 'A native 3D connected pick must identify the exact disconnected original source face');
       var donorProbe = probe(capture);

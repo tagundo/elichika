@@ -11,16 +11,42 @@
     while (Date.now() < end) { if (predicate()) return; await wait(30); }
     throw new Error('Timed out: ' + message + ': ' + JSON.stringify(ModelViewer.getState()));
   }
-  function usable(id) {
+  async function expose(target) {
+    // Use the same Settings and Selection buttons as a person. These drawers
+    // replaced always-visible fields; forcing CSS would hide real reachability bugs.
+    for (var p = target.parentElement; p; p = p.parentElement)
+      if (p.tagName === 'DETAILS' && !p.classList.contains('uv-selection-menu')) p.open = true;
+    await settle();
+    async function activate(button) {
+      assert(button, 'The actual UV drawer must provide its navigation button');
+      button.scrollIntoView({ block: 'center' }); await settle();
+      var observed = ViewerRigQa.control(button, true);
+      assert(!observed.disabled && observed.visible && observed.withinViewport && observed.hittable,
+        'Actual UV navigation must be usable: ' + JSON.stringify(observed));
+      button.click(); await settle();
+    }
+    var menus = Array.prototype.slice.call(document.querySelectorAll('.uv-selection-menu[open]'));
+    for (var i = 0; i < menus.length; i++)
+      if (!menus[i].contains(target) && menus[i].getClientRects().length) await activate(menus[i].querySelector('summary'));
+    var inspectors = Array.prototype.slice.call(document.querySelectorAll('.uv-edit-inspector:not([hidden])'));
+    for (var j = 0; j < inspectors.length; j++)
+      if (!inspectors[j].contains(target) && inspectors[j].getClientRects().length) await activate(inspectors[j].querySelector('.uv-inspector-heading button'));
+    var inspector = target.closest('.uv-edit-inspector');
+    if (inspector && inspector.hidden) await activate(inspector.closest('.uv-edit-workspace').querySelector('[data-uv-settings]'));
+    var menu = target.closest('.uv-selection-menu');
+    if (menu && !menu.open) await activate(menu.querySelector('summary'));
+    target.scrollIntoView({ block: 'center' }); await settle();
+  }
+  async function usable(id) {
     var target = document.getElementById(id); assert(target, 'Missing actual control ' + id);
-    for (var p = target.parentElement; p; p = p.parentElement) if (p.tagName === 'DETAILS') p.open = true;
+    await expose(target);
     var control = ViewerRigQa.control(target, true);
     assert(!control.disabled && control.visible && control.withinViewport && control.hittable,
       'Actual editing control must be usable: ' + JSON.stringify(control));
     return target;
   }
-  async function input(id, value, event) { var target = usable(id); target.value = String(value); target.dispatchEvent(new Event(event || 'input', { bubbles: true })); await settle(); }
-  async function click(id) { usable(id).click(); await settle(); }
+  async function input(id, value, event) { var target = await usable(id); target.value = String(value); target.dispatchEvent(new Event(event || 'input', { bubbles: true })); await settle(); }
+  async function click(id) { (await usable(id)).click(); await settle(); }
   function state() { return clone(ModelViewer.getState()); }
   function createNeutralSifasScene(T, fixture, options) {
     options = options || {};
@@ -260,7 +286,7 @@
       'A fresh native preview must start with Rimlight OFF');
     assert(typeof before.sourceFingerprint === 'string' && /^[a-f0-9]{64}$/.test(before.sourceFingerprint),
       'The display-only preview check must remain bound to an actual source fingerprint');
-    var target = usable('viewer-rimlight'), label = ViewerRigQa.control(target.parentElement, true),
+    var target = await usable('viewer-rimlight'), label = ViewerRigQa.control(target.parentElement, true),
       coarse = matchMedia('(pointer:coarse)').matches, minimum = coarse ? 44 : 34;
     assert(label.visible && label.withinViewport && label.hittable && label.width >= minimum && label.height >= minimum,
       'The actual Rim checkbox label must retain the real pointer target policy: ' + JSON.stringify(label));
