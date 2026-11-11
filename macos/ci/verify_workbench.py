@@ -24,14 +24,14 @@ sys.path.insert(0, str(source))
 from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
 from webtools.core import game_motions, game_motion_audio, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace, viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, member_identity
-import transplant_bundle_io, costume_face_installer, costume_scene_installer, costume_clone, costume_management
+import transplant_bundle_io, costume_installer_defaults, costume_face_installer, costume_scene_installer, costume_clone, costume_management
 import costume_cdn_catalog, costume_cdn_restore
 import graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale
 from adminui.tools import costume_cdn as cdn_admin
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
                     model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace,
                     viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, transplant_bundle_io, game_motion_audio,
-                    costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
+                    costume_installer_defaults, costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
                     costume_cdn_catalog, costume_cdn_restore, cdn_admin,
                     graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale)
 for module in packaged_modules:

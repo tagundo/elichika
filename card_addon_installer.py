@@ -24,7 +24,7 @@ import shutil
 import json
 import hashlib
 from datetime import datetime
-from sukusta_paths import installer_scan_path
+from sukusta_paths import installer_dictionary_text, installer_scan_path
 
 check_json_config = "config.json"
 
@@ -76,8 +76,7 @@ filelist = [
 ]
 
 # load up dictionary (스킬 문구 사전 - 사전 DB 블록에서 exec 됨)
-with open("dictionary_skill_en.txt", 'r', encoding='utf-8') as key_en:
-    keyload_en = key_en.read()
+keyload_en = installer_dictionary_text("dictionary_skill_en.txt")
 
 # category
 skill_effect_category_immediate = {2, 3, 4, 5, 8, 68, 69, 70, 90, 91, 92, 93, 94, 95, 96, 97, 98, 109, 110, 111, 112, 113, 114, 115, 116, 127, 128, 129, 130, 131, 132, 133, 134, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 235, 236, 241, 242, 247, 248, 253, 254, 262, 263, 266, 267}

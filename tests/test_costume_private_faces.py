@@ -21,6 +21,8 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
+from costume_installer_defaults import DEPENDENCIES, DEFAULT_THUMBNAILS
+
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "costume_addon_installer.py"
@@ -37,7 +39,8 @@ def helpers():
              if isinstance(node, ast.FunctionDef) and node.name in functions
              or isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in names
                                                      for target in node.targets)]
-    result = {"sqlite3": sqlite3, "random": random, "hashlib": hashlib}
+    result = {"sqlite3": sqlite3, "random": random, "hashlib": hashlib,
+              "DEPENDENCIES": DEPENDENCIES, "DEFAULT_THUMBNAILS": DEFAULT_THUMBNAILS}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(SCRIPT), "exec"), result)
     return result
 

@@ -116,7 +116,7 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'graft_uv_reuse','graft_uv_upscale',
          'unity_costumemod_packer','skin_tone_changer','texture_importer',
          'assetbundle_IosApk_batch_import_plus','fix_sifas_bundle_export',
-         'database_backup','database_restore','costume_scene_installer','costume_face_installer','costume_scene_clones','costume_scene_sources',
+         'database_backup','database_restore','costume_installer_defaults','costume_scene_installer','costume_face_installer','costume_scene_clones','costume_scene_sources',
          'costume_cdn_catalog','costume_cdn_restore','adminui.tools.costume_cdn',
          'llas_asset_extractor','sifas_asset_crypto','payload_upgrade_progress','elichika_macos_memory','elichika_macos']
 for name in modules: importlib.import_module(name)

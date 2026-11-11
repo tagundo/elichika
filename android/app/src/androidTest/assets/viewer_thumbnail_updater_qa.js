@@ -133,7 +133,7 @@
           'The completed ZIP must bind its actual preview PNG, SDK profile and source cache');
         assert(render.quality.enabled && render.quality.ready && render.material.enabled && render.subjectPixels > 0 && render.triangles > 0 && render.visibleMeshes > 0 && render.pose === 'source-rest' && render.animation === false && equal(render.camera, profile.camera),
           'Each actual updater render must use visible source-rest costume geometry and the SDK camera');
-        assert(equal(thumbnail.quality, { renderer: 'SifasMaterial', highQuality: true, animation: false, supersample: 2 }), 'The original-source high-quality thumbnail contract must remain exact');
+        assert(equal(thumbnail.quality, { renderer: 'SifasMaterial', highQuality: true, animation: false, supersample: 2, rimlight: false }) && render.material.rimlightEnabled === false, 'The original-source high-quality thumbnail contract must remain exact and render without rimlight');
       });
       assert(renders[0].receipt.cacheKey !== renders[1].receipt.cacheKey && renders[0].receipt.sha256 !== renders[1].receipt.sha256,
         'Different source ZIPs and manifest member colors must produce separate bindings and different actual thumbnails');

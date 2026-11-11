@@ -16,7 +16,7 @@ from PIL import Image
 
 EXPECTED = (("e60eb0fa3e6e1860bb956e70337c23908faab3f2a9c66192531b645b971538f7", 17405, 6),
             ("473fb2c5a57c95b5259ada0c3bf88eaf7db4586f8c662d4f03cfeaceb48fa969", 17421, 201))
-QUALITY = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2}
+QUALITY = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2, "rimlight": False}
 
 
 def sha(raw):
@@ -94,6 +94,7 @@ def inspect_json(encodedReport, sdkDirectory):
         assert receipt["sources"] == [{"name": source_path.name, "sha256": digest}]
         assert receipt["quality"] == QUALITY and render["camera"] == profile["camera"]
         assert render["pose"] == "source-rest" and render["animation"] is False
+        assert render["material"]["rimlightEnabled"] is False
         assert completed["profile_digest"] == receipt["profileDigest"] == profile_digest
         cache = sha(canonical({"kind": "updater", "binding": binding, "source": [[str(source_path), digest]],
                                "targetMember": owner, "profile": profile_digest, "size": receipt["size"], "quality": QUALITY}))

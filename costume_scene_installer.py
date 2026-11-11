@@ -8,7 +8,6 @@ for inspection instead of making an incomplete role family look installed.
 """
 from __future__ import annotations
 
-import ast
 from contextlib import ExitStack, closing
 import copy
 import hashlib
@@ -122,19 +121,11 @@ def _insert(db, table, row):
 
 
 def _defaults():
-    # Importing the legacy installer would execute its interactive main flow.
-    # Only its two literal public lookup tables are shared here.
-    source = Path(__file__).with_name("costume_addon_installer.py")
-    wanted = {"DEPENDENCIES", "DEFAULT_THUMBNAILS"}
-    output = {}
-    for node in ast.parse(source.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            name = node.targets[0].id
-            if name in wanted:
-                output[name] = ast.literal_eval(node.value)
-    if set(output) != wanted:
-        raise ValueError("The installed Rina dependency definitions are unavailable.")
-    return output
+    # Chaquopy ships bytecode without adjacent .py files. Import only lookup
+    # data: importing the legacy installer would start its interactive flow.
+    from costume_installer_defaults import DEPENDENCIES, DEFAULT_THUMBNAILS
+    return copy.deepcopy({"DEPENDENCIES": DEPENDENCIES,
+                          "DEFAULT_THUMBNAILS": DEFAULT_THUMBNAILS})
 
 
 def _fresh_suit(dbs, forbidden=()):

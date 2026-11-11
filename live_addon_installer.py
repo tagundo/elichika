@@ -24,7 +24,7 @@ import sys
 import shutil
 import hashlib
 from datetime import datetime
-from sukusta_paths import installer_scan_path, termux_storage_missing
+from sukusta_paths import installer_dictionary_text, installer_scan_path, termux_storage_missing
 
 # ============================================================
 # 1. 데이터 테이블
@@ -596,8 +596,7 @@ def insert_package_rows(cursor):
 # ============================================================
 
 # ---- 어필 찬스 미션 문구 사전 (4개 사전 DB에서 exec 됨) ----
-with open("dictionary_live_en.txt", 'r', encoding='utf-8') as key_file:
-    keyload = key_file.read()
+keyload = installer_dictionary_text("dictionary_live_en.txt")
 
 # ---- 애드온 설정 기본값 (zip 안의 .txt가 exec로 덮어씀) ----
 appeal_chance_easy = None

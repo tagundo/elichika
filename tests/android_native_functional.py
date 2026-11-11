@@ -117,6 +117,15 @@ def beginner_mesh_checks():
     return True
 
 
+def gallery_texture_fixture():
+    """Original neutral serialized Texture2D shared by two independent probes."""
+    return base64.b64decode(
+        "AAAATQAAAPQAAAARAAAAcAAAAAAyMDE5LjQuMGYxAA0AAAAAAQAAABwAAAAA//8AAAAAAAAAAAAAAAAAAAAAAQAAAAABAAAAAAAA"
+        "AAAAAACEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABIAAABjaDAwMDFfY28wMDAxX2JvZHkAAAQAAAAAAAAAAgAAAAIA"
+        "AAAQAAAABAAAAAEAAAABAAAAAAAAAAEAAAACAAAAAAAAAAEAAAAAAAAAAQAAAAEAAAABAAAAAAAAAAEAAAAQAAAA/wAA/wD/AP8A"
+        "AP///////wAAAAAAAAAAAAAAAA==")
+
+
 def gallery_png_checks(temporary):
     """Load a real tiny Unity texture asset through the Android gallery decoder."""
     from PIL import Image
@@ -124,11 +133,7 @@ def gallery_png_checks(temporary):
 
     # Deterministic Unity 2019.4 Texture2D, generated from UnityPy's type tree:
     # ch0001_co0001_body, 2x2 RGBA32, red/green then blue/white. No game data.
-    asset = base64.b64decode(
-        "AAAATQAAAPQAAAARAAAAcAAAAAAyMDE5LjQuMGYxAA0AAAAAAQAAABwAAAAA//8AAAAAAAAAAAAAAAAAAAAAAQAAAAABAAAAAAAA"
-        "AAAAAACEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABIAAABjaDAwMDFfY28wMDAxX2JvZHkAAAQAAAAAAAAAAgAAAAIA"
-        "AAAQAAAABAAAAAEAAAABAAAAAAAAAAEAAAACAAAAAAAAAAEAAAAAAAAAAQAAAAEAAAABAAAAAAAAAAEAAAAQAAAA/wAA/wD/AP8A"
-        "AP///////wAAAAAAAAAAAAAAAA==")
+    asset = gallery_texture_fixture()
     with tempfile.TemporaryDirectory(prefix="gallery-native-", dir=temporary) as directory:
         path = Path(directory) / "body.unity"
         path.write_bytes(asset)
@@ -146,6 +151,76 @@ def gallery_png_checks(temporary):
             assert [image.getpixel((x, y)) for y in range(2) for x in range(2)] == [
                 (0, 0, 255, 255), (255, 255, 255, 255), (255, 0, 0, 255), (0, 255, 0, 255)]
         return hashlib.sha256(png).hexdigest()
+
+
+def installer_source_less_checks(temporary):
+    """Run the fixed application imports using the actual embedded importer.
+
+    This verifies source-less default tables, bundled dictionary readers and
+    real rename copies. Full costume publication has a separate lifecycle test.
+    """
+    from types import SimpleNamespace
+    import struct
+    import costume_scene_installer as scene
+    import costume_face_installer as face
+    from sukusta_paths import installer_dictionary_text
+    from webtools.tools import renamer
+
+    legacy_before = sys.modules.get("costume_addon_installer")
+    legacy_source = Path(scene.__file__).with_name("costume_addon_installer.py")
+    assert not legacy_source.is_file(), "The native probe must not rely on legacy .py source"
+    defaults = face.shared._defaults()
+    canonical = json.dumps(defaults, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    defaults_sha = hashlib.sha256(canonical).hexdigest()
+    assert defaults_sha == "4e677f51e848844fe58fc1164e7549e6d10fe5ca89b6621263c0e02f4add2906"
+    defaults["DEPENDENCIES"][209].clear()
+    assert scene._defaults()["DEPENDENCIES"][209], "A caller must not mutate shared defaults"
+    expected = {
+        "dictionary_live_en.txt": "38e783c17cd608f96e0f444c03bd86282013f4e32b96cc364cbfea76f6672c80",
+        "dictionary_skill_en.txt": "ca87854aee4531cbc25999ffcba6cacda5e52c6d7c505b5c450f4593c6e1930e",
+    }
+    dictionaries = {}
+    for name, digest in expected.items():
+        assert not Path(name).exists(), "The native probe must read bundled dictionary data"
+        dictionaries[name] = hashlib.sha256(installer_dictionary_text(name).encode()).hexdigest()
+        assert dictionaries[name] == digest
+    module = renamer._module()
+    # The renamer discovers UnityFS bundles, while the gallery's original
+    # neutral texture is a serialized file. Wrap those exact bytes in one
+    # uncompressed UnityFS block instead of changing the discovery contract.
+    texture = gallery_texture_fixture()
+    info = bytes(16) + struct.pack(">iIIHi", 1, len(texture), len(texture), 0, 1)
+    info += struct.pack(">qqI", 0, len(texture), 0) + b"CAB-" + b"7" * 32 + b"\0"
+    prefix = b"UnityFS\0" + struct.pack(">I", 6) + b"5.x.x\0" + b"2019.4.0f1\0"
+    asset = prefix + struct.pack(">QIII", len(prefix) + 20 + len(info) + len(texture),
+                                 len(info), len(info), 64) + info + texture
+    assert asset.startswith(b"UnityFS\0")
+    with tempfile.TemporaryDirectory(prefix="installer-source-less-", dir=temporary) as directory:
+        directory = Path(directory)
+        source = directory / "input"
+        source.mkdir()
+        for name in ("first.unity", "second.unity"):
+            (source / name).write_bytes(asset)
+        before = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in source.iterdir()}
+        assert module.extract_texture_name(str(source / "first.unity")) == "ch0001_co0001_body"
+        messages, progress = [], []
+        job = SimpleNamespace(log=messages.append, should_stop=lambda: False,
+                              progress=lambda done, total: progress.append((done, total)))
+        output = directory / "output"
+        result = renamer.run_renamer(job, {"in_dir": str(source), "out_dir": str(output),
+            "include_costume_id": True, "remove_original_name": True})
+        names = sorted(path.name for path in output.iterdir())
+        assert names == ["1honoka0001.unity", "1honoka0001_2.unity"], (result, messages, names)
+        assert all(path.read_bytes() == asset for path in output.iterdir())
+        assert before == {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in source.iterdir()}
+        assert "copied=2 renamed=2" in result and progress[-1] == (2, 2)
+        assert not any(message.startswith("FAIL") for message in messages)
+    assert sys.modules.get("costume_addon_installer") is legacy_before
+    return {"status": "PASS", "legacy_source_absent": True,
+            "interactive_legacy_import_unchanged": True, "defaults_sha256": defaults_sha,
+            "dictionary_sha256": dictionaries, "renamed_copies": 2, "rename_sources_preserved": True,
+            "module_paths": {"scene": scene.__file__, "face": face.__file__, "renamer": module.__file__},
+            "scope": "Actual embedded source-less imports, private-face default-table reader, package dictionaries and real neutral Unity rename copies; no game database writes."}
 
 
 def texture65_checks(astcenc, temporary):
@@ -489,6 +564,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
                         - np.asarray(image, dtype=float)).mean()
     assert difference < 40, "ASTC roundtrip changed image content excessively"
     gallery_sha256 = gallery_png_checks(temporary)
+    installer_source_less_report = installer_source_less_checks(temporary)
     texture65_report = texture65_checks(astcenc, temporary)
     return {"python": sys.version.split()[0], "ssl_and_certificates": True,
             "sqlite_unicode": True, "ctypes": True, "numpy_linear_algebra": True,
@@ -497,6 +573,7 @@ def python_checks(astcenc="/probe/libastcenc.so", temporary="/tmp"):
             "unitypy_binary_io": True, "fsspec_memory_io": True,
             "beginner_mesh_percentages": True,
             "gallery_thumbnail_png": True, "gallery_png_sha256": gallery_sha256,
+            "installer_source_less_paths": installer_source_less_report,
             "texture65_decode": texture65_report,
             "adminui_and_webtools_imports": True, "astc_encode_decode": True,
             "bundled_suit_preview": True,

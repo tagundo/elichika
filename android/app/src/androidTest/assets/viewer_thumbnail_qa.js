@@ -78,7 +78,7 @@
       'The decoded preview and actual PNG receipt must agree');
     assert(render.quality.enabled && render.quality.ready && Number.isFinite(render.quality.actualSamples) && render.quality.actualSamples >= 0 && render.subjectPixels > 0 && render.triangles > 0 && render.visibleMeshes > 0 && render.material.enabled,
       'Actual high-quality SifasMaterial WebGL rendering must contain visible source triangles');
-    assert(receipt.quality.renderer === 'SifasMaterial' && receipt.quality.highQuality === true && receipt.quality.animation === false && receipt.quality.supersample === 2 && render.pose === 'source-rest' && render.animation === false,
+    assert(receipt.quality.renderer === 'SifasMaterial' && receipt.quality.highQuality === true && receipt.quality.animation === false && receipt.quality.supersample === 2 && receipt.quality.rimlight === false && render.material.rimlightEnabled === false && render.pose === 'source-rest' && render.animation === false,
       'The real renderer must use the source-rest costume with the reviewed high-quality contract');
     assert(equal(render.camera, profile.camera) && Object.keys(profile.memberColors).length === 30 && profile.memberColors[String(owner)] && profile.layers.length === 3 && profile.innerMask === 'inner-mask.png' && profile.outerBorder === 'outer-border.png',
       'The actual SDK orthographic camera, member colors and five PSD layers must be used');

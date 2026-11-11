@@ -38,7 +38,7 @@ def inspect_json(encodedReport, sdkDirectory, sourcePath, sourceSHA):
     profile_digest=sha(canonical(asset_hashes));assert profile_digest==receipt['profileDigest']==pack['thumbnail']['profileDigest']
     for name,value in profile['provenance']['derivedAssets'].items():
         raw=(assets/name).read_bytes();assert sha(raw)==value['sha256'] and len(raw)==value['bytes']
-    quality={'renderer':'SifasMaterial','highQuality':True,'animation':False,'supersample':2}
+    quality={'renderer':'SifasMaterial','highQuality':True,'animation':False,'supersample':2,'rimlight':False}
     assert receipt['quality']==pack['thumbnail']['quality']==quality
     binding={'token':before['editingToken'],'state':recipe['state'],'sources':recipe['sources'],
              'character_id':before['characterId'],'counterpart_path':before['counterpartPath'],'selected_variant':before['variant']}
@@ -51,6 +51,7 @@ def inspect_json(encodedReport, sdkDirectory, sourcePath, sourceSHA):
     assert cache==receipt['cacheKey']==pack['thumbnail']['cacheKey']
     assert observed['render']['camera']==profile['camera'] and len(profile['memberColors'])==30
     assert observed['render']['pose']=='source-rest' and observed['render']['animation'] is False
+    assert observed['render']['material']['rimlightEnabled'] is False
     preview=observed['previewPNG'];assert preview.startswith('data:image/png;base64,')
     png=base64.b64decode(preview.split(',',1)[1],validate=True)
     assert sha(png)==receipt['sha256']==pack['thumbnail']['sha256'] and len(png)==receipt['bytes']

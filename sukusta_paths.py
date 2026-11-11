@@ -12,6 +12,22 @@ LEGACY_LIBRARY = "~/storage/downloads/sukusta"
 CLI_MODE_ENV = "ELICHIKA_TOOL_MODE"
 
 
+def installer_dictionary_text(name):
+    """Read an installer template, retaining local CLI/Mac customisations.
+
+    Android stores package data behind Chaquopy's loader rather than next to
+    the writable game files. Resource readers also support bytecode-only ZIPs.
+    """
+    if name not in ("dictionary_live_en.txt", "dictionary_skill_en.txt"):
+        raise ValueError("Choose a supported installer dictionary.")
+    try:
+        with open(name, encoding="utf-8") as source:
+            return source.read()
+    except FileNotFoundError:
+        from importlib.resources import files
+        return files("adminui").joinpath("resources", name).read_text(encoding="utf-8")
+
+
 def configured_root():
     """Return the explicitly selected library, resolved at use time."""
     value = os.environ.get("SUKUSTA_DIR")

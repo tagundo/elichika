@@ -529,7 +529,8 @@ def check_updater_report(observed):
     require(len(observed["receipts"]) == len(observed["renders"]) == len(observed["rendererState"]["receipts"]) == 2
             and not observed["rendererState"]["busy"] and observed["rendererState"]["last"]["count"] == observed["rendererState"]["last"]["total"] == 2,
             "Both source ZIPs must finish actual automatic WebGL renders and completed updater outputs")
-    quality = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2}
+    quality = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2,
+               "rimlight": False}
     for index, owner in enumerate((6, 201)):
         result, rendered = observed["receipts"][index], observed["renders"][index]
         receipt, render = rendered["receipt"], rendered["render"]
@@ -540,6 +541,7 @@ def check_updater_report(observed):
                 and receipt == observed["rendererState"]["receipts"][index],
                 "Each completed updater ZIP must bind its original source, manifest recipient and actual PNG/template/cache")
         require(render["quality"]["enabled"] is True and render["quality"]["ready"] is True and render["material"]["enabled"] is True
+                and render["material"]["rimlightEnabled"] is False
                 and render["subjectPixels"] > 0 and render["triangles"] > 0 and render["visibleMeshes"] > 0
                 and render["pose"] == "source-rest" and render["animation"] is False and render["camera"] == observed["profile"]["camera"]
                 and rendered["preview"]["src"] == rendered["png"] and rendered["preview"]["sha256"] == receipt["sha256"],
@@ -603,10 +605,12 @@ def check_thumbnail_report(observed):
             and observed["persistence"]["thumbnailMode"] == "3d" and observed["jobId"] != observed["previousJob"]
             and not observed["persistence"]["busy"] and observed["persistence"]["status"] == "done",
             "Actual 3D selection must save a new completed installer job after ordinary texture packaging")
-    quality = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2}
+    quality = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2,
+               "rimlight": False}
     require(receipt["quality"] == quality and render["quality"]["enabled"] is True and render["quality"]["ready"] is True
             and math.isfinite(render["quality"]["actualSamples"]) and render["quality"]["actualSamples"] >= 0
-            and render["material"]["enabled"] is True and render["subjectPixels"] > 0 and render["triangles"] > 0
+            and render["material"]["enabled"] is True and render["material"]["rimlightEnabled"] is False
+            and render["subjectPixels"] > 0 and render["triangles"] > 0
             and render["visibleMeshes"] > 0 and render["pose"] == "source-rest" and render["animation"] is False,
             "Actual WKWebView high-quality source-rest rendering must expose visible SifasMaterial costume triangles")
     pack = observed["response"]["mod_package"]

@@ -216,6 +216,12 @@ jobs:
           mkdir -p "$PY"
           # elichika dev tools: adminui package + the installer/util scripts it calls
           cp -r adminui "$PY/adminui"
+          # These installer templates are package data, rather than writable
+          # game-library files. Chaquopy retains them alongside bytecode.
+          mkdir -p "$PY/adminui/resources"
+          cp dictionary_live_en.txt dictionary_skill_en.txt "$PY/adminui/resources/"
+          cmp dictionary_live_en.txt "$PY/adminui/resources/dictionary_live_en.txt"
+          cmp dictionary_skill_en.txt "$PY/adminui/resources/dictionary_skill_en.txt"
           cp ./*.py "$PY/" 2>/dev/null || true
           # modding tools from the modtools/ submodule: webtools package + the mod
           # scripts (copied last so the tools-repo version wins for any duplicate
@@ -225,15 +231,17 @@ jobs:
           [ -d modtools/live_timeline ] && cp -r modtools/live_timeline "$PY/" || true
           # The mandatory installer must be our reviewed module, even if a tools
           # checkout happens to ship a module with the same name.
-          cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py payload_upgrade_progress.py \
-            costume_management.py costume_scene_installer.py costume_face_installer.py costume_scene_clones.py costume_scene_sources.py \
+          cp payload_db_upgrade.py database_maintenance.py payload_file_hash.py payload_revision.py payload_upgrade_progress.py sukusta_paths.py \
+            costume_management.py costume_installer_defaults.py costume_scene_installer.py costume_face_installer.py costume_scene_clones.py costume_scene_sources.py \
             costume_cdn_catalog.py costume_cdn_restore.py sifas_asset_crypto.py "$PY/"
           cmp payload_db_upgrade.py "$PY/payload_db_upgrade.py"
           cmp database_maintenance.py "$PY/database_maintenance.py"
           cmp payload_file_hash.py "$PY/payload_file_hash.py"
           cmp payload_revision.py "$PY/payload_revision.py"
           cmp payload_upgrade_progress.py "$PY/payload_upgrade_progress.py"
+          cmp sukusta_paths.py "$PY/sukusta_paths.py"
           cmp costume_management.py "$PY/costume_management.py"
+          cmp costume_installer_defaults.py "$PY/costume_installer_defaults.py"
           cmp costume_scene_installer.py "$PY/costume_scene_installer.py"
           cmp costume_face_installer.py "$PY/costume_face_installer.py"
           cmp costume_scene_clones.py "$PY/costume_scene_clones.py"
@@ -392,6 +400,7 @@ jobs:
           python3 android/ci/audit_native.py "$APK" --report android-native-layout.json
           python3 android/ci/verify_hca_apk.py "$APK" --report android-hca-decoder.json
           python3 android/ci/verify_texture65_apk.py "$APK" --report android-texture65-decoder.json
+          python3 android/ci/verify_installer_apk.py "$APK" --report android-installer-resources.json
           python3 payload_revision.py verify-apk --apk "$APK" --report payload-revision-audit.json
           echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
@@ -404,6 +413,7 @@ jobs:
             android-native-layout.json
             android-hca-decoder.json
             android-texture65-decoder.json
+            android-installer-resources.json
             android/app/build/generated/texture65/reports/*.json
           if-no-files-found: warn
 
