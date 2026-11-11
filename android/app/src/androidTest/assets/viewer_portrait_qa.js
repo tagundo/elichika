@@ -44,10 +44,25 @@
     },
     snapshot: snapshot,
     scrollContact: function (down) {
-      var y = innerHeight * (down ? .8 : .25), candidates = [innerWidth - 2, 2];
-      for (var i = 0; i < candidates.length; i += 1) {
-        var hit = document.elementFromPoint(candidates[i], y);
-        if (hit && !hit.closest("canvas,input,select,button,summary,[role=separator]")) return { x: candidates[i], y: y, tag: hit.tagName };
+      var minimum = 24, candidates = [innerWidth - 2, 2], preferred = innerHeight * (down ? .8 : .25);
+      var header = document.querySelector("body > header"), top = Math.max(minimum, header ? bounds(header).bottom + minimum : minimum);
+      var bottom = innerHeight - minimum, stage = bounds(element("viewer-stage"));
+      var positions = [Math.max(top, Math.min(bottom, stage.bottom + minimum + 8)), Math.max(top, Math.min(bottom, preferred))];
+      for (var y = top; y <= bottom; y += 16) positions.push(y);
+      positions.sort(function (a, b) { return Math.abs(a - preferred) - Math.abs(b - preferred); });
+      var selector = "canvas,input,select,button,summary,[role=separator]";
+      var interactive = Array.prototype.map.call(document.querySelectorAll(selector), function (node) { return bounds(node); })
+        .filter(function (r) { return r.width > 0 && r.height > 0; });
+      for (var j = 0; j < positions.length; j += 1) for (var i = 0; i < candidates.length; i += 1) {
+        var x = candidates[i], pointY = positions[j], hit = document.elementFromPoint(x, pointY), clearance = Infinity;
+        if (!hit || hit.closest(selector)) continue;
+        interactive.forEach(function (r) {
+          var dx = Math.max(r.left - x, 0, x - r.right), dy = Math.max(r.top - pointY, 0, pointY - r.bottom);
+          clearance = Math.min(clearance, Math.hypot(dx, dy));
+        });
+        // A two-pixel gutter hit can be touch-adjusted onto the nearby canvas.
+        // Keep the native swipe outside the real model AND control hit areas.
+        if (clearance >= minimum) return { x: x, y: pointY, tag: hit.tagName, clearance: clearance, minimumClearance: minimum };
       }
       throw new Error("The native page swipe must start outside the model and editing controls");
     },

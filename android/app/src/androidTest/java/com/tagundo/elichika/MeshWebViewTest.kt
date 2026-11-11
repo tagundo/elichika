@@ -328,6 +328,20 @@ class MeshWebViewTest {
                 swipe(delta)
                 editor = snapshot()
             }
+            // Retain actual geometry and native gestures even when a strict
+            // portrait assertion fails. The richer PASS report below remains.
+            val portraitBeforeAssertions = JSONObject().put("phase", "before-portrait-assertions")
+                .put("initial", initial).put("editor", editor).put("nativePageGestures", gestures)
+                .put("document", evaluate(webView, "return JSON.stringify({scrollHeight:document.scrollingElement.scrollHeight," +
+                    "clientHeight:document.scrollingElement.clientHeight,maxScroll:document.scrollingElement.scrollHeight-document.scrollingElement.clientHeight," +
+                    "scrollY:scrollY,bodyOverflow:getComputedStyle(document.body).overflow});"))
+                .put("sourcePreserved", source.readBytes().contentEquals(fixture)).put("sourceSha256", sha256(fixture))
+            File(context.cacheDir, "viewer-portrait-scroll-report.json").writeText(portraitBeforeAssertions.toString(2))
+            val portraitBeforeAssertionsScreenshot = instrumentation.uiAutomation.takeScreenshot()
+            portraitBeforeAssertionsScreenshot?.let { bitmap ->
+                File(context.cacheDir, "viewer-portrait-scroll.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
+            }
             assertTrue("The model must scroll completely above the editor", editor.getJSONObject("stage").getDouble("bottom") <= editor.getDouble("headerBottom"))
             assertEquals("Page scrolling must not resize the model", initial.getJSONObject("stage").getDouble("height"), editor.getJSONObject("stage").getDouble("height"), 1.0)
             assertEquals("The stage must move with the page, without pinning", initial.getJSONObject("stage").getDouble("top") - editor.getDouble("scrollY"), editor.getJSONObject("stage").getDouble("top"), 1.0)
