@@ -195,10 +195,10 @@
     return fmt;
   }
   async function runGame() {
-    var report = { status: 'RUNNING', scope: 'Actual app native bridge, official Eli400022007 and CHASE12008/1200801, unchanged product linked-PCM transport and DSP clock. No audible-output capture or physical-device FPS claim.', stages: [], network: [], audioResponses: [], samples: [] };
+    var report = { status: 'RUNNING', scope: 'Actual app native bridge, official Eli400022007 and CHASE12008/1200801, unchanged product linked-PCM transport and DSP clock. No audible-output capture or physical-device FPS claim.', stages: [], network: [], requestDiagnostics: [], audioResponses: [], samples: [] };
     var checkpoint = null, before = null, oldFetch = window.fetch, oldClock = ViewerMotionAudio.getPlaybackClock, oldFactory = ViewerNativePCM.create;
     var controls = {}, preferences = {}, hashJobs = [], prepared = [], captured = false, navigation = null;
-    function stage(name) { progress = { stage: name, at: performance.now() }; report.stages.push(clone(progress)); }
+    function stage(name) { progress = { stage: name, at: performance.now() }; report.stages.push(clone(progress)); progress.requestDiagnostics = report.requestDiagnostics; }
     function statusText() { return ['viewer-game-assets-status', 'viewer-game-motion-status', 'viewer-game-motion-note'].map(function (id) { var el = document.getElementById(id); return el ? el.textContent : ''; }).filter(Boolean).join(' | ').slice(-2000); }
     async function wait(name, condition, timeout) {
       stage(name); var deadline = performance.now() + (timeout || 120000);
@@ -214,7 +214,16 @@
     }
     function observeFetch(input, options) {
       var url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      // Observe the existing call only. Never issue a diagnostic request, read
+      // credentials/body/query strings, consume its body, or replace a reply.
+      var diagnostic = null;
+      if (url.origin === location.origin && /^\/api\/viewer\/(game\/|prepare$)/.test(url.pathname) && report.requestDiagnostics.length < 128) {
+        diagnostic = { id: report.requestDiagnostics.length + 1, origin: url.origin, path: url.pathname,
+          method: String(options && options.method || input && input.method || 'GET'), startedAt: performance.now(), state: 'started' };
+        report.requestDiagnostics.push(diagnostic);
+      }
       return oldFetch.call(window, input, options).then(function (response) {
+        if (diagnostic) { diagnostic.headersReceivedAt = performance.now(); diagnostic.status = response.status; diagnostic.state = 'headers-received'; }
         if (url.origin === location.origin && /^\/api\/viewer\/(game\/|prepare$)/.test(url.pathname)) report.network.push({ path: url.pathname, status: response.status, ok: response.ok });
         if (url.origin === location.origin && url.pathname === '/api/viewer/prepare' && response.ok) {
           var job = response.clone().json().then(function (data) {
@@ -232,6 +241,7 @@
         }
         return response;
       }, function (error) {
+        if (diagnostic) { diagnostic.errorAt = performance.now(); diagnostic.errorName = error.name; diagnostic.state = 'rejected'; }
         if (url.origin === location.origin && /^\/api\/viewer\/game\//.test(url.pathname)) report.network.push({ path: url.pathname, error: String(error), name: error.name });
         throw error;
       });
@@ -239,6 +249,10 @@
     try {
       stage('capture-owned-checkpoint');
       var platform = ElichikaPlatform.info(); report.platform = clone(platform);
+      report.portalStart = { origin: location.origin, path: location.pathname, readyState: document.readyState,
+        visibility: document.visibilityState, hidden: document.hidden,
+        activePanel: (document.querySelector('.tab-panel.active') || {}).id || null,
+        activeElement: document.activeElement ? { id: document.activeElement.id || null, tag: document.activeElement.tagName } : null };
       assert(platform.native === true && platform.platform === 'macos', 'The official PCM release gate requires the genuine native Mac bridge');
       navigation = document.querySelector('.tab-panel.active'); navigation = navigation && navigation.id;
       pause(); checkpoint = ModelViewer.captureCheckpoint();

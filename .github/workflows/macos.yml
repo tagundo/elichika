@@ -198,7 +198,7 @@ jobs:
         env:
           ELICHIKA_NATIVE_PCM_GAME_QA: "1"
         run: |
-          python3 macos/ci/run_app_smoke.py \
+          python3 macos/ci/diagnose_app_smoke.py --repo . \
             --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" \
             --evidence "$RUNNER_TEMP/macos-evidence" \
             --relocation "$RUNNER_TEMP/이동한 Elichika 앱/Elichika.app"
