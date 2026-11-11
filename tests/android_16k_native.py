@@ -335,11 +335,12 @@ def prepare(args, report):
     report["kernel"] = {"sha256": sha(kernel_data), "header_page_size": 16384}
 
     # Ubuntu's static ARM64 BusyBox supplies only initramfs mount/poweroff tools.
-    index_url = "https://ports.ubuntu.com/ubuntu-ports/dists/noble/main/binary-arm64/Packages.gz"
+    ports_base = os.environ.get("ELICHIKA_UBUNTU_PORTS_BASE", "https://ports.ubuntu.com/ubuntu-ports").rstrip("/")
+    index_url = ports_base + "/dists/noble/main/binary-arm64/Packages.gz"
     index = gzip.decompress(urllib.request.urlopen(index_url, timeout=60).read()).decode()
     block = next(block for block in index.split("\n\n") if block.startswith("Package: busybox-static\n"))
     fields = dict(line.split(": ", 1) for line in block.splitlines() if ": " in line and not line.startswith(" "))
-    deb_data = urllib.request.urlopen("https://ports.ubuntu.com/ubuntu-ports/" + fields["Filename"], timeout=60).read()
+    deb_data = urllib.request.urlopen(ports_base + "/" + fields["Filename"], timeout=60).read()
     assert sha(deb_data) == fields["SHA256"], "BusyBox archive integrity failure"
     deb = args.work / "busybox.deb"
     deb.write_bytes(deb_data)
