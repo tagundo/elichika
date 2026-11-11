@@ -112,3 +112,19 @@ main { padding: 14px; display: grid; grid-template-columns: 220px minmax(0, 1fr)
   main { padding: 8px; gap: 8px; }
   .tool-panel { padding: 10px; }
 }
+
+/* Desktop actions occupy their label width; touch keeps full-size targets. */
+@media (min-width: 721px) and (hover: hover) and (pointer: fine) {
+  .tool-list, .tool-navigation { gap: 6px; }
+  .tool-list button { min-height: 34px; padding: 6px 9px; font-size: 13px; line-height: 1.35; }
+  .tool-list button small { margin-top: 2px; }
+  .run-btn { width: fit-content; max-width: 100%; min-height: 34px; padding: 7px 14px; font-size: 13px; line-height: 1.35; white-space: normal; }
+  .field input[type=text], .field input[type=search], .field select,
+  header #lang-select { min-height: 34px; padding: 6px 8px; font-size: 13px; line-height: 1.35; }
+  .dyn-row button, .console-head button, .original-confirm-actions button { min-height: 34px; padding: 6px 9px; font-size: 13px; line-height: 1.35; }
+  .multi-choices label { min-height: 34px; padding: 5px 8px; font-size: 13px; }
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .run-btn, .tool-list button, .dyn-row button, .console-head button,
+  header #lang-select, .field input[type=text], .field input[type=search], .field select { min-height: 44px; }
+}

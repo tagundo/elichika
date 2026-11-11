@@ -50,7 +50,8 @@ patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_
             'test_viewer_combined_exports.py', 'test_physics_derived_runtime.py',
             'test_transplant_seams_and_io.py', 'test_model_viewer_conversion_cache.py',
             'test_viewer_reimport.py', 'test_viewer_mesh_signed_skin.py', 'test_texture65_decode.py',
-            'test_viewer_facial_role_metadata.py', 'test_model_edit_dependencies.py']
+            'test_viewer_facial_role_metadata.py', 'test_model_edit_dependencies.py',
+            'test_outline_inventory_sessions.py']
 # The app already requires its own ASTC CLI. Exercise the new worker bound and
 # real mip pixel round trip with that exact executable, never a host fallback.
 astc = resources / 'runtime/arm64/bin/astcenc'
@@ -211,6 +212,12 @@ explicit_cases = [
     'test_model_outlines.OutlineTests.test_absolute_raw_width_sets_every_vertex_and_preserves_source_and_other_channels',
     'test_model_outlines.OutlineTests.test_sparse_vertex_override_after_absolute_width_keeps_native_rounding',
     'test_model_outlines.OutlineTests.test_diagnostic_sources_match_captured_bytes_and_change_with_new_model',
+    'test_model_outlines.OutlineTests.test_arbitrary_mesh_gameobject_material_names_preserve_outline_eligibility',
+    'test_model_outlines.OutlineTests.test_preview_visible_unsupported_meshes_have_reasons_and_are_not_writable',
+    'test_model_outlines.OutlineTests.test_standalone_preview_mesh_and_invalid_renderer_binding_are_distinguished',
+    'test_model_outlines.OutlineTests.test_inventory_distinguishes_layout_name_and_limit_failures_without_omission',
+    'test_model_outlines.OutlineTests.test_float32_outlines_preserve_precision_format_and_every_non_red_byte',
+    'test_model_outlines.OutlineTests.test_float32_nonfinite_and_out_of_range_masks_remain_excluded',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_pair_uses_semantic_mesh_and_each_native_mask',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_only_paired_mod_zip_propagates_all_platform_variants',
     'test_viewer_mod_pair_edits.PairedBodyEditTests.test_outline_pair_rejects_missing_and_ambiguous_semantic_mesh',

@@ -114,6 +114,8 @@ jobs:
           python3 -m unittest discover -s tests -p test_model_scaling.py -v
           python3 -c 'from pathlib import Path; assert Path("tests/fixtures/viewer_persistence.unity").read_bytes() == Path("../android/app/src/androidTest/assets/viewer_persistence.unity").read_bytes(), "Native persistence fixture must match the shared browser fixture"'
           python3 -m unittest discover -s tests -p test_model_edits.py -v
+          python3 -m unittest discover -s tests -p test_model_outlines.py -v
+          python3 -m unittest discover -s tests -p test_outline_inventory_sessions.py -v
           python3 -m unittest discover -s tests -p test_model_edit_dependencies.py -v
           python3 -m unittest discover -s tests -p 'test_model_accessory_unclip*.py' -v
           python3 -m unittest discover -s tests -p 'test_viewer_scene*.py' -v
@@ -231,6 +233,8 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/compact-layout" node tests/viewer_compact_layout_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/body-controls" node tests/viewer_body_controls_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/outline-diagnostics" node tests/viewer_outline_diagnostics_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/outline-inventory" node tests/viewer_outline_inventory_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/compact-buttons" node tests/viewer_compact_buttons_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/game-assets" node tests/viewer_game_assets_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/transplant-game-assets" node tests/transplant_game_assets_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/macos" node tests/viewer_macos_browser.js
