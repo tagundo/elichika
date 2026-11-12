@@ -77,6 +77,7 @@ final class NativeSmokeTest {
             try checkpoint("model-rendered")
             try await checkPoseBodyStructure(webView)
             try await checkNativeEditorNavigation(webView)
+            let originalPanelWindowFrame = try await prepareWidePanelViewport(webView)
             let panelPreferenceFile = directory.appendingPathComponent("viewer-panel-width-expected.txt")
             let expectedPanelWidth = (try? String(contentsOf: panelPreferenceFile, encoding: .utf8))
                 .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -111,6 +112,9 @@ final class NativeSmokeTest {
                 "restored_on_relaunch": expectedPanelWidth != nil, "committed": requestedPanelWidth,
                 "native_stored": UserDefaults.standard.integer(forKey: "viewerPanelWidth")]
             try checkpoint("viewer-panel-width-persisted")
+            try await checkWidePanelPersistence(webView, directory: directory,
+                expected: expectedPanelWidth, preferenceFile: panelPreferenceFile)
+            try await restorePanelViewport(webView, frame: originalPanelWindowFrame)
             let filesPreferenceFile = directory.appendingPathComponent("viewer-files-width-expected.txt")
             let expectedFilesWidth = (try? String(contentsOf: filesPreferenceFile, encoding: .utf8))
                 .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -377,6 +381,102 @@ final class NativeSmokeTest {
                 "readyWindow": readyWindow,
                 "readyDOM": readyDOM,
                 "method": "NSApplication.postEvent NSEvent leftMouseDown/leftMouseUp FIFO; DOM isTrusted is independently required"]
+    }
+
+    private func prepareWidePanelViewport(_ webView: WKWebView) async throws -> NSRect {
+        guard let window = webView.window else { throw NativeError.runtimeUnavailable }
+        let original = window.frame
+        report["viewer_panel_wide_window"] = ["originalWidth": original.width,
+            "originalHeight": original.height, "screenWidth": window.screen?.visibleFrame.width ?? 0]
+        // Resize the real AppKit window, rather than supplying a CSS width or a
+        // synthetic DOM rectangle. Restore it before trusted native canvas input.
+        var wide = original
+        wide.size.width = max(original.width, 1600)
+        window.setFrame(wide, display: true, animate: false)
+        window.contentView?.layoutSubtreeIfNeeded()
+        try await waitJS(webView, "a genuinely wide native adjustment viewport", timeout: 15, expression:
+            "window.innerWidth>=1200&&!document.getElementById('viewer-panel-resizer').hidden&&" +
+            "Number(document.getElementById('viewer-panel-resizer').getAttribute('aria-valuemax'))>=704")
+        try require(window.frame.width >= 1600 && webView.bounds.width >= 1200,
+                    "The width persistence probe must use the actual enlarged AppKit window and WebView.")
+        try checkpoint("viewer-panel-native-wide-viewport")
+        return original
+    }
+
+    private func checkWidePanelPersistence(_ webView: WKWebView, directory: URL,
+                                          expected: Int?, preferenceFile: URL) async throws {
+        let before = try await object(webView, """
+            var handle=document.getElementById('viewer-panel-resizer'),panel=document.getElementById('viewer-control-panel');
+            handle.scrollIntoView({block:'center'});
+            var r=handle.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+            return JSON.stringify({viewportWidth:innerWidth,viewportHeight:innerHeight,actual:panel.getBoundingClientRect().width,
+              min:Number(handle.getAttribute('aria-valuemin')),max:Number(handle.getAttribute('aria-valuemax')),
+              enabled:!handle.hidden,visible:r.width>0&&r.height>0,hittable:hit===handle||!!(hit&&handle.contains(hit))});
+            """)
+        try require(before["enabled"] as? Bool == true && before["visible"] as? Bool == true &&
+                    before["hittable"] as? Bool == true && (before["viewportWidth"] as? Double ?? 0) >= 1200,
+                    "The actual wide native resize control must be visible and reachable.")
+        let maximum = before["max"] as? Int ?? 0
+        let current = Int((before["actual"] as? Double ?? 0).rounded())
+        let goal = min(expected == nil ? 736 : 800, maximum)
+        var steps = Int(ceil(Double(goal - current) / 16.0))
+        if current + steps * 16 > maximum { steps -= 1 }
+        let requested = current + steps * 16
+        try require(requested > 640 && requested <= maximum && NativeRequest.viewerPanelWidthRange.contains(requested),
+                    "The native width probe must genuinely exceed the former 640px limit within actual allowed bounds.")
+        let direction = steps >= 0 ? "ArrowLeft" : "ArrowRight"
+        _ = try await js(webView, """
+            var handle=document.getElementById('viewer-panel-resizer');handle.focus();
+            for(var index=0;index<\(abs(steps));index++){
+              handle.dispatchEvent(new KeyboardEvent('keydown',{key:'\(direction)',bubbles:true,cancelable:true}));
+              await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+            }
+            return true;
+            """)
+        try await waitJS(webView, "the actual adjustment panel above 640px", timeout: 15, expression:
+            "Math.abs(document.getElementById('viewer-control-panel').getBoundingClientRect().width-\(requested))<1&&" +
+            "localStorage.getItem('elichika.viewer.panel-width.v1')==='\(requested)'")
+        try await wait("the native bridge must store the real width above 640px", timeout: 10) {
+            UserDefaults.standard.integer(forKey: "viewerPanelWidth") == requested
+        }
+        let observed = try await object(webView, """
+            var r=document.getElementById('viewer-control-panel').getBoundingClientRect();
+            return JSON.stringify({viewportWidth:innerWidth,viewportHeight:innerHeight,actual:r.width,left:r.left,right:r.right,
+              max:Number(document.getElementById('viewer-panel-resizer').getAttribute('aria-valuemax')),
+              modelWidth:document.getElementById('viewer-stage').getBoundingClientRect().width,
+              localStored:Number(localStorage.getItem('elichika.viewer.panel-width.v1'))});
+            """)
+        try require(abs((observed["actual"] as? Double ?? 0) - Double(requested)) < 1 &&
+                    (observed["left"] as? Double ?? -1) >= 0 &&
+                    (observed["right"] as? Double ?? .infinity) <= (observed["viewportWidth"] as? Double ?? 0) &&
+                    (observed["modelWidth"] as? Double ?? 0) >= 319,
+                    "The above-640 panel must occupy real viewport space and retain a usable model area.")
+        report["viewer_panel_width_legacy_resize"] = report["viewer_panel_width_persistence"]
+        try String(requested).write(to: preferenceFile, atomically: true, encoding: .utf8)
+        report["viewer_panel_width_persistence"] = ["previous_expected": expected ?? 0,
+            "restored_on_relaunch": expected != nil, "committed": requested,
+            "native_stored": UserDefaults.standard.integer(forKey: "viewerPanelWidth"),
+            "native_allowed_min": NativeRequest.viewerPanelWidthRange.lowerBound,
+            "native_allowed_max": NativeRequest.viewerPanelWidthRange.upperBound,
+            "ui_allowed_max": maximum, "wide_viewport": observed,
+            "above_previous_limit": true, "scope": "Actual AppKit resize, production keyboard resizer/native bridge/store, then relocated metadata and width restoration"]
+        try await snapshot(webView, directory.appendingPathComponent("wide-panel-controls.png"))
+        try checkpoint("viewer-panel-above640-persisted")
+    }
+
+    private func restorePanelViewport(_ webView: WKWebView, frame: NSRect) async throws {
+        guard let window = webView.window else { throw NativeError.runtimeUnavailable }
+        window.setFrame(frame, display: true, animate: false)
+        window.contentView?.layoutSubtreeIfNeeded()
+        try await wait("the original native window before trusted canvas input", timeout: 10) {
+            abs(window.frame.width - frame.width) < 1 && abs(window.frame.height - frame.height) < 1
+        }
+        try await waitJS(webView, "the restored native WebView layout", timeout: 10, expression:
+            "document.getElementById('viewer-control-panel').getBoundingClientRect().right<=innerWidth+1")
+        report["viewer_panel_native_window_restored"] = ["width": window.frame.width,
+            "height": window.frame.height, "webViewWidth": webView.bounds.width,
+            "native_stored": UserDefaults.standard.integer(forKey: "viewerPanelWidth")]
+        try checkpoint("viewer-panel-native-window-restored")
     }
 
     private func nativePointerEnvironment(_ webView: WKWebView, request: [String: Any]? = nil) -> [String: Any] {

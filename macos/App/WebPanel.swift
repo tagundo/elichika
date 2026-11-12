@@ -134,7 +134,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         let metadata: [String: Any] = ["platform": "macos", "version": 1,
             "capabilities": capabilities,
             "editorSurface": editorSurface?.rawValue ?? "tools",
-            "language": language, "viewerPanelWidth": (240...640).contains(storedWidth) ? storedWidth : 0,
+            "language": language, "viewerPanelWidth": NativeRequest.viewerPanelWidthRange.contains(storedWidth) ? storedWidth : 0,
             "viewerFilesWidth": (160...360).contains(storedFilesWidth) ? storedFilesWidth : 0,
             "panelSettings": panelSettings]
         let json = String(decoding: try! JSONSerialization.data(withJSONObject: metadata), as: UTF8.self)

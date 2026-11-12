@@ -13,18 +13,19 @@ import zipfile
 SOURCE = Path(__file__).resolve().parents[2]
 PYTHON_ASSET = "assets/chaquopy/app.imy"
 STATIC_FILES = tuple("webtools/web/" + name for name in (
-    "index.html", "static/app.js", "static/model-viewer.js",
+    "index.html", "static/app.js", "static/style.css", "static/platform.js", "static/model-viewer.js",
     "static/viewer-persistence.js", "static/sifas-material.js",
     "static/viewer-uv-color.js", "static/texture-png.js",
     "static/texture-color-math.js", "static/texture-color-worker.js",
     "static/texture-paint-engine.js", "static/texture-uv-selection.js",
     "static/viewer-interaction-tools.js", "static/viewer-interaction-tools.css",
-    "static/viewer-mesh-tools.js", "static/viewer-transplants.js", "static/viewer-texture-tools.js",
+    "static/viewer-mesh-tools.js", "static/viewer-mesh-runtime.js", "static/viewer-outlines.js", "static/viewer-near-clip.js",
+    "static/viewer-transplants.js", "static/viewer-texture-tools.js",
     "static/viewer-texture-tools.css", "static/texture-panel-expand.js",
     "static/texture-panel-expand.css", "static/vendor/fflate-0.8.2/fflate.min.js",
     "static/vendor/fflate-0.8.2/LICENSE"))
 MODULES = (
-    "webtools/server", "webtools/core/viewer_texture_tools",
+    "webtools/server", "webtools/i18n", "webtools/core/viewer_texture_tools",
     "webtools/core/texture_image_io", "webtools/core/texture_project_io",
     "webtools/core/model_edits", "webtools/core/model_viewer",
     "webtools/core/viewer_mesh_tools", "webtools/core/viewer_transplants",

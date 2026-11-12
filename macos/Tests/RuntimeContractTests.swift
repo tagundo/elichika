@@ -33,16 +33,19 @@ final class RuntimeContractTests: XCTestCase {
         let request = try NativeRequest.parse(["id": "desktop-7", "action": "openFiles", "multiple": true, "extensions": ["unity", "zip"]])
         XCTAssertEqual(request.action, .openFiles)
         XCTAssertEqual(request.multiple, true)
-        for width in [0, 240, 416, 640] {
+        for width in [0, 240, 416, 640, 641, 1024, 16_384] {
             let preference = try NativeRequest.parse(["id": "panel-1", "action": "setViewerPanelWidth", "width": width])
             XCTAssertEqual(preference.width, width)
         }
-        for width in [-1, 239, 641] {
+        for width in [-1, 239, 16_385] {
             XCTAssertThrowsError(try NativeRequest.parse(["id": "panel-1", "action": "setViewerPanelWidth", "width": width]))
         }
         XCTAssertThrowsError(try NativeRequest.parse(["id": "panel-1", "action": "setViewerPanelWidth"]))
         XCTAssertThrowsError(try NativeRequest.parse(["id": "panel-1", "action": "setViewerPanelWidth", "width": 300.5]))
         XCTAssertThrowsError(try NativeRequest.parse(["id": "panel-1", "action": "setViewerPanelWidth", "width": true]))
+        for width in [Double.infinity, -Double.infinity, Double.nan] {
+            XCTAssertThrowsError(try NativeRequest.parse(["id": "panel-1", "action": "setViewerPanelWidth", "width": width]))
+        }
         for width in [0, 160, 224, 360] {
             XCTAssertEqual(try NativeRequest.parse(["id": "files-1", "action": "setViewerFilesWidth", "width": width]).width, width)
         }

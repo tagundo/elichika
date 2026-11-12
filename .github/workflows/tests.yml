@@ -211,6 +211,7 @@ jobs:
           node tests/texture_paint_engine_test.js
           node tests/texture_paint_layers_test.js
           node tests/texture_uv_selection_test.js
+          node tests/viewer_near_clip_test.js
           node tests/texture_png_test.js
           node tests/sifas_texture_override_test.js
           node tests/viewer_texture_tools_test.js
@@ -235,6 +236,10 @@ jobs:
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/runtime-optimization" node tests/viewer_runtime_optimization_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/interaction-tools" node tests/viewer_interaction_tools_browser.js
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/near-clip-rendering" node tests/viewer_near_clip_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/near-clip-app" node tests/viewer_near_clip_app_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-move" node tests/viewer_mesh_move_browser.js
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-axis-runtime" node tests/viewer_mesh_axis_runtime_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/physics-lifecycle" node tests/viewer_physics_lifecycle_browser.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-projection-cache" node tests/viewer_mesh_projection_cache_browser.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/motion-audio-lookup" node tests/viewer_motion_audio_lookup_browser.js

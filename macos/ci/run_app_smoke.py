@@ -1377,6 +1377,48 @@ def launch(app, output, label):
     return report
 
 
+def check_panel_width_persistence(first, second):
+    first_panel = first.get("viewer_panel_width_persistence", {})
+    second_panel = second.get("viewer_panel_width_persistence", {})
+    for label, report in (("first", first), ("relocated", second)):
+        panel = report.get("viewer_panel_width_persistence", {})
+        viewport = panel.get("wide_viewport", {})
+        legacy = report.get("viewer_panel_width_legacy_resize", {})
+        native_max = panel.get("native_allowed_max", 0)
+        ui_max = panel.get("ui_allowed_max", 0)
+        committed = panel.get("committed", 0)
+        require(panel.get("above_previous_limit") is True
+                and 640 < committed <= ui_max <= native_max <= 16384
+                and panel.get("native_allowed_min") == 240
+                and panel.get("native_stored") == committed,
+                f"The {label} actual native resize/bridge/store must exceed the former 640px limit")
+        require(viewport.get("viewportWidth", 0) >= 1200
+                and abs(viewport.get("actual", 0) - committed) < 1
+                and viewport.get("localStored") == committed
+                and viewport.get("left", -1) >= 0
+                and viewport.get("right", float("inf")) <= viewport["viewportWidth"]
+                and viewport.get("modelWidth", 0) >= 319,
+                f"The {label} above-640 panel must fit the actual wide WebView beside a useful model area")
+        require(240 <= legacy.get("committed", 0) <= ui_max
+                and legacy.get("native_stored") == legacy["committed"],
+                f"The {label} original small-step resize and native store probe must still run")
+        restored = report.get("viewer_panel_native_window_restored", {})
+        original = report.get("viewer_panel_wide_window", {})
+        require(abs(restored.get("width", 0) - original.get("originalWidth", -1)) < 1
+                and abs(restored.get("height", 0) - original.get("originalHeight", -1)) < 1
+                and restored.get("native_stored") == committed,
+                f"The {label} native window must be restored before actual trusted canvas input")
+    require(240 <= first_panel.get("committed", 0) <= first_panel.get("native_allowed_max", 0)
+            and first_panel.get("native_stored") == first_panel["committed"]
+            and second_panel.get("restored_on_relaunch") is True
+            and second_panel.get("previous_expected") == first_panel["committed"],
+            "Adjustment panel width must persist through a fresh native WebView and relocated app relaunch")
+    restored_before = second.get("viewer_panel_before", {})
+    require(restored_before.get("metadata") == first_panel["committed"]
+            and abs(restored_before.get("actual", 0) - first_panel["committed"]) < 1,
+            "Relocated native metadata and actual rendered width must retain the value above 640px")
+
+
 def check(app, output, relocation):
     app, output, relocation = Path(app).resolve(), Path(output).resolve(), Path(relocation).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -1397,13 +1439,7 @@ def check(app, output, relocation):
     second = launch(relocation, output, "relocated-relaunch")
     check_zip_edit_report(second, fixture)
     check_pose_body_report(second)
-    first_panel = first.get("viewer_panel_width_persistence", {})
-    second_panel = second.get("viewer_panel_width_persistence", {})
-    require(240 <= first_panel.get("committed", 0) <= 640
-            and first_panel.get("native_stored") == first_panel["committed"]
-            and second_panel.get("restored_on_relaunch") is True
-            and second_panel.get("previous_expected") == first_panel["committed"],
-            "Adjustment panel width must persist through a fresh native WebView and relocated app relaunch")
+    check_panel_width_persistence(first, second)
     first_files = first.get("viewer_files_width_persistence", {})
     second_files = second.get("viewer_files_width_persistence", {})
     require(160 <= first_files.get("committed", 0) <= 360
@@ -1423,6 +1459,7 @@ def check(app, output, relocation):
              "part_selection_inputs": part_inputs,
              "thumbnail_updater_inputs": updater_inputs,
              "viewer_panel_width_persisted_across_relaunch": True,
+             "viewer_panel_width_above640_native_resize_and_relaunch": True,
              "viewer_files_width_persisted_across_relaunch": True,
              "space_and_unicode_path": " " in str(relocation) and any(ord(char) > 127 for char in str(relocation)),
              "first": first, "relocated": second}

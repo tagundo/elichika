@@ -96,7 +96,7 @@ staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.j
     'viewer_mesh_connected_zoom_test.js', 'viewer_gaze_test.js', 'viewer_motion_audio_transport_test.js',
     'viewer_transplant_bone_selection_test.js', 'viewer_thumbnail_saved_settings_test.js',
     'viewer_motion_performance_test.js', 'viewer_native_pcm_test.js', 'viewer_native_pcm_controller_test.js',
-    'texture_paint_engine_test.js', 'texture_paint_layers_test.js', 'texture_uv_selection_test.js']
+    'texture_paint_engine_test.js', 'texture_paint_layers_test.js', 'texture_uv_selection_test.js', 'viewer_near_clip_test.js']
 numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisions.json',
     'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
     'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json',
@@ -106,14 +106,15 @@ for name in staged_python + staged_drivers:
 (test_stage / 'fixtures').mkdir()
 for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
-static_files = ['vendor/three-r128/three.min.js', 'viewer-physics.js',
+static_files = ['vendor/three-r128/three.min.js', 'style.css', 'platform.js', 'viewer-physics.js',
     'texture-png.js', 'texture-color-math.js', 'texture-color-worker.js',
     'texture-paint-engine.js', 'texture-uv-selection.js',
     'viewer-interaction-tools.js', 'viewer-interaction-tools.css', 'viewer-texture-tools.js', 'viewer-texture-tools.css',
     'texture-panel-expand.js', 'texture-panel-expand.css',
     'vendor/fflate-0.8.2/fflate.min.js',
     'viewer-game-physics-math.js', 'viewer-game-physics-collision.js', 'viewer-game-physics.js',
-    'viewer-mesh-tools.js', 'viewer-motion-timeline.js', 'viewer-motion-audio.js', 'viewer-native-pcm-player.js', 'viewer-transplants.js', 'viewer-thumbnails.js']
+    'viewer-mesh-tools.js', 'viewer-mesh-runtime.js', 'viewer-outlines.js', 'viewer-near-clip.js',
+    'viewer-motion-timeline.js', 'viewer-motion-audio.js', 'viewer-native-pcm-player.js', 'viewer-transplants.js', 'viewer-thumbnails.js']
 packaged_node_sources = {}
 for name in static_files:
     actual = (stage / 'webtools/web/static' / name).resolve()
@@ -313,6 +314,18 @@ class PackagedTexturePaintTests(unittest.TestCase):
         texture_paint_node_probes['uv_selection'] = dict(status='PASS', cases=16,
             driver_sha256=hashlib.sha256(script.read_bytes()).hexdigest(),
             uv_source_sha256=hashlib.sha256(actual.read_bytes()).hexdigest())
+
+    def test_actual_packaged_near_clip_and_view_depth_policy(self):
+        script = test_stage / 'viewer_near_clip_test.js'
+        actual = (static / 'viewer-near-clip.js').resolve()
+        self.assertTrue(actual.is_relative_to(source))
+        result = subprocess.run(['node', str(script)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        probe = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertEqual(probe, {'status': 'PASS', 'cases': 14})
+        texture_paint_node_probes['near_clip'] = dict(status='PASS', cases=14,
+            driver_sha256=hashlib.sha256(script.read_bytes()).hexdigest(),
+            clip_source_sha256=hashlib.sha256(actual.read_bytes()).hexdigest())
 suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(PackagedTexturePaintTests))
 def case_ids(tests):
     for item in tests:

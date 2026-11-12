@@ -142,6 +142,9 @@ enum IPAddress {
 }
 
 struct NativeRequest: Decodable {
+    // The viewer clamps the actual pane to the available window width. This
+    // bound validates persisted preferences without imposing a desktop UI cap.
+    static let viewerPanelWidthRange = 240...16_384
     enum Action: String, Decodable { case openFiles, chooseDirectory, reveal, setFullscreen, setLanguage, setViewerPanelWidth, setViewerFilesWidth, setPanelSettings, setEditorSurface, setSection }
     let id: String
     let action: Action
@@ -181,7 +184,7 @@ struct NativeRequest: Decodable {
               (request.extensions?.count ?? 0) <= 32, (request.title?.utf8.count ?? 0) <= 1024,
               (request.path?.utf8.count ?? 0) <= 16_384 else { throw NativeError.invalidMessage }
         if request.action == .setViewerPanelWidth {
-            guard let width = request.width, width == 0 || (240...640).contains(width) else { throw NativeError.invalidMessage }
+            guard let width = request.width, width == 0 || viewerPanelWidthRange.contains(width) else { throw NativeError.invalidMessage }
         } else if request.action == .setViewerFilesWidth {
             guard let width = request.width, width == 0 || (160...360).contains(width) else { throw NativeError.invalidMessage }
         } else if request.action == .setEditorSurface {
