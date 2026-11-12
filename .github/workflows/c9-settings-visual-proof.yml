@@ -1,0 +1,145 @@
+name: Exact C9 APK passive Settings visual proof
+
+on:
+  push:
+    branches:
+      - codex/c9-settings-visual-proof-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  passive-same-apk:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    env:
+      PROOF_ROOT: /dev/shm/c9-settings-visual-proof
+      PYTHONDONTWRITEBYTECODE: '1'
+      TMPDIR: /dev/shm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify diagnostic ancestry and exact two-file scope
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/c9-settings-visual-proof-20261112
+          test "$(git rev-parse HEAD^)" = 5aee0b3a3539b617b1a00824500c80abfeef8ee7
+          python3 - <<'PY'
+          import hashlib,subprocess
+          from pathlib import Path
+          changed=subprocess.check_output(['git','diff-tree','--no-commit-id','--name-only','-r','HEAD']).decode().splitlines()
+          assert set(changed)=={'.github/workflows/c9-settings-visual-proof.yml','tests/c9_settings_visual_proof.py'}
+          assert hashlib.sha256(Path('tests/c9_settings_visual_proof.py').read_bytes()).hexdigest()=='55690ed702a511039da40793bd965bb75988498cf152e1ff2f96544c0b4010f1'
+          PY
+          mkdir -p "$PROOF_ROOT/evidence" "$PROOF_ROOT/android-data"
+          sudo env ELICHIKA_APT_EVIDENCE="$PROOF_ROOT/evidence" python3 android/ci/prepare_ubuntu_apt.py
+
+      - name: Prepare the same pinned native ARM64 Redroid environment
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb apksigner aapt python3-pil
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          uname -a > "$PROOF_ROOT/evidence/host.txt"
+          getconf PAGESIZE >> "$PROOF_ROOT/evidence/host.txt"
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker image inspect redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa --format '{{json .RepoDigests}} {{.Architecture}}' >> "$PROOF_ROOT/evidence/host.txt"
+          docker run --detach --privileged --name c9-settings-visual-proof \
+            --publish 127.0.0.1:5555:5555 --volume "$PROOF_ROOT/android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=720 androidboot.redroid_height=1280 \
+            androidboot.redroid_fps=10 ro.secure=0
+
+      - name: Wait for Android and preserve the original WebView renderer setup
+        run: |
+          set -euo pipefail
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
+          adb -s 127.0.0.1:5555 shell getprop > "$PROOF_ROOT/evidence/android-properties.txt"
+          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+          printf '%s\n' '_ --use-gl=angle --use-angle=vulkan --webview-verbose-logging' > "$PROOF_ROOT/webview-command-line"
+          adb -s 127.0.0.1:5555 push "$PROOF_ROOT/webview-command-line" /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell cat /data/local/tmp/webview-command-line > "$PROOF_ROOT/evidence/webview-command-line.txt"
+
+      - name: Verify the completed original C9 run and release artifact metadata
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request
+          from pathlib import Path
+          base='https://api.github.com/repos/tagundo/elichika/'
+          def read(path):
+              req=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+os.environ['GITHUB_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(req,timeout=30) as response:return json.load(response)
+          run=read('actions/runs/43270642941')
+          assert run['id']==43270642941 and run['run_attempt']==1 and run['head_sha']=='5aee0b3a3539b617b1a00824500c80abfeef8ee7'
+          assert run['status']=='completed' and run['conclusion']=='success' and run['event']=='workflow_dispatch'
+          assert run['head_branch']=='codex/model-ui-fixes-release-20261112-3-c9'
+          artifact=read('actions/artifacts/13969063921')
+          assert artifact['id']==13969063921 and artifact['name']=='elichika-release-apk' and not artifact['expired']
+          assert artifact['size_in_bytes']==275097911 and artifact['digest']=='sha256:13bdfc70520076a4075cef89ef88481e02f1205e40b0f06b248185015fc9e11e'
+          assert artifact['workflow_run']['id']==43270642941 and artifact['workflow_run']['head_sha']==run['head_sha']
+          Path(os.environ['PROOF_ROOT'],'evidence','original-c9-live-binding.json').write_text(json.dumps({'run':{k:run[k] for k in ('id','run_attempt','head_sha','head_branch','event','status','conclusion')},'artifact':artifact},indent=2)+'\n')
+          PY
+
+      - name: Download only the existing exact C9 signed release artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          run-id: 43270642941
+          artifact-ids: '13969063921'
+          merge-multiple: true
+          path: /dev/shm/c9-settings-visual-proof/candidate
+
+      - name: Ordinary launch and passive Server User Server timed frame capture
+        run: |
+          set -euo pipefail
+          python3 -u tests/c9_settings_visual_proof.py \
+            --candidate "$PROOF_ROOT/candidate/elichika-2026.11.12.3.apk" \
+            --evidence "$PROOF_ROOT/evidence"
+
+      - name: Preserve raw device diagnostics and require ALL Go cleanup
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROOF_ROOT/evidence"
+          docker logs c9-settings-visual-proof > "$PROOF_ROOT/evidence/container.log" 2>&1 || true
+          if adb -s 127.0.0.1:5555 shell true >/dev/null 2>&1; then
+            adb -s 127.0.0.1:5555 logcat -d > "$PROOF_ROOT/evidence/final-logcat.txt"
+            adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
+            adb -s 127.0.0.1:5555 shell 'pidof libelichika.so || true' | tr -d '\r' > "$PROOF_ROOT/evidence/final-all-go-pids.txt"
+            test -z "$(cat "$PROOF_ROOT/evidence/final-all-go-pids.txt")"
+          fi
+
+      - name: Upload all unchanged passive framebuffer and accessibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c9-settings-passive-exact-apk-visual-evidence
+          path: /dev/shm/c9-settings-visual-proof/evidence/
+          if-no-files-found: error
+
+      - name: Remove disposable Android container
+        if: always()
+        run: docker rm -f c9-settings-visual-proof || true
