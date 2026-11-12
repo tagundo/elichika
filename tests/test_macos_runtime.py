@@ -130,7 +130,7 @@ if sys.argv[1]=='cdn_cache':
 
     def management_binary(self, runtime, *, drain=False):
         runtime.binary.parent.mkdir(parents=True, exist_ok=True)
-        code = """import fcntl,http.server,json,os,pathlib,signal,sys,threading,time
+        code = """import fcntl,http.server,json,os,pathlib,signal,socketserver,sys,threading,time
 root=pathlib.Path.cwd()
 management=sys.argv[1:]==['management']
 if sys.argv[1:] and not management:
@@ -148,8 +148,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         while not (root/'release-management-write').exists(): time.sleep(.01)
         (root/'management-write-finished').touch()
         self.send_response(200); self.end_headers(); self.wfile.write(b'fixture write complete')
+class LoopbackHTTPServer(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # Model Go's numeric loopback listener without reverse DNS delaying READY.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name,self.server_port=self.server_address[:2]
 address=json.loads((root/'config.json').read_text())['server_address']
-server=http.server.ThreadingHTTPServer(('127.0.0.1',0 if management else int(address.rsplit(':',1)[1])),Handler)
+server=LoopbackHTTPServer(('127.0.0.1',0 if management else int(address.rsplit(':',1)[1])),Handler)
 server.daemon_threads=False
 if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.0.0.1:'+str(server.server_port),'pid':os.getpid()}),flush=True)
 """
