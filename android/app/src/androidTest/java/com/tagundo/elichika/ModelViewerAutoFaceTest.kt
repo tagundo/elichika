@@ -106,7 +106,8 @@ class ModelViewerAutoFaceTest {
                 "var visible=name==='Eyes';found=found||visible;if(input.checked!==visible)input.click();}" +
                 "return JSON.stringify({ok:found});")
             assertTrue("The real parts controls must include the auto-added Eyes", isolated.getBoolean("ok"))
-            val eyesPixels = waitForPixels(webView, "only the auto-added Eyes", 1)
+            // The isolated eye can fall between the sparse default grid points; sample its real pixels more densely.
+            val eyesPixels = waitForPixels(webView, "only the auto-added Eyes", 1, 65)
             evaluate(webView, "var inputs=document.querySelectorAll('#viewer-parts input');" +
                 "for(var i=0;i<inputs.length;i++){if(!inputs[i].checked)inputs[i].click();}" +
                 "return JSON.stringify({ok:true});")
@@ -171,9 +172,9 @@ class ModelViewerAutoFaceTest {
             "return JSON.stringify({ok:true});")
     }
 
-    private fun waitForPixels(webView: WebView, description: String, expectedTriangles: Int): JSONObject {
+    private fun waitForPixels(webView: WebView, description: String, expectedTriangles: Int, sampleGrid: Int = 11): JSONObject {
         return waitForDom(webView, "$description in the actual WebGL framebuffer") {
-            "var s=window.ModelViewer.getState(),p=window.ModelViewer.renderProbe();" +
+            "var s=window.ModelViewer.getState(),p=window.ModelViewer.renderProbe($sampleGrid);" +
                 "return JSON.stringify({ok:s.loaded&&!s.loading&&!s.contextLost&&p.ready&&" +
                 "p.triangles===$expectedTriangles&&p.nonBackgroundSamples>=3&&p.chromaticSamples>=3&&" +
                 "p.width>=100&&p.height>=100&&p.glError===0,error:s.error,probe:p});"
