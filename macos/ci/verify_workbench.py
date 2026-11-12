@@ -102,7 +102,8 @@ staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.j
 numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisions.json',
     'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
     'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json',
-    'game_physics_native_constructor.json', 'viewer_textured_triangle.unity']
+    'game_physics_native_constructor.json', 'viewer_textured_triangle.unity',
+    'viewer_rig.unity', 'viewer_triangle.unity']
 for name in staged_python + staged_drivers:
     shutil.copy2(test_source / name, test_stage / name)
 shutil.copy2(repo / 'tests/test_game_quality_settings.py', test_stage / 'test_game_quality_settings.py')
