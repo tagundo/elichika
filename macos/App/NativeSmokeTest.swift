@@ -1499,39 +1499,63 @@ final class NativeSmokeTest {
             try await snapshot(webView, directory.appendingPathComponent(filename))
             observed.append(["requested_path": path, "http_status": 200, "document": page, "screenshot": filename])
         }
+        let settings = model.browser(.serverSettings)
+        let accounts = model.browser(.accounts)
+        guard let originalOrigin = model.goURL(path: "/webui/admin/") else { throw NativeError.invalidResponse }
+        let managementPages = [settings.webView, accounts.webView]
+        // An unsent form draft exercises actual document preservation, beyond
+        // merely reusing a WKWebView with a newly loaded login page.
+        for webView in managementPages {
+            let prepared = try await js(webView, """
+                var field=document.querySelector('#login_form input[type="password"]:not([disabled]):not([readonly])');
+                if(!field)return false;
+                window.elichikaNavigationDraft={field:field,previous:field.value};
+                field.value='Elichika unsaved navigation draft';field.dispatchEvent(new Event('input',{bubbles:true}));
+                return field.value==='Elichika unsaved navigation draft';
+                """)
+            try require(prepared as? Bool == true, "Each management page must contain a real editable form draft before navigation.")
+        }
+        let stopRequests = stages.filter { $0["stage"] as? String == "management-demand-stop-requested" }.count
+        for destination in [AppSection.viewer, .content, .server] {
+            model.selectedSection = destination
+            // Let SwiftUI detach the hidden page, then exercise the ordinary
+            // state refresh that previously stopped and destroyed its session.
+            try await Task.sleep(nanoseconds: 250_000_000)
+            await model.refresh()
+            try require(model.snapshot.management?.pid == pid && model.snapshot.management?.httpReady == true
+                        && model.goURL(path: "/webui/admin/") == originalOrigin && !model.snapshot.serverRunning,
+                        "Visiting another menu must retain the same ready management process and origin.")
+            for (route, section, _, _) in pages {
+                model.showServerSettings = true
+                model.selectedSection = section
+                model.retryManagement()
+                let session = model.browser(route)
+                try require(session === (route == .serverSettings ? settings : accounts),
+                            "Returning to management must retain its original browser session.")
+                try await wait("the reattached management form", timeout: 20) { session.webView.window != nil }
+                let preserved = try await js(session.webView,
+                    "return !!window.elichikaNavigationDraft&&window.elichikaNavigationDraft.field.isConnected&&window.elichikaNavigationDraft.field.value==='Elichika unsaved navigation draft';")
+                try require(preserved as? Bool == true,
+                            "Returning from another menu must retain the unsent form in the original document.")
+            }
+        }
+        for webView in managementPages {
+            _ = try await js(webView, "var saved=window.elichikaNavigationDraft;if(saved){saved.field.value=saved.previous;saved.field.dispatchEvent(new Event('input',{bubbles:true}));delete window.elichikaNavigationDraft;}return true;")
+        }
         model.selectedSection = previous
         model.showServerSettings = previousSettings
-        model.releaseManagementIfNotVisible()
-        try await wait("management release before returning to editing", timeout: 20) {
-            await self.model.refresh()
-            return self.model.managementDemandIdle && self.model.snapshot.management?.running != true && !self.model.snapshot.busy && !self.model.snapshot.serverRunning
-        }
-        let startAcknowledgments = stages.filter { $0["stage"] as? String == "management-demand-start-acknowledged" }.count
-        for _ in 0..<3 {
-            let requests = stages.filter { $0["stage"] as? String == "management-demand-start-requested" }.count
-            model.selectedSection = .accounts
-            model.retryManagement()
-            try await wait("the real management navigation request", timeout: 15) {
-                self.stages.filter { $0["stage"] as? String == "management-demand-start-requested" }.count > requests
-            }
-            model.selectedSection = previous
-            model.showServerSettings = previousSettings
-            model.releaseManagementIfNotVisible()
-            try await wait("management navigation release", timeout: 30) {
-                await self.model.refresh()
-                return self.model.managementDemandIdle && self.model.snapshot.management?.running != true && !self.model.snapshot.busy && !self.model.snapshot.serverRunning
-            }
-        }
-        try await wait("the latest management navigation intent", timeout: 30) {
-            await self.model.refresh()
-            return self.model.managementDemandIdle && self.model.snapshot.management?.running != true && !self.model.snapshot.busy && !self.model.snapshot.serverRunning
-        }
-        let acknowledgedStarts = stages.filter { $0["stage"] as? String == "management-demand-start-acknowledged" }.count - startAcknowledgments
-        try require(acknowledgedStarts > 0, "Rapid management navigation must exercise an acknowledged real start before reconciling the final editing destination.")
+        await model.refresh()
+        try require(model.snapshot.management?.pid == pid && model.snapshot.management?.httpReady == true
+                    && model.managementSessionWanted && !model.snapshot.serverRunning,
+                    "The management session must stay ready after returning to editing; the game server stays stopped.")
+        try require(stages.filter { $0["stage"] as? String == "management-demand-stop-requested" }.count == stopRequests,
+                    "Menu navigation must not request a management shutdown.")
         report["native_offline_management"] = ["status": "PASS", "server_stayed_stopped": true,
-            "management_pid": pid, "pages": observed, "released_before_editing": true,
-            "fast_navigation_cycles": 3, "fast_navigation_acknowledged_starts": acknowledgedStarts,
-            "scope": "Actual native Settings/Accounts WebViews and real loopback Go management service; no game server or account mutation requested"]
+            "management_pid": pid, "management_pid_after_navigation": pid, "pages": observed,
+            "session_retained_while_editing": true, "fast_navigation_cycles": 3,
+            "browser_sessions_preserved": true, "unsaved_form_drafts_preserved": true,
+            "origin_unchanged": true, "navigation_shutdown_requests": 0,
+            "scope": "Actual native Settings/Accounts WebViews and the same real loopback Go management process across menu round trips; no game server or account mutation requested"]
         try checkpoint("offline-management-pages-passed")
     }
 

@@ -34,6 +34,10 @@ def fixture():
                                  'path': path, 'tabId': tab, 'ready': True, 'loginForm': True, 'passwordInput': True,
                                  'bodyVisible': True, 'loginFormLoaded': True}
         report['screenshots'][key] = {'file': 'offline-management-' + key + '.png', 'width': 100, 'height': 100, 'bytes': len(raw)}
+    report['menuRoundTrips'] = {key: [dict(viaTab=tab, sameOwnedPid=True, sameOrigin=True, sameWebView=True,
+                                        sameDocument=True, draftPreserved=True)
+                                    for tab in ('console', 'server-content', 'asset-tools', 'model-viewer')]
+                               for key in ('settings', 'user')}
     observed = {'allGoPids': [102], 'appPids': [101], 'argv': [binary, 'management'], 'ppid': 101,
                 'binaryPath': binary, 'binarySha256': 'a' * 64}
     return report, {'settings': raw, 'user': raw}, observed
@@ -79,6 +83,14 @@ class OfflineNativeGateTests(unittest.TestCase):
     def test_game_or_cdn_route_exposure_is_rejected(self):
         report, images, _ = fixture(); report['excludedRoutes']['/api/bootstrap'] = 200
         with self.assertRaises(ValueError): validate_report(report, images)
+
+    def test_missing_menu_roundtrip_or_lost_session_document_and_draft_are_rejected(self):
+        for panel in ('settings', 'user'):
+            report, images, _ = fixture(); report['menuRoundTrips'][panel].pop()
+            with self.subTest(panel=panel, field='missing'), self.assertRaises(ValueError): validate_report(report, images)
+            for key in ('sameOwnedPid', 'sameOrigin', 'sameWebView', 'sameDocument', 'draftPreserved'):
+                report, images, _ = fixture(); report['menuRoundTrips'][panel][2][key] = False
+                with self.subTest(panel=panel, field=key), self.assertRaises(ValueError): validate_report(report, images)
 
     def test_corrupt_truncated_or_trailing_png_data_is_rejected(self):
         raw = png()

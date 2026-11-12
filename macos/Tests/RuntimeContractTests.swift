@@ -422,6 +422,61 @@ final class RuntimeContractTests: XCTestCase {
     }
 
     @MainActor
+    func testManagementDemandIsLazyAndSurvivesMenuChangesWhilePreparing() async throws {
+        _ = NSApplication.shared
+        let model = AppModel(arguments: [], resources: nil)
+        model.selectedSection = .viewer
+        model.retryManagement()
+        XCTAssertFalse(model.managementSessionWanted)
+        XCTAssertNil(model.process)
+
+        model.selectedSection = .settings
+        model.showServerSettings = false
+        model.retryManagement()
+        XCTAssertFalse(model.managementSessionWanted)
+        model.showServerSettings = true
+        model.retryManagement()
+        XCTAssertTrue(model.managementSessionWanted)
+        XCTAssertNil(model.process, "Opening management during preparation must record demand without eagerly launching another runtime.")
+
+        for section in [AppSection.viewer, .content, .server, .accounts, .settings] {
+            model.selectedSection = section
+            model.retryManagement()
+            XCTAssertTrue(model.managementSessionWanted, "Navigating away must not revoke the app session's management demand.")
+        }
+        await model.stopRuntime()
+        XCTAssertFalse(model.managementSessionWanted, "Runtime shutdown must release retained management demand.")
+    }
+
+    @MainActor
+    func testManagementMenuRoundTripsKeepBothBrowsersAndTheirOrigin() async throws {
+        _ = NSApplication.shared
+        let model = AppModel(arguments: [], resources: nil)
+        let ready = try JSONDecoder().decode(RuntimeState.self, from: Data("""
+            {"phase":"ready","prepared":true,"management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:43127"}}
+            """.utf8))
+        XCTAssertTrue(model.applyRuntimeState(ready, for: model.beginRuntimeStateRequest()))
+        let settings = model.browser(.serverSettings)
+        let accounts = model.browser(.accounts)
+        defer { model.clearGoBrowsers() }
+        model.selectedSection = .accounts
+        model.retryManagement()
+
+        for section in [AppSection.viewer, .content, .server, .settings, .accounts] {
+            model.selectedSection = section
+            XCTAssertTrue(model.applyRuntimeState(ready, for: model.beginRuntimeStateRequest()))
+            XCTAssertTrue(model.managementSessionWanted)
+            XCTAssertEqual(model.goURL(path: "/webui/admin/")?.port, 43127)
+            XCTAssertTrue(model.browser(.serverSettings) === settings)
+            XCTAssertTrue(model.browser(.accounts) === accounts)
+            XCTAssertNotNil(settings.webView.navigationDelegate)
+            XCTAssertNotNil(accounts.webView.navigationDelegate)
+        }
+        model.quitting = true
+        XCTAssertFalse(model.managementSessionWanted)
+    }
+
+    @MainActor
     func testLateRefreshCannotReplaceTheBrowserPublishedByManagementAcknowledgement() async throws {
         _ = NSApplication.shared
         let model = AppModel(arguments: [], resources: nil)

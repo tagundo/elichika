@@ -143,7 +143,6 @@ struct RootView: View {
             if model.goURL(path: "/webui/user/") != nil {
                 WebPanel(model: model, route: .accounts)
                     .onAppear { model.retryManagement() }
-                    .onDisappear { model.releaseManagementIfNotVisible() }
             }
             else { ManagementPreparationView(model: model) }
         }
@@ -228,7 +227,6 @@ private struct ManagementPreparationView: View {
                         model.retryManagement()
                     }
                 }
-                .onDisappear { model.releaseManagementIfNotVisible() }
         }
     }
 }
@@ -515,7 +513,6 @@ private struct SettingsView: View {
                 if model.goURL(path: "/webui/admin/") != nil {
                     WebPanel(model: model, route: .serverSettings)
                         .onAppear { model.retryManagement() }
-                        .onDisappear { model.releaseManagementIfNotVisible() }
                 }
                 else { ManagementPreparationView(model: model) }
             } else {

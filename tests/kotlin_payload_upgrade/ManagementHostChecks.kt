@@ -98,7 +98,7 @@ fun main(args: Array<String>) {
     ManagementServer.releaseUi(windowA)
     Thread.sleep(50)
     check(ManagementServer.currentPid() == final.getInt("pid") && launches().size == 3) {
-        "One window leaving management must not stop another window's process"
+        "Releasing one app window must not stop another window's process"
     }
     File(root, "management-drain-requested").delete()
     File(root, "release-management-drain").delete()
@@ -127,7 +127,7 @@ fun main(args: Array<String>) {
     ManagementServer.releaseService(editing)
     Thread.sleep(100)
     check(launches().size == 3 && ManagementServer.currentPid() == null) {
-        "A 3D editing job must not restart management after its last UI window leaves"
+        "A data job must not restart management after its last app window releases demand"
     }
 
     // A rotation hands demand to the new Activity without retaining a dead owner.
@@ -158,5 +158,5 @@ fun main(args: Array<String>) {
     val stopped = ManagementServer.suspendForService()
     check(ManagementServer.awaitSuspended(stopped))
     check(Bus.logs.none { it.contains("ELICHIKA_MANAGEMENT_READY") || it.contains(final.getString("token")) || it.contains("PRIVATE-PASSWORD-SENTINEL") })
-    println("ANDROID_MANAGEMENT_HOST_CHECKS_PASS: lazy explicit demand, owned PID, private readiness, fresh nonce, parent PID, game OFF, lease exclusion, graceful authenticated-write drain without SIGKILL, blocked takeover until explicit release, stop/reap, restart, cancelled pending launch, recovery refusal, explicit retry, two UI owners, release to3D without job restart, rotation handoff, no secret logs")
+    println("ANDROID_MANAGEMENT_HOST_CHECKS_PASS: lazy explicit demand, owned PID, private readiness, fresh nonce, parent PID, game OFF, lease exclusion, graceful authenticated-write drain without SIGKILL, blocked takeover until explicit release, stop/reap, restart, cancelled pending launch, recovery refusal, explicit retry, two UI owners, owner release without job restart, rotation handoff, no secret logs")
 }

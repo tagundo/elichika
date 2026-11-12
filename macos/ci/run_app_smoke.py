@@ -504,11 +504,15 @@ def check_native_sidebar_layout(observed):
 def check_native_offline_management(observed):
     import urllib.parse
     require(observed.get("status") == "PASS" and observed.get("server_stayed_stopped") is True
-            and observed.get("released_before_editing") is True
+            and observed.get("session_retained_while_editing") is True
+            and observed.get("browser_sessions_preserved") is True
+            and observed.get("unsaved_form_drafts_preserved") is True
+            and observed.get("origin_unchanged") is True
+            and observed.get("navigation_shutdown_requests") == 0
             and type(observed.get("fast_navigation_cycles")) is int and observed["fast_navigation_cycles"] == 3
-            and type(observed.get("fast_navigation_acknowledged_starts")) is int and observed["fast_navigation_acknowledged_starts"] > 0
-            and type(observed.get("management_pid")) is int and observed["management_pid"] > 0,
-            "Actual native management must load with the game server stopped and release its process before editing")
+            and type(observed.get("management_pid")) is int and observed["management_pid"] > 0
+            and observed.get("management_pid_after_navigation") == observed["management_pid"],
+            "Actual native management must preserve its process, origin, browser and unsent forms across other menus while the game server stays stopped")
     pages = observed.get("pages", [])
     require(len(pages) == 2 and [page.get("requested_path") for page in pages] == ["/webui/admin/", "/webui/user/"],
             "Actual native Settings and Accounts must both be exercised")

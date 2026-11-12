@@ -14,7 +14,8 @@ import zlib
 PACKAGE = 'com.tagundo.elichika'
 CLASS = PACKAGE + '.OfflineManagementWebViewTest'
 CHECKS = ('gameFlagsStayedOff', 'onlyOwnedManagementProcess', 'loopbackEphemeral',
-          'gameApiExcluded', 'pythonToolsPrepared', 'noUiWriteRequests')
+          'gameApiExcluded', 'pythonToolsPrepared', 'noUiWriteRequests',
+          'menuRoundTripsKeepOwnedProcess', 'menuRoundTripsKeepDocumentAndDraft')
 IMAGES = {'settings': 'offline-management-settings.png', 'user': 'offline-management-user.png'}
 
 
@@ -85,6 +86,13 @@ def validate_report(report, images):
         panel_url = urlsplit(value.get('url', ''))
         require((panel_url.scheme, panel_url.hostname, panel_url.port, panel_url.path)
                 == ('http', '127.0.0.1', address['port'], path), 'Offline panel uses a different origin or route')
+        trips = report.get('menuRoundTrips', {}).get(panel, [])
+        require(isinstance(trips, list) and len(trips) == 4
+                and all(isinstance(row, dict) for row in trips)
+                and [row.get('viaTab') for row in trips] == ['console', 'server-content', 'asset-tools', 'model-viewer']
+                and all(row.get(key) is True for row in trips for key in
+                        ('sameOwnedPid', 'sameOrigin', 'sameWebView', 'sameDocument', 'draftPreserved')),
+                'Both management panels must retain their session and unsent draft across every other app menu')
     require(report.get('excludedRoutes') == {'/login/login': 404, '/api/bootstrap': 404, '/static/offline-fixture.pack': 404},
             'Management must not expose gameplay or CDN routes')
     decoded = {}

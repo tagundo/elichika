@@ -720,8 +720,11 @@ class MainActivity : AppCompatActivity() {
         if (index != currentTab) viewerFullscreen.exit()
         currentTab = index
         val tab = tabs[index]
+        // Retain this visible window's management session after first use. Dropping
+        // demand on a menu change stops Go and changes its private origin on return,
+        // which discards login and unsaved form state in the retained WebViews.
+        // onStop/finish still release the window, and data services suspend Go safely.
         if (tab.managementPage) ManagementServer.requestUi(applicationContext, this)
-        else ManagementServer.releaseUi(this)
         val targetUrl = effectiveTabUrl(tab)
         // Keep a shared WebView visible while its section changes. A transient
         // GONE/VISIBLE cycle can blur editing fields or suspend its renderer.

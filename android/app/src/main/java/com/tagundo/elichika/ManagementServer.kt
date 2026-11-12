@@ -48,7 +48,7 @@ object ManagementServer {
         prepareTools(ctx)
     }
 
-    /** Each visible management window owns demand independently of data-job leases. */
+    /** A visible app window retains first-use management demand across menu changes. */
     fun requestUi(ctx: Context, owner: Any, retry: Boolean = false) {
         synchronized(lock) {
             pruneUiOwnersLocked()
@@ -61,7 +61,7 @@ object ManagementServer {
         prepareTools(ctx)
     }
 
-    /** Returning to 3D/tools drops the last window's Go memory cost. */
+    /** A stopped/finished app window releases its demand independently of job leases. */
     fun releaseUi(owner: Any) {
         var previous: ServerProcess? = null
         var stop = false

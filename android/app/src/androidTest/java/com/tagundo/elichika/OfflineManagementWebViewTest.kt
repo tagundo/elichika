@@ -17,6 +17,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -71,6 +72,8 @@ class OfflineManagementWebViewTest {
             val owned = ownedManagementProcess(context)
             report.put("management", JSONObject().put("url", base).put("host", parsed.host).put("port", parsed.port))
                 .put("ownedProcess", owned)
+            val settingsNavigation = assertMenuRoundTripsRetainSession(
+                launched, "server", settingsView, "admin_password", base, owned.getInt("pid"))
             val settingsImage = screenshot(launched, "offline-management-settings.png")
 
             instrumentation.runOnMainSync { NativeTabsQa.tab(launched, "account").select() }
@@ -79,6 +82,8 @@ class OfflineManagementWebViewTest {
             assertEquals(base, user.getString("origin"))
             assertEquals("Both tabs must reuse the same owned management process",
                 owned.getInt("pid"), ownedManagementProcess(context).getInt("pid"))
+            val userNavigation = assertMenuRoundTripsRetainSession(
+                launched, "account", userView, "user_password", base, owned.getInt("pid"))
             val userImage = screenshot(launched, "offline-management-user.png")
             val excluded = JSONObject()
             for (path in listOf("/login/login", "/api/bootstrap", "/static/offline-fixture.pack")) {
@@ -91,11 +96,13 @@ class OfflineManagementWebViewTest {
                 .put("settings", settings.put("tabId", "server").put("loginFormLoaded", true))
                 .put("user", user.put("tabId", "account").put("loginFormLoaded", true)))
                 .put("screenshots", JSONObject().put("settings", settingsImage).put("user", userImage))
+                .put("menuRoundTrips", JSONObject().put("settings", settingsNavigation).put("user", userNavigation))
                 .put("excludedRoutes", excluded)
                 .put("checks", JSONObject().put("gameFlagsStayedOff", true)
                     .put("onlyOwnedManagementProcess", true).put("loopbackEphemeral", true)
                     .put("gameApiExcluded", true).put("pythonToolsPrepared", true)
-                    .put("noUiWriteRequests", true))
+                    .put("noUiWriteRequests", true).put("menuRoundTripsKeepOwnedProcess", true)
+                    .put("menuRoundTripsKeepDocumentAndDraft", true))
                 .put("hostCleanupRequired", "Force-stop app after this separate instrumentation and assert ALL Go PIDs are gone")
                 .put("status", "PASS")
             evidence.writeText(report.toString(2))
@@ -133,6 +140,44 @@ class OfflineManagementWebViewTest {
         assertFalse("Opening management must leave the game server stopped", Bus.serverRunning)
         assertFalse("Opening management must not queue a game server start", Bus.serverStarting)
         assertFalse("The game HTTP listener must stay unready", Bus.serverReady)
+    }
+
+    private fun assertMenuRoundTripsRetainSession(activity: MainActivity, panel: String, original: WebView,
+                                                 inputId: String, origin: String, pid: Int): JSONArray {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val marker = "menu-roundtrip-$panel-${System.nanoTime()}"
+        val before = evaluate(original, "var input=document.getElementById(${JSONObject.quote(inputId)});" +
+            "var old=input.value;input.value=${JSONObject.quote(marker)};" +
+            "window.__managementMenuRoundTrip=${JSONObject.quote(marker)};return JSON.stringify({value:old});")
+        val witnesses = JSONArray()
+        try {
+            for (away in listOf("console", "server-content", "asset-tools", "model-viewer")) {
+                instrumentation.runOnMainSync { NativeTabsQa.tab(activity, away).select() }
+                instrumentation.waitForIdleSync()
+                assertGameFlagsOff()
+                assertEquals("Switching to $away must retain the management origin", origin, ManagementServer.url())
+                assertEquals("Switching to $away must not stop the owned management process", pid, ManagementServer.currentPid())
+                assertFalse("Menu changes must not restart management preparation", ManagementServer.isPreparing())
+                instrumentation.runOnMainSync { NativeTabsQa.tab(activity, panel).select() }
+                val returned = waitForWebView(activity)
+                assertSame("Returning from $away must preserve the $panel WebView", original, returned)
+                val state = evaluate(returned, "return JSON.stringify({origin:location.origin," +
+                    "draft:document.getElementById(${JSONObject.quote(inputId)}).value," +
+                    "documentMarker:window.__managementMenuRoundTrip});")
+                assertEquals("Returning from $away must retain the origin", origin, state.getString("origin"))
+                assertEquals("Returning from $away must retain the unsent form input", marker, state.getString("draft"))
+                assertEquals("Returning from $away must not reload the document", marker, state.getString("documentMarker"))
+                assertEquals("Returning from $away must retain the same sole owned process", pid,
+                    ownedManagementProcess(activity).getInt("pid"))
+                witnesses.put(JSONObject().put("viaTab", away).put("sameOwnedPid", true)
+                    .put("sameOrigin", true).put("sameWebView", true).put("sameDocument", true).put("draftPreserved", true))
+            }
+            return witnesses
+        } finally {
+            // Only an unsent test draft is used; no authentication/configuration write is submitted.
+            evaluate(original, "document.getElementById(${JSONObject.quote(inputId)}).value=" +
+                JSONObject.quote(before.getString("value")) + ";delete window.__managementMenuRoundTrip;return JSON.stringify({restored:true});")
+        }
     }
 
     private fun realGoPids(): List<Int> {
