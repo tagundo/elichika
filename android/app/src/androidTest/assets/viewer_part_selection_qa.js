@@ -158,7 +158,7 @@
     function recordDocument(event) { record(event, 'document'); }
     var eventTypes = ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'touchcancel'];
     eventTypes.forEach(function (name) { global.addEventListener(name, recordWindow, true); document.addEventListener(name, recordDocument, true); });
-    var request = { pending: true, id: ++sequence, target: kind, point: { x: x, y: y }, viewport: { width: width, height: height }, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+    var request = { pending: true, id: ++sequence, target: kind, point: { x: x, y: y }, viewport: { width: innerWidth, height: innerHeight }, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
     if (sceneSelection) request.sourcePixel = { face: sceneSelection.sourceFace, bone: sceneSelection.bone, margin: sceneSelection.margin };
     global.__nativePartPointer = request;
     if (diagnostic) diagnostic.lastPointer = copy(request);
