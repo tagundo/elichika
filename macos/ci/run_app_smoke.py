@@ -501,6 +501,24 @@ def check_native_sidebar_layout(observed):
             "Native filename rows must preserve accessible full names while truncating without horizontal overflow")
 
 
+def check_native_console_actions(observed):
+    require(observed.get("status") == "PASS"
+            and observed.get("unsafe_requests_rejected") == ["runShell", "reset_server"]
+            and all(observed.get(key) is True for key in
+                    ("cancelled_presentations_started_no_job", "reset_requires_second_confirmation",
+                     "original_cache_setting_restored", "other_config_fields_preserved")),
+            "Actual Console must reject unsafe requests, require reset confirmation and preserve cancelled sheets/settings")
+    require(observed.get("archive_default_region") in ("gl", "jp")
+            and observed.get("native_view_screenshot") == "console-menus.png",
+            "Actual Console must expose a localized region default and capture the native grouped controls")
+    toggles = observed.get("cache_toggles", [])
+    require(len(toggles) == 2 and all(isinstance(item.get("id"), str) and item["id"] and item.get("status") == "done"
+                                    and isinstance(item.get("cache_enabled"), bool) for item in toggles)
+            and toggles[0]["id"] != toggles[1]["id"]
+            and toggles[0]["cache_enabled"] is not toggles[1]["cache_enabled"],
+            "Actual Console must complete two distinct bundled Go operations and restore the original CDN cache value")
+
+
 def check_file_lists(files, model_paths, motion_paths):
     import math
     import re
@@ -1346,6 +1364,7 @@ def check_pose_body_report(report):
             "Actual WebKit must start Pose collapsed and expose independent pose and body controls")
     check_fresh_file_header(report.get("native_file_header", {}))
     check_native_sidebar_layout(report.get("native_sidebar_layout", {}))
+    check_native_console_actions(report.get("native_console_actions", {}))
     panels = report.get("separate_pose_body_panels", {})
     require(panels.get("status") == "PASS" and len(panels.get("toggles", [])) == 4
             and panels.get("both_restored_open") is True
@@ -1413,6 +1432,12 @@ def launch(app, output, label):
             "Actual app integration assertions did not pass")
     require(report.get("normal_app_quit_with_running_server") is True,
             "App did not test ordinary Quit while its game server was running")
+    check_native_console_actions(report.get("native_console_actions", {}))
+    console_image = directory / "console-menus.png"
+    require(console_image.is_file() and console_image.stat().st_size > 1000
+            and console_image.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n",
+            "Actual native Console controls must have a PNG capture")
+    shutil.copyfile(console_image, output / f"{label}-console-menus.png")
     for key in ("python_pid", "go_pid", "go_pid_at_quit"):
         pid = report.get(key)
         deadline = time.monotonic() + 10

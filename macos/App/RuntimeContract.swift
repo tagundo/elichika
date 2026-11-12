@@ -47,6 +47,7 @@ struct RuntimeState: Decodable {
     var error: String?
     var progress: ProgressState?
     var server: ServerState?
+    var console: ConsoleState?
 
     struct ProgressState: Decodable {
         let stage: String?
@@ -81,7 +82,7 @@ struct RuntimeState: Decodable {
         enum CodingKeys: String, CodingKey { case running, pid, url, status, error; case httpReady = "http_ready" }
     }
 
-    enum CodingKeys: String, CodingKey { case phase, busy, prepared, error, progress, server; case serverRunning = "server_running" }
+    enum CodingKeys: String, CodingKey { case phase, busy, prepared, error, progress, server, console; case serverRunning = "server_running" }
     init() {}
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -92,7 +93,97 @@ struct RuntimeState: Decodable {
         error = try c.decodeIfPresent(String.self, forKey: .error)
         progress = try c.decodeIfPresent(ProgressState.self, forKey: .progress)
         server = try c.decodeIfPresent(ServerState.self, forKey: .server)
+        console = try c.decodeIfPresent(ConsoleState.self, forKey: .console)
     }
+}
+
+struct ConsoleState: Decodable {
+    var cacheEnabled: Bool?
+    var job: Job?
+
+    enum CodingKeys: String, CodingKey { case cacheEnabled = "cache_enabled", job }
+
+    struct Job: Decodable {
+        let id: String
+        let action: ConsoleAction
+        let region: ConsoleRegion?
+        let status: String
+        let running: Bool
+        let cancellable: Bool
+        let message: String
+        let error: String?
+        let progress: Progress?
+
+        struct Progress: Decodable {
+            let stage: String?
+            let completed: Int?
+            let total: Int?
+            let current: String?
+            let percent: Int?
+
+            var fraction: Double? {
+                if let completed, let total, total > 0, completed >= 0, completed <= total {
+                    return Double(completed) / Double(total)
+                }
+                if let percent, (0...100).contains(percent) { return Double(percent) / 100 }
+                return nil
+            }
+        }
+    }
+}
+
+enum ConsoleRegion: String, CaseIterable, Identifiable, Decodable {
+    case gl, jp, both
+    var id: String { rawValue }
+    static func defaultRegion(language: String) -> Self { language == "ja" ? .jp : .gl }
+    func title(_ language: String) -> String {
+        switch self {
+        case .gl: return NativeText.value("GL (Global — EN / KO / ZH)", "GL (글로벌 — EN / KO / ZH)", "GL（グローバル — EN / KO / ZH）", language: language)
+        case .jp: return NativeText.value("JP (Japan)", "JP (일본)", "JP（日本）", language: language)
+        case .both: return NativeText.value("Both (GL + JP)", "둘 다 (GL + JP)", "両方（GL + JP）", language: language)
+        }
+    }
+}
+
+enum ConsoleAction: String, Decodable, Identifiable {
+    case downloadArchive = "download_archive"
+    case downloadPacks = "download_packs"
+    case cdnCacheToggle = "cdn_cache_toggle"
+    case rebuildAssets = "rebuild_assets"
+    case fixTrainingTrees = "fix_training_trees"
+    case resetServer = "reset_server"
+    var id: String { rawValue }
+    func title(_ language: String) -> String {
+        let values: (String, String, String)
+        switch self {
+        case .downloadArchive: values = ("Download all (archive.org)…", "전체 받기 (archive.org)…", "全ファイル取得 (archive.org)…")
+        case .downloadPacks: values = ("Download missing (CDN)…", "누락분 받기 (CDN)…", "不足分を取得 (CDN)…")
+        case .cdnCacheToggle: values = ("CDN cache", "CDN 캐시", "CDNキャッシュ")
+        case .rebuildAssets: values = ("Rebuild master data…", "마스터 데이터 재빌드…", "マスターデータ再構築…")
+        case .fixTrainingTrees: values = ("Fix training trees…", "트레이닝 트리 복구…", "トレーニングツリー修復…")
+        case .resetServer: values = ("Reset server (remove mods)…", "서버 초기화 (모드 제거)…", "サーバー初期化（MOD削除）…")
+        }
+        return NativeText.value(values.0, values.1, values.2, language: language)
+    }
+
+    func requestBody(region: ConsoleRegion? = nil) -> [String: String] {
+        var body = ["action": rawValue, "confirmation": "STOP_SERVER"]
+        if self == .downloadArchive, let region { body["region"] = region.rawValue }
+        if self == .resetServer { body["reset_confirmation"] = "RESET_SERVER_AND_ACCOUNTS" }
+        return body
+    }
+}
+
+enum ConsolePresentation: Identifiable, Equatable {
+    case action(ConsoleAction), guide, about
+    var id: String {
+        switch self {
+        case .action(let action): return action.rawValue
+        case .guide: return "guide"
+        case .about: return "about"
+        }
+    }
+    var action: ConsoleAction? { if case .action(let value) = self { return value }; return nil }
 }
 
 struct RuntimeLog: Decodable, Identifiable { let id: Int; let line: String }

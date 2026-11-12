@@ -43,7 +43,7 @@ def atomic_json(path: Path, value: dict) -> None:
             os.unlink(temporary)
 
 
-def install_payload(resources: Path, data: Path, progress=lambda *_: None) -> dict:
+def install_payload(resources: Path, data: Path, progress=lambda *_: None, *, reset=False) -> dict:
     import payload_db_upgrade
     import payload_revision
     from database_maintenance import guard
@@ -72,7 +72,7 @@ def install_payload(resources: Path, data: Path, progress=lambda *_: None) -> di
         assert_safe_to_start(data)
         report("recovering", 0, 1)
         payload_db_upgrade.recover_upgrade(data, progress=engine_progress)
-        decision = payload_revision.decide(data, manifest)
+        decision = payload_revision.decide(data, manifest, reset=reset)
         if decision["action"] == "skip":
             report("same_data", 1, 1)
             return {"action": "skip", "revision": manifest["revision"]}

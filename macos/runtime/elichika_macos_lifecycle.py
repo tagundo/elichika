@@ -36,6 +36,7 @@ class ServerController:
         self.log, self.ready = log, ready
         self._lock = threading.RLock()
         self._holds = {}
+        self._console_token = None
         self._generation = 0
         self._closed = False
         self._process = None
@@ -56,7 +57,7 @@ class ServerController:
 
     def busy(self):
         with self._lock:
-            return bool(self._holds)
+            return bool(self._holds) or self._console_token is not None
 
     def state(self):
         with self._lock:
@@ -275,7 +276,7 @@ class ServerController:
     def manual_start(self):
         from database_maintenance import BusyError, guard
         with self._lock:
-            if self._holds or not self.ready():
+            if self._holds or self._console_token is not None or not self.ready():
                 raise BusyError()
             with guard(self.data):
                 return self._launch_locked()
@@ -318,7 +319,7 @@ class ServerController:
         except ValueError:
             raise ValueError("CDN_URL_INVALID") from None
         with self._lock:
-            if not self.ready() or self._holds or self._running_locked():
+            if not self.ready() or self._holds or self._console_token is not None or self._running_locked():
                 raise BusyError()
             with guard(self.data):
                 path = self.data / "config.json"
@@ -334,14 +335,36 @@ class ServerController:
     def begin_job(self):
         with self._lock:
             owner = threading.get_native_id()
-            if self._closed or not self.ready() or self._holds:
+            if self._closed or not self.ready() or self._holds or self._console_token is not None:
                 return False
             self._holds[owner] = _Hold(self._generation, True)
             return True
 
+    def reserve_console(self):
+        """Reserve before HTTP acceptance; the worker owns no thread-bound hold."""
+        from database_maintenance import BusyError
+        with self._lock:
+            if self._closed or not self.ready() or self._holds or self._console_token is not None:
+                raise BusyError()
+            token = self._console_token = object()
+            return token
+
+    def stop_for_console(self, token):
+        with self._lock:
+            if self._closed or self._console_token is not token:
+                raise RuntimeError("Console operation was cancelled before the server stopped.")
+            self._generation += 1
+            self._error = None
+            return self._stop_locked()
+
+    def finish_console(self, token):
+        with self._lock:
+            if self._console_token is token:
+                self._console_token = None
+
     def stop(self):
         with self._lock:
-            if self._closed or not self.ready():
+            if self._closed or not self.ready() or self._console_token is not None:
                 return False
             owner = threading.get_native_id()
             hold = self._holds.get(owner)

@@ -33,10 +33,18 @@ if str(CODE_DIR) not in sys.path:
     sys.path.insert(0, str(CODE_DIR))
 
 from elichika_macos_lifecycle import ServerController
+from elichika_macos_memory import fresh_macos_memory_env
 from elichika_macos_payload import atomic_json, ensure_config, install_payload, install_tool_data
 
 MAX_BODY = 64 * 1024
 COOKIE_NAME = "elichika_desktop_session"
+CONSOLE_COMMANDS = {
+    "download_packs": ("download_packs", "4"),
+    "cdn_cache_toggle": ("cdn_cache", "toggle"),
+    "rebuild_assets": ("rebuild_assets",),
+    "fix_training_trees": ("fix_training_trees",),
+    "reset_server": ("reset_accounts",),
+}
 
 
 class RuntimeErrorResponse(Exception):
@@ -235,6 +243,11 @@ def secure_ui_handler(base, runtime):
 
         def do_POST(self):
             if self._authorize(write=True):
+                with runtime._lock:
+                    console_busy = bool(runtime._console_job and runtime._console_job["running"])
+                if console_busy:
+                    return _json(self, {"error": "A Console operation is running. Retry after it finishes.",
+                                        "reason": "DATABASE_MAINTENANCE_BUSY", "retryable": True}, 409)
                 return super().do_POST()
 
         def do_OPTIONS(self):
@@ -284,6 +297,8 @@ class ControlHandler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         if url.path == "/v1/state" and not url.query:
             return _json(self, runtime.state())
+        if url.path == "/v1/console" and not url.query:
+            return _json(self, runtime.console_state())
         if url.path == "/v1/server/config" and not url.query:
             if not runtime.state()["prepared"]:
                 return _json(self, {"error": "Server files are not ready."}, 409)
@@ -319,8 +334,12 @@ class ControlHandler(BaseHTTPRequestHandler):
                 return _json(self, {"paths": runtime.paths.authorize(value["paths"])})
             if path.path == "/v1/server/config":
                 return _json(self, runtime.controller.update_network_config(value))
+            if path.path == "/v1/console/run":
+                return _json(self, runtime.run_console(value), 202)
             if value:
                 raise RuntimeErrorResponse("Unexpected request fields.")
+            if path.path == "/v1/console/cancel":
+                return _json(self, runtime.cancel_console(), 202)
             if path.path == "/v1/server/start":
                 runtime.controller.manual_start()
                 return _json(self, runtime.state())
@@ -382,6 +401,9 @@ class Runtime:
         self._prepare_thread = None
         self._instance_lock = None
         self._manager = None
+        self._console_job = None
+        self._console_thread = None
+        self._console_cancel = threading.Event()
         self.stop_event = threading.Event()
         self.controller = ServerController(self.binary, self.data, log=self.logs.write,
                                            ready=lambda: self._prepared and not self.stop_event.is_set())
@@ -440,7 +462,180 @@ class Runtime:
                 "detail": self._detail, "progress": dict(self._progress) if self._progress else None,
                 "server": server, "data_dir": str(self.data), "sukusta_dir": str(self.sukusta),
                 "runtime": {"pid": os.getpid(), "architecture": self.arch, "language": self.language},
+                "console": self.console_state(),
             }
+
+    def console_state(self):
+        with self._lock:
+            job = dict(self._console_job) if self._console_job else None
+            if job and job["progress"]:
+                job["progress"] = dict(job["progress"])
+        enabled = None
+        try:
+            path = self.data / "config.json"
+            if not path.is_symlink() and path.stat().st_size <= MAX_BODY:
+                value = json.loads(path.read_text(encoding="utf-8")).get("cdn_cache")
+                if type(value) is bool:
+                    enabled = value
+        except (OSError, ValueError, AttributeError):
+            pass
+        return {"cache_enabled": enabled, "job": job}
+
+    def run_console(self, value):
+        if set(value) - {"action", "region", "confirmation", "reset_confirmation"}:
+            raise RuntimeErrorResponse("Unexpected Console request fields.")
+        action = value.get("action")
+        if not isinstance(action, str) or action not in (*CONSOLE_COMMANDS, "download_archive"):
+            raise RuntimeErrorResponse("Unknown Console action.")
+        if value.get("confirmation") != "STOP_SERVER":
+            raise RuntimeErrorResponse("Confirm that this action stops the game server.")
+        region = value.get("region")
+        if action == "download_archive":
+            if not isinstance(region, str) or region not in ("gl", "jp", "both"):
+                raise RuntimeErrorResponse("Choose GL, JP, or both archive regions.")
+            arguments = ("download_archive", region)
+        else:
+            if "region" in value:
+                raise RuntimeErrorResponse("This action does not accept an archive region.")
+            arguments = CONSOLE_COMMANDS[action]
+        if action == "reset_server":
+            if value.get("reset_confirmation") != "RESET_SERVER_AND_ACCOUNTS":
+                raise RuntimeErrorResponse("Confirm removal of installed mods and reset of all account progress; logins are retained.")
+        elif "reset_confirmation" in value:
+            raise RuntimeErrorResponse("This action does not accept a reset confirmation.")
+        with self._lock:
+            if self.stop_event.is_set() or not self._prepared or self._phase != "ready":
+                raise RuntimeErrorResponse("Server files are not ready.", 409)
+            # The same lifecycle lock admits tool jobs, server starts and edits.
+            # Reserve here, before returning, rather than racing worker startup.
+            reservation = self.controller.reserve_console()
+            self._console_cancel = threading.Event()
+            self._console_job = {
+                "id": secrets.token_hex(8), "action": action, "region": region,
+                "status": "queued", "running": True, "exit_code": None,
+                "cancellable": True,
+                "message": "Waiting for the game server to stop…", "error": None,
+                "progress": None, "started_at": time.time(), "finished_at": None,
+            }
+            thread = self._console_thread = threading.Thread(
+                target=self._run_console, args=(reservation, action, arguments, self._console_cancel),
+                name="macos-console-" + action, daemon=True)
+            try:
+                thread.start()
+            except BaseException:
+                self.controller.finish_console(reservation)
+                self._console_job = None
+                self._console_thread = None
+                raise
+        return self.console_state()
+
+    def cancel_console(self):
+        with self._lock:
+            if self._console_job and self._console_job["running"]:
+                if self._console_job["cancellable"]:
+                    self._console_cancel.set()
+                    self._console_job.update(status="cancelling", message="Cancelling the Console action…")
+                else:
+                    self._console_job["message"] = "Reset must finish restoring game data and account progress safely before quitting."
+        return self.console_state()
+
+    def _console_progress(self, stage, completed, total, current=""):
+        from payload_upgrade_progress import make_record
+        record = make_record("recovering" if stage == "copying_data" else stage,
+                             completed, total, current)
+        if record:
+            record["stage"] = stage
+            with self._lock:
+                self._console_job["progress"] = record
+
+    def _run_console(self, reservation, action, arguments, cancelled):
+        from database_maintenance import guard
+        code, error, process, protected_reset = None, None, None, False
+        try:
+            self.controller.stop_for_console(reservation)
+            with guard(self.data):
+                if cancelled.is_set():
+                    return
+                from costume_management import assert_safe_to_start
+                assert_safe_to_start(self.data)
+                if not self.binary.is_file() or not os.access(self.binary, os.X_OK):
+                    raise RuntimeError("Bundled server executable is unavailable.")
+                cache_before = self.console_state()["cache_enabled"]
+                if action == "cdn_cache_toggle" and cache_before is None:
+                    raise RuntimeError("The CDN cache setting could not be read. Check config.json.")
+                with self._lock:
+                    self._console_job.update(status="running", message="Running " + action + "…")
+                if action == "reset_server":
+                    with self._lock:
+                        if cancelled.is_set():
+                            return
+                        protected_reset = True
+                        self._console_job["cancellable"] = False
+                    self.logs.write("[console] Restoring bundled vanilla game data; installed mods will be removed.")
+                    # Vanilla definitions and account progress are coupled.
+                    # Once admitted, cancellation/quit must finish both stages.
+                    install_payload(self.resources, self.data, self._console_progress, reset=True)
+                    self.logs.write("[console] Resetting all account progress while retaining logins.")
+                    with self._lock:
+                        self._console_job.update(progress=None, message="Resetting account progress; logins are retained…")
+                self.logs.write("[console] Running " + " ".join(arguments))
+                # Fixed argv only; inherit the app's isolated process group so
+                # native fallback cleanup covers this owned child as well.
+                process = subprocess.Popen(
+                    [str(self.binary), *arguments], cwd=self.data,
+                    env=fresh_macos_memory_env(os.environ), stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, encoding="utf-8", errors="replace", bufsize=1,
+                    close_fds=True, start_new_session=False)
+
+                def consume():
+                    assert process.stdout is not None
+                    try:
+                        while True:
+                            line = process.stdout.readline(16385)
+                            if not line:
+                                break
+                            self.logs.write("[console] " + line.rstrip("\r\n"))
+                    finally:
+                        process.stdout.close()
+
+                reader = threading.Thread(target=consume, name="macos-console-output", daemon=True)
+                reader.start()
+                while process.poll() is None:
+                    try:
+                        process.wait(timeout=.1)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    if cancelled.is_set() and not protected_reset and process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=4)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=2)
+                        break
+                code = process.wait()
+                reader.join(timeout=1)
+                if code != 0 and not cancelled.is_set():
+                    raise RuntimeError(f"Console action exited with code {code}. Check the console.")
+                if action == "cdn_cache_toggle" and not cancelled.is_set() and self.console_state()["cache_enabled"] != (not cache_before):
+                    raise RuntimeError("CDN cache change was not saved to config.json. Check the console.")
+        except Exception as failure:
+            error = self.logs.redact(failure)
+            self.logs.write("[console] " + error)
+        finally:
+            # Never release the operation barrier while its owned CLI can write.
+            if process is not None and process.poll() is None:
+                process.kill()
+                code = process.wait()
+            with self._lock:
+                status = "error" if error else "cancelled" if cancelled.is_set() else "done"
+                message = error or ("Cancelled. The game server remains stopped." if cancelled.is_set()
+                                    else "Complete. The game server remains stopped.")
+                self._console_job.update(status=status, running=False, exit_code=code,
+                                         error=error, message=message, finished_at=time.time(), progress=None)
+                self.controller.finish_console(reservation)
+            self.logs.write("[console] " + message + (f" (exit {code})" if code is not None else ""))
 
     def _write_state(self):
         if self.state_file:
@@ -577,6 +772,7 @@ class Runtime:
 
     def request_shutdown(self):
         self.stop_event.set()
+        self.cancel_console()
         with self._lock:
             self._phase, self._detail = "stopping", "Stopping…"
             self._progress = None
@@ -587,6 +783,10 @@ class Runtime:
 
     def close(self):
         self.request_shutdown()
+        # An in-process payload transaction finishes its durable publication;
+        # an owned CLI is terminated and reaped before lifecycle cleanup.
+        if self._console_thread and self._console_thread is not threading.current_thread():
+            self._console_thread.join()
         self.controller.close()
         for server in self._servers.values():
             if any(thread.is_alive() for thread in self._threads):

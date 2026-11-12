@@ -29,7 +29,7 @@ struct ElichikaMacApp: App {
             }
             CommandMenu(model.text("Server", "서버", "サーバー")) {
                 Button(model.snapshot.serverRunning ? model.text("Stop server", "서버 중지", "サーバー停止") : model.text("Start server", "서버 시작", "サーバー起動")) { model.toggleServer() }
-                    .disabled(!model.toolsReady || model.snapshot.busy)
+                    .disabled(!model.canControlServer)
                 Button(model.text("Show model viewer", "모델 뷰어 표시", "モデルビューアを表示")) { model.perform("showViewer") }
                     .keyboardShortcut("3", modifiers: [.command, .shift]).disabled(!model.toolsReady)
             }
@@ -96,7 +96,7 @@ struct RootView: View {
                         ProgressView(value: Double(percent), total: 100).controlSize(.small)
                     }
                     Button(model.snapshot.serverRunning ? model.text("Stop server", "서버 중지", "サーバー停止") : model.text("Start server", "서버 시작", "サーバー起動")) { model.toggleServer() }
-                        .disabled(!model.toolsReady || model.snapshot.busy)
+                        .disabled(!model.canControlServer)
                 }.padding().frame(maxWidth: .infinity, alignment: .leading)
             }
         } detail: {
@@ -189,7 +189,7 @@ private struct StartServerView: View {
                 Text(model.text("Start the server to open this page.", "이 화면을 열려면 서버를 시작하세요.", "この画面を開くにはサーバーを起動してください。"))
             }
             Button(model.snapshot.serverRunning ? model.text("Stop server", "서버 중지", "サーバー停止") : model.text("Start server", "서버 시작", "サーバー起動")) { model.toggleServer() }
-                .disabled(!model.toolsReady || model.snapshot.busy)
+                .disabled(!model.canControlServer)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -197,7 +197,7 @@ private struct StartServerView: View {
 private struct ServerView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 18) {
                 Image(systemName: "server.rack").font(.system(size: 40)).foregroundStyle(.pink)
                 VStack(alignment: .leading, spacing: 5) {
@@ -209,7 +209,7 @@ private struct ServerView: View {
                 }
                 Spacer()
                 Button(model.snapshot.serverRunning ? model.text("Stop server", "서버 중지", "サーバー停止") : model.text("Start server", "서버 시작", "サーバー起動")) { model.toggleServer() }
-                    .buttonStyle(.borderedProminent).disabled(!model.toolsReady || model.snapshot.busy)
+                    .buttonStyle(.borderedProminent).disabled(!model.canControlServer)
             }
             if let url = model.connectionAddress ?? model.snapshot.server?.url, model.snapshot.serverRunning {
                 HStack {
@@ -219,6 +219,8 @@ private struct ServerView: View {
                 }
             }
             PreparationProgressView(model: model).frame(maxWidth: 420, alignment: .leading)
+            ConsoleActionsView(model: model)
+            if let job = model.consoleState?.job { ConsoleJobView(model: model, job: job) }
             Text(model.text("Console", "콘솔", "コンソール")).font(.headline)
             if !model.launching && model.process?.isRunning != true {
                 Button(model.text("Retry preparation", "준비 다시 시도", "準備を再試行")) { model.retryTools() }
@@ -228,7 +230,237 @@ private struct ServerView: View {
                 Text(model.console.joined(separator: "\n")).font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(12)
             }.background(Color(nsColor: .textBackgroundColor)).cornerRadius(8)
+                .frame(minHeight: 120, maxHeight: .infinity)
+                .accessibilityIdentifier("console.logs")
         }.padding(24)
+    }
+}
+
+private struct ConsoleActionsView: View {
+    @ObservedObject var model: AppModel
+    @State private var advancedExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if model.resetSubmissionUncertain && !model.submittingConsoleAction {
+                Label(model.text("Checking reset status…", "초기화 상태 확인 중…", "初期化の状態を確認中…"), systemImage: "clock.arrow.circlepath")
+                    .font(.callout).foregroundStyle(.secondary).accessibilityIdentifier("console.checkingReset")
+            }
+            HStack(alignment: .top, spacing: 12) {
+                GroupBox(model.text("Game data", "게임 데이터", "ゲームデータ")) {
+                    VStack(spacing: 6) {
+                        actionButton(.downloadArchive, symbol: "arrow.down.circle")
+                        actionButton(.downloadPacks, symbol: "arrow.down.doc")
+                        Button { model.presentConsole(.action(.cdnCacheToggle)) } label: {
+                            Label(cacheTitle, systemImage: model.consoleState?.cacheEnabled == true ? "checkmark.circle" : "circle")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .disabled(!model.canRunConsoleAction || model.consoleState?.cacheEnabled == nil)
+                        .accessibilityIdentifier("console.cdn_cache_toggle")
+                        .accessibilityValue(cacheValue)
+                    }.padding(4)
+                }.frame(maxWidth: .infinity).accessibilityIdentifier("console.gameData")
+                GroupBox(model.text("Settings & Help", "설정 및 도움말", "設定とヘルプ")) {
+                    VStack(spacing: 6) {
+                        Button { model.presentConsole(.guide) } label: {
+                            Label(model.text("Guide", "사용 안내", "ガイド"), systemImage: "questionmark.circle").frame(maxWidth: .infinity, alignment: .leading)
+                        }.accessibilityIdentifier("console.guide")
+                        Button { model.selectedSection = .settings; model.showServerSettings = false } label: {
+                            Label(model.text("Settings", "설정", "設定"), systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
+                        }.accessibilityIdentifier("console.settings")
+                        Button { model.presentConsole(.about) } label: {
+                            Label(model.text("About", "앱 정보", "このアプリについて"), systemImage: "info.circle").frame(maxWidth: .infinity, alignment: .leading)
+                        }.accessibilityIdentifier("console.about")
+                    }.padding(4)
+                }.frame(maxWidth: .infinity).accessibilityIdentifier("console.settingsHelp")
+                GroupBox(model.text("Mod pages", "모드 페이지", "MODページ")) {
+                    VStack(spacing: 6) {
+                        Link(destination: URL(string: "https://ayakamods.com/games/love-live-school-idol-festival-all-stars.217/")!) {
+                            Label("AyakaMods", systemImage: "arrow.up.right.square").frame(maxWidth: .infinity, alignment: .leading)
+                        }.accessibilityIdentifier("console.ayakamods")
+                        Link(destination: URL(string: "https://gamebanana.com/games/20519")!) {
+                            Label("GameBanana", systemImage: "arrow.up.right.square").frame(maxWidth: .infinity, alignment: .leading)
+                        }.accessibilityIdentifier("console.gamebanana")
+                    }.padding(4)
+                }.frame(maxWidth: .infinity).accessibilityIdentifier("console.modPages")
+            }
+            DisclosureGroup(isExpanded: $advancedExpanded) {
+                HStack(spacing: 8) {
+                    actionButton(.rebuildAssets, symbol: "arrow.triangle.2.circlepath")
+                    actionButton(.fixTrainingTrees, symbol: "wrench.and.screwdriver")
+                    actionButton(.resetServer, symbol: "exclamationmark.triangle", destructive: true)
+                }.padding(.top, 6)
+            } label: {
+                Label(model.text("Advanced", "고급", "高度な操作"), systemImage: "slider.horizontal.3").font(.callout)
+            }.accessibilityIdentifier("console.advanced")
+        }
+        .buttonStyle(.bordered).controlSize(.small)
+        .lineLimit(2).multilineTextAlignment(.leading)
+        .sheet(item: $model.consolePresentation) { ConsoleSheet(model: model, presentation: $0) }
+    }
+
+    private var cacheValue: String {
+        guard let enabled = model.consoleState?.cacheEnabled else { return model.text("Unavailable", "확인 불가", "確認できません") }
+        return enabled ? model.text("ON", "켜짐", "オン") : model.text("OFF", "꺼짐", "オフ")
+    }
+    private var cacheTitle: String { ConsoleAction.cdnCacheToggle.title(model.language) + ": " + cacheValue + "…" }
+
+    private func actionButton(_ action: ConsoleAction, symbol: String, destructive: Bool = false) -> some View {
+        Button(role: destructive ? .destructive : nil) { model.presentConsole(.action(action)) } label: {
+            Label(action.title(model.language), systemImage: symbol).frame(maxWidth: .infinity, alignment: .leading)
+        }.disabled(!model.canRunConsoleAction).accessibilityIdentifier("console." + action.rawValue)
+    }
+}
+
+private struct ConsoleJobView: View {
+    @ObservedObject var model: AppModel
+    let job: ConsoleState.Job
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                if job.running { ProgressView().controlSize(.small) }
+                Text(job.action.title(model.language)).font(.callout.weight(.medium))
+                if let region = job.region { Text(region.rawValue.uppercased()).font(.caption).foregroundStyle(.secondary) }
+                Spacer()
+                Text(statusTitle).font(.caption).foregroundStyle(job.status == "error" ? Color.red : Color.secondary)
+                if job.running {
+                    Button(model.text("Cancel", "취소", "キャンセル")) { model.cancelConsoleAction() }
+                        .disabled(!job.cancellable || model.cancellingConsoleAction || job.status == "cancelling")
+                        .accessibilityIdentifier("console.cancelJob")
+                }
+            }
+            if let fraction = job.progress?.fraction {
+                HStack {
+                    ProgressView(value: fraction).controlSize(.small)
+                    Text("\(Int(fraction * 100))%").font(.caption).monospacedDigit()
+                }
+            }
+            if let detail = job.error ?? job.progress?.current, !detail.isEmpty {
+                Text(detail).font(.caption).foregroundStyle(job.error == nil ? Color.secondary : Color.red)
+                    .lineLimit(2).textSelection(.enabled)
+            }
+            if job.running && !job.cancellable {
+                Text(model.text("Reset must finish safely before quitting.", "안전한 종료를 위해 초기화가 끝날 때까지 기다려야 합니다.", "安全に終了するため、初期化が完了するまでお待ちください。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }.padding(10).background(Color.secondary.opacity(0.08)).cornerRadius(8)
+            .accessibilityIdentifier("console.job")
+    }
+    private var statusTitle: String {
+        switch job.status {
+        case "queued": return model.text("Queued", "대기 중", "待機中")
+        case "running": return model.text("Running", "실행 중", "実行中")
+        case "cancelling": return model.text("Cancelling…", "취소 중…", "キャンセル中…")
+        case "done": return model.text("Complete", "완료", "完了")
+        case "cancelled": return model.text("Cancelled", "취소됨", "キャンセル済み")
+        case "error": return model.text("Failed", "실패", "失敗")
+        default: return job.status
+        }
+    }
+}
+
+private struct ConsoleSheet: View {
+    @ObservedObject var model: AppModel
+    let presentation: ConsolePresentation
+
+    private var action: ConsoleAction? { presentation.action }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(title).font(.title2).accessibilityAddTraits(.isHeader)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(bodyText).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                    if action != nil {
+                        Label(model.text("The server will be stopped first and stays stopped after the action. Start it again when you are ready.", "작업 전에 서버를 중지하며 작업 후에도 중지 상태를 유지합니다. 준비되면 서버를 다시 시작하세요.", "処理前にサーバーを停止し、完了後も停止したままになります。準備ができたら再起動してください。"), systemImage: "stop.circle")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+            }.frame(height: contentHeight)
+            if action == .downloadArchive {
+                Picker(model.text("Region", "지역", "地域"), selection: $model.consoleRegion) {
+                    ForEach(ConsoleRegion.allCases) { value in Text(value.title(model.language)).tag(value) }
+                }.pickerStyle(.radioGroup).accessibilityIdentifier("console.region")
+            }
+            if let error = model.consoleActionError { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled).accessibilityIdentifier("console.actionError") }
+            HStack {
+                Spacer()
+                if let action {
+                    Button(model.text("Cancel", "취소", "キャンセル")) { model.dismissConsolePresentation() }
+                        .keyboardShortcut(.cancelAction).disabled(model.submittingConsoleAction)
+                        .accessibilityIdentifier("console.cancel")
+                    Button(role: action == .resetServer && model.consoleResetFinal ? .destructive : nil) {
+                        Task { await model.confirmConsoleAction() }
+                    } label: {
+                        if model.submittingConsoleAction { ProgressView().controlSize(.small) }
+                        else { Text(action == .resetServer && model.consoleResetFinal ? model.text("Reset everything", "전부 초기화", "すべて初期化") : model.text("Continue", "계속", "続ける")) }
+                    }
+                    .disabled(!model.canRunConsoleAction)
+                    .accessibilityIdentifier(model.consoleResetFinal ? "console.resetFinal" : "console.confirm")
+                } else {
+                    Button(model.text("Close", "닫기", "閉じる")) { model.dismissConsolePresentation() }.keyboardShortcut(.cancelAction)
+                        .accessibilityIdentifier("console.close")
+                }
+            }
+        }.padding(24).frame(width: 580).accessibilityIdentifier("console.sheet")
+            .interactiveDismissDisabled(model.submittingConsoleAction)
+    }
+
+    private var title: String {
+        switch presentation {
+        case .action(let action): return action.title(model.language)
+        case .guide: return model.text("Getting started", "시작하기", "はじめに")
+        case .about:
+            let version = Bundle.main.object(forInfoDictionaryKey: "ElichikaVersion") as? String
+                ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+            let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+            return "Elichika " + version + (build.map { $0 == version ? "" : " (\($0))" } ?? "")
+        }
+    }
+    private var contentHeight: CGFloat {
+        if case .guide = presentation { return 390 }
+        if case .about = presentation { return 180 }
+        return action == .resetServer && !model.consoleResetFinal ? 300 : 140
+    }
+    private var bodyText: String {
+        switch presentation {
+        case .guide: return guideText
+        case .about:
+            return model.text(
+                "Elichika is a private server for SIFAS (Love Live! School Idol Festival All Stars). This Mac app runs the server, its WebUI, and the development and modding tools.\n\nServer and development tools by the elichika project (forks of YumeMichi / arina999999997 / tatara_hisoka). Modding tools: SIFAS-MODDING-HELPING-TOOLS.",
+                "Elichika는 SIFAS (Love Live! School Idol Festival All Stars)의 사설 서버입니다. 이 Mac 앱은 서버, 웹 UI, 개발 및 모딩 도구를 실행합니다.\n\n서버 및 개발 도구: elichika 프로젝트 (YumeMichi / arina999999997 / tatara_hisoka 포크). 모딩 도구: SIFAS-MODDING-HELPING-TOOLS.",
+                "ElichikaはSIFAS（ラブライブ！スクールアイドルフェスティバル ALL STARS）のプライベートサーバーです。このMacアプリはサーバー、Web UI、開発・MODツールを実行します。\n\nサーバーと開発ツール：elichikaプロジェクト（YumeMichi / arina999999997 / tatara_hisokaのフォーク）。MODツール：SIFAS-MODDING-HELPING-TOOLS。")
+        case .action(let action):
+            switch action {
+            case .downloadArchive:
+                return model.text("This downloads the full game data set (several GB) from archive.org. Wi-Fi is strongly recommended. Pick a region:", "archive.org에서 전체 게임 데이터(수 GB)를 받습니다. Wi-Fi 사용을 강력히 권장합니다. 지역을 선택하세요:", "archive.orgから全ゲームデータ（数GB）をダウンロードします。Wi-Fiの使用を強く推奨します。地域を選択してください：")
+            case .downloadPacks:
+                return model.text("This downloads missing game packs from the CDN. The size varies and can be large. Wi-Fi is recommended.", "CDN에서 누락된 게임 팩을 받습니다. 용량은 상황에 따라 다르며 매우 클 수 있습니다. Wi-Fi 사용을 권장합니다.", "CDNから不足しているゲームパックをダウンロードします。容量は状況により大きくなります。Wi-Fiを推奨します。")
+            case .cdnCacheToggle:
+                return model.consoleState?.cacheEnabled == true
+                    ? model.text("Turn CDN cache off? Missing packs will no longer download on demand during play. Existing downloaded packs are kept.", "CDN 캐시를 끌까요? 플레이 중 누락된 팩을 자동으로 받지 않습니다. 이미 받은 팩은 유지됩니다.", "CDNキャッシュをオフにしますか？プレイ中に不足パックを自動取得しなくなります。取得済みパックは保持します。")
+                    : model.text("Turn CDN cache on? Missing packs will download on demand during play and be saved to packs/.", "CDN 캐시를 켤까요? 플레이 중 누락된 팩을 자동으로 받아 packs/에 저장합니다.", "CDNキャッシュをオンにしますか？プレイ中に不足パックを自動取得してpacks/に保存します。")
+            case .rebuildAssets: return model.text("Rebuild master data now?", "마스터 데이터를 지금 재빌드할까요?", "マスターデータを今すぐ再構築しますか？")
+            case .fixTrainingTrees: return model.text("Repair training-tree data now?", "트레이닝 트리 데이터를 지금 복구할까요?", "トレーニングツリーのデータを今すぐ修復しますか？")
+            case .resetServer:
+                if model.consoleResetFinal {
+                    return model.text("Really reset the server AND all accounts now? This CANNOT be undone.", "정말 서버와 모든 계정을 지금 초기화할까요? 되돌릴 수 없습니다.", "本当にサーバーとすべてのアカウントを今すぐ初期化しますか？元に戻せません。")
+                }
+                return model.text(
+                    "This restores the ORIGINAL (vanilla) game data and removes EVERY installed or cloned mod costume / live / card. It ALSO resets ALL accounts to a new-account state.\n\nLogins are kept, so game clients can still connect to the fresh server.\n\nKept: settings (config), downloaded game packs, and your asset-library files (mod zips, extracted/modded bundles, backups).\n\nThis CANNOT be undone. Make a DB backup (Server content) and export your accounts (Accounts) first if you may need this data again.",
+                    "원본(바닐라) 게임 데이터를 복원하여 설치·클론된 모든 모드 의상 / 라이브 / 카드를 제거합니다. 또한 모든 계정을 새 계정 상태로 초기화합니다.\n\n로그인 정보는 유지되므로 게임 클라이언트는 초기화된 서버에 계속 접속할 수 있습니다.\n\n유지되는 것: 설정(config), 다운로드한 게임 팩, 에셋 보관 폴더의 파일(모드 zip, 추출/수정 번들, 백업).\n\n되돌릴 수 없습니다. 데이터가 필요할 수 있다면 먼저 DB 백업(서버 콘텐츠)과 계정 내보내기(계정)를 해두세요.",
+                    "オリジナル（バニラ）のゲームデータを復元し、インストール・クローンされたすべてのMOD衣装／ライブ／カードを削除します。さらに、すべてのアカウントを新規アカウント状態にリセットします。\n\nログイン情報は保持され、ゲームクライアントは初期化されたサーバーに引き続き接続できます。\n\n保持：設定（config）、ダウンロード済みパック、アセット保存先のファイル（MOD zip、抽出・編集済みバンドル、バックアップ）。\n\n元に戻せません。必要なら先にDBバックアップ（サーバーコンテンツ）とアカウントのエクスポート（アカウント）を行ってください。")
+            }
+        }
+    }
+
+    // Adapted from MainActivity.showGuide / values{,-ko,-ja}/strings.xml;
+    // Mac storage uses the selected library and does not need Android permissions.
+    private var guideText: String {
+        let address = model.connectionAddress ?? "http://127.0.0.1:8080"
+        return model.text(
+            "1. Wait for the bundled tools to be ready. Your asset library is selected in Settings.\n2. Click Start server.\n3. Point the game app at \(address) (see the LL-hax guide). For another device, set the listen address and CDN URL in Settings to your Mac’s LAN address.\n4. Optional: pre-download game files with Download all (archive.org) or Download missing (CDN).\n\nCDN cache: when on, missing packs download as needed during play and are saved to packs/. Pre-downloading is optional. Keep Elichika running while downloads finish.\n\nPages: Server settings / Accounts = server WebUI; Server content = development tools; Asset editing tools = modding tools; 3D model = model viewer.\n\nAsset library: \(model.libraryDirectory)\nextracted = decrypted models (edit input); modded = edited bundles (edit output); suit / live / card / livetimeline = add-on drop folders; sql = DB patches; packs = game pack cache; backup = DB backups; logs = logs.\n\nUse Server content to make DB backups and Accounts to export your accounts before resetting the server.",
+            "1. 내장 도구 준비가 끝날 때까지 기다리세요. 에셋 보관 폴더는 설정에서 선택합니다.\n2. ‘서버 시작’을 누르세요.\n3. 게임 앱을 \(address)으로 연결하세요(LL-hax 가이드 참고). 다른 기기에서는 설정의 수신 주소와 CDN URL을 Mac의 LAN 주소로 바꾸세요.\n4. 선택 사항: ‘전체 받기’(archive.org) 또는 ‘누락분 받기’(CDN)로 게임 파일을 미리 받으세요.\n\nCDN 캐시: 켜져 있으면 플레이 중 필요한 팩을 자동으로 받아 packs/에 저장합니다. 미리 받기는 필수가 아닙니다. 다운로드가 끝날 때까지 Elichika를 실행해 두세요.\n\n화면: 서버 설정 / 계정 = 서버 웹 UI; 서버 콘텐츠 = 개발 도구; 에셋 편집 도구 = 모딩 도구; 3D 모델 = 모델 뷰어.\n\n에셋 보관 폴더: \(model.libraryDirectory)\nextracted = 복호화된 모델(편집 입력); modded = 편집된 번들(편집 출력); suit / live / card / livetimeline = 애드온 드롭 폴더; sql = DB 패치; packs = 게임 팩 캐시; backup = DB 백업; logs = 로그.\n\n서버 초기화 전에 서버 콘텐츠에서 DB를 백업하고 계정에서 계정을 내보내세요.",
+            "1. 内蔵ツールの準備が終わるまでお待ちください。アセット保存先は設定で選択できます。\n2. 「サーバー起動」をクリック。\n3. ゲームアプリを\(address)に接続（LL-haxガイド参照）。別の端末では、設定の待ち受けアドレスとCDN URLをMacのLANアドレスに変更してください。\n4. 任意：「全ファイル取得」（archive.org）または「不足分を取得」（CDN）で事前ダウンロード。\n\nCDNキャッシュ：オンの場合、プレイ中に必要なパックを自動取得してpacks/に保存します。事前取得は任意です。完了までElichikaを起動したままにしてください。\n\n画面：サーバー設定 / アカウント = サーバーWeb UI、サーバーコンテンツ = 開発ツール、アセット編集ツール = MODツール、3Dモデル = モデルビューア。\n\nアセット保存先：\(model.libraryDirectory)\nextracted = 復号済みモデル（編集入力）、modded = 編集済みバンドル（編集出力）、suit / live / card / livetimeline = アドオンのドロップ先、sql = DBパッチ、packs = パックキャッシュ、backup = DBバックアップ、logs = ログ。\n\nサーバー初期化前に、サーバーコンテンツでDBをバックアップし、アカウントでエクスポートしてください。")
     }
 }
 

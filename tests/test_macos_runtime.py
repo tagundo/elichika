@@ -91,6 +91,43 @@ class RuntimeTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def console_request(self, ready, value=None, path="/v1/console/run"):
+        auth = {"Authorization": "Bearer " + ready["token"], "Content-Type": "application/json"}
+        status, _, raw = self.request(ready["control_url"], path, method="POST", headers=auth,
+                                      body=json.dumps(value or {}).encode())
+        return status, json.loads(raw)
+
+    def console_binary(self, runtime, *, wait=False, exit_code=0, long_output=False):
+        runtime.binary.parent.mkdir(parents=True, exist_ok=True)
+        code = """import http.server,json,os,pathlib,sys,time
+root=pathlib.Path.cwd()
+if len(sys.argv)==1:
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self,*args): pass
+        def do_GET(self):
+            self.send_response(200); self.end_headers()
+            self.wfile.write(json.dumps({'ready':True,'token':os.environ['ELICHIKA_READY_TOKEN']}).encode())
+    address=json.loads((root/'config.json').read_text())['server_address']
+    http.server.HTTPServer(('127.0.0.1',int(address.rsplit(':',1)[1])),Handler).serve_forever()
+(root/'console-argv.json').write_text(json.dumps(sys.argv[1:]))
+(root/'console-child.pid').write_text(str(os.getpid()))
+if sys.argv[1]=='cdn_cache':
+    path=root/'config.json'; config=json.loads(path.read_text()); config['cdn_cache']=not config['cdn_cache']
+    path.write_text(json.dumps(config))
+"""
+        if long_output:
+            code += "print('bounded '+('x'*20000),flush=True)\n"
+        if wait:
+            code += "while not (root/'release-console').exists(): time.sleep(.01)\n"
+        code += "raise SystemExit(" + str(exit_code) + ")\n"
+        runtime.binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -B -c " + shlex.quote(code) + ' "$@"\n')
+        runtime.binary.chmod(0o755)
+
+    def wait_console(self, runtime):
+        runtime._console_thread.join(7)
+        self.assertFalse(runtime._console_thread.is_alive())
+        return runtime.console_state()["job"]
+
     def test_all_writable_paths_are_rejected_anywhere_inside_application_bundle(self):
         bundle = self.resources.parents[1]
         for destination in (bundle, bundle / "Contents", bundle / "Contents/MacOS/new-library"):
@@ -197,6 +234,171 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn(ready["ui_token"], logs)
         runtime.logs.write("2026 AdminPassword : should not appear")
         self.assertNotIn("should not appear", json.dumps(runtime.logs.after(0)))
+
+    def test_console_authentication_allowlist_regions_and_confirmations_precede_side_effects(self):
+        runtime, ready = self.start()
+        self.assertEqual(self.request(ready["control_url"], "/v1/console")[0], 401)
+        self.assertEqual(self.request(ready["control_url"], "/v1/console/run", method="POST",
+                                     headers={"Content-Type":"application/json"}, body=b'{}')[0], 401)
+        invalid = [
+            {}, {"action":"reset_accounts", "confirmation":"STOP_SERVER"},
+            {"action":"reset_server", "confirmation":"STOP_SERVER"},
+            {"action":"reset_server", "confirmation":"STOP_SERVER", "reset_confirmation":True},
+            {"action":"download_packs"},
+            {"action":"download_packs", "confirmation":"STOP_SERVER", "args":["reset_accounts"]},
+            {"action":"download_archive", "confirmation":"STOP_SERVER", "region":"jp; reset_accounts"},
+            {"action":"download_archive", "confirmation":"STOP_SERVER", "region":["gl"]},
+            {"action":"fix_training_trees", "confirmation":"STOP_SERVER", "region":"gl"},
+        ]
+        with patch("elichika_macos.subprocess.Popen") as spawn, patch.object(runtime.controller, "stop_for_console") as stop:
+            for value in invalid:
+                with self.subTest(value=value):
+                    self.assertEqual(self.console_request(ready, value)[0], 400)
+            spawn.assert_not_called()
+            stop.assert_not_called()
+        self.assertIsNone(runtime.console_state()["job"])
+
+    def test_console_exact_fixed_commands_regions_cache_persistence_and_reset_order(self):
+        runtime, ready = self.start()
+        self.console_binary(runtime)
+        cases = [("download_archive", region, ["download_archive", region]) for region in ("gl", "jp", "both")]
+        cases += [("download_packs", None, ["download_packs", "4"]),
+                  ("cdn_cache_toggle", None, ["cdn_cache", "toggle"]),
+                  ("rebuild_assets", None, ["rebuild_assets"]),
+                  ("fix_training_trees", None, ["fix_training_trees"]),
+                  ("reset_server", None, ["reset_accounts"])]
+        for action, region, arguments in cases:
+            with self.subTest(action=action, region=region):
+                value = {"action": action, "confirmation":"STOP_SERVER"}
+                if region:
+                    value["region"] = region
+                if action == "reset_server":
+                    value["reset_confirmation"] = "RESET_SERVER_AND_ACCOUNTS"
+                (runtime.data / "console-argv.json").unlink(missing_ok=True)
+                def restore(resources, data, progress, *, reset):
+                    self.assertTrue(reset)
+                    self.assertEqual((resources, data), (runtime.resources, runtime.data))
+                    self.assertFalse((data / "console-argv.json").exists())
+                    self.assertFalse(runtime.console_state()["job"]["cancellable"])
+                    self.assertFalse(runtime.controller.is_running())
+                with patch("elichika_macos.install_payload", side_effect=restore) as reset_payload:
+                    status, _ = self.console_request(ready, value)
+                    self.assertEqual(status, 202)
+                    job = self.wait_console(runtime)
+                self.assertEqual((job["status"], job["exit_code"], job["error"]), ("done", 0, None))
+                self.assertEqual(json.loads((runtime.data / "console-argv.json").read_text()), arguments)
+                self.assertEqual(reset_payload.call_count, 1 if action == "reset_server" else 0)
+                self.assertFalse(runtime.controller.busy())
+        self.assertFalse(runtime.console_state()["cache_enabled"])
+        self.assertFalse(json.loads((runtime.data / "config.json").read_text())["cdn_cache"])
+
+    def test_console_stops_owned_server_and_excludes_start_config_tools_and_second_console_until_reaped(self):
+        runtime, ready = self.start()
+        self.console_binary(runtime, wait=True, long_output=True)
+        config = json.loads((runtime.data / "config.json").read_text())
+        config["server_address"] = "127.0.0.1:" + str(unused_port())
+        (runtime.data / "config.json").write_text(json.dumps(config))
+        runtime.controller.manual_start()
+        server = runtime.controller._process
+        started = time.monotonic()
+        self.assertEqual(self.console_request(ready, {"action":"download_archive", "region":"both", "confirmation":"STOP_SERVER"})[0], 202)
+        self.assertLess(time.monotonic() - started, 1.5)
+        deadline = time.monotonic() + 3
+        while not (runtime.data / "console-child.pid").exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue((runtime.data / "console-child.pid").exists())
+        child = int((runtime.data / "console-child.pid").read_text())
+        self.assertIsNotNone(server.poll())
+        self.assertFalse(runtime.controller.is_running())
+        self.assertTrue(runtime.state()["busy"])
+        self.assertTrue(runtime.state()["console"]["job"]["running"])
+        with self.assertRaises(BusyError):
+            runtime.controller.manual_start()
+        with self.assertRaises(BusyError):
+            runtime.controller.update_network_config(runtime.controller.network_config())
+        self.assertFalse(runtime.controller.begin_job())
+        for name in ("admin_url", "tools_url"):
+            status, _, raw = self.request(ready[name], method="POST",
+                headers={"X-Elichika-Session":ready["ui_token"], "Origin":ready[name], "Content-Type":"application/json"}, body=b"{}")
+            self.assertEqual(status, 409, raw)
+        with self.assertRaises(BusyError), guard(runtime.data):
+            self.fail("Console failed to acquire shared database lease")
+        self.assertEqual(self.console_request(ready, {"action":"rebuild_assets", "confirmation":"STOP_SERVER"})[0], 409)
+        self.assertEqual(self.console_request(ready, path="/v1/console/cancel")[0], 202)
+        job = self.wait_console(runtime)
+        self.assertEqual(job["status"], "cancelled")
+        self.assertIsNotNone(job["exit_code"])
+        with self.assertRaises(ProcessLookupError):
+            os.kill(child, 0)
+        self.assertFalse(runtime.controller.busy())
+        self.assertLessEqual(max(len(row["line"]) for row in runtime.logs.after(0)["entries"]), 16384)
+
+    def test_console_refuses_existing_tool_hold_and_preparation_and_reports_nonzero_exit(self):
+        runtime, ready = self.start()
+        self.console_binary(runtime, exit_code=7)
+        self.assertTrue(runtime.controller.begin_job())
+        try:
+            self.assertEqual(self.console_request(ready, {"action":"rebuild_assets", "confirmation":"STOP_SERVER"})[0], 409)
+        finally:
+            runtime.controller.finish_job(False)
+        runtime._phase = "preparing"
+        self.assertEqual(self.console_request(ready, {"action":"rebuild_assets", "confirmation":"STOP_SERVER"})[0], 409)
+        runtime._phase = "ready"
+        self.assertEqual(self.console_request(ready, {"action":"rebuild_assets", "confirmation":"STOP_SERVER"})[0], 202)
+        job = self.wait_console(runtime)
+        self.assertEqual((job["status"], job["exit_code"]), ("error", 7))
+        self.assertIn("code 7", job["error"])
+
+    def test_reset_cancellation_and_quit_finish_both_stages_before_releasing_lifecycle(self):
+        runtime, ready = self.start()
+        self.console_binary(runtime, wait=True)
+        restoring, release_restore = threading.Event(), threading.Event()
+        def restore(*args, **kwargs):
+            restoring.set()
+            self.assertTrue(release_restore.wait(3))
+        value = {"action":"reset_server", "confirmation":"STOP_SERVER", "reset_confirmation":"RESET_SERVER_AND_ACCOUNTS"}
+        with patch("elichika_macos.install_payload", side_effect=restore):
+            self.assertEqual(self.console_request(ready, value)[0], 202)
+            self.assertTrue(restoring.wait(3))
+            state = runtime.cancel_console()
+            self.assertFalse(state["job"]["cancellable"])
+            self.assertFalse(runtime._console_cancel.is_set())
+            runtime.request_shutdown()
+            release_restore.set()
+            deadline = time.monotonic() + 3
+            while not (runtime.data / "console-child.pid").exists() and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertEqual(json.loads((runtime.data / "console-argv.json").read_text()), ["reset_accounts"])
+            self.assertTrue(runtime.controller.busy())
+            (runtime.data / "release-console").touch()
+            job = self.wait_console(runtime)
+        self.assertEqual((job["status"], job["exit_code"]), ("done", 0))
+        self.assertFalse(runtime.controller.busy())
+
+    def test_failed_vanilla_reset_never_runs_account_reset(self):
+        runtime, ready = self.start()
+        self.console_binary(runtime)
+        with patch("elichika_macos.install_payload", side_effect=ValueError("PAYLOAD_FIXTURE_REFUSED")):
+            value = {"action":"reset_server", "confirmation":"STOP_SERVER", "reset_confirmation":"RESET_SERVER_AND_ACCOUNTS"}
+            self.assertEqual(self.console_request(ready, value)[0], 202)
+            job = self.wait_console(runtime)
+        self.assertEqual(job["status"], "error")
+        self.assertEqual(job["error"], "PAYLOAD_FIXTURE_REFUSED")
+        self.assertFalse((runtime.data / "console-argv.json").exists())
+
+    def test_quit_cancels_and_reaps_owned_console_child_before_closing_runtime(self):
+        runtime, ready = self.start()
+        self.console_binary(runtime, wait=True)
+        self.assertEqual(self.console_request(ready, {"action":"download_packs", "confirmation":"STOP_SERVER"})[0], 202)
+        deadline = time.monotonic() + 3
+        while not (runtime.data / "console-child.pid").exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        child = int((runtime.data / "console-child.pid").read_text())
+        runtime.close()
+        self.assertFalse(runtime._console_thread.is_alive())
+        self.assertEqual(runtime.console_state()["job"]["status"], "cancelled")
+        with self.assertRaises(ProcessLookupError):
+            os.kill(child, 0)
 
 
 class LifecycleTests(unittest.TestCase):
@@ -416,6 +618,34 @@ class PayloadTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT value FROM fixture_catalog WHERE id=1").fetchone()[0], "owner edit")
             self.assertEqual(db.execute("SELECT value FROM fixture_catalog WHERE id=90").fetchone()[0], "new official row")
         self.assertEqual((self.data / "config.json").read_text(), '{"owner":"keep"}')
+
+    def test_explicit_reset_restores_vanilla_transactionally_and_preserves_owner_files(self):
+        install_payload(self.resources, self.data)
+        master = self.data / "assets/db/gl/masterdata.db"
+        with closing(sqlite3.connect(master)) as db:
+            original = db.execute("SELECT value FROM fixture_catalog WHERE id=1").fetchone()[0]
+            db.execute("UPDATE fixture_catalog SET value='installed mod' WHERE id=1")
+            db.execute("INSERT INTO fixture_catalog(id,value) VALUES(990,'mod-only row')")
+            db.commit()
+        account = self.data / "userdata.db"
+        with closing(sqlite3.connect(account)) as db:
+            db.execute("CREATE TABLE u_authentication(login TEXT)")
+            db.execute("INSERT INTO u_authentication VALUES('fixture login retained')")
+            db.commit()
+        owner = {"config.json": b'{"owner":"keep","cdn_cache":false}',
+                 "userdata.db": account.read_bytes(), "packs/cached.pack": b"cache remains"}
+        for name, raw in owner.items():
+            path = self.data / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(raw)
+        result = install_payload(self.resources, self.data, reset=True)
+        self.assertEqual(result["action"], "reset")
+        with closing(sqlite3.connect(master)) as db:
+            self.assertEqual(db.execute("SELECT value FROM fixture_catalog WHERE id=1").fetchone()[0], original)
+            self.assertIsNone(db.execute("SELECT value FROM fixture_catalog WHERE id=990").fetchone())
+        for name, raw in owner.items():
+            self.assertEqual((self.data / name).read_bytes(), raw)
+        self.assertEqual(install_payload(self.resources, self.data)["action"], "skip")
 
     def test_support_text_dictionaries_update_only_unedited_copies(self):
         support = self.resources / "tool-data"

@@ -53,6 +53,8 @@ final class NativeSmokeTest {
             }
             report["server_stopped"] = true
 
+            try await checkConsoleActions(directory)
+
             try checkpoint("shared-webui-loading")
             try await wait("the native asset WebView", timeout: 30) { self.model.assetWebView != nil }
             guard let webView = model.assetWebView else { throw NativeError.runtimeUnavailable }
@@ -1455,6 +1457,88 @@ final class NativeSmokeTest {
     private func writeReport(_ directory: URL) throws {
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
             .write(to: directory.appendingPathComponent("native-smoke.json"), options: .atomic)
+    }
+
+    private func checkConsoleActions(_ directory: URL) async throws {
+        try checkpoint("native-console-actions")
+        let previousSection = model.selectedSection
+        defer { model.dismissConsolePresentation(); model.selectedSection = previousSection }
+        func readConsole() async throws -> ConsoleState {
+            try JSONDecoder().decode(ConsoleState.self, from: await model.request("/v1/console"))
+        }
+        let before = try await readConsole()
+        guard let originalCache = before.cacheEnabled else { throw NativeError.invalidResponse }
+        let originalJob = before.job?.id
+        let configURL = model.dataDirectory.appendingPathComponent("config.json")
+        let originalConfigData = try Data(contentsOf: configURL)
+        let originalConfig = try JSONSerialization.jsonObject(with: originalConfigData) as? [String: Any] ?? [:]
+        var refused: [String] = []
+        for action in ["runShell", "reset_server"] {
+            var denied = false
+            do { _ = try await model.request("/v1/console/run", method: "POST", body: ["action": action]) }
+            catch { denied = true; refused.append(action) }
+            try require(denied, "The real Console API must reject an unknown action and unconfirmed reset.")
+        }
+        try require(try Data(contentsOf: configURL) == originalConfigData,
+                    "Rejected Console actions must not change the private configuration.")
+        model.selectedSection = .server
+        try await Task.sleep(nanoseconds: 250_000_000)
+        guard let window = NSApplication.shared.keyWindow ?? NSApplication.shared.mainWindow,
+              let content = window.contentView,
+              let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {
+            throw NativeError.service("The actual native Console view must be visible for capture.")
+        }
+        content.cacheDisplay(in: content.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]), !png.isEmpty else {
+            throw NativeError.invalidResponse
+        }
+        try png.write(to: directory.appendingPathComponent("console-menus.png"), options: .atomic)
+        model.presentConsole(.action(.downloadArchive))
+        try require(model.consoleRegion == ConsoleRegion.defaultRegion(language: model.language),
+                    "The archive picker must default to JP only in Japanese and GL otherwise.")
+        try require(model.consolePresentation != nil, "The actual archive action must present its native confirmation.")
+        try await Task.sleep(nanoseconds: 150_000_000)
+        model.dismissConsolePresentation()
+        model.presentConsole(.action(.resetServer))
+        let resetSubmitted = await model.confirmConsoleAction()
+        try require(!resetSubmitted && model.consoleResetFinal && model.consolePresentation != nil,
+                    "The first reset confirmation must only advance to the second native confirmation.")
+        model.dismissConsolePresentation()
+        for presentation in [ConsolePresentation.guide, .about] {
+            model.presentConsole(presentation)
+            try require(model.consolePresentation != nil, "Guide and About must open native sheets.")
+            try await Task.sleep(nanoseconds: 150_000_000)
+            model.dismissConsolePresentation()
+        }
+        let afterPresentations = try await readConsole()
+        try require(afterPresentations.job?.id == originalJob,
+                    "Cancelling archive/reset and opening Help must not start any Console operation.")
+        var toggles: [[String: Any]] = []
+        for expected in [!originalCache, originalCache] {
+            try await model.runConsoleAction(.cdnCacheToggle)
+            guard let id = model.consoleState?.job?.id else { throw NativeError.invalidResponse }
+            try await wait("the private CDN cache operation", timeout: 90) {
+                await self.model.refresh()
+                return self.model.consoleState?.job?.id == id && self.model.consoleState?.job?.running == false && !self.model.snapshot.busy
+            }
+            let completed = try await readConsole()
+            try require(completed.job?.id == id && completed.job?.status == "done" && completed.cacheEnabled == expected,
+                        "The native Console must run the genuine CDN toggle command and persist its setting.")
+            toggles.append(["id": id, "status": completed.job?.status ?? "", "cache_enabled": expected])
+        }
+        let restoredConfig = try JSONSerialization.jsonObject(with: Data(contentsOf: configURL)) as? [String: Any] ?? [:]
+        for key in ["server_address", "cdn_server", "cdn_cache_dir", "webui_language", "locales", "admin_password"] {
+            if let old = originalConfig[key] as? NSObject {
+                try require(old.isEqual(restoredConfig[key]), "The Console cache toggle must preserve other configuration fields.")
+            }
+        }
+        report["native_console_actions"] = ["status": "PASS", "unsafe_requests_rejected": refused,
+            "cancelled_presentations_started_no_job": true, "reset_requires_second_confirmation": true,
+            "archive_default_region": ConsoleRegion.defaultRegion(language: model.language).rawValue,
+            "cache_toggles": toggles, "original_cache_setting_restored": true,
+            "other_config_fields_preserved": true, "native_view_screenshot": "console-menus.png",
+            "scope": "Actual native Console sheets/model actions and authenticated bundled Go CDN command in private smoke data; no archive download or reset executed"]
+        try checkpoint("native-console-actions-passed")
     }
 
     private func checkUnauthorizedControl(_ url: URL) async throws {

@@ -19,6 +19,14 @@ final class AppModel: ObservableObject {
     @Published var serverAddressDraft = "127.0.0.1:8080"
     @Published var cdnServerDraft = "http://127.0.0.1:8080/static"
     @Published private(set) var savingNetwork = false
+    @Published private(set) var consoleState: ConsoleState?
+    @Published private(set) var submittingConsoleAction = false
+    @Published private(set) var cancellingConsoleAction = false
+    @Published var consolePresentation: ConsolePresentation?
+    @Published var consoleRegion: ConsoleRegion = .gl
+    @Published private(set) var consoleResetFinal = false
+    @Published private(set) var consoleActionError: String?
+    @Published private(set) var resetSubmissionUncertain = false
 
     let websiteDataStore = WKWebsiteDataStore.nonPersistent()
     let goWebsiteDataStore = WKWebsiteDataStore.nonPersistent()
@@ -39,6 +47,7 @@ final class AppModel: ObservableObject {
     private var smokeStarted = false
     private var networkApplied: ServerNetworkConfig?
     private var reportedRuntimeError: String?
+    private var uncertainResetPreviousJobID: String?
     private let http: URLSession
     var smokeQuitObserver: (() async -> Void)?
     var smokeEvent: ((String) -> Void)?
@@ -72,7 +81,9 @@ final class AppModel: ObservableObject {
     }
 
     var toolsReady: Bool { connection != nil && process?.isRunning == true && snapshot.prepared && snapshot.phase != "error" && !stoppingRuntime }
-    var canChangeStorage: Bool { !snapshot.busy && !snapshot.serverRunning && !quitting && !launching && !stoppingRuntime }
+    var canChangeStorage: Bool { !snapshot.busy && !snapshot.serverRunning && !quitting && !launching && !stoppingRuntime && !submittingConsoleAction && !resetSubmissionUncertain && consoleState?.job?.running != true }
+    var canControlServer: Bool { toolsReady && !snapshot.busy && !submittingConsoleAction && !resetSubmissionUncertain && !quitting && consoleState?.job?.running != true }
+    var canRunConsoleAction: Bool { canControlServer }
     var preparationStatusTitle: String {
         if snapshot.phase == "error" { return text("Preparation failed", "준비하지 못했습니다", "準備できませんでした") }
         switch snapshot.progress?.stage {
@@ -210,6 +221,10 @@ final class AppModel: ObservableObject {
         guard process?.processIdentifier == pid else { return }
         polling?.cancel()
         snapshot.progress = nil
+        snapshot.busy = false
+        snapshot.serverRunning = false
+        consoleState = nil
+        resetSubmissionUncertain = false
         launching = false
         if !quitting && !stoppingRuntime {
             message = NativeError.runtimeExited.localizedDescription
@@ -250,6 +265,16 @@ final class AppModel: ObservableObject {
             let updated = try JSONDecoder().decode(RuntimeState.self, from: await request("/v1/state"))
             guard !quitting, !stoppingRuntime, process?.processIdentifier == runtimePID else { return }
             snapshot = updated
+            if let value = updated.console { consoleState = value }
+            else if snapshot.prepared {
+                consoleState = try JSONDecoder().decode(ConsoleState.self, from: await request("/v1/console"))
+            }
+            if resetSubmissionUncertain, !submittingConsoleAction, let job = consoleState?.job,
+               job.action == .resetServer, job.id != uncertainResetPreviousJobID {
+                // A new reset job proves that the lost submission was accepted.
+                resetSubmissionUncertain = false
+                if consolePresentation?.action == .resetServer { dismissConsolePresentation() }
+            }
             if previousGoURL != snapshot.server?.url || previousRunning != snapshot.serverRunning { clearGoBrowsers() }
             if snapshot.prepared && networkApplied == nil { await loadNetworkConfig() }
             let logs = try JSONDecoder().decode(RuntimeLogs.self, from: await request("/v1/logs?after=\(logCursor)"))
@@ -264,10 +289,83 @@ final class AppModel: ObservableObject {
     }
 
     func toggleServer() {
-        guard toolsReady, !snapshot.busy, !stoppingRuntime else { return }
+        guard canControlServer else { return }
         Task {
             do {
                 _ = try await request(snapshot.serverRunning ? "/v1/server/stop" : "/v1/server/start", method: "POST")
+                await refresh()
+            } catch { message = error.localizedDescription }
+        }
+    }
+
+    func runConsoleAction(_ action: ConsoleAction, region: ConsoleRegion? = nil) async throws {
+        guard canRunConsoleAction else {
+            throw NativeError.service(text("Wait for the current operation to finish.", "현재 작업이 끝날 때까지 기다리세요.", "現在の処理が終わるまでお待ちください。"))
+        }
+        submittingConsoleAction = true
+        defer { submittingConsoleAction = false }
+        let body = action.requestBody(region: region)
+        // A lost POST response may still mean the irreversible reset started.
+        // Retain that uncertainty until a successful shutdown gates admission.
+        if action == .resetServer {
+            uncertainResetPreviousJobID = consoleState?.job?.id
+            resetSubmissionUncertain = true
+        }
+        do {
+            consoleState = try JSONDecoder().decode(ConsoleState.self,
+                from: await request("/v1/console/run", method: "POST", body: body))
+        } catch {
+            if let nativeError = error as? NativeError {
+                switch nativeError {
+                case .service, .runtimeUnavailable: resetSubmissionUncertain = false
+                default: break
+                }
+            }
+            throw error
+        }
+        if action == .resetServer { resetSubmissionUncertain = false }
+        await refresh()
+    }
+
+    func presentConsole(_ presentation: ConsolePresentation) {
+        guard presentation.action == nil || canRunConsoleAction else { return }
+        consoleRegion = ConsoleRegion.defaultRegion(language: language)
+        consoleResetFinal = false
+        consoleActionError = nil
+        consolePresentation = presentation
+    }
+
+    func dismissConsolePresentation() {
+        guard !submittingConsoleAction else { return }
+        consolePresentation = nil
+        consoleResetFinal = false
+        consoleActionError = nil
+    }
+
+    @discardableResult
+    func confirmConsoleAction() async -> Bool {
+        guard let action = consolePresentation?.action, canRunConsoleAction else { return false }
+        if action == .resetServer && !consoleResetFinal { consoleResetFinal = true; return false }
+        do {
+            try await runConsoleAction(action, region: action == .downloadArchive ? consoleRegion : nil)
+            dismissConsolePresentation()
+            return true
+        } catch {
+            consoleActionError = error.localizedDescription + (resetSubmissionUncertain
+                ? "\n" + text("Checking whether the reset started before allowing another action…", "다른 작업을 허용하기 전에 초기화 시작 여부를 확인합니다…", "次の操作を許可する前に、初期化が開始されたか確認しています…") : "")
+            return false
+        }
+    }
+
+    func cancelConsoleAction() {
+        guard consoleState?.job?.running == true, consoleState?.job?.cancellable == true,
+              consoleState?.job?.status != "cancelling", !cancellingConsoleAction else { return }
+        cancellingConsoleAction = true
+        Task {
+            defer { cancellingConsoleAction = false }
+            do {
+                consoleState = try JSONDecoder().decode(ConsoleState.self,
+                    from: await request("/v1/console/cancel", method: "POST"))
                 await refresh()
             } catch { message = error.localizedDescription }
         }
@@ -448,10 +546,32 @@ final class AppModel: ObservableObject {
         snapshot.progress = nil
         defer { stoppingRuntime = false }
         polling?.cancel()
+        // A reset restores vanilla data and then resets accounts. Gate new
+        // admission with shutdown, then await both phases before any group kill.
+        while submittingConsoleAction { try? await Task.sleep(nanoseconds: 100_000_000) }
+        var resetRunning = resetSubmissionUncertain || (consoleState?.job?.action == .resetServer && consoleState?.job?.running == true)
+        var shutdownAcknowledged = false
         if connection != nil && process?.isRunning == true {
             smokeEvent?("runtime-shutdown-request")
-            _ = try? await request("/v1/shutdown", method: "POST")
+            repeat {
+                do {
+                    _ = try await request("/v1/shutdown", method: "POST")
+                    shutdownAcknowledged = true
+                } catch {
+                    if resetRunning && process?.isRunning == true { try? await Task.sleep(nanoseconds: 500_000_000) }
+                }
+            } while resetRunning && !shutdownAcknowledged && process?.isRunning == true
             smokeEvent?("runtime-shutdown-response")
+        }
+        while resetRunning && process?.isRunning == true {
+            message = text("Finishing the server reset safely before quitting…", "서버 초기화를 안전하게 완료한 뒤 종료합니다…", "サーバー初期化を安全に完了してから終了します…")
+            do {
+                let value = try JSONDecoder().decode(ConsoleState.self, from: await request("/v1/console"))
+                consoleState = value
+                resetRunning = value.job?.action == .resetServer && value.job?.running == true
+                resetSubmissionUncertain = false
+            } catch { /* Never escalate an uncertain or active reset. */ }
+            if resetRunning { try? await Task.sleep(nanoseconds: 500_000_000) }
         }
         let deadline = Date().addingTimeInterval(8)
         while process?.isRunning == true && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
@@ -466,6 +586,8 @@ final class AppModel: ObservableObject {
         readers.forEach { $0.stop() }; readers.removeAll()
         verifiedGroup = nil
         process = nil
+        consoleState = nil
+        resetSubmissionUncertain = false
         smokeEvent?("runtime-stop-finished")
     }
 

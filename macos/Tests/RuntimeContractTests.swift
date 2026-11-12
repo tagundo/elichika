@@ -316,4 +316,54 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertThrowsError(try NativeRequest.parse(["id": "navigation-1", "action": "setSection", "section": "viewer", "event": true]))
     }
 
+    func testConsoleRegionUsesJapaneseOnlyForJapaneseAndKeepsExplicitChoices() {
+        XCTAssertEqual(ConsoleRegion.defaultRegion(language: "ja"), .jp)
+        for language in ["en", "ko", "zh", "", "unknown"] {
+            XCTAssertEqual(ConsoleRegion.defaultRegion(language: language), .gl)
+        }
+        XCTAssertEqual(Set(ConsoleRegion.allCases.map(\.rawValue)), ["gl", "jp", "both"])
+        XCTAssertEqual(ConsoleAction.downloadArchive.requestBody(region: .both)["region"], "both")
+        XCTAssertNil(ConsoleAction.downloadPacks.requestBody(region: .jp)["region"])
+    }
+
+    func testConsoleActionsUseFixedNamesAndExplicitResetConfirmation() throws {
+        let actions: [ConsoleAction] = [.downloadArchive, .downloadPacks, .cdnCacheToggle,
+                                       .rebuildAssets, .fixTrainingTrees, .resetServer]
+        XCTAssertEqual(Set(actions.map(\.rawValue)), ["download_archive", "download_packs", "cdn_cache_toggle",
+                                                     "rebuild_assets", "fix_training_trees", "reset_server"])
+        for action in actions {
+            let body = action.requestBody(region: .gl)
+            XCTAssertEqual(body["action"], action.rawValue)
+            XCTAssertEqual(body["confirmation"], "STOP_SERVER")
+            if action == .resetServer {
+                XCTAssertEqual(body["reset_confirmation"], "RESET_SERVER_AND_ACCOUNTS")
+            } else {
+                XCTAssertNil(body["reset_confirmation"])
+            }
+        }
+        for action in ["runShell", "reset_accounts", "../download_archive", "download_packs; echo invalid"] {
+            let encoded = try JSONSerialization.data(withJSONObject: action, options: .fragmentsAllowed)
+            XCTAssertThrowsError(try JSONDecoder().decode(ConsoleAction.self, from: encoded))
+        }
+    }
+
+    func testConsoleStateDecodesProgressAndRejectsUnknownActions() throws {
+        let job: [String: Any] = ["id": "private-job-1", "action": "download_archive", "region": "gl",
+            "status": "running", "running": true, "cancellable": true, "message": "Downloading",
+            "progress": ["stage": "download", "completed": 5, "total": 10]]
+        let encoded = try JSONSerialization.data(withJSONObject: ["cache_enabled": true, "job": job])
+        let state = try JSONDecoder().decode(ConsoleState.self, from: encoded)
+        XCTAssertEqual(state.cacheEnabled, true)
+        XCTAssertEqual(state.job?.action, .downloadArchive)
+        XCTAssertEqual(state.job?.region, .gl)
+        XCTAssertEqual(state.job?.progress?.fraction, 0.5)
+        let invalidProgress = try JSONSerialization.data(withJSONObject: ["completed": 11, "total": 10])
+        XCTAssertNil(try JSONDecoder().decode(ConsoleState.Job.Progress.self, from: invalidProgress).fraction)
+        var invalidJob = job
+        invalidJob["action"] = "runShell"
+        let invalid = try JSONSerialization.data(withJSONObject: ["job": invalidJob])
+        XCTAssertThrowsError(try JSONDecoder().decode(ConsoleState.self, from: invalid))
+        XCTAssertNil(try JSONDecoder().decode(RuntimeState.self, from: Data("{}".utf8)).console)
+    }
+
 }
