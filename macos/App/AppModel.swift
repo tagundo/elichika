@@ -286,8 +286,9 @@ final class AppModel: ObservableObject {
                 resetSubmissionUncertain = false
                 if consolePresentation?.action == .resetServer { dismissConsolePresentation() }
             }
-            if !managementPageVisible && snapshot.management?.running == true && snapshot.management?.status != "stopping" && managementDemandTask == nil {
-                queueManagementDemand(false)
+            if managementSessionWanted && snapshot.management?.running != true && snapshot.management?.error == nil
+                && !snapshot.busy && !snapshot.serverRunning && managementDemandTask == nil {
+                queueManagementDemand(true)
             }
             if snapshot.prepared && networkApplied == nil { await loadNetworkConfig() }
             let logs = try JSONDecoder().decode(RuntimeLogs.self, from: await request("/v1/logs?after=\(logCursor)"))
@@ -459,13 +460,14 @@ final class AppModel: ObservableObject {
     }
 
     func retryManagement() {
-        guard managementPageVisible, toolsReady, !snapshot.busy, !snapshot.serverRunning else { return }
+        guard managementPageVisible, !stoppingRuntime, !quitting else { return }
+        // Demand belongs to the app session once a management page is opened.
+        // Leaving its menu must not close the service and invalidate its login,
+        // browser history or unsaved form. Startup remains lazy on first use.
+        managementDemandWanted = true
+        guard toolsReady, !snapshot.busy, !snapshot.serverRunning,
+              snapshot.management?.httpReady != true else { return }
         queueManagementDemand(true)
-    }
-
-    func releaseManagementIfNotVisible() {
-        guard !managementPageVisible, toolsReady else { return }
-        queueManagementDemand(false)
     }
 
     private var managementPageVisible: Bool {
@@ -473,6 +475,7 @@ final class AppModel: ObservableObject {
     }
 
     var managementDemandIdle: Bool { managementDemandTask == nil }
+    var managementSessionWanted: Bool { managementDemandWanted && !stoppingRuntime && !quitting }
 
     private func queueManagementDemand(_ wanted: Bool) {
         managementDemandWanted = wanted
@@ -483,7 +486,7 @@ final class AppModel: ObservableObject {
             defer { self.managementDemandTask = nil }
             while self.connection != nil && self.process?.isRunning == true {
                 let revision = self.managementDemandRevision
-                let wantedNow = self.managementDemandWanted && self.managementPageVisible && !self.stoppingRuntime && !self.quitting
+                let wantedNow = self.managementSessionWanted
                 if wantedNow && (!self.toolsReady || self.snapshot.busy || self.snapshot.serverRunning) { return }
                 if wantedNow { self.managementAdmissionUncertain = true }
                 let stateRequest = self.beginRuntimeStateRequest()
@@ -504,7 +507,7 @@ final class AppModel: ObservableObject {
                         self.message = error.localizedDescription
                     }
                 }
-                let latest = self.managementDemandWanted && self.managementPageVisible && !self.stoppingRuntime && !self.quitting
+                let latest = self.managementSessionWanted
                 if latest != wantedNow {
                     self.managementDemandWanted = latest
                     self.managementDemandRevision &+= 1
