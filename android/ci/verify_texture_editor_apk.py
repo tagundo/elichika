@@ -19,11 +19,15 @@ STATIC_FILES = tuple("webtools/web/" + name for name in (
     "static/texture-color-math.js", "static/texture-color-worker.js",
     "static/texture-paint-engine.js", "static/texture-uv-selection.js",
     "static/viewer-interaction-tools.js", "static/viewer-interaction-tools.css",
+    "static/viewer-signed-inputs.js", "static/viewer-signed-inputs.css",
+    "static/viewer-editing.js", "static/viewer-physics.js", "static/viewer-thumbnails.js",
     "static/viewer-mesh-tools.js", "static/viewer-mesh-runtime.js", "static/viewer-outlines.js", "static/viewer-near-clip.js",
     "static/viewer-transplants.js", "static/viewer-texture-tools.js",
     "static/viewer-texture-tools.css", "static/texture-panel-expand.js",
     "static/texture-panel-expand.css", "static/vendor/fflate-0.8.2/fflate.min.js",
-    "static/vendor/fflate-0.8.2/LICENSE"))
+    "static/vendor/fflate-0.8.2/LICENSE")) + (
+    "adminui/web/index.html", "adminui/web/ui/app.js", "adminui/web/ui/style.css",
+    "adminui/web/ui/game-quality.js", "adminui/web/ui/game-quality.css")
 MODULES = (
     "webtools/server", "webtools/i18n", "webtools/core/viewer_texture_tools",
     "webtools/core/texture_image_io", "webtools/core/texture_project_io",
@@ -32,7 +36,10 @@ MODULES = (
     "webtools/core/viewer_mod_flow", "webtools/core/viewer_mod_pair_edits",
     "webtools/core/viewer_mod_package", "webtools/core/viewer_mod_sources",
     "costume_face_installer", "costume_scene_installer", "costume_scene_clones",
-    "costume_scene_sources", "costume_management")
+    "costume_scene_sources", "costume_management",
+    "webtools/core/model_faces", "webtools/core/viewer_thumbnails",
+    "game_quality_settings", "adminui/server", "adminui/i18n",
+    "adminui/tools/registry", "adminui/tools/game_quality")
 
 
 def _entries(archive, label):

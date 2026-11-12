@@ -17,6 +17,7 @@ from adminui.tools.reset import run_clear_packs
 from adminui.tools.costume_clone import character_choices, costume_options, run_costume_clone
 from adminui.tools.costume_delete import costume_delete_options, run_costume_delete
 from adminui.tools.costume_cdn import costume_cdn_options, run_costume_cdn
+from adminui.tools.game_quality import run_game_quality
 from adminui.tools.installers import (
     options_for, run_camera, run_card, run_costume, run_db, run_dictionary, run_live, run_tower,
 )
@@ -79,6 +80,13 @@ def _char_field(name, label, help_text=None, choices=None, required=True, multi=
 # -----------------------------------------------------------------------------
 
 TOOLS = [
+    {
+        "id": "game_quality",
+        "label": "Game Graphics Quality",
+        "description": "Edit the game’s live and MV graphics profiles. Changes are saved to the game database and apply after reconnecting the game.",
+        "run": run_game_quality,
+        "fields": [],
+    },
     {
         "id": "clear_packs",
         "label": "Clear Pack Cache",

@@ -513,6 +513,42 @@ def check_fresh_file_header(observed):
                 "The actual native model filename must remain bounded with the intended overflow policy")
 
 
+def _native_thumbnail_frame(render, profile, size, fit_full=False):
+    import math
+    framing, camera, source = render["framing"], render["camera"], profile["camera"]
+    require((framing["mode"] == ("full-character" if fit_full else "head-and-upper-body")) and framing["fitFullCharacter"] is fit_full and framing["sourceCamera"] == source and framing["camera"] == camera
+            and framing["vertices"] > 0 and framing["padding"] > 0,
+            "The full-character thumbnail must retain the SDK source camera and actual posed framing")
+    require(all(row["role"] == "dependency" for row in render["excludedMeshes"]),
+            "Full-character thumbnails must retain face, hair and head renderers")
+    bounds = render["subjectBounds"]
+    require(0 < bounds["left"] <= bounds["right"] < size - 1 and 0 < bounds["top"] <= bounds["bottom"] < size and (not fit_full or bounds["bottom"] < size - 1),
+            "Actual character pixels must retain space inside all four thumbnail edges")
+    require(camera["near"] == source["near"] and camera["far"] >= source["far"]
+            and camera["right"] - camera["left"] >= source["right"] - source["left"]
+            and camera["top"] - camera["bottom"] >= source["top"] - source["bottom"],
+            "Full-character framing must preserve the SDK clip limits and minimum orthographic scale")
+    dot = lambda a, b: sum(x*y for x, y in zip(a, b))
+    cross = lambda a, b: [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    unit = lambda a: [v/math.sqrt(dot(a, a)) for v in a]
+    direction = unit(source["direction"]); right = unit(cross(direction, source["up"])); up = unit(cross(right, direction))
+    require(all(abs(a-b) < 1e-9 for a, b in zip(camera["direction"], direction)) and camera["up"] == source["up"],
+            "Full-character framing must preserve the original SDK viewing direction and up vector")
+    low, high = framing["minimum"], framing["maximum"]
+    require(high == framing["wholeMaximum"] and low[0] == framing["wholeMinimum"][0] and low[2] == framing["wholeMinimum"][2]
+            and (not fit_full or low == framing["wholeMinimum"]), "Both thumbnail modes must preserve the full head, sides and depth bounds")
+    if not fit_full:
+        expected = max(framing["wholeMinimum"][1], high[1] - max(source["top"] - source["bottom"], (high[1] - framing["wholeMinimum"][1]) * .65))
+        require(abs(low[1] - expected) < 1e-8, "Default thumbnails must retain the head and upper costume at the closer framing")
+    require(all(math.isfinite(v) for v in low + high + camera["position"]), "Thumbnail posed bounds and camera must be finite")
+    for axis, vector, start, end in [(0, right, camera["left"], camera["right"]), (1, up, camera["bottom"], camera["top"])]:
+        centre = dot(camera["position"], vector)
+        require(start < low[axis]-centre <= high[axis]-centre < end, "Every posed character bound must fit the orthographic thumbnail")
+    require(camera["near"] < low[2]-dot(camera["position"], direction) <= high[2]-dot(camera["position"], direction) < camera["far"],
+            "The full character must remain between the thumbnail camera clip planes")
+    return True
+
+
 def check_updater_report(observed):
     _native_checks(observed, ("selectedFilesMode", "multipleFilesOnce", "sourcePathsPreserved", "actualToolRun", "twoAutomaticRenders",
                    "manifestRecipients", "qualityCameraTemplate", "previewReceipts", "twoCompletedOutputs", "viewerPreserved"), "Native existing-ZIP thumbnail updater")
@@ -530,7 +566,7 @@ def check_updater_report(observed):
             and not observed["rendererState"]["busy"] and observed["rendererState"]["last"]["count"] == observed["rendererState"]["last"]["total"] == 2,
             "Both source ZIPs must finish actual automatic WebGL renders and completed updater outputs")
     quality = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2,
-               "rimlight": False}
+               "rimlight": False, "subject": "full-character-v1" if observed["request"].get("thumbnail_fit_full", False) else "head-and-upper-body-v1"}
     for index, owner in enumerate((6, 201)):
         result, rendered = observed["receipts"][index], observed["renders"][index]
         receipt, render = rendered["receipt"], rendered["render"]
@@ -543,7 +579,7 @@ def check_updater_report(observed):
         require(render["quality"]["enabled"] is True and render["quality"]["ready"] is True and render["material"]["enabled"] is True
                 and render["material"]["rimlightEnabled"] is False
                 and render["subjectPixels"] > 0 and render["triangles"] > 0 and render["visibleMeshes"] > 0
-                and render["pose"] == "source-rest" and render["animation"] is False and render["camera"] == observed["profile"]["camera"]
+                and render["pose"] == "source-rest" and render["animation"] is False and _native_thumbnail_frame(render, observed["profile"], receipt["size"], observed["request"].get("thumbnail_fit_full", False))
                 and rendered["preview"]["src"] == rendered["png"] and rendered["preview"]["sha256"] == receipt["sha256"],
                 "Both real updater previews must contain source-rest SifasMaterial triangles under the SDK orthographic camera")
     require(observed["renders"][0]["receipt"]["sha256"] != observed["renders"][1]["receipt"]["sha256"]
@@ -606,13 +642,14 @@ def check_thumbnail_report(observed):
             and not observed["persistence"]["busy"] and observed["persistence"]["status"] == "done",
             "Actual 3D selection must save a new completed installer job after ordinary texture packaging")
     quality = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2,
-               "rimlight": False}
+               "rimlight": False, "subject": "full-character-v1" if before.get("thumbnailFitFull", False) else "head-and-upper-body-v1"}
     require(receipt["quality"] == quality and render["quality"]["enabled"] is True and render["quality"]["ready"] is True
             and math.isfinite(render["quality"]["actualSamples"]) and render["quality"]["actualSamples"] >= 0
             and render["material"]["enabled"] is True and render["material"]["rimlightEnabled"] is False
             and render["subjectPixels"] > 0 and render["triangles"] > 0
             and render["visibleMeshes"] > 0 and render["pose"] == "source-rest" and render["animation"] is False,
             "Actual WKWebView high-quality source-rest rendering must expose visible SifasMaterial costume triangles")
+    _native_thumbnail_frame(render, observed["profile"], receipt["size"], before.get("thumbnailFitFull", False))
     pack = observed["response"]["mod_package"]
     require(pack["installable"] is True and pack["character_id"] == receipt["characterId"] == 6
             and pack["thumbnail"]["mode"] == "3d" and pack["thumbnail"]["sha256"] == receipt["sha256"]

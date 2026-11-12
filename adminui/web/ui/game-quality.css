@@ -1,0 +1,22 @@
+.game-quality { min-width:0; }
+.game-quality-pickers { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.game-quality-picker { display:flex; min-width:0; flex-direction:column; gap:4px; font-size:13px; }
+.game-quality-picker select { min-width:0; width:100%; min-height:34px; padding:6px 8px; border:1px solid var(--line,#d4d8e0); border-radius:8px; background:var(--panel2,#eef1f6); color:var(--text,#1f2430); font:inherit; }
+.game-quality-actions { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+.game-quality .game-quality-actions button { width:auto; margin:0; padding:7px 10px; min-height:34px; border-radius:8px; font-size:13px; }
+.game-quality-actions button:not(.run-btn) { border:1px solid var(--line,#d4d8e0); background:var(--panel2,#eef1f6); color:var(--text,#1f2430); cursor:pointer; }
+.game-quality-status { overflow-wrap:anywhere; min-height:1.3em; margin:6px 0; font-size:13px; }
+.game-quality-note,.game-quality-field-help,.game-quality-explanation p { color:var(--muted,#626875); font-size:12px; line-height:1.45; }
+.game-quality-note { margin:6px 0 10px; }
+.game-quality-group,.game-quality-explanation { border:1px solid var(--line,#d4d8e0); border-radius:8px; margin:8px 0; min-width:0; }
+.game-quality-group>summary,.game-quality-explanation>summary { cursor:pointer; padding:8px 10px; font-size:14px; }
+.game-quality-explanation p { margin:8px 10px; }
+.game-quality-field { padding:8px 10px; border-top:1px solid var(--line,#d4d8e0); min-width:0; }
+.game-quality-label { display:flex; flex-direction:row; align-items:center; gap:8px; margin:0; font-weight:500; }
+.game-quality-label input[type=checkbox] { width:18px; height:18px; margin:0; flex:0 0 18px; }
+.game-quality-label input[type=number] { width:95px; max-width:40%; flex:0 0 95px; margin:0; padding:5px 7px; border:1px solid var(--line,#d4d8e0); border-radius:6px; background:var(--panel2,#eef1f6); color:var(--text,#1f2430); font:inherit; }
+.game-quality-field-help { margin:5px 0 0; overflow-wrap:anywhere; }
+.game-quality-operation-log { margin-top:10px; }
+.game-quality-operation-log pre { max-height:200px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
+@media (max-width:650px) { .game-quality-pickers { grid-template-columns:minmax(0,1fr); } }
+@media (pointer:coarse) { .game-quality .game-quality-actions button,.game-quality-picker select,.game-quality-group>summary,.game-quality-explanation>summary,.game-quality-label { min-height:44px; } }

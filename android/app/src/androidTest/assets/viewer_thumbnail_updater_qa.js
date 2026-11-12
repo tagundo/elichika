@@ -5,6 +5,13 @@
   function assert(value, message) { if (!value) throw new Error(message); }
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
   function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  function fullCharacter(render, profile, size, fitFull) {
+    var f=render.framing,c=render.camera,b=render.subjectBounds,p=profile.camera;
+    return f&&f.mode===(fitFull?'full-character':'head-and-upper-body')&&f.fitFullCharacter===!!fitFull&&equal(f.sourceCamera,p)&&equal(f.camera,c)&&f.vertices>0&&f.padding>0&&
+      c.left<=p.left&&c.right>=p.right&&c.top>=p.top&&c.bottom<=p.bottom&&c.near===p.near&&c.far>=p.far&&
+      b&&b.left>0&&b.top>0&&b.right<size-1&&b.bottom<size&&(!fitFull||b.bottom<size-1)&&
+      render.excludedMeshes.every(function(row){return row.role==='dependency';});
+  }
   function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
   async function settle() { await new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); }); }
   async function until(message, predicate) {
@@ -109,6 +116,8 @@
       var selection = await choose(paths);
       assert(equal(selection.after, paths) && equal(selectedPaths(), paths), 'Both selected ZIPs must be added once in source order');
       await input('out_dir', options.outDirectory); await input('thumbnail_size', '256'); await input('variant', 'auto');
+      var fitChoice = await usable('#tool-form [data-name="thumbnail_fit_full"]');
+      fitChoice.checked = options.fitFullCharacter === true; fitChoice.dispatchEvent(new Event('change', { bubbles: true })); await settle();
       await click('#tool-form button.run-btn');
       await until('the actual two-source automatic thumbnail update job', function () {
         if (done !== null) return true;
@@ -131,9 +140,9 @@
         assert(done.output_paths.indexOf(receipt.output_path) >= 0, 'Each independently inspectable ZIP must be an authoritative completed-job output');
         assert(receipt.thumbnail_sha256 === thumbnail.sha256 && receipt.profile_digest === thumbnail.profileDigest && receipt.cache_key === thumbnail.cacheKey && /^[a-f0-9]{64}$/.test(receipt.sha256),
           'The completed ZIP must bind its actual preview PNG, SDK profile and source cache');
-        assert(render.quality.enabled && render.quality.ready && render.material.enabled && render.subjectPixels > 0 && render.triangles > 0 && render.visibleMeshes > 0 && render.pose === 'source-rest' && render.animation === false && equal(render.camera, profile.camera),
+        assert(render.quality.enabled && render.quality.ready && render.material.enabled && render.subjectPixels > 0 && render.triangles > 0 && render.visibleMeshes > 0 && render.pose === 'source-rest' && render.animation === false && fullCharacter(render, profile, thumbnail.size, requests[0].thumbnail_fit_full===true),
           'Each actual updater render must use visible source-rest costume geometry and the SDK camera');
-        assert(equal(thumbnail.quality, { renderer: 'SifasMaterial', highQuality: true, animation: false, supersample: 2, rimlight: false }) && render.material.rimlightEnabled === false, 'The original-source high-quality thumbnail contract must remain exact and render without rimlight');
+        assert(equal(thumbnail.quality, { renderer: 'SifasMaterial', highQuality: true, animation: false, supersample: 2, rimlight: false, subject: requests[0].thumbnail_fit_full===true?'full-character-v1':'head-and-upper-body-v1' }) && render.material.rimlightEnabled === false, 'The original-source high-quality thumbnail contract must remain exact and render without rimlight');
       });
       assert(renders[0].receipt.cacheKey !== renders[1].receipt.cacheKey && renders[0].receipt.sha256 !== renders[1].receipt.sha256,
         'Different source ZIPs and manifest member colors must produce separate bindings and different actual thumbnails');

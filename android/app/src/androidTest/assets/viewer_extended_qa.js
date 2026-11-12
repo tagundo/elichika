@@ -137,6 +137,24 @@
     await input(drag, '.4');
     assert(values(breast).dragForce === .4 && ModelViewer.getAuthoringState().physics.some(function (row) { return row.id === breast.id && row.values.dragForce === .4; }),
       'A real filtered Pose component field must author its precise original physics value');
+    var signedBaseline = clone(ModelViewer.getAuthoringState());
+    var signedCollider = catalogue.components.find(function (row) { return row.kind === 'collider' && Array.isArray(row.values.offset); });
+    assert(signedCollider, 'Signed entry requires a genuine source SwingCollider');
+    await input('viewer-physics-component-kind', 'collider', 'change'); await input('viewer-physics-component-group', '', 'change');
+    await input('viewer-physics-component-search', signedCollider.name);
+    var signedOffset = document.querySelector('[data-physics-component=' + JSON.stringify(signedCollider.id) + '][data-physics-field=offset][data-physics-axis="1"]');
+    var signButton = signedOffset && signedOffset.parentElement.querySelector('.viewer-number-sign');
+    assert(signedOffset && signedOffset.type === 'number' && signedOffset.inputMode === 'text' && signButton && !signButton.disabled,
+      'The real signed collider field keeps native number validation and exposes a full-keyboard hint and sign action');
+    await input(signedOffset, '.125'); await click(signButton);
+    assert(values(signedCollider).offset[1] === -.125 && ModelViewer.getAuthoringState().physics.some(function (row) {
+      return row.id === signedCollider.id && row.values.offset && row.values.offset[1] === -.125;
+    }), 'The real sign action must author the negative collider offset');
+    await click(signButton); assert(values(signedCollider).offset[1] === .125, 'A second sign action restores the positive collider value');
+    await input(signedOffset, signedCollider.values.offset[1]);
+    await input('viewer-physics-component-kind', 'bone', 'change'); await input('viewer-physics-component-group', 'breast', 'change');
+    await input('viewer-physics-component-search', breast.name);
+    assert(equal(ModelViewer.getAuthoringState(), signedBaseline), 'Signed-input inspection restores all original body and physics authoring');
     await input('viewer-save-method', 'node', 'change');
     await input('viewer-gaze-mode', 'direction', 'change'); await input('viewer-gaze-horizontal-number', '40');
     var beforeLibrary = snapshot();
@@ -174,6 +192,8 @@
       uiChecks: { accessoryFreshOpen: true, modelOnlyHeader: true, motionOnlyPoseList: true, modelHeaderUnchangedOnMotionImport: true,
         modelHeaderTracksBodyChange: true, modelHeaderRestored: true, motionListCleared: true, multipleModelCounts: true },
       freshDefaults: freshDefaults,
+      signedInputChecks: { numberTypePreserved: true, fullKeyboardHint: true, nativeDomSignAction: true, negativeColliderAuthoring: true,
+        positiveRestored: true, originalAuthoringRestored: true, scope: 'Actual platform DOM sign action; no physical IME glyph or trusted-pointer claim.' },
       paths: clone(paths), initial: initial, gaze: { front: front, directed: directed, returned: returned, camera: cameraGaze,
         owner: gazeOwnership, folds: gazeFolds, foldAuthoring: gazeAuthoring },
       breast: { record: breast, baseline: base, preset: preset, automatic: automated, limits: limits },

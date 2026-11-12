@@ -26,8 +26,10 @@ ensure_tk_stub()
 from webtools.core import game_motions, game_motion_audio, viewer_mesh_tools, viewer_physics, viewer_physics_runtime, viewer_transplants, model_edits, model_outlines, viewer_mod_pair_edits, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace, viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, member_identity
 import transplant_bundle_io, costume_installer_defaults, costume_face_installer, costume_scene_installer, costume_clone, costume_management
 import costume_cdn_catalog, costume_cdn_restore
+import game_quality_settings
 import graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale
 from adminui.tools import costume_cdn as cdn_admin
+from adminui.tools import game_quality as game_quality_admin
 from webtools.core import viewer_texture_tools, texture_image_io, texture_project_io
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
                     viewer_texture_tools,
@@ -36,7 +38,7 @@ packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_tran
                     model_edits, model_outlines, viewer_mod_pair_edits, viewer_physics_runtime, model_expressions, viewer_thumbnails, viewer_thumbnail_roles, mod_thumbnail_replace,
                     viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, transplant_bundle_io, game_motion_audio,
                     costume_installer_defaults, costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
-                    costume_cdn_catalog, costume_cdn_restore, cdn_admin,
+                    costume_cdn_catalog, costume_cdn_restore, cdn_admin, game_quality_settings, game_quality_admin,
                     graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale)
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
@@ -87,7 +89,7 @@ test_stage = stage / 'tests'; test_stage.mkdir()
 (stage / 'webtools/web').mkdir(parents=True)
 static = source / 'webtools/web/static'
 (stage / 'webtools/web/static').symlink_to(static, target_is_directory=True)
-staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py', 'test_viewer_mesh_selection.py', 'test_motion_audio_transport.py', 'test_viewer_gaze.py', 'test_viewer_thumbnail_saved_settings.py']
+staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py', 'test_viewer_mesh_selection.py', 'test_motion_audio_transport.py', 'test_viewer_gaze.py', 'test_viewer_thumbnail_saved_settings.py', 'test_model_faces.py']
 staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.js',
     'viewer_game_physics_math_test.js', 'viewer_game_physics_collision_test.js',
     'viewer_game_physics_job_collision_test.js', 'viewer_game_physics_native_test.js',
@@ -100,13 +102,15 @@ staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.j
 numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisions.json',
     'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
     'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json',
-    'game_physics_native_constructor.json']
+    'game_physics_native_constructor.json', 'viewer_textured_triangle.unity']
 for name in staged_python + staged_drivers:
     shutil.copy2(test_source / name, test_stage / name)
+shutil.copy2(repo / 'tests/test_game_quality_settings.py', test_stage / 'test_game_quality_settings.py')
 (test_stage / 'fixtures').mkdir()
 for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
 static_files = ['vendor/three-r128/three.min.js', 'style.css', 'platform.js', 'viewer-physics.js',
+    'viewer-signed-inputs.js', 'viewer-signed-inputs.css', 'viewer-editing.js',
     'texture-png.js', 'texture-color-math.js', 'texture-color-worker.js',
     'texture-paint-engine.js', 'texture-uv-selection.js',
     'viewer-interaction-tools.js', 'viewer-interaction-tools.css', 'viewer-texture-tools.js', 'viewer-texture-tools.css',
@@ -120,6 +124,11 @@ for name in static_files:
     actual = (stage / 'webtools/web/static' / name).resolve()
     assert actual == (static / name).resolve() and actual.is_relative_to(source)
     packaged_node_sources[name] = hashlib.sha256(actual.read_bytes()).hexdigest()
+packaged_admin_sources = {}
+for name in ['index.html', 'ui/app.js', 'ui/style.css', 'ui/game-quality.js', 'ui/game-quality.css']:
+    actual = (source / 'adminui/web' / name).resolve()
+    assert actual.is_relative_to(source) and actual.is_file(), ('Missing packaged Server Content resource', name)
+    packaged_admin_sources[name] = hashlib.sha256(actual.read_bytes()).hexdigest()
 staged_test_inputs = {str(path.relative_to(test_stage)): hashlib.sha256(path.read_bytes()).hexdigest()
                      for path in sorted(test_stage.rglob('*')) if path.is_file()}
 # The legacy installer derives its script/fixture root from __file__. Give its
@@ -197,6 +206,13 @@ for path in cdn_test_paths:
     sys.modules[name] = module
     spec.loader.exec_module(module)
     cdn_modules.append(module)
+additional_modules = {}
+for name in ['test_model_faces', 'test_game_quality_settings']:
+    spec = importlib.util.spec_from_file_location('test_packaged_' + name, test_stage / (name + '.py'))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    additional_modules[name] = module
 suite = unittest.TestSuite()
 for pattern in patterns:
     if pattern in staged_python:
@@ -208,6 +224,11 @@ for pattern in patterns:
     else:
         suite.addTests(unittest.defaultTestLoader.discover(str(test_source), pattern=pattern))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(installer_module))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(additional_modules['test_game_quality_settings']))
+# These synthetic classes cover the resolver without requiring private game
+# assets. The optional ActualFacialSourceTests class is outside this contract.
+for name in ['PackageSizeTests', 'FaceTests']:
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(getattr(additional_modules['test_model_faces'], name)))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(management_module))
 for module in cdn_modules:
     suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
@@ -402,6 +423,7 @@ report = {'status': 'PASS' if result.wasSuccessful() and not result.skipped else
           'executed_packaged_module_paths': packaged_imports,
           'explicit_cases': explicit_cases, 'executed_cases': executed_cases,
           'packaged_node_static_sources': packaged_node_sources,
+          'packaged_admin_static_sources': packaged_admin_sources,
           'texture_paint_node_probes': texture_paint_node_probes,
           'physics_motion_metadata_node_probe': metadata_probe,
           'native_pcm_node_probes': pcm_probes,

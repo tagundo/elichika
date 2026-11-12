@@ -88,6 +88,7 @@ jobs:
           python3 -m unittest discover -s ../tests -p test_costume_cdn_catalog.py -v
           python3 -m unittest discover -s ../tests -p test_costume_cdn_restore.py -v
           python3 -m unittest discover -s ../tests -p test_costume_cdn_packaging.py -v
+          python3 -m unittest discover -s ../tests -p test_game_quality_settings.py -v
           python3 -m unittest discover -s ../tests -p test_shared_asset_crypto.py -v
           python3 -m unittest discover -s ../tests -p test_pack_lookup.py -v
           python3 -m unittest discover -s ../tests -p test_viewer_part_oracle.py -v
@@ -223,6 +224,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/costume-delete" node ../tests/adminui_costume_delete_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/tool-log" node ../tests/adminui_log_batch_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/costume-cdn" node ../tests/adminui_costume_cdn_browser.js
+          PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/game-quality" node ../tests/adminui_game_quality_browser.js
           python3 -m webtools --no-browser --host 127.0.0.1 --port 8898 > "$EVIDENCE_DIR/server.log" 2>&1 &
           viewer_server_pid=$!
           trap 'kill "$viewer_server_pid" 2>/dev/null || true' EXIT
@@ -257,6 +259,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/variants" node tests/viewer_variant_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/persistence" node tests/viewer_persistence_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-editors" node tests/viewer_texture_tools_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/signed-inputs" node tests/viewer_signed_inputs_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-layers" node tests/viewer_texture_layers_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-workspace" node tests/viewer_texture_workspace_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/texture-panel-expand" node tests/texture_panel_expand_browser.js

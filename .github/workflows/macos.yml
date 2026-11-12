@@ -7,6 +7,10 @@ on:
         description: "Review app version YYYY.MM.DD[.N]; blank uses macos/VERSION"
         required: false
         default: ""
+      validated_release:
+        description: "Publish already-validated APK/Mac artifacts using the reviewed JSON manifest; blank performs the normal app build"
+        required: false
+        default: ""
   pull_request:
     paths:
       - 'macos/**'
@@ -37,11 +41,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: macos-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: macos-${{ inputs.validated_release && 'validated-release' || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !inputs.validated_release }}
 
 jobs:
   apple-silicon:
+    if: ${{ !inputs.validated_release }}
     # Explicit standard ARM64 label; macos-14 retired in November 2026.
     runs-on: macos-15
     timeout-minutes: 60
@@ -238,4 +243,39 @@ jobs:
             ${{ runner.temp }}/macos-evidence/
             !${{ runner.temp }}/macos-evidence/native-app-data/application-support/**
             !${{ runner.temp }}/macos-evidence/native-app-data/sukusta/**
+          if-no-files-found: warn
+
+  publish-validated-apps:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.validated_release != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out the exact reviewed publisher source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify all three runs and publish their exact validated app bytes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VALIDATED_RELEASE_JSON: ${{ inputs.validated_release }}
+        run: |
+          python3 macos/ci/publish_validated_apps.py \
+            --manifest-env VALIDATED_RELEASE_JSON \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$GITHUB_SHA" \
+            --version-file macos/VERSION \
+            --work-dir "$RUNNER_TEMP/validated-app-release"
+
+      - name: Preserve validated publication evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-app-release-evidence-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/validated-app-release/publish-result.json
           if-no-files-found: warn

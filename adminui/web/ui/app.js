@@ -121,9 +121,15 @@ function renderForm() {
   state.deleteReview = null;
   const tool = state.currentTool;
   const panel = $("#tool-panel");
+  if (window.GameQualitySettings) window.GameQualitySettings.unmount(panel);
   panel.innerHTML = "";
   panel.appendChild(el("h2", { text: tool.label }));
   panel.appendChild(el("p", { class: "desc", text: tool.description || "" }));
+
+  if (tool.id === "game_quality" && window.GameQualitySettings) {
+    window.GameQualitySettings.mount(panel, { language: state.lang, onBusy: setRunning, isBusy: () => state.running });
+    return;
+  }
 
   const form = el("form", { id: "tool-form", onsubmit: (e) => { e.preventDefault(); runTool(); } });
   if (tool.id === "costume_delete") {
@@ -354,6 +360,7 @@ function setRemovalPhase(message, kind = "") {
 function setRunning(running) {
   state.running = running;
   document.querySelectorAll("#tool-form .run-btn, #delete-confirm").forEach((button) => { button.disabled = running; });
+  window.dispatchEvent(new CustomEvent("elichika-admin-running-changed"));
 }
 
 function parseJobRecord(line) {

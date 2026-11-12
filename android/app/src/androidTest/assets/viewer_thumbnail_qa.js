@@ -4,6 +4,13 @@
   function assert(value, message) { if (!value) throw new Error(message); }
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
   function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  function fullCharacter(render, profile, size, fitFull) {
+    var f=render.framing,c=render.camera,b=render.subjectBounds,p=profile.camera;
+    return f&&f.mode===(fitFull?'full-character':'head-and-upper-body')&&f.fitFullCharacter===!!fitFull&&equal(f.sourceCamera,p)&&equal(f.camera,c)&&f.vertices>0&&f.padding>0&&
+      c.left<=p.left&&c.right>=p.right&&c.top>=p.top&&c.bottom<=p.bottom&&c.near===p.near&&c.far>=p.far&&
+      b&&b.left>0&&b.top>0&&b.right<size-1&&b.bottom<size&&(!fitFull||b.bottom<size-1)&&
+      render.excludedMeshes.every(function(row){return row.role==='dependency';});
+  }
   function wait(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
   async function settle() { await new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); }); }
   async function until(message, predicate) {
@@ -30,6 +37,7 @@
       authoring: clone(ModelViewer.getAuthoringState()),
       pose: { time: rig.time, selectedClip: rig.selectedClip, playing: rig.playing },
       characterId: Number(document.getElementById('viewer-mod-character').value),
+      thumbnailFitFull: !!document.getElementById('viewer-mod-thumbnail-fit-full').checked,
       include_face_edits: !!document.getElementById('viewer-mod-include-face').checked,
       name: document.getElementById('viewer-mod-name').value,
       variant: document.getElementById('viewer-mod-variant').value || null,
@@ -78,9 +86,9 @@
       'The decoded preview and actual PNG receipt must agree');
     assert(render.quality.enabled && render.quality.ready && Number.isFinite(render.quality.actualSamples) && render.quality.actualSamples >= 0 && render.subjectPixels > 0 && render.triangles > 0 && render.visibleMeshes > 0 && render.material.enabled,
       'Actual high-quality SifasMaterial WebGL rendering must contain visible source triangles');
-    assert(receipt.quality.renderer === 'SifasMaterial' && receipt.quality.highQuality === true && receipt.quality.animation === false && receipt.quality.supersample === 2 && receipt.quality.rimlight === false && render.material.rimlightEnabled === false && render.pose === 'source-rest' && render.animation === false,
+    assert(receipt.quality.renderer === 'SifasMaterial' && receipt.quality.highQuality === true && receipt.quality.animation === false && receipt.quality.supersample === 2 && receipt.quality.rimlight === false && receipt.quality.subject === (before.thumbnailFitFull?'full-character-v1':'head-and-upper-body-v1') && render.material.rimlightEnabled === false && render.pose === 'source-rest' && render.animation === false,
       'The real renderer must use the source-rest costume with the reviewed high-quality contract');
-    assert(equal(render.camera, profile.camera) && Object.keys(profile.memberColors).length === 30 && profile.memberColors[String(owner)] && profile.layers.length === 3 && profile.innerMask === 'inner-mask.png' && profile.outerBorder === 'outer-border.png',
+    assert(fullCharacter(render, profile, receipt.size, before.thumbnailFitFull) && Object.keys(profile.memberColors).length === 30 && profile.memberColors[String(owner)] && profile.layers.length === 3 && profile.innerMask === 'inner-mask.png' && profile.outerBorder === 'outer-border.png',
       'The actual SDK orthographic camera, member colors and five PSD layers must be used');
     assert(pack && pack.installable === true && pack.character_id === owner && pack.display_name === before.name && pack.thumbnail.mode === '3d' && pack.thumbnail.sha256 === receipt.sha256 && pack.thumbnail.characterId === owner && pack.thumbnail.profileDigest === receipt.profileDigest && pack.thumbnail.cacheKey === receipt.cacheKey && equal(pack.thumbnail.quality, receipt.quality),
       'The authoritative saved ZIP must bind the same rendered thumbnail and member');

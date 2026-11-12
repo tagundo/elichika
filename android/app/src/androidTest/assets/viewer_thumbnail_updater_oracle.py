@@ -8,6 +8,7 @@ import base64
 import hashlib
 import io
 import json
+import math
 from pathlib import Path, PurePosixPath
 import zipfile
 
@@ -16,7 +17,7 @@ from PIL import Image
 
 EXPECTED = (("e60eb0fa3e6e1860bb956e70337c23908faab3f2a9c66192531b645b971538f7", 17405, 6),
             ("473fb2c5a57c95b5259ada0c3bf88eaf7db4586f8c662d4f03cfeaceb48fa969", 17421, 201))
-QUALITY = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2, "rimlight": False}
+QUALITY = {"renderer": "SifasMaterial", "highQuality": True, "animation": False, "supersample": 2, "rimlight": False, "subject": "head-and-upper-body-v1"}
 
 
 def sha(raw):
@@ -64,6 +65,39 @@ def reference(manifest, value):
     return str(PurePosixPath(manifest).parent / path)
 
 
+def full_character(render, profile, size, fit_full=False):
+    framing, camera, source = render['framing'], render['camera'], profile['camera']
+    assert framing['mode'] == ('full-character' if fit_full else 'head-and-upper-body') and framing['fitFullCharacter'] is fit_full
+    assert framing['sourceCamera'] == source and framing['camera'] == camera
+    assert framing['vertices'] > 0 and framing['padding'] > 0
+    assert all(row['role'] == 'dependency' for row in render['excludedMeshes'])
+    bounds = render['subjectBounds']
+    assert 0 < bounds['left'] <= bounds['right'] < size - 1 and 0 < bounds['top'] <= bounds['bottom'] < size
+    if fit_full:
+        assert bounds['bottom'] < size - 1
+    assert camera['near'] == source['near'] and camera['far'] >= source['far']
+    assert camera['right'] - camera['left'] >= source['right'] - source['left']
+    assert camera['top'] - camera['bottom'] >= source['top'] - source['bottom']
+    dot = lambda a,b: sum(x*y for x,y in zip(a,b))
+    cross = lambda a,b: [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]
+    unit = lambda a: [v/math.sqrt(dot(a,a)) for v in a]
+    direction = unit(source['direction']); right = unit(cross(direction,source['up'])); up = unit(cross(right,direction))
+    assert all(abs(a-b)<1e-9 for a,b in zip(camera['direction'],direction)) and camera['up'] == source['up']
+    low, high = framing['minimum'], framing['maximum']
+    assert all(math.isfinite(v) for v in low+high+camera['position'])
+    assert framing['maximum'] == framing['wholeMaximum']
+    assert low[0] == framing['wholeMinimum'][0] and low[2] == framing['wholeMinimum'][2]
+    if fit_full:
+        assert low == framing['wholeMinimum']
+    else:
+        expected = max(framing['wholeMinimum'][1], high[1] - max(source['top']-source['bottom'], (high[1]-framing['wholeMinimum'][1])*.65))
+        assert abs(low[1]-expected)<1e-8
+    for axis,vector,start,end in [(0,right,camera['left'],camera['right']),(1,up,camera['bottom'],camera['top'])]:
+        centre = dot(camera['position'],vector)
+        assert start < low[axis]-centre <= high[axis]-centre < end
+    assert camera['near'] < low[2]-dot(camera['position'],direction) <= high[2]-dot(camera['position'],direction) < camera['far']
+
+
 def inspect_json(encodedReport, sdkDirectory):
     report = json.loads(encodedReport)
     assert report["status"] == "PASS" and report["before"] == report["after"]
@@ -74,6 +108,12 @@ def inspect_json(encodedReport, sdkDirectory):
     root = Path(request["out_dir"]).expanduser().resolve()
     binding = {"mode": "multi", "in_path": "", "in_paths": paths, "out_dir": str(root),
                "thumbnail_size": int(request.get("thumbnail_size", 256)), "variant": request.get("variant", "auto")}
+    fit_full = request.get("thumbnail_fit_full", False)
+    assert type(fit_full) is bool
+    binding["thumbnail_fit_full"] = fit_full
+    quality = dict(QUALITY)
+    if fit_full:
+        quality["subject"] = "full-character-v1"
     assets = Path(sdkDirectory)
     profile = json.loads((assets / "profile.json").read_text())
     assert profile == report["profile"] and len(profile["memberColors"]) == 30
@@ -92,12 +132,20 @@ def inspect_json(encodedReport, sdkDirectory):
         assert completed["source_path"] == str(source_path) and completed["source_sha256"] == digest
         assert completed["character_id"] == receipt["characterId"] == owner and completed["format"] == "legacy"
         assert receipt["sources"] == [{"name": source_path.name, "sha256": digest}]
-        assert receipt["quality"] == QUALITY and render["camera"] == profile["camera"]
+        assert receipt["quality"] == quality
+        full_character(render, profile, receipt["size"], fit_full)
         assert render["pose"] == "source-rest" and render["animation"] is False
         assert render["material"]["rimlightEnabled"] is False
         assert completed["profile_digest"] == receipt["profileDigest"] == profile_digest
         cache = sha(canonical({"kind": "updater", "binding": binding, "source": [[str(source_path), digest]],
-                               "targetMember": owner, "profile": profile_digest, "size": receipt["size"], "quality": QUALITY}))
+                               "targetMember": owner, "profile": profile_digest, "size": receipt["size"], "quality": quality}))
+        faces = receipt.get("faceSources", [])
+        assert faces == render.get("faceSources", []) and len(faces) <= 4
+        for face in faces:
+            assert set(face) == {"name", "sha256"} and isinstance(face["name"], str) and Path(face["name"]).name == face["name"]
+            assert len(face["sha256"]) == 64 and all(c in "0123456789abcdef" for c in face["sha256"])
+        if faces:
+            cache = sha(canonical({"plan": cache, "faces": sorted([face["name"], face["sha256"]] for face in faces)}))
         assert completed["cache_key"] == receipt["cacheKey"] == cache
         assert receipt["size"] == binding["thumbnail_size"] and 64 <= receipt["size"] <= 1024
         encoded = rendered["png"]

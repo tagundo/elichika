@@ -66,6 +66,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._serve_static(path[len("/ui/"):])
             if path == "/api/tools":
                 return self._send_json({"tools": registry.public_tools(self._lang())})
+            if path == "/api/game-quality":
+                from adminui.tools.game_quality import get_game_quality
+                from database_maintenance import BusyError
+                try:
+                    return self._send_json(get_game_quality(self._query(), self._lang()))
+                except BusyError as error:
+                    return self._send_json({"error": str(error), "retryable": True}, status=409)
+                except ValueError as error:
+                    return self._send_json({"error": str(error)}, status=400)
             if path == "/api/i18n":
                 lang = self._lang()
                 return self._send_json({

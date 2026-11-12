@@ -48,6 +48,9 @@ def all_strings(lang):
 # _TABLES[lang] maps an English source string -> its translation.
 _TABLES = {
     "ko": {
+        "Game Graphics Quality": "게임 화질 설정",
+        "Edit the game’s live and MV graphics profiles. Changes are saved to the game database and apply after reconnecting the game.":
+            "게임의 라이브·MV 화질 프로필을 편집합니다. 변경 내용은 게임 데이터베이스에 저장되며 게임을 다시 연결하면 적용됩니다.",
         "Remove Costume / Clone": "코스튬/복제 삭제",
         "Review and remove installed costumes or clones. Original game costumes and costumes currently in use are protected. A recovery backup is always kept.":
             "설치한 코스튬이나 복제를 확인한 뒤 삭제합니다. 원본 코스튬과 사용 중인 코스튬은 보호되며, 복구용 백업을 반드시 남깁니다.",
@@ -214,6 +217,9 @@ _TABLES = {
             "sukusta/{folder} 와 …/addons 의 파일이 여기에 표시됩니다. Ctrl/Cmd를 누른 채(또는 드래그) 여러 개를 선택하면 차례로 설치됩니다.",
     },
     "ja": {
+        "Game Graphics Quality": "ゲーム画質設定",
+        "Edit the game’s live and MV graphics profiles. Changes are saved to the game database and apply after reconnecting the game.":
+            "ゲームのライブ・MV画質プロファイルを編集します。変更はゲームデータベースに保存され、ゲームの再接続後に適用されます。",
         "Remove Costume / Clone": "衣装・クローンの削除",
         "Review and remove installed costumes or clones. Original game costumes and costumes currently in use are protected. A recovery backup is always kept.":
             "追加した衣装やクローンを確認して削除します。元の衣装と使用中の衣装は保護され、復旧用バックアップを必ず保存します。",
