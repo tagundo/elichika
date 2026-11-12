@@ -313,5 +313,164 @@ class DownloadCredentialTests(unittest.TestCase):
         with self.assertRaises(pub.ValidationError):api._download('/repos/'+pub.REPOSITORY+'/actions/artifacts/1/zip',None,3)
 
 
+class PublisherRecoveryAPI(FakeAPI):
+    def __init__(self):
+        super().__init__()
+        self.base_tree_sha, self.publisher_tree_sha = 'c' * 40, 'd' * 40
+        self.comparison = {'status': 'ahead', 'ahead_by': 1, 'behind_by': 0, 'total_commits': 1,
+            'base_commit': {'sha': SHA, 'commit': {'tree': {'sha': self.base_tree_sha}}},
+            'merge_base_commit': {'sha': SHA},
+            'commits': [{'sha': OTHER, 'parents': [{'sha': SHA}], 'commit': {'tree': {'sha': self.publisher_tree_sha}}}],
+            'files': [{'filename': name, 'status': 'modified'} for name in sorted(pub.PUBLISHER_ONLY_PATHS)]}
+        directories = ['.github', '.github/workflows', 'macos', 'macos/ci', 'runtime']
+        rows = [{'path': name, 'mode': '040000', 'type': 'tree', 'sha': 'e' * 40} for name in directories]
+        rows += [{'path': name, 'mode': '100644', 'type': 'blob', 'sha': '1' * 40}
+                 for name in sorted(pub.PUBLISHER_ONLY_PATHS | {'macos/VERSION', 'runtime/app.py'})]
+        rows += [{'path': 'modtools', 'mode': '160000', 'type': 'commit', 'sha': '2' * 40}]
+        self.trees = {self.base_tree_sha: {'sha': self.base_tree_sha, 'truncated': False, 'tree': deepcopy(rows)},
+                      self.publisher_tree_sha: {'sha': self.publisher_tree_sha, 'truncated': False, 'tree': deepcopy(rows)}}
+        for row in self.trees[self.publisher_tree_sha]['tree']:
+            if row['path'] in pub.PUBLISHER_ONLY_PATHS or row['path'] in directories[:4]:
+                row['sha'] = '3' * 40
+
+    def json(self, method, path, payload=None, allow_missing=False):
+        suffix = path[len('/repos/' + pub.REPOSITORY):]
+        if method == 'GET' and suffix.startswith('/compare/'):
+            self.calls.append((method, path, deepcopy(payload)))
+            assert suffix == '/compare/' + SHA + '...' + OTHER
+            return deepcopy(self.comparison)
+        if method == 'GET' and suffix.startswith('/git/trees/'):
+            self.calls.append((method, path, deepcopy(payload)))
+            return deepcopy(self.trees[suffix.split('/')[3].split('?')[0]])
+        return super().json(method, path, payload, allow_missing)
+
+
+class PublisherRecoveryBoundaryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='publisher-boundary-')
+        self.addCleanup(self.temp.cleanup)
+        self.api = PublisherRecoveryAPI()
+
+    def publisher(self):
+        return pub.Publisher(self.api, self.api.manifest, pub.REPOSITORY, SHA, VERSION,
+                             Path(self.temp.name) / 'release', publisher_source_sha=OTHER)
+
+    def reject(self, mutate):
+        mutate()
+        with self.assertRaises(pub.ValidationError):
+            self.publisher().run()
+        self.assertEqual(self.api.mutations, [])
+        self.assertEqual(self.api.downloads, [])
+        self.assertIsNone(self.api.tag)
+        self.assertIsNone(self.api.release)
+
+    def test_ci_child_publishes_validated_app_source_and_records_both_shas(self):
+        result = self.publisher().run()
+        self.assertEqual(result['status'], 'PASS_PUBLISHED_VALIDATED_APPS')
+        self.assertEqual(result['source_sha'], SHA)
+        self.assertEqual(result['publisher_source_sha'], OTHER)
+        self.assertEqual(result['publisher_source_guard']['status'], 'PASS_DIRECT_CHILD_THREE_CI_FILES_ONLY')
+        self.assertEqual(self.api.tag, SHA)
+        self.assertEqual(self.api.release['target_commitish'], SHA)
+        self.assertTrue(all(run['head_sha'] == SHA for run in self.api.runs.values()))
+        self.assertEqual(len(self.api.remote_hashes), 3)
+
+    def test_both_source_shas_are_strict_before_api_or_workdir(self):
+        for source, publisher in [(SHA, ''), (SHA, None), (SHA, 'B' * 40), ('bad', OTHER)]:
+            if publisher is None:
+                continue  # Omitted constructor argument preserves existing same-source callers.
+            with self.subTest(source=source, publisher=publisher):
+                path = Path(self.temp.name) / 'invalid'
+                with self.assertRaises(pub.ValidationError):
+                    pub.Publisher(self.api, self.api.manifest, pub.REPOSITORY, source, VERSION, path, publisher_source_sha=publisher)
+                self.assertFalse(path.exists())
+                self.assertEqual(self.api.calls, [])
+
+    def test_compare_requires_exactly_one_direct_nonmerge_commit(self):
+        for mutate in [lambda: self.api.comparison.update(total_commits=2),
+                       lambda: self.api.comparison.update(ahead_by=2),
+                       lambda: self.api.comparison.update(behind_by=1),
+                       lambda: self.api.comparison.update(status='diverged'),
+                       lambda: self.api.comparison['base_commit'].update(sha=OTHER),
+                       lambda: self.api.comparison['merge_base_commit'].update(sha=OTHER),
+                       lambda: self.api.comparison['commits'][0].update(sha=SHA),
+                       lambda: self.api.comparison['commits'][0].update(parents=[{'sha': SHA}, {'sha': OTHER}]),
+                       lambda: self.api.comparison['commits'][0].update(parents=[{'sha': OTHER}]),
+                       lambda: self.api.comparison['commits'].append(deepcopy(self.api.comparison['commits'][0]))]:
+            self.api = PublisherRecoveryAPI()
+            self.reject(mutate)
+
+    def test_compare_rejects_extra_runtime_version_add_delete_rename_or_missing_paths(self):
+        for replacement in ['macos/VERSION', 'runtime/app.py']:
+            self.api = PublisherRecoveryAPI()
+            self.reject(lambda: self.api.comparison['files'][0].update(filename=replacement))
+        for status in ['added', 'removed', 'renamed', 'copied']:
+            self.api = PublisherRecoveryAPI()
+            self.reject(lambda: self.api.comparison['files'][0].update(status=status))
+        self.api = PublisherRecoveryAPI()
+        self.reject(lambda: self.api.comparison['files'][0].update(previous_filename='other.py'))
+        self.api = PublisherRecoveryAPI()
+        self.reject(lambda: self.api.comparison['files'].pop())
+
+    def test_tree_must_be_complete_and_same_paths_even_when_compare_is_clean(self):
+        self.reject(lambda: self.api.trees[self.api.publisher_tree_sha].update(truncated=True))
+        self.api = PublisherRecoveryAPI()
+        self.reject(lambda: self.api.trees[self.api.base_tree_sha].update(truncated=True))
+        self.api = PublisherRecoveryAPI()
+        self.reject(lambda: self.api.trees[self.api.publisher_tree_sha]['tree'].append({'path': 'added.py', 'mode': '100644', 'type': 'blob', 'sha': SHA}))
+        self.api = PublisherRecoveryAPI()
+        self.reject(lambda: self.api.trees[self.api.publisher_tree_sha]['tree'].pop())
+
+    def test_all_runtime_version_gitlink_and_unrelated_directory_shas_stay_exact(self):
+        for name in ['runtime/app.py', 'macos/VERSION', 'modtools', 'runtime']:
+            self.api = PublisherRecoveryAPI()
+            self.reject(lambda: next(row for row in self.api.trees[self.api.publisher_tree_sha]['tree'] if row['path'] == name).update(sha=OTHER))
+
+    def test_no_mode_type_or_ci_symlink_gitlink_change_is_allowed(self):
+        for name, mode, kind in [('runtime', '100644', 'blob'), ('runtime/app.py', '100755', 'blob'),
+                                 ('.github/workflows/macos.yml', '120000', 'blob'),
+                                 ('macos/ci/publish_validated_apps.py', '160000', 'commit')]:
+            self.api = PublisherRecoveryAPI()
+            self.reject(lambda: next(row for row in self.api.trees[self.api.publisher_tree_sha]['tree'] if row['path'] == name).update(mode=mode, type=kind))
+
+    def test_publisher_commit_cannot_replace_native_app_build_run(self):
+        self.api.runs[102]['head_sha'] = OTHER
+        self.reject(lambda: None)
+
+    def test_workflow_passes_separate_approved_app_and_checked_out_publisher_shas(self):
+        text = (MODULE_PATH.parents[2] / '.github/workflows/macos.yml').read_text()
+        self.assertIn('APP_SOURCE_SHA: ${{ fromJSON(inputs.validated_release).source_sha }}', text)
+        self.assertIn('--source-sha "$APP_SOURCE_SHA"', text)
+        self.assertIn('--publisher-source-sha "$GITHUB_SHA"', text)
+        self.assertEqual(text.count('contents: write'), 1)
+
+
+class PublisherTransportHeaderTests(unittest.TestCase):
+    Response = DownloadCredentialTests.Response
+
+    def test_artifact_api_negotiates_json_then_blob_binary_without_credentials(self):
+        api = pub.GitHubAPI('private-test-token'); requests = []
+        responses = [self.Response(302, {'Location': 'https://productiontest.blob.core.windows.net/private?sig=secret'}), self.Response(200, raw=b'zip')]
+        def opened(req, timeout):
+            requests.append(req); return responses.pop(0)
+        api.opener.open = opened
+        self.assertEqual(api.download_artifact(1, None, 3), (3, digest(b'zip')))
+        self.assertEqual(requests[0].get_header('Accept'), 'application/json')
+        self.assertEqual(requests[0].get_header('Authorization'), 'Bearer private-test-token')
+        self.assertEqual(requests[1].get_header('Accept'), 'application/octet-stream')
+        self.assertIsNone(requests[1].get_header('Authorization'))
+
+    def test_release_asset_api_and_blob_stay_binary_and_strip_redirect_credentials(self):
+        api = pub.GitHubAPI('private-test-token'); requests = []
+        responses = [self.Response(302, {'Location': 'https://release-assets.githubusercontent.com/blob?sig=secret'}), self.Response(200, raw=b'app')]
+        def opened(req, timeout):
+            requests.append(req); return responses.pop(0)
+        api.opener.open = opened
+        self.assertEqual(api.hash_release_asset(1, 3), (3, digest(b'app')))
+        self.assertEqual([req.get_header('Accept') for req in requests], ['application/octet-stream'] * 2)
+        self.assertEqual(requests[0].get_header('Authorization'), 'Bearer private-test-token')
+        self.assertIsNone(requests[1].get_header('Authorization'))
+
+
 if __name__ == '__main__':
     unittest.main()

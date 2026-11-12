@@ -264,11 +264,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VALIDATED_RELEASE_JSON: ${{ inputs.validated_release }}
+          APP_SOURCE_SHA: ${{ fromJSON(inputs.validated_release).source_sha }}
         run: |
           python3 macos/ci/publish_validated_apps.py \
             --manifest-env VALIDATED_RELEASE_JSON \
             --repository "$GITHUB_REPOSITORY" \
-            --source-sha "$GITHUB_SHA" \
+            --source-sha "$APP_SOURCE_SHA" \
+            --publisher-source-sha "$GITHUB_SHA" \
             --version-file macos/VERSION \
             --work-dir "$RUNNER_TEMP/validated-app-release"
 

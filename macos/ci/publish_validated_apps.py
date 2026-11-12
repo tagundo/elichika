@@ -31,6 +31,9 @@ WORKFLOWS = {
     'macos': ('macos.yml', 'Build standalone macOS Apple Silicon app', {'apple-silicon'}),
     'general': ('tests.yml', 'Server regression tests', {'tests', 'windows-upgrades', 'viewer-webgl'}),
 }
+PUBLISHER_ONLY_PATHS = frozenset({'.github/workflows/macos.yml', 'macos/ci/publish_validated_apps.py',
+                                  'macos/ci/test_publish_validated_apps.py'})
+
 ARTIFACT_NAMES = {
     'android': 'elichika-release-apk',
     'macos': 'elichika-macos-apple-silicon',
@@ -184,7 +187,7 @@ class GitHubAPI:
             require(len(raw) <= 16 * 1024 * 1024, 'GitHub metadata response is too large')
             return json.loads(raw) if raw else None
 
-    def _download(self, path, destination, limit):
+    def _download(self, path, destination, limit, *, initial_accept='application/octet-stream'):
         require(path.startswith('/repos/' + REPOSITORY + '/'), 'Download path is outside the configured repository')
         url = 'https://api.github.com' + path
         authenticated = True
@@ -193,7 +196,7 @@ class GitHubAPI:
         try:
             for attempt in range(6):
                 try:
-                    response = self._open(url, headers={'Accept': 'application/octet-stream'}, authenticated=authenticated)
+                    response = self._open(url, headers={'Accept': initial_accept if authenticated else 'application/octet-stream'}, authenticated=authenticated)
                 except urllib.error.HTTPError as exc:
                     raise ValidationError(f'GitHub binary download failed with HTTP{exc.code}') from None
                 except urllib.error.URLError:
@@ -222,7 +225,8 @@ class GitHubAPI:
                 out.close()
 
     def download_artifact(self, artifact_id, destination, size):
-        return self._download(f'/repos/{REPOSITORY}/actions/artifacts/{artifact_id}/zip', destination, size)
+        # Artifact ZIP APIs require JSON negotiation before redirecting to blob bytes.
+        return self._download(f'/repos/{REPOSITORY}/actions/artifacts/{artifact_id}/zip', destination, size, initial_accept='application/json')
 
     def hash_release_asset(self, asset_id, size):
         return self._download(f'/repos/{REPOSITORY}/releases/assets/{asset_id}', None, size)
@@ -243,16 +247,19 @@ class GitHubAPI:
 
 
 class Publisher:
-    def __init__(self, api, manifest, repository, source_sha, version_text, work_dir):
+    def __init__(self, api, manifest, repository, source_sha, version_text, work_dir, *, publisher_source_sha=None):
         self.api = api
         self.manifest = parse_manifest(manifest, repository, source_sha, version_text)
         self.source_sha = source_sha
+        self.publisher_source_sha = source_sha if publisher_source_sha is None else publisher_source_sha
+        require(isinstance(self.publisher_source_sha, str) and re.fullmatch(r'[0-9a-f]{40}', self.publisher_source_sha), 'Invalid publisher source SHA')
         self.work_dir = Path(work_dir)
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self.tag = 'v' + manifest['version']
         self.marker = '<!-- elichika-validated-apps:' + hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest() + ' -->'
         self.release_id = None
         self.result = {'status': 'VALIDATION_PENDING', 'version': manifest['version'], 'source_sha': source_sha,
+                       'publisher_source_sha': self.publisher_source_sha,
                        'run_ids': {kind: manifest[kind]['run_id'] for kind in WORKFLOWS}, 'mutation_started': False}
 
     def _api(self, method, suffix, payload=None, missing=False):
@@ -272,6 +279,54 @@ class Publisher:
             seen.add(sha)
             obj = self._api('GET', '/git/tags/' + sha).get('object', {})
         raise ValidationError('Release tag nesting is too deep')
+
+    def check_publisher_source(self):
+        if self.publisher_source_sha == self.source_sha:
+            self.result['publisher_source_guard'] = {'status': 'IDENTICAL_APP_AND_PUBLISHER_SOURCE'}
+            return
+        comparison = self._api('GET', '/compare/' + self.source_sha + '...' + self.publisher_source_sha)
+        require(comparison.get('status') == 'ahead' and comparison.get('ahead_by') == 1
+                and comparison.get('behind_by') == 0 and comparison.get('total_commits') == 1,
+                'Publisher must be exactly one commit ahead of the validated app')
+        require(comparison.get('base_commit', {}).get('sha') == self.source_sha
+                and comparison.get('merge_base_commit', {}).get('sha') == self.source_sha,
+                'Publisher comparison has a different app base')
+        commits = comparison.get('commits', [])
+        require(len(commits) == 1 and commits[0].get('sha') == self.publisher_source_sha
+                and [p.get('sha') for p in commits[0].get('parents', [])] == [self.source_sha],
+                'Publisher commit must have only the validated app as its direct parent')
+        files = comparison.get('files', [])
+        require(len(files) == len(PUBLISHER_ONLY_PATHS)
+                and {f.get('filename') for f in files} == PUBLISHER_ONLY_PATHS
+                and all(f.get('status') == 'modified' and 'previous_filename' not in f for f in files),
+                'Publisher may only modify the three approved CI files')
+        # Compare complete trees too: the compare endpoint does not expose modes
+        # and can truncate large file lists. Every app byte and gitlink stays bound.
+        def tree(commit):
+            sha = commit.get('commit', {}).get('tree', {}).get('sha')
+            require(isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha), 'Invalid publisher comparison tree')
+            data = self._api('GET', '/git/trees/' + sha + '?recursive=1')
+            require(data.get('sha') == sha and data.get('truncated') is False and isinstance(data.get('tree'), list),
+                    'Publisher source tree must be complete')
+            result = {}
+            for row in data['tree']:
+                name = row.get('path')
+                require(isinstance(name, str) and name and name not in result, 'Invalid or duplicate publisher tree path')
+                result[name] = (row.get('mode'), row.get('type'), row.get('sha'))
+            return result
+        base_tree, publisher_tree = tree(comparison['base_commit']), tree(commits[0])
+        require(set(base_tree) == set(publisher_tree), 'Publisher may not add or remove source paths')
+        require(all(base_tree[name][:2] == publisher_tree[name][:2] for name in base_tree), 'Publisher may not change source modes or types')
+        changed = {name for name in base_tree if base_tree[name] != publisher_tree[name] and base_tree[name][1] != 'tree'}
+        ancestors = {str(parent) for name in PUBLISHER_ONLY_PATHS for parent in PurePosixPath(name).parents if str(parent) != '.'}
+        changed_directories = {name for name in base_tree if base_tree[name] != publisher_tree[name] and base_tree[name][1] == 'tree'}
+        require(changed == PUBLISHER_ONLY_PATHS and changed_directories <= ancestors, 'Publisher tree changes app source, directories or gitlinks')
+        require(all(base_tree[name][:2] == publisher_tree[name][:2] == ('100644', 'blob') for name in changed),
+                'Publisher CI files must remain regular source blobs')
+        self.result['publisher_source_guard'] = {'status': 'PASS_DIRECT_CHILD_THREE_CI_FILES_ONLY',
+                                               'app_source_sha': self.source_sha,
+                                               'publisher_source_sha': self.publisher_source_sha,
+                                               'modified_paths': sorted(changed)}
 
     def check_runs(self):
         repo = self.api.json('GET', '/repos/' + REPOSITORY + '/actions/workflows/android.yml')
@@ -349,6 +404,7 @@ class Publisher:
 
     def run(self):
         try:
+            self.check_publisher_source()
             self.check_runs()
             existing = self.check_release()
             files = self.check_artifacts()
@@ -414,6 +470,7 @@ def main():
     parser.add_argument('--manifest-env', required=True)
     parser.add_argument('--repository', required=True)
     parser.add_argument('--source-sha', required=True)
+    parser.add_argument('--publisher-source-sha', required=True)
     parser.add_argument('--version-file', type=Path, required=True)
     parser.add_argument('--work-dir', type=Path, required=True)
     args = parser.parse_args()
@@ -422,7 +479,8 @@ def main():
         require(0 < len(raw.encode()) <= 60000, 'Invalid release manifest length')
         manifest = json.loads(raw)
         publisher = Publisher(GitHubAPI(os.environ.get('GITHUB_TOKEN', '')), manifest, args.repository,
-                              args.source_sha, args.version_file.read_text(), args.work_dir)
+                              args.source_sha, args.version_file.read_text(), args.work_dir,
+                              publisher_source_sha=args.publisher_source_sha)
         result = publisher.run()
         print(json.dumps(result, indent=2))
         return 0
