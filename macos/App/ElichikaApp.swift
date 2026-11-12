@@ -140,8 +140,8 @@ struct RootView: View {
             if model.toolsReady { WebPanel(model: model, route: .content) }
             else { PreparationView(model: model) }
         case .accounts:
-            if let url = model.goURL(path: "/webui/user/") {
-                WebPanel(model: model, route: .accounts).id(url)
+            if model.goURL(path: "/webui/user/") != nil {
+                WebPanel(model: model, route: .accounts)
                     .onAppear { model.retryManagement() }
                     .onDisappear { model.releaseManagementIfNotVisible() }
             }
@@ -512,8 +512,8 @@ private struct SettingsView: View {
                 Text(model.text("Server", "서버", "サーバー")).tag(true)
             }.pickerStyle(.segmented).frame(width: 300).padding()
             if model.showServerSettings {
-                if let url = model.goURL(path: "/webui/admin/") {
-                    WebPanel(model: model, route: .serverSettings).id(url)
+                if model.goURL(path: "/webui/admin/") != nil {
+                    WebPanel(model: model, route: .serverSettings)
                         .onAppear { model.retryManagement() }
                         .onDisappear { model.releaseManagementIfNotVisible() }
                 }

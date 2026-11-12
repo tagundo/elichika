@@ -27,6 +27,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var consoleResetFinal = false
     @Published private(set) var consoleActionError: String?
     @Published private(set) var resetSubmissionUncertain = false
+    @Published private(set) var goBrowserRevision: UInt64 = 0
 
     let websiteDataStore = WKWebsiteDataStore.nonPersistent()
     let goWebsiteDataStore = WKWebsiteDataStore.nonPersistent()
@@ -51,6 +52,9 @@ final class AppModel: ObservableObject {
     private var managementDemandRevision = 0
     private var managementDemandTask: Task<Void, Never>?
     private var managementAdmissionUncertain = false
+    private var stateRequestSequence: UInt64 = 0
+    private var appliedStateSequence: UInt64 = 0
+    private var stateEpoch: UInt64 = 0
     private var uncertainResetPreviousJobID: String?
     private let http: URLSession
     var smokeQuitObserver: (() async -> Void)?
@@ -225,6 +229,7 @@ final class AppModel: ObservableObject {
     private func runtimeExited(pid: Int32, status: Int32) {
         guard process?.processIdentifier == pid else { return }
         polling?.cancel()
+        clearGoBrowsers()
         snapshot.progress = nil
         snapshot.busy = false
         snapshot.serverRunning = false
@@ -264,14 +269,16 @@ final class AppModel: ObservableObject {
     func refresh() async {
         guard connection != nil, !quitting, !stoppingRuntime else { return }
         let runtimePID = process?.processIdentifier
+        let stateRequest = beginRuntimeStateRequest()
         do {
-            let previousGoURL = goURL(path: "/webui/admin/")
             let updated = try JSONDecoder().decode(RuntimeState.self, from: await request("/v1/state"))
             guard !quitting, !stoppingRuntime, process?.processIdentifier == runtimePID else { return }
-            snapshot = updated
+            guard applyRuntimeState(updated, for: stateRequest) else { return }
             if let value = updated.console { consoleState = value }
             else if snapshot.prepared {
-                consoleState = try JSONDecoder().decode(ConsoleState.self, from: await request("/v1/console"))
+                let value = try JSONDecoder().decode(ConsoleState.self, from: await request("/v1/console"))
+                guard stateRequestIsCurrent(stateRequest) else { return }
+                consoleState = value
             }
             if resetSubmissionUncertain, !submittingConsoleAction, let job = consoleState?.job,
                job.action == .resetServer, job.id != uncertainResetPreviousJobID {
@@ -279,7 +286,6 @@ final class AppModel: ObservableObject {
                 resetSubmissionUncertain = false
                 if consolePresentation?.action == .resetServer { dismissConsolePresentation() }
             }
-            if previousGoURL != goURL(path: "/webui/admin/") { clearGoBrowsers() }
             if !managementPageVisible && snapshot.management?.running == true && snapshot.management?.status != "stopping" && managementDemandTask == nil {
                 queueManagementDemand(false)
             }
@@ -421,6 +427,37 @@ final class AppModel: ObservableObject {
         snapshot.webUIURL(path: path)
     }
 
+    struct RuntimeStateRequest {
+        fileprivate let sequence: UInt64
+        fileprivate let epoch: UInt64
+        fileprivate let runtimePID: Int32?
+    }
+
+    func beginRuntimeStateRequest() -> RuntimeStateRequest {
+        stateRequestSequence &+= 1
+        return RuntimeStateRequest(sequence: stateRequestSequence, epoch: stateEpoch,
+                                   runtimePID: process?.processIdentifier)
+    }
+
+    @discardableResult
+    func applyRuntimeState(_ value: RuntimeState, for request: RuntimeStateRequest) -> Bool {
+        guard request.epoch == stateEpoch, request.sequence > appliedStateSequence,
+              request.runtimePID == process?.processIdentifier else { return false }
+        // Awaiting a response can let another request publish a ready browser.
+        // Compare the live state, and invalidate before SwiftUI sees a new URL.
+        if goURL(path: "/webui/admin/") != value.webUIURL(path: "/webui/admin/") {
+            disposeGoBrowsers()
+        }
+        appliedStateSequence = request.sequence
+        snapshot = value
+        return true
+    }
+
+    private func stateRequestIsCurrent(_ request: RuntimeStateRequest) -> Bool {
+        request.epoch == stateEpoch && request.sequence == appliedStateSequence
+            && request.runtimePID == process?.processIdentifier
+    }
+
     func retryManagement() {
         guard managementPageVisible, toolsReady, !snapshot.busy, !snapshot.serverRunning else { return }
         queueManagementDemand(true)
@@ -449,13 +486,19 @@ final class AppModel: ObservableObject {
                 let wantedNow = self.managementDemandWanted && self.managementPageVisible && !self.stoppingRuntime && !self.quitting
                 if wantedNow && (!self.toolsReady || self.snapshot.busy || self.snapshot.serverRunning) { return }
                 if wantedNow { self.managementAdmissionUncertain = true }
+                let stateRequest = self.beginRuntimeStateRequest()
                 do {
                     self.smokeEvent?(wantedNow ? "management-demand-start-requested" : "management-demand-stop-requested")
                     let value = try JSONDecoder().decode(RuntimeState.self,
                         from: await self.request(wantedNow ? "/v1/management/start" : "/v1/management/stop", method: "POST"))
                     self.smokeEvent?(wantedNow ? "management-demand-start-acknowledged" : "management-demand-stop-acknowledged")
-                    self.snapshot.management = value.management
-                    if !wantedNow && value.management?.running != true { self.managementAdmissionUncertain = false }
+                    let applied = self.applyRuntimeState(value, for: stateRequest)
+                    // The command was acknowledged even when a newer state
+                    // body won the race. Always reconcile its real demand.
+                    if !wantedNow && value.management?.running != true &&
+                        (applied || self.snapshot.management?.running != true) {
+                        self.managementAdmissionUncertain = false
+                    }
                 } catch {
                     if wantedNow && revision == self.managementDemandRevision && self.managementPageVisible {
                         self.message = error.localizedDescription
@@ -493,7 +536,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func clearGoBrowsers() {
+    func clearGoBrowsers() {
+        // An explicit same-origin reload must fence responses begun before it
+        // and tell the visible panel to use the newly cached session identity.
+        stateEpoch &+= 1
+        disposeGoBrowsers()
+        goBrowserRevision &+= 1
+    }
+
+    private func disposeGoBrowsers() {
         for route in [BrowserRoute.accounts, .serverSettings] { browsers.removeValue(forKey: route)?.dispose() }
     }
 
@@ -627,8 +678,9 @@ final class AppModel: ObservableObject {
         while managementRunning && process?.isRunning == true {
             message = text("Finishing management changes safely before quitting…", "관리 작업을 안전하게 완료한 뒤 종료합니다…", "管理処理を安全に完了してから終了します…")
             do {
+                let stateRequest = beginRuntimeStateRequest()
                 let value = try JSONDecoder().decode(RuntimeState.self, from: await request("/v1/state"))
-                snapshot.management = value.management
+                _ = applyRuntimeState(value, for: stateRequest)
                 managementRunning = value.management?.running == true
                 managementAdmissionUncertain = managementRunning
             } catch { /* An owned management write must not be force-killed while its state is uncertain. */ }

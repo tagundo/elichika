@@ -1,4 +1,6 @@
 import Foundation
+import AppKit
+import Combine
 import XCTest
 @testable import ElichikaMac
 
@@ -417,6 +419,91 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertEqual(ServerNetworkConfig(serverAddress: "[::]:8080", cdnServer: "https://other.example/").localServerURL?.absoluteString,
                        "http://[::1]:8080")
         XCTAssertNil(ServerNetworkConfig(serverAddress: "untrusted.example:8080", cdnServer: "https://original.example/").localServerURL)
+    }
+
+    @MainActor
+    func testLateRefreshCannotReplaceTheBrowserPublishedByManagementAcknowledgement() async throws {
+        _ = NSApplication.shared
+        let model = AppModel(arguments: [], resources: nil)
+        let ready = try JSONDecoder().decode(RuntimeState.self, from: Data("""
+            {"phase":"ready","prepared":true,"management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:43127"}}
+            """.utf8))
+        let delayedRefresh = model.beginRuntimeStateRequest()
+        let managementAcknowledgement = model.beginRuntimeStateRequest()
+        XCTAssertTrue(model.applyRuntimeState(ready, for: managementAcknowledgement))
+        let settings = model.browser(.serverSettings)
+        let accounts = model.browser(.accounts)
+        let editor = model.browser(.assets)
+        defer { model.clearGoBrowsers(); editor.dispose() }
+
+        // The ready acknowledgement can mount a page before the older GET ends.
+        XCTAssertFalse(model.applyRuntimeState(ready, for: delayedRefresh))
+        XCTAssertTrue(model.browser(.serverSettings) === settings)
+        XCTAssertTrue(model.browser(.accounts) === accounts)
+        XCTAssertNotNil(settings.webView.navigationDelegate)
+        XCTAssertNotNil(accounts.webView.navigationDelegate)
+        XCTAssertTrue(model.browser(.assets) === editor)
+    }
+
+    @MainActor
+    func testChangedManagementOriginDisposesOldSessionsBeforePublishingTheNewSnapshot() async throws {
+        _ = NSApplication.shared
+        let model = AppModel(arguments: [], resources: nil)
+        func ready(_ port: Int) throws -> RuntimeState {
+            try JSONDecoder().decode(RuntimeState.self, from: Data("""
+                {"phase":"ready","prepared":true,"management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:\(port)"}}
+                """.utf8))
+        }
+        XCTAssertTrue(model.applyRuntimeState(try ready(43127), for: model.beginRuntimeStateRequest()))
+        let settings = model.browser(.serverSettings)
+        let accounts = model.browser(.accounts)
+        let editor = model.browser(.assets)
+        defer { model.clearGoBrowsers(); editor.dispose() }
+        var invalidatedBeforePublication = false
+        let observation = model.$snapshot.dropFirst().sink { value in
+            if value.webUIURL(path: "/webui/admin/")?.port == 43128 {
+                invalidatedBeforePublication = settings.webView.navigationDelegate == nil
+                    && accounts.webView.navigationDelegate == nil
+            }
+        }
+        defer { observation.cancel() }
+
+        XCTAssertTrue(model.applyRuntimeState(try ready(43128), for: model.beginRuntimeStateRequest()))
+        XCTAssertTrue(invalidatedBeforePublication)
+        XCTAssertEqual(model.goURL(path: "/webui/admin/")?.port, 43128)
+        let replacement = model.browser(.serverSettings)
+        XCTAssertFalse(replacement === settings)
+        XCTAssertTrue(model.browser(.serverSettings) === replacement)
+        XCTAssertFalse(model.browser(.accounts) === accounts)
+        XCTAssertTrue(model.browser(.assets) === editor)
+    }
+
+    @MainActor
+    func testSameURLBrowserReloadChangesViewIdentityAndRejectsEarlierEpochResponses() async throws {
+        _ = NSApplication.shared
+        let model = AppModel(arguments: [], resources: nil)
+        let ready = try JSONDecoder().decode(RuntimeState.self, from: Data("""
+            {"phase":"ready","prepared":true,"management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:43127"}}
+            """.utf8))
+        XCTAssertTrue(model.applyRuntimeState(ready, for: model.beginRuntimeStateRequest()))
+        let previous = model.browser(.serverSettings)
+        let editor = model.browser(.assets)
+        defer { model.clearGoBrowsers(); editor.dispose() }
+        let delayedResponse = model.beginRuntimeStateRequest()
+        let staleOrigin = try JSONDecoder().decode(RuntimeState.self, from: Data("""
+            {"phase":"ready","prepared":true,"management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:43126"}}
+            """.utf8))
+        let revision = model.goBrowserRevision
+
+        model.clearGoBrowsers()
+        let visible = model.browser(.serverSettings)
+        XCTAssertNotEqual(ObjectIdentifier(visible.webView), ObjectIdentifier(previous.webView))
+        XCTAssertEqual(model.goBrowserRevision, revision + 1)
+        XCTAssertNil(previous.webView.navigationDelegate)
+        XCTAssertFalse(model.applyRuntimeState(staleOrigin, for: delayedResponse))
+        XCTAssertTrue(model.browser(.serverSettings) === visible)
+        XCTAssertEqual(model.goURL(path: "/webui/admin/")?.port, 43127)
+        XCTAssertTrue(model.browser(.assets) === editor)
     }
 
 }

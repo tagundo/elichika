@@ -66,6 +66,8 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     func dispose() {
         webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "elichika")
         windowObservers.forEach(NotificationCenter.default.removeObserver)
         windowObservers.removeAll()
@@ -376,16 +378,27 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     }
 }
 
-struct WebPanel: NSViewRepresentable {
+struct WebPanel: View {
     @ObservedObject var model: AppModel
     let route: BrowserRoute
     var editorSurface: EditorSurface? = nil
-    func makeNSView(context: Context) -> WKWebView {
+
+    var body: some View {
         let session = model.browser(route)
+        BrowserSessionView(session: session, editorSurface: editorSurface)
+            .id(ObjectIdentifier(session.webView))
+    }
+}
+
+private struct BrowserSessionView: NSViewRepresentable {
+    let session: BrowserSession
+    let editorSurface: EditorSurface?
+
+    func makeNSView(context: Context) -> WKWebView {
         if let editorSurface { session.setEditorSurface(editorSurface) }
         return session.webView
     }
     func updateNSView(_ view: WKWebView, context: Context) {
-        if let editorSurface { model.browser(route).setEditorSurface(editorSurface) }
+        if let editorSurface { session.setEditorSurface(editorSurface) }
     }
 }
