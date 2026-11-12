@@ -480,6 +480,27 @@ def _native_draw(observed, name="probe"):
             "Actual native WebGL must draw the inspected source")
 
 
+
+def check_native_sidebar_layout(observed):
+    import math
+    require(observed.get("status") == "PASS" and observed.get("model_camera_authoring_and_save_preserved") is True,
+            "Actual Mac sidebar inspection must preserve model, camera, authoring and Save")
+    require(observed.get("displayParent") == "viewer-macos-display-slot" and observed.get("saveParent") == "viewer-macos-save-slot",
+            "Mac View and Save cards must remain in their left-sidebar groups")
+    checks = observed.get("checks", {})
+    expected = {"leftOwned", "displayThenImportThenSave", "rightColumnExcludesLeftCards", "noHorizontalOverflow", "removeVisibleHittable", "filenameTruncation"}
+    require(set(checks) == expected and all(checks[key] is True for key in expected), "Every actual Mac sidebar/layout assertion must pass")
+    remove = observed["remove"]
+    require(all(math.isfinite(remove[key]) for key in ("width", "height", "left", "right", "rowRight", "panelLeft", "panelRight"))
+            and remove["width"] >= 32 and remove["height"] >= 32 and remove["hittable"] is True
+            and remove["left"] >= remove["panelLeft"] - 1 and remove["right"] <= remove["panelRight"] - 1
+            and remove["right"] <= remove["rowRight"] + 1,
+            "The native filename X must remain a visible hittable target within its row and sidebar")
+    require(remove["panelScrollWidth"] <= remove["panelClientWidth"] + 1 and remove["listScrollWidth"] <= remove["listClientWidth"] + 1
+            and remove["ellipsis"] == "ellipsis" and remove["whiteSpace"] == "nowrap" and remove["title"].endswith(remove["filename"]),
+            "Native filename rows must preserve accessible full names while truncating without horizontal overflow")
+
+
 def check_file_lists(files, model_paths, motion_paths):
     import math
     import re
@@ -1324,6 +1345,7 @@ def check_pose_body_report(report):
                 ("bodyOpen", "siblings", "separate", "motionOwnedByPose", "editingOwnedByBody", "accessoryOpen")),
             "Actual WebKit must start Pose collapsed and expose independent pose and body controls")
     check_fresh_file_header(report.get("native_file_header", {}))
+    check_native_sidebar_layout(report.get("native_sidebar_layout", {}))
     panels = report.get("separate_pose_body_panels", {})
     require(panels.get("status") == "PASS" and len(panels.get("toggles", [])) == 4
             and panels.get("both_restored_open") is True

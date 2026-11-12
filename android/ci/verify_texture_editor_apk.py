@@ -22,12 +22,16 @@ STATIC_FILES = tuple("webtools/web/" + name for name in (
     "static/viewer-signed-inputs.js", "static/viewer-signed-inputs.css",
     "static/viewer-editing.js", "static/viewer-physics.js", "static/viewer-thumbnails.js",
     "static/viewer-mesh-tools.js", "static/viewer-mesh-runtime.js", "static/viewer-outlines.js", "static/viewer-near-clip.js",
-    "static/viewer-transplants.js", "static/viewer-texture-tools.js",
+    "static/viewer-transplants.js", "static/viewer-rig.js", "static/panel-settings.js", "static/viewer-texture-tools.js",
     "static/viewer-texture-tools.css", "static/texture-panel-expand.js",
     "static/texture-panel-expand.css", "static/vendor/fflate-0.8.2/fflate.min.js",
     "static/vendor/fflate-0.8.2/LICENSE")) + (
     "adminui/web/index.html", "adminui/web/ui/app.js", "adminui/web/ui/style.css",
-    "adminui/web/ui/game-quality.js", "adminui/web/ui/game-quality.css")
+    "adminui/web/ui/game-quality.js", "adminui/web/ui/game-quality.css", "adminui/web/ui/panel-settings.js")
+MODTOOLS_ROOT_MODULES = (
+    "costume_part_transplant", "costume_transplant", "lower_body_swap",
+    "graft_game_compat", "graft_texture_atlas", "graft_atlas_geometry",
+    "graft_uv_reuse", "graft_uv_upscale", "transplant_bundle_io")
 MODULES = (
     "webtools/server", "webtools/i18n", "webtools/core/viewer_texture_tools",
     "webtools/core/texture_image_io", "webtools/core/texture_project_io",
@@ -39,7 +43,8 @@ MODULES = (
     "costume_scene_sources", "costume_management",
     "webtools/core/model_faces", "webtools/core/viewer_thumbnails",
     "game_quality_settings", "adminui/server", "adminui/i18n",
-    "adminui/tools/registry", "adminui/tools/game_quality")
+    "adminui/tools/registry", "adminui/tools/game_quality") + MODTOOLS_ROOT_MODULES + (
+    "webtools/core/model_animation", "webtools/core/viewer_motion_i18n")
 
 
 def _entries(archive, label):
@@ -52,7 +57,8 @@ def _entries(archive, label):
 
 
 def _canonical(source, name):
-    return source / ("modtools" if name.startswith("webtools/") else "") / name
+    modtools = name.startswith("webtools/") or name.removesuffix(".py") in MODTOOLS_ROOT_MODULES
+    return source / ("modtools" if modtools else "") / name
 
 
 def _bytecode_optimization(raw, expected, name):

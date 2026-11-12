@@ -1222,6 +1222,44 @@ final class NativeSmokeTest {
         try require(observed["status"] as? String == "PASS", "The actual fresh native file header must pass.")
         report["native_file_header"] = observed
         try checkpoint("native-file-header-source-and-layout")
+        try await checkMacSidebarLayout(webView)
+    }
+
+    private func checkMacSidebarLayout(_ webView: WKWebView) async throws {
+        let before = try await editingSnapshot(webView)
+        let observed = try await object(webView, """
+            var panel=document.getElementById('viewer-files-panel'),display=document.getElementById('viewer-display-options'),save=document.getElementById('viewer-save-panel');
+            var importer=document.querySelector('.viewer-file-actions'),chooser=document.getElementById('viewer-model-files');
+            var displaySlot=document.getElementById('viewer-macos-display-slot'),saveSlot=document.getElementById('viewer-macos-save-slot');
+            if(!panel||!displaySlot||!saveSlot||display.parentElement!==displaySlot||save.parentElement!==saveSlot||
+              !panel.contains(displaySlot)||!panel.contains(importer)||!panel.contains(saveSlot))throw new Error('Mac View and Save must belong to their left-sidebar groups');
+            var order=!!(displaySlot.compareDocumentPosition(importer)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(importer.compareDocumentPosition(saveSlot)&Node.DOCUMENT_POSITION_FOLLOWING);
+            if(!order||document.getElementById('viewer-control-panel').contains(display)||document.getElementById('viewer-control-panel').contains(save))throw new Error('The Mac left-sidebar order must remain View, Import, Save');
+            var priorOpen=chooser.open,priorScroll=panel.scrollTop;
+            try {
+              chooser.open=true;await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+              var button=document.querySelector('#viewer-file-list .viewer-remove');if(!button)throw new Error('The actual selected model must have one remove control');
+              button.scrollIntoView({block:'nearest'});await new Promise(function(resolve){requestAnimationFrame(function(){requestAnimationFrame(resolve);});});
+              for(var ancestor=button.parentElement;ancestor;ancestor=ancestor.parentElement)ancestor.scrollLeft=0;
+              var rect=button.getBoundingClientRect(),row=button.parentElement.getBoundingClientRect(),bounds=panel.getBoundingClientRect(),list=button.closest('ul');
+              var hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2),name=button.parentElement.querySelector('span'),style=getComputedStyle(name);
+              var remove={width:rect.width,height:rect.height,left:rect.left,right:rect.right,rowRight:row.right,panelLeft:bounds.left,panelRight:bounds.right,
+                panelClientWidth:panel.clientWidth,panelScrollWidth:panel.scrollWidth,listClientWidth:list.clientWidth,listScrollWidth:list.scrollWidth,
+                hittable:hit===button||button.contains(hit),filename:name.textContent,title:name.title,ellipsis:style.textOverflow,whiteSpace:style.whiteSpace};
+              if(button.disabled||remove.width<32||remove.height<32||!remove.hittable||remove.left<remove.panelLeft-1||remove.right>remove.panelRight-1||remove.right>remove.rowRight+1)throw new Error('The actual Mac filename remove X must remain visible and hittable inside its sidebar row');
+              if(remove.panelScrollWidth>remove.panelClientWidth+1||remove.listScrollWidth>remove.listClientWidth+1||remove.ellipsis!=='ellipsis'||remove.whiteSpace!=='nowrap'||!remove.title.endsWith(remove.filename))throw new Error('Mac filename rows must truncate text without horizontal clipping');
+              return JSON.stringify({status:'PASS',checks:{leftOwned:true,displayThenImportThenSave:true,rightColumnExcludesLeftCards:true,
+                noHorizontalOverflow:true,removeVisibleHittable:true,filenameTruncation:true},
+                displayParent:display.parentElement.id,saveParent:save.parentElement.id,remove:remove,
+                scope:'Actual AppKit WKWebView layout and DOM hit testing for the selected neutral fixture; no OS pointer-click or long-filename stress claim.'});
+            } finally {chooser.open=priorOpen;panel.scrollTop=priorScroll;}
+            """)
+        try require(observed["status"] as? String == "PASS", "Native Mac left-sidebar and remove control checks must pass.")
+        try requireEditingSnapshot(try await editingSnapshot(webView), matches: before)
+        var result = observed
+        result["model_camera_authoring_and_save_preserved"] = true
+        report["native_sidebar_layout"] = result
+        try checkpoint("native-left-sidebar-order-and-remove-target")
     }
 
     private func editingSnapshot(_ webView: WKWebView) async throws -> [String: Any] {

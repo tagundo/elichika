@@ -28,6 +28,7 @@ import transplant_bundle_io, costume_installer_defaults, costume_face_installer,
 import costume_cdn_catalog, costume_cdn_restore
 import game_quality_settings
 import graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale
+import costume_part_transplant, costume_transplant, lower_body_swap
 from adminui.tools import costume_cdn as cdn_admin
 from adminui.tools import game_quality as game_quality_admin
 from webtools.core import viewer_texture_tools, texture_image_io, texture_project_io
@@ -39,7 +40,8 @@ packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_tran
                     viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, transplant_bundle_io, game_motion_audio,
                     costume_installer_defaults, costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
                     costume_cdn_catalog, costume_cdn_restore, cdn_admin, game_quality_settings, game_quality_admin,
-                    graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale)
+                    graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale,
+                    costume_part_transplant, costume_transplant, lower_body_swap)
 for module in packaged_modules:
     assert pathlib.Path(module.__file__).resolve().is_relative_to(source), module.__file__
 patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_tools.py',
@@ -47,7 +49,10 @@ patterns = ['test_game_motions.py', 'test_viewer_physics.py', 'test_viewer_mesh_
             'test_texture_image_io.py',
             'test_texture_project_io.py',
             'test_viewer_transplants.py', 'test_viewer_transplant_paths.py', 'test_viewer_workbench_routes.py',
+            'test_viewer_transplant_diagnostics.py',
+            'test_viewer_model_request_diagnostics.py',
             'test_graft_texture_atlas.py', 'test_graft_atlas_geometry.py', 'test_graft_game_compat.py',
+            'test_graft_shared_assets.py',
             'test_graft_uv_reuse.py', 'test_graft_uv_texture_upscale.py',
             'test_graft_active_textures.py',
             'test_reuse_empty_uv_options.py',
@@ -89,7 +94,8 @@ test_stage = stage / 'tests'; test_stage.mkdir()
 (stage / 'webtools/web').mkdir(parents=True)
 static = source / 'webtools/web/static'
 (stage / 'webtools/web/static').symlink_to(static, target_is_directory=True)
-staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py', 'test_viewer_mesh_selection.py', 'test_motion_audio_transport.py', 'test_viewer_gaze.py', 'test_viewer_thumbnail_saved_settings.py', 'test_model_faces.py']
+staged_python = ['test_viewer_physics.py', 'test_physics_game_engine.py', 'test_viewer_mesh_selection.py', 'test_motion_audio_transport.py', 'test_viewer_gaze.py', 'test_viewer_thumbnail_saved_settings.py', 'test_model_faces.py', 'test_model_animation.py',
+    'test_viewer_workbench_routes.py', 'test_viewer_model_request_diagnostics.py']
 staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.js',
     'viewer_game_physics_math_test.js', 'viewer_game_physics_collision_test.js',
     'viewer_game_physics_job_collision_test.js', 'viewer_game_physics_native_test.js',
@@ -103,7 +109,7 @@ numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisi
     'game_physics_native_job_collisions.json', 'game_physics_native_jobs.json',
     'game_physics_native_safe_correct.json', 'game_physics_native_initialize.json',
     'game_physics_native_constructor.json', 'viewer_textured_triangle.unity',
-    'viewer_rig.unity', 'viewer_triangle.unity']
+    'viewer_rig.unity', 'viewer_triangle.unity', 'viewer_persistence.unity']
 for name in staged_python + staged_drivers:
     shutil.copy2(test_source / name, test_stage / name)
 shutil.copy2(repo / 'tests/test_game_quality_settings.py', test_stage / 'test_game_quality_settings.py')
@@ -111,6 +117,7 @@ shutil.copy2(repo / 'tests/test_game_quality_settings.py', test_stage / 'test_ga
 for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
 static_files = ['vendor/three-r128/three.min.js', 'style.css', 'platform.js', 'viewer-physics.js',
+    'model-viewer.js', 'viewer-rig.js', 'panel-settings.js',
     'viewer-signed-inputs.js', 'viewer-signed-inputs.css', 'viewer-editing.js',
     'texture-png.js', 'texture-color-math.js', 'texture-color-worker.js',
     'texture-paint-engine.js', 'texture-uv-selection.js',
@@ -126,7 +133,7 @@ for name in static_files:
     assert actual == (static / name).resolve() and actual.is_relative_to(source)
     packaged_node_sources[name] = hashlib.sha256(actual.read_bytes()).hexdigest()
 packaged_admin_sources = {}
-for name in ['index.html', 'ui/app.js', 'ui/style.css', 'ui/game-quality.js', 'ui/game-quality.css']:
+for name in ['index.html', 'ui/app.js', 'ui/style.css', 'ui/game-quality.js', 'ui/game-quality.css', 'ui/panel-settings.js']:
     actual = (source / 'adminui/web' / name).resolve()
     assert actual.is_relative_to(source) and actual.is_file(), ('Missing packaged Server Content resource', name)
     packaged_admin_sources[name] = hashlib.sha256(actual.read_bytes()).hexdigest()
@@ -208,7 +215,7 @@ for path in cdn_test_paths:
     spec.loader.exec_module(module)
     cdn_modules.append(module)
 additional_modules = {}
-for name in ['test_model_faces', 'test_game_quality_settings']:
+for name in ['test_model_faces', 'test_game_quality_settings', 'test_model_animation']:
     spec = importlib.util.spec_from_file_location('test_packaged_' + name, test_stage / (name + '.py'))
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -226,6 +233,9 @@ for pattern in patterns:
         suite.addTests(unittest.defaultTestLoader.discover(str(test_source), pattern=pattern))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(installer_module))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(additional_modules['test_game_quality_settings']))
+# Keep the optional private-game animation fixtures outside this neutral
+# packaged-runtime contract. Every synthetic decoder/budget case still runs.
+suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(additional_modules['test_model_animation'].AnimationTests))
 # These synthetic classes cover the resolver without requiring private game
 # assets. The optional ActualFacialSourceTests class is outside this contract.
 for name in ['PackageSizeTests', 'FaceTests']:

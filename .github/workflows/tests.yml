@@ -153,6 +153,9 @@ jobs:
           python3 -m unittest discover -s tests -p test_viewer_routes.py -v
           python3 -m unittest discover -s tests -p test_viewer_edit_routes.py -v
           python3 -m unittest discover -s tests -p test_job_outputs.py -v
+          python3 -m unittest discover -s tests -p test_viewer_motion_library.py -v
+          python3 -m unittest discover -s tests -p test_viewer_transplant_diagnostics.py -v
+          python3 -m unittest discover -s tests -p test_viewer_model_request_diagnostics.py -v
 
       - name: Run all Go tests with default vet checks
         run: python3 tests/run_go_tests.py
@@ -277,6 +280,13 @@ jobs:
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/transplants" node tests/viewer_transplants_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/macos" node tests/viewer_macos_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/resolution" node tests/viewer_resolution_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/request-diagnostics" node tests/viewer_request_diagnostics_test.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/transplant-diagnostics" node tests/viewer_transplant_diagnostics_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/motion-many-clips" node tests/viewer_motion_many_clips_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/motion-source-capacity" node tests/viewer_motion_source_capacity_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/paths-picker" node tests/viewer_paths_picker_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/model-picker-delete" node tests/viewer_model_picker_delete_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-reset" node tests/viewer_mesh_reset_browser.js
 
       - name: Upload neutral WebGL evidence
         if: always()
