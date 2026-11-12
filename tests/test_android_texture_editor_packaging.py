@@ -14,7 +14,13 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "android/ci"))
-from verify_texture_editor_apk import MODULES, PYTHON_ASSET, STATIC_FILES, verify
+from verify_texture_editor_apk import MODTOOLS_ROOT_MODULES, MODULES, PYTHON_ASSET, STATIC_FILES, verify
+
+
+EXPECTED_MODTOOLS_ROOT_MODULES = frozenset({
+    "costume_part_transplant", "costume_transplant", "lower_body_swap",
+    "graft_game_compat", "graft_texture_atlas", "graft_atlas_geometry",
+    "graft_uv_reuse", "graft_uv_upscale", "transplant_bundle_io"})
 
 
 class TextureEditorPackagingTests(unittest.TestCase):
@@ -36,7 +42,8 @@ class TextureEditorPackagingTests(unittest.TestCase):
                 "raise RuntimeError('The verifier must never execute APK code')\n"
             ).encode()
         for name, raw in self.expected.items():
-            target = self.source / ("modtools" if name.startswith("webtools/") else "") / name
+            modtools = name.startswith("webtools/") or name.removesuffix(".py") in EXPECTED_MODTOOLS_ROOT_MODULES
+            target = self.source / ("modtools" if modtools else "") / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(raw)
 
@@ -137,6 +144,22 @@ class TextureEditorPackagingTests(unittest.TestCase):
                                     "--report", str(report)], capture_output=True, text=True)
         self.assertNotEqual(completed.returncode, 0)
         self.assertEqual(json.loads(report.read_text())["status"], "FAIL")
+
+    def test_each_graft_root_module_uses_modtools_source_and_rejects_stale_source_or_code(self):
+        self.assertEqual(set(MODTOOLS_ROOT_MODULES), EXPECTED_MODTOOLS_ROOT_MODULES)
+        self.assertTrue(EXPECTED_MODTOOLS_ROOT_MODULES.issubset(MODULES))
+        for name in EXPECTED_MODTOOLS_ROOT_MODULES:
+            # A same-name parent script must not replace the reviewed tool code.
+            (self.source / (name + ".py")).write_bytes(b"WRONG_PARENT_SCRIPT = True\n")
+        self.assertEqual(verify(self.candidate(both=True), self.source)["status"], "PASS")
+        stale = b"STALE_GRAFT_CODE = True\n"
+        raw_code = importlib.util.MAGIC_NUMBER + bytes(12) + marshal.dumps(
+            compile(stale, "stale-graft-source.py", "exec"))
+        for name in sorted(EXPECTED_MODTOOLS_ROOT_MODULES):
+            for suffix, raw, message in ((".py", stale, "source differs from reviewed"),
+                                         (".pyc", raw_code, "bytecode differs from reviewed")):
+                with self.subTest(module=name, suffix=suffix), self.assertRaisesRegex(ValueError, message):
+                    verify(self.candidate(both=True, overrides={name + suffix: raw}), self.source)
 
 
 if __name__ == "__main__":
