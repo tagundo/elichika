@@ -18,14 +18,14 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "macos/runtime"))
 from elichika_macos import AuthorizedPaths, LogBuffer, Runtime, secure_ui_handler
 from elichika_macos_lifecycle import ServerController
-from elichika_macos_payload import ensure_config, install_payload, install_tool_data
+from elichika_macos_payload import DEFAULT_CDN_SERVER, ensure_config, install_payload, install_tool_data
 from adminui import serverctl
 from database_maintenance import BusyError, guard
 
@@ -127,6 +127,44 @@ if sys.argv[1]=='cdn_cache':
         runtime._console_thread.join(7)
         self.assertFalse(runtime._console_thread.is_alive())
         return runtime.console_state()["job"]
+
+    def management_binary(self, runtime, *, drain=False):
+        runtime.binary.parent.mkdir(parents=True, exist_ok=True)
+        code = """import fcntl,http.server,json,os,pathlib,signal,sys,threading,time
+root=pathlib.Path.cwd()
+management=sys.argv[1:]==['management']
+if sys.argv[1:] and not management:
+    (root/'console-argv.json').write_text(json.dumps(sys.argv[1:])); raise SystemExit(0)
+if management:
+    lock=open(root/'.database-maintenance.lock','a+b'); os.chmod(lock.name,0o600)
+    fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self,*args): pass
+    def do_GET(self):
+        self.send_response(200); self.end_headers()
+        self.wfile.write(json.dumps({'ready':True,'token':os.environ['ELICHIKA_READY_TOKEN']}).encode())
+    def do_POST(self):
+        (root/'management-write-started').touch()
+        while not (root/'release-management-write').exists(): time.sleep(.01)
+        (root/'management-write-finished').touch()
+        self.send_response(200); self.end_headers(); self.wfile.write(b'fixture write complete')
+address=json.loads((root/'config.json').read_text())['server_address']
+server=http.server.ThreadingHTTPServer(('127.0.0.1',0 if management else int(address.rsplit(':',1)[1])),Handler)
+server.daemon_threads=False
+if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.0.0.1:'+str(server.server_port),'pid':os.getpid()}),flush=True)
+"""
+        if drain:
+            code += "signal.signal(signal.SIGTERM,lambda *args:threading.Thread(target=server.shutdown,daemon=True).start())\n"
+        code += "server.serve_forever()\nserver.server_close()\n"
+        runtime.binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -B -c " + shlex.quote(code) + ' "$@"\n')
+        runtime.binary.chmod(0o755)
+
+    def wait_management(self, runtime):
+        deadline = time.monotonic() + 4
+        while not runtime.controller.management_state()["http_ready"] and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue(runtime.controller.management_state()["http_ready"], runtime.controller.management_state())
+        return runtime.controller.management_state()
 
     def test_all_writable_paths_are_rejected_anywhere_inside_application_bundle(self):
         bundle = self.resources.parents[1]
@@ -315,7 +353,8 @@ if sys.argv[1]=='cdn_cache':
         with self.assertRaises(BusyError):
             runtime.controller.manual_start()
         with self.assertRaises(BusyError):
-            runtime.controller.update_network_config(runtime.controller.network_config())
+            runtime.controller.update_network_config({key: value for key, value in runtime.controller.network_config().items()
+                                                      if key != "default_cdn_server"})
         self.assertFalse(runtime.controller.begin_job())
         for name in ("admin_url", "tools_url"):
             status, _, raw = self.request(ready[name], method="POST",
@@ -400,6 +439,202 @@ if sys.argv[1]=='cdn_cache':
         with self.assertRaises(ProcessLookupError):
             os.kill(child, 0)
 
+    def test_management_lazy_start_game_off_and_yields_owned_process_and_db_lease_for_game_tools_console(self):
+        runtime = StubRuntime(self.resources, self.data, self.sukusta)
+        self.addCleanup(runtime.close)
+        ensure_config(runtime.data, runtime.sukusta, "en")
+        value = json.loads((runtime.data / "config.json").read_text())
+        value["server_address"] = "127.0.0.1:" + str(unused_port())
+        (runtime.data / "config.json").write_text(json.dumps(value))
+        self.management_binary(runtime)
+        ready = runtime.start()
+        deadline = time.monotonic() + 3
+        while not runtime.state()["prepared"] and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertFalse(runtime.controller.management_state()["running"])
+        self.assertFalse(runtime.controller._management_enabled)
+        self.assertEqual(self.console_request(ready, path="/v1/management/start")[0], 202)
+        management = self.wait_management(runtime)
+        self.assertFalse(runtime.state()["server_running"])
+        self.assertFalse(runtime.state()["busy"])
+        self.assertNotEqual(management["url"], runtime.controller.state()["url"])
+        with self.assertRaises(BusyError), guard(runtime.data):
+            self.fail("Management must own the shared data lease")
+        original_pid = management["pid"]
+        runtime.controller.manual_start()
+        self.assertFalse(runtime.controller.management_state()["running"])
+        with self.assertRaises(ProcessLookupError):
+            os.kill(original_pid, 0)
+        self.assertTrue(runtime.controller.is_running())
+        self.assertEqual(self.console_request(ready, path="/v1/management/start")[0], 409)
+        runtime.controller.manual_stop()
+        self.wait_management(runtime)
+        self.assertTrue(runtime.controller.begin_job())
+        self.assertFalse(runtime.controller.management_state()["running"])
+        with guard(runtime.data):
+            pass
+        runtime.controller.finish_job(True)
+        self.wait_management(runtime)
+        self.assertEqual(self.console_request(ready, {"action":"rebuild_assets", "confirmation":"STOP_SERVER"})[0], 202)
+        self.assertEqual(self.wait_console(runtime)["status"], "done")
+        self.assertEqual(json.loads((runtime.data / "console-argv.json").read_text()), ["rebuild_assets"])
+        final = self.wait_management(runtime)
+        self.assertFalse(runtime.state()["server_running"])
+        serialized = json.dumps(runtime.logs.after(0))
+        self.assertNotIn("ELICHIKA_MANAGEMENT_READY", serialized)
+        runtime.close()
+        with self.assertRaises(ProcessLookupError):
+            os.kill(final["pid"], 0)
+
+    def test_management_retry_requires_auth_and_readiness_and_network_edits_pause_and_resume_it(self):
+        runtime, ready = self.start()
+        self.assertEqual(self.request(ready["control_url"], "/v1/management/start", method="POST",
+                                     headers={"Content-Type":"application/json"}, body=b'{}')[0], 401)
+        self.management_binary(runtime)
+        self.assertEqual(self.console_request(ready, path="/v1/management/start")[0], 202)
+        first = self.wait_management(runtime)
+        updated = {"server_address":"127.0.0.1:" + str(unused_port()), "cdn_server":"https://example.org/static"}
+        runtime.controller.update_network_config(updated)
+        after = self.wait_management(runtime)
+        self.assertNotEqual(first["pid"], after["pid"])
+        self.assertEqual(runtime.controller.network_config(), dict(updated, default_cdn_server=DEFAULT_CDN_SERVER))
+        self.assertTrue(runtime.controller.begin_job())
+        try:
+            self.assertEqual(self.console_request(ready, path="/v1/management/start")[0], 409)
+        finally:
+            runtime.controller.finish_job(False)
+        self.wait_management(runtime)
+        self.assertFalse(runtime.controller.is_running())
+
+    def test_management_retries_private_readiness_before_publishing_url(self):
+        runtime, ready = self.start()
+        self.management_binary(runtime)
+        original = runtime.controller._probe_http
+        attempts = []
+        def delayed_acceptance(*arguments):
+            attempts.append(arguments)
+            return False if len(attempts) == 1 else original(*arguments)
+        with patch.object(runtime.controller, "_probe_http", side_effect=delayed_acceptance):
+            self.assertEqual(self.console_request(ready, path="/v1/management/start")[0], 202)
+            state = self.wait_management(runtime)
+        self.assertGreaterEqual(len(attempts), 2)
+        self.assertTrue(state["url"].startswith("http://127.0.0.1:"))
+        self.assertFalse(runtime.controller.is_running())
+
+    def test_management_demand_release_reaps_only_management_and_never_resumes_for_later_jobs(self):
+        runtime, ready = self.start()
+        self.management_binary(runtime)
+        value = json.loads((runtime.data / "config.json").read_text())
+        value["server_address"] = "127.0.0.1:" + str(unused_port())
+        (runtime.data / "config.json").write_text(json.dumps(value))
+        self.assertEqual(self.console_request(ready, path="/v1/management/start")[0], 202)
+        management = self.wait_management(runtime)
+        self.assertEqual(self.console_request(ready, path="/v1/management/stop")[0], 202)
+        self.assertFalse(runtime.controller._management_enabled)
+        self.assertFalse(runtime.controller.management_state()["running"])
+        with self.assertRaises(ProcessLookupError):
+            os.kill(management["pid"], 0)
+        self.assertTrue(runtime.controller.begin_job())
+        try:
+            with guard(runtime.data):
+                pass
+            self.assertEqual(self.console_request(ready, path="/v1/management/stop")[0], 202)
+        finally:
+            runtime.controller.finish_job(True)
+        self.assertFalse(runtime.controller.management_state()["running"])
+        runtime.controller.manual_start()
+        game = runtime.controller._process
+        self.assertTrue(runtime.controller.begin_job())
+        try:
+            self.assertEqual(self.console_request(ready, path="/v1/management/stop")[0], 202)
+            self.assertIsNone(game.poll())
+            self.assertTrue(runtime.controller.is_running())
+        finally:
+            runtime.controller.finish_job(False)
+        runtime.controller.manual_stop()
+        self.assertFalse(runtime.controller.management_state()["running"])
+        self.console_binary(runtime, wait=True)
+        self.assertEqual(self.console_request(ready, {"action":"rebuild_assets", "confirmation":"STOP_SERVER"})[0], 202)
+        deadline = time.monotonic() + 3
+        while not (runtime.data / "console-child.pid").exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        cli = int((runtime.data / "console-child.pid").read_text())
+        self.assertEqual(self.console_request(ready, path="/v1/management/stop")[0], 202)
+        os.kill(cli, 0)  # Demand release must not cancel the active owned CLI.
+        (runtime.data / "release-console").touch()
+        self.assertEqual(self.wait_console(runtime)["status"], "done")
+        self.assertFalse(runtime.controller.management_state()["running"])
+
+    def test_management_write_drains_before_takeover_and_quit_keeps_state_readable(self):
+        runtime, ready = self.start()
+        self.management_binary(runtime, drain=True)
+        self.assertEqual(self.console_request(ready, path="/v1/management/start")[0], 202)
+        management = self.wait_management(runtime)
+        release = runtime.data / "release-management-write"
+        self.addCleanup(release.touch)
+        responses, errors = [], []
+        def write():
+            from urllib.parse import urlsplit
+            address = urlsplit(management["url"])
+            connection = http.client.HTTPConnection(address.hostname, address.port, timeout=15)
+            try:
+                connection.request("POST", "/fixture-write", body=b"")
+                response = connection.getresponse()
+                responses.append((response.status, response.read()))
+            except Exception as error:
+                errors.append(error)
+            finally:
+                connection.close()
+        writer = threading.Thread(target=write)
+        writer.start()
+        deadline = time.monotonic() + 3
+        while not (runtime.data / "management-write-started").exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue((runtime.data / "management-write-started").exists())
+        process = runtime.controller._management_process
+        original_wait = process.wait
+        def short_bounded_wait(timeout=None):
+            return original_wait(timeout=min(timeout, .05) if timeout is not None else None)
+        def close():
+            try:
+                runtime.close()
+            except Exception as error:
+                errors.append(error)
+        with patch.object(process, "wait", side_effect=short_bounded_wait):
+            self.assertEqual(self.console_request(ready, path="/v1/management/stop")[0], 202)
+            draining = runtime.controller.management_state()
+            self.assertTrue(draining["running"])
+            self.assertEqual(draining["pid"], management["pid"])
+            self.assertEqual(draining["status"], "stopping")
+            self.assertEqual(draining["url"], "")
+            self.assertTrue(runtime.state()["busy"])
+            with self.assertRaises(BusyError):
+                runtime.controller.manual_start()
+            self.assertFalse(runtime.controller.begin_job())
+            self.assertEqual(self.console_request(ready, {"action":"rebuild_assets", "confirmation":"STOP_SERVER"})[0], 409)
+            closing = threading.Thread(target=close)
+            closing.start()
+            deadline = time.monotonic() + 3
+            while runtime.state()["phase"] != "stopping" and time.monotonic() < deadline:
+                time.sleep(.01)
+            auth = {"Authorization":"Bearer " + ready["token"]}
+            status, _, raw = self.request(ready["control_url"], "/v1/state", headers=auth)
+            self.assertEqual(status, 200, raw)
+            self.assertTrue(json.loads(raw)["management"]["running"])
+            self.assertTrue(closing.is_alive())
+            self.assertIsNone(process.poll())
+            self.assertFalse((runtime.data / "management-write-finished").exists())
+            release.touch()
+            closing.join(7)
+            self.assertFalse(closing.is_alive())
+        writer.join(3)
+        self.assertFalse(writer.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(responses, [(200, b"fixture write complete")])
+        self.assertTrue((runtime.data / "management-write-finished").exists())
+        self.assertEqual(process.returncode, 0)
+        self.assertFalse(runtime.controller.management_state()["running"])
+
 
 class LifecycleTests(unittest.TestCase):
     def setUp(self):
@@ -431,6 +666,40 @@ class LifecycleTests(unittest.TestCase):
                 self.controller.manual_start()
         spawn.assert_not_called()
         self.assertFalse(self.controller.is_running())
+
+    def test_unreaped_management_child_retains_ownership_and_blocks_replacement_or_data_jobs(self):
+        child = Mock(pid=123456, returncode=None)
+        child.poll.return_value = None
+        child.wait.side_effect = OSError("fixture wait failed")
+        self.controller._management_process = child
+        self.controller._management_enabled = True
+        self.controller._management_ready = True
+        self.controller._management_url = "http://127.0.0.1:12345"
+        try:
+            with self.assertRaisesRegex(RuntimeError, "did not stop safely"):
+                self.controller.disable_management()
+            self.assertIs(self.controller._management_process, child)
+            state = self.controller.management_state()
+            self.assertTrue(state["running"])
+            self.assertEqual(state["pid"], child.pid)
+            self.assertFalse(state["http_ready"])
+            self.assertEqual(state["url"], "")
+            self.assertIn("did not stop safely", state["error"])
+            with patch("elichika_macos_lifecycle.subprocess.Popen") as spawn:
+                with self.assertRaises(BusyError):
+                    self.controller.enable_management(retry=True)
+                with self.assertRaises(BusyError):
+                    self.controller.manual_start()
+                self.assertFalse(self.controller.begin_job())
+                spawn.assert_not_called()
+            child.kill.assert_not_called()
+            child.poll.return_value = -signal.SIGKILL
+            child.returncode = -signal.SIGKILL
+            self.controller.disable_management()
+            self.assertIsNone(self.controller._management_process)
+            self.assertFalse(self.controller.management_state()["running"])
+        finally:
+            self.controller._management_process = None
 
     def test_manual_stop_cancels_a_workers_deferred_restart_after_guard_release(self):
         self.controller.manual_start()
@@ -511,9 +780,11 @@ class LifecycleTests(unittest.TestCase):
         path.write_text(json.dumps(value))
         updated = {"server_address":"0.0.0.0:" + str(self.port),
                    "cdn_server":"http://192.168.1.20:" + str(self.port) + "/static"}
-        self.assertEqual(self.controller.update_network_config(updated), updated)
+        response = dict(updated, default_cdn_server=DEFAULT_CDN_SERVER)
+        self.assertEqual(self.controller.update_network_config(updated), response)
         self.assertEqual(json.loads(path.read_text())["owner_mod_setting"], "retain")
-        self.assertEqual(self.controller.network_config(), updated)
+        self.assertEqual(self.controller.network_config(), response)
+        self.assertNotIn("default_cdn_server", json.loads(path.read_text()))
         self.assertEqual(self.controller.state()["url"], f"http://127.0.0.1:{self.port}")
         self.assertTrue(self.controller.begin_job())
         with self.assertRaises(BusyError):
@@ -554,6 +825,18 @@ class PayloadTests(unittest.TestCase):
         import payload_revision
         self.manifest = payload_revision.build_manifest(self.payload)
         (self.resources / "payload_revision.json").write_text(json.dumps(self.manifest))
+
+    def test_fresh_cdn_default_is_external_upstream_and_existing_operator_choice_is_preserved(self):
+        value = ensure_config(self.data, self.base / "library", "en")
+        self.assertEqual(value["cdn_server"], "https://llsifas.imsofucking.gay/static/")
+        self.assertEqual(value["cdn_partial_file_capability"], "nothing")
+        self.assertTrue(value["cdn_cache"])
+        path = self.data / "config.json"
+        for source in ("https://operator.example/packs", "http://127.0.0.1:8080/static"):
+            original = ('{"cdn_server":"' + source + '","cdn_cache":false,"cdn_partial_file_capability":"static_file"}\n').encode()
+            path.write_bytes(original)
+            ensure_config(self.data, self.base / "library", "en")
+            self.assertEqual(path.read_bytes(), original)
 
     def test_interrupted_costume_is_never_merged_as_a_normal_mod(self):
         pending = self.data / ".costume-management/receipts" / ("a" * 32 + ".json")
@@ -736,12 +1019,14 @@ class IntegrationTests(unittest.TestCase):
         binaries = resources / "runtime" / arch / "bin"
         binaries.mkdir(parents=True)
         go = binaries / "elichika"
-        fake = ("import http.server,json,pathlib;" +
+        fake = ("import http.server,json,pathlib,sys;" +
                 "import os;pathlib.Path('go-env.json').write_text(json.dumps({k:os.environ.get(k) for k in ['HOME','PYTHONPATH','PYTHONNOUSERSITE','PYTHONSAFEPATH']}));" +
-                "port=int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1]);" +
+                "management=sys.argv[1:]==['management'];port=0 if management else int(json.loads(pathlib.Path('config.json').read_text())['server_address'].rsplit(':',1)[1]);" +
                 "handler=type('ReadyHandler',(http.server.BaseHTTPRequestHandler,),{'do_GET':lambda self:(self.send_response(200 if self.path=='/_elichika/ready' else 404),self.end_headers(),self.wfile.write(json.dumps({'ready':True,'token':os.environ.get('ELICHIKA_READY_TOKEN','')}).encode()))});" +
-                "http.server.HTTPServer(('127.0.0.1',port),handler).serve_forever()")
-        go.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -B -c " + shlex.quote(fake) + "\n")
+                "server=http.server.HTTPServer(('127.0.0.1',port),handler);" +
+                "print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.0.0.1:'+str(server.server_port),'pid':os.getpid()}),flush=True) if management else None;" +
+                "server.serve_forever()")
+        go.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -B -c " + shlex.quote(fake) + ' "$@"\n')
         go.chmod(0o755)
         data = base / "Library/Application Support/Elichika"
         data.mkdir(parents=True)

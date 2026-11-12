@@ -15,6 +15,7 @@ import android.os.Looper
 import android.os.PowerManager
 import java.io.File
 import java.util.ArrayDeque
+import java.util.concurrent.CountDownLatch
 
 /**
  * Foreground service that owns the elichika server subprocess so Android keeps
@@ -27,6 +28,8 @@ class ServerService : Service() {
     private lateinit var server: ServerProcess
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var workDir: File
+    private lateinit var managementLease: ManagementServer.Lease
+    private val preparationFinished = CountDownLatch(1)
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var operation = 0L
     private var installing = false
@@ -54,6 +57,7 @@ class ServerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        managementLease = ManagementServer.suspendForService()
         server = ServerProcess(this)
         current = this
         getSharedPreferences(ServerSettings.PREFS, MODE_PRIVATE)
@@ -71,6 +75,7 @@ class ServerService : Service() {
         val appContext = applicationContext
         Thread({
             try {
+                check(ManagementServer.awaitSuspended(managementLease)) { "Management WebUI did not stop. Server preparation was left unchanged." }
                 val prepared = AssetInstaller.install(appContext, ::preparationChanged) { Bus.log(it) }
                 if (destroyed) return@Thread
                 // Cold Chaquopy initialization also belongs off the UI thread.
@@ -123,6 +128,8 @@ class ServerService : Service() {
                     Bus.setRunning(false)
                     finishService()
                 }
+            } finally {
+                preparationFinished.countDown()
             }
         }, "elichika-prepare").start()
     }
@@ -542,13 +549,21 @@ class ServerService : Service() {
         cancelAutoStop()
         getSharedPreferences(ServerSettings.PREFS, MODE_PRIVATE)
             .unregisterOnSharedPreferenceChangeListener(preferencesChanged)
-        server.stop()
+        val previous = server.stop()
         if (current === this) {
             current = null
             Bus.setRunning(false)
         }
         releaseWakeLock()
         super.onDestroy()
+        Thread({
+            preparationFinished.await()
+            if (ServerProcess.awaitStopped(previous) && ManagementServer.awaitSuspended(managementLease)) {
+                ManagementServer.releaseService(managementLease)
+            } else {
+                ManagementServer.reportStopFailure()
+            }
+        }, "elichika-management-resume").apply { isDaemon = true }.start()
         afterDestroy?.let { next -> applicationContext.startForegroundService(next) }
     }
 

@@ -17,6 +17,7 @@ from elichika_macos_memory import available_macos_memory_bytes
 
 _ENGINE_PROGRESS_STAGES = frozenset({"validating", "snapshot", "merging", "verifying",
                                      "publishing", "complete", "recovering"})
+DEFAULT_CDN_SERVER = "https://llsifas.imsofucking.gay/static/"
 
 
 def _report_progress(observer, stage, completed, total, current=""):
@@ -208,7 +209,9 @@ def ensure_config(data: Path, sukusta: Path, language: str) -> dict:
         return value
     value = {
         "server_address": "127.0.0.1:8080",
-        "cdn_server": "http://127.0.0.1:8080/static",
+        # This is the same upstream default as the Go server. The local game
+        # address is a client destination, not an upstream pack source.
+        "cdn_server": DEFAULT_CDN_SERVER,
         "cdn_partial_file_capability": "nothing",
         "cdn_cache": True,
         "cdn_cache_dir": str(sukusta / "packs"),

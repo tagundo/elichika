@@ -70,6 +70,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_restore_payload_rebase.py -v
           python3 -m unittest discover -s tests -p test_android_app_version.py -v
           python3 -m unittest discover -s tests -p test_android_payload_upgrade.py -v
+          python3 -m unittest discover -s tests -p test_android_offline_management_gate.py -v
           python3 -m unittest discover -s tests -p test_android_server_config_payload.py -v
           python3 -m unittest discover -s tests -p test_android_payload_upgrade_benchmark.py -v
           python3 -m unittest discover -s tests -p test_android_payload_noop_probe.py -v
@@ -85,6 +86,9 @@ jobs:
           python3 -m unittest discover -s ../tests -p test_costume_private_faces.py -v
           python3 -m unittest discover -s ../tests -p test_costume_face_management.py -v
           python3 -m unittest discover -s ../tests -p test_costume_installer_bytecode.py -v
+          python3 -m unittest discover -s ../tests -p test_admin_costume_thumbnails.py -v
+          python3 -m unittest discover -s ../tests -p test_added_content_cdn.py -v
+          python3 -m unittest discover -s ../tests -p test_added_content_cdn_protocol.py -v
           python3 -m unittest discover -s ../tests -p test_costume_cdn_catalog.py -v
           python3 -m unittest discover -s ../tests -p test_costume_cdn_restore.py -v
           python3 -m unittest discover -s ../tests -p test_costume_cdn_packaging.py -v
@@ -287,6 +291,9 @@ jobs:
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/paths-picker" node tests/viewer_paths_picker_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/model-picker-delete" node tests/viewer_model_picker_delete_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mesh-reset" node tests/viewer_mesh_reset_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/installer-thumbnail" node ../tests/adminui_costume_thumbnail_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/installer-thumbnail-render" node ../tests/adminui_costume_thumbnail_render_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/installer-thumbnail-install" node ../tests/adminui_costume_thumbnail_install_browser.js
 
       - name: Upload neutral WebGL evidence
         if: always()

@@ -45,6 +45,10 @@ func (c *clientWriter) Write(p []byte) (int, error) {
 func staticWhole(ctx *gin.Context) {
 	// a catch-all param keeps the leading slash, e.g. "/8d4c19e12fb304cf/masterdata_a_ko"
 	file := strings.TrimPrefix(ctx.Param("fileName"), "/")
+	if !validAssetPath(file, true) {
+		ctx.Status(http.StatusBadRequest)
+		return
+	}
 
 	if p, ok := localPath(file); ok { // already cached, or migrated from static
 		ctx.File(p)
@@ -55,11 +59,17 @@ func staticWhole(ctx *gin.Context) {
 		ctx.File(config.StaticDataPath + file)
 		return
 	}
+	// Reject self/upstream aliases before taking the per-file lock. Otherwise
+	// a recursive request could wait on the outer request's own cache lock.
+	if _, err := sourceCDNURL(*config.Conf.CdnServer, file, ctx.Request); err != nil {
+		ctx.Status(http.StatusBadGateway)
+		return
+	}
 
 	// cache miss. range requests are uncommon for whole files; fall back to download-then-serve so
 	// http.ServeFile can satisfy the range correctly.
 	if ctx.GetHeader("Range") != "" {
-		ctx.File(ensureLocalFile(file))
+		ctx.File(ensureLocalFile(file, ctx.Request))
 		return
 	}
 
@@ -76,7 +86,13 @@ func staticWhole(ctx *gin.Context) {
 // streamWholeFromCdn proxies a whole file from the upstream CDN to the client while writing it to the
 // cache at the same time.
 func streamWholeFromCdn(ctx *gin.Context, fileName, dest string) {
-	res, err := cdnGet(cdnURL(fileName))
+	source, err := sourceCDNURL(*config.Conf.CdnServer, fileName, ctx.Request)
+	if err != nil {
+		log.Printf("cdn source refused for %s: %v\n", fileName, err)
+		ctx.Status(http.StatusBadGateway)
+		return
+	}
+	res, err := cdnGetForRequest(source, ctx.Request)
 	if err != nil {
 		log.Printf("cdn fetch failed for %s: %v\n", fileName, err)
 		ctx.Status(http.StatusBadGateway)

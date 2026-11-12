@@ -17,7 +17,7 @@ final class AppModel: ObservableObject {
     @Published var libraryDirectory: String
     @Published var showServerSettings = false
     @Published var serverAddressDraft = "127.0.0.1:8080"
-    @Published var cdnServerDraft = "http://127.0.0.1:8080/static"
+    @Published var cdnServerDraft = ""
     @Published private(set) var savingNetwork = false
     @Published private(set) var consoleState: ConsoleState?
     @Published private(set) var submittingConsoleAction = false
@@ -47,6 +47,10 @@ final class AppModel: ObservableObject {
     private var smokeStarted = false
     private var networkApplied: ServerNetworkConfig?
     private var reportedRuntimeError: String?
+    private var managementDemandWanted = false
+    private var managementDemandRevision = 0
+    private var managementDemandTask: Task<Void, Never>?
+    private var managementAdmissionUncertain = false
     private var uncertainResetPreviousJobID: String?
     private let http: URLSession
     var smokeQuitObserver: (() async -> Void)?
@@ -106,12 +110,13 @@ final class AppModel: ObservableObject {
         if snapshot.serverLoading { return text("Server loading…", "서버 로딩 중…", "サーバー読み込み中…") }
         return snapshot.serverRunning ? text("Server running", "서버 실행 중", "サーバー実行中") : text("Server stopped", "서버 중지됨", "サーバー停止中")
     }
-    var networkChanged: Bool { networkApplied != ServerNetworkConfig(serverAddress: serverAddressDraft, cdnServer: cdnServerDraft) }
-    var connectionAddress: String? {
-        guard let raw = networkApplied?.cdnServer, var value = URLComponents(string: raw) else { return nil }
-        value.path = ""; value.query = nil; value.fragment = nil
-        return value.url?.absoluteString
+    var networkReady: Bool { networkApplied != nil }
+    var networkChanged: Bool {
+        guard let networkApplied else { return false }
+        return networkApplied.serverAddress != serverAddressDraft || networkApplied.cdnServer != cdnServerDraft
     }
+    var defaultCdnServer: String? { networkApplied?.defaultCdnServer }
+    var connectionAddress: String? { networkApplied?.localServerURL?.absoluteString }
 
     func launch() {
         guard !started, !quitting else { return }
@@ -260,8 +265,7 @@ final class AppModel: ObservableObject {
         guard connection != nil, !quitting, !stoppingRuntime else { return }
         let runtimePID = process?.processIdentifier
         do {
-            let previousGoURL = snapshot.server?.url
-            let previousRunning = snapshot.serverRunning
+            let previousGoURL = goURL(path: "/webui/admin/")
             let updated = try JSONDecoder().decode(RuntimeState.self, from: await request("/v1/state"))
             guard !quitting, !stoppingRuntime, process?.processIdentifier == runtimePID else { return }
             snapshot = updated
@@ -275,7 +279,10 @@ final class AppModel: ObservableObject {
                 resetSubmissionUncertain = false
                 if consolePresentation?.action == .resetServer { dismissConsolePresentation() }
             }
-            if previousGoURL != snapshot.server?.url || previousRunning != snapshot.serverRunning { clearGoBrowsers() }
+            if previousGoURL != goURL(path: "/webui/admin/") { clearGoBrowsers() }
+            if !managementPageVisible && snapshot.management?.running == true && snapshot.management?.status != "stopping" && managementDemandTask == nil {
+                queueManagementDemand(false)
+            }
             if snapshot.prepared && networkApplied == nil { await loadNetworkConfig() }
             let logs = try JSONDecoder().decode(RuntimeLogs.self, from: await request("/v1/logs?after=\(logCursor)"))
             logs.entries.forEach { appendLog($0.line) }
@@ -411,17 +418,58 @@ final class AppModel: ObservableObject {
     }
 
     func goURL(path: String) -> URL? {
-        guard snapshot.serverRunning, snapshot.server?.httpReady == true,
-              let raw = snapshot.server?.url, let base = URL(string: raw),
-              let components = URLComponents(url: base, resolvingAgainstBaseURL: false),
-              let port = components.port, (1...65535).contains(port), base.scheme == "http",
-              base.user == nil, base.password == nil else { return nil }
-        let rawHost = (base.host ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        let literal = rawHost == "localhost" ? "127.0.0.1" : rawHost
-        guard IPAddress.isLiteral(literal) else { return nil }
-        let normalized = ["0.0.0.0", "localhost"].contains(rawHost) ? "127.0.0.1" : rawHost == "::" ? "::1" : literal
-        let host = normalized.contains(":") ? "[\(normalized)]" : normalized
-        return URL(string: "http://\(host):\(port)" + path)
+        snapshot.webUIURL(path: path)
+    }
+
+    func retryManagement() {
+        guard managementPageVisible, toolsReady, !snapshot.busy, !snapshot.serverRunning else { return }
+        queueManagementDemand(true)
+    }
+
+    func releaseManagementIfNotVisible() {
+        guard !managementPageVisible, toolsReady else { return }
+        queueManagementDemand(false)
+    }
+
+    private var managementPageVisible: Bool {
+        selectedSection == .accounts || (selectedSection == .settings && showServerSettings)
+    }
+
+    var managementDemandIdle: Bool { managementDemandTask == nil }
+
+    private func queueManagementDemand(_ wanted: Bool) {
+        managementDemandWanted = wanted
+        managementDemandRevision &+= 1
+        guard managementDemandTask == nil else { return }
+        managementDemandTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.managementDemandTask = nil }
+            while self.connection != nil && self.process?.isRunning == true {
+                let revision = self.managementDemandRevision
+                let wantedNow = self.managementDemandWanted && self.managementPageVisible && !self.stoppingRuntime && !self.quitting
+                if wantedNow && (!self.toolsReady || self.snapshot.busy || self.snapshot.serverRunning) { return }
+                if wantedNow { self.managementAdmissionUncertain = true }
+                do {
+                    self.smokeEvent?(wantedNow ? "management-demand-start-requested" : "management-demand-stop-requested")
+                    let value = try JSONDecoder().decode(RuntimeState.self,
+                        from: await self.request(wantedNow ? "/v1/management/start" : "/v1/management/stop", method: "POST"))
+                    self.smokeEvent?(wantedNow ? "management-demand-start-acknowledged" : "management-demand-stop-acknowledged")
+                    self.snapshot.management = value.management
+                    if !wantedNow && value.management?.running != true { self.managementAdmissionUncertain = false }
+                } catch {
+                    if wantedNow && revision == self.managementDemandRevision && self.managementPageVisible {
+                        self.message = error.localizedDescription
+                    }
+                }
+                let latest = self.managementDemandWanted && self.managementPageVisible && !self.stoppingRuntime && !self.quitting
+                if latest != wantedNow {
+                    self.managementDemandWanted = latest
+                    self.managementDemandRevision &+= 1
+                    continue
+                }
+                if revision == self.managementDemandRevision { return }
+            }
+        }
     }
 
     func loadNetworkConfig() async {
@@ -432,7 +480,7 @@ final class AppModel: ObservableObject {
     }
 
     func saveNetworkConfig() {
-        guard canChangeStorage, !savingNetwork else { return }
+        guard canChangeStorage, networkReady, !savingNetwork else { return }
         savingNetwork = true
         let body = ["server_address": serverAddressDraft, "cdn_server": cdnServerDraft]
         Task {
@@ -546,10 +594,13 @@ final class AppModel: ObservableObject {
         snapshot.progress = nil
         defer { stoppingRuntime = false }
         polling?.cancel()
+        queueManagementDemand(false)
+        if let demand = managementDemandTask { await demand.value }
         // A reset restores vanilla data and then resets accounts. Gate new
         // admission with shutdown, then await both phases before any group kill.
         while submittingConsoleAction { try? await Task.sleep(nanoseconds: 100_000_000) }
         var resetRunning = resetSubmissionUncertain || (consoleState?.job?.action == .resetServer && consoleState?.job?.running == true)
+        var managementRunning = managementAdmissionUncertain || snapshot.management?.running == true
         var shutdownAcknowledged = false
         if connection != nil && process?.isRunning == true {
             smokeEvent?("runtime-shutdown-request")
@@ -558,9 +609,9 @@ final class AppModel: ObservableObject {
                     _ = try await request("/v1/shutdown", method: "POST")
                     shutdownAcknowledged = true
                 } catch {
-                    if resetRunning && process?.isRunning == true { try? await Task.sleep(nanoseconds: 500_000_000) }
+                    if (resetRunning || managementRunning) && process?.isRunning == true { try? await Task.sleep(nanoseconds: 500_000_000) }
                 }
-            } while resetRunning && !shutdownAcknowledged && process?.isRunning == true
+            } while (resetRunning || managementRunning) && !shutdownAcknowledged && process?.isRunning == true
             smokeEvent?("runtime-shutdown-response")
         }
         while resetRunning && process?.isRunning == true {
@@ -572,6 +623,16 @@ final class AppModel: ObservableObject {
                 resetSubmissionUncertain = false
             } catch { /* Never escalate an uncertain or active reset. */ }
             if resetRunning { try? await Task.sleep(nanoseconds: 500_000_000) }
+        }
+        while managementRunning && process?.isRunning == true {
+            message = text("Finishing management changes safely before quitting…", "관리 작업을 안전하게 완료한 뒤 종료합니다…", "管理処理を安全に完了してから終了します…")
+            do {
+                let value = try JSONDecoder().decode(RuntimeState.self, from: await request("/v1/state"))
+                snapshot.management = value.management
+                managementRunning = value.management?.running == true
+                managementAdmissionUncertain = managementRunning
+            } catch { /* An owned management write must not be force-killed while its state is uncertain. */ }
+            if managementRunning { try? await Task.sleep(nanoseconds: 500_000_000) }
         }
         let deadline = Date().addingTimeInterval(8)
         while process?.isRunning == true && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
@@ -588,6 +649,7 @@ final class AppModel: ObservableObject {
         process = nil
         consoleState = nil
         resetSubmissionUncertain = false
+        managementAdmissionUncertain = false
         smokeEvent?("runtime-stop-finished")
     }
 

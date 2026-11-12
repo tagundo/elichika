@@ -28,11 +28,10 @@ func staticVirtual(ctx *gin.Context) {
 		return
 	}
 
-	host := *config.Conf.CdnServer
-	if host == "elichika" {
-		host = "http://" + ctx.Request.Host + "/static"
-	} else if host == "elichika_tls" {
-		host = "https://" + ctx.Request.Host + "/static"
+	source, err := sourceCDNURL(*config.Conf.CdnServer, downloadData.File, ctx.Request)
+	if err != nil {
+		ctx.Status(http.StatusBadGateway)
+		return
 	}
 	// Reuse the package's timeout-bounded httpClient with retry/backoff (cdnGetRange) instead of a
 	// fresh, unbounded http.Client{} - a stalled upstream now fails fast and a transient hiccup is
@@ -40,7 +39,7 @@ func staticVirtual(ctx *gin.Context) {
 	// panicking (which gin.Recovery would turn into a 500).
 	start := downloadData.Start
 	end := downloadData.Start + downloadData.Size - 1
-	response, err := cdnGetRange(fmt.Sprintf("%s/%s", host, downloadData.File), start, end)
+	response, err := cdnGetRange(source, start, end, ctx.Request)
 	if err != nil {
 		log.Printf("static_virtual: upstream fetch failed for %s: %v\n", downloadData.File, err)
 		ctx.Status(http.StatusBadGateway)

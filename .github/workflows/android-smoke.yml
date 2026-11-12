@@ -581,11 +581,23 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll-report.json > evidence/viewer-portrait-scroll-report.json
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll.png > evidence/viewer-portrait-scroll.png
 
+      - name: Exercise offline settings and user panels after the unchanged viewer suite
+        if: ${{ !inputs.focused_header_diagnostic }}
+        timeout-minutes: 8
+        run: >-
+          python3 tests/android_offline_management_gate.py
+          --apk "candidate/elichika-${{ inputs.version_name }}.apk"
+          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
+          --serial 127.0.0.1:5555 --evidence evidence
+
       - name: Collect Android diagnostics
         if: always()
         run: |
           mkdir -p evidence
           docker logs android-release-smoke > evidence/container.log 2>&1 || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/offline-management-native.json > evidence/offline-management-native.json 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/offline-management-settings.png > evidence/offline-management-settings.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/offline-management-user.png > evidence/offline-management-user.png 2>/dev/null || true
           adb -s 127.0.0.1:5555 logcat -d > evidence/logcat.txt 2>&1 || true
           if [ ! -s evidence/native-texture65-report.json ]; then
             adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-texture65-report.json > evidence/native-texture65-report.json 2>/dev/null || true

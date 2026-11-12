@@ -14,9 +14,9 @@ import (
 
 type RuntimeConfig struct {
 	ServerAddress            *string `json:"server_address" of_label:"Server's address"`
-	CdnServer                *string `json:"cdn_server" of_label:"CDN server's address"`
+	CdnServer                *string `json:"cdn_server" of_label:"Original-game source CDN"`
 	CdnPartialFileCapability *string `json:"cdn_partial_file_capability" of_type:"select" of_options:"Has static partial file\nstatic_file\nHas partial file mapping\nmapped_file\nHas range API\nhas_range_api\nNothing\nnothing" of_label:"CDN server's partial file capability" `
-	CdnCache                 *bool   `json:"cdn_cache" of_label:"Cache CDN packs locally and serve them"`                                                                                        // when true, elichika serves packs itself, downloading missing ones from cdn_server (the upstream) into the cache directory
+	CdnCache                 *bool   `json:"cdn_cache" of_label:"Cache original game files locally"`                                                                                             // added mod packs are always served automatically; this controls caching missing originals from the source CDN
 	CdnCacheDir              *string `json:"cdn_cache_dir" of_label:"CDN cache directory (empty = the local static/ folder, the PC default; e.g. ~/storage/downloads/sukusta/packs on Android)"` // where cached packs are stored/shared; empty (the PC default) means the local static/ folder
 	ArchiveConnections       *int32  `json:"archive_connections" of_label:"Parallel connections for the archive.org bulk download (1-32)" of_attrs:"min=\"1\" max=\"32\""`                       // starting connection count for the multi-part IA download; steps down on throttling
 	AdminPassword            *string `json:"admin_password" of_label:"Admin password" of_type:"password"`
@@ -30,14 +30,17 @@ type RuntimeConfig struct {
 	ResourceConfigType       *string `json:"resource_config_type" of_type:"select" of_options:"Original\noriginal\nComfortable\ncomfortable\nFree\nfree" of_label:"Resource config"`
 	EventAutoSchedulerPeriod *string `json:"event_auto_scheduler_period" of_type:"select" of_options:"Disabled\ndisabled\nonce per day\n1_day\nonce per week\n7_days" of_label:"Event frequency"`
 	MaintenanceUrl           *string `json:"maintenance_url" of_label:"Maintenance Url"`
-	LocalTrustLoopback       *bool   `json:"local_trust_loopback" of_label:"Trust loopback (127.0.0.1) without login - single-user local/APK use only"`                                     // when true, WebUI requests from a loopback peer skip session-key auth (judged by the real TCP peer, not headers)
-	WebUILanguage            *string `json:"webui_language" of_type:"select" of_options:"English\nen\n한국어\nko\n日本語\nja" of_label:"WebUI language (default; override per-request with ?l=)"` // default interface language for the admin/user WebUI; game data localisation is separate
+	LocalTrustLoopback       *bool   `json:"local_trust_loopback" of_label:"Trust loopback (127.0.0.1) without login - single-user local/APK use only"`                                                                                                                                   // when true, WebUI requests from a loopback peer skip session-key auth (judged by the real TCP peer, not headers)
+	WebUILanguage            *string `json:"webui_language" of_type:"select" of_options:"English\nen\n한국어\nko\n日本語\nja" of_label:"WebUI language (default; override per-request with ?l=)"`                                                                                               // default interface language for the admin/user WebUI; game data localisation is separate
 	Locales                  *string `json:"locales" of_type:"select" of_options:"All languages (ja, en, zh, ko)\nja,en,zh,ko\nJapanese only\nja\nEnglish only\nen\nKorean only\nko\nChinese only\nzh" of_label:"Game-data language(s) to load at startup (fewer = faster server start)"` // which game-data locales locale.init() builds; empty/invalid falls back to all four
 }
 
 // DefaultCdnCacheDir is the cdn_cache directory used on Android (Termux and the embedded APK build):
 // the shared sukusta folder, so the cache lines up with the game and llas_asset_extractor.py.
 const DefaultCdnCacheDir = "~/storage/downloads/sukusta/packs"
+
+// DefaultCdnServer is the original-game source, separate from client-facing mod URLs.
+const DefaultCdnServer = "https://llsifas.imsofucking.gay/static/"
 
 // isAndroid reports whether elichika is running on Android - either the embedded APK build
 // (GOOS=android) or a Termux server. Termux's Go toolchain does not always report GOOS=android, so
@@ -84,7 +87,7 @@ func defaultConfigs() *RuntimeConfig {
 		Locales:                  new(string),
 	}
 	*configs.ServerAddress = "0.0.0.0:8080"
-	*configs.CdnServer = "https://llsifas.imsofucking.gay/static/"
+	*configs.CdnServer = DefaultCdnServer
 	*configs.CdnPartialFileCapability = "nothing"
 	*configs.CdnCache = false
 	*configs.CdnCacheDir = defaultCdnCacheDir()

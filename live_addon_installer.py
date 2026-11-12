@@ -1056,14 +1056,7 @@ for package_db_path in PACKAGE_DB_PATHS:
 print("deleting temp folder")
 shutil.rmtree(temp_directory, ignore_errors=True)
 
-with open(check_json_config, 'r') as f:
-    config_elichika = json.load(f)
-    xcheck_cdn = config_elichika.get('cdn_server')
-    if xcheck_cdn != "http://127.0.0.1:8080/static":
-        config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
-        with open(check_json_config, 'w') as f:
-            json.dump(config_elichika, f, indent=4)
-            print("CDN server updated to http://127.0.0.1:8080/static")
+print("Added files are served automatically by Elichika; the source CDN setting is unchanged.")
 
 print("FINISHED")
 sys.exit(1)

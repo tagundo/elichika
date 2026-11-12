@@ -269,6 +269,23 @@ def _run_installer(job, key, params):
         raise FileNotFoundError(
             f"{chosen_list[0]} not found in Download/sukusta/{folder} or …/addons.")
 
+    # Existing API/CLI callers retain their supplied ZIP thumbnail. The native
+    # form explicitly enables HQ 3D by default and supplies its render plan.
+    if key == "costume" and params.get("auto_thumbnail", False):
+        from adminui.tools.costume_thumbnail import install_inputs
+        try:
+            with install_inputs(job, params) as thumbnails:
+                return _run_install_batch(job, key, params, spec, chosen_list, thumbnails)
+        except ValueError:
+            if job.should_stop():
+                return "costume: cancelled before installation completed; server kept stopped if already stopped."
+            raise
+    return _run_install_batch(job, key, params, spec, chosen_list)
+
+
+def _run_install_batch(job, key, params, spec, chosen_list, thumbnails=None):
+    folder = spec.get("folder", "addons")
+
     want_backup = bool(params.get("backup", True))
     want_restart = key == "costume" and bool(params.get("restart_server", False))
     total = len(chosen_list)
@@ -286,7 +303,15 @@ def _run_installer(job, key, params):
                 break
             # Back up before the first actual install — missing selections do
             # not consume the batch's single backup.
-            if _install_one(job, key, spec, chosen, do_backup=(want_backup and done == 0)):
+            if thumbnails is not None:
+                item = thumbnails[chosen]
+                if _file_sha256(item["source_path"]) != item["source_sha256"]:
+                    raise ValueError("The selected costume ZIP changed after its thumbnail was rendered: " + chosen)
+                installed = _install_one(job, key, spec, os.path.basename(item["output_path"]),
+                    do_backup=(want_backup and done == 0), source_path=item["output_path"], expected_sha256=item["sha256"])
+            else:
+                installed = _install_one(job, key, spec, chosen, do_backup=(want_backup and done == 0))
+            if installed:
                 done += 1
             else:
                 missing.append(chosen)

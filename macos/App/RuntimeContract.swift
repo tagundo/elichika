@@ -47,6 +47,7 @@ struct RuntimeState: Decodable {
     var error: String?
     var progress: ProgressState?
     var server: ServerState?
+    var management: ServerState?
     var console: ConsoleState?
 
     struct ProgressState: Decodable {
@@ -68,6 +69,28 @@ struct RuntimeState: Decodable {
 
     var serverLoading: Bool { serverRunning && server?.httpReady != true }
 
+    func webUIURL(path: String) -> URL? {
+        let source: ServerState?
+        if serverRunning {
+            source = server?.httpReady == true ? server : nil
+        } else {
+            source = management?.running == true && management?.httpReady == true ? management : nil
+        }
+        guard path == "/webui/admin/" || path == "/webui/user/",
+              let raw = source?.url, let base = URL(string: raw),
+              let components = URLComponents(url: base, resolvingAgainstBaseURL: false),
+              let port = components.port, (1...65535).contains(port), base.scheme == "http",
+              base.user == nil, base.password == nil, components.query == nil, components.fragment == nil,
+              ["", "/"].contains(components.path) else { return nil }
+        let rawHost = (base.host ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        guard serverRunning || rawHost == "127.0.0.1" else { return nil }
+        let literal = rawHost == "localhost" ? "127.0.0.1" : rawHost
+        guard IPAddress.isLiteral(literal) else { return nil }
+        let normalized = ["0.0.0.0", "localhost"].contains(rawHost) ? "127.0.0.1" : rawHost == "::" ? "::1" : literal
+        let host = normalized.contains(":") ? "[\(normalized)]" : normalized
+        return URL(string: "http://\(host):\(port)" + path)
+    }
+
     var preparationPercent: Int? {
         guard phase == "preparing", !prepared else { return nil }
         return progress?.displayPercent
@@ -82,7 +105,7 @@ struct RuntimeState: Decodable {
         enum CodingKeys: String, CodingKey { case running, pid, url, status, error; case httpReady = "http_ready" }
     }
 
-    enum CodingKeys: String, CodingKey { case phase, busy, prepared, error, progress, server, console; case serverRunning = "server_running" }
+    enum CodingKeys: String, CodingKey { case phase, busy, prepared, error, progress, server, management, console; case serverRunning = "server_running" }
     init() {}
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -93,6 +116,7 @@ struct RuntimeState: Decodable {
         error = try c.decodeIfPresent(String.self, forKey: .error)
         progress = try c.decodeIfPresent(ProgressState.self, forKey: .progress)
         server = try c.decodeIfPresent(ServerState.self, forKey: .server)
+        management = try c.decodeIfPresent(ServerState.self, forKey: .management)
         console = try c.decodeIfPresent(ConsoleState.self, forKey: .console)
     }
 }
@@ -222,7 +246,23 @@ struct AppTerminationGate {
 struct ServerNetworkConfig: Decodable, Equatable {
     let serverAddress: String
     let cdnServer: String
-    enum CodingKeys: String, CodingKey { case serverAddress = "server_address", cdnServer = "cdn_server" }
+    let defaultCdnServer: String?
+    enum CodingKeys: String, CodingKey { case serverAddress = "server_address", cdnServer = "cdn_server", defaultCdnServer = "default_cdn_server" }
+    init(serverAddress: String, cdnServer: String, defaultCdnServer: String? = nil) {
+        self.serverAddress = serverAddress; self.cdnServer = cdnServer; self.defaultCdnServer = defaultCdnServer
+    }
+    var localServerURL: URL? {
+        let normalized = serverAddress.hasPrefix(":") ? "0.0.0.0" + serverAddress : serverAddress
+        guard let value = URLComponents(string: "http://" + normalized),
+              let host = value.host, value.user == nil, value.password == nil,
+              value.path.isEmpty, value.query == nil, value.fragment == nil,
+              let port = value.port, (1...65535).contains(port) else { return nil }
+        let rawHost = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        let local = ["0.0.0.0", "localhost"].contains(rawHost) ? "127.0.0.1" : rawHost == "::" ? "::1" : rawHost
+        guard IPAddress.isLiteral(local) else { return nil }
+        let formatted = local.contains(":") ? "[\(local)]" : local
+        return URL(string: "http://\(formatted):\(port)")
+    }
 }
 
 enum IPAddress {

@@ -366,4 +366,57 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(RuntimeState.self, from: Data("{}".utf8)).console)
     }
 
+    func testOfflineManagementProvidesOnlyPreparedLoopbackWebUIPages() throws {
+        let data = Data("""
+            {"server_running":false,"management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:43127"}}
+            """.utf8)
+        let state = try JSONDecoder().decode(RuntimeState.self, from: data)
+        XCTAssertFalse(state.serverRunning)
+        XCTAssertEqual(state.webUIURL(path: "/webui/admin/")?.absoluteString, "http://127.0.0.1:43127/webui/admin/")
+        XCTAssertEqual(state.webUIURL(path: "/webui/user/")?.absoluteString, "http://127.0.0.1:43127/webui/user/")
+        XCTAssertNil(state.webUIURL(path: "/asset/getPackUrl"))
+        XCTAssertNil(state.webUIURL(path: "/static/test.pack"))
+        let pending = try JSONDecoder().decode(RuntimeState.self,
+            from: Data("{\"management\":{\"running\":true,\"http_ready\":false,\"url\":\"http://127.0.0.1:43127\"}}".utf8))
+        XCTAssertNil(pending.webUIURL(path: "/webui/user/"))
+    }
+
+    func testOfflineManagementRefusesForeignAndMalformedOrigins() throws {
+        for url in ["http://localhost:8123", "http://0.0.0.0:8123", "http://192.0.2.5:8123",
+                    "http://127.0.0.1.attacker.example:8123", "https://127.0.0.1:8123",
+                    "http://user@127.0.0.1:8123", "http://127.0.0.1:8123/path",
+                    "http://127.0.0.1:8123/?query=1", "http://127.0.0.1:8123/#fragment", "http://127.0.0.1:0"] {
+            let data = try JSONSerialization.data(withJSONObject: ["management": ["running": true, "http_ready": true, "url": url]])
+            let state = try JSONDecoder().decode(RuntimeState.self, from: data)
+            XCTAssertNil(state.webUIURL(path: "/webui/admin/"), url)
+        }
+    }
+
+    func testWebUIRoutingFollowsTheReadyGameOrOfflineManagementRole() throws {
+        var value: [String: Any] = ["server_running": true,
+            "server": ["running": true, "http_ready": true, "url": "http://0.0.0.0:18080"],
+            "management": ["running": true, "http_ready": true, "url": "http://127.0.0.1:43127"]]
+        func state() throws -> RuntimeState {
+            try JSONDecoder().decode(RuntimeState.self, from: JSONSerialization.data(withJSONObject: value))
+        }
+        XCTAssertEqual(try state().webUIURL(path: "/webui/admin/")?.absoluteString, "http://127.0.0.1:18080/webui/admin/")
+        value["server"] = ["running": true, "http_ready": false, "url": "http://0.0.0.0:18080"]
+        XCTAssertNil(try state().webUIURL(path: "/webui/admin/"))
+        value["server_running"] = false
+        XCTAssertEqual(try state().webUIURL(path: "/webui/admin/")?.port, 43127)
+    }
+
+    func testGameConnectionAddressDoesNotFollowTheSourceCDN() throws {
+        let data = Data("""
+            {"server_address":"0.0.0.0:18080","cdn_server":"https://original.example/static/","default_cdn_server":"https://default.example/static/"}
+            """.utf8)
+        let config = try JSONDecoder().decode(ServerNetworkConfig.self, from: data)
+        XCTAssertEqual(config.localServerURL?.absoluteString, "http://127.0.0.1:18080")
+        XCTAssertEqual(config.cdnServer, "https://original.example/static/")
+        XCTAssertEqual(config.defaultCdnServer, "https://default.example/static/")
+        XCTAssertEqual(ServerNetworkConfig(serverAddress: "[::]:8080", cdnServer: "https://other.example/").localServerURL?.absoluteString,
+                       "http://[::1]:8080")
+        XCTAssertNil(ServerNetworkConfig(serverAddress: "untrusted.example:8080", cdnServer: "https://original.example/").localServerURL)
+    }
+
 }

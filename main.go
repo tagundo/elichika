@@ -7,6 +7,7 @@ import (
 	_ "elichika/handler"
 	"elichika/handler/asset"
 	"elichika/log"
+	"elichika/managementmode"
 	"elichika/router"
 	"elichika/shutdown"
 	_ "elichika/subsystem"
@@ -92,7 +93,8 @@ func checkCli() bool {
 }
 
 func main() {
-	if len(os.Args) > 1 {
+	management := managementmode.Enabled()
+	if len(os.Args) > 1 && !management {
 		if !checkCli() {
 			return
 		}
@@ -100,6 +102,12 @@ func main() {
 	userdata.Init()
 	runtime.GC()
 	gin.SetMode(gin.ReleaseMode)
+	if management {
+		if err := serveManagement(); err != nil {
+			log.Panic(err)
+		}
+		return
+	}
 
 	r := gin.Default()
 	router.Router(r)

@@ -21,7 +21,11 @@ object PyServers {
     fun prepareAsync(ctx: Context) {
         val appContext = ctx.applicationContext
         synchronized(preparationLock) {
-            if (started || preparing) return
+            if (started) {
+                ManagementServer.prepare(appContext, appContext.filesDir)
+                return
+            }
+            if (preparing) return
             preparing = true
             preparationError = null
         }
@@ -46,9 +50,15 @@ object PyServers {
     }
 
     fun ensureStarted(ctx: Context, serverCwd: File): Boolean {
-        if (started) return true
+        if (started) {
+            ManagementServer.prepare(ctx.applicationContext, serverCwd)
+            return true
+        }
         synchronized(this) {
-            if (started) return true
+            if (started) {
+                ManagementServer.prepare(ctx.applicationContext, serverCwd)
+                return true
+            }
             try {
                 val py = EmbeddedPython.instance(ctx)
                 // shared Download/sukusta (same as Termux), so the modding tools'
@@ -68,6 +78,7 @@ object PyServers {
                 started = true
                 preparationError = null
                 Bus.log(ctx.getString(R.string.log_pyservers_started))
+                ManagementServer.prepare(ctx.applicationContext, serverCwd)
                 Bus.toolsStateChanged()
                 return true
             } catch (e: Throwable) {

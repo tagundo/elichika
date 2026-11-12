@@ -49,12 +49,17 @@ var httpClient = &http.Client{
 // error" prompt. A 4xx (e.g. 404) is returned immediately so callers can fall
 // back to another source.
 func cdnGet(url string) (*http.Response, error) {
+	return cdnGetForRequest(url, nil)
+}
+
+func cdnGetForRequest(url string, request *http.Request) (*http.Response, error) {
 	var lastErr error
+	client := cdnHTTPClient(request)
 	for attempt := 0; attempt < 4; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
 		}
-		res, err := httpClient.Get(url)
+		res, err := client.Get(url)
 		if err != nil {
 			lastErr = err
 			continue
@@ -72,8 +77,9 @@ func cdnGet(url string) (*http.Response, error) {
 // cdnGetRange fetches the byte range [start,end] of url with a Range header, retrying transient
 // failures (connection errors and 5xx) like cdnGet, using the shared timeout-bounded httpClient.
 // The caller must verify the response is http.StatusPartialContent.
-func cdnGetRange(url string, start, end int) (*http.Response, error) {
+func cdnGetRange(url string, start, end int, request *http.Request) (*http.Response, error) {
 	var lastErr error
+	client := cdnHTTPClient(request)
 	for attempt := 0; attempt < 4; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
@@ -83,7 +89,7 @@ func cdnGetRange(url string, start, end int) (*http.Response, error) {
 			return nil, err
 		}
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
-		res, err := httpClient.Do(req)
+		res, err := client.Do(req)
 		if err != nil {
 			lastErr = err
 			continue
@@ -239,7 +245,7 @@ func localPath(file string) (string, bool) {
 // it from the upstream CDN into the cache dir when cdn_cache is enabled and it isn't already local.
 // If it can't be found nor cached, the static/ path is returned so the caller fails the same way it
 // would for any missing file.
-func ensureLocalFile(file string) string {
+func ensureLocalFile(file string, request *http.Request) string {
 	if p, ok := localPath(file); ok {
 		return p
 	}
@@ -254,7 +260,7 @@ func ensureLocalFile(file string) string {
 		return p
 	}
 	dest := packPath(file)
-	if err := downloadPack(file, dest); err != nil {
+	if err := downloadPack(file, dest, request); err != nil {
 		log.Printf("failed to cache pack %s from cdn: %v\n", file, err)
 	}
 	return dest
@@ -292,16 +298,14 @@ func moveToCache(src, dst string) error {
 	return nil
 }
 
-// cdnURL builds the upstream CDN url for a pack/metapack file.
-func cdnURL(fileName string) string {
-	return strings.TrimSuffix(*config.Conf.CdnServer, "/") + "/" + fileName
-}
-
 // downloadPack downloads a whole pack/metapack file from the upstream CDN into dest atomically.
-func downloadPack(fileName, dest string) error {
-	url := cdnURL(fileName)
+func downloadPack(fileName, dest string, request *http.Request) error {
+	url, err := sourceCDNURL(*config.Conf.CdnServer, fileName, request)
+	if err != nil {
+		return err
+	}
 	log.Printf("caching pack from cdn: %s\n", url)
-	return downloadFromURL(url, dest)
+	return downloadFromURLProgressForRequest(url, dest, nil, request)
 }
 
 // countWriter atomically adds the number of bytes written to *n, for a live download total/speed.
@@ -321,7 +325,11 @@ func downloadFromURL(url, dest string) error {
 // downloadFromURLProgress is downloadFromURL but, when progress != nil, adds bytes to it as they
 // arrive so a caller can show live progress.
 func downloadFromURLProgress(url, dest string, progress *int64) error {
-	res, err := cdnGet(url)
+	return downloadFromURLProgressForRequest(url, dest, progress, nil)
+}
+
+func downloadFromURLProgressForRequest(url, dest string, progress *int64, request *http.Request) error {
+	res, err := cdnGetForRequest(url, request)
 	if err != nil {
 		return err
 	}

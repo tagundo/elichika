@@ -501,6 +501,27 @@ def check_native_sidebar_layout(observed):
             "Native filename rows must preserve accessible full names while truncating without horizontal overflow")
 
 
+def check_native_offline_management(observed):
+    import urllib.parse
+    require(observed.get("status") == "PASS" and observed.get("server_stayed_stopped") is True
+            and observed.get("released_before_editing") is True
+            and type(observed.get("fast_navigation_cycles")) is int and observed["fast_navigation_cycles"] == 3
+            and type(observed.get("fast_navigation_acknowledged_starts")) is int and observed["fast_navigation_acknowledged_starts"] > 0
+            and type(observed.get("management_pid")) is int and observed["management_pid"] > 0,
+            "Actual native management must load with the game server stopped and release its process before editing")
+    pages = observed.get("pages", [])
+    require(len(pages) == 2 and [page.get("requested_path") for page in pages] == ["/webui/admin/", "/webui/user/"],
+            "Actual native Settings and Accounts must both be exercised")
+    for page, image in zip(pages, ("offline-management-settings.png", "offline-management-user.png")):
+        document = page.get("document", {})
+        url = urllib.parse.urlsplit(document.get("url", ""))
+        require(page.get("http_status") == 200 and page.get("screenshot") == image
+                and document.get("bodyCharacters", 0) > 20 and url.scheme == "http"
+                and url.hostname == "127.0.0.1" and url.port and not url.username and not url.password
+                and url.path.startswith("/webui/"),
+                "Actual management pages must be visible successful loopback WebUI documents")
+
+
 def check_native_console_actions(observed):
     require(observed.get("status") == "PASS"
             and observed.get("unsafe_requests_rejected") == ["runShell", "reset_server"]
@@ -1364,6 +1385,7 @@ def check_pose_body_report(report):
             "Actual WebKit must start Pose collapsed and expose independent pose and body controls")
     check_fresh_file_header(report.get("native_file_header", {}))
     check_native_sidebar_layout(report.get("native_sidebar_layout", {}))
+    check_native_offline_management(report.get("native_offline_management", {}))
     check_native_console_actions(report.get("native_console_actions", {}))
     panels = report.get("separate_pose_body_panels", {})
     require(panels.get("status") == "PASS" and len(panels.get("toggles", [])) == 4
@@ -1438,6 +1460,12 @@ def launch(app, output, label):
             and console_image.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n",
             "Actual native Console controls must have a PNG capture")
     shutil.copyfile(console_image, output / f"{label}-console-menus.png")
+    check_native_offline_management(report.get("native_offline_management", {}))
+    for name in ("offline-management-settings.png", "offline-management-user.png"):
+        image = directory / name
+        require(image.is_file() and image.stat().st_size > 1000 and image.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n",
+                "Actual offline management WebViews must have PNG captures")
+        shutil.copyfile(image, output / f"{label}-{name}")
     for key in ("python_pid", "go_pid", "go_pid_at_quit"):
         pid = report.get(key)
         deadline = time.monotonic() + 10

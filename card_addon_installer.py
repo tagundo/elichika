@@ -1402,15 +1402,6 @@ with sqlite3.connect('assets/db/jp/asset_a_ja.db') as conn:
 print("deleting temp folder")
 shutil.rmtree(temp_directory, ignore_errors=True)
 
-with open(check_json_config, 'r') as f:
-    config_elichika = json.load(f)
-    xcheck_cdn = config_elichika.get('cdn_server')
-    xcheck_cdnpath = config_elichika.get('cdn_path_type')
-    if xcheck_cdn != "http://127.0.0.1:8080/static" and xcheck_cdnpath != "all":
-        config_elichika['cdn_server'] = "http://127.0.0.1:8080/static"
-        config_elichika['cdn_path_type'] = "all"
-        with open(check_json_config, 'w') as f:
-            json.dump(config_elichika, f, indent=4)
-            print("CDN server updated to http://127.0.0.1:8080/static")
+print("Added files are served automatically by Elichika; the source CDN setting is unchanged.")
 
 print("FINISHED")

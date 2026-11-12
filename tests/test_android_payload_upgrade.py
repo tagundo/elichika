@@ -7,7 +7,9 @@ directory; no dependency download or Android/Go build is performed by the test.
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -89,7 +91,7 @@ open class AssetManager(val files: MutableMap<String,String>) {
 package android.content.pm
 class PackageInfo(var versionName: String="new", var versionCode: Int=2)
 class PackageManager(val info: PackageInfo=PackageInfo()) { fun getPackageInfo(name: String, flags: Int)=info }
-class ApplicationInfo { var nativeLibraryDir="/nonexistent-synthetic-native" }
+class ApplicationInfo { var nativeLibraryDir="/nonexistent-synthetic-native"; var sourceDir="/synthetic-test.apk" }
 ''',
     'Environment.kt': r'''
 package android.os
@@ -106,7 +108,7 @@ class Looper private constructor() {
     }
 }
 class Handler(looper: Looper) { fun post(action: Runnable): Boolean { action.run(); return true } }
-object Process { fun myTid()=Thread.currentThread().id.toInt() }
+object Process { fun myTid()=Thread.currentThread().id.toInt(); fun myPid()=java.lang.ProcessHandle.current().pid().toInt() }
 ''',
     'Os.kt': r'''
 package android.system
@@ -166,6 +168,9 @@ object Bus {
     fun setStarting(value: Boolean) {}
     fun setPreparationPhase(value: AssetInstaller.PreparationPhase) {}
     internal fun setPayloadProgress(value: PayloadProgress.State?) { payloadProgressEvents.add(value) }
+}
+object ManagementServer {
+    fun prepare(context: Context, root: File) {}
 }
 class ServerService {
     companion object {
@@ -258,6 +263,104 @@ class PackagingTests(unittest.TestCase):
 
 
 class KotlinInstallerTests(unittest.TestCase):
+    def test_management_process_readiness_pause_resume_and_cancelled_launch(self):
+        configured = os.environ.get('KOTLIN_UPGRADE_QA_TOOLS')
+        if not configured:
+            self.skipTest('Kotlin host compiler not configured; Android build compiles these sources in CI')
+        tools = Path(configured)
+        java = os.environ.get('KOTLIN_UPGRADE_QA_JAVA', 'java')
+        jars = list(tools.glob('*.jar'))
+        compiler = os.pathsep.join(map(str, jars))
+        runtime = os.pathsep.join(str(p) for p in jars if p.name.startswith(('kotlin-stdlib-', 'annotations-', 'json-')))
+        doubles = {
+            'Activity.kt': '''package android.app
+open class Activity { var isDestroyed=false }
+''',
+            'Context.kt': '''package android.content
+import java.io.File
+class ApplicationInfo(var nativeLibraryDir: String)
+class Context(val filesDir: File, native: File) {
+    val applicationContext get()=this
+    val applicationInfo=ApplicationInfo(native.absolutePath)
+    fun getString(id: Int,vararg args: Any?)="$id:"+args.joinToString()
+}
+''',
+            'Process.kt': '''package android.os
+object Process { fun myPid()=java.lang.ProcessHandle.current().pid().toInt() }
+''',
+            'App.kt': '''package com.tagundo.elichika
+import android.content.Context
+import java.io.File
+import java.util.concurrent.CountDownLatch
+object R { object string { const val log_error_missing_binary=1; const val log_error_exec_failed=2 } }
+object Bus {
+    var serverRunning=false
+    val logs=java.util.Collections.synchronizedList(mutableListOf<String>())
+    fun log(value: String) { logs.add(value) }
+    fun toolsStateChanged() {}
+}
+object PyServers { fun isStarted()=true; fun prepareAsync(context: Context) {} }
+object PayloadUpgrade {
+    @Volatile var entered: CountDownLatch?=null
+    @Volatile var gate: CountDownLatch?=null
+    @Volatile var failure: String?=null
+    fun checkCostumeStartup(context: Context,root: File) {
+        entered?.countDown(); gate?.await()
+        failure?.let { throw IllegalStateException(it) }
+    }
+}
+''',
+        }
+        child = '''import http.server,json,os,pathlib,signal,sys,threading,time
+root=pathlib.Path.cwd()
+token=os.environ['ELICHIKA_READY_TOKEN']
+with (root/'launches.jsonl').open('a') as stream:
+    stream.write(json.dumps({'args':sys.argv[1:],'pid':os.getpid(),'parent':os.environ.get('ELICHIKA_MANAGEMENT_PARENT_PID'),'token':token})+'\\n')
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self,*args): pass
+    def do_GET(self):
+        self.send_response(200); self.end_headers()
+        self.wfile.write(json.dumps({'ready':True,'token':token}).encode())
+server=http.server.HTTPServer(('127.0.0.1',0),Handler)
+stopping=threading.Event()
+signal.signal(signal.SIGTERM,lambda *_: stopping.set())
+def drain():
+    stopping.wait()
+    (root/'management-drain-requested').touch()
+    while (root/'hold-management-drain').exists() and not (root/'release-management-drain').exists(): time.sleep(.01)
+    server.shutdown()
+threading.Thread(target=drain,daemon=True).start()
+print('AdminPassword : PRIVATE-PASSWORD-SENTINEL',flush=True)
+print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.0.0.1:'+str(server.server_port),'pid':os.getpid()}),flush=True)
+server.serve_forever(poll_interval=.01)
+server.server_close()
+'''
+        with tempfile.TemporaryDirectory(prefix='kotlin-management-', dir=os.environ.get('KOTLIN_UPGRADE_QA_TMP')) as directory:
+            temporary = Path(directory)
+            native = temporary / 'native'
+            native.mkdir()
+            binary = native / 'libelichika.so'
+            binary.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -B -c ' + shlex.quote(child) + ' "$@"\n')
+            binary.chmod(0o755)
+            sources = []
+            for name, content in doubles.items():
+                file = temporary / name
+                file.write_text(content)
+                sources.append(str(file))
+            sources += [str(KOTLIN / name) for name in ('ServerProcess.kt', 'ManagementServer.kt', 'ServerReadiness.kt')]
+            sources.append(str(ROOT / 'tests/kotlin_payload_upgrade/ManagementHostChecks.kt'))
+            output = temporary / 'management-checks.jar'
+            compiled = subprocess.run([java, '-cp', compiler, 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
+                '-no-stdlib', '-no-reflect', '-jvm-target', '17', '-classpath', runtime, '-d', str(output), *sources],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout)
+            checked = subprocess.run([java, '-cp', str(output) + os.pathsep + runtime,
+                'com.tagundo.elichika.ManagementHostChecksKt', str(temporary)],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+            self.assertEqual(checked.returncode, 0, checked.stdout)
+            self.assertIn('ANDROID_MANAGEMENT_HOST_CHECKS_PASS', checked.stdout)
+            print(checked.stdout.strip())
+
     def test_staging_recovery_preservation_and_shared_interpreter_contract(self):
         configured = os.environ.get('KOTLIN_UPGRADE_QA_TOOLS')
         if not configured:
@@ -275,7 +378,7 @@ class KotlinInstallerTests(unittest.TestCase):
                 path = temporary / name
                 path.write_text(content)
                 sources.append(str(path))
-            sources += [str(KOTLIN / name) for name in ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadProgress.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt', 'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerProcess.kt')]
+            sources += [str(KOTLIN / name) for name in ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadProgress.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt', 'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerProcess.kt', 'PayloadFileHasher.kt')]
             sources.append(str(ROOT / 'android/app/src/androidTest/java/com/tagundo/elichika/NativePythonTest.kt'))
             sources.append(str(ROOT / 'tests/kotlin_payload_upgrade/HostChecks.kt'))
             output = temporary / 'checks.jar'
@@ -302,7 +405,7 @@ class KotlinInstallerTests(unittest.TestCase):
         runtime = os.pathsep.join([sdk, *(str(p) for p in jars if p.name.startswith(('kotlin-stdlib-', 'annotations-', 'json-', 'junit-')))])
         names = ('AssetInstaller.kt', 'PayloadFiles.kt', 'PayloadUpgrade.kt', 'PayloadProgress.kt', 'PayloadPreparation.kt', 'EmbeddedPython.kt',
                  'PyServers.kt', 'ServerConfig.kt', 'AndroidServerController.kt', 'ServerService.kt',
-                 'ServerProcess.kt', 'ServerReadiness.kt', 'ServerSettings.kt', 'Bus.kt', 'PayloadFileHasher.kt')
+                 'ServerProcess.kt', 'ServerReadiness.kt', 'ServerSettings.kt', 'Bus.kt', 'PayloadFileHasher.kt', 'ManagementServer.kt')
         sources = [KOTLIN / name for name in names]
         sources.append(ROOT / 'android/app/src/androidTest/java/com/tagundo/elichika/PayloadRevisionTest.kt')
         resources = {}

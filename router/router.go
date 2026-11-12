@@ -83,6 +83,15 @@ func AddTemplates(path string) {
 }
 
 func Router(r *gin.Engine) {
+	configure(r, false)
+}
+
+// ManagementRouter exposes only the existing authenticated WebUI.
+func ManagementRouter(r *gin.Engine) {
+	configure(r, true)
+}
+
+func configure(r *gin.Engine, management bool) {
 	r.GET(readiness.Path, gin.WrapH(readiness.Handler(os.Getenv(readiness.Environment))))
 	// whole pack/metapack files are served by the cache-aware /static/:fileName handler
 	// (handler/asset/whole.go), which can download missing packs from the upstream CDN when
@@ -104,8 +113,14 @@ func Router(r *gin.Engine) {
 	r.LoadHTMLFiles(templates...)
 
 	for groupPath, groupInfo := range groups {
+		if management && groupPath != "/webui/admin" && groupPath != "/webui/user" {
+			continue
+		}
 		groupApi := r.Group(groupPath, groupInfo.InitialHandlers...)
 		for _, handlerInfo := range groupInfo.Handlers {
+			if management && groupPath == "/webui/admin" && (handlerInfo.Path == "/maintenance_mode" || handlerInfo.Path == "/run_alisa") {
+				continue
+			}
 			switch handlerInfo.Method {
 			case "POST":
 				groupApi.POST(handlerInfo.Path, handlerInfo.Handler)

@@ -23,6 +23,10 @@ func DownloadAllMissing(workers int) {
 		log.Println("download_packs: cdn_server must be a real CDN url (not 'elichika'); aborting")
 		return
 	}
+	if _, err := sourceCDNURL(host, "source-check", nil); err != nil {
+		log.Println("download_packs:", err)
+		return
+	}
 	if workers < 1 {
 		workers = 1
 	}
@@ -86,7 +90,11 @@ func DownloadAllMissing(workers int) {
 		go func() {
 			defer wg.Done()
 			for name := range ch {
-				if err := downloadFromURLProgress(cdnURL(name), packPath(name), &bytesTotal); err != nil {
+				source, err := sourceCDNURL(host, name, nil)
+				if err == nil {
+					err = downloadFromURLProgress(source, packPath(name), &bytesTotal)
+				}
+				if err != nil {
 					atomic.AddInt64(&failed, 1)
 					log.Printf("download_packs: failed %s: %v\n", name, err)
 				}

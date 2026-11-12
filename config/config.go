@@ -1,6 +1,7 @@
 package config
 
 import (
+	"elichika/managementmode"
 	"elichika/utils"
 
 	"os"
@@ -24,7 +25,7 @@ var (
 
 	ServerdataPath  = RootPath + "serverdata.db"
 	UserdataPath    = RootPath + "userdata.db"
-	YumemichiPath    = RootPath + "yumemichi_userdata.db"
+	YumemichiPath   = RootPath + "yumemichi_userdata.db"
 	ServerstatePath = RootPath + "serverstate.db"
 
 	UserDataBackupPath = "backup/"
@@ -48,6 +49,15 @@ var (
 )
 
 func init() {
+	if managementmode.Enabled() {
+		// No configuration, migration or database access may precede this
+		// cooperative lease in the offline management process.
+		root := RootPath
+		if root == "" {
+			root = "."
+		}
+		utils.CheckErr(managementmode.Acquire(root))
+	}
 	os.MkdirAll(UserDataBackupPath, 0755)
 	Conf = Load("./config.json")
 	loc, err := time.LoadLocation(*Conf.TimeZone)

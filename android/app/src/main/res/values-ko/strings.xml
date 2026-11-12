@@ -86,7 +86,7 @@
     <!-- first-run guide -->
     <string name="act_guide">가이드 ❓</string>
     <string name="guide_title">시작하기</string>
-    <string name="guide_body">1. 저장소 권한을 허용하세요(공유 Download/sukusta 폴더용).\n2. “서버 시작”을 누르세요.\n3. 게임 앱을 127.0.0.1:8080 으로 연결하세요(LL-hax 가이드 참고).\n4. (선택) 게임 파일 미리 받기 — “전체 게임파일 다운로드”(archive.org 전체) 또는 “누락분만 받기”(CDN). 권장이지 필수는 아닙니다.\n\nCDN 캐시: 켜져 있으면 없는 팩을 플레이 중 필요할 때 자동으로 받아 packs/ 에 저장하므로 미리 받지 않아도 됩니다. 이 방식으로 packs/ 를 채울 때는 게임 화면보다 elichika를 앞(포그라운드)에 띄워 두어야 다운로드가 끊기지 않고 끝납니다.\n\n탭: “서버 설정” / “유저 관리” = 서버 웹 UI · “서버 콘텐츠” = 개발 도구 · “에셋 편집” = 모딩 도구.\n\n폴더 (Download/sukusta): extracted = 복호화된 모델(편집 입력) · modded = 편집된 번들(편집 출력) · suit / live / card / livetimeline = 애드온 드롭 폴더 · sql = DB 패치 · packs = 게임 팩 캐시 · backup = DB 백업 · logs = elichika.log.</string>
+    <string name="guide_body">1. 저장소 권한을 허용하세요(공유 Download/sukusta 폴더용).\n2. “서버 시작”을 누르세요.\n3. 게임 앱을 127.0.0.1:8080 으로 연결하세요(LL-hax 가이드 참고).\n4. (선택) 게임 파일 미리 받기 — “전체 게임파일 다운로드”(archive.org 전체) 또는 “누락분만 받기”(CDN). 권장이지 필수는 아닙니다.\n\nCDN 캐시: 켜져 있으면 없는 팩을 플레이 중 필요할 때 자동으로 받아 packs/ 에 저장하므로 미리 받지 않아도 됩니다. 이 방식으로 packs/ 를 채울 때는 게임 화면보다 elichika를 앞(포그라운드)에 띄워 두어야 다운로드가 끊기지 않고 끝납니다.\n\n탭: “서버 설정” / “유저 관리” = 서버 웹 UI · “서버 콘텐츠” = 개발 도구 · “에셋 편집” = 모딩 도구.\n\n폴더 (Download/sukusta): extracted = 복호화된 모델(편집 입력) · modded = 편집된 번들(편집 출력) · suit / live / card / livetimeline = 애드온 드롭 폴더 · sql = DB 패치 · packs = 게임 팩 캐시 · backup = DB 백업 · logs = elichika.log.\n\n설치한 모드 파일은 CDN 캐시 설정과 관계없이 Elichika에서 자동으로 제공합니다. 캐시를 끄면 없는 원본 파일은 기존 CDN에서 받고 새로 저장하지 않으며, 이미 받은 파일은 유지됩니다. 원본 게임 CDN 주소는 유지하세요. 서버 설정과 유저 관리는 게임 서버를 켜지 않아도 사용할 수 있습니다.</string>
 
     <!-- console controls -->
     <string name="btn_share_log">기록 공유</string>
@@ -160,4 +160,6 @@
     <string name="notif_preparing_text">서버 파일과 도구를 준비 중입니다. 중지를 누르면 대기 중인 서버 시작을 취소합니다.</string>
     <string name="log_setup_failed">[설정] 서버 준비 실패: %1$s</string>
     <string name="notif_preparing">elichika 서버 준비 중</string>
+    <string name="management_preparing">서버 설정과 유저 관리 도구를 준비하고 있습니다…</string>
+    <string name="management_prepare_failed">관리 도구를 준비하지 못했습니다.</string>
 </resources>

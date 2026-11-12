@@ -1,6 +1,6 @@
 "use strict";
 
-const state = { tools: [], currentTool: null, es: null, jobId: null, lang: null, languages: [], deleteReview: null, formGeneration: 0, running: false };
+const state = { tools: [], currentTool: null, es: null, jobId: null, lang: null, languages: [], deleteReview: null, formGeneration: 0, running: false, thumbnailRenderController: null };
 const $ = (s) => document.querySelector(s);
 // Only presentation is queued. SSE parsing, progress and job decisions remain
 // synchronous, and no raw line is summarized, retimed, deduplicated or dropped.
@@ -86,6 +86,7 @@ function buildLangSelect() {
 }
 
 async function changeLang(code) {
+  invalidateInstallerThumbnail();
   state.lang = code;
   localStorage.setItem("sifas_lang", code);
   await loadI18n();
@@ -117,6 +118,7 @@ function selectTool(id) {
 }
 
 function renderForm() {
+  invalidateInstallerThumbnail();
   state.formGeneration += 1;
   state.deleteReview = null;
   const tool = state.currentTool;
@@ -148,7 +150,21 @@ function renderForm() {
       if (!state.running) setRemovalPhase("Select costumes, review their use, then confirm removal.");
     });
   }
+  if (tool.id === "install_costume") {
+    const thumbnailOptionsChanged = () => {
+      state.formGeneration += 1;
+      invalidateInstallerThumbnail();
+      const automatic = $("#f_auto_thumbnail"), full = $("#f_thumbnail_fit_full");
+      if (automatic && full) full.disabled = !automatic.checked;
+    };
+    form.addEventListener("input", thumbnailOptionsChanged);
+    form.addEventListener("change", thumbnailOptionsChanged);
+  }
   panel.appendChild(form);
+  if (tool.id === "install_costume") {
+    const automatic = $("#f_auto_thumbnail"), full = $("#f_thumbnail_fit_full");
+    if (automatic && full) full.disabled = !automatic.checked;
+  }
 
   // auto-load dynamic selects that don't depend on another field
   for (const field of tool.fields) {
@@ -384,6 +400,69 @@ function collectParams() {
   return params;
 }
 
+function invalidateInstallerThumbnail() {
+  const preview = $("#costume-install-thumbnail-preview");
+  if (preview) preview.remove();
+  const controller = state.thumbnailRenderController;
+  if (controller) {
+    controller.selectionChanged = true;
+    controller.abort();
+  }
+}
+
+async function prepareCostumeInstallationThumbnails(tool, params, context) {
+  if (!window.ViewerThumbnails || typeof window.ViewerThumbnails.renderPlan !== "function") {
+    throw new Error(T("The automatic 3D thumbnail renderer is unavailable."));
+  }
+  const form = $("#tool-form"), selection = JSON.stringify(collectParams()), language = state.lang;
+  const unchanged = () => state.currentTool === tool && $("#tool-form") === form && state.lang === language &&
+    state.formGeneration === context.generation && JSON.stringify(collectParams()) === selection;
+  const changed = () => new Error(T("The costume selection or thumbnail settings changed. Run again."));
+  const controller = new AbortController();
+  state.thumbnailRenderController = controller;
+  $("#console-title").textContent = tool.label + " — " + T("Rendering costume thumbnail…");
+  try {
+    const response = await fetch(withLang("/api/costume-thumbnail/plan"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params), signal: controller.signal,
+    });
+    const plan = await response.json();
+    if (!response.ok || plan.error) throw new Error(plan.error || T("The automatic 3D thumbnail could not be prepared."));
+    if (!unchanged()) throw changed();
+    const thumbnails = await window.ViewerThumbnails.renderPlan(plan, {
+      signal: controller.signal,
+      onProgress: (done, total, name) => {
+        if (!unchanged()) { controller.selectionChanged = true; controller.abort(); return; }
+        setProgress(done, total);
+        if (name) appendLog(T("Rendering costume thumbnail…") + " " + name);
+      },
+      onPreview: (png, receipt) => {
+        if (controller.signal.aborted || !unchanged()) return;
+        const field = $("#f_auto_thumbnail");
+        if (!field) return;
+        let preview = $("#costume-install-thumbnail-preview");
+        if (!preview) {
+          preview = el("img", { id: "costume-install-thumbnail-preview", alt: T("Costume thumbnail"), width: "128", height: "128" });
+          field.parentNode.parentNode.appendChild(preview);
+        }
+        preview.src = png;
+        preview.dataset.sha256 = receipt.sha256;
+      },
+    });
+    if (controller.selectionChanged || !unchanged()) throw changed();
+    if (controller.signal.aborted) throw new DOMException(T("Thumbnail rendering cancelled."), "AbortError");
+    if (!thumbnails || thumbnails.token !== plan.token || !/^[a-f0-9]{32}$/.test(thumbnails.token)) {
+      throw new Error(T("The automatic 3D thumbnail could not be prepared."));
+    }
+    params.thumbnail_plan = thumbnails.token;
+  } catch (error) {
+    if (controller.selectionChanged) throw changed();
+    throw error;
+  } finally {
+    if (state.thumbnailRenderController === controller) state.thumbnailRenderController = null;
+  }
+}
+
 async function runTool(overrides = null) {
   if (state.running || !state.currentTool) return;
   const tool = state.currentTool;
@@ -422,10 +501,21 @@ async function runTool(overrides = null) {
     ? (params.action === "delete" ? "Removing selected costumes…" : "Reviewing selected costumes…") : "running…");
   let resp;
   try {
+    if (tool.id === "install_costume" && params.auto_thumbnail !== false) {
+      await prepareCostumeInstallationThumbnails(tool, params, context);
+      $("#console-title").textContent = tool.label + " — " + T("running…");
+      setProgress(0, 1);
+    }
     resp = await (await fetch(withLang("/api/run/" + tool.id), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params),
     })).json();
-  } catch (e) { appendLog(T("ERROR: ") + e); finishConsole("error", context); setRunning(false); return; }
+  } catch (e) {
+    const preview = $("#costume-install-thumbnail-preview");
+    if (preview) preview.remove();
+    appendLog(T("ERROR: ") + e);
+    finishConsole(e && e.name === "AbortError" ? "cancelled" : "error", context);
+    setRunning(false); return;
+  }
   if (resp.error || !resp.job_id) {
     appendLog(T("ERROR: ") + (resp.error || T("No job was started.")));
     finishConsole("error", context); setRunning(false); return;
@@ -602,6 +692,11 @@ function showRemovalResult(result, status) {
 }
 
 async function cancelRun() {
+  if (state.thumbnailRenderController) {
+    appendLog(T("[cancelling…]"));
+    state.thumbnailRenderController.abort();
+    return;
+  }
   if (!state.jobId) return;
   appendLog(T("[cancelling…]"));
   // Start the control request before spending any time rendering queued text.

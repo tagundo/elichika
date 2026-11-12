@@ -27,7 +27,14 @@ STATIC_FILES = tuple("webtools/web/" + name for name in (
     "static/texture-panel-expand.css", "static/vendor/fflate-0.8.2/fflate.min.js",
     "static/vendor/fflate-0.8.2/LICENSE")) + (
     "adminui/web/index.html", "adminui/web/ui/app.js", "adminui/web/ui/style.css",
-    "adminui/web/ui/game-quality.js", "adminui/web/ui/game-quality.css", "adminui/web/ui/panel-settings.js")
+    "adminui/web/ui/game-quality.js", "adminui/web/ui/game-quality.css", "adminui/web/ui/panel-settings.js") + (
+    "webtools/web/static/vendor/three-r128/three.min.js",
+    "webtools/web/static/vendor/three-r128/GLTFLoader.js", "webtools/web/static/viewer-quality.js",
+    "webtools/web/static/thumbnail-sdk/outer-border.png", "webtools/web/static/thumbnail-sdk/member-colors.json",
+    "webtools/web/static/thumbnail-sdk/template.json", "webtools/web/static/thumbnail-sdk/gradient.png",
+    "webtools/web/static/thumbnail-sdk/pattern.png", "webtools/web/static/thumbnail-sdk/profile.json",
+    "webtools/web/static/thumbnail-sdk/inner-mask.png", "webtools/web/static/thumbnail-sdk/camera-provenance.json",
+    "webtools/web/static/thumbnail-sdk/template-reference.png", "webtools/web/static/thumbnail-sdk/cross.png")
 MODTOOLS_ROOT_MODULES = (
     "costume_part_transplant", "costume_transplant", "lower_body_swap",
     "graft_game_compat", "graft_texture_atlas", "graft_atlas_geometry",
@@ -44,7 +51,13 @@ MODULES = (
     "webtools/core/model_faces", "webtools/core/viewer_thumbnails",
     "game_quality_settings", "adminui/server", "adminui/i18n",
     "adminui/tools/registry", "adminui/tools/game_quality") + MODTOOLS_ROOT_MODULES + (
-    "webtools/core/model_animation", "webtools/core/viewer_motion_i18n")
+    "webtools/core/model_animation", "webtools/core/viewer_motion_i18n") + (
+    "adminui/tools/installers", "adminui/tools/costume_thumbnail", "adminui/serverctl",
+    "webtools/core/mod_thumbnail_replace", "webtools/core/viewer_thumbnail_roles",
+    "webtools/core/viewer_archive", "webtools/core/viewer_scene_format",
+    "costume_addon_installer", "costume_installer_defaults",
+    "live_addon_installer", "card_addon_installer", "camera_live_timeline_replacer",
+    "elichika_costume_transparency_tool")
 
 
 def _entries(archive, label):

@@ -94,7 +94,8 @@ class MainActivity : AppCompatActivity() {
     private var cdnButton: Button? = null
 
     private data class Tab(val id: String, val title: String, val url: String?,
-                           val localTools: Boolean = false, val section: String? = null)
+                           val localTools: Boolean = false, val section: String? = null,
+                           val managementPage: Boolean = false)
     private val webToolsUrl by lazy { AssetNavigationBridge.pageUrl(Lang.effective(this)) }
 
     private val tabs by lazy {
@@ -102,8 +103,8 @@ class MainActivity : AppCompatActivity() {
             Tab(TAB_CONSOLE, getString(R.string.tab_console), null),
             // The server has no /webui/ index — the panels live at /webui/admin/ and
             // /webui/user/. Point at the admin panel (server config, CDN cache, etc.).
-            Tab("server", getString(R.string.tab_webui), "http://127.0.0.1:8080/webui/admin/"),
-            Tab("account", getString(R.string.tab_user), "http://127.0.0.1:8080/webui/user/"),
+            Tab("server", getString(R.string.tab_webui), "http://127.0.0.1:8080/webui/admin/", managementPage = true),
+            Tab("account", getString(R.string.tab_user), "http://127.0.0.1:8080/webui/user/", managementPage = true),
             Tab("server-content", getString(R.string.tab_dev), "http://127.0.0.1:8772/", localTools = true),
             Tab(TAB_ASSET_TOOLS, getString(R.string.tab_mod), webToolsUrl, localTools = true, section = "tools"),
             Tab(TAB_MODEL_VIEWER, getString(R.string.tab_model), webToolsUrl, localTools = true, section = "viewer"),
@@ -218,6 +219,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateToolsState() {
+        if (tabs[currentTab].managementPage) {
+            showTab(currentTab)
+            return
+        }
         if (tabs[currentTab].localTools && offlineOverlay.visibility == View.VISIBLE) {
             if (PyServers.isStarted()) showTab(currentTab) else updateOfflineOverlay(true)
         }
@@ -279,6 +284,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         viewerFullscreen.onStop()
         Bus.removeListener(this)
+        ManagementServer.releaseUi(this)
         super.onStop()
     }
 
@@ -313,6 +319,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (isFinishing) ManagementServer.releaseUi(this)
         headerDisposed = true
         headerLayoutObserver?.let { observer ->
             adaptiveHeader?.viewTreeObserver?.takeIf { it.isAlive }
@@ -372,7 +379,9 @@ class MainActivity : AppCompatActivity() {
         scheduleHeaderReflow()
         // If a web tab is showing the offline overlay and the server just came up,
         // swap the overlay for the (now reachable) page.
-        if (((running && Bus.serverReady) || (tabs[currentTab].localTools && PyServers.isStarted())) &&
+        if (tabs[currentTab].managementPage) {
+            showTab(currentTab)
+        } else if (((running && Bus.serverReady) || (tabs[currentTab].localTools && PyServers.isStarted())) &&
             tabs[currentTab].url != null && offlineOverlay.visibility == View.VISIBLE) {
             showTab(currentTab)
         }
@@ -673,32 +682,71 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun effectiveTabUrl(tab: Tab): String? {
+        if (!tab.managementPage) return tab.url
+        val path = tab.url?.let { Uri.parse(it).path } ?: return null
+        val base = if (Bus.serverRunning || Bus.serverStarting) {
+            if (!Bus.serverReady) return null
+            runCatching {
+                ServerReadiness.endpoint(ServerConfig.read(filesDir).optString("server_address", "0.0.0.0:8080"))
+                    ?.let { "${it.protocol}://${it.authority}" }
+            }.getOrNull()
+        } else ManagementServer.url()?.trimEnd('/')
+        return base?.let { it + path }
+    }
+
+    private fun sameWebOrigin(first: String?, second: String): Boolean {
+        if (first == null) return false
+        val a = Uri.parse(first)
+        val b = Uri.parse(second)
+        return a.scheme == b.scheme && a.encodedAuthority == b.encodedAuthority
+    }
+
+    private fun updateManagementOverlay() {
+        val failed = ManagementServer.hasError() || PyServers.hasPreparationError()
+        val preparing = ManagementServer.isPreparing() || PyServers.isPreparing() || Bus.serverStarting || Bus.serverRunning
+        val cause = ManagementServer.errorMessage()
+        offlineMessage.text = getString(if (failed) R.string.management_prepare_failed else R.string.management_preparing) +
+            (cause?.let { "\n\n$it" } ?: "")
+        offlineAction.setText(R.string.tools_retry)
+        offlineAction.isEnabled = failed && !preparing
+        offlineAction.setOnClickListener {
+            if (!PyServers.isStarted()) PyServers.prepareAsync(applicationContext)
+            ManagementServer.requestUi(applicationContext, this, retry = true)
+        }
+    }
+
     private fun showTab(index: Int) {
         if (index != currentTab) viewerFullscreen.exit()
         currentTab = index
         val tab = tabs[index]
+        if (tab.managementPage) ManagementServer.requestUi(applicationContext, this)
+        else ManagementServer.releaseUi(this)
+        val targetUrl = effectiveTabUrl(tab)
         // Keep a shared WebView visible while its section changes. A transient
         // GONE/VISIBLE cycle can blur editing fields or suspend its renderer.
         val destination: View = when {
             tab.url == null -> consolePanel
-            // The editors prepare independently. Server/account pages retain
-            // their Start server action while the local tools show preparation.
-            !(if (tab.localTools) PyServers.isStarted() else Bus.serverReady) -> {
-                if (tab.localTools && !PyServers.isPreparing() && !PyServers.hasPreparationError()) {
+            !(if (tab.managementPage) targetUrl != null else if (tab.localTools) PyServers.isStarted() else Bus.serverReady) -> {
+                if ((tab.localTools || tab.managementPage) && !PyServers.isStarted() && !PyServers.isPreparing() && !PyServers.hasPreparationError()) {
                     PyServers.prepareAsync(applicationContext)
                 }
-                updateOfflineOverlay(tab.localTools)
+                if (tab.managementPage) {
+                    updateManagementOverlay()
+                } else updateOfflineOverlay(tab.localTools)
                 offlineOverlay
             }
             else -> {
+                val destinationUrl = targetUrl ?: tab.url!!
                 val existed = webViews.containsKey(tab.url)
-                val wv = webViewFor(tab.url, tab.section)
+                val wv = webViewFor(tab.url, tab.section, destinationUrl)
                 // Only reload if the previous load actually failed (e.g. the tab was
                 // first opened before the server was up). A successful page is left as
                 // is, so returning to a tab mid-edit keeps the running job's UI.
                 if (existed && (webViewErrored[tab.url] == true ||
+                    (tab.managementPage && wv.url != null && !sameWebOrigin(wv.url, destinationUrl)) ||
                     (tab.section != null && !AssetNavigationBridge.isEmbeddedDocument(Uri.parse(wv.url ?: ""))))) {
-                    wv.loadUrl(documentUrl(tab.url, tab.section))
+                    wv.loadUrl(documentUrl(destinationUrl, tab.section))
                 } else if (tab.section != null) assetNavigation.showSection(wv, tab.section)
                 wv
             }
@@ -723,7 +771,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun webViewFor(url: String, section: String? = null): WebView {
+    private fun webViewFor(url: String, section: String? = null, initialUrl: String = url): WebView {
+        val management = tabs.any { it.url == url && it.managementPage }
         return webViews.getOrPut(url) {
             WebView(this).apply {
                 layoutParams = FrameLayout.LayoutParams(
@@ -757,7 +806,7 @@ class MainActivity : AppCompatActivity() {
                             viewerFullscreen.onPageStarted(view)
                             assetNavigation.onPageStarted(view)
                         }
-                        if (u != null && u.startsWith(url)) webViewErrored[url] = false
+                        if (u != null && (management || u.startsWith(url))) webViewErrored[url] = false
                     }
                     override fun onPageFinished(view: WebView?, u: String?) {
                         if (view != null) {
@@ -778,7 +827,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 content.addView(this)
                 val state = savedWebViews.remove(url)
-                if (state == null || restoreState(state) == null) loadUrl(documentUrl(url, section))
+                if (state == null || restoreState(state) == null || (management && !sameWebOrigin(this.url, initialUrl))) {
+                    loadUrl(documentUrl(initialUrl, section))
+                }
             }
         }
     }

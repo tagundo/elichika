@@ -338,6 +338,14 @@ class ControlHandler(BaseHTTPRequestHandler):
                 return _json(self, runtime.run_console(value), 202)
             if value:
                 raise RuntimeErrorResponse("Unexpected request fields.")
+            if path.path == "/v1/management/stop":
+                runtime.controller.disable_management()
+                return _json(self, runtime.state(), 202)
+            if path.path == "/v1/management/start":
+                if runtime.stop_event.is_set() or not runtime.state()["prepared"] or runtime.state()["phase"] != "ready":
+                    raise RuntimeErrorResponse("Server files are not ready.", 409)
+                runtime.controller.enable_management(retry=True)
+                return _json(self, runtime.state(), 202)
             if path.path == "/v1/console/cancel":
                 return _json(self, runtime.cancel_console(), 202)
             if path.path == "/v1/server/start":
@@ -463,6 +471,7 @@ class Runtime:
                 "server": server, "data_dir": str(self.data), "sukusta_dir": str(self.sukusta),
                 "runtime": {"pid": os.getpid(), "architecture": self.arch, "language": self.language},
                 "console": self.console_state(),
+                "management": self.controller.management_state(),
             }
 
     def console_state(self):

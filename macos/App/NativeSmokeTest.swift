@@ -30,6 +30,8 @@ final class NativeSmokeTest {
             _ = try await model.request("/v1/server/config", method: "POST", body: ["server_address": network.serverAddress, "cdn_server": network.cdnServer])
             report["native_network_configuration"] = true
 
+            try await checkOfflineManagement(directory)
+
             try checkpoint("first-server-start")
             _ = try await model.request("/v1/server/start", method: "POST")
             try await wait("the game server", timeout: 120) {
@@ -1457,6 +1459,80 @@ final class NativeSmokeTest {
     private func writeReport(_ directory: URL) throws {
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
             .write(to: directory.appendingPathComponent("native-smoke.json"), options: .atomic)
+    }
+
+    private func checkOfflineManagement(_ directory: URL) async throws {
+        try checkpoint("offline-management-pages")
+        let previous = model.selectedSection
+        let previousSettings = model.showServerSettings
+        defer { model.selectedSection = previous; model.showServerSettings = previousSettings }
+        await model.refresh()
+        try require(!model.snapshot.serverRunning, "Management must prepare while the game server remains stopped.")
+        model.showServerSettings = true
+        model.selectedSection = .settings
+        model.retryManagement()
+        try await wait("the local management service", timeout: 120) {
+            await self.model.refresh()
+            return !self.model.snapshot.serverRunning && self.model.snapshot.management?.running == true && self.model.snapshot.management?.httpReady == true
+        }
+        guard let pid = model.snapshot.management?.pid, pid > 0 else { throw NativeError.invalidResponse }
+        let pages: [(BrowserRoute, AppSection, String, String)] = [
+            (.serverSettings, .settings, "/webui/admin/", "offline-management-settings.png"),
+            (.accounts, .accounts, "/webui/user/", "offline-management-user.png")]
+        var observed: [[String: Any]] = []
+        for (route, section, path, filename) in pages {
+            guard let target = model.goURL(path: path), let origin = TrustedOrigin(target) else { throw NativeError.invalidResponse }
+            let (_, response) = try await URLSession.shared.data(from: target)
+            try require((response as? HTTPURLResponse)?.statusCode == 200,
+                        "The real management page must respond while the game server is stopped.")
+            model.showServerSettings = true
+            model.selectedSection = section
+            let webView = model.browser(route).webView
+            try await wait("the attached native management page", timeout: 20) { webView.window != nil }
+            try await waitJS(webView, "the management document", timeout: 30, expression:
+                "document.readyState==='complete'&&location.pathname.indexOf('/webui/')===0&&!!document.body&&document.body.innerText.trim().length>20")
+            guard let actualURL = webView.url else { throw NativeError.invalidResponse }
+            try require(origin.contains(actualURL) && !model.snapshot.serverRunning,
+                        "Native management navigation must stay on the ready loopback origin and leave the game server stopped.")
+            let page = try await object(webView,
+                "return JSON.stringify({url:location.href,title:document.title,bodyCharacters:document.body.innerText.trim().length});")
+            try await snapshot(webView, directory.appendingPathComponent(filename))
+            observed.append(["requested_path": path, "http_status": 200, "document": page, "screenshot": filename])
+        }
+        model.selectedSection = previous
+        model.showServerSettings = previousSettings
+        model.releaseManagementIfNotVisible()
+        try await wait("management release before returning to editing", timeout: 20) {
+            await self.model.refresh()
+            return self.model.managementDemandIdle && self.model.snapshot.management?.running != true && !self.model.snapshot.busy && !self.model.snapshot.serverRunning
+        }
+        let startAcknowledgments = stages.filter { $0["stage"] as? String == "management-demand-start-acknowledged" }.count
+        for _ in 0..<3 {
+            let requests = stages.filter { $0["stage"] as? String == "management-demand-start-requested" }.count
+            model.selectedSection = .accounts
+            model.retryManagement()
+            try await wait("the real management navigation request", timeout: 15) {
+                self.stages.filter { $0["stage"] as? String == "management-demand-start-requested" }.count > requests
+            }
+            model.selectedSection = previous
+            model.showServerSettings = previousSettings
+            model.releaseManagementIfNotVisible()
+            try await wait("management navigation release", timeout: 30) {
+                await self.model.refresh()
+                return self.model.managementDemandIdle && self.model.snapshot.management?.running != true && !self.model.snapshot.busy && !self.model.snapshot.serverRunning
+            }
+        }
+        try await wait("the latest management navigation intent", timeout: 30) {
+            await self.model.refresh()
+            return self.model.managementDemandIdle && self.model.snapshot.management?.running != true && !self.model.snapshot.busy && !self.model.snapshot.serverRunning
+        }
+        let acknowledgedStarts = stages.filter { $0["stage"] as? String == "management-demand-start-acknowledged" }.count - startAcknowledgments
+        try require(acknowledgedStarts > 0, "Rapid management navigation must exercise an acknowledged real start before reconciling the final editing destination.")
+        report["native_offline_management"] = ["status": "PASS", "server_stayed_stopped": true,
+            "management_pid": pid, "pages": observed, "released_before_editing": true,
+            "fast_navigation_cycles": 3, "fast_navigation_acknowledged_starts": acknowledgedStarts,
+            "scope": "Actual native Settings/Accounts WebViews and real loopback Go management service; no game server or account mutation requested"]
+        try checkpoint("offline-management-pages-passed")
     }
 
     private func checkConsoleActions(_ directory: URL) async throws {

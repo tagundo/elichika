@@ -401,24 +401,12 @@ def install_shader(root, bundle_path, platform="auto", make_transparent=True,
                 log("  [ok] %s [%s]" % (os.path.basename(adb), plat))
         finally:
             con.close()
-    # config cdn
-    cfg = os.path.join(root, "config.json")
-    if os.path.exists(cfg):
-        try:
-            with open(cfg) as f:
-                c = json.load(f)
-            if c.get("cdn_server") != "http://127.0.0.1:8080/static":
-                c["cdn_server"] = "http://127.0.0.1:8080/static"
-                with open(cfg, "w") as f:
-                    json.dump(c, f, indent=4)
-                log("[config] cdn_server -> local")
-        except Exception:
-            pass
     if not touched:
         log("[shader] WARNING: no %s DB was updated (member row not found in a matching "
             "platform DB). Nothing applied — check --platform and --asset-path."
             % ("/".join(sorted(want))))
     else:
+        log("Added files are served automatically by Elichika; the source CDN setting is unchanged.")
         log("[shader] updated %d DB(s). Re-sync the client to apply." % len(touched))
     return touched
 

@@ -31,6 +31,8 @@ import graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_re
 import costume_part_transplant, costume_transplant, lower_body_swap
 from adminui.tools import costume_cdn as cdn_admin
 from adminui.tools import game_quality as game_quality_admin
+from adminui.tools import installers as installer_admin, costume_thumbnail as thumbnail_admin, registry as registry_admin
+from adminui import serverctl as admin_serverctl
 from webtools.core import viewer_texture_tools, texture_image_io, texture_project_io
 packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_transplants,
                     viewer_texture_tools,
@@ -40,6 +42,7 @@ packaged_modules = (game_motions, viewer_mesh_tools, viewer_physics, viewer_tran
                     viewer_mod_flow, viewer_mod_package, model_viewer, bundle_identity, transplant_bundle_io, game_motion_audio,
                     costume_installer_defaults, costume_face_installer, costume_scene_installer, costume_clone, costume_management, member_identity,
                     costume_cdn_catalog, costume_cdn_restore, cdn_admin, game_quality_settings, game_quality_admin,
+                    installer_admin, thumbnail_admin, registry_admin, admin_serverctl,
                     graft_texture_atlas, graft_atlas_geometry, graft_game_compat, graft_uv_reuse, graft_uv_upscale,
                     costume_part_transplant, costume_transplant, lower_body_swap)
 for module in packaged_modules:
@@ -113,6 +116,11 @@ numeric_fixtures = ['native_unity_quaternion.json', 'game_physics_native_collisi
 for name in staged_python + staged_drivers:
     shutil.copy2(test_source / name, test_stage / name)
 shutil.copy2(repo / 'tests/test_game_quality_settings.py', test_stage / 'test_game_quality_settings.py')
+shutil.copy2(repo / 'tests/test_admin_costume_thumbnails.py', test_stage / 'test_admin_costume_thumbnails.py')
+# The parent installer test resolves its neutral fixture under ROOT/modtools.
+# Link only staged test inputs, never repository production modules.
+(stage / 'modtools').mkdir()
+(stage / 'modtools/tests').symlink_to(test_stage, target_is_directory=True)
 (test_stage / 'fixtures').mkdir()
 for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
@@ -215,7 +223,7 @@ for path in cdn_test_paths:
     spec.loader.exec_module(module)
     cdn_modules.append(module)
 additional_modules = {}
-for name in ['test_model_faces', 'test_game_quality_settings', 'test_model_animation']:
+for name in ['test_model_faces', 'test_game_quality_settings', 'test_model_animation', 'test_admin_costume_thumbnails']:
     spec = importlib.util.spec_from_file_location('test_packaged_' + name, test_stage / (name + '.py'))
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -233,6 +241,7 @@ for pattern in patterns:
         suite.addTests(unittest.defaultTestLoader.discover(str(test_source), pattern=pattern))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(installer_module))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(additional_modules['test_game_quality_settings']))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(additional_modules['test_admin_costume_thumbnails']))
 # Keep the optional private-game animation fixtures outside this neutral
 # packaged-runtime contract. Every synthetic decoder/budget case still runs.
 suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(additional_modules['test_model_animation'].AnimationTests))

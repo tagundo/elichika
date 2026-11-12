@@ -140,8 +140,12 @@ struct RootView: View {
             if model.toolsReady { WebPanel(model: model, route: .content) }
             else { PreparationView(model: model) }
         case .accounts:
-            if model.goURL(path: "/webui/user/") != nil { WebPanel(model: model, route: .accounts).id(model.snapshot.server?.url) }
-            else { StartServerView(model: model) }
+            if let url = model.goURL(path: "/webui/user/") {
+                WebPanel(model: model, route: .accounts).id(url)
+                    .onAppear { model.retryManagement() }
+                    .onDisappear { model.releaseManagementIfNotVisible() }
+            }
+            else { ManagementPreparationView(model: model) }
         }
     }
 }
@@ -191,6 +195,41 @@ private struct StartServerView: View {
             Button(model.snapshot.serverRunning ? model.text("Stop server", "서버 중지", "サーバー停止") : model.text("Start server", "서버 시작", "サーバー起動")) { model.toggleServer() }
                 .disabled(!model.canControlServer)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct ManagementPreparationView: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        if !model.toolsReady {
+            PreparationView(model: model)
+        } else {
+            VStack(spacing: 16) {
+                if model.snapshot.management?.error == nil { ProgressView() }
+                Text(model.text("Preparing management tools…", "관리 도구를 준비하고 있습니다…", "管理ツールを準備しています…"))
+                    .font(.title3)
+                Text(model.text("Server settings and accounts can be managed while the game server is stopped.", "게임 서버가 꺼져 있어도 서버 설정과 유저 관리를 사용할 수 있습니다.", "ゲームサーバーを停止したまま設定とユーザー管理を利用できます。"))
+                    .foregroundStyle(.secondary)
+                if model.snapshot.busy {
+                    Text(model.text("Waiting for the current task to finish.", "현재 작업이 끝나기를 기다리고 있습니다.", "実行中の処理の完了を待っています。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let error = model.snapshot.management?.error {
+                    Text(error).textSelection(.enabled)
+                    Button(model.text("Retry", "다시 시도", "再試行")) { model.retryManagement() }
+                        .disabled(model.snapshot.busy || model.snapshot.serverRunning)
+                }
+            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear {
+                    if model.snapshot.management?.error == nil { model.retryManagement() }
+                }
+                .onChange(of: model.snapshot.busy) { busy in
+                    if !busy && model.snapshot.management?.error == nil && model.goURL(path: "/webui/admin/") == nil {
+                        model.retryManagement()
+                    }
+                }
+                .onDisappear { model.releaseManagementIfNotVisible() }
+        }
     }
 }
 
@@ -437,7 +476,7 @@ private struct ConsoleSheet: View {
                 return model.text("This downloads missing game packs from the CDN. The size varies and can be large. Wi-Fi is recommended.", "CDN에서 누락된 게임 팩을 받습니다. 용량은 상황에 따라 다르며 매우 클 수 있습니다. Wi-Fi 사용을 권장합니다.", "CDNから不足しているゲームパックをダウンロードします。容量は状況により大きくなります。Wi-Fiを推奨します。")
             case .cdnCacheToggle:
                 return model.consoleState?.cacheEnabled == true
-                    ? model.text("Turn CDN cache off? Missing packs will no longer download on demand during play. Existing downloaded packs are kept.", "CDN 캐시를 끌까요? 플레이 중 누락된 팩을 자동으로 받지 않습니다. 이미 받은 팩은 유지됩니다.", "CDNキャッシュをオフにしますか？プレイ中に不足パックを自動取得しなくなります。取得済みパックは保持します。")
+                    ? model.text("Turn CDN cache off? Missing original files will use the original CDN without saving new local copies. Installed mods and downloaded files remain available.", "CDN 캐시를 끌까요? 없는 원본 파일은 기존 CDN에서 받고 새로 캐시에 저장하지 않습니다. 설치한 모드와 이미 받은 파일은 계속 사용할 수 있습니다.", "CDNキャッシュをオフにしますか？不足する元ファイルは元のCDNから取得し、新しく保存しません。MODと取得済みファイルは引き続き利用できます。")
                     : model.text("Turn CDN cache on? Missing packs will download on demand during play and be saved to packs/.", "CDN 캐시를 켤까요? 플레이 중 누락된 팩을 자동으로 받아 packs/에 저장합니다.", "CDNキャッシュをオンにしますか？プレイ中に不足パックを自動取得してpacks/に保存します。")
             case .rebuildAssets: return model.text("Rebuild master data now?", "마스터 데이터를 지금 재빌드할까요?", "マスターデータを今すぐ再構築しますか？")
             case .fixTrainingTrees: return model.text("Repair training-tree data now?", "트레이닝 트리 데이터를 지금 복구할까요?", "トレーニングツリーのデータを今すぐ修復しますか？")
@@ -458,9 +497,9 @@ private struct ConsoleSheet: View {
     private var guideText: String {
         let address = model.connectionAddress ?? "http://127.0.0.1:8080"
         return model.text(
-            "1. Wait for the bundled tools to be ready. Your asset library is selected in Settings.\n2. Click Start server.\n3. Point the game app at \(address) (see the LL-hax guide). For another device, set the listen address and CDN URL in Settings to your Mac’s LAN address.\n4. Optional: pre-download game files with Download all (archive.org) or Download missing (CDN).\n\nCDN cache: when on, missing packs download as needed during play and are saved to packs/. Pre-downloading is optional. Keep Elichika running while downloads finish.\n\nPages: Server settings / Accounts = server WebUI; Server content = development tools; Asset editing tools = modding tools; 3D model = model viewer.\n\nAsset library: \(model.libraryDirectory)\nextracted = decrypted models (edit input); modded = edited bundles (edit output); suit / live / card / livetimeline = add-on drop folders; sql = DB patches; packs = game pack cache; backup = DB backups; logs = logs.\n\nUse Server content to make DB backups and Accounts to export your accounts before resetting the server.",
-            "1. 내장 도구 준비가 끝날 때까지 기다리세요. 에셋 보관 폴더는 설정에서 선택합니다.\n2. ‘서버 시작’을 누르세요.\n3. 게임 앱을 \(address)으로 연결하세요(LL-hax 가이드 참고). 다른 기기에서는 설정의 수신 주소와 CDN URL을 Mac의 LAN 주소로 바꾸세요.\n4. 선택 사항: ‘전체 받기’(archive.org) 또는 ‘누락분 받기’(CDN)로 게임 파일을 미리 받으세요.\n\nCDN 캐시: 켜져 있으면 플레이 중 필요한 팩을 자동으로 받아 packs/에 저장합니다. 미리 받기는 필수가 아닙니다. 다운로드가 끝날 때까지 Elichika를 실행해 두세요.\n\n화면: 서버 설정 / 계정 = 서버 웹 UI; 서버 콘텐츠 = 개발 도구; 에셋 편집 도구 = 모딩 도구; 3D 모델 = 모델 뷰어.\n\n에셋 보관 폴더: \(model.libraryDirectory)\nextracted = 복호화된 모델(편집 입력); modded = 편집된 번들(편집 출력); suit / live / card / livetimeline = 애드온 드롭 폴더; sql = DB 패치; packs = 게임 팩 캐시; backup = DB 백업; logs = 로그.\n\n서버 초기화 전에 서버 콘텐츠에서 DB를 백업하고 계정에서 계정을 내보내세요.",
-            "1. 内蔵ツールの準備が終わるまでお待ちください。アセット保存先は設定で選択できます。\n2. 「サーバー起動」をクリック。\n3. ゲームアプリを\(address)に接続（LL-haxガイド参照）。別の端末では、設定の待ち受けアドレスとCDN URLをMacのLANアドレスに変更してください。\n4. 任意：「全ファイル取得」（archive.org）または「不足分を取得」（CDN）で事前ダウンロード。\n\nCDNキャッシュ：オンの場合、プレイ中に必要なパックを自動取得してpacks/に保存します。事前取得は任意です。完了までElichikaを起動したままにしてください。\n\n画面：サーバー設定 / アカウント = サーバーWeb UI、サーバーコンテンツ = 開発ツール、アセット編集ツール = MODツール、3Dモデル = モデルビューア。\n\nアセット保存先：\(model.libraryDirectory)\nextracted = 復号済みモデル（編集入力）、modded = 編集済みバンドル（編集出力）、suit / live / card / livetimeline = アドオンのドロップ先、sql = DBパッチ、packs = パックキャッシュ、backup = DBバックアップ、logs = ログ。\n\nサーバー初期化前に、サーバーコンテンツでDBをバックアップし、アカウントでエクスポートしてください。")
+            "1. Wait for the bundled tools to be ready. Your asset library is selected in Settings.\n2. Click Start server.\n3. Point the game app at \(address) (see the LL-hax guide). For another device, set the listen address to 0.0.0.0:8080 and connect the game to your Mac’s LAN address. Keep the original game CDN address unchanged.\n4. Optional: pre-download game files with Download all (archive.org) or Download missing (CDN).\n\nCDN cache: when on, missing packs download as needed during play and are saved to packs/. Pre-downloading is optional. Keep Elichika running while downloads finish.\n\nPages: Server settings / Accounts = server WebUI; Server content = development tools; Asset editing tools = modding tools; 3D model = model viewer.\n\nAsset library: \(model.libraryDirectory)\nextracted = decrypted models (edit input); modded = edited bundles (edit output); suit / live / card / livetimeline = add-on drop folders; sql = DB patches; packs = game pack cache; backup = DB backups; logs = logs.\n\nUse Server content to make DB backups and Accounts to export your accounts before resetting the server.",
+            "1. 내장 도구 준비가 끝날 때까지 기다리세요. 에셋 보관 폴더는 설정에서 선택합니다.\n2. ‘서버 시작’을 누르세요.\n3. 게임 앱을 \(address)으로 연결하세요(LL-hax 가이드 참고). 다른 기기는 수신 주소를 0.0.0.0:8080으로 설정하고 게임을 Mac의 LAN 주소로 연결하세요. 원본 게임 CDN 주소는 유지하세요.\n4. 선택 사항: ‘전체 받기’(archive.org) 또는 ‘누락분 받기’(CDN)로 게임 파일을 미리 받으세요.\n\nCDN 캐시: 켜져 있으면 플레이 중 필요한 팩을 자동으로 받아 packs/에 저장합니다. 미리 받기는 필수가 아닙니다. 다운로드가 끝날 때까지 Elichika를 실행해 두세요.\n\n화면: 서버 설정 / 계정 = 서버 웹 UI; 서버 콘텐츠 = 개발 도구; 에셋 편집 도구 = 모딩 도구; 3D 모델 = 모델 뷰어.\n\n에셋 보관 폴더: \(model.libraryDirectory)\nextracted = 복호화된 모델(편집 입력); modded = 편집된 번들(편집 출력); suit / live / card / livetimeline = 애드온 드롭 폴더; sql = DB 패치; packs = 게임 팩 캐시; backup = DB 백업; logs = 로그.\n\n서버 초기화 전에 서버 콘텐츠에서 DB를 백업하고 계정에서 계정을 내보내세요.",
+            "1. 内蔵ツールの準備が終わるまでお待ちください。アセット保存先は設定で選択できます。\n2. 「サーバー起動」をクリック。\n3. ゲームアプリを\(address)に接続（LL-haxガイド参照）。別端末では待ち受けアドレスを0.0.0.0:8080にし、MacのLANアドレスに接続してください。元のゲームCDNアドレスは維持してください。\n4. 任意：「全ファイル取得」（archive.org）または「不足分を取得」（CDN）で事前ダウンロード。\n\nCDNキャッシュ：オンの場合、プレイ中に必要なパックを自動取得してpacks/に保存します。事前取得は任意です。完了までElichikaを起動したままにしてください。\n\n画面：サーバー設定 / アカウント = サーバーWeb UI、サーバーコンテンツ = 開発ツール、アセット編集ツール = MODツール、3Dモデル = モデルビューア。\n\nアセット保存先：\(model.libraryDirectory)\nextracted = 復号済みモデル（編集入力）、modded = 編集済みバンドル（編集出力）、suit / live / card / livetimeline = アドオンのドロップ先、sql = DBパッチ、packs = パックキャッシュ、backup = DBバックアップ、logs = ログ。\n\nサーバー初期化前に、サーバーコンテンツでDBをバックアップし、アカウントでエクスポートしてください。")
     }
 }
 
@@ -473,8 +512,12 @@ private struct SettingsView: View {
                 Text(model.text("Server", "서버", "サーバー")).tag(true)
             }.pickerStyle(.segmented).frame(width: 300).padding()
             if model.showServerSettings {
-                if model.goURL(path: "/webui/admin/") != nil { WebPanel(model: model, route: .serverSettings).id(model.snapshot.server?.url) }
-                else { StartServerView(model: model) }
+                if let url = model.goURL(path: "/webui/admin/") {
+                    WebPanel(model: model, route: .serverSettings).id(url)
+                        .onAppear { model.retryManagement() }
+                        .onDisappear { model.releaseManagementIfNotVisible() }
+                }
+                else { ManagementPreparationView(model: model) }
             } else {
                 Form {
                     Section {
@@ -497,11 +540,15 @@ private struct SettingsView: View {
                     }
                     Section(model.text("Network", "네트워크", "ネットワーク")) {
                         TextField(model.text("Listen address", "서버 수신 주소", "待ち受けアドレス"), text: $model.serverAddressDraft)
-                            .disabled(!model.canChangeStorage || model.savingNetwork)
-                        TextField(model.text("CDN URL", "CDN URL", "CDN URL"), text: $model.cdnServerDraft)
-                            .disabled(!model.canChangeStorage || model.savingNetwork)
-                        Text(model.text("For another device: listen on 0.0.0.0:8080 and use http://YOUR-MAC-LAN-IP:8080/static as the CDN URL. Firewall and game connection settings are managed separately.", "다른 기기에서 연결하려면 수신 주소를 0.0.0.0:8080, CDN URL을 http://맥의-LAN-IP:8080/static 으로 설정하세요. 방화벽과 게임 연결 설정은 별도로 관리합니다.", "別の端末から接続する場合は0.0.0.0:8080で待ち受け、CDN URLをhttp://MacのLAN-IP:8080/staticに設定してください。ファイアウォールとゲームの接続設定は別途管理します。"))
+                            .disabled(!model.canChangeStorage || !model.networkReady || model.savingNetwork)
+                        TextField(model.text("Original game CDN URL", "원본 게임 CDN 주소", "元のゲームCDN URL"), text: $model.cdnServerDraft)
+                            .disabled(!model.canChangeStorage || !model.networkReady || model.savingNetwork)
+                        Text(model.text("Keep the original CDN address here. Installed mod files are provided by Elichika automatically. CDN cache controls whether missing original files are saved locally. For another device, listen on 0.0.0.0:8080 and connect the game to your Mac's LAN address.", "여기에는 기존 원본 CDN 주소를 유지하세요. 설치한 모드 파일은 Elichika에서 자동으로 제공합니다. CDN 캐시는 누락된 원본 파일을 로컬에 저장할지 결정합니다. 다른 기기는 수신 주소를 0.0.0.0:8080으로 설정하고 게임을 맥의 LAN 주소로 연결하세요.", "元のCDNアドレスを維持してください。インストールしたMODファイルはElichikaが自動配信します。CDNキャッシュは不足している元ファイルを保存するかを設定します。別端末からは0.0.0.0:8080で待ち受け、MacのLANアドレスに接続してください。"))
                             .font(.caption).foregroundStyle(.secondary)
+                        if let original = model.defaultCdnServer {
+                            Button(model.text("Use default original CDN", "기본 원본 CDN 주소 사용", "既定の元CDNを使用")) { model.cdnServerDraft = original }
+                                .disabled(!model.canChangeStorage || model.savingNetwork || model.cdnServerDraft == original)
+                        }
                         HStack {
                             Button(model.text("Save network settings", "네트워크 설정 저장", "ネットワーク設定を保存")) { model.saveNetworkConfig() }
                                 .disabled(!model.canChangeStorage || !model.networkChanged || model.savingNetwork)
@@ -521,6 +568,9 @@ private struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }.formStyle(.grouped)
+                    .onAppear {
+                        if !model.networkChanged { Task { await model.loadNetworkConfig() } }
+                    }
             }
         }
     }

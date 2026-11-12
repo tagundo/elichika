@@ -419,3 +419,19 @@ _COSTUME_CDN_STRINGS = {
 for _source, _values in _COSTUME_CDN_STRINGS.items():
     for _lang, _text in zip(("ko", "ja"), _values):
         _TABLES[_lang][_source] = _text
+
+_INSTALL_THUMBNAIL_STRINGS = {
+    "Generate high-quality 3D thumbnail": ["고품질 3D 썸네일 자동 설정", "高品質3Dサムネイルを自動設定"],
+    "Render the costume's head, hair and upper body with its member color and SDK frame. Off keeps the thumbnail supplied in the ZIP. Rendering failure stops installation instead of using a texture.": ["코스튬의 얼굴·머리카락·상반신을 멤버 색상 및 SDK 프레임으로 렌더링합니다. 끄면 ZIP에 포함된 썸네일을 유지합니다. 렌더링 실패 시 텍스처로 대체하지 않고 설치를 중단합니다.", "衣装の顔・髪・上半身をメンバーカラーとSDKフレームで描画します。オフの場合はZIPの既存サムネイルを保持します。描画に失敗した場合はテクスチャで代用せず、インストールを中止します。"],
+    "Fit full character in thumbnail": ["썸네일에 캐릭터 전체 맞추기", "サムネイルにキャラクター全体を収める"],
+    "Optional: fit the full character instead of the usual head and upper-body framing.": ["선택 사항: 기본 얼굴·상반신 구도 대신 캐릭터 전체를 담습니다.", "任意：通常の顔・上半身の構図の代わりにキャラクター全体を収めます。"],
+    "Rendering costume thumbnail…": ["코스튬 썸네일 렌더링 중…", "衣装サムネイルを描画中…"],
+    "Costume thumbnail": ["코스튬 썸네일", "衣装サムネイル"],
+    "The automatic 3D thumbnail renderer is unavailable.": ["자동 3D 썸네일 렌더러를 사용할 수 없습니다.", "自動3Dサムネイルのレンダラーを利用できません。"],
+    "The automatic 3D thumbnail could not be prepared.": ["자동 3D 썸네일을 준비하지 못했습니다.", "自動3Dサムネイルを準備できませんでした。"],
+    "The costume selection or thumbnail settings changed. Run again.": ["코스튬 선택 또는 썸네일 설정이 변경됐습니다. 다시 실행하세요.", "衣装の選択またはサムネイル設定が変更されました。もう一度実行してください。"],
+    "Thumbnail rendering cancelled.": ["썸네일 렌더링을 취소했습니다.", "サムネイルの描画をキャンセルしました。"],
+}
+for _source, _values in _INSTALL_THUMBNAIL_STRINGS.items():
+    for _lang, _text in zip(("ko", "ja"), _values):
+        _TABLES[_lang][_source] = _text

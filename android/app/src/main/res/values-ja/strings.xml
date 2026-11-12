@@ -86,7 +86,7 @@
     <!-- first-run guide -->
     <string name="act_guide">ガイド ❓</string>
     <string name="guide_title">はじめに</string>
-    <string name="guide_body">1. ストレージ権限を許可してください（共有 Download/sukusta フォルダ用）。\n2. 「サーバー開始」をタップ。\n3. ゲームアプリを 127.0.0.1:8080 に接続（LL-hax ガイド参照）。\n4. （任意）ゲームファイルを事前ダウンロード —「全ゲームファイルをダウンロード」（archive.org 全体）または「不足分のみ取得」（CDN）。推奨ですが必須ではありません。\n\nCDNキャッシュ: オンのとき、不足パックはプレイ中に必要に応じてダウンロードされ packs/ に保存されるので、事前ダウンロードは任意です。これで packs/ を埋める場合は、ゲーム画面よりも elichika を前面（フォアグラウンド）にしておくと、ダウンロードが途切れず完了します。\n\nタブ: 「サーバー設定」/「アカウント」= サーバーWeb UI ・「サーバーコンテンツ」= 開発ツール ・「アセット編集」= MODツール。\n\nフォルダ (Download/sukusta): extracted = 復号済みモデル（編集の入力） ・ modded = 編集済みバンドル（編集の出力） ・ suit / live / card / livetimeline = アドオンのドロップ先 ・ sql = DBパッチ ・ packs = ゲームパックのキャッシュ ・ backup = DBバックアップ ・ logs = elichika.log。</string>
+    <string name="guide_body">1. ストレージ権限を許可してください（共有 Download/sukusta フォルダ用）。\n2. 「サーバー開始」をタップ。\n3. ゲームアプリを 127.0.0.1:8080 に接続（LL-hax ガイド参照）。\n4. （任意）ゲームファイルを事前ダウンロード —「全ゲームファイルをダウンロード」（archive.org 全体）または「不足分のみ取得」（CDN）。推奨ですが必須ではありません。\n\nCDNキャッシュ: オンのとき、不足パックはプレイ中に必要に応じてダウンロードされ packs/ に保存されるので、事前ダウンロードは任意です。これで packs/ を埋める場合は、ゲーム画面よりも elichika を前面（フォアグラウンド）にしておくと、ダウンロードが途切れず完了します。\n\nタブ: 「サーバー設定」/「アカウント」= サーバーWeb UI ・「サーバーコンテンツ」= 開発ツール ・「アセット編集」= MODツール。\n\nフォルダ (Download/sukusta): extracted = 復号済みモデル（編集の入力） ・ modded = 編集済みバンドル（編集の出力） ・ suit / live / card / livetimeline = アドオンのドロップ先 ・ sql = DBパッチ ・ packs = ゲームパックのキャッシュ ・ backup = DBバックアップ ・ logs = elichika.log。\n\nインストールしたMODはCDNキャッシュのオン・オフに関係なくElichikaが自動配信します。キャッシュをオフにすると不足する元ファイルは元のCDNから取得し、新しく保存しません。取得済みファイルは保持します。元のゲームCDNアドレスを維持してください。ゲームサーバーを停止したまま設定とユーザー管理を利用できます。</string>
 
     <!-- console controls -->
     <string name="btn_share_log">ログを共有</string>
@@ -158,4 +158,6 @@
     <string name="notif_preparing_text">サーバーファイルとツールを準備中です。停止ボタンで待機中の起動を取り消します。</string>
     <string name="log_setup_failed">[setup] サーバーの準備に失敗しました: %1$s</string>
     <string name="notif_preparing">elichika サーバーを準備中</string>
+    <string name="management_preparing">サーバー設定とユーザー管理を準備しています…</string>
+    <string name="management_prepare_failed">管理ツールを準備できませんでした。</string>
 </resources>

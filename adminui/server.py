@@ -64,6 +64,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._serve_file(WEB_DIR / "index.html")
             if path.startswith("/ui/"):
                 return self._serve_static(path[len("/ui/"):])
+            if path.startswith("/static/"):
+                return self._serve_thumbnail_static(path[len("/static/"):])
+            if path.startswith("/api/viewer/model/"):
+                return self._thumbnail_model(path[len("/api/viewer/model/"):])
             if path == "/api/tools":
                 return self._send_json({"tools": registry.public_tools(self._lang())})
             if path == "/api/game-quality":
@@ -95,6 +99,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         path = urlsplit(self.path).path
         try:
+            if path == "/api/costume-thumbnail/plan":
+                return self._api_costume_thumbnail("plan")
+            if path in ("/api/viewer/thumbnail/model", "/api/viewer/thumbnail/render"):
+                return self._api_costume_thumbnail(path.rsplit("/", 1)[1])
             if path.startswith("/api/run/"):
                 return self._api_run(path[len("/api/run/"):])
             if path.startswith("/api/jobs/") and path.endswith("/cancel"):
@@ -117,6 +125,61 @@ class Handler(BaseHTTPRequestHandler):
         if rel.startswith(".."):
             return self._send_json({"error": "forbidden"}, status=403)
         return self._serve_file(WEB_DIR / "ui" / rel)
+
+    def _serve_thumbnail_static(self, rel):
+        """Serve the existing renderer on this authenticated UI's own origin."""
+        from adminui.tools.costume_thumbnail import ensure_webtools
+        ensure_webtools()
+        from webtools.server import WEB_DIR as tools_web
+        from pathlib import PurePosixPath
+        rel = unquote(rel)
+        shared = {"vendor/three-r128/three.min.js", "vendor/three-r128/GLTFLoader.js",
+                  "sifas-material.js", "viewer-quality.js", "viewer-thumbnails.js"}
+        parts = PurePosixPath(rel).parts
+        template = (len(parts) == 2 and parts[0] == "thumbnail-sdk" and
+                    PurePosixPath(parts[1]).suffix in (".png", ".json"))
+        if rel not in shared and not template:
+            return self._send_json({"error": "not found"}, status=404)
+        return self._serve_file(tools_web / "static" / rel)
+
+    def _thumbnail_model(self, name):
+        import re
+        if not re.fullmatch(r"[a-f0-9]{32}\.glb", name):
+            return self._send_json({"error": "Model preview was not found."}, status=404)
+        from adminui.tools.costume_thumbnail import ensure_webtools
+        ensure_webtools()
+        from webtools.core import model_viewer
+        data = model_viewer.get_model(name[:-4])
+        if data is None:
+            return self._send_json({"error": "Model preview expired. Render the thumbnail again."}, status=404)
+        return self._send_bytes(data, "model/gltf-binary")
+
+    def _api_costume_thumbnail(self, operation):
+        from adminui.tools import costume_thumbnail
+        costume_thumbnail.ensure_webtools()
+        from webtools.core import model_viewer, viewer_thumbnails
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if (self.headers.get("Transfer-Encoding") or not 0 < length <= 4 * 1024 * 1024
+                    or self.headers.get_content_type() != "application/json"):
+                raise ValueError("Send a bounded JSON thumbnail request.")
+            origin = self.headers.get("Origin")
+            if origin is not None and origin != "http://" + self.headers.get("Host", ""):
+                return self._send_json({"error": "Invalid thumbnail request origin."}, status=403)
+            params = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(params, dict):
+                raise ValueError("Send a JSON object for the thumbnail request.")
+            handler = {"plan": costume_thumbnail.plan, "model": viewer_thumbnails.model,
+                       "render": viewer_thumbnails.store}[operation]
+            return self._send_json(handler(params))
+        except model_viewer.ViewerBusyError as error:
+            return self._send_json({"error": str(error)}, status=409)
+        except PermissionError as error:
+            return self._send_json({"error": str(error)}, status=403)
+        except TimeoutError as error:
+            return self._send_json({"error": str(error)}, status=503)
+        except (ValueError, TypeError, KeyError, OSError) as error:
+            return self._send_json({"error": str(error)}, status=400)
 
     def _api_options(self, tool_id):
         tool = registry.get_tool(tool_id)
