@@ -1558,10 +1558,21 @@ final class NativeSmokeTest {
         try require(try Data(contentsOf: configURL) == originalConfigData,
                     "Rejected Console actions must not change the private configuration.")
         model.selectedSection = .server
-        try await Task.sleep(nanoseconds: 250_000_000)
-        guard let window = NSApplication.shared.keyWindow ?? NSApplication.shared.mainWindow,
-              let content = window.contentView,
-              let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {
+        guard let window = model.assetWebView?.window, let content = window.contentView else {
+            throw NativeError.service("The native Console capture requires the existing application window attached to the asset WebView.")
+        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        try await wait("the actual Console window and laid-out content before capture", timeout: 10) {
+            self.model.selectedSection == .server && NSApplication.shared.isActive && window.isVisible && window.isKeyWindow &&
+                NSApplication.shared.keyWindow === window && content.window === window &&
+                !content.isHiddenOrHasHiddenAncestor && content.bounds.width > 0 && content.bounds.height > 0
+        }
+        content.layoutSubtreeIfNeeded()
+        report["native_console_capture"] = ["owned_asset_window": true, "window_number": window.windowNumber,
+            "app_active": NSApplication.shared.isActive, "window_visible": window.isVisible,
+            "window_key": window.isKeyWindow, "content_width": content.bounds.width, "content_height": content.bounds.height]
+        guard let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {
             throw NativeError.service("The actual native Console view must be visible for capture.")
         }
         content.cacheDisplay(in: content.bounds, to: bitmap)
