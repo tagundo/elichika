@@ -205,6 +205,22 @@ def capture_failed_native(process, private, output, tokens):
             pass
 
 
+def preserve_process_diagnostic(private, output, tokens):
+    path = private / 'probe.stdout'
+    if not path.is_file():
+        return
+    value = path.read_bytes()
+    allowed = []
+    for line in value[-65536:].decode(errors='replace').splitlines():
+        if re.search(r'exception|NSLock|SwiftUI|AppKit|assert|fatal error|Foundation|warning|QA application class', line, re.I):
+            for token in tokens:
+                line = line.replace(token, '[redacted]')
+            allowed.append(re.sub(r'https?://[^\s\"<>]+', '[URL]', line)[:1500])
+    write(output / 'native-process-diagnostic.json', {'raw_output_exported': False,
+          'raw_bytes': len(value), 'raw_sha256': hashlib.sha256(value).hexdigest(),
+          'allowlisted_exception_and_framework_lines': allowed[-40:]})
+
+
 def run_case(binary, source, output, variant, resident, visibility, mode):
     output.mkdir(parents=True)
     private = output / 'private'
@@ -285,6 +301,7 @@ def run_case(binary, source, output, variant, resident, visibility, mode):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+        preserve_process_diagnostic(private, output, [readiness['token'], readiness['ui_token']])
         fixture.close()
         stdout.close()
         # Do not export private capability or raw process output in the artifact.
@@ -322,7 +339,7 @@ def main():
                                          'type': type(error).__name__, 'message': str(error)})
                         write(case / 'failure.json', failures[-1])
                         print('FAILED', case.name, type(error).__name__, flush=True)
-                        if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+                        if isinstance(error, (TimeoutError, subprocess.TimeoutExpired, RuntimeError)):
                             write(args.output / 'performance-summary.json', {'status': 'FAIL_NATIVE_HARNESS_TIMEOUT',
                                   'cases': results, 'failures': failures, 'qualification': __doc__})
                             return 1

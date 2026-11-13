@@ -12,7 +12,7 @@ private func digest(_ text: String) -> String {
 }
 
 private final class LatencySampler {
-    private let lock = NSLock()
+    private let queue = DispatchQueue(label: "elichika.qa.main-queue-latency")
     private var timer: DispatchSourceTimer?
     private var pending = false
     private var running = false
@@ -20,40 +20,45 @@ private final class LatencySampler {
     private var missed = 0
 
     func start() {
-        lock.lock(); running = true; samples = []; missed = 0; lock.unlock()
-        let source = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
+        queue.sync { running = true; samples = []; missed = 0 }
+        let source = DispatchSource.makeTimerSource(queue: queue)
         source.schedule(deadline: .now(), repeating: .milliseconds(20))
         source.setEventHandler { [weak self] in
             guard let self else { return }
-            self.lock.lock()
             guard self.running, !self.pending else {
-                self.missed += 1; self.lock.unlock(); return
+                self.missed += 1; return
             }
             self.pending = true
-            self.lock.unlock()
             let sent = DispatchTime.now().uptimeNanoseconds
             DispatchQueue.main.async {
                 let milliseconds = Double(DispatchTime.now().uptimeNanoseconds - sent) / 1_000_000
-                self.lock.lock()
-                if self.running { self.samples.append(milliseconds) }
-                self.pending = false
-                self.lock.unlock()
+                self.queue.async {
+                    if self.running { self.samples.append(milliseconds) }
+                    self.pending = false
+                }
             }
         }
         timer = source; source.resume()
     }
 
     func stop() -> [String: Any] {
-        timer?.cancel(); timer = nil
-        lock.lock(); defer { lock.unlock() }
-        running = false
-        let values = samples.sorted()
-        func percentile(_ fraction: Double) -> Double {
-            guard !values.isEmpty else { return -1 }
-            return values[min(values.count - 1, Int(Double(values.count - 1) * fraction))]
+        let source = timer
+        source?.cancel()
+        // The serial worker only sends asynchronous work to main; it never
+        // waits for main. This snapshot has no NSLock or cross-queue cycle.
+        let result: [String: Any] = queue.sync {
+            running = false
+            let values = samples.sorted()
+            func percentile(_ fraction: Double) -> Double {
+                guard !values.isEmpty else { return -1 }
+                return values[min(values.count - 1, Int(Double(values.count - 1) * fraction))]
+            }
+            return ["samples": values.count, "p50_ms": percentile(0.50), "p95_ms": percentile(0.95),
+                    "max_ms": values.last ?? -1, "busy_timer_ticks": missed]
         }
-        return ["samples": values.count, "p50_ms": percentile(0.50), "p95_ms": percentile(0.95),
-                "max_ms": values.last ?? -1, "busy_timer_ticks": missed]
+        timer = nil
+        withExtendedLifetime(source) {}
+        return result
     }
 }
 
@@ -189,7 +194,8 @@ private final class PerformanceProbe {
             let end = ProcessInfo.processInfo.systemUptime
             let wall = end - start; let after = cpu()
             let cpuSeconds = after.seconds - before.seconds
-            try write("native-stage.json", ["stage": "cpu_captured", "uptime_seconds": end])
+            try write("native-stage.json", ["stage": "cpu_captured", "uptime_seconds": end,
+                "wall_seconds": wall, "app_cpu_seconds": cpuSeconds, "app_cpu_percent": 100 * cpuSeconds / wall])
             let latencyResult = latency.stop()
             try write("measurement-ended.json", ["status": "MEASURED", "uptime_seconds": end])
             result = ["schema_version": 1, "status": "MEASURED_POSTCHECKS_PENDING",
@@ -315,12 +321,25 @@ private final class PerformanceProbe {
     }
 }
 
+@MainActor
+private final class ProbeApplication: NSApplication {
+    override func reportException(_ exception: NSException) {
+        // QA-only fail-fast diagnostics. The controller retains this stream
+        // privately, redacts its capability values, and exports bounded text.
+        fputs("QA_OBJC_EXCEPTION \(exception.name.rawValue): \(exception.reason ?? "no reason")\n", stderr)
+        fputs(exception.callStackSymbols.joined(separator: "\n") + "\n", stderr)
+        fflush(stderr)
+        exit(3)
+    }
+}
+
 @main
 @MainActor
 private struct MacPerformanceMain {
     static func main() {
-        let app = NSApplication.shared
+        let app = ProbeApplication.shared
         app.setActivationPolicy(.regular)
+        fputs("QA application class: \(NSStringFromClass(type(of: app)))\n", stderr)
         do {
             let probe = try PerformanceProbe(arguments: CommandLine.arguments)
             Task { await probe.run() }
