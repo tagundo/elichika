@@ -32,6 +32,6 @@ func main() {
     ctx.Set("gamedata", local.Gamedata)
     ctx.Set("dictionary", local.Dictionary)
     ctx.Set("locale", local)
-    id := user_account.CreateNewAccount(ctx, 123456789, "synthetic-client-password")
+    id := user_account.CreateNewAccount(ctx, 123456789, "SifasQa123456789")
     fmt.Printf("Synthetic playable QA account created: ID=%d; password is the documented fixture value; tutorial disabled; all default members/cards/suits/decks initialized.\n", id)
 }

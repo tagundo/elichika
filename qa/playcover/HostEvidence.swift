@@ -3,9 +3,14 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
-guard CommandLine.arguments.count == 2 else { exit(2) }
+guard [2, 3].contains(CommandLine.arguments.count) else { exit(2) }
 let wanted = CommandLine.arguments[1]
 let apps = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == wanted }
+if CommandLine.arguments.count == 3 {
+    guard CommandLine.arguments[2] == "--activate", apps.count == 1 else { exit(2) }
+    apps[0].activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+}
 let records: [[String: Any]] = apps.map { app in
     let windows = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []).filter {
         ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == app.processIdentifier

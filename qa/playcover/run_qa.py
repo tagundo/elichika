@@ -14,6 +14,7 @@ import platform
 import plistlib
 import re
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -45,6 +46,27 @@ def wait_for(predicate, seconds):
         time.sleep(.5)
     return None
 
+def fresh_crash_metadata(executable, since):
+    records = []
+    root = Path.home()/'Library/Logs/DiagnosticReports'
+    for path in root.glob(executable+'*.ips'):
+        if path.stat().st_mtime < since or path.stat().st_size > 4*1024*1024:continue
+        try:
+            text = path.read_text().lstrip()
+            first, end = json.JSONDecoder().raw_decode(text)
+            tail = text[end:].strip()
+            data = json.loads(tail) if tail else first
+            rows = []
+            for thread in data.get('threads',[]):
+                if not thread.get('triggered'):continue
+                rows.append({'triggered':True,'frames':[{key:frame[key] for key in ['imageIndex','imageOffset','symbol','symbolLocation'] if key in frame} for frame in thread.get('frames',[])[:40]]})
+            records.append({'file':path.name,'sha256':sha(path),'procName':data.get('procName'),
+                'exception':{key:data.get('exception',{}).get(key) for key in ['type','signal','codes']},
+                'termination':{key:data.get('termination',{}).get(key) for key in ['namespace','code','indicator']},
+                'triggered_threads':rows,'images':[{key:image[key] for key in ['name','arch','uuid','path','base'] if key in image} for image in data.get('usedImages',[])]})
+        except Exception as error:records.append({'file':path.name,'metadata_error':type(error).__name__})
+    return records
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--fixtures', type=Path, required=True)
@@ -75,8 +97,12 @@ def main():
         assert host['hardware']['stdout'].strip() == '1' and host['windowserver']['code'] == 0, 'Apple Silicon WindowServer required'
         assert 'amfi_get_out_of_my_way' not in host['bootargs']['stdout'], 'Unreviewed PlaySign environment'
         build = a.fixtures/'host-tools'; build.mkdir(exist_ok=True)
-        for name in ['HostEvidence', 'PlayCoverAX']:
-            result = command(['xcrun','swiftc',HERE/(name+'.swift'),'-o',build/name], timeout=120)
+        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA']:
+            arguments = ['xcrun','swiftc','-target','arm64-apple-macosx13.0',HERE/(name+'.swift'),'-o',build/name]
+            if name == 'VisionQA':
+                for framework in ['AppKit','ApplicationServices','CoreGraphics','Vision','ImageIO','CryptoKit']:
+                    arguments += ['-framework',framework]
+            result = command(arguments, timeout=120)
             write(a.evidence/(name+'-compile.json'), result)
             assert result['code'] == 0, 'Swift helper compilation failed: '+name
         def host_state(bundle):
@@ -84,6 +110,7 @@ def main():
             if result['code']: return {'error': result}
             return json.loads(result['stdout'])
         def record_screen(bundle, folder, label):
+            command([build/'HostEvidence',bundle,'--activate'])
             state = host_state(bundle)
             write(folder/(label+'-host.json'), state)
             if not state.get('screen_capture_authorized'):
@@ -104,22 +131,27 @@ def main():
         assert mounted['code'] == 0
         volume = next(Path(item['mount-point']) for item in plistlib.loads(mounted['stdout'].encode())['system-entities'] if 'mount-point' in item)
         source_app = next(volume.glob('*.app'))
-        pc = Path.home()/'Applications/PlayCover.app'
-        pc.parent.mkdir(exist_ok=True)
-        assert command(['ditto',source_app,pc], timeout=90)['code'] == 0
+        pc = Path('/Applications/PlayCover.app')
+        copied = command(['ditto',source_app,pc], timeout=90)
+        if copied['code']:
+            copied = command(['sudo','-n','ditto',source_app,pc],timeout=90)
+        write(a.evidence/'normal-applications-install.json',copied)
+        assert copied['code'] == 0
         info = plistlib.loads((pc/'Contents/Info.plist').read_bytes())
         pcid = info['CFBundleIdentifier']
         assert pcid == 'io.playcover.PlayCover'
         signature = command(['codesign','--verify','--deep','--strict','--verbose=4',pc])
         write(a.evidence/'playcover-signature.json', signature)
         assert signature['code'] == 0, 'Pinned PlayCover app signature failed'
-        for key, value in [('AlwaysInstallPlayTools','false'),('ShowInstallPopup','false'),('ShowAppStorePopup','false')]:
+        for key, value in [('AlwaysInstallPlayTools','true'),('ShowInstallPopup','false'),('ShowAppStorePopup','false')]:
             assert command(['defaults','write',pcid,key,'-bool',value])['code'] == 0
         stage('open-actual-playcover')
         opened = command(['open','-a',pc])
         write(a.evidence/'playcover-open.json', opened)
         assert opened['code'] == 0
         assert wait_for(lambda: host_state(pcid).get('applications'), 30), 'PlayCover did not run'
+        command([build/'HostEvidence',pcid,'--activate'])
+        wait_for(lambda:any(app.get('windows') for app in host_state(pcid).get('applications',[])),30)
         report['playcover_window'] = record_screen(pcid, a.evidence, 'playcover-initial')
         expected_path = a.fixtures/'reviewed-playcover-entitlements.json'
         write(expected_path, expected(Path.home()))
@@ -159,25 +191,51 @@ def main():
             time.sleep(3)
             result['actual_playcover_import'] = True
             stage('verify-imported-bundle-'+candidate['region'])
+            footprint = command([sys.executable,HERE/'verify_playtools_footprint.py','--playcover-dmg',dmg,
+                '--pinned-playcover-app',source_app,'--installed-game',app,'--candidate-ipa',ipa,
+                '--candidate-sha256',candidate['sha256'],'--proof-dir',folder/'playtools-footprint'],timeout=180)
+            write(folder/'playtools-footprint-command.json',footprint)
+            result['pinned_standard_playtools_verified'] = footprint['code'] == 0
+            additional = []
+            if footprint['code'] == 0:
+                allowed = json.loads((folder/'playtools-footprint/verifier-arguments.json').read_text())
+                for value in allowed['allow_dylib']:additional += ['--allow-dylib',value]
+                for value in allowed['allow_added_resource']:additional += ['--allow-added-resource',value]
             verified = command([sys.executable,HERE/'verify_playcover_install.py','--installed-app',app,
                 '--candidate-ipa',ipa,'--candidate-sha256',candidate['sha256'],'--proof-dir',folder/'install-verification',
-                '--playcover-app',pc,'--playcover-dmg',dmg,'--expected-entitlements',expected_path],timeout=180)
+                '--playcover-app',pc,'--playcover-dmg',dmg,'--expected-entitlements',expected_path,*additional],timeout=180)
             write(folder/'verifier-command.json', verified)
             result['bundle_verification_passed'] = verified['code'] == 0
             stage('launch-imported-app-'+candidate['region'])
-            launch_args = ['open','-a',app,'--args','-SIFASDiagnosticsEnabled','YES','-ServerEndpoint','http://127.0.0.1:8080']
+            installed_info = plistlib.loads((app/'Info.plist').read_bytes())
+            display = installed_info.get('CFBundleDisplayName') or installed_info['CFBundleName']
+            alias = Path.home()/'Applications/PlayCover'/(display+'.app')
+            assert wait_for(lambda:(alias/'Info.plist').exists(),15), 'Normal PlayCover launch alias was not created'
+            alias_info = plistlib.loads((alias/'Info.plist').read_bytes())
+            assert alias_info == installed_info, 'Normal launch alias metadata differs from verified imported app'
+            alias_entries = {}
+            for entry in alias.iterdir():
+                if entry.name == 'Info.plist':continue
+                assert entry.is_symlink() and entry.resolve(strict=True) == (app/entry.name).resolve(strict=True), 'Alias entry is not the normal imported-app symlink'
+                alias_entries[entry.name] = str(entry.resolve())
+            write(folder/'normal-playcover-launch-alias.json',{'alias':str(alias),'entries':alias_entries,'metadata_equal':True})
+            launch_args = ['open','-a',alias,'--args','-SIFASDiagnosticsEnabled','YES','-ServerEndpoint','http://127.0.0.1:8080']
             launch_wall = time.time()
             launch = command(launch_args)
             write(folder/'normal-launch.json',launch)
             running = wait_for(lambda: host_state(candidate['bundle_id']).get('applications'),30)
             if not running:
                 result.update(status='FAIL_APP_LAUNCH', launch=launch)
+                write(folder/'launch-crash-metadata.json',fresh_crash_metadata(installed_info['CFBundleExecutable'],launch_wall))
                 stage('launch-failed-'+candidate['region'])
                 continue
             pid = running[0]['pid']; result['actual_pid'] = pid
             result['actual_process_start'] = command(['ps','-p',str(pid),'-o','lstart='])
             result['launch_wall_time'] = launch_wall
             time.sleep(12)
+            command([build/'HostEvidence',candidate['bundle_id'],'--activate'])
+            vision_initial = command([build/'VisionQA','snapshot','--pid',str(pid),'--proof-dir',folder/'vision-initial'],timeout=30)
+            write(folder/'vision-initial-command.json',vision_initial)
             result['initial_screen'] = record_screen(candidate['bundle_id'],folder,'game-initial')
             def ax(action, label, *values):
                 target = folder/label
@@ -219,6 +277,8 @@ def main():
             result['final_host'] = host_state(candidate['bundle_id'])
             result['process_alive_after_observation'] = bool(result['final_host'].get('applications'))
             result['final_screen'] = record_screen(candidate['bundle_id'],folder,'game-final')
+            command([build/'HostEvidence',candidate['bundle_id'],'--activate'])
+            write(folder/'vision-final-command.json',command([build/'VisionQA','snapshot','--pid',str(pid),'--proof-dir',folder/'vision-final'],timeout=30))
             result['status'] = 'ACTUAL_IMPORT_AND_LAUNCH_OBSERVED_GAMEPLAY_UNPROVEN'
             try:os.kill(pid,signal.SIGTERM)
             except ProcessLookupError:pass
@@ -238,7 +298,7 @@ def main():
                 if match and re.fullmatch(r'/[A-Za-z0-9_./-]*',match[3]):
                     rows.append({'status':int(match[1]),'method':match[2],'path':match[3]})
             report['actual_server_request_metadata'] = rows
-            report['actual_client_api_requests_observed'] = any(row['path'].startswith('/api/') for row in rows)
+            report['actual_client_api_requests_observed'] = any(row['path'] in ['/login/startup','/login/login','/bootstrap/fetchBootstrap','/liveMv/start'] for row in rows)
         write(a.evidence/'summary.json',report)
         build_receipt = a.evidence/'server-build.json'
         binding = json.loads(build_receipt.read_text()) if build_receipt.exists() else {}
