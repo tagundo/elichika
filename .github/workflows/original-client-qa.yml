@@ -8,7 +8,7 @@ on:
       max_seconds:
         description: Bounded genuine-client UI run time per region
         required: true
-        default: "1500"
+        default: "600"
 
 permissions:
   # GitHub requires write scope to read this repository's unpublished drafts.
@@ -144,7 +144,7 @@ jobs:
 
       - name: Run genuine regional client UI against owned hash-bound source fixture
         env:
-          QA_SECONDS: ${{ inputs.max_seconds || '1500' }}
+          QA_SECONDS: ${{ inputs.max_seconds || '600' }}
         run: |
           set -euo pipefail
           case "$QA_SECONDS" in *[!0-9]*|'') exit 2;; esac
@@ -159,7 +159,7 @@ jobs:
             --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
             --server-source server-source --evidence evidence \
             --unity-agent qa/unity_ui.bundle.js --max-seconds "$QA_SECONDS" \
-            --settings-orientation portrait --settings-scalar 2.0 --fast-intro --observer-detached-login-control || qa_exit=$?
+            --settings-orientation portrait --settings-scalar 2.0 --fast-intro --download-modal-diagnostic || qa_exit=$?
           if [ "$qa_exit" = 124 ] || [ "$qa_exit" = 137 ]; then
             python3 - <<'PYTIMEOUT'
           import json

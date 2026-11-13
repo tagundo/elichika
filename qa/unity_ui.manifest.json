@@ -1,11 +1,12 @@
 {
   "bridge": "0.9.1",
   "frida_server_and_client": "16.6.6",
-  "agent_version": 3,
+  "agent_version": 4,
   "bundle": "unity_ui.bundle.js",
-  "bytes": 190882,
-  "sha256": "58f6a19325910f513dd2cfc4f10e723f8b6a019cd04679ab2e587497a9f3dfbb",
-  "observer_sha256": "7a977badbc8614959099042beb3179203b85511b6ec8cd9baeefb305352d01d3",
+  "bytes": 206725,
+  "sha256": "63b3e9a0e01af10e5034fb5ea26a7af3cad1f4e74efc07c1d98d408f51e7c43e",
+  "observer_sha256": "652da17218f1e590183217ff3bfffa509feeb79c7852dd103cff06f2499c0c50",
   "bridge_sha256": "426db768c062908b685d713ee27f87b5eea3d8ea2a4d28cf8db465a6900da787",
-  "runtime_validation": "Pending actual Unity process; syntax checks alone are not runtime proof"
+  "runtime_validation": "Pending actual cached native-TID-bound observer; V7 detached control separately authenticated and reached normal download modal",
+  "dispatcher_sha256": "844f52ae68019e1c30b54cc8164e68e664d1a675d22e6c6b02f4f4d068a89e65"
 }

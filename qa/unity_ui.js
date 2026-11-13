@@ -5,7 +5,7 @@
 (function () {
   "use strict";
   var ready = false, lastError = "", runtime = {}, classCache = {}, initPending = false;
-  var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 3;
+  var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 4;
   var QA_IDENTITY = {pid:Process.id,architecture:Process.arch,fridaVersion:Frida.version};
   var TEXT_TYPES = ["UnityEngine.UI.Text", "TMPro.TMP_Text", "Jigbox.Components.TextView", "LLAS.Components.UI.ProductTextView"];
   var DEFAULT_TYPES = ["UnityEngine.UI.Button", "UnityEngine.UI.Toggle", "UnityEngine.UI.InputField", "TMPro.TMP_InputField", "UnityEngine.UI.ScrollRect"].concat(TEXT_TYPES);
@@ -471,8 +471,30 @@ function splashFadeRGBA(splash) {
   return {r:numericField(color,"r"),g:numericField(color,"g"),b:numericField(color,"b"),a:numericField(color,"a")};
 }
 
+  function observeDownloadSettings(screen) {
+    var result=[],klass=findClass("LLAS.DownloadSettingPopup",true);
+    if (!klass) return result;
+    var raycaster=makeRaycaster(screen),objects=allOfType(klass);
+    for(var i=0;i<objects.length && i<12;i++) {
+      var popup=objects.get(i);if(!active(popup).active)continue;
+      var info={id:String(instanceId(popup)),path:hierarchy(transform(popup)),options:[],toggles:[],downloadType:numericField(popup,"downloadType")};
+      ["fullDownloadItemText","lightnessDownloadItemText","autoDeleteDownloadItemText"].forEach(function(name){
+        var caption=mvReadField(popup,name);
+        if(exists(caption))info.options.push({role:name,path:hierarchy(transform(caption)),text:componentText(caption)});
+      });
+      var group=mvReadField(popup,"productToggleGroup"),list=mvReadField(group,"toggles"),items=mvReadField(list,"_items"),size=mvNumber(mvReadField(list,"_size"));
+      if(items&&typeof items.length==="number"&&size!==null)for(var j=0;j<size&&j<items.length&&j<8;j++) {
+        var toggle=items.get(j),button=mvReadField(toggle,"button");
+        var entry={path:hierarchy(transform(toggle)),isOn:mvReadField(toggle,"isOn"),label:exists(button)?descendantText(button):""};
+        if(exists(button))entry.target=mvUiTarget(button,screen,raycaster);
+        info.toggles.push(entry);
+      }
+      result.push(info);
+    }
+    return result;
+  }
   function featureState() {
-    var result = { native: nativeFeatureState(), aspectCorrectors: [], splashScreens: [], mv:observeExistingMvState(), diagnostics: [] };
+    var result = { native: nativeFeatureState(), aspectCorrectors: [], splashScreens: [], mv:observeExistingMvState(), downloadSettings:observeDownloadSettings(metadata()), diagnostics: [] };
     var aspect = findClass("LLAS.Scene.Live.Components.CameraAspectCorrector", true);
     if (aspect) try {
       var objects = allOfType(aspect);
@@ -627,6 +649,7 @@ function splashFadeRGBA(splash) {
             visible: activity.active && activity.enabled && geometry.visible,
             alpha: geometry.alpha, groupsInteractable: geometry.groupsInteractable,
             blocksRaycasts: geometry.blocksRaycasts, canvas: geometry.canvas };
+          if(kind === "toggle") record.toggle={isOn:maybe(object,"get_isOn",null)};
           if(kind === "scroll") {
             record.scroll={horizontal:!!maybe(object,"get_horizontal",false),vertical:!!maybe(object,"get_vertical",false)};
             var position=maybe(object,"get_normalizedPosition",null);
@@ -692,15 +715,58 @@ function splashFadeRGBA(splash) {
     ready = true; lastError = "";
     send({ type: "unity-ui-ready", bridgeVersion: BRIDGE_VERSION, agentVersion: AGENT_VERSION, unityVersion: Il2Cpp.unityVersion, screen: metadata() });
   }
+  var mainDispatcher = null, mainBootstrap = null, mainIdentityProof = null, cachedMainRequested = false;
+  function bootstrapMainDispatcher() {
+    if (mainBootstrap) return mainBootstrap;
+    // This is the only use of bridge 0.9.1's cold main scheduler. The host has
+    // already independently identified the native engine-loop thread with
+    // debuggerd and /proc; attachedThreads[0] is never accepted as proof.
+    mainBootstrap = Il2Cpp.perform(function () {
+      var proof = globalThis.QA_EXPECTED_UNITY_MAIN;
+      var tid = Process.getCurrentThreadId();
+      if (!proof || proof.pid !== QA_IDENTITY.pid || !Number.isInteger(proof.tid) ||
+          proof.tid <= 0 || proof.tid !== tid || proof.comm !== "UnityMain" ||
+          proof.source !== "native-debuggerd-engine-loop-and-proc-comm")
+        throw new Error("Independent native Unity main-thread proof does not match this callback");
+      var actualComm = File.readAllText("/proc/self/task/" + tid + "/comm").trim();
+      if (actualComm !== proof.comm) throw new Error("Native Unity thread identity changed before bootstrap");
+      mainIdentityProof = {pid:proof.pid,tid:tid,comm:actualComm,source:proof.source,
+        nativeBacktraceSha256:proof.nativeBacktraceSha256};
+      mainDispatcher = CachedMainThreadDispatcher.createIl2CppAdapter(
+        {Il2Cpp:Il2Cpp,Process:Process,Script:Script,Frida:Frida,NULL:NULL},
+        {expectedMainTid:tid,timeoutMs:10000,maxBatch:4});
+      mainDispatcher.installOnCurrentMainThread();
+      if (!ready) initialize();
+      return true;
+    }, "main");
+    return mainBootstrap;
+  }
   function onMain(action) {
-    return Il2Cpp.perform(function () { if (!ready) initialize(); return action(); }, "main");
+    // Intro measurement retains the already validated observer path. The host
+    // activates the cached dispatcher only at quiescent Title, after paired
+    // timing and independent native stack collection, before the login tap.
+    if (!cachedMainRequested) return Il2Cpp.perform(function () { if (!ready) initialize(); return action(); }, "main");
+    return bootstrapMainDispatcher().then(function () { return mainDispatcher.dispatch(action); });
   }
   rpc.exports = {
+    enablecached: function (proof) {
+      if (cachedMainRequested || introPending || initPending || introTimer)
+        throw new Error("Cached main bootstrap requires once-only quiescent observer");
+      globalThis.QA_EXPECTED_UNITY_MAIN = proof;
+      cachedMainRequested = true;
+      return onMain(function () { return {dispatcher:mainDispatcher.status(),screen:metadata(),mainIdentityProof:mainIdentityProof}; });
+    },
     beginintrotrace: function () { return beginIntroTrace(); },
     endintrotrace: function () { return endIntroTrace(); },
     status: function () { return { ready: ready, lastError: lastError, initializing: initPending,
       bridgeVersion: BRIDGE_VERSION, agentVersion: AGENT_VERSION, fridaVersion: QA_IDENTITY.fridaVersion,
-      pid: QA_IDENTITY.pid, architecture: QA_IDENTITY.architecture, pendingManagedIntroWork:introPending, introTimerActive:!!introTimer }; },
+      pid: QA_IDENTITY.pid, architecture: QA_IDENTITY.architecture, pendingManagedIntroWork:introPending, introTimerActive:!!introTimer,
+      dispatcher:mainDispatcher ? mainDispatcher.status() : null, mainIdentityProof:mainIdentityProof }; },
+    dispose: function () {
+      endIntroTrace();
+      if (introPending || initPending) throw new Error("QA reads must quiesce before observer disposal");
+      return mainDispatcher ? mainDispatcher.dispose(false) : {redirected:true,handlesFreed:0};
+    },
     initialize: function () { return onMain(function () { return metadata(); }); },
     snapshot: function (options) { return onMain(function () { return snapshot(options || {}); }); },
     features: function () { return onMain(function () { return { timestampMs:Date.now(), screen:metadata(), features:featureState() }; }); },

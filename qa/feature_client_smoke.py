@@ -134,6 +134,35 @@ def successful_game_requests(log):
     return {path: count > 0 for path, count in game_request_counts(log).items()}
 
 
+def download_settings_plan(tree):
+    """Choose only the actual lightweight radio; never confirm bulk by default."""
+    popups=(tree.get("features") or {}).get("downloadSettings") or []
+    context=" ".join(label(node) for node in tree.get("nodes",[]) if node.get("active") and node.get("visible"))
+    if not popups:
+        return {"action":"blocked","reason":"Download-settings caption is visible but its typed radio state is unavailable"} if re.search(r"データダウンロード設定|data\s*download\s*settings",context,re.I) else None
+    if len(popups)!=1:return {"action":"blocked","reason":"Multiple active download-settings popups"}
+    popup=popups[0]
+    light=[item for item in popup.get("options",[]) if item.get("role")=="lightnessDownloadItemText" and item.get("path") and item.get("text")]
+    if len(light)!=1:return {"action":"blocked","reason":"The actual lightweight-download caption reference is unavailable"}
+    caption=light[0]
+    choices=[]
+    for toggle in popup.get("toggles",[]):
+        path=toggle.get("path") or ""
+        if path and caption["path"].startswith(path+"/"):choices.append(toggle)
+    if len(choices)!=1:return {"action":"blocked","reason":"Cannot uniquely associate the lightweight caption with its existing radio toggle"}
+    choice=choices[0]
+    if choice.get("isOn") is True:
+        states=[entry.get("isOn") for entry in popup.get("toggles",[])]
+        if len(states)>=2 and all(type(value) is bool for value in states) and states.count(True)==1:
+            return {"action":"confirm-lightweight","popup_path":popup.get("path"),"caption":caption["text"]}
+        return {"action":"blocked","reason":"Lightweight radio selection is not exclusive or fully observed"}
+    target=choice.get("target") or {}
+    hit=target.get("hit") or {}
+    if choice.get("isOn") is False and target.get("active") and target.get("visible") and hit.get("available") and hit.get("hittable"):
+        return {"action":"select-lightweight","target":target,"caption":caption["text"]}
+    return {"action":"blocked","reason":"Lightweight radio is not selected and has no current verified pointer target"}
+
+
 def title_start_visible(tree):
     return (tree.get("screen") or {}).get("scene") == "Title" and any(
         node.get("active") and node.get("visible") and node.get("kind") == "text" and
@@ -312,6 +341,7 @@ def main():
     parser.add_argument("--settings-scalar", type=float, choices=(.5, 2.), default=2.)
     parser.add_argument("--fast-intro", action="store_true")
     parser.add_argument("--observer-detached-login-control", action="store_true")
+    parser.add_argument("--download-modal-diagnostic", action="store_true")
     parser.add_argument("--serial", default="127.0.0.1:5555")
     parser.add_argument("--server-apk", type=Path)
     parser.add_argument("--host-server-root", type=Path)
@@ -574,13 +604,71 @@ def main():
             except Exception as error:
                 report["observations"].append({"native_readonly_backtrace":type(error).__name__})
 
+    def quiesce_reader():
+        if not agent:return
+        bounded_rpc(lambda:agent.exports_sync.endintrotrace(),timeout=5)
+        deadline=time.monotonic()+10
+        while True:
+            state=bounded_rpc(lambda:agent.exports_sync.status(),timeout=3)
+            if not state.get("pendingManagedIntroWork") and not state.get("initializing") and not (state.get("dispatcher") or {}).get("pending"):break
+            if time.monotonic()>=deadline:raise RuntimeError("Read-only observer did not quiesce; never detach with pending managed reads")
+            time.sleep(.05)
+
+    def activate_cached_reader():
+        # Native debuggerd collection is after completed intro measurement at
+        # quiescent Title (or a later stable live settings round trip), never
+        # within a measured intro span. No managed lookup discovers this TID.
+        from unity_main_tid import select_unity_main_tid, proc_stat_starttime
+        quiesce_reader()
+        before_start=proc_stat_starttime(device.shell("cat","/proc/"+client_pid+"/stat",timeout=5),int(client_pid))
+        raw=device.shell("debuggerd","-b",client_pid,timeout=25)
+        proof=select_unity_main_tid(raw,expected_pid=int(client_pid),expected_package=CLIENT,
+            expected_unity_build_id={"JP":"86298b394480be9517e412413294186d4ac5a942","GL":"e8c9d46cd7c5a461c723007e4714c3318ed9553c"}[args.region])
+        after_start=proc_stat_starttime(device.shell("cat","/proc/"+client_pid+"/stat",timeout=5),int(client_pid))
+        if before_start!=after_start:raise RuntimeError("Game PID was reused during native main-thread proof")
+        comm=device.shell("cat","/proc/"+client_pid+"/task/"+str(proof["main_tid"])+"/comm",timeout=5).strip()
+        if comm!="UnityMain":raise RuntimeError("Independent native engine-loop thread changed before dispatcher bootstrap")
+        serial=len(report.get("cached_main_bindings",[]))
+        name="cached-main-native-"+str(serial)+".txt"
+        (args.evidence/name).write_text(raw)
+        expected={"pid":int(client_pid),"tid":proof["main_tid"],"comm":comm,
+            "source":"native-debuggerd-engine-loop-and-proc-comm","nativeBacktraceSha256":digest(args.evidence/name)}
+        observed=bounded_rpc(lambda:agent.exports_sync.enablecached(expected),timeout=20)
+        if observed.get("mainIdentityProof")!=expected:raise RuntimeError("Cached dispatcher callback did not establish the independently selected native main TID")
+        first=observed.get("screen") or {}
+        time.sleep(.2)
+        second=bounded_rpc(lambda:agent.exports_sync.features(),timeout=15).get("screen") or {}
+        if not (isinstance(first.get("frame"),int) and isinstance(second.get("frame"),int) and 0<=first["frame"]<second["frame"]):
+            raise RuntimeError("Native-bound cached main callbacks did not observe advancing actual Unity frames")
+        if proc_stat_starttime(device.shell("cat","/proc/"+client_pid+"/stat",timeout=5),int(client_pid))!=before_start:
+            raise RuntimeError("Game PID changed across cached main bootstrap")
+        proof.update({"process_start_ticks":before_start,"native_backtrace_path":name,"native_backtrace_sha256":expected["nativeBacktraceSha256"],
+            "callback_tid_verified":True,"callback_frame_samples":[first,second],"runtime_feature_approval":False})
+        report.setdefault("cached_main_bindings",[]).append(proof)
+        report["cached_dispatcher_enabled_once"]=True
+        (args.evidence/("cached-main-binding-"+str(serial)+".json")).write_text(json.dumps(proof,indent=2))
+
+    def detach_reader():
+        if not session:return
+        if not session.is_detached:
+            quiesce_reader()
+            disposal=bounded_rpc(lambda:agent.exports_sync.dispose(),timeout=5) if agent else {"redirected":True}
+            if not disposal.get("redirected"):
+                device.shell("am","force-stop",CLIENT)
+                raise RuntimeError("QA-owned delegate cleanup could not prove ownership; owned game stopped before detach")
+        bounded_rpc(lambda:session.detach(),timeout=5)
+
     def attach_reader():
         nonlocal agent, session, client_pid
+        running_pid = device.shell("pidof", "-s", CLIENT)
         if session:
-            try: bounded_rpc(lambda: session.detach(), timeout=5)
-            except Exception: pass
+            if running_pid == client_pid and not session.is_detached:
+                detach_reader()
+            else:
+                try: bounded_rpc(lambda:session.detach(),timeout=5)
+                except Exception: pass  # Previous owned process was normally stopped.
         agent = session = None
-        client_pid = device.shell("pidof", "-s", CLIENT)
+        client_pid = running_pid
         assert client_pid, "Game settings process is not running"
         import frida
         device.adb("forward", "tcp:27042", "tcp:27042")
@@ -589,7 +677,10 @@ def main():
         agent = session.create_script(args.unity_agent.read_text())
         agent.on("message", lambda message, data: None)
         bounded_rpc(lambda: agent.load(), timeout=15)
-        bounded_rpc(lambda: agent.exports_sync.beginintrotrace(), timeout=5)
+        if report.get("cached_dispatcher_enabled_once"):
+            activate_cached_reader()
+        else:
+            bounded_rpc(lambda: agent.exports_sync.beginintrotrace(), timeout=5)
         report["readonly_ui_instrumentation"] = True
 
     def apply_profile(orientation, scalar, fast_intro, profile_name, *, restart=False, instrument=True):
@@ -804,6 +895,9 @@ def main():
                     (args.evidence / "intro-paired-measurement.json").write_text(json.dumps(measured, indent=2))
                     record_case("intro_timing", "PASS", ["intro-off-trace.json", "intro-on-trace.json", "intro-paired-measurement.json"], measured["proof"])
                 intro_phase = "done"
+                if not args.observer_detached_login_control:
+                    activate_cached_reader()
+                    continue  # Re-read targets after independent native stack capture.
             home = scene == "Home" or re.search(r"(?:Home(?:Top|Scene|View|Page|Screen|Menu)|ホーム|ホーム画面)", all_text, re.I)
             members = scene in ("CardList", "CardDetail", "CommunicationMemberSelect", "CommunicationMemberDetail") or re.search(r"(?:Member(?:Top|List|Scene|View|Page|Screen)|School\s*Idols|部員一覧|スクールアイドル一覧)", all_text, re.I)
             mv = scene in ("LiveMv", "LiveMvCore") or re.search(r"(?:MusicVideo(?:Scene|Player|View)|MV(?:Scene|Player|Play|View)|Music Video Playing)", all_text, re.I)
@@ -1037,6 +1131,28 @@ def main():
                         break
                     tap(start_target, "readonly-unity-ui-tree", "observed-title-tap-to-start")
                     time.sleep(6); continue
+            download_plan=download_settings_plan(tree)
+            if args.download_modal_diagnostic and report.get("download_choices") and not download_plan:
+                capture("download-modal-diagnostic-after-confirmation")
+                report["download_modal_diagnostic"]={"status":"ORDINARY_LIGHTWEIGHT_RADIO_AND_OK_COMPLETED",
+                    "snapshot":f"unity-ui-{index:03d}.json","request_counts":game_request_counts(host_server.server_log()),
+                    "not_feature_or_home_approval":True}
+                report["blocked_reason"]="Dedicated cached-observer modal diagnostic completed; later feature flows are unobserved"
+                break
+            if download_plan:
+                if download_plan["action"]=="select-lightweight":
+                    picked=bounded_rpc(lambda:agent.exports_sync.pick({"id":download_plan["target"]["id"],"requireHitTest":True}),timeout=15)
+                    target=picked["target"];target["_unity_screen"]=picked["screen"]
+                    tap(target,"readonly-unity-ui-tree","select-observed-lightweight-download-radio")
+                    capture("download-lightweight-selected")
+                elif download_plan["action"]=="confirm-lightweight":
+                    if choose(tree,[r"^OK$"],"confirm-exclusively-observed-lightweight-download"):
+                        report.setdefault("download_choices",[]).append({"choice":"lightweight","caption":download_plan["caption"],"snapshot":f"unity-ui-{index:03d}.json"})
+                else:
+                    report["qa_navigation_blocker"]=download_plan["reason"]
+                    capture("download-settings-awaiting-semantic-target")
+                time.sleep(3)
+                continue
             # Generic bootstrap choices are intentionally narrow and never buy,
             # scout, link an external account or request a full asset download.
             if choose(tree, [r"^English$", r"^United States$", r"^Minimum(?: Download)?$", r"^Standard(?: Download)?$", r"^Touch(?:\s+to\s+Start|\s+Screen)?$", r"^Start$", r"^Download$", r"^Next$", r"^Continue$", r"^Confirm$", r"^OK$", r"^Agree$", r"^Accept$", r"^Skip$", r"^Close$"], "bootstrap-or-confirmation"):
@@ -1084,7 +1200,11 @@ def main():
         except Exception as error:
             report["observations"].append({"log_collection": type(error).__name__})
         if session:
-            try: bounded_rpc(lambda: session.detach(), timeout=5)
+            # All final screenshots/logs are already retained. Stop the owned
+            # process before unloading on failure or an uncertain lifecycle.
+            try:
+                device.shell("am","force-stop",CLIENT)
+                bounded_rpc(lambda:session.detach(),timeout=5)
             except Exception: pass
         try:
             stop_recordings()

@@ -9,11 +9,13 @@ metadata = json.loads((package / "package.json").read_text())
 assert metadata["version"] == "0.9.1", "Use the pinned Frida 16-compatible bridge"
 bridge = package / "dist/index.js"
 agent = root / "unity_ui.js"
+dispatcher = root / "cached_dispatcher.js"
 output = root / "unity_ui.bundle.js"
-output.write_bytes(bridge.read_bytes() + b"\n;\n" + agent.read_bytes() + b"\n")
+output.write_bytes(bridge.read_bytes() + b"\n;\n" + dispatcher.read_bytes() + b"\n;\n" + agent.read_bytes() + b"\n")
 report = {"bridge": metadata["version"], "frida_server_and_client": "16.6.6",
           "bundle": output.name, "bytes": output.stat().st_size,
           "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+          "dispatcher_sha256": hashlib.sha256(dispatcher.read_bytes()).hexdigest(),
           "observer_sha256": hashlib.sha256(agent.read_bytes()).hexdigest(),
           "bridge_sha256": hashlib.sha256(bridge.read_bytes()).hexdigest(),
           "runtime_validation": "Pending actual Unity process; syntax checks alone are not runtime proof"}
