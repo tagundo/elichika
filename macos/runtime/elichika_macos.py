@@ -648,7 +648,12 @@ class Runtime:
 
     def _write_state(self):
         if self.state_file:
-            atomic_json(self.state_file, self.state())
+            state = self.state()
+            # Native bootstrap capabilities belong only to authenticated control
+            # responses, not optional diagnostics snapshots on disk.
+            for role in ("server", "management"):
+                state[role].pop("local_webui_token", None)
+            atomic_json(self.state_file, state)
 
     def _claim_instance(self):
         import fcntl

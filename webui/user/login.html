@@ -2,7 +2,15 @@
 <html>
 <head><meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8"/><link rel="stylesheet" href="/webui/webui.css"/></head>
 <body onload="try_login()">
-    <form id="login_form" method="POST" enctype="multipart/form-data">
+    <section id="native-account-picker" hidden>
+        <h2 data-native-text="Choose a local account">Choose a local account</h2>
+        <p data-native-text="Select an account stored on this device. No password is needed in this app.">Select an account stored on this device. No password is needed in this app.</p>
+        <label for="native-account-filter" data-native-text="Filter accounts (optional)">Filter accounts (optional)</label>
+        <input id="native-account-filter" type="search" oninput="filter_native_accounts()">
+        <div id="native-account-list"></div>
+        <p id="native-account-empty" hidden data-native-text="No accounts yet. Create an account in the game client first.">No accounts yet. Create an account in the game client first.</p>
+    </section>
+    <form id="login_form" method="POST" enctype="multipart/form-data" hidden>
         <div><label>User Id</label><input type="number" id="user_id" name="user_id" min="0" max="999999999"></div>
         <div><label>Password</label><input type="password" id="user_password" name="user_password"></div>
         <div><label>Stay logged-in</label><input type="checkbox" id="keep_login"></div>
@@ -13,7 +21,31 @@
 </body>
 </html>
 <script>
-    function try_login() {
+    async function try_login() {
+        try {
+            const result = await fetch('/webui/user/native_accounts', {cache: 'no-store'})
+            if (result.ok) {
+                const data = await result.json()
+                document.body.dataset.elichikaLocalAccess = 'true'
+                document.getElementById('login_form').hidden = true
+                document.getElementById('native-account-picker').hidden = false
+                document.getElementById('native-account-empty').hidden = data.accounts.length > 0
+                data.accounts.forEach(function(account) {
+                    const button = document.createElement('button')
+                    button.type = 'button'
+                    button.textContent = 'ID ' + account.user_id + ' · Rank ' + account.rank
+                    button.dataset.userId = String(account.user_id)
+                    button.onclick = function() {
+                        document.getElementById('user_id').value = account.user_id
+                        login()
+                    }
+                    document.getElementById('native-account-list').appendChild(button)
+                })
+                apply_native_language()
+                return
+            }
+        } catch (_) {}
+        document.getElementById('login_form').hidden = false
         // try to login with existing data
         var userId = localStorage.getItem("user_id")
         if (userId != null) {
@@ -28,6 +60,13 @@
             if (document.getElementById("keep_login").checked)
                 login()
         }
+    }
+
+    function filter_native_accounts() {
+        const filter = document.getElementById('native-account-filter').value.trim()
+        document.querySelectorAll('#native-account-list button').forEach(function(button) {
+            button.hidden = !button.dataset.userId.includes(filter)
+        })
     }
 
     function clear_login_data() {
@@ -59,7 +98,7 @@
                     sessionStorage.setItem("user_session_key", resp.response)
                     sessionStorage.setItem("user_id", document.getElementById("user_id").value)
                     // nagivate to the main user webui hub
-                    window.location.replace("/webui/user")
+                    window.location.replace("/webui/user" + window.location.search)
                 }
             } else {
                 // no clear response from server
@@ -69,3 +108,4 @@
         }
     }
 </script>
+<script src="/webui/native_local.js"></script>

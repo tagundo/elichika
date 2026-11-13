@@ -15,7 +15,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var stoppingRuntime = false
     @Published var language: String
     @Published var libraryDirectory: String
-    @Published var showServerSettings = false
     @Published var serverAddressDraft = "127.0.0.1:8080"
     @Published var cdnServerDraft = ""
     @Published private(set) var savingNetwork = false
@@ -428,6 +427,10 @@ final class AppModel: ObservableObject {
         snapshot.webUIURL(path: path)
     }
 
+    func goEndpoint(path: String) -> RuntimeState.WebUIEndpoint? {
+        snapshot.webUIEndpoint(path: path)
+    }
+
     struct RuntimeStateRequest {
         fileprivate let sequence: UInt64
         fileprivate let epoch: UInt64
@@ -446,8 +449,9 @@ final class AppModel: ObservableObject {
               request.runtimePID == process?.processIdentifier else { return false }
         // Awaiting a response can let another request publish a ready browser.
         // Compare the live state, and invalidate before SwiftUI sees a new URL.
-        if goURL(path: "/webui/admin/") != value.webUIURL(path: "/webui/admin/") {
+        if goEndpoint(path: "/webui/admin/") != value.webUIEndpoint(path: "/webui/admin/") {
             disposeGoBrowsers()
+            goBrowserRevision &+= 1
         }
         appliedStateSequence = request.sequence
         snapshot = value
@@ -471,7 +475,7 @@ final class AppModel: ObservableObject {
     }
 
     private var managementPageVisible: Bool {
-        selectedSection == .accounts || (selectedSection == .settings && showServerSettings)
+        selectedSection == .accounts || selectedSection == .serverSettings
     }
 
     var managementDemandIdle: Bool { managementDemandTask == nil }

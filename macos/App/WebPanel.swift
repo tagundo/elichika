@@ -6,12 +6,13 @@ import WebKit
 enum BrowserRoute: String, Hashable { case accounts, content, assets, serverSettings }
 
 @MainActor
-final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKDownloadDelegate {
+final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKDownloadDelegate {
     let webView: WKWebView
     private weak var model: AppModel?
     private let route: BrowserRoute
     private let origin: TrustedOrigin?
     private let targetURL: URL?
+    let initialRequest: URLRequest?
     private let bridgeEnabled: Bool
     private var loaded = false
     private var pendingPerform: (String, [String]?)?
@@ -23,6 +24,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     private var currentLanguage: String
     private var assetNavigation: AssetNavigationState
     private var fullscreenCompletion: ((Result<Bool, Error>) -> Void)?
+    @Published private(set) var navigationFailed = false
 
     init(model: AppModel, route: BrowserRoute) {
         self.model = model; self.route = route
@@ -30,14 +32,20 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         let assetSection = model.selectedSection?.assetEditorSection ?? .tools
         assetNavigation = AssetNavigationState(desired: assetSection)
         bridgeEnabled = route == .content || route == .assets
-        if let ready = model.connection {
-            switch route {
-            case .content: targetURL = ready.adminURL
-            case .assets: targetURL = AssetEditorSection.embeddedURL(ready.toolsURL, section: assetSection)
-            case .accounts: targetURL = model.goURL(path: "/webui/user/")
-            case .serverSettings: targetURL = model.goURL(path: "/webui/admin/")
-            }
-        } else { targetURL = nil }
+        switch route {
+        case .content: targetURL = model.connection?.adminURL
+        case .assets: targetURL = model.connection.flatMap { AssetEditorSection.embeddedURL($0.toolsURL, section: assetSection) }
+        case .accounts: targetURL = model.goURL(path: "/webui/user/")
+        case .serverSettings: targetURL = model.goURL(path: "/webui/admin/")
+        }
+        if bridgeEnabled, let targetURL {
+            var request = URLRequest(url: targetURL)
+            if let uiToken = model.connection?.uiToken { request.setValue(uiToken, forHTTPHeaderField: "X-Elichika-Session") }
+            initialRequest = request
+        } else if !bridgeEnabled {
+            let path = route == .accounts ? "/webui/user/" : "/webui/admin/"
+            initialRequest = model.goEndpoint(path: path)?.initialRequest
+        } else { initialRequest = nil }
         origin = targetURL.flatMap(TrustedOrigin.init)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = bridgeEnabled ? model.websiteDataStore : model.goWebsiteDataStore
@@ -55,13 +63,13 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         webView.navigationDelegate = self; webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = false
         if bridgeEnabled { configuration.userContentController.add(self, name: "elichika") }
-        if let targetURL {
-            var request = URLRequest(url: targetURL)
-            if bridgeEnabled, let uiToken = model.connection?.uiToken {
-                request.setValue(uiToken, forHTTPHeaderField: "X-Elichika-Session")
-            }
-            webView.load(request)
-        }
+        if let initialRequest { webView.load(initialRequest) }
+    }
+
+    func retryNavigation() {
+        guard navigationFailed, let initialRequest else { return }
+        navigationFailed = false
+        webView.load(initialRequest)
     }
 
     func dispose() {
@@ -308,12 +316,21 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        navigationFailed = false
         loaded = true
         assetNavigation.pageReady()
         applyAssetSection()
         observeWindow()
         if let model { setLanguage(model.language) }
         if let (action, paths) = pendingPerform { pendingPerform = nil; perform(action, paths: paths) }
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if (error as NSError).code != NSURLErrorCancelled { navigationFailed = true }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        if (error as NSError).code != NSURLErrorCancelled { navigationFailed = true }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -373,6 +390,7 @@ final class BrowserSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         loaded = false
+        navigationFailed = true
         assetNavigation.pageReady()
         model?.message = "The web editor stopped. Reopen the app after preserving any exported files."
     }
@@ -387,6 +405,20 @@ struct WebPanel: View {
         let session = model.browser(route)
         BrowserSessionView(session: session, editorSurface: editorSurface)
             .id(ObjectIdentifier(session.webView))
+            .overlay(alignment: .top) {
+                BrowserRetryView(model: model, session: session)
+            }
+    }
+}
+
+private struct BrowserRetryView: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var session: BrowserSession
+    var body: some View {
+        if session.navigationFailed {
+            Button(model.text("Retry page", "페이지 다시 시도", "ページを再試行")) { session.retryNavigation() }
+                .padding().background(.regularMaterial).cornerRadius(8).padding()
+        }
     }
 }
 

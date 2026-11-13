@@ -214,6 +214,7 @@ jobs:
         run: |
           export NODE_PATH="$RUNNER_TEMP/viewer-browser/node_modules"
           mkdir -p "$EVIDENCE_DIR"
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node ../webui/native_local_browser_test.js
           node tests/texture_color_math_test.js
           node tests/texture_color_worker_test.js
           node tests/texture_paint_engine_test.js

@@ -16,7 +16,14 @@
 </html>
 
 <script>
-    function check_login() {
+    async function check_login() {
+        try {
+            const result = await fetch('/webui/admin/native_access', {cache: 'no-store'})
+            if (result.ok && (await result.json()).native_local) {
+                document.body.dataset.elichikaLocalAccess = 'true'
+                return
+            }
+        } catch (_) {}
         // if there is a session then use it
         var session = sessionStorage.getItem("admin_session_key")
         if (session == null) {

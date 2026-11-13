@@ -7,6 +7,22 @@ The following requirements are needed for authentication:
 
 The requirements are necessary for some feature, but they also present spamming (but maybe not a lot).
 
+The native Elichika app can instead open its own local server using a private,
+per-process capability. Its account picker lists stored account IDs for click
+login. This does not enable password-free access for ordinary remote browsers.
+The private WebUI capability is separate from the server readiness nonce.
+
+After selecting an account, **Client login / migration** shows the server
+connection details and an account backup export. Existing bcrypt passwords
+cannot be recovered. The user can explicitly set or generate a new client
+password, which preserves progress, authorization keys and current sessions.
+Only that new password can be revealed or copied later. Its local copy is
+AES-GCM encrypted using a random 32-byte, mode-0600 installation key
+(`.local-webui-credentials.key`), and every reveal checks the current bcrypt
+hash. Changing the password elsewhere invalidates the saved copy. Neither the
+encrypted local credential nor the install key is included in account exports;
+database imports and gameplay resets keep the current installation's password.
+
 ## Locale
 When using the WebUI, it's important to choose the correct client language. This is mainly for the server, as some content might not exist for other languages and will make your account unavailable.
 

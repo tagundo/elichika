@@ -58,7 +58,7 @@ class OfflineManagementWebViewTest {
             activity = launched
             instrumentation.runOnMainSync { NativeTabsQa.tab(launched, "server").select() }
             val settingsView = waitForWebView(launched)
-            val settings = waitForLoginDom(settingsView, "admin_password", "/webui/admin/login")
+            waitForLocalDom(settingsView, "body", "/webui/admin")
             assertTrue("Management tabs must prepare the real embedded tools", PyServers.isStarted())
             val base = ManagementServer.url() ?: throw AssertionError("The management address was not published")
             val parsed = URI(base)
@@ -68,22 +68,27 @@ class OfflineManagementWebViewTest {
             val gamePort = ServerReadiness.endpoint(ServerConfig.read(context.filesDir)
                 .optString("server_address", "0.0.0.0:8080"))?.port
             assertFalse("The management listener must not take the configured game port", parsed.port == gamePort)
+            evaluate(settingsView, "setTimeout(function(){location.href='/webui/admin/config_editor';},0);return JSON.stringify({navigating:true});")
+            val settings = waitForLocalDom(settingsView, "#config_form [name=CdnServer]", "/webui/admin/config_editor")
             assertEquals(base, settings.getString("origin"))
+            assertFalse("The local session cookie must stay HttpOnly", settings.getBoolean("scriptVisibleLocalCookie"))
+            val capability = ManagementServer.localWebuiToken() ?: throw AssertionError("Ready management has no private capability")
+            assertFalse("Native authorization must not appear in URLs", settings.getString("url").contains(capability))
             val owned = ownedManagementProcess(context)
             report.put("management", JSONObject().put("url", base).put("host", parsed.host).put("port", parsed.port))
                 .put("ownedProcess", owned)
             val settingsNavigation = assertMenuRoundTripsRetainSession(
-                launched, "server", settingsView, "admin_password", base, owned.getInt("pid"))
+                launched, "server", settingsView, "#config_form [name=CdnServer]", base, owned.getInt("pid"))
             val settingsImage = screenshot(launched, "offline-management-settings.png")
 
             instrumentation.runOnMainSync { NativeTabsQa.tab(launched, "account").select() }
             val userView = waitForWebView(launched)
-            val user = waitForLoginDom(userView, "user_password", "/webui/user/login")
+            val user = waitForLocalDom(userView, "#native-account-filter", "/webui/user")
             assertEquals(base, user.getString("origin"))
             assertEquals("Both tabs must reuse the same owned management process",
                 owned.getInt("pid"), ownedManagementProcess(context).getInt("pid"))
             val userNavigation = assertMenuRoundTripsRetainSession(
-                launched, "account", userView, "user_password", base, owned.getInt("pid"))
+                launched, "account", userView, "#native-account-filter", base, owned.getInt("pid"))
             val userImage = screenshot(launched, "offline-management-user.png")
             val excluded = JSONObject()
             for (path in listOf("/login/login", "/api/bootstrap", "/static/offline-fixture.pack")) {
@@ -93,8 +98,8 @@ class OfflineManagementWebViewTest {
             }
             assertGameFlagsOff()
             report.put("panels", JSONObject()
-                .put("settings", settings.put("tabId", "server").put("loginFormLoaded", true))
-                .put("user", user.put("tabId", "account").put("loginFormLoaded", true)))
+                .put("settings", settings.put("tabId", "server").put("nativeLocalAccess", true))
+                .put("user", user.put("tabId", "account").put("nativeLocalAccess", true)))
                 .put("screenshots", JSONObject().put("settings", settingsImage).put("user", userImage))
                 .put("menuRoundTrips", JSONObject().put("settings", settingsNavigation).put("user", userNavigation))
                 .put("excludedRoutes", excluded)
@@ -143,10 +148,10 @@ class OfflineManagementWebViewTest {
     }
 
     private fun assertMenuRoundTripsRetainSession(activity: MainActivity, panel: String, original: WebView,
-                                                 inputId: String, origin: String, pid: Int): JSONArray {
+                                                 inputSelector: String, origin: String, pid: Int): JSONArray {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val marker = "menu-roundtrip-$panel-${System.nanoTime()}"
-        val before = evaluate(original, "var input=document.getElementById(${JSONObject.quote(inputId)});" +
+        val before = evaluate(original, "var input=document.querySelector(${JSONObject.quote(inputSelector)});" +
             "var old=input.value;input.value=${JSONObject.quote(marker)};" +
             "window.__managementMenuRoundTrip=${JSONObject.quote(marker)};return JSON.stringify({value:old});")
         val witnesses = JSONArray()
@@ -162,7 +167,7 @@ class OfflineManagementWebViewTest {
                 val returned = waitForWebView(activity)
                 assertSame("Returning from $away must preserve the $panel WebView", original, returned)
                 val state = evaluate(returned, "return JSON.stringify({origin:location.origin," +
-                    "draft:document.getElementById(${JSONObject.quote(inputId)}).value," +
+                    "draft:document.querySelector(${JSONObject.quote(inputSelector)}).value," +
                     "documentMarker:window.__managementMenuRoundTrip});")
                 assertEquals("Returning from $away must retain the origin", origin, state.getString("origin"))
                 assertEquals("Returning from $away must retain the unsent form input", marker, state.getString("draft"))
@@ -175,7 +180,7 @@ class OfflineManagementWebViewTest {
             return witnesses
         } finally {
             // Only an unsent test draft is used; no authentication/configuration write is submitted.
-            evaluate(original, "document.getElementById(${JSONObject.quote(inputId)}).value=" +
+            evaluate(original, "document.querySelector(${JSONObject.quote(inputSelector)}).value=" +
                 JSONObject.quote(before.getString("value")) + ";delete window.__managementMenuRoundTrip;return JSON.stringify({restored:true});")
         }
     }
@@ -225,20 +230,22 @@ class OfflineManagementWebViewTest {
         throw AssertionError("The management tab did not open its real WebView after standalone preparation")
     }
 
-    private fun waitForLoginDom(view: WebView, inputId: String, path: String): JSONObject {
+    private fun waitForLocalDom(view: WebView, selector: String, path: String): JSONObject {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60)
         var last = JSONObject()
         while (System.nanoTime() < deadline) {
             assertGameFlagsOff()
             last = evaluate(view, "return JSON.stringify({url:location.href,origin:location.origin,path:location.pathname," +
-                "ready:document.readyState==='complete',loginForm:!!document.getElementById('login_form')," +
-                "passwordInput:!!document.getElementById(" + JSONObject.quote(inputId) + ")," +
+                "ready:document.readyState==='complete',localAccess:document.body?.dataset.elichikaLocalAccess==='true'," +
+                "inputVisible:!!document.querySelector(" + JSONObject.quote(selector) + ")?.getClientRects().length," +
+                "passwordPrompt:Array.from(document.querySelectorAll('#admin_password,#user_password')).some(x=>x.getClientRects().length>0)," +
+                "scriptVisibleLocalCookie:document.cookie.indexOf('elichika_local_')>=0," +
                 "bodyVisible:!!document.body&&document.body.clientWidth>0&&document.body.clientHeight>0});")
-            if (last.optBoolean("ready") && last.optBoolean("loginForm") && last.optBoolean("passwordInput") &&
-                last.optBoolean("bodyVisible") && last.optString("path") == path) return last
+            if (last.optBoolean("ready") && last.optBoolean("localAccess") && last.optBoolean("inputVisible") &&
+                !last.optBoolean("passwordPrompt") && last.optBoolean("bodyVisible") && last.optString("path").startsWith(path)) return last
             Thread.sleep(100)
         }
-        throw AssertionError("The real $path login form did not load: $last")
+        throw AssertionError("The app-local $path panel did not load: $last")
     }
 
     private fun evaluate(view: WebView, body: String): JSONObject {
