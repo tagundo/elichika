@@ -384,8 +384,8 @@ def main():
     parser.add_argument("--max-seconds", type=int, default=1500)
     args = parser.parse_args()
     if args.observer_detached_login_control and args.region != "JP": parser.error("This native-only control is limited to JP; GL first-login terms need their own semantic action")
-    if args.settled_download_modal_control and (args.region != "JP" or args.observer_detached_login_control):
-        parser.error("Settled-modal control requires JP and cannot combine detached-only mode")
+    if args.settled_download_modal_control and args.observer_detached_login_control:
+        parser.error("Settled-modal control cannot combine detached-only mode")
     global CLIENT, LAUNCHER, CLIENT_SHA, SERVER_SHA
     fixtures = json.loads(args.fixtures.read_text())
     client_fixture, server_fixture = fixtures["clients"][args.region], fixtures["server"]
@@ -779,9 +779,9 @@ def main():
         else:
             raise AssertionError("Bounded sequential settings navigation did not complete")
 
-    def observe_detached_control(before, limit=180):
+    def observe_detached_control(before, limit=180, scope="Read-only observer fully detached before exact fresh Title-caption tap; native UI and genuine RPC observations only, not feature approval"):
         assert host_mode
-        result={"status":"RUNNING","scope":"Read-only observer fully detached before exact fresh Title-caption tap; native UI and genuine RPC observations only, not feature approval", "pid":client_pid,"observer_detached_before_input":True,"residual_agent_module_may_remain":True,"requests_before":before,"observations":[]}
+        result={"status":"RUNNING","scope":scope, "pid":client_pid,"observer_detached_before_input":True,"residual_agent_module_may_remain":True,"requests_before":before,"observations":[]}
         began=time.monotonic()
         for step in range(32):
             if time.monotonic()-began>limit:break
@@ -802,6 +802,48 @@ def main():
         result["not_feature_or_home_approval"]=True
         (args.evidence/"observer-detached-control.json").write_text(json.dumps(result,indent=2))
         return result
+
+    def settle_login_input(fresh,target,context):
+        nonlocal agent,session
+        assert host_mode and intro_phase=="done"
+        expected=title_start_target(fresh) if context=="title" and args.region=="JP" else terms_accept_target(fresh) if context=="terms" and args.region=="GL" else None
+        assert expected and expected.get("id")==target.get("id") and center(expected)==center(target),"Detached login input lacks its exact fresh regional semantic target"
+        assert not report.get("settled_control_started"),"Settled login control is once-only"
+        report["settled_control_started"]=True
+        before=game_request_counts(host_server.server_rpc_evidence())
+        quiesce_reader()
+        quiescence=bounded_rpc(lambda:agent.exports_sync.endintrotrace(),timeout=5)
+        assert quiescence.get("pendingManagedWork") is False,"Managed QA reads remain pending before regional input"
+        (args.evidence/"detached-control-quiescence.json").write_text(json.dumps(quiescence,indent=2))
+        capture("detached-control-before-"+context+"-tap")
+        detach_reader()
+        assert session.is_detached,"Observer did not fully detach before regional control input"
+        agent=session=None
+        unity_surface_bounds(current_native,fresh["screen"])
+        target=dict(target);target["_unity_screen"]=fresh["screen"]
+        tap(target,"fresh-readonly-regional-target-then-detached",context+"-tap-after-observer-fully-detached")
+        capture("detached-control-after-"+context+"-tap")
+        scope="Read-only observer fully detached before exact fresh "+("JP Title caption" if context=="title" else "GL terms Agree action")+"; native UI and genuine RPC observations only, not feature approval"
+        report["observer_detached_control"]=observe_detached_control(before,limit=70 if args.settled_download_modal_control else 180,scope=scope)
+        if not args.settled_download_modal_control:
+            report["blocked_reason"]="Dedicated observer-detached login control; later feature flows are unobserved"
+            return False
+        from unity_main_tid import proc_stat_starttime
+        assert device.shell("pidof","-s",CLIENT)==client_pid,"Owned game PID changed during detached control"
+        start_ticks=proc_stat_starttime(device.shell("cat","/proc/"+client_pid+"/stat",timeout=5),int(client_pid))
+        raw=device.shell("debuggerd","-b",client_pid,timeout=25)
+        probe=args.evidence/"settled-before-reattach-native-backtrace.txt";probe.write_text(raw)
+        assert proc_stat_starttime(device.shell("cat","/proc/"+client_pid+"/stat",timeout=5),int(client_pid))==start_ticks,"PID was reused during pre-reattach native probe"
+        (args.evidence/"settled-before-reattach-threads.txt").write_text(device.shell("ps","-T","-p",client_pid,timeout=10))
+        capture("settled-before-reattach")
+        report["settled_modal_control"]={"phase":"native-only-control-complete","observer_active":False,"input_context":context,
+            "pid":int(client_pid),"process_start_ticks":start_ticks,"backtrace_path":probe.name,"backtrace_sha256":digest(probe),
+            "requests":game_request_counts(host_server.server_rpc_evidence()),"not_feature_or_home_approval":True}
+        (args.evidence/"settled-before-reattach-status.json").write_text(json.dumps(report["settled_modal_control"],indent=2))
+        attach_reader(trace_intro=False,cache_now=True)
+        assert report["cached_main_bindings"][-1]["process_start_ticks"]==start_ticks,"Fresh observer bound to a different process lifetime"
+        report["settled_modal_control"].update({"phase":"fresh-cached-observer-attached","observer_active":True,"researches":0})
+        return True
 
     try:
         if not host_mode:
@@ -1130,7 +1172,16 @@ def main():
                 if choose(tree, [r"^Music\s*Video$", r"^Watch\s*MV$", r"(?:Button|Btn).*MV(?:$|/)", r"^MV$", r"^Live\s*Shows?$", r"^Live$", r"(?:Main|Bottom|Footer).*Live", r"^Songs?$"], "open-music-video"):
                     time.sleep(6); continue
             if terms_accept_target(tree):
-                if choose(tree, [r"^ButtonPositiveM$"], "accept-observed-terms-modal-positive-action"):
+                if args.settled_download_modal_control and args.region=="GL":
+                    if not report.get("settled_control_started"):
+                        current_native=native_tree(1998)
+                        fresh=bounded_rpc(lambda:agent.exports_sync.snapshot({"maxNodes":1500,"raycastText":True,"featureRegion":args.region,"numericTestId":fixture_user_id}),timeout=20)
+                        target=terms_accept_target(fresh)
+                        if target:
+                            (args.evidence/f"unity-ui-{index:03d}-terms-agree.json").write_text(json.dumps(fresh,ensure_ascii=False,indent=2))
+                            if settle_login_input(fresh,target,"terms"):continue
+                            break
+                elif choose(tree, [r"^ButtonPositiveM$"], "accept-observed-terms-modal-positive-action"):
                     time.sleep(5); continue
             if scene == "LanguageSetting" and any(action.get("reason") == "bootstrap-or-confirmation:^English$" for action in report["actions"]):
                 if choose(tree, [r"^ButtonPositive[MLS]$"], "confirm-observed-english-language-choice"):
@@ -1143,53 +1194,8 @@ def main():
                 if start_target:
                     (args.evidence / f"unity-ui-{index:03d}-title-start.json").write_text(json.dumps(fresh, ensure_ascii=False, indent=2))
                     report["observations"].append({"title_start_caption": start_target["path"], "actual_first_hit_action": start_target["_input_action"], "snapshot_timestamp_ms": fresh.get("timestampMs"), "coordinate_source": "Fresh visible start-caption bounds with exact ScreenButton first raycast hit"})
-                    if args.observer_detached_login_control or args.settled_download_modal_control:
-                        if args.settled_download_modal_control:
-                            assert not report.get("settled_control_started"),"Settled login control is once-only"
-                            report["settled_control_started"]=True
-                        assert host_mode and args.region=="JP" and intro_phase=="done"
-                        before=game_request_counts(host_server.server_rpc_evidence())
-                        quiescence=bounded_rpc(lambda:agent.exports_sync.endintrotrace(),timeout=5)
-                        for _ in range(10):
-                            if quiescence.get("pendingManagedWork") is False:break
-                            time.sleep(.1)
-                            quiescence=bounded_rpc(lambda:agent.exports_sync.endintrotrace(),timeout=3)
-                        assert quiescence.get("pendingManagedWork") is False, "Managed QA intro work is still pending"
-                        (args.evidence/"detached-control-quiescence.json").write_text(json.dumps(quiescence,indent=2))
-                        capture("detached-control-before-caption-tap")
-                        detach_reader()
-                        assert session.is_detached, "Observer did not fully detach before control input"
-                        agent=session=None
-                        unity_surface_bounds(current_native,fresh["screen"])
-                        tap(start_target,"fresh-readonly-title-caption-then-detached","title-tap-after-observer-fully-detached")
-                        capture("detached-control-after-caption-tap")
-                        report["observer_detached_control"]=observe_detached_control(before,limit=70 if args.settled_download_modal_control else 180)
-                        if args.settled_download_modal_control:
-                            # Always preserve an exact native probe BEFORE any
-                            # reattachment. This also covers a still-loading
-                            # screen without guessing its state from pixels.
-                            from unity_main_tid import proc_stat_starttime
-                            pid_now=device.shell("pidof","-s",CLIENT)
-                            assert pid_now==client_pid,"Owned game PID changed during detached control"
-                            start_ticks=proc_stat_starttime(device.shell("cat","/proc/"+client_pid+"/stat",timeout=5),int(client_pid))
-                            raw=device.shell("debuggerd","-b",client_pid,timeout=25)
-                            probe=args.evidence/"settled-before-reattach-native-backtrace.txt"
-                            probe.write_text(raw)
-                            assert proc_stat_starttime(device.shell("cat","/proc/"+client_pid+"/stat",timeout=5),int(client_pid))==start_ticks,"PID was reused during the pre-reattach native probe"
-                            (args.evidence/"settled-before-reattach-threads.txt").write_text(device.shell("ps","-T","-p",client_pid,timeout=10))
-                            capture("settled-before-reattach")
-                            report["settled_modal_control"]={"phase":"native-only-control-complete","observer_active":False,
-                                "pid":int(client_pid),"process_start_ticks":start_ticks,"backtrace_path":probe.name,
-                                "backtrace_sha256":digest(probe),"requests":game_request_counts(host_server.server_rpc_evidence()),
-                                "not_feature_or_home_approval":True}
-                            (args.evidence/"settled-before-reattach-status.json").write_text(json.dumps(report["settled_modal_control"],indent=2))
-                            # The old hierarchy is never used for modal input.
-                            # Install fresh binding, then re-search current UI.
-                            attach_reader(trace_intro=False,cache_now=True)
-                            assert report["cached_main_bindings"][-1]["process_start_ticks"]==start_ticks,"Fresh cached observer bound to a different process lifetime"
-                            report["settled_modal_control"].update({"phase":"fresh-cached-observer-attached","observer_active":True,"researches":0})
-                            continue
-                        report["blocked_reason"]="Dedicated observer-detached login control; later feature flows are unobserved"
+                    if args.observer_detached_login_control or (args.settled_download_modal_control and args.region=="JP"):
+                        if settle_login_input(fresh,start_target,"title"):continue
                         break
                     tap(start_target, "readonly-unity-ui-tree", "observed-title-tap-to-start")
                     time.sleep(6); continue

@@ -2,7 +2,7 @@ name: Validate signed SIFAS ARM64 clients against frozen source-built Go
 
 on:
   push:
-    branches: [codex/android-client-qa-20261113]
+    branches: [codex/android-client-qa-gl-20261113]
   workflow_dispatch:
     inputs:
       max_seconds:
@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        region: [JP]
+        region: [GL]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     env:
