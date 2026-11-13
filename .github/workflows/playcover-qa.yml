@@ -42,6 +42,9 @@ jobs:
               output.write('server_ref='+m['server_source_ref']+'\n')
           PY
 
+      - name: Test portable original-versus-feature import classification
+        run: python3 -B -m unittest discover -s qa/playcover -p test_qa_contract.py -v
+
       - name: Fetch only frozen private draft IPA assets
         id: fixtures
         env:

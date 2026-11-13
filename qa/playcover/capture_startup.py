@@ -20,6 +20,38 @@ BUNDLES = {'com.klab.lovelive.allstars.global', 'com.klab.lovelive.allstars'}
 STARTUP = re.compile(r'^(?:Initialize engine version:|\[Subsystems\]|GfxDevice:|Creating GfxDevice:|Metal\b|Renderer:|Vendor:|VRAM:|No supported renderers|Failed to (?:initialize|load)|Could not (?:initialize|load)|Unable to (?:initialize|load)|\[UnityMemory\]|\[Physics\]|\[XR\]|dyld(?:\[\d+\])?:|Library not loaded:|Symbol not found:|Referenced from:|Expected in:|Reason: tried:|Termination Reason:|Exception Type:)', re.I)
 LOADER_REASON = re.compile(r'^(?:Library not loaded:|Symbol not found:|Referenced from:|Expected in:|Reason: tried:|\(terminated at launch; ignore backtrace\))', re.I)
 
+def message_text(value):
+    # stderr's ordinary NSLog prefix is metadata, not part of the diagnostic.
+    return re.sub(r'^\d{4}-\d\d-\d\d\s+\d\d:\d\d:\d\d[.\d+-]*\s+[^\s]+\[\d+:\d+\]\s*', '', str(value).strip())
+
+def objc_assertion(value):
+    line = message_text(value)
+    # Extract only a known UIKit launch assertion, not arbitrary ASI strings or
+    # exception text from gameplay/account operations.
+    if 'NSInternalInconsistencyException' in line:
+        reason = re.search(r"reason:\s*['\"](.{1,3000})['\"]", line, re.I)
+        if reason:
+            return {'name':'NSInternalInconsistencyException', 'reason':scrub(reason[1], 1000)}
+    method = re.search(r'Assertion failure in (-\[UINSApplicationDelegate [^\]]{1,300}\])(?:,\s*([^\s,]+:\d+))?', line)
+    if method:
+        result = {'framework':'UIKitMacHelper', 'assertion_method':scrub(method[1])}
+        if method[2]:
+            result['source_location'] = scrub(method[2])
+        return result
+    return None
+
+def strings(value, depth=0):
+    if depth > 6:
+        return
+    if isinstance(value,str):
+        yield from value.splitlines()
+    elif isinstance(value,dict):
+        for child in list(value.values())[:64]:
+            yield from strings(child,depth+1)
+    elif isinstance(value,list):
+        for child in value[:64]:
+            yield from strings(child,depth+1)
+
 def scrub(value, maximum=500):
     text = str(value)
     text = re.sub(r'https?://[^\s\]<>\"\']+', '<url redacted>', text, flags=re.I)
@@ -65,6 +97,14 @@ def crash_record(path, since, pid, executable, bundle):
     record['loader_reasons'] = [scrub(line) for key in ('details','reasons') for line in term.get(key, [])
                                 if isinstance(line,str) and LOADER_REASON.match(line)][:24]
     record['faulting_thread'] = data.get('faultingThread')
+    record['objc_launch_assertions'] = []
+    for key in ('asi','applicationSpecificInformation'):
+        for line in strings(data.get(key,{})):
+            assertion = objc_assertion(line)
+            if assertion and assertion not in record['objc_launch_assertions']:
+                record['objc_launch_assertions'].append(assertion)
+                if len(record['objc_launch_assertions']) == 16:
+                    break
     record['triggered_threads'] = []
     for thread in data.get('threads', []):
         if not thread.get('triggered'):
@@ -87,8 +127,9 @@ def startup_lines(path, since):
     if item is None:
         return None
     data, record = item
-    lines = data.decode('utf-8',errors='replace').splitlines()
-    record['allowlisted_startup_lines'] = [scrub(line.strip()) for line in lines if STARTUP.match(line.strip())][:160]
+    lines = [message_text(line) for line in data.decode('utf-8',errors='replace').splitlines()]
+    record['allowlisted_startup_lines'] = [scrub(line) for line in lines if STARTUP.match(line)][:160]
+    record['objc_launch_assertions'] = [found for line in lines if (found := objc_assertion(line)) is not None][:24]
     record['raw_contents_exported'] = False
     return record
 
@@ -116,9 +157,13 @@ def unified_startup(pid, since, executable):
                 continue
             if observed < since-1:
                 continue
-            line = str(event.get('eventMessage','')).strip()
+            line = message_text(event.get('eventMessage',''))
             if STARTUP.match(line):
                 records.append({'timestamp':timestamp,'message':scrub(line)})
+            else:
+                assertion = objc_assertion(line)
+                if assertion:
+                    records.append({'timestamp':timestamp,'objc_launch_assertion':assertion})
         return {'status':'READ_EXACT_PID_ALLOWLISTED_STARTUP_ONLY','records':records[:160],
                 'unfiltered_event_count':len(events),'raw_contents_exported':False}
     except Exception as error:
