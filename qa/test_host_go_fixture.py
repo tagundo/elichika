@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from build_host_go_fixture import write_fixture_config
 from host_go_fixture import (FixtureError, HostGoFixture, file_sha256, fixture_binding,
                              owned_child_environment, ready_response, redacted_log)
 
@@ -200,6 +201,41 @@ class OwnedLifecycleTests(unittest.TestCase):
             with self.assertRaises(OSError): fixture.start(timeout=.2)
         self.assertEqual(fixture._nonce, '')
         self.assertIsNone(fixture.process)
+
+
+class FreshCheckoutConfigTests(unittest.TestCase):
+    def test_fresh_checkout_without_ignored_config_gets_only_explicit_qa_settings(self):
+        with tempfile.TemporaryDirectory(prefix='fresh-go-config-') as temporary:
+            root = Path(temporary)
+            source, output = root / 'fresh-source', root / 'owned-output'
+            source.mkdir(); output.mkdir()
+            self.assertFalse((source / 'config.json').exists())
+            config = write_fixture_config(source, output)
+            self.assertEqual(json.loads((source / 'config.json').read_text()), {
+                'server_address': '127.0.0.1:8080', 'locales': 'ja,en', 'tutorial': False,
+                'cdn_cache': True, 'cdn_cache_dir': str(output / 'cdn-cache')})
+            self.assertEqual(set(config), {'server_address', 'locales', 'tutorial', 'cdn_cache', 'cdn_cache_dir'})
+            self.assertEqual((source / 'config.json').stat().st_mode & 0o777, 0o600)
+            self.assertNotIn('admin_password', config)
+            self.assertFalse((source / 'userdata.db').exists())
+
+    def test_existing_user_config_is_never_copied_or_overwritten(self):
+        with tempfile.TemporaryDirectory(prefix='existing-go-config-') as temporary:
+            source = Path(temporary)
+            path = source / 'config.json'; original = b'{"admin_password":"private-synthetic-test-value"}\n'
+            path.write_bytes(original); path.chmod(0o640)
+            with self.assertRaisesRegex(FixtureError, 'preexisting config.json'):
+                write_fixture_config(source, source / 'output')
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o640)
+
+    def test_dangling_config_symlink_cannot_create_or_change_an_external_file(self):
+        with tempfile.TemporaryDirectory(prefix='symlink-go-config-') as temporary:
+            root = Path(temporary); source = root / 'source'; source.mkdir()
+            outside = root / 'outside.json'; (source / 'config.json').symlink_to(outside)
+            with self.assertRaisesRegex(FixtureError, 'preexisting config.json'):
+                write_fixture_config(source, root / 'output')
+            self.assertFalse(outside.exists())
 
 
 if __name__ == '__main__':

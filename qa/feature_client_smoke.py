@@ -707,6 +707,10 @@ def main():
                         try: bounded_rpc(lambda: session.detach(), timeout=5)
                         except Exception: pass
                         agent = session = None
+                        try:
+                            (args.evidence/"client-rpc-timeout-logcat.txt").write_bytes(device.adb("logcat","-d","-v","threadtime","--pid",client_pid,"-t","1500",raw=True,timeout=15))
+                        except Exception: pass
+                        raise RuntimeError("Read-only Unity main-thread snapshot exceeded20seconds; current game diagnostics retained and later cases are unobserved")
             visible_tree = {"screen": tree.get("screen"), "nodes": [node for node in tree.get("nodes", []) if node.get("visible") and node.get("active")]}
             all_text = json.dumps(visible_tree, ensure_ascii=False)
             available = buttons(tree)
@@ -714,6 +718,7 @@ def main():
                 capture(f"client-{index:03d}-{stage}")
             # Goals require active original-client UI, not just server API calls.
             scene = (tree.get("screen") or {}).get("scene")
+            print(json.dumps({"event":"actual-game-ui","region":args.region,"elapsed_seconds":round(time.monotonic()-started,1),"scene":scene,"frame":(tree.get("screen") or {}).get("frame"),"intro_phase":intro_phase,"control_phase":control_phase,"mv_phase":mv_driver.phase}),flush=True)
             if scene == "Title" and not (tree.get("features") or {}).get("splashScreens") and intro_phase in ("off", "on"):
                 trace = bounded_rpc(lambda: agent.exports_sync.endintrotrace(), timeout=5)
                 trace["profile"] = dict(active_profile)

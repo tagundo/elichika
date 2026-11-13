@@ -20,6 +20,7 @@ import subprocess
 from host_go_fixture import FixtureError, file_sha256, redacted_log, require
 
 LEGACY_SHA256 = '90680f5885dc680c17eddbbff145a561901f06e69b8e412d98b55157aa5c0b27'
+CURRENT_STAGE = 'validate_arguments'
 
 
 def git(root, *args):
@@ -69,7 +70,27 @@ def run(command, root, environment, log, private_values=(), timeout=600):
     return result
 
 
+def write_fixture_config(source, output):
+    """A fresh checkout intentionally has no ignored user config.json.
+
+    Supply only approved QA settings; production config.Load fills all remaining
+    defaults during the first normal Go execution. Never copy a host user's
+    local config or overwrite any preexisting runtime input.
+    """
+    path = Path(source) / 'config.json'
+    require(not path.exists() and not path.is_symlink(),
+            'Fresh disposable fixture must not contain a preexisting config.json')
+    config = {'server_address': '127.0.0.1:8080', 'locales': 'ja,en', 'tutorial': False,
+              'cdn_cache': True, 'cdn_cache_dir': str(Path(output) / 'cdn-cache')}
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, 'w') as stream:
+        json.dump(config, stream, ensure_ascii=False)
+        stream.write('\n')
+    return config
+
+
 def main():
+    global CURRENT_STAGE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-root', required=True, type=Path)
     parser.add_argument('--source-sha', required=True)
@@ -78,6 +99,7 @@ def main():
     args = parser.parse_args()
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and platform.system() == 'Linux' and
             platform.machine() in ('aarch64', 'arm64'), 'This builder requires the disposable native ARM64 Actions runner')
+    CURRENT_STAGE = 'validate_frozen_checkout'
     source = args.source_root.resolve(strict=True)
     workspace = Path(os.environ['GITHUB_WORKSPACE']).resolve(strict=True)
     runner_temp = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
@@ -107,18 +129,18 @@ def main():
     require(version == 'go version go1.22.12 linux/arm64', 'The exact native Go1.22.12 toolchain is required')
     output.mkdir(mode=0o700)
     binary, seeder = output / 'elichika-host-go', output / 'synthetic-account-seeder'
+    CURRENT_STAGE = 'compile_server'
     run(['go', 'build', '-trimpath', '-o', str(binary), '.'], source, environment, output / 'go-build.log')
+    CURRENT_STAGE = 'compile_seeder'
     run(['go', 'build', '-trimpath', '-o', str(seeder), str(args.seed_source.resolve(strict=True))],
         source, environment, output / 'seed-build.log')
     require(clean_go_sources(source) == sources, 'Go source bytes changed during compilation')
     # A clean compile has completed. Before executing either Go program, omit
     # only the known legacy-account template from this fresh disposable runtime.
+    CURRENT_STAGE = 'prepare_configuration_config.json'
+    write_fixture_config(source, output)
     legacy.unlink()
-    config = json.loads((source / 'config.json').read_text())
-    config.update(server_address='127.0.0.1:8080', locales='ja,en', tutorial=False,
-                  cdn_cache=True, cdn_cache_dir=str(output / 'cdn-cache'))
-    (source / 'config.json').write_text(json.dumps(config, ensure_ascii=False) + '\n')
-    (source / 'config.json').chmod(0o600)
+    CURRENT_STAGE = 'initialize_assets'
     run([str(binary), 'rebuild_assets'], source, environment, output / 'server-data-init.log')
     password = ''.join(secrets.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') for _ in range(16))
     private = output / 'synthetic-account.private.json'
@@ -128,7 +150,9 @@ def main():
         stream.write('\n')
     seed_environment = dict(environment, ELICHIKA_TEST_RUNTIME=str(source),
                             ELICHIKA_TEST_FIXTURE_LANGUAGE='en', ELICHIKA_TEST_FIXTURE_PASSWORD=password)
+    CURRENT_STAGE = 'seed_synthetic_account'
     run([str(seeder)], source, seed_environment, output / 'synthetic-account-init.log', (password,))
+    CURRENT_STAGE = 'verify_synthetic_database'
     with sqlite3.connect((source / 'userdata.db').as_uri() + '?mode=ro', uri=True) as database:
         require(database.execute('PRAGMA integrity_check').fetchone() == ('ok',), 'Synthetic userdata integrity failed')
         require(database.execute('SELECT COUNT(*) FROM u_status').fetchone()[0] == 1,
@@ -147,6 +171,7 @@ def main():
                'go_source_snapshot_sha256': hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest(),
                'private_credentials_excluded_from_evidence': True,
                'server_apk_installation_claimed': False}
+    CURRENT_STAGE = 'write_public_fixture_receipt'
     receipt_path = output / 'host-go-fixture.json'
     receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
     print(json.dumps({'status': receipt['status'], 'receipt': str(receipt_path), 'server_fixture': binding}))
@@ -157,4 +182,4 @@ if __name__ == '__main__':
     try:
         raise SystemExit(main())
     except (FixtureError, OSError, ValueError, subprocess.SubprocessError) as error:
-        raise SystemExit('Disposable host Go fixture failed: ' + (str(error) if isinstance(error, FixtureError) else type(error).__name__)) from None
+        raise SystemExit('Disposable host Go fixture failed at ' + CURRENT_STAGE + ': ' + (str(error) if isinstance(error, FixtureError) else type(error).__name__)) from None
