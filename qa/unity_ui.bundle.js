@@ -3933,6 +3933,22 @@ function pickExistingMvTarget(query) {
     coordinateSource:"Existing MV model identity and live RectTransform/raycast geometry; no selection method invoked"};
 }
 
+// Read-only fields verified in GL/JP metadata: Jigbox.Tween.TweenColor -> TweenBase<Color>
+// -> PeriodicMovement<...>, not DG.Tweening.Tween. No callbacks/setters invoked.
+function jigboxTweenFields(tween) {
+  var behaviour=mvReadField(tween,"behaviour");
+  return {id:tween.handle.toString(),type:fullType(tween),duration:numericField(tween,"duration"),
+    progressTime:behaviour?numericField(behaviour,"progressTime"):null,
+    deltaTime:behaviour?numericField(behaviour,"<DeltaTime>k__BackingField"):null,
+    lastCompleteCount:behaviour?numericField(behaviour,"<LastCompleteCount>k__BackingField"):null,
+    loopCount:behaviour?numericField(behaviour,"<LoopCount>k__BackingField"):null};
+}
+function splashFadeRGBA(splash) {
+  var image=mvReadField(splash,"fade"),color=maybe(image,"get_color",null);
+  if(!color)return null;
+  return {r:numericField(color,"r"),g:numericField(color,"g"),b:numericField(color,"b"),a:numericField(color,"a")};
+}
+
   function featureState() {
     var result = { native: nativeFeatureState(), aspectCorrectors: [], splashScreens: [], mv:observeExistingMvState(), diagnostics: [] };
     var aspect = findClass("LLAS.Scene.Live.Components.CameraAspectCorrector", true);
@@ -3964,9 +3980,9 @@ function pickExistingMvTarget(query) {
           intervalDuration:numericField(screen,"intervalDuration"), skipDuration:numericField(screen,"skipDuration") };
         try {
           var tween = screen.field("fadeTween").value;
-          if (exists(tween)) sample.tween = { duration:numericField(tween,"duration"), position:numericField(tween,"position"),
-            elapsedDelay:numericField(tween,"elapsedDelay"), completedLoops:numericField(tween,"completedLoops") };
+          if (exists(tween)) sample.tween = jigboxTweenFields(tween);
         } catch (_) {}
+        sample.fadeRGBA=splashFadeRGBA(screen);
         result.splashScreens.push(sample);
       }
     } catch (error) { result.diagnostics.push({type:"splash", error:String(error)}); }
@@ -3987,7 +4003,8 @@ function pickExistingMvTarget(query) {
             var object=objects.get(i); if(!active(object).active) continue;
             var item={id:String(instanceId(object)),fadeDuration:numericField(object,"fadeDuration"),splashDuration:numericField(object,"splashDuration")};
             var tween=mvReadField(object,"fadeTween");
-            if(exists(tween)) item.tween={id:tween.handle.toString(),duration:numericField(tween,"duration"),position:numericField(tween,"position"),completedLoops:numericField(tween,"completedLoops")};
+            if(exists(tween)) item.tween=jigboxTweenFields(tween);
+            item.fadeRGBA=splashFadeRGBA(object);
             items.push(item);
           }
         }

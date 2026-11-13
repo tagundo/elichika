@@ -8,7 +8,7 @@ on:
       max_seconds:
         description: Bounded genuine-client UI run time per region
         required: true
-        default: "900"
+        default: "1500"
 
 permissions:
   # GitHub requires write scope to read this repository's unpublished drafts.
@@ -37,7 +37,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read exact root-frozen C3 server source
+      - name: Read exact root-frozen C4 server source
         id: fixture
         run: |
           python3 - <<'PYFIXTURE'
@@ -144,7 +144,7 @@ jobs:
 
       - name: Run genuine regional client UI against owned hash-bound source fixture
         env:
-          QA_SECONDS: ${{ inputs.max_seconds || '900' }}
+          QA_SECONDS: ${{ inputs.max_seconds || '1500' }}
         run: |
           set -euo pipefail
           case "$QA_SECONDS" in *[!0-9]*|'') exit 2;; esac

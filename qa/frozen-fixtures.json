@@ -30,7 +30,7 @@
   },
   "server": {
     "repository": "tagundo/elichika",
-    "source_commit": "c676bf5f969fafb24244dd0f59f804e1d26db982",
+    "source_commit": "28b80a8b43898ef9544d8452fef76181839eec6e",
     "kind": "source-build",
     "approval_scope": "final_source_build_fixture",
     "toolchain": "go1.22.12",

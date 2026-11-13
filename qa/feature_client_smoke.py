@@ -534,6 +534,40 @@ def main():
             return True
         return False
 
+    def stop_recordings():
+        try:
+            device.shell("pkill", "-2", "screenrecord", timeout=10)
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 1: raise
+
+    def surface_presentations(label):
+        result={"captured_unix_ms":int(time.time()*1000),"surfaces":[]}
+        try:
+            names=device.shell("dumpsys","SurfaceFlinger","--list",timeout=10).splitlines()
+            for name in [n for n in names if CLIENT in n and "SurfaceView" in n][:4]:
+                result["surfaces"].append({"name":name,"latency":device.shell("dumpsys","SurfaceFlinger","--latency",name,timeout=10)})
+        except Exception as error:result["error"]=type(error).__name__
+        (args.evidence/("rpc-stall-surface-"+label+".json")).write_text(json.dumps(result,indent=2))
+
+    def collect_rpc_stall():
+        capture("rpc-stall-before-detach")
+        surface_presentations("before")
+        if agent:
+            try:
+                status=bounded_rpc(lambda:agent.exports_sync.status(),timeout=3)
+                (args.evidence/"rpc-stall-script-status.json").write_text(json.dumps(status,indent=2))
+            except Exception as error:
+                report["observations"].append({"nonmain_script_status":type(error).__name__})
+        if client_pid and re.fullmatch(r"[0-9]+",client_pid):
+            try:
+                (args.evidence/"rpc-stall-threads.txt").write_text(device.shell("ps","-T","-p",client_pid,timeout=10))
+            except Exception: pass
+            try:
+                result=subprocess.run(["adb","-s",args.serial,"shell","debuggerd","-b",client_pid],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=25)
+                (args.evidence/"rpc-stall-native-backtrace.txt").write_bytes(result.stdout+b"\n"+result.stderr)
+            except Exception as error:
+                report["observations"].append({"native_readonly_backtrace":type(error).__name__})
+
     def attach_reader():
         nonlocal agent, session, client_pid
         if session:
@@ -704,9 +738,13 @@ def main():
                 except Exception as error:
                     report["observations"].append({"unity_snapshot": index, "error": type(error).__name__, "message": str(error)[:300]})
                     if isinstance(error, queue.Empty):
+                        collect_rpc_stall()
                         try: bounded_rpc(lambda: session.detach(), timeout=5)
                         except Exception: pass
                         agent = session = None
+                        time.sleep(3.4)
+                        capture("rpc-stall-after-detach")
+                        surface_presentations("after")
                         try:
                             (args.evidence/"client-rpc-timeout-logcat.txt").write_bytes(device.adb("logcat","-d","-v","threadtime","--pid",client_pid,"-t","1500",raw=True,timeout=15))
                         except Exception: pass
@@ -874,13 +912,13 @@ def main():
                         else:
                             report["observations"].append({"mv_scroll_blocked":"No unique active popup ScrollRect","context":action["context"]})
                     elif kind == "video_start":
-                        device.shell("pkill","-2","screenrecord")
+                        stop_recordings()
                         case=action["case"];assert re.fullmatch("mv_[a-z_]+",case)
                         remote_path="/sdcard/"+case+".mp4"
                         mv_video={"case":case,"remote":remote_path,"process":subprocess.Popen(["adb","-s",args.serial,"shell","screenrecord","--bit-rate","1800000","--time-limit","180",remote_path],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)}
                     elif kind == "video_stop":
                         assert mv_video and mv_video["case"]==action["case"]
-                        device.shell("pkill","-2","screenrecord")
+                        stop_recordings()
                         try: mv_video["process"].wait(timeout=8)
                         except subprocess.TimeoutExpired: mv_video["process"].terminate()
                         relative=action["case"]+"-playback.mp4"
@@ -999,7 +1037,8 @@ def main():
             try: bounded_rpc(lambda: session.detach(), timeout=5)
             except Exception: pass
         try:
-            device.shell("pkill", "-2", "screenrecord")
+            stop_recordings()
+            if video: video.wait(timeout=10)
         except Exception:
             pass
         try:

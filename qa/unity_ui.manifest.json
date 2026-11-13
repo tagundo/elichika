@@ -3,9 +3,9 @@
   "frida_server_and_client": "16.6.6",
   "agent_version": 3,
   "bundle": "unity_ui.bundle.js",
-  "bytes": 189890,
-  "sha256": "384382319a094eca13db8f887612915e4a1d2146f23a863fe3b997ea9069deb3",
-  "observer_sha256": "d13e9ac4ec71b94f3db6d0ca6970cc176e8d350143f675929e1b708b12ab7f9e",
+  "bytes": 190629,
+  "sha256": "7b030f5ff0bd04f35bf983f51341780038db62318a5affb37fdfb2f8d9e10389",
+  "observer_sha256": "4ecf42ce94c42b94382cff49b646043e207eca9cf065ab1277195503d5e6160a",
   "bridge_sha256": "426db768c062908b685d713ee27f87b5eea3d8ea2a4d28cf8db465a6900da787",
   "runtime_validation": "Pending actual Unity process; syntax checks alone are not runtime proof"
 }

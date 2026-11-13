@@ -50,3 +50,45 @@ class IntroTraceEvidenceTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class JigboxMeasuredSpanTests(unittest.TestCase):
+    def trace(self, fast, step):
+        samples=[]
+        for index in range(6):
+            samples.append({'timestampMs':index*step,'screen':{'scene':'Splash','frame':index},
+                'config':{'fastIntro':int(fast)},'splashScreens':[] if index in (0,5) else
+                [{'id':'actual-ordinal-object','tween':{'duration':.125 if fast else .25,'position':None,'completedLoops':None}}]})
+        return {'profile':{'fast_intro':fast},'samples':samples}
+
+    def test_jigbox_actual_bounded_frames_pass_without_invented_dotween_fields(self):
+        from control_evidence import intro_pair_evidence
+        result=intro_pair_evidence(self.trace(False,500),self.trace(True,70))
+        self.assertEqual(result['measurement'],'bounded_actual_splash_active_windows')
+        self.assertGreater(result['normal']['active_seconds_lower_bound'],result['fast']['active_seconds_upper_bound'])
+
+    def test_configuration_and_duration_alone_are_not_measured_intro_proof(self):
+        from control_evidence import intro_pair_evidence
+        on=self.trace(True,70)
+        for sample in on['samples']:sample['splashScreens']=[]
+        self.assertIsNone(intro_pair_evidence(self.trace(False,500),on))
+
+    def test_missing_absent_boundary_or_rendered_frames_rejects_partial_capture(self):
+        import copy
+        from control_evidence import intro_pair_evidence
+        for change in ('before','after','frames','time','config','duration'):
+            on=self.trace(True,70)
+            if change=='before':on['samples']=on['samples'][1:]
+            elif change=='after':on['samples']=on['samples'][:-1]
+            elif change=='frames':
+                for sample in on['samples']:sample['screen']['frame']=1
+            elif change=='time':on['samples'][3]['timestampMs']=on['samples'][2]['timestampMs']
+            elif change=='config':on['samples'][2]['config']['fastIntro']=0
+            elif change=='duration':on['samples'][2]['splashScreens'][0]['tween']['duration']=.25
+            with self.subTest(change=change):self.assertIsNone(intro_pair_evidence(self.trace(False,500),on))
+
+    def test_normal_lower_bound_must_exceed_fast_upper_not_just_sparse_span(self):
+        from control_evidence import intro_pair_evidence
+        on=self.trace(True,70)
+        on['samples'][0]['timestampMs']=-5000
+        self.assertIsNone(intro_pair_evidence(self.trace(False,500),on))
