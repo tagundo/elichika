@@ -12,8 +12,8 @@
   },
   "qa_files": {
     "NativeFileMenuDiagnostic.swift": {
-      "bytes": 29054,
-      "sha256": "546f49efdb4f897cbabb7bb443be9cccd9fd4bc55cdbb1184285952ea07ca212"
+      "bytes": 30509,
+      "sha256": "a5fb104292f73e981c89cebb0e8b0047510f7b7929e7c3e5597f3ecdfc13d02c"
     },
     "README.md": {
       "bytes": 3992,
@@ -140,12 +140,21 @@
     "qa_directory": "qa/mac-file-menu-diagnostic",
     "workflow": ".github/workflows/mac-file-menu-diagnostic.yml"
   },
-  "supersedes_manifest_sha256": "e2d6d5ec5082308d5cfaa331f3b47b6565290812cf979f8915a71cb1d7dbe559",
+  "supersedes_manifest_sha256": "c57059853fe8e2ef96e20edd514460cf7386c472473dc6b4b82734c6aa53d0e9",
   "actual_compile_only_failure_preserved": {
     "run": 43447338287,
     "artifact_id": 14049775095,
     "artifact_sha256": "1649d8ef5928ad936dd36543ddace8bdf33c3f4ac86041a0fe182a09a60d51ed",
     "app_launched": false,
     "reason": "ApplicationServices does not export kAXWebAreaRole; use its exact public role string without changing scope or guards"
+  },
+  "actual_native_panel_precondition_failure_preserved": {
+    "run": 43448108432,
+    "artifact_id": 14048463146,
+    "artifact_sha256": "f157e3466da3aea697a6fe2e30be10951cee3aefd886402437482be2a3911f8f",
+    "preservation_receipt_sha256": "b4ef16ce9390163243fa94800ecc5c8be24fa81a8eae2b3a4c23ee5087dc91d1",
+    "app_launched": true,
+    "owned_file_selection_callback_proven": false,
+    "product_cause_claim": false
   }
 }

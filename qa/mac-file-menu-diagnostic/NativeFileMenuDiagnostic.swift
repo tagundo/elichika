@@ -199,19 +199,30 @@ final class Diagnostic {
     func type(_ value: String) throws {
         try require(value.utf16.count < 1024 && !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }), "Refuse unbounded/control-character input")
         _ = try foreground(); let units = Array(value.utf16); let source = CGEventSource(stateID: .combinedSessionState)
-        guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { throw DiagnosticError.failed("OS text event creation failed") }
-        down.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units); up.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
-        down.post(tap: .cghidEventTap); pump(0.05); up.post(tap: .cghidEventTap); pump(0.2)
+        var start = 0
+        while start < units.count {
+            var end = min(start + 16, units.count)
+            if end < units.count && (0xd800...0xdbff).contains(Int(units[end - 1])) { end -= 1 }
+            let chunk = Array(units[start..<end])
+            guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { throw DiagnosticError.failed("OS text event creation failed") }
+            // Plain text must not inherit Command from the preceding Cmd+A.
+            down.flags = []; up.flags = []
+            down.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk); up.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+            _ = try foreground(); down.post(tap: .cghidEventTap); pump(0.03); up.post(tap: .cghidEventTap); pump(0.03); start = end
+        }
+        pump(0.2)
         actions.append(["stage": stage, "input": "real OS Unicode keyboard", "ownedText": value, "pid": try foreground()])
     }
     func nativeDialog(_ title: String?, _ action: String) throws {
         let nodes = try wait("native " + action + " panel") { nodes in
-            let hasButton = nodes.contains { !$0.web && $0.nativeSheet && $0.role == kAXButtonRole && $0.enabled && self.caption($0, action) }
+            // An Open button is ordinarily disabled before a file is selected.
+            // Presence observes the panel; nativePress still requires enabled.
+            let hasButton = nodes.contains { !$0.web && $0.nativeSheet && $0.role == kAXButtonRole && self.caption($0, action) }
             let hasCancel = nodes.contains { !$0.web && $0.nativeSheet && $0.role == kAXButtonRole && $0.enabled && self.caption($0, "Cancel") }
             return hasButton && hasCancel
         }
-        let button = try unique(nodes, "native sheet action " + action) { !$0.web && $0.nativeSheet && $0.role == kAXButtonRole && $0.enabled && self.caption($0, action) }
+        let button = try unique(nodes, "native sheet action " + action) { !$0.web && $0.nativeSheet && $0.role == kAXButtonRole && self.caption($0, action) }
         let titleObserved = title.map { title in nodes.contains { !$0.web && self.caption($0, title) } }
         dialogs.append(["stage": stage, "expectedTitle": title.map { $0 as Any } ?? NSNull(),
                         "expectedTitleActuallyExposedByAX": titleObserved.map { $0 as Any } ?? NSNull(),
@@ -221,10 +232,14 @@ final class Diagnostic {
     func goTo(_ path: URL) throws {
         try require(path.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path + "/"), "Native chooser destination must be task-owned")
         try key(5, [.maskCommand, .maskShift]) // ordinary Go to Folder, never clipboard/AppleScript injection
-        let nodes = try wait("focused native Go to Folder text field") { $0.contains { !$0.web && $0.focused && $0.role == kAXTextFieldRole } }
-        let field = try unique(nodes, "focused native Go to Folder field") { !$0.web && $0.focused && $0.role == kAXTextFieldRole }
+        let nodes = try wait("focused native Go to Folder PathTextField") { $0.contains { !$0.web && $0.nativeSheet && $0.focused && $0.role == kAXTextFieldRole && $0.identifier == "PathTextField" } }
+        let field = try unique(nodes, "focused native Go to Folder PathTextField") { !$0.web && $0.nativeSheet && $0.focused && $0.role == kAXTextFieldRole && $0.identifier == "PathTextField" }
         _ = try observe("native-go-to-folder"); try require(field.rect != nil, "Focused native path field has no rectangle")
-        try key(0, .maskCommand); try type(path.path); try key(36); pump(0.5)
+        try key(0, .maskCommand); try type(path.path)
+        _ = try wait("exact owned path text before Go", seconds: 5) { $0.contains { !$0.web && $0.nativeSheet && $0.focused && $0.identifier == "PathTextField" && $0.value == path.path } }
+        _ = try observe("native-exact-owned-path-before-Go")
+        try key(36)
+        _ = try wait("Go to Folder dismissal") { !$0.contains { !$0.web && $0.identifier == "GoToWindow" } }
     }
     func nativePress(_ title: String) throws {
         let nodes = try wait("enabled native panel " + title) { $0.contains { !$0.web && $0.nativeSheet && $0.role == kAXButtonRole && $0.enabled && self.caption($0, title) } }
@@ -239,12 +254,13 @@ final class Diagnostic {
     func saveFile(_ caption: String, _ file: URL) throws {
         stage = caption; try webClick("File"); try webClick(caption); try nativeDialog(nil, "Save")
         try goTo(file.deletingLastPathComponent())
-        let ext = file.pathExtension
-        let nodes = try tree()
-        let field = try unique(nodes, "native save-name field with exact expected extension") {
-            !$0.web && $0.nativeSheet && $0.role == kAXTextFieldRole && $0.enabled && ($0.value as NSString).pathExtension.lowercased() == ext
+        let nodes = try wait("native Save As name field") { $0.contains { !$0.web && $0.nativeSheet && $0.role == kAXTextFieldRole && $0.enabled && $0.identifier == "saveAsNameTextField" } }
+        let field = try unique(nodes, "native saveAsNameTextField") {
+            !$0.web && $0.nativeSheet && $0.role == kAXTextFieldRole && $0.enabled && $0.identifier == "saveAsNameTextField"
         }
-        try click(field, "native-save-name"); try key(0, .maskCommand); try type(file.lastPathComponent); try nativePress("Save")
+        try click(field, "native-save-name"); try key(0, .maskCommand); try type(file.lastPathComponent)
+        _ = try wait("owned filename before Save", seconds: 5) { $0.contains { !$0.web && $0.nativeSheet && $0.identifier == "saveAsNameTextField" && ($0.value == file.lastPathComponent || $0.value == file.deletingPathExtension().lastPathComponent) } }
+        _ = try observe("native-owned-filename-before-Save"); try nativePress("Save")
         _ = try wait("native save dismissal") { !$0.contains { !$0.web && $0.nativeSheet && $0.role == kAXButtonRole && self.caption($0, "Save") } }
         let deadline = Date().addingTimeInterval(15)
         while !FileManager.default.fileExists(atPath: file.path) && Date() < deadline { pump(0.2) }
