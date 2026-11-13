@@ -104,7 +104,7 @@ final class Diagnostic {
         func visit(_ element: AXUIElement, _ depth: Int, _ web: Bool, _ sheet: Bool) {
             guard depth < 42, result.count < 12000, ProcessInfo.processInfo.systemUptime - began < 8 else { limited = true; return }
             let role = attribute(element, kAXRoleAttribute) as? String ?? ""
-            let isWeb = web || role == kAXWebAreaRole
+            let isWeb = web || role == "AXWebArea"
             let isSheet = sheet || role == kAXSheetRole || role == "AXDialog"
             let names = [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute].compactMap { attribute(element, $0) as? String }.map(normalized)
             let value = attribute(element, kAXValueAttribute) as? String ?? ""
