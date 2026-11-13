@@ -1,0 +1,63 @@
+name: Exact validated C10 native texture file-menu and narrow-header diagnostic only
+on:
+  push:
+    branches: [codex/mac-file-menu-diagnostic-c10-20261113]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  actual-native-file-menu:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch and inventory only the exact root-bound normal-validated C10 app
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          pgrep -x WindowServer
+          FETCH_PYCACHE="$(mktemp -d "$RUNNER_TEMP/native-fetch-cache.XXXXXX")"
+          python3 -B -X "pycache_prefix=$FETCH_PYCACHE" qa/mac-file-menu-diagnostic/fetch_reviewed_artifact.py \
+            --qa qa/mac-file-menu-diagnostic \
+            --archive "$RUNNER_TEMP/original-C10-validated-artifact.zip" \
+            --metadata "$RUNNER_TEMP/original-C10-validated-artifact-metadata.json" \
+            --guard-proof "$RUNNER_TEMP/fetch-python-cache-proof.json"
+          PREPARE_PYCACHE="$(mktemp -d "$RUNNER_TEMP/native-prepare-cache.XXXXXX")"
+          python3 -B -X "pycache_prefix=$PREPARE_PYCACHE" qa/mac-file-menu-diagnostic/prepare_exact_app.py \
+            --archive "$RUNNER_TEMP/original-C10-validated-artifact.zip" --qa qa/mac-file-menu-diagnostic \
+            --scratch "$RUNNER_TEMP/file-menu-diagnostic" --evidence "$RUNNER_TEMP/file-menu-evidence" \
+            --guard-proof "$RUNNER_TEMP/prepare-python-cache-proof.json"
+          cp "$RUNNER_TEMP/original-C10-validated-artifact-metadata.json" "$RUNNER_TEMP/file-menu-evidence/"
+          cp "$RUNNER_TEMP/fetch-python-cache-proof.json" "$RUNNER_TEMP/file-menu-evidence/"
+          cp "$RUNNER_TEMP/prepare-python-cache-proof.json" "$RUNNER_TEMP/file-menu-evidence/"
+      - name: Claim one native activation, use actual panels, and preserve all output data and narrow-header checks
+        run: |
+          set -euo pipefail
+          RUNNER_PYCACHE="$(mktemp -d "$RUNNER_TEMP/native-runner-cache.XXXXXX")"
+          python3 -B -X "pycache_prefix=$RUNNER_PYCACHE" qa/mac-file-menu-diagnostic/run_native_diagnostic.py \
+            --qa qa/mac-file-menu-diagnostic --scratch "$RUNNER_TEMP/file-menu-diagnostic" \
+            --evidence "$RUNNER_TEMP/file-menu-evidence" \
+            --guard-proof "$RUNNER_TEMP/runner-python-cache-proof.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exact-validated-C10-native-file-menu-and-narrow-header-diagnostic-only
+          path: |
+            ${{ runner.temp }}/file-menu-evidence/
+            ${{ runner.temp }}/fetch-python-cache-proof.json
+            ${{ runner.temp }}/prepare-python-cache-proof.json
+            ${{ runner.temp }}/runner-python-cache-proof.json
+          if-no-files-found: error
+          retention-days: 7

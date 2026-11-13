@@ -1,0 +1,155 @@
+{
+  "frozen_source_commit": "51727bae11df587bb49bb0a0fd69a270018c380b",
+  "source_record_sha256": "ab1b558856f015ef6fdfa989d1d46b3000db125d1a58c059ddaf33c679908277",
+  "normal_workflow_run": 43500769315,
+  "original_artifact": {
+    "id": 14076385274,
+    "node_id": "MDg6QXJ0aWZhY3QxNDA3NjM4NTI3NA==",
+    "name": "elichika-macos-apple-silicon",
+    "size_in_bytes": 305446263,
+    "url": "https://api.github.com/repos/tagundo/elichika/actions/artifacts/14076385274",
+    "archive_download_url": "https://api.github.com/repos/tagundo/elichika/actions/artifacts/14076385274/zip",
+    "expired": false,
+    "digest": "sha256:bd2dd4b0a9b75fce1f33a511827e2dd2c505aaf3d7733c8e57ef163b73d5dacf",
+    "created_at": "2026-11-13T20:52:05Z",
+    "updated_at": "2026-11-13T20:52:05Z",
+    "expires_at": "2027-02-11T20:21:16Z",
+    "workflow_run": {
+      "id": 43500769315,
+      "repository_id": 1265017321,
+      "head_repository_id": 1265017321,
+      "head_branch": "codex/client-server-release-20261113-1-c10",
+      "head_sha": "51727bae11df587bb49bb0a0fd69a270018c380b"
+    }
+  },
+  "inner_app_archive": {
+    "bytes": 305445844,
+    "name": "Elichika-2026.11.13.1-AppleSilicon.app.zip",
+    "sha256": "4c597f8ac14a574c29c439b41902b640b9fecfd22223816c84105db1a461f783"
+  },
+  "frozen_bundle_source": {
+    "parent_commit": "51727bae11df587bb49bb0a0fd69a270018c380b",
+    "modtools_commit": "932666aa03264225e2a6bb2a973482b47e22b050",
+    "parent_tree": "4a35305f767914aa8520ef14eb7883c8d0cbe928"
+  },
+  "frozen_packaged_product_files": {
+    "Contents/Resources/python-app/webtools/web/static/app.js": {
+      "bytes": 62030,
+      "sha256": "913c2fbceb33ad7bf3c2034d9abf1e40c65863c6fb00b6ff2aa900622c8a9352"
+    },
+    "Contents/Resources/python-app/webtools/web/static/model-viewer.js": {
+      "bytes": 165287,
+      "sha256": "93c968eacda54ea211bb43315994bdb4191ac5a0d622fc04de6754c08f67f302"
+    },
+    "Contents/Resources/python-app/webtools/web/static/platform.js": {
+      "bytes": 16826,
+      "sha256": "c16dcb8f7b9bcca1c1b8352954fedf0f2711a29d4f65468dbd2afcc65de81e7b"
+    },
+    "Contents/Resources/python-app/webtools/web/static/viewer-texture-tools.js": {
+      "bytes": 175919,
+      "sha256": "2a338f5aa269494a0eb79387d7904451daec6532cad769d63a351c5c9ec63346"
+    },
+    "Contents/Resources/python-app/webtools/web/static/texture-paint-engine.js": {
+      "bytes": 72406,
+      "sha256": "b71d6a45885aead662b48cc6297d35d1eb77d4efd01a564210be5eec4723a615"
+    },
+    "Contents/Resources/python-app/webtools/web/static/texture-png.js": {
+      "bytes": 4817,
+      "sha256": "e0a1e2384b670f00cfc651ca90e1c5370dabb96ebc408920f7f29ba8a7063492"
+    },
+    "Contents/Resources/python-app/webtools/core/texture_project_io.py": {
+      "bytes": 13989,
+      "sha256": "77f3d3c08c8032746f7237026e724ac24095744be9f9a3f9bacd1a6af8902600"
+    },
+    "Contents/Resources/python-app/webtools/core/model_edits.py": {
+      "bytes": 67048,
+      "sha256": "2e756e03af948afb3e32b81aaeeb588c83f727f6bf15a3390c25a6fc1b018b0a"
+    },
+    "Contents/Resources/python-app/elichika_macos.py": {
+      "bytes": 44031,
+      "sha256": "8dd4318ebdcb0272ab91e4a5ace3e8fcca7d1e53475b5013c04cc5a6cdec4faa"
+    },
+    "Contents/Resources/python-app/webtools/web/static/style.css": {
+      "bytes": 100967,
+      "sha256": "4dff6be5e439076c0c2b246806fc2ad815b3d63a9ba71624bc28c4a1f563dee3"
+    }
+  },
+  "qa_files": {
+    "NativeFileMenuDiagnostic.swift": {
+      "bytes": 33264,
+      "sha256": "8954a224dbda2e9851fdc19bc44e43fc4cec65c9551cd3230bd2e2d6fd0f9c37"
+    },
+    "prepare_exact_app.py": {
+      "bytes": 8718,
+      "sha256": "840714b1352ad29a6d966ad5a39d6991c5bb0e0a53536595905b2a867c2c7dfd"
+    },
+    "run_native_diagnostic.py": {
+      "bytes": 14659,
+      "sha256": "039a4628557f1729339bb2651c201a3202602da1ffb1926670ff3c752e404fbe"
+    },
+    "fetch_reviewed_artifact.py": {
+      "bytes": 4133,
+      "sha256": "3e1c35703583a6b1fcc092259d81ca62b4cb4d3416aa16a9704f44402a225ffa"
+    },
+    "native_qa_guards.py": {
+      "bytes": 11047,
+      "sha256": "a67d8b128ffa4a94b27fd6dfc74b4e8868ff2cc894f32194d729b375d16740b4"
+    },
+    "mac-file-menu-diagnostic.yml": {
+      "bytes": 3164,
+      "sha256": "477d08214bac8df9eceae0923cda122a228c900889d034fae2c4eef20bc2416f"
+    },
+    "README.md": {
+      "bytes": 3135,
+      "sha256": "72188e55214766ef7066b5264ce6761a1e3bc9b5620e6aec1b0629bc2ea4594c"
+    },
+    "make_fixtures.py": {
+      "bytes": 3029,
+      "sha256": "b2cbf33d4c352b9d0724ecf31fde0e387bd00ba74e6da5fa0fa15240bcb839b0"
+    },
+    "fixtures/fixture-generation.json": {
+      "bytes": 784,
+      "sha256": "86918bb07beb31b11f8c0656eb18a426093d990eefd709db78984ca7020e1529"
+    },
+    "fixtures/large-import.png": {
+      "bytes": 3698673,
+      "sha256": "8a7a6f14683d89240f4026d4b849ba5c7fece7ac164856933da334fedd68d696"
+    },
+    "fixtures/large-layers.json": {
+      "bytes": 4959219,
+      "sha256": "963aae9dd6accc648b683bc4af473c41a0441377441bcaafd6d96fc3c78235fc"
+    },
+    "fixtures/large-model.unity": {
+      "bytes": 4267160,
+      "sha256": "5f5288bd72cbfe2c9926883dd000d7ac43c2a4e168222b14be03730b53716f37"
+    },
+    "fixtures/small-import.png": {
+      "bytes": 1026,
+      "sha256": "b0523823d0977292caea43adb85422faed6add8d9a7b3476be90bfa3db109718"
+    },
+    "fixtures/small-layers.json": {
+      "bytes": 1795,
+      "sha256": "943d435764d969bd609f1f7832f2ff8c9165284749d72489a6efa208550e59c6"
+    },
+    "fixtures/small-model.unity": {
+      "bytes": 73880,
+      "sha256": "da0bf6b4f0060d22638ea01b8b58b3415a3e1cee9cb0db5e2084cc3d6c6f990f"
+    }
+  },
+  "status": "ROOT_BOUND_EXACT_C10_VALIDATED_MAC_NATIVE_QA_INPUTS",
+  "normal_mac_review_proof": {
+    "file": "normal-mac-reader-proof.json",
+    "sha256": "2ae1d85b304748d9e011dc84be18f7e705bfe5f072be3f810c01730206a7818a"
+  },
+  "scope": "Original8 native panels/full RGBA/two-layer/activeLayer metadata/owned identity/signed app/ordinary cleanup plus readonly narrow AX v2; no native history claim.",
+  "native_history_claim": false,
+  "source_packet_sha256": "c2af12119d390c694d5e425ea33985b572d4e8cb327dc6477fc0fe924860fc06",
+  "independent_whole_source_peer": {
+    "path": "/tmp/c10-native-v2-independent-source-peer.6L5N3r/independent-c10-native-v2-final-source-review.json",
+    "sha256": "63bbb44a4a4a81116d931b8928401bc23aeaffe28fdac8dd86ec174e56d4c63a"
+  },
+  "prepared_by": "/root/mac_c10_resume3",
+  "normal_review_sealed_by_root": true,
+  "native_QA_runtime_approval": false,
+  "remote_activation_approval": false
+}

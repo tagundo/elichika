@@ -1,0 +1,614 @@
+{
+  "status": "PASS_FULL_SOURCE_BOUND_MAC_NATIVE_AND_PACKAGING",
+  "normal_ci_status": "PASS_FULL_SOURCE_BOUND_MAC_NATIVE_AND_PACKAGING",
+  "release_approved": false,
+  "additional_mac_performance_gate": {
+    "status": "PASS_QUALIFIED_SAME_CONSOLE_IMPLEMENTATION_WITH_HISTORICAL_CONTROLLED_MEASUREMENTS_AND_FRESH_C10_NATIVE_TESTS",
+    "source_commit": "51727bae11df587bb49bb0a0fd69a270018c380b",
+    "source_record_sha256": "ab1b558856f015ef6fdfa989d1d46b3000db125d1a58c059ddaf33c679908277",
+    "independent_source_applicability_path": "/dev/shm/c10-mac-console-historical-applicability-peer-20261113/independent-C10-historical-console-source-applicability.json",
+    "independent_source_applicability_sha256": "14b788877b8fecb38d8a6a32ba1de8debd56f891ad2acdae0df6e458bde77c5a",
+    "historical_C7_root_receipt_sha256": "a542291d58d3957862cde84f134944bacf04fb6e211719dfe630d36e4443eec0",
+    "historical_all24_pass": false,
+    "historical_overall_status": "FAIL_ACTUAL_CASE",
+    "historical_candidate12_pass": true,
+    "new_C10_performance_measurement": false,
+    "fullgame_CDN_equalCPU_benchmark_claim": false,
+    "fresh_C10_native_and_Swift_private_console_checks_passed": true,
+    "native_PNG_project_file_dialog_validation": "SEPARATE_FINAL_C10_GATE_PENDING",
+    "receipt_sha256": "48c4308352612ad6f6452bd59be70642d566032a29bb14ceacce5d8901a56a28"
+  },
+  "version": "2026.11.13.1",
+  "global_delivery_approved": false,
+  "component_scope": "Normal Mac server CI only; separate 24-case Mac performance, manual visual review and all other cohort gates remain mandatory.",
+  "parent_commit": "51727bae11df587bb49bb0a0fd69a270018c380b",
+  "tools_commit": "932666aa03264225e2a6bb2a973482b47e22b050",
+  "source": {
+    "parent_commit": "51727bae11df587bb49bb0a0fd69a270018c380b",
+    "modtools_commit": "932666aa03264225e2a6bb2a973482b47e22b050",
+    "parent_tree": "4a35305f767914aa8520ef14eb7883c8d0cbe928"
+  },
+  "run_id": 43500769315,
+  "job_id": 132145633914,
+  "run_attempt": 1,
+  "source_record_sha256": "ab1b558856f015ef6fdfa989d1d46b3000db125d1a58c059ddaf33c679908277",
+  "normal_guards": {
+    "parent": {
+      "head": "f67b48f93fe70ee90fa2605d020c84acdb693995",
+      "index_sha256": "805a424249568dd6ab49054a0f017df3eb90cbf4d121749de5fbb320173e0506"
+    },
+    "tools": {
+      "head": "b5a975245607a40eb926704f5d7db1ea94cd44ae",
+      "index_sha256": "228ae3f156116743ed63efb4cfb22e4ecb2026b49e1ed82ae33ed5769a1ee34d"
+    },
+    "clients": {
+      "head": "b7b37d7cbfeb558ce6fd22f9c49f1cd0a542117c",
+      "index_sha256": "e0671a83d6feefc7023c9b4ddbccd72e110d4c0187183a420b7822d5dce0cdf3"
+    }
+  },
+  "retention_baseline_validation_sha256": "dae8509dd6440e20d17550fce7a1e37aed843a4b40258f876792f68d5c512052",
+  "helper_sha256": "41e1c8b1d0c60847633e52a64c57f6f8ded9b7eb3f689de1539dfaa63a70464c",
+  "guard_helper_sha256": "db7cb3068029495e80c6a23b9fca288c121881febffa06252bdd0feda8f16fb0",
+  "projection": "/tmp/elichika-release-20261113-1/candidate-10/build/macos-expected-source-hashes.json",
+  "projection_sha256": "71b7d52e8d78304e2dd2a324923eb17907997886271a1793cb5a588921e92f65",
+  "packaged_sources": 260,
+  "packaged_qa": 19,
+  "workbench_python_cases": 611,
+  "retained_workbench_python_cases": 609,
+  "added_workbench_case_ids": [
+    "test_texture_project_io.TextureProjectFileTests.test_generic_json_still_rejects_unrelated_wrong_format_invalid_version_and_damaged_png",
+    "test_texture_project_io.TextureProjectFileTests.test_user_renamed_json_and_duplicate_download_keep_exact_project_and_png_bytes"
+  ],
+  "independent_source_derived_case_inventory": "/tmp/elichika-release-20261113-1/candidate-10/preparation/derived-case-inventory.json",
+  "independent_source_derived_case_inventory_sha256": "9a434fe75c18f96dd2ee0bcf2425fd5a66b1b9e8274ca05e66f3002dbd58b441",
+  "explicit_packaged_paint_uv_nearclip_node_cases": 87,
+  "bundled_runtime_python_cases": 73,
+  "retained_c5_bundled_runtime_cases": 70,
+  "retained_c5_compiled_swift_case_count": 45,
+  "independent_remote_source_audit_sha256": "378aea62cbd6c8173aaeac98128c0715b7e447d323a81544d56cc9e8bc2752e2",
+  "runtime_test_source_hashes": {
+    "tests/test_macos_runtime.py": "45cd640bcaee7400b747650d5b015be070a4b1aff1b6ffd9be1c8780f8917660",
+    "tests/test_macos_runtime_console_logging.py": "3ca2c41f091407778690550da77e621879d467cc8facdf93a180d9a1149e8c0e",
+    "tests/test_macos_runtime_local_webui_capability.py": "ba4b644f4139b4bc3216f634ab1c0981f1db894697ffe54649370712c78394ef",
+    "tests/test_macos_runtime_memory.py": "11b3c5201f57308582c0382b3c760e2a3467e434e73eaa5a6fb317042a318358",
+    "tests/test_macos_runtime_progress.py": "ca17242ec7a210c85be669ee7943c132ed390fd2d0f5d974f5a66a786decaba7",
+    "tests/test_macos_runtime_texture_io.py": "1d36df99077f2f4797790557dc17d4664420546d7aca50dbd2fc5e57af5a2a9a"
+  },
+  "compiled_swift_cases": [
+    "testActiveGameRoleOwnsBothNativeBrowserBootstrapRequests",
+    "testAppAndServerSettingsAreDistinctLocalizedSidebarDestinations",
+    "testAssetSectionBridgeAcceptsOnlyKnownSectionsAndEvents",
+    "testAssetToolsAndViewerAreAdjacentNativeDestinationsForOneEditor",
+    "testCapabilityRotationAtTheSamePortDisposesOnlyGoBrowsersBeforePublication",
+    "testChangedManagementOriginDisposesOldSessionsBeforePublishingTheNewSnapshot",
+    "testColdOpenWaitsBeforeProcessCreationAndThroughoutPreparation",
+    "testConsoleActionsUseFixedNamesAndExplicitResetConfirmation",
+    "testConsoleRegionUsesJapaneseOnlyForJapaneseAndKeepsExplicitChoices",
+    "testConsoleStateDecodesProgressAndRejectsUnknownActions",
+    "testCurrentRenderedNavigationRetainsRetryAndPageReadyTransitions",
+    "testEmbeddedAssetDestinationKeepsTheTrustedOriginAndExistingQuery",
+    "testGameConnectionAddressDoesNotFollowTheSourceCDN",
+    "testHiddenEditorRenderCannotChangeNavigationOrAcknowledgeReadiness",
+    "testKnownTextureDownloadsUseAppKitPNGAndJSONSaveTypes",
+    "testLateRefreshCannotReplaceTheBrowserPublishedByManagementAcknowledgement",
+    "testLocalWebUICapabilityFollowsTheReadyRoleAndIsNeverAURLParameter",
+    "testLocalWebUICapabilityIsOptionalAndRefusedForRemoteOrMalformedTokens",
+    "testLongLinesAndErrorsRemainOrderedAndImmediatelyAvailable",
+    "testManagementDemandIsLazyAndSurvivesMenuChangesWhilePreparing",
+    "testManagementMenuRoundTripsKeepBothBrowsersAndTheirOrigin",
+    "testNativeBridgeRefusesUnknownActionsAndOversizedBodies",
+    "testNativeEditorNavigationKeepsAdjacentSurfacesAndRejectsUnknownViews",
+    "testOfflineManagementProvidesOnlyPreparedLoopbackWebUIPages",
+    "testOfflineManagementRefusesForeignAndMalformedOrigins",
+    "testOneLogBatchPublishesOnlyTheLogLeafAndKeepsExactTail",
+    "testOptionalRuntimeStatusDoesNotInventRunningServer",
+    "testPanelSettingsBridgeLimitsScopesAndRestoresValidatedPreferences",
+    "testPendingAssetNavigationKeepsTheLatestNativeSelectionAcrossPageReady",
+    "testPendingDocumentDoesNotWaitAfterStartupFailureOrQuit",
+    "testPreparationUsesSharedPercentAndRequiresDurableCompletion",
+    "testQuitCleansUpOnceAndTerminatesOnlyOnTheCompletedRequest",
+    "testReadinessRequiresDistinctUIAndControlSecretsAndPorts",
+    "testRuntimeEqualityIncludesErrorsReadinessAndPrivateTokenRotation",
+    "testSameCapabilityMenuRoundTripsPreserveAuthorizedBrowserRequestsAndSessions",
+    "testSameURLBrowserReloadChangesViewIdentityAndRejectsEarlierEpochResponses",
+    "testServerAddressAcceptsLiteralIPsWithoutResolvingArbitraryNames",
+    "testServerProcessRemainsLoadingUntilHttpReadinessAndCanRemainStopped",
+    "testSkippedRenderRevisionsKeepTheSameSurvivingSelection",
+    "testStaleRenderedAssetSectionCannotReplaceCurrentPageSelection",
+    "testTrustedOriginRejectsRemoteHostsAndCredentialURLs",
+    "testUnchangedPollsDoNotPublishRuntimeState",
+    "testUnicodeRollingDeltasRebuildTheSameSelectableDocument",
+    "testUnknownBundleDownloadsRetainTheirExistingUnconstrainedSaveBehavior",
+    "testUnsolicitedCleanupCompletionCannotSkipChildCleanup",
+    "testWebUIRoutingFollowsTheReadyGameOrOfflineManagementRole",
+    "testWrappedUnicodeScrollbackSurvivesCoalescedHeadTrimming"
+  ],
+  "compiled_swift_source_hashes": {
+    "macos/Tests/ConsolePerformanceTests.swift": "22d9807d5cfd5a71d69dfd591c6a9f2dc43345ad99cb351bc920d3f4b8d3e142",
+    "macos/Tests/ConsoleWrappedScrollTests.swift": "c79dc308d2c44ce7e840a14fc49df9620e4baec576e7b7a2970881069e32b9f0",
+    "macos/Tests/RuntimeContractTests.swift": "48b3fab329c67b44de8a5fc2f68ec5eeb80caf308e05664be2775eb61796679c"
+  },
+  "retained_c4_compiled_swift_cases": 44,
+  "actual_compiled_swift_case_count": 47,
+  "review_binding_sha256": "7218e5e9d635923e5b92b5f06c5523bfc4283711053d74755a921f4d01fde832",
+  "independent_source_audit_sha256": "ef32af7a3efb9b4eca27a3e541d921ec4a52a46fd6b8e7bc4c7b511050410af1",
+  "retained_compiled_swift_cases": 32,
+  "native_console_first_and_relocated": true,
+  "native_console_capture_first_and_relocated": true,
+  "native_offline_management_first_and_relocated": true,
+  "native_management_navigation_cycles": 4,
+  "native_management_roundtrip_witnesses": {
+    "first": {
+      "app_owned_access_without_password_prompt": true,
+      "browser_sessions_preserved": true,
+      "fast_navigation_cycles": 4,
+      "management_pid": 24427,
+      "management_pid_after_navigation": 24427,
+      "navigation_shutdown_requests": 0,
+      "origin_unchanged": true,
+      "pages": [
+        {
+          "document": {
+            "bodyCharacters": 74,
+            "localAccess": true,
+            "loginFormHidden": null,
+            "nativeLanguageReady": false,
+            "passwordPrompt": false,
+            "pickerHidden": null,
+            "requestedDocumentReady": true,
+            "title": "",
+            "url": "http://127.0.0.1:50475/webui/admin/",
+            "visiblePasswordInputs": []
+          },
+          "http_status": 200,
+          "requested_path": "/webui/admin/",
+          "screenshot": "offline-management-settings.png"
+        },
+        {
+          "document": {
+            "bodyCharacters": 190,
+            "localAccess": true,
+            "loginFormHidden": true,
+            "nativeLanguageReady": true,
+            "passwordPrompt": false,
+            "pickerHidden": false,
+            "requestedDocumentReady": true,
+            "title": "",
+            "url": "http://127.0.0.1:50475/webui/user/login",
+            "visiblePasswordInputs": []
+          },
+          "http_status": 200,
+          "requested_path": "/webui/user/",
+          "screenshot": "offline-management-user.png"
+        }
+      ],
+      "scope": "Actual native Server settings/Accounts WebViews, authorized with the app-owned capability, and the same real loopback Go management process across menu round trips; no game server or account mutation requested",
+      "server_stayed_stopped": true,
+      "session_retained_while_editing": true,
+      "status": "PASS",
+      "unsaved_form_drafts_preserved": true
+    },
+    "relocated": {
+      "app_owned_access_without_password_prompt": true,
+      "browser_sessions_preserved": true,
+      "fast_navigation_cycles": 4,
+      "management_pid": 30983,
+      "management_pid_after_navigation": 30983,
+      "navigation_shutdown_requests": 0,
+      "origin_unchanged": true,
+      "pages": [
+        {
+          "document": {
+            "bodyCharacters": 74,
+            "localAccess": true,
+            "loginFormHidden": null,
+            "nativeLanguageReady": false,
+            "passwordPrompt": false,
+            "pickerHidden": null,
+            "requestedDocumentReady": true,
+            "title": "",
+            "url": "http://127.0.0.1:52213/webui/admin/",
+            "visiblePasswordInputs": []
+          },
+          "http_status": 200,
+          "requested_path": "/webui/admin/",
+          "screenshot": "offline-management-settings.png"
+        },
+        {
+          "document": {
+            "bodyCharacters": 190,
+            "localAccess": true,
+            "loginFormHidden": true,
+            "nativeLanguageReady": true,
+            "passwordPrompt": false,
+            "pickerHidden": false,
+            "requestedDocumentReady": true,
+            "title": "",
+            "url": "http://127.0.0.1:52213/webui/user/login",
+            "visiblePasswordInputs": []
+          },
+          "http_status": 200,
+          "requested_path": "/webui/user/",
+          "screenshot": "offline-management-user.png"
+        }
+      ],
+      "scope": "Actual native Server settings/Accounts WebViews, authorized with the app-owned capability, and the same real loopback Go management process across menu round trips; no game server or account mutation requested",
+      "server_stayed_stopped": true,
+      "session_retained_while_editing": true,
+      "status": "PASS",
+      "unsaved_form_drafts_preserved": true
+    }
+  },
+  "native_shared_webui_helpers": {
+    "first": [
+      {
+        "requested_path": "/webui/admin/",
+        "nativeLanguageReady": false
+      },
+      {
+        "requested_path": "/webui/user/",
+        "nativeLanguageReady": true
+      }
+    ],
+    "relocated": [
+      {
+        "requested_path": "/webui/admin/",
+        "nativeLanguageReady": false
+      },
+      {
+        "requested_path": "/webui/user/",
+        "nativeLanguageReady": true
+      }
+    ]
+  },
+  "native_shared_webui_helper_scope": "Accounts must expose its actually loaded native_local.js helper on both launches. Admin uses server-side i18n and its frozen template does not request native_local.js; its nativeLanguageReady value is reported, not misrepresented as a serving failure.",
+  "native_console_capture": {
+    "first": {
+      "app_active": true,
+      "console_render_marker_visible": true,
+      "content_height": 692,
+      "content_width": 1024,
+      "owned_asset_window": true,
+      "previous_asset_view_detached": true,
+      "window_key": true,
+      "window_number": 45,
+      "window_visible": true
+    },
+    "relocated": {
+      "app_active": true,
+      "console_render_marker_visible": true,
+      "content_height": 692,
+      "content_width": 1024,
+      "owned_asset_window": true,
+      "previous_asset_view_detached": true,
+      "window_key": true,
+      "window_number": 54,
+      "window_visible": true
+    }
+  },
+  "native_management_images": {
+    "first-launch-console-menus.png": {
+      "width": 1024,
+      "height": 692,
+      "sha256": "3af2e1fcf39fc48886aabd4fb17c1158e7bd679369f4ab2618271d8b5b6e5dcf"
+    },
+    "first-launch-offline-management-settings.png": {
+      "width": 813,
+      "height": 640,
+      "sha256": "e4516bf9e24263fb5a2250d351e248385e2b098ffa977cc2e33d2ffeae69ba04"
+    },
+    "first-launch-offline-management-user.png": {
+      "width": 813,
+      "height": 640,
+      "sha256": "d02873ef2076aee8f972e8e560096325640d377e04066db9a030388d8900c5aa"
+    },
+    "relocated-relaunch-console-menus.png": {
+      "width": 1024,
+      "height": 692,
+      "sha256": "d8f6a2bd7a5847bd99c8b8461842f684ab5adf074d2ec6e742ec896ebd30caf0"
+    },
+    "relocated-relaunch-offline-management-settings.png": {
+      "width": 813,
+      "height": 640,
+      "sha256": "e4516bf9e24263fb5a2250d351e248385e2b098ffa977cc2e33d2ffeae69ba04"
+    },
+    "relocated-relaunch-offline-management-user.png": {
+      "width": 813,
+      "height": 640,
+      "sha256": "d02873ef2076aee8f972e8e560096325640d377e04066db9a030388d8900c5aa"
+    }
+  },
+  "first_and_relocated_native": true,
+  "signed_app_unchanged": true,
+  "app_artifact": {
+    "id": 14076385274,
+    "node_id": "MDg6QXJ0aWZhY3QxNDA3NjM4NTI3NA==",
+    "name": "elichika-macos-apple-silicon",
+    "size_in_bytes": 305446263,
+    "url": "https://api.github.com/repos/tagundo/elichika/actions/artifacts/14076385274",
+    "archive_download_url": "https://api.github.com/repos/tagundo/elichika/actions/artifacts/14076385274/zip",
+    "expired": false,
+    "digest": "sha256:bd2dd4b0a9b75fce1f33a511827e2dd2c505aaf3d7733c8e57ef163b73d5dacf",
+    "created_at": "2026-11-13T20:52:05Z",
+    "updated_at": "2026-11-13T20:52:05Z",
+    "expires_at": "2027-02-11T20:21:16Z",
+    "workflow_run": {
+      "id": 43500769315,
+      "repository_id": 1265017321,
+      "head_repository_id": 1265017321,
+      "head_branch": "codex/client-server-release-20261113-1-c10",
+      "head_sha": "51727bae11df587bb49bb0a0fd69a270018c380b"
+    }
+  },
+  "evidence_artifact": {
+    "id": 14075283281,
+    "node_id": "MDg6QXJ0aWZhY3QxNDA3NTI4MzI4MQ==",
+    "name": "elichika-macos-evidence",
+    "size_in_bytes": 6365135,
+    "url": "https://api.github.com/repos/tagundo/elichika/actions/artifacts/14075283281",
+    "archive_download_url": "https://api.github.com/repos/tagundo/elichika/actions/artifacts/14075283281/zip",
+    "expired": false,
+    "digest": "sha256:ed9c923164c12eefbb83ffe6be71a5171fa25b7bfc9e5b624eecfe1d9bb88cc0",
+    "created_at": "2026-11-13T20:52:08Z",
+    "updated_at": "2026-11-13T20:52:08Z",
+    "expires_at": "2027-02-11T20:21:16Z",
+    "workflow_run": {
+      "id": 43500769315,
+      "repository_id": 1265017321,
+      "head_repository_id": 1265017321,
+      "head_branch": "codex/client-server-release-20261113-1-c10",
+      "head_sha": "51727bae11df587bb49bb0a0fd69a270018c380b"
+    }
+  },
+  "archive": {
+    "bytes": 305445844,
+    "name": "Elichika-2026.11.13.1-AppleSilicon.app.zip",
+    "sha256": "4c597f8ac14a574c29c439b41902b640b9fecfd22223816c84105db1a461f783"
+  },
+  "evidence_file_hashes": {
+    "workbench-tests.json": "76b23666ff6682a393f7d3f4d453e45cb6da90e423aac58a31b25bf0ef93ee08",
+    "workbench-tests.txt": "80a50952e1882535d196230f9a5bb0d165693539a5631303d1d78daec1b19c5d",
+    "swift-tests.txt": "b5e53274b3ff83ae232a61419a6aae2f452bf4486f40623761f3f7fe105f35a5",
+    "runtime-probe.stdout.txt": "e83badb4330ceef231123c1c144dce5f4296cae9b4d8b8906718578f9e55521c",
+    "runtime-probe.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runtime-https.txt": "38352e0f3264c4bd36bfcec971c9eacd045a4f3cf145675e5eedc68687743f09",
+    "relocated-relaunch.stdout.txt": "71ce898770b4fdd27be4418787c2e677476374c7ae9f2aab6ec728c4b193a668",
+    "relocated-relaunch.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relocated-relaunch.json": "c38be5c333f7ddd4954ab927f7f254eb75e1e13c62ead9ad97be5d71465885f1",
+    "relocated-relaunch-wide-panel-controls.png": "9829d5216bf740a5812f4abfc24385abda6ad531df9f08c33e56a725602bae11",
+    "relocated-relaunch-thumbnail-updater-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relocated-relaunch-thumbnail-updater-spec.json": "81d990cbf9253464561f790c1f55463821717e46743d767cc7eab836ad23a1c6",
+    "relocated-relaunch-thumbnail-updater-oracle.stdout.txt": "0686ba5b59412b96dfc0821db7cc212cd03984d10f6e566f8bec703dfa809286",
+    "relocated-relaunch-thumbnail-updater-oracle.json": "eedd2885d60539824f1e300077259cdff601cf5309ecd00633b8a5dd2e0b6d31",
+    "relocated-relaunch-thumbnail-updater-controls.png": "be32fc24882443a145a17883ab2e5566d69209650aa386ad451beec0ccf32789",
+    "relocated-relaunch-thumbnail-updated-6.zip": "a38c3eac1e01cc28b97a426463d610d4d4f5262a63e4cbfecb720544c718bc71",
+    "relocated-relaunch-thumbnail-updated-201.zip": "eab7553e3410758bc2e49ccbab72f3b11a4784cb1bf03f26bd47041d04596152",
+    "relocated-relaunch-thumbnail-spec.json": "b910533e92d3a0b50e224ba582b4c42ce2ceffd21b88d90199551c7701314a41",
+    "relocated-relaunch-thumbnail-oracle.stdout.txt": "acd65fdeb448078bac9999591399bf166ff27a0fc153b8f64c718cb6de133bab",
+    "relocated-relaunch-thumbnail-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relocated-relaunch-thumbnail-oracle.json": "466e9bef4d07e23d9dc45c479a872bedea162e736b9b02584c9952597bd12703",
+    "relocated-relaunch-raw-updater-source-1.zip": "473fb2c5a57c95b5259ada0c3bf88eaf7db4586f8c662d4f03cfeaceb48fa969",
+    "relocated-relaunch-saved-model.png": "2a6dec416a0bba284c5497f47b97eb96ca71ed7833685f296900571e4218b2c9",
+    "relocated-relaunch-thumbnail-controls.png": "6c6a4c26a52fc58aafc555e9f2f0bb3f01c460dafc683760538e8635e62dea71",
+    "relocated-relaunch-raw-updater-source-0.zip": "e60eb0fa3e6e1860bb956e70337c23908faab3f2a9c66192531b645b971538f7",
+    "relocated-relaunch-raw-updater-output-1.zip": "eab7553e3410758bc2e49ccbab72f3b11a4784cb1bf03f26bd47041d04596152",
+    "relocated-relaunch-raw-updater-output-0.zip": "a38c3eac1e01cc28b97a426463d610d4d4f5262a63e4cbfecb720544c718bc71",
+    "relocated-relaunch-raw-thumbnail-2.zip": "f328b0faf372a161fa9a2f261c878eb8f1c8c786eabf4de0accb2331dfd6dabf",
+    "relocated-relaunch-raw-thumbnail-1.json": "e3e27e16f92a5753e3331baa7e2250e03bc5217ca55f58a638371461961b7be4",
+    "relocated-relaunch-raw-thumbnail-0.zip": "1555e8d0744adb654dc9ee08995dc4d27421aded3db2514745205d9a2fa4df24",
+    "relocated-relaunch-raw-part-result.unity": "62ab3a57d1013dda07262e44878de70706d0039fba9568e9f1c4a49b753f53de",
+    "relocated-relaunch-raw-output-manifest.json": "0dc1a1024adcec7c673c38cbd34c9a7a4b1899d0247efc77706de41b0d6e7917",
+    "relocated-relaunch-part-spec.json": "bd28800bfe06da54f190f37c872e55764c7c6a6988c5b90069832ad32343b6e4",
+    "relocated-relaunch-part-selection-controls.png": "5afa9f552987f98834e18399f4ffe8a998a2e066f7ac0415a769704bce1fd294",
+    "relocated-relaunch-part-result.unity": "62ab3a57d1013dda07262e44878de70706d0039fba9568e9f1c4a49b753f53de",
+    "relocated-relaunch-part-oracle.stdout.txt": "038282ddb3935630c4c83792adb1d05ce308c33d99f062fe4f6d4bdb02527fd5",
+    "relocated-relaunch-part-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relocated-relaunch-part-oracle.json": "e6490886f72abe6a80adbe1c628f81432594e202d5e2437d04044cde3dd2263b",
+    "relocated-relaunch-offline-management-user.png": "d02873ef2076aee8f972e8e560096325640d377e04066db9a030388d8900c5aa",
+    "relocated-relaunch-offline-management-settings.png": "e4516bf9e24263fb5a2250d351e248385e2b098ffa977cc2e33d2ffeae69ba04",
+    "relocated-relaunch-game-physics.png": "eb1dc457b2067b87650c2455846861f130a3e43143ce8ae610da53a81623f2d6",
+    "relocated-relaunch-extended-controls.png": "8c4b6a263d249c5f2b475f089339b8d13f241a9eca700a4935724748aa5bcdbd",
+    "relocated-relaunch-detail-oracle.stdout.txt": "1feb4523e1e981a82a4938986c2d01ae72947d6ccccc6bae33af40f5d554adc0",
+    "relocated-relaunch-detail-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relocated-relaunch-detail-oracle.json": "0f7a09c8464b050ba37c531b3b6be25b6f79807747d032ae97746f6efa608ef8",
+    "relocated-relaunch-detail-controls.png": "e5808fe060cbd87c0e34bbdaef6f40a38316d06f413ee3b1854bac126f5138f0",
+    "relocated-relaunch-accessory-saved-model.png": "b68ac1a31875d5d27af07a920a51602c8732b5e44db87357097fcb91a9d34b50",
+    "relocated-relaunch-console-menus.png": "d8f6a2bd7a5847bd99c8b8461842f684ab5adf074d2ec6e742ec896ebd30caf0",
+    "relocated-relaunch-accessory-oracle.stdout.txt": "e9095e63ae0819c08ff7fbc261451ba2efcd5581c4dad11b56d18a1df4c31b20",
+    "relocated-relaunch-accessory-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relocated-relaunch-accessory-oracle.json": "bbc824ffcd125d9b348722e6ca07afa731369fdba1e019a1447cd1bf1e5e3cd7",
+    "relocated-relaunch-absolute-outline.stdout.txt": "76e6a5a28f3ea971080fc54387df1933167c6a7b4ca6f582c12e7b53c3b035e0",
+    "relocated-relaunch-absolute-outline.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relocated-relaunch-absolute-outline-oracle.json": "805c6a35737b324bad0ae65c0f5e7336ba5c78ab1cc06f4b08aa574d75d5562b",
+    "private-runtime.json": "476f3aa6ce5fca5a8038f9ec3c07fb908360f5d67a6cb114f24da688ed01ba7e",
+    "host.txt": "560ace9bcd04777f955d4f28d3743039b8bbad3c696dd214fd9e665c1c8ecb41",
+    "host-diagnostic-summary.json": "e4afde05f6208b1f33d413c608661fc55817b2a54161b2520d158312e3bb2c37",
+    "fractional-zip-input.stdout.txt": "fd83329dc09902aa0e6d25f256d453914ea5279d839bee86b367952f2bbe3b81",
+    "fractional-zip-input.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fractional-zip-input.json": "aa830ebf2bf3efb593499e98b4de45b39a9c8ae850d37456fe7a93014329e5fe",
+    "first-launch.stdout.txt": "8fdfe917cdaffd293347d4f475bc4b9df255d562e76a043c7d13d249aca49b4d",
+    "first-launch-thumbnail-updater-spec.json": "0542ba4b79e7f973bdcf15a685afd651cb811a30c0002fea0d7d2a8bbeeaaad1",
+    "first-launch.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "first-launch.json": "44ac1fa8a73f73757bfea3dddfacfa1641f2ece41aeaadc66ea00de0cfbcadb3",
+    "first-launch-wide-panel-controls.png": "ec875d761f191b3cc333b83bc5e9845471463b0cd385f683b4922240438d305d",
+    "first-launch-thumbnail-updater-oracle.json": "890b4f25e871e673df4282502075dcdfe79dee7f977cddd74ab71816ab70b62e",
+    "first-launch-thumbnail-updater-oracle.stdout.txt": "dcd71b6cedf2870c20be92fd4ddc7e7bbfca07942549d6e66854d0c745741389",
+    "first-launch-thumbnail-updater-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "first-launch-thumbnail-updater-controls.png": "0abd6bf1df62e447e737fbfe3adac0d9030ce59b514ef9e805a2a2301e06cbca",
+    "first-launch-thumbnail-updated-201.zip": "9548bf390a46e7df9ed2bf9ee693786b03116427d64b1c25ce5bfbbcc5047bb7",
+    "first-launch-thumbnail-updated-6.zip": "2ddde720f3938093b1070d6979b6b7296764c138690643af40806995285b88fe",
+    "first-launch-thumbnail-spec.json": "583d6faa0a87808fd023d7dc0fdc6786ea82f358a2136197f60e778e45971a14",
+    "first-launch-thumbnail-oracle.stdout.txt": "bb5b65b375f51ca637683c6e979cf69cde25e3e4272968bb0435bda5a234dbd9",
+    "first-launch-thumbnail-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "first-launch-thumbnail-oracle.json": "62fead0bcf52d45c5019955d599dad303aa4f9d0702a5992834ea93824c71983",
+    "first-launch-thumbnail-controls.png": "6c6a4c26a52fc58aafc555e9f2f0bb3f01c460dafc683760538e8635e62dea71",
+    "first-launch-saved-model.png": "c5d0319d5b03395abc71a7212aba584b22a4e693f48c31312e37937258c25f6e",
+    "first-launch-raw-updater-source-1.zip": "473fb2c5a57c95b5259ada0c3bf88eaf7db4586f8c662d4f03cfeaceb48fa969",
+    "first-launch-raw-updater-source-0.zip": "e60eb0fa3e6e1860bb956e70337c23908faab3f2a9c66192531b645b971538f7",
+    "first-launch-raw-updater-output-0.zip": "2ddde720f3938093b1070d6979b6b7296764c138690643af40806995285b88fe",
+    "first-launch-raw-updater-output-1.zip": "9548bf390a46e7df9ed2bf9ee693786b03116427d64b1c25ce5bfbbcc5047bb7",
+    "first-launch-raw-thumbnail-2.zip": "bd7373375faa1d88d51ecb0be8a278a4c0a4bf1ab0b8bf955dfe9652b54d6d25",
+    "first-launch-raw-thumbnail-1.json": "e3e27e16f92a5753e3331baa7e2250e03bc5217ca55f58a638371461961b7be4",
+    "first-launch-raw-thumbnail-0.zip": "1555e8d0744adb654dc9ee08995dc4d27421aded3db2514745205d9a2fa4df24",
+    "first-launch-raw-part-result.unity": "62ab3a57d1013dda07262e44878de70706d0039fba9568e9f1c4a49b753f53de",
+    "first-launch-raw-output-manifest.json": "619c11a78b10796fa4d2096af76511de7bf08ca01951b9cc743e6f6b3773bc77",
+    "first-launch-part-spec.json": "be03143f963ff48f8359a37652a17a152a20d5ef20e56b63c9388abcf7c57158",
+    "first-launch-part-selection-controls.png": "246a21e8e72db531a5aa163504214cf1baa5d51adff2c23be7c16dc4b310e5a4",
+    "first-launch-part-result.unity": "62ab3a57d1013dda07262e44878de70706d0039fba9568e9f1c4a49b753f53de",
+    "first-launch-part-oracle.stdout.txt": "038282ddb3935630c4c83792adb1d05ce308c33d99f062fe4f6d4bdb02527fd5",
+    "first-launch-part-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "first-launch-part-oracle.json": "0036f077aa9733e9b7774c4346f7dafeb3e7d5292aa336ec55d31763dcdbbccf",
+    "first-launch-offline-management-user.png": "d02873ef2076aee8f972e8e560096325640d377e04066db9a030388d8900c5aa",
+    "first-launch-offline-management-settings.png": "e4516bf9e24263fb5a2250d351e248385e2b098ffa977cc2e33d2ffeae69ba04",
+    "first-launch-game-physics.png": "eb1dc457b2067b87650c2455846861f130a3e43143ce8ae610da53a81623f2d6",
+    "first-launch-extended-controls.png": "8c4b6a263d249c5f2b475f089339b8d13f241a9eca700a4935724748aa5bcdbd",
+    "first-launch-accessory-oracle.stdout.txt": "e9095e63ae0819c08ff7fbc261451ba2efcd5581c4dad11b56d18a1df4c31b20",
+    "first-launch-detail-oracle.stdout.txt": "8678caaec47c000f4a127b648ffc93b52a6e7f3f9605982aef6a1eb11fc0578f",
+    "first-launch-detail-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "first-launch-detail-oracle.json": "a54d256344566cf514f49abf5d51f2401687c6839d0210815a91ae8ae83f4239",
+    "first-launch-detail-controls.png": "e5808fe060cbd87c0e34bbdaef6f40a38316d06f413ee3b1854bac126f5138f0",
+    "first-launch-console-menus.png": "3af2e1fcf39fc48886aabd4fb17c1158e7bd679369f4ab2618271d8b5b6e5dcf",
+    "first-launch-accessory-saved-model.png": "3f3c0f23ae4743545619fdf2801e63449a47fc4519cea6157efaa25506042449",
+    "first-launch-accessory-oracle.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "first-launch-accessory-oracle.json": "bbc824ffcd125d9b348722e6ca07afa731369fdba1e019a1447cd1bf1e5e3cd7",
+    "first-launch-absolute-outline.stdout.txt": "99afbe97283d19bd8bba00b609c3087ed969fb7a1e386516f5e54e98a69c224d",
+    "first-launch-absolute-outline.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "first-launch-absolute-outline-oracle.json": "7dbf6e5a38aa889111b84568be42c9547f2178db13c16449a7cc888c2d2a52f2",
+    "deterministic-serverdata.json": "d3c13d7ae701dbb80875bec99d7d4f021829b85efa1b224746f85d1c51be92e7",
+    "bundled-runtime-tests.txt": "fe9119e36fdf46b7ebd1cbc845196d25572ed208750755143e48626930606150",
+    "bundle-provenance.json": "61dae3553c1e92eb77e3a18e0d52b191ca8fbfb802e13fea8f799e3ac238bef9",
+    "bundle-before-launch.json": "a9d7b8503ba633a74fc4e4027dbfba2239a8f325d1627ffd0fee0ab9e4c961e6",
+    "bundle-after-relaunch.json": "a9d7b8503ba633a74fc4e4027dbfba2239a8f325d1627ffd0fee0ab9e4c961e6",
+    "app-smoke-summary.json": "91208a7ab7c7ccefb9721c0662c620ef632624a3e6115b02e99276579730af09",
+    "app-build.json": "2292afd413b4ebca95ec021e7e3d67ab3b89683bbf909904707aa6bb16288ee8",
+    "accessory-input.json": "bb95b0d2f131325e0611b66350ed9d94138bbee070c572abee78d19cc0c30439",
+    "accessory-input.stdout.txt": "f4e8aebb01da46dbe0b4e1efa92376d6c61a74f362f78935ac5ac45d718eb302",
+    "app-archive.json": "7141dbacc57d371691033308686c8a4ab27699aedaece05fd0393a33678b232e",
+    "accessory-input.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-app-data/wide-panel-controls.png": "9829d5216bf740a5812f4abfc24385abda6ad531df9f08c33e56a725602bae11",
+    "native-app-data/\ubd84\uc218 \uc758\uc0c1.zip": "ed4eab70d111789b90abe2cab1fadf7640afb9610b96c613f5b87ff256275611",
+    "native-app-data/viewer-panel-width-expected.txt": "1a1cf797fabe7f95836fabeca626907c77b3e6c9aff7c2290b396a238c69362e",
+    "native-app-data/viewer-files-width-expected.txt": "6af1f692e9496c6d0b668316eccb93276ae6b6774fa728aac31ff40a38318760",
+    "native-app-data/thumbnail-updater-controls.png": "be32fc24882443a145a17883ab2e5566d69209650aa386ad451beec0ccf32789",
+    "native-app-data/thumbnail-controls.png": "6c6a4c26a52fc58aafc555e9f2f0bb3f01c460dafc683760538e8635e62dea71",
+    "native-app-data/part-selection-controls.png": "5afa9f552987f98834e18399f4ffe8a998a2e066f7ac0415a769704bce1fd294",
+    "native-app-data/saved-model.png": "2a6dec416a0bba284c5497f47b97eb96ca71ed7833685f296900571e4218b2c9",
+    "native-app-data/part-target.unity": "fe6f3c7749f116faad61152ee6f76978a4200e409dd5c0c577ce505a33f3a7f8",
+    "native-app-data/part-donor.unity": "de4e0e267f9435f626b0a1e7d556375f6fe2d12a7da22227ce7dbd373fd42d89",
+    "native-app-data/native-smoke.json": "30df5910bb9b0fd8945f7e6065ea7c406186a54c85a7d9bef700bc586babd03f",
+    "native-app-data/offline-management-user.png": "d02873ef2076aee8f972e8e560096325640d377e04066db9a030388d8900c5aa",
+    "native-app-data/offline-management-settings.png": "e4516bf9e24263fb5a2250d351e248385e2b098ffa977cc2e33d2ffeae69ba04",
+    "native-app-data/game-physics.unity": "d619ef6e956d3b8557660ebbd070e8c998c0c0c82dc2fb97a8755c2a4d74e66e",
+    "native-app-data/library-motion.unity": "b512951eaa10cc2cce1d53dca961ad3abbc5e731ce4c58a7b78ee9c4cc2ce7a9",
+    "native-app-data/gaze-source.unity": "4058786fad837b3292bf1fdba0b9181719b7c7e9e756a705c266af146d113129",
+    "native-app-data/game-physics.png": "eb1dc457b2067b87650c2455846861f130a3e43143ce8ae610da53a81623f2d6",
+    "native-app-data/detail-source.unity": "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1",
+    "native-app-data/extended-controls.png": "8c4b6a263d249c5f2b475f089339b8d13f241a9eca700a4935724748aa5bcdbd",
+    "native-app-data/detail-controls.png": "e5808fe060cbd87c0e34bbdaef6f40a38316d06f413ee3b1854bac126f5138f0",
+    "native-app-data/console-menus.png": "d8f6a2bd7a5847bd99c8b8461842f684ab5adf074d2ec6e742ec896ebd30caf0",
+    "native-app-data/accessory-saved-model.png": "b68ac1a31875d5d27af07a920a51602c8732b5e44db87357097fcb91a9d34b50",
+    "native-app-data/accessory-overlap.unity": "4d59e904442cd75bb70368e16a46c369ad977a3b73677cff581a6fc53d8e043e"
+  },
+  "evidence_zip_sha256": "ed9c923164c12eefbb83ffe6be71a5171fa25b7bfc9e5b624eecfe1d9bb88cc0",
+  "evidence_zip_member_count": 142,
+  "extracted_evidence_bound_to_zip": true,
+  "evidence_zip_member_paths_safe": true,
+  "full_archive_downloaded_locally": false,
+  "manual_visual_review": {
+    "status": "PASS_BOUNDED_SIX_CAPTURE_REVIEW",
+    "receipt": "/tmp/elichika-release-20261113-1/candidate-10/build/root-mac-visual-review.json",
+    "receipt_sha256": "0b44b0d1c41a312a684503e62f6058b4e4231c0e874f977275e9e125669664ca",
+    "images": [
+      {
+        "file": "/tmp/elichika-release-20261113-1/candidate-10/build/macos-review-inputs/evidence/first-launch-console-menus.png",
+        "sha256": "3af2e1fcf39fc48886aabd4fb17c1158e7bd679369f4ab2618271d8b5b6e5dcf",
+        "width": 1024,
+        "height": 692,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "personally_viewed_by_root": true
+      },
+      {
+        "file": "/tmp/elichika-release-20261113-1/candidate-10/build/macos-review-inputs/evidence/first-launch-offline-management-settings.png",
+        "sha256": "e4516bf9e24263fb5a2250d351e248385e2b098ffa977cc2e33d2ffeae69ba04",
+        "width": 813,
+        "height": 640,
+        "alpha_extrema": [
+          255,
+          255
+        ],
+        "personally_viewed_by_root": true
+      },
+      {
+        "file": "/tmp/elichika-release-20261113-1/candidate-10/build/macos-review-inputs/evidence/first-launch-offline-management-user.png",
+        "sha256": "d02873ef2076aee8f972e8e560096325640d377e04066db9a030388d8900c5aa",
+        "width": 813,
+        "height": 640,
+        "alpha_extrema": [
+          255,
+          255
+        ],
+        "personally_viewed_by_root": true
+      },
+      {
+        "file": "/tmp/elichika-release-20261113-1/candidate-10/build/macos-review-inputs/evidence/relocated-relaunch-console-menus.png",
+        "sha256": "d8f6a2bd7a5847bd99c8b8461842f684ab5adf074d2ec6e742ec896ebd30caf0",
+        "width": 1024,
+        "height": 692,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "personally_viewed_by_root": true
+      },
+      {
+        "file": "/tmp/elichika-release-20261113-1/candidate-10/build/macos-review-inputs/evidence/relocated-relaunch-offline-management-settings.png",
+        "sha256": "e4516bf9e24263fb5a2250d351e248385e2b098ffa977cc2e33d2ffeae69ba04",
+        "width": 813,
+        "height": 640,
+        "alpha_extrema": [
+          255,
+          255
+        ],
+        "personally_viewed_by_root": true
+      },
+      {
+        "file": "/tmp/elichika-release-20261113-1/candidate-10/build/macos-review-inputs/evidence/relocated-relaunch-offline-management-user.png",
+        "sha256": "d02873ef2076aee8f972e8e560096325640d377e04066db9a030388d8900c5aa",
+        "width": 813,
+        "height": 640,
+        "alpha_extrema": [
+          255,
+          255
+        ],
+        "personally_viewed_by_root": true
+      }
+    ],
+    "limits": [
+      "The console captures contain transparent/vibrant surfaces; black compositing in the image viewer is not a measured claim about the app window background.",
+      "The first console capture contains a clipped request-handler traceback. These captures alone do not identify its root cause or establish error-free logs/fatal application failure.",
+      "The fresh account list is empty; these captures do not prove a populated-account password or cross-signed client migration flow.",
+      "Actual PNG/project dialogs, history/MV behavior, speaker audio and client qualification are separate checks."
+    ]
+  },
+  "utc": "2026-11-13T21:00:08.893761+00:00",
+  "native_file_flow_gate": "PENDING_SEPARATE_FINAL_C10_ACTUAL_OS_DIALOG_QA",
+  "root_sealed_from_unmodified_reader_sha256": "a9125e9d9b62e90aba2e6e0650cbaa54464bca910cde0f160e721fc61491c9ae",
+  "root_sealing_execution": {
+    "argv": [
+      "/workspace/.venv-elichika/bin/python",
+      "-B",
+      "-X",
+      "pycache_prefix=/tmp/c10-root-mac-seal.CMYuzX",
+      "-"
+    ],
+    "interpreter": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+    "interpreter_sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7",
+    "version": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "dont_write_bytecode": true,
+    "optimize": 0,
+    "fresh_prefix_empty_before_and_after": "/tmp/c10-root-mac-seal.CMYuzX"
+  }
+}
