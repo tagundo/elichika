@@ -1,0 +1,63 @@
+name: Targeted native Mac wrapped Console anchor preview
+on:
+  push:
+    branches: [codex/mac-console-anchor-preview-20261113]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  actual-native-anchor-preview:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 28b80a8b43898ef9544d8452fef76181839eec6e
+          path: frozen-C4
+          persist-credentials: false
+      - name: Bind unchanged C4 and isolated two-file proposal in actual Apple Silicon WindowServer
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          pgrep -x WindowServer
+          python3 qa/mac-console-performance/prepare_anchor_preview.py --checkout frozen-C4 \
+            --qa qa/mac-console-performance --output "$RUNNER_TEMP/anchor-build" --evidence "$RUNNER_TEMP/anchor-evidence"
+          sw_vers > "$RUNNER_TEMP/anchor-evidence/macos.txt"
+          xcrun swiftc --version > "$RUNNER_TEMP/anchor-evidence/swift-version.txt"
+      - name: Compile same strict native probe against C4 and isolated proposal
+        run: |
+          set -euo pipefail
+          for variant in C4-negative proposed-positive; do
+            xcrun swiftc -parse-as-library -O -target arm64-apple-macosx13.0 -D ELICHIKA_PERF_PATCHED \
+              "$RUNNER_TEMP/anchor-build/$variant"/probe-sources/*.swift qa/mac-console-performance/PerfProbe.swift \
+              -o "$RUNNER_TEMP/anchor-build/$variant/PerfProbe" > "$RUNNER_TEMP/anchor-evidence/$variant-compile.log" 2>&1
+          done
+          python3 - <<'PY'
+          import json,os,hashlib
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          for variant in ['C4-negative','proposed-positive']:
+              log=(root/'anchor-evidence'/(variant+'-compile.log')).read_text()
+              assert not any('PerfProbe.swift:' in line and 'warning:' in line for line in log.splitlines())
+          (root/'anchor-evidence/probe-binaries.json').write_text(json.dumps({v:hashlib.sha256((root/'anchor-build'/v/'PerfProbe').read_bytes()).hexdigest() for v in ['C4-negative','proposed-positive']},indent=2)+'\n')
+          PY
+      - name: Require actual negative anchor reproduction and proposal same-case success with fresh full45 tests
+        run: |
+          python3 qa/mac-console-performance/run_anchor_preview.py --qa qa/mac-console-performance \
+            --build "$RUNNER_TEMP/anchor-build" --evidence "$RUNNER_TEMP/anchor-evidence"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: actual-mac-console-anchor-preview
+          path: |
+            ${{ runner.temp }}/anchor-evidence/
+            !${{ runner.temp }}/anchor-evidence/**/private/**
+          if-no-files-found: error
+          retention-days: 7
