@@ -62,5 +62,8 @@
       "sha256": "926b160d1607526e5f9924d2723fb576b1da6e2c3ff178473a21b5cab53880f6",
       "bundle_id": "com.klab.lovelive.allstars.global"
     }
+  ],
+  "execution_regions": [
+    "GL_LOCAL"
   ]
 }

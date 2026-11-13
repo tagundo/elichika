@@ -201,7 +201,10 @@ func nativeDoubleClick(_ image: Observation, _ target: NativeCaption) throws -> 
     }
     firstDown.setIntegerValueField(.mouseEventClickState, value: 1)
     firstUp.setIntegerValueField(.mouseEventClickState, value: 1)
-    move.post(tap: .cghidEventTap); firstDown.post(tap: .cghidEventTap); firstUp.post(tap: .cghidEventTap)
+    move.post(tap: .cghidEventTap)
+    firstDown.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.1)
+    firstUp.post(tap: .cghidEventTap)
     Thread.sleep(forTimeInterval: 0.08)
     try foreground(image.window.pid)
     let secondWindow = try window(image.window.pid, image.window.id)
@@ -215,7 +218,9 @@ func nativeDoubleClick(_ image: Observation, _ target: NativeCaption) throws -> 
     }
     secondDown.setIntegerValueField(.mouseEventClickState, value: 2)
     secondUp.setIntegerValueField(.mouseEventClickState, value: 2)
-    secondDown.post(tap: .cghidEventTap); secondUp.post(tap: .cghidEventTap)
+    secondDown.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.1)
+    secondUp.post(tap: .cghidEventTap)
     return ["x": point.x, "y": point.y]
 }
 do {
@@ -252,7 +257,7 @@ do {
     let result:[String:Any]=["status":"REAL_OS_DOUBLE_CLICK_SENT_TO_UNIQUE_NATIVE_AX_PLAYCOVER_CAPTION",
         "selectionMethod":"native AXStaticText complete caption", "OCRConfidenceApplicable":false,
         "incidentalOCRNeverAuthorizesInput":true,"pid":pid,"bundleIdentifier":"io.playcover.PlayCover",
-        "windowID":freshImage.window.id,"caption":caption,"osMouseDoubleClick":point,"clickCounts":[1,2],
+        "windowID":freshImage.window.id,"caption":caption,"osMouseDoubleClick":point,"clickCounts":[1,2],"mouseHoldSeconds":0.1,
         "qualification":"Only real OS input delivery recorded. Separately observe new game PID, UI, crash reason and strict postlaunch bundle verification."]
     let data=try JSONSerialization.data(withJSONObject:result,options:[.prettyPrinted,.sortedKeys])
     try data.write(to:proof.appendingPathComponent("result.json"),options:.withoutOverwriting)

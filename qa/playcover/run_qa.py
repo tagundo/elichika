@@ -63,7 +63,16 @@ def main():
     a = p.parse_args()
     a.evidence.mkdir(parents=True, exist_ok=True)
     manifest = json.loads((HERE/'manifest.json').read_text())
+    selected_regions = manifest.get('execution_regions', ['GL', 'JP', 'GL_LOCAL'])
+    assert isinstance(selected_regions,list) and selected_regions and len(selected_regions) == len(set(selected_regions))
+    assert all(region in ['GL','JP','GL_LOCAL'] for region in selected_regions), 'Unknown QA region selection'
+    selected_candidates = [next(row for row in manifest['candidates'] if row['region'] == region)
+                           for region in selected_regions]
+    selected_controls = [next(row for row in manifest.get('controls',[])
+                              if row['region'] == region+'_ORIGINAL_CONTROL') for region in selected_regions]
     report = {'status': 'IN_PROGRESS', 'manifest': manifest, 'stages': [], 'candidates': [],
+              'execution_regions': selected_regions,
+              'planned_gui_import_order': [row['region'] for row in selected_controls+selected_candidates],
               'game_login_observed': False, 'full_mv_playback_observed': False,
               'duplicate_mv_members_observed': False, 'closet_row_count_unchanged_observed': False,
               'physical_ios_validated': False,
@@ -218,7 +227,7 @@ def main():
             assert value.get('ServerEndpoint') == 'http://127.0.0.1:8080' and value.get('SIFASDiagnosticsEnabled') is True
             write(folder/'plain-launch-preferences.json',{'scope':'Only the two supported connection/diagnostic settings in this fresh synthetic app container',
                 'keys':['ServerEndpoint','SIFASDiagnosticsEnabled'],'supported_values_verified':True,'commands':records})
-        for candidate in manifest.get('controls',[]) + manifest['candidates']:
+        for candidate in selected_controls + selected_candidates:
             folder = a.evidence/candidate['region']; folder.mkdir()
             result = dict(candidate, status='IN_PROGRESS', feature_actions=[], game_login_observed=False, mv_playback_observed=False, actual_playcover_import=False)
             report['candidates'].append(result)

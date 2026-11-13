@@ -160,7 +160,12 @@ func click(_ record: Observation, _ target: Text) throws -> [String: Double] {
           let up = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
         throw QAError.invalid("OS mouse event creation failed")
     }
-    move.post(tap: .cghidEventTap); down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+    move.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.03)
+    try foreground(record.window.pid)
+    down.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.12)
+    up.post(tap: .cghidEventTap)
     return ["x":point.x, "y":point.y]
 }
 func type(_ pid: Int32, _ value: String) throws {
@@ -212,6 +217,7 @@ do {
                     "Caption changed between fresh captures; no click was sent")
         result["osMouseClick"] = try click(fresh, second)
         result["caption"] = second.text
+        result["mouseHoldSeconds"] = 0.12
         result["status"] = "OS_MOUSE_EVENT_SENT_TO_FRESH_UNIQUE_OCR_CAPTION"
     } else if action == "type" {
         try require(values["--synthetic"] == "yes", "Typing is restricted to the explicitly authorized disposable synthetic QA account")

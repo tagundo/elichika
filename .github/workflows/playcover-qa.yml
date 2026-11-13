@@ -118,7 +118,7 @@ jobs:
           (Path(os.environ['RUNNER_TEMP'])/'playcover-evidence/server-build.json').write_text(json.dumps(record,indent=2)+'\n')
           PY
 
-      - name: Actually import and launch all three IPAs through pinned PlayCover
+      - name: Import selected matched originals and candidates through pinned PlayCover
         if: ${{ always() && steps.fixtures.outcome == 'success' }}
         env:
           SERVER_READY_FOR_QA: ${{ steps.server.outcome == 'success' }}
