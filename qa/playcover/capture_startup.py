@@ -18,6 +18,7 @@ import time
 
 BUNDLES = {'com.klab.lovelive.allstars.global', 'com.klab.lovelive.allstars'}
 STARTUP = re.compile(r'^(?:Initialize engine version:|\[Subsystems\]|GfxDevice:|Creating GfxDevice:|Metal\b|Renderer:|Vendor:|VRAM:|No supported renderers|Failed to (?:initialize|load)|Could not (?:initialize|load)|Unable to (?:initialize|load)|\[UnityMemory\]|\[Physics\]|\[XR\]|dyld(?:\[\d+\])?:|Library not loaded:|Symbol not found:|Referenced from:|Expected in:|Reason: tried:|Termination Reason:|Exception Type:)', re.I)
+SCENE_FAILURE = re.compile(r'(?:\bFBWorkspaceScene\b|\bFBSSceneErrorDomain\b|\bUISceneErrorDomain\b|\bscene-creation-failed\b|\bscene creat(?:e|ion) failed\b|\b(?:failed|unable) to (?:create|request|initialize) (?:a |the )?scene\b)', re.I)
 LOADER_REASON = re.compile(r'^(?:Library not loaded:|Symbol not found:|Referenced from:|Expected in:|Reason: tried:|\(terminated at launch; ignore backtrace\))', re.I)
 
 def message_text(value):
@@ -160,6 +161,8 @@ def unified_startup(pid, since, executable):
             line = message_text(event.get('eventMessage',''))
             if STARTUP.match(line):
                 records.append({'timestamp':timestamp,'message':scrub(line)})
+            elif SCENE_FAILURE.search(line):
+                records.append({'timestamp':timestamp,'scene_creation_failure':scrub(line,1000)})
             else:
                 assertion = objc_assertion(line)
                 if assertion:

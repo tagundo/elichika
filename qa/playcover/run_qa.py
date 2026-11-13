@@ -111,6 +111,54 @@ def main():
             target = folder/(label+'.png')
             result = command(['screencapture','-x','-l',str(windows[0]['kCGWindowNumber']),target])
             return {'status':'CAPTURED' if result['code'] == 0 and target.exists() else 'CAPTURE_FAILED', 'command': result}
+        update_prompt_answered = False
+        def settle_playcover_library(folder, label):
+            # The pinned app asks this ordinary first-run Sparkle question.
+            # Answer only its exact observed native button, then prove it is
+            # gone. A hidden library tile behind a modal is not a valid target.
+            nonlocal update_prompt_answered
+            settled = folder/label
+            settled.mkdir(parents=True, exist_ok=True)
+            app_state = host_state(pcid).get('applications',[])
+            assert len(app_state) == 1, 'Exactly one owned PlayCover process must settle its library'
+            owned_pid = app_state[0]['pid']
+            for attempt in range(2 if update_prompt_answered else 9):
+                command([build/'HostEvidence',pcid,'--activate'])
+                observed = command([build/'PlayCoverAX','dump',owned_pid,settled/('observe-'+str(attempt))])
+                write(settled/('observe-'+str(attempt)+'-command.json'),observed)
+                assert observed['code'] == 0, 'Unable to inspect the owned PlayCover first-run UI'
+                tree = json.loads((settled/('observe-'+str(attempt))/'accessibility.json').read_text())
+                titles = [item for item in tree['elements'] if item.get('AXRole') == 'AXStaticText'
+                          and item.get('AXValue') == 'Check for updates automatically?']
+                buttons = [item for item in tree['elements'] if item.get('AXRole') == 'AXButton'
+                           and item.get('AXTitle') == 'Don’t Check' and item.get('enabled') is True]
+                if titles or buttons:
+                    assert len(titles) == 1 and len(buttons) == 1, 'Update prompt is not uniquely identified'
+                    before = record_screen(pcid,settled,'observed-normal-update-prompt')
+                    assert before['status'] == 'CAPTURED', 'Observe the normal update question before answering'
+                    pressed = command([build/'PlayCoverAX','press',owned_pid,settled/'answer-dont-check','Don’t Check'])
+                    write(settled/'answer-dont-check-command.json',pressed)
+                    assert pressed['code'] == 0, 'Observed normal Don’t Check button could not be pressed'
+                    time.sleep(1)
+                    update_prompt_answered = True
+                    after = command([build/'PlayCoverAX','dump',owned_pid,settled/'after-answer'])
+                    write(settled/'after-answer-command.json',after)
+                    assert after['code'] == 0
+                    final_tree = json.loads((settled/'after-answer/accessibility.json').read_text())
+                    assert not any(item.get('AXTitle') == 'Don’t Check' for item in final_tree['elements']), 'Normal update prompt remains open'
+                    break
+                time.sleep(1)
+            state = host_state(pcid)
+            visible = [window for app in state.get('applications',[]) for window in app.get('windows',[])
+                       if window.get('kCGWindowLayer') == 0 and window.get('kCGWindowBounds',{}).get('Width',0) > 50]
+            assert len(visible) == 1, 'PlayCover has another visible window or modal; library input is blocked'
+            assert visible[0].get('kCGWindowName') == 'App Library', 'The only observed PlayCover window must be its library'
+            final_screen = record_screen(pcid,settled,'settled-library')
+            assert final_screen['status'] == 'CAPTURED'
+            write(settled/'settlement.json',{'status':'ONLY_ACTUAL_LIBRARY_WINDOW_VISIBLE',
+                'owned_pid':owned_pid,'normal_update_question_answered':update_prompt_answered,
+                'no_system_security_or_permission_change':True,'state':state,'screen':final_screen})
+
         stage('download-pinned-playcover')
         dmg = a.fixtures/'PlayCover.dmg'
         with urllib.request.urlopen(manifest['playcover_dmg_url'], timeout=90) as source, dmg.open('wb') as target:
@@ -142,6 +190,7 @@ def main():
         assert wait_for(lambda: host_state(pcid).get('applications'), 30), 'PlayCover did not run'
         command([build/'HostEvidence',pcid,'--activate'])
         wait_for(lambda:any(app.get('windows') for app in host_state(pcid).get('applications',[])),30)
+        settle_playcover_library(a.evidence,'initial-first-run-ui')
         report['playcover_window'] = record_screen(pcid, a.evidence, 'playcover-initial')
         expected_path = a.fixtures/'reviewed-playcover-entitlements.json'
         write(expected_path, expected(Path.home()))
@@ -200,6 +249,7 @@ def main():
             assert reopened['code'] == 0 and wait_for(lambda:host_state(pcid).get('applications'),30)
             command([build/'HostEvidence',pcid,'--activate'])
             assert wait_for(lambda:any(app.get('windows') for app in host_state(pcid).get('applications',[])),30)
+            settle_playcover_library(folder,'fresh-library-first-run-ui')
             write(folder/'fresh-library-process.json',{'reopen':reopened,'state':host_state(pcid),
                 'scope':'Only owned disposable PlayCover process restarted; current imported bundle must be rescanned'})
             stage('verify-imported-bundle-'+candidate['region'])
