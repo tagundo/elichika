@@ -1,0 +1,48 @@
+{
+  "scope": "Actual V18 failure fixtures only; no runtime qualification",
+  "run_id": 43503850451,
+  "job_id": 132156262673,
+  "head": "2b4ed615e0e233fe9560ad0730bda06d8f8fa6f8",
+  "artifact_id": 14077144922,
+  "archive_sha256": "5e634fe0c207af8179ca36fbdfaa7e3d3594cc1b034f9c74d48ec7a23b0a0e66",
+  "actual_failure_review_sha256": "641bcb13a0b43c9bc5de6f8327cdc00cb2461403bf7c12e71d42b4daf61e50de",
+  "all_actual_feature_flags_false": true,
+  "fixtures": [
+    {
+      "path": "qa/fixtures/actual-v18-native-ocr-030.json",
+      "archive_member": "native-ocr-030.json",
+      "sha256": "0dda3bf1a0977e7af99a1e2686da75d99a80676b6236e289ce765be1c2bff868",
+      "bytes": 23166
+    },
+    {
+      "path": "qa/fixtures/actual-v18-native-ocr-030.png",
+      "archive_member": "native-ocr-030.png",
+      "sha256": "c64ddaa019b37953fa789b405dfec7524d1d84cd8513f92e7a14327c7a99ad1a",
+      "bytes": 406529
+    },
+    {
+      "path": "qa/fixtures/actual-v18-native-ocr-031.json",
+      "archive_member": "native-ocr-031.json",
+      "sha256": "2f220699901bd07f835884dd2447eb6d95c5c82983060ccfeb7a52090d811dbb",
+      "bytes": 4004
+    },
+    {
+      "path": "qa/fixtures/actual-v18-native-ocr-031.png",
+      "archive_member": "native-ocr-031.png",
+      "sha256": "cf0221f6c2fda99b4b8928a3423469dc988c47c586f8ff69fabdd7d9d3e1759d",
+      "bytes": 168594
+    },
+    {
+      "path": "qa/fixtures/actual-v18-native-ocr-215.json",
+      "archive_member": "native-ocr-215.json",
+      "sha256": "4c64ac53fbec3cbe2e6370b7db6c61e128908dc198950178ad25efa6bc3393ff",
+      "bytes": 4002
+    },
+    {
+      "path": "qa/fixtures/actual-v18-native-ocr-215.png",
+      "archive_member": "native-ocr-215.png",
+      "sha256": "afc82f4f4deae092efa7f7fe04ab33c79d1770b54adede2f3f959b68851a83cf",
+      "bytes": 168949
+    }
+  ]
+}

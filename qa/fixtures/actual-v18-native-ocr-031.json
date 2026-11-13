@@ -1,0 +1,160 @@
+{
+  "screenshot_sha256": "cf0221f6c2fda99b4b8928a3423469dc988c47c586f8ff69fabdd7d9d3e1759d",
+  "native_tree": "native-ocr-031-capture-053.xml",
+  "surface": {
+    "left": 0,
+    "top": 0,
+    "right": 720,
+    "bottom": 1280
+  },
+  "words": [
+    {
+      "text": "Error",
+      "confidence": 96.581635,
+      "bounds": [
+        339.0,
+        509.0,
+        382.0,
+        522.0
+      ]
+    },
+    {
+      "text": "Download",
+      "confidence": 95.635918,
+      "bounds": [
+        178.0,
+        627.0,
+        258.0,
+        641.0
+      ]
+    },
+    {
+      "text": "error",
+      "confidence": 96.470154,
+      "bounds": [
+        264.0,
+        632.0,
+        304.0,
+        641.0
+      ]
+    },
+    {
+      "text": "has",
+      "confidence": 96.450134,
+      "bounds": [
+        311.0,
+        627.0,
+        337.0,
+        641.0
+      ]
+    },
+    {
+      "text": "occurred.",
+      "confidence": 96.106735,
+      "bounds": [
+        343.0,
+        627.0,
+        419.0,
+        641.0
+      ]
+    },
+    {
+      "text": "Will",
+      "confidence": 95.697327,
+      "bounds": [
+        425.0,
+        627.0,
+        454.0,
+        641.0
+      ]
+    },
+    {
+      "text": "you",
+      "confidence": 96.505775,
+      "bounds": [
+        461.0,
+        632.0,
+        489.0,
+        644.0
+      ]
+    },
+    {
+      "text": "retry?",
+      "confidence": 94.215393,
+      "bounds": [
+        497.0,
+        628.0,
+        543.0,
+        642.0
+      ]
+    },
+    {
+      "text": "No",
+      "confidence": 92.876671,
+      "bounds": [
+        222.0,
+        753.0,
+        239.0,
+        763.0
+      ]
+    }
+  ],
+  "title_words": [],
+  "title_fallback_words": [],
+  "button_words": [
+    {
+      "text": "Yes",
+      "confidence": 96.411476,
+      "bounds": [
+        478.1666666666667,
+        753.3333333333334,
+        500.8333333333333,
+        763.1666666666666
+      ]
+    }
+  ],
+  "language_buttons": [],
+  "action": null,
+  "ocr_transforms": [
+    {
+      "crop": [
+        0,
+        0,
+        720,
+        1280
+      ],
+      "scale": 1,
+      "mode": "normal",
+      "psm": 11,
+      "language": "eng",
+      "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t720\t1280\t-1\t\n2\t1\t1\t0\t0\t0\t339\t509\t43\t13\t-1\t\n3\t1\t1\t1\t0\t0\t339\t509\t43\t13\t-1\t\n4\t1\t1\t1\t1\t0\t339\t509\t43\t13\t-1\t\n5\t1\t1\t1\t1\t1\t339\t509\t43\t13\t96.581635\tError\n2\t1\t2\t0\t0\t0\t178\t627\t365\t17\t-1\t\n3\t1\t2\t1\t0\t0\t178\t627\t365\t17\t-1\t\n4\t1\t2\t1\t1\t0\t178\t627\t365\t17\t-1\t\n5\t1\t2\t1\t1\t1\t178\t627\t80\t14\t95.635918\tDownload\n5\t1\t2\t1\t1\t2\t264\t632\t40\t9\t96.470154\terror\n5\t1\t2\t1\t1\t3\t311\t627\t26\t14\t96.450134\thas\n5\t1\t2\t1\t1\t4\t343\t627\t76\t14\t96.106735\toccurred.\n5\t1\t2\t1\t1\t5\t425\t627\t29\t14\t95.697327\tWill\n5\t1\t2\t1\t1\t6\t461\t632\t28\t12\t96.505775\tyou\n5\t1\t2\t1\t1\t7\t497\t628\t46\t14\t94.215393\tretry?\n2\t1\t3\t0\t0\t0\t222\t753\t17\t10\t-1\t\n3\t1\t3\t1\t0\t0\t222\t753\t17\t10\t-1\t\n4\t1\t3\t1\t1\t0\t222\t753\t17\t10\t-1\t\n5\t1\t3\t1\t1\t1\t222\t753\t17\t10\t92.876671\tNo\n"
+    },
+    {
+      "crop": [
+        0,
+        1152,
+        720,
+        1280
+      ],
+      "scale": 4,
+      "mode": "title",
+      "psm": 11,
+      "language": "eng",
+      "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t2880\t512\t-1\t\n"
+    },
+    {
+      "crop": [
+        443,
+        736,
+        536,
+        779
+      ],
+      "scale": 6,
+      "mode": "pink",
+      "psm": 7,
+      "language": "eng",
+      "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t558\t258\t-1\t\n2\t1\t1\t0\t0\t0\t211\t104\t136\t59\t-1\t\n3\t1\t1\t1\t0\t0\t211\t104\t136\t59\t-1\t\n4\t1\t1\t1\t1\t0\t211\t104\t136\t59\t-1\t\n5\t1\t1\t1\t1\t1\t211\t104\t136\t59\t96.411476\tYes\n"
+    }
+  ],
+  "capture_elapsed": 273.526
+}

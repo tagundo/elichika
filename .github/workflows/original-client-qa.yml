@@ -2,7 +2,7 @@ name: Validate genuine GL full MV on exact C10 after native-only initial downloa
 
 on:
   push:
-    branches: [codex/android-client-qa-full-gl-20261113-v18]
+    branches: [codex/android-client-qa-full-gl-20261113-v19]
   workflow_dispatch:
     inputs:
       max_seconds:
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   client:
-    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-full-gl-20261113-v18'
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-full-gl-20261113-v19'
     strategy:
       fail-fast: false
       matrix:
@@ -169,7 +169,8 @@ jobs:
             --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
             --server-source server-source --evidence evidence \
             --mv-focus --unity-agent qa/unity_ui.bundle.js \
-            --frida-server "$RUNNER_TEMP/client-qa-fixtures/frida-server" --max-seconds "$QA_SECONDS" || qa_exit=$?
+            --frida-server "$RUNNER_TEMP/client-qa-fixtures/frida-server" --max-seconds "$QA_SECONDS" \
+            --one-native-download-retry || qa_exit=$?
           if [ "$qa_exit" = 124 ] || [ "$qa_exit" = 137 ]; then
             python3 - <<'PYTIMEOUT'
           import json

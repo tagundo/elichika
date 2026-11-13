@@ -202,11 +202,13 @@ def main():
     parser.add_argument('--serial',default='127.0.0.1:5555')
     parser.add_argument('--max-seconds',type=int,default=600)
     parser.add_argument('--mv-focus',action='store_true',help='Continue native download/Home into strictly observed MV cases; no unobserved native case passes')
+    parser.add_argument('--one-native-download-retry',action='store_true',help='Permit at most one fresh exact-modal ordinary Yes input under the original 1800/2400 second bounds')
     parser.add_argument('--download-start-diagnostic',action='store_true',help='Stop the owned game after real regular-Light selection/OK and first successful asset response; no observer or feature approval')
     parser.add_argument('--unity-agent',type=Path)
     parser.add_argument('--frida-server',type=Path)
     args=parser.parse_args(); assert 120<=args.max_seconds<=(2400 if args.mv_focus else 600)
     assert not (args.mv_focus and args.download_start_diagnostic)
+    if args.one_native_download_retry:assert args.mv_focus and args.max_seconds==2400
     if args.mv_focus:assert args.unity_agent and args.frida_server
     if args.download_start_diagnostic:assert not args.unity_agent and not args.frida_server
     fixture=json.loads(args.fixtures.read_text());client=fixture['clients']['GL'];package=client['package']
@@ -224,7 +226,7 @@ def main():
       'client_sha256':client['sha256'],'client_asset_id':client['asset_id'],
       'server_fixture':host.binding,'run_head':os.environ.get('GITHUB_SHA'),
       'verified':{case:False for case in semantics.REQUIRED_CASES},'actions':[], 'observations':[]}
-    resources=None
+    resources=None;network_diagnostics=None
     if args.mv_focus or args.download_start_diagnostic:
         from resource_phases import ResourcePhases
         resources=ResourcePhases(device,host,args.evidence)
@@ -335,8 +337,18 @@ def main():
             dismiss=[n for n in nodes if missing_services and n.get('enabled') and n.get('name')=='android:id/button1' and n.get('text')=='OK' and n.get('package')==package]
             if len(dismiss)==1:input_node(dismiss[0],'native-dialog-OK');continue
             try:
-                if pid is None:identity('initial-live')
+                if pid is None:
+                    proof=identity('initial-live')
+                    if args.mv_focus:
+                        from native_network_diagnostics import NativeNetworkDiagnostics
+                        runtime=json.loads((args.evidence/'host-go-runtime.json').read_text())
+                        network_diagnostics=NativeNetworkDiagnostics(serial=args.serial,evidence=args.evidence,
+                            game_identity={'pid':proof['pid'],'start_ticks':proof['start_ticks']},game_lifetime=lifetime,
+                            host_log_path=host.log_path,host_identity={'pid':runtime['pid'],'start_ticks':runtime['start_ticks']})
+                        network_diagnostics.start()
+                        report['early_network_diagnostics']=network_diagnostics.summary()
                 else:lifetime()
+                if network_diagnostics:network_diagnostics.sample()
             except subprocess.CalledProcessError:raise RuntimeError('Game process exited; inspect retained native crash diagnostics') from None
             first,geometry,first_label,_=capture()
             requests=semantics.game_request_counts(host.server_rpc_evidence())
@@ -352,7 +364,7 @@ def main():
                     result=reach_settled_home({'args':args,'device':device,'host':host,'report':report,
                         'resources':resources,'started':started,'package':package,'capture':capture,
                         'lifetime':lifetime,'identity':identity,'native':native,'save':save,
-                        'phase_deadline':phase_deadline},stop_at_download_start=True)
+                        'phase_deadline':phase_deadline,'network_diagnostics':network_diagnostics},stop_at_download_start=True)
                     report['regular_light_diagnostic']=result;report['status']=result['status']
                 elif args.mv_focus:
                     from native_mv_focus import run_mv_focus
@@ -360,7 +372,8 @@ def main():
                     result=run_mv_focus({'args':args,'device':device,'host':host,'report':report,
                         'resources':resources,'started':started,'package':package,'capture':capture,
                         'lifetime':lifetime,'identity':identity,'native':native,'save':save,
-                        'phase_deadline':phase_deadline,'absolute_phase_deadline':deadlines.arm_until})
+                        'phase_deadline':phase_deadline,'absolute_phase_deadline':deadlines.arm_until,
+                        'overall_deadline':deadlines.overall_deadline,'network_diagnostics':network_diagnostics})
                     report['mv_focus']=result;report['status']=result['status']
                 else:report['status']='PARTIAL_NATIVE_STARTUP_PROGRESS'
                 break
@@ -417,6 +430,10 @@ def main():
                     report['status']='FAIL';report['early_container_stop_error']=type(failed).__name__+': '+str(failed)
             try:host.stop()
             except Exception as error:report['status']='FAIL';report['early_server_stop_error']=str(error)
+        if network_diagnostics:
+            try:report['early_network_diagnostics']=network_diagnostics.stop()
+            except Exception as error:
+                report['status']='FAIL';report['early_network_diagnostics_stop_error']=type(error).__name__
         for name,command in [('native-control-logcat.txt',('logcat','-d','-t','6000')),
                              ('native-control-crashes.txt',('logcat','-b','crash','-d'))]:
             if report.get('owned_disposable_container_stop_fallback'):continue

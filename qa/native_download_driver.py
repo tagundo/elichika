@@ -1,6 +1,7 @@
 """Execute only conservative fresh native download plans; never load an observer."""
 import json
 import hashlib
+import os
 from pathlib import Path
 import time
 
@@ -9,6 +10,85 @@ from feature_client_smoke import game_request_counts
 from native_download_flow import analyze
 from native_ocr_control import ocr_words
 from native_download_guard import SettingsProgress, SuccessfulAssetStarts, BulkDownloadProgress
+from native_download_errors import exact_error, fail_for_error, NativeDownloadError, FixedEnds, OptionalOneNativeRetry
+
+
+def durable_record(path,payload):
+    """Exclusive, flushed evidence before input; never overwrite an old intent."""
+    raw=(json.dumps(payload,indent=2)+'\n').encode()
+    with Path(path).open('xb') as output:
+        output.write(raw);output.flush();os.fsync(output.fileno())
+    directory=os.open(str(Path(path).parent),os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(directory)
+    finally:os.close(directory)
+
+
+def error_capture(context,label,captured,identity):
+    evidence=context['args'].evidence
+    metadata=json.loads((evidence/(label+'.json')).read_text())
+    png=(evidence/(label+'.png')).read_bytes()
+    with Image.open(evidence/(label+'.png')) as image:frame=image.size
+    return {'label':label,'captured_at':captured,'identity':dict(identity),
+            'metadata':metadata,'png_bytes':png,'frame':frame}
+
+
+def handle_download_error(context,first,capture,policy,ends):
+    """One normal Yes at most; every error and spent intent survives failure."""
+    observed,surface,label,captured=first
+    match=observed['observations']['game_download_error']
+    report=context['report'];evidence=context['args'].evidence
+    proof=context['lifetime']()
+    errors=report.setdefault('native_game_download_errors',[])
+    original={'index':len(errors)+1,'capture':label,'captured_at':captured,
+        'identity':proof,'match':match,'input_performed':False}
+    durable_record(evidence/f'native-download-error-{len(errors)+1:03d}.json',original)
+    errors.append(original);context['save']()
+    diagnostics=context.get('network_diagnostics')
+    if diagnostics:diagnostics.sample(force=True,reason='download-error')
+    if policy.spent:
+        raise NativeDownloadError('Game download error recurred after the single ordinary Yes retry; no second retry is permitted; original and recurring modal evidence are retained')
+    if not policy.enabled or ends is None:
+        fail_for_error(match)
+    checked=context['identity']('before-native-download-error-retry-pair')
+    proof={'pid':checked['pid'],'start_ticks':checked['start_ticks']}
+    first_capture=error_capture(context,label,captured,proof)
+    second,other_surface,other_label,second_time=capture()
+    second_capture=error_capture(context,other_label,second_time,proof)
+    try:
+        plan=policy.plan(first_capture,second_capture,now=time.monotonic(),
+                         owned_identity=proof,fixed_ends=ends)
+        assert surface==other_surface==plan['confirmed_error']['surface']
+    except (NativeDownloadError,AssertionError) as error:
+        report['native_download_retry_refusal']={'type':type(error).__name__,'reason':str(error),
+            'captures':[label,other_label],'input_performed':False}
+        context['save']()
+        raise NativeDownloadError('Exact game download-error modal; no safe ordinary retry: '+str(error)) from None
+    # This intent is exclusive and synced before input. A failed input never
+    # restores the budget or rewrites the original error/intent evidence.
+    durable_record(evidence/'native-download-retry-intent.json',plan)
+    if context['lifetime']()!=proof:
+        raise NativeDownloadError('Game download error: owned lifetime changed before ordinary Yes; spent intent retained, no input')
+    now=time.monotonic()
+    if not (0<=now-first_capture['captured_at']<=8 and 0<=now-second_time<=8):
+        raise NativeDownloadError('Game download error: ordinary Yes captures expired before input; spent intent retained, no input')
+    if not ends.valid(now):
+        raise NativeDownloadError('Game download error: original phase/overall end reached before Yes; spent intent retained, no input')
+    receipt={'kind':plan['kind'],'identity':proof,'center':plan['center'],
+             'captures':[label,other_label],'ordinary_input_attempted':True,'ordinary_input_returned':False,
+             'original_bulk_end':ends.bulk_end,'original_overall_end':ends.overall_end}
+    try:
+        context['device'].shell('input','tap',*(str(value) for value in plan['center']))
+        receipt['ordinary_input_returned']=True
+    except Exception as error:
+        receipt['error_class']=type(error).__name__
+        raise NativeDownloadError('Ordinary Yes input failed; spent intent and original error are retained') from None
+    finally:
+        durable_record(evidence/'native-download-retry-input-result.json',receipt)
+        report['native_download_retry']=receipt;context['save']()
+    report['actions'].append({'source':'two-fresh-full-native-error-captures-and-unchanged-owned-lifetime',
+        'kind':'one-native-download-Yes-retry','captures':[label,other_label],
+        'identity':proof,'center':plan['center'],'elapsed':round(time.monotonic()-context['started'],3)})
+    context['save']()
 
 
 def download_metadata(image,metadata):
@@ -141,6 +221,7 @@ def reach_settled_home(context,*,stop_at_download_start=False):
     resources=context['resources'];phase='settings';scrolls=0;failed_pairs={};seen=set()
     began=time.monotonic();closed_at=None;last_resource=began;sequence=[];bulk=None
     settings_progress=SettingsProgress(began)
+    retry=OptionalOneNativeRetry(explicitly_enabled=getattr(args,'one_native_download_retry',False))
     context['phase_deadline'](45,'native download settings made no safe progress within45seconds')
     start_reader=None
     report['resource_snapshots']=resources.records
@@ -150,11 +231,16 @@ def reach_settled_home(context,*,stop_at_download_start=False):
         _,surface,label,captured=context['capture']()
         metadata=json.loads((args.evidence/(label+'.json')).read_text())
         with Image.open(args.evidence/(label+'.png')) as image:
-            if phase=='home_wait':metadata=home_metadata(image,metadata)
-            elif phase=='download_wait':metadata=download_metadata(image,metadata)
-            observed=analyze(image,metadata,phase)
-        if phase=='home_wait':observed['observations']['home_ocr_transforms']=metadata['home_ocr_transforms']
-        elif phase=='download_wait':
+            error=exact_error(metadata,(args.evidence/(label+'.png')).read_bytes(),image.size) if phase in ('download_wait','home_wait') else None
+            if error:
+                observed={'state':'native-game-download-error','action':None,
+                          'observations':{'surface':surface,'game_download_error':error}}
+            else:
+                if phase=='home_wait':metadata=home_metadata(image,metadata)
+                elif phase=='download_wait':metadata=download_metadata(image,metadata)
+                observed=analyze(image,metadata,phase)
+        if phase=='home_wait' and not error:observed['observations']['home_ocr_transforms']=metadata['home_ocr_transforms']
+        elif phase=='download_wait' and not error:
             observed['observations']['download_progress_ocr_transform']=metadata['download_progress_ocr_transform']
         relative=label+'-download-analysis.json'
         (args.evidence/relative).write_text(json.dumps(observed,indent=2)+'\n')
@@ -168,6 +254,13 @@ def reach_settled_home(context,*,stop_at_download_start=False):
         context['lifetime']()
         observed,surface,label,captured=capture()
         now=time.monotonic()
+        diagnostics=context.get('network_diagnostics')
+        if diagnostics:diagnostics.sample()
+        if observed['state']=='native-game-download-error':
+            ends=FixedEnds(context['started'],bulk.started,
+                context.get('overall_deadline',context['started']+getattr(args,'max_seconds',2400)),bulk.deadline) if bulk and phase=='download_wait' else None
+            handle_download_error(context,(observed,surface,label,captured),capture,retry,ends)
+            continue
         if phase=='settings':
             remaining=settings_progress.observe(observed,now)
             context['phase_deadline'](remaining,'native download settings made no safe progress within45seconds or exceeded120seconds total')
