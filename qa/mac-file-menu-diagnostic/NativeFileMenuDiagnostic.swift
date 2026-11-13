@@ -258,7 +258,7 @@ final class Diagnostic {
         let field = try unique(nodes, "native saveAsNameTextField") {
             !$0.web && $0.nativeSheet && $0.role == kAXTextFieldRole && $0.enabled && $0.identifier == "saveAsNameTextField"
         }
-        try click(field, "native-save-name"); try key(0, .maskCommand); try type(file.lastPathComponent)
+        try click(field, "native-save-name"); try key(0, .maskCommand); try type(file.deletingPathExtension().lastPathComponent)
         _ = try wait("owned filename before Save", seconds: 5) { $0.contains { !$0.web && $0.nativeSheet && $0.identifier == "saveAsNameTextField" && ($0.value == file.lastPathComponent || $0.value == file.deletingPathExtension().lastPathComponent) } }
         _ = try observe("native-owned-filename-before-Save"); try nativePress("Save")
         _ = try wait("native save dismissal") { !$0.contains { !$0.web && $0.nativeSheet && $0.role == kAXButtonRole && self.caption($0, "Save") } }
@@ -280,7 +280,7 @@ final class Diagnostic {
             guard let owned = app, let launchDate = owned.launchDate else { throw DiagnosticError.failed("Owned app launch identity is unavailable") }
             try require(owned.bundleIdentifier == identifier && owned.bundleURL?.standardizedFileURL == appURL.standardizedFileURL, "Launched app path/identifier mismatch")
             try write(["pid": owned.processIdentifier, "app": appURL.path, "bundleIdentifier": identifier,
-                       "launchDate": launchDate.timeIntervalSince1970, "source_commit": "b503631efee12bdf224ae94962bd1403a4658da3"],
+                       "launchDate": launchDate.timeIntervalSince1970, "source_commit": "b166b92f6a9e9c575c5cfd292f52b5e60603aa97"],
                       proof.appendingPathComponent("task-owned-app.json"))
         }
         stage = prefix + "-normal-model-open"
@@ -341,8 +341,8 @@ final class Diagnostic {
 }
 
 var diagnostic: Diagnostic?
-var outcome: [String: Any] = ["status": "NOT_STARTED", "diagnostic_only": true, "source_commit": "b503631efee12bdf224ae94962bd1403a4658da3",
-    "validated_release_artifact": false, "normal_C5_failure_waived": false, "product_source_modified": false,
+var outcome: [String: Any] = ["status": "NOT_STARTED", "diagnostic_only": true, "source_commit": "b166b92f6a9e9c575c5cfd292f52b5e60603aa97",
+    "validated_release_artifact": false, "normal_C7_failure_waived": false, "product_source_modified": false,
     "no_TCC_or_OS_security_changes": true, "no_smoke_mode_or_JS_input_injection": true]
 var exitCode: Int32 = 1
 if CommandLine.arguments.dropFirst().first == "--cleanup-owned" {
@@ -355,7 +355,7 @@ if CommandLine.arguments.dropFirst().first == "--cleanup-owned" {
         guard let record, let rawPID = record["pid"] as? NSNumber, let appPath = record["app"] as? String,
               let launchDate = record["launchDate"] as? Double else { throw DiagnosticError.failed("Missing original owned-process identity") }
         try require(record["bundleIdentifier"] as? String == "com.tagundo.elichika.macos"
-                    && record["source_commit"] as? String == "b503631efee12bdf224ae94962bd1403a4658da3", "Invalid task-owned record")
+                    && record["source_commit"] as? String == "b166b92f6a9e9c575c5cfd292f52b5e60603aa97", "Invalid task-owned record")
         let pid = rawPID.int32Value; try require(pid > 0, "Invalid owned PID")
         if let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated {
             try require(app.bundleIdentifier == record["bundleIdentifier"] as? String

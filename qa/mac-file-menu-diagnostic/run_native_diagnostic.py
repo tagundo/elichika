@@ -49,7 +49,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ['qa', 'scratch', 'evidence']: parser.add_argument('--' + name, type=pathlib.Path, required=True)
     args = parser.parse_args(); provenance = json.loads((args.evidence / 'exact-app-provenance.json').read_text())
-    assert provenance['status'] == 'EXACT_UNMODIFIED_C5_APP_FOR_FILE_MENU_DIAGNOSTIC_ONLY'
+    assert provenance['status'] == 'EXACT_UNMODIFIED_C7_APP_FOR_FILE_MENU_DIAGNOSTIC_ONLY'
     assert provenance['app_modified_or_resigned'] is False and provenance['normal_app_no_smoke_mode'] is True
     app = pathlib.Path(provenance['app']); manifest = json.loads((args.qa / 'proposal-manifest.json').read_text())
     for name, binding in manifest['qa_files'].items():
@@ -137,7 +137,7 @@ def main():
                    'native_stage': native.get('stage'), 'native_error': native.get('error'), 'native_dialog_count': len(native.get('nativeDialogs', [])),
                    'native_cases': native.get('cases', []), 'cleanup': cleanup, 'problems': problems,
                    'tiny_and_above_1MiB_flows_separate': True, 'product_source_modified': False,
-                   'normal_C5_failure_waived': False, 'client_or_release_approval': False, 'validated_release_artifact': False}
+                   'normal_C7_failure_waived': False, 'client_or_release_approval': False, 'validated_release_artifact': False}
         (args.evidence / 'file-menu-diagnostic-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
         print(json.dumps(summary, indent=2))
     return 0 if success else 1

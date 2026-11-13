@@ -1,4 +1,4 @@
-name: Exact unvalidated C5 Mac native texture file-menu diagnostic only
+name: Exact unvalidated C7 Mac native texture file-menu diagnostic only
 on:
   push:
     branches: [codex/mac-file-menu-diagnostic-20261113]
@@ -21,28 +21,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Fetch exact historical unvalidated C5 artifact without building or changing its app
+      - name: Fetch exact reviewed unvalidated C7 artifact without building or changing its app
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "$(uname -m)" = arm64
           pgrep -x WindowServer
-          env -u GH_TOKEN gh api repos/tagundo/elichika/actions/artifacts/14038842268 \
-            > "$RUNNER_TEMP/original-C5-artifact-metadata.json"
+          env -u GH_TOKEN gh api repos/tagundo/elichika/actions/artifacts/14058823261 \
+            > "$RUNNER_TEMP/original-C7-artifact-metadata.json"
           python3 - <<'PY'
           import json,os,pathlib
-          value=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'original-C5-artifact-metadata.json').read_text())
-          assert value['id']==14038842268 and value['name']=='elichika-macos-unvalidated-candidate' and value['size_in_bytes']==305441968 and not value['expired']
-          assert value['digest']=='sha256:5b86c4294bfabca4f894b0c16526b313136552d28cbe24392748642ec7a78330'
-          assert value['workflow_run']['id']==43428743619 and value['workflow_run']['head_sha']=='b503631efee12bdf224ae94962bd1403a4658da3'
+          value=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'original-C7-artifact-metadata.json').read_text())
+          assert value['id']==14058823261 and value['name']=='elichika-macos-unvalidated-candidate' and value['size_in_bytes']==305445813 and not value['expired']
+          assert value['digest']=='sha256:f46bb810adfa32040b75c82532bc52a79282434d7cfb42300b65e1cfbaa09adc'
+          assert value['workflow_run']['id']==43465318241 and value['workflow_run']['head_sha']=='b166b92f6a9e9c575c5cfd292f52b5e60603aa97'
           PY
-          env -u GH_TOKEN gh api repos/tagundo/elichika/actions/artifacts/14038842268/zip \
-            > "$RUNNER_TEMP/original-C5-artifact.zip"
+          env -u GH_TOKEN gh api repos/tagundo/elichika/actions/artifacts/14058823261/zip \
+            > "$RUNNER_TEMP/original-C7-artifact.zip"
           python3 qa/mac-file-menu-diagnostic/prepare_exact_app.py \
-            --archive "$RUNNER_TEMP/original-C5-artifact.zip" --qa qa/mac-file-menu-diagnostic \
+            --archive "$RUNNER_TEMP/original-C7-artifact.zip" --qa qa/mac-file-menu-diagnostic \
             --scratch "$RUNNER_TEMP/file-menu-diagnostic" --evidence "$RUNNER_TEMP/file-menu-evidence"
-          cp "$RUNNER_TEMP/original-C5-artifact-metadata.json" "$RUNNER_TEMP/file-menu-evidence/"
+          cp "$RUNNER_TEMP/original-C7-artifact-metadata.json" "$RUNNER_TEMP/file-menu-evidence/"
       - name: Use real OS input and actual Open and Save panels, then verify every output pixel and layer
         run: |
           python3 qa/mac-file-menu-diagnostic/run_native_diagnostic.py \
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: exact-unvalidated-C5-native-file-menu-diagnostic-only
+          name: exact-unvalidated-C7-native-file-menu-diagnostic-only
           path: ${{ runner.temp }}/file-menu-evidence/
           if-no-files-found: error
           retention-days: 7
