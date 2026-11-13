@@ -117,17 +117,21 @@ def unity_surface_bounds(nodes, screen):
     return bounds
 
 
-def successful_game_requests(log):
+def game_request_counts(log):
     paths = ("/login/startup", "/login/login", "/bootstrap/fetchBootstrap", "/liveMv/start")
-    result = dict.fromkeys(paths, False)
+    result = dict.fromkeys(paths, 0)
     # Gin quotes paths using %#v. Accept only actual successful POST log lines,
     # never endpoint registrations, arbitrary diagnostic text or failed login.
     pattern = rb'^\[GIN\].*?\|\s*(\d{3})\s*\|.*?\|\s*POST\s+"([^"\r\n]+)"\s*$'
     for match in re.finditer(pattern, log, re.M):
         path = match[2].split(b"?", 1)[0].decode("ascii", "ignore")
         if 200 <= int(match[1]) < 300 and path in result:
-            result[path] = True
+            result[path] += 1
     return result
+
+
+def successful_game_requests(log):
+    return {path: count > 0 for path, count in game_request_counts(log).items()}
 
 
 def title_start_visible(tree):
@@ -586,7 +590,7 @@ def main():
         bounded_rpc(lambda: agent.exports_sync.beginintrotrace(), timeout=5)
         report["readonly_ui_instrumentation"] = True
 
-    def apply_profile(orientation, scalar, fast_intro, profile_name, *, restart=False):
+    def apply_profile(orientation, scalar, fast_intro, profile_name, *, restart=False, instrument=True):
         if restart:
             device.shell("am", "force-stop", CLIENT)
             device.shell("am", "start", "-W", "-n", LAUNCHER)
@@ -623,7 +627,7 @@ def main():
                 profile_state[kind] = True
             elif kind == "launch":
                 capture("feature-settings-" + profile_name + "-before-save")
-                attach_reader()
+                if instrument: attach_reader()
                 tap(node, "android-uiautomator-tree", "save-settings-and-launch-game")
                 report.setdefault("settings_profiles", {})[profile_name] = {"orientation": orientation, "min": scalar, "max": scalar, "fast_intro": fast_intro, "source": "native-accessibility-tree", "language_selected_once": True}
                 settings_snapshot("after-launch")
@@ -649,6 +653,59 @@ def main():
                 # runtime RW configuration and actual Correction remain gates.
         else:
             raise AssertionError("Bounded sequential settings navigation did not complete")
+
+    def no_frida_control(profile, limit=240):
+        nonlocal agent, session, client_pid
+        assert host_mode, "The independent control requires its owned source server"
+        original_pid=client_pid
+        result={"status":"RUNNING","scope":"Fresh app process without any Frida attachment; ordinary UI only; not a feature or Home-render approval", "original_instrumented_pid":original_pid,"profile":dict(profile),"frida_injected_into_control_pid":False,"cache_state":"Private app data and downloaded databases preserved across ordinary restart; the same owned server remains running", "observations":[]}
+        before=game_request_counts(host_server.server_log())
+        result["requests_before"]=before
+        device.shell("am","force-stop",CLIENT)
+        agent=session=None
+        device.shell("am","start","-W","-n",LAUNCHER)
+        apply_profile(profile["orientation"],profile["scalar"],profile["fast_intro"],"no-frida-control",instrument=False)
+        client_pid=device.shell("pidof","-s",CLIENT)
+        assert client_pid and client_pid != original_pid, "Independent control must use a fresh process"
+        result["control_pid"]=client_pid
+        maps=device.read("/proc/"+client_pid+"/maps")
+        assert b"frida-agent" not in maps, "Fresh control process unexpectedly contains a Frida agent"
+        (args.evidence/"no-frida-control-process-maps.txt").write_bytes(maps)
+        result["agent_absence_checked_in_process_maps"]=True
+        began=time.monotonic();touched=False
+        for step in range(32):
+            if time.monotonic()-began>limit:break
+            nodes=native_tree(2000+step)
+            positive,_=match([n for n in nodes if n.get("enabled") and n.get("clickable")], [r"^OK$",r"android:id/button1",r"permission_allow_foreground_only_button",r"permission_allow_button",r"^Allow$"])
+            if positive:
+                tap(positive,"android-uiautomator-tree","no-frida-native-dialog")
+                time.sleep(2)
+                continue
+            capture("no-frida-control-"+str(step))
+            after=game_request_counts(host_server.server_log())
+            result["observations"].append({"elapsed_seconds":round(time.monotonic()-began,2),"native_snapshot":f"native-ui-{2000+step:03d}.xml","screenshot":"no-frida-control-"+str(step)+".png","request_counts":after})
+            if after["/bootstrap/fetchBootstrap"]>before["/bootstrap/fetchBootstrap"] and after["/login/login"]>before["/login/login"]:
+                result["status"]="FRESH_BOOTSTRAP_OBSERVED_WITHOUT_FRIDA"
+                time.sleep(12)
+                capture("no-frida-control-post-bootstrap")
+                break
+            # The actual Title ScreenButton was observed to span this entire
+            # Unity content surface before process replacement. Re-search the
+            # new process's native content bounds, then perform its documented
+            # touch-anywhere input. No recorded pixel coordinate is reused.
+            if not touched and time.monotonic()-began>=15:
+                surfaces=[n for n in nodes if n.get("package")==CLIENT and n.get("class","").endswith("SurfaceView")]
+                if not surfaces:surfaces=[n for n in nodes if n.get("package")==CLIENT and n.get("name")=="android:id/content"]
+                if len(surfaces)==1 and control_fully_visible(surfaces[0]):
+                    tap(surfaces[0],"fresh-android-content-surface","no-frida-title-touch-anywhere")
+                    touched=True
+            (args.evidence/"no-frida-control.json").write_text(json.dumps(result,indent=2))
+            time.sleep(5)
+        if result["status"]=="RUNNING":result["status"]="NO_BOOTSTRAP_WITHIN_BOUNDED_CONTROL"
+        result["requests_after"]=game_request_counts(host_server.server_log())
+        result["independent_control_not_feature_approval"]=True
+        (args.evidence/"no-frida-control.json").write_text(json.dumps(result,indent=2))
+        return result
 
     try:
         if not host_mode:
@@ -748,6 +805,9 @@ def main():
                         try:
                             (args.evidence/"client-rpc-timeout-logcat.txt").write_bytes(device.adb("logcat","-d","-v","threadtime","--pid",client_pid,"-t","1500",raw=True,timeout=15))
                         except Exception: pass
+                        if host_mode and successful_game_requests(host_server.server_log())["/login/login"]:
+                            try:report["no_frida_control"]=no_frida_control(active_profile)
+                            except Exception as error:report["observations"].append({"no_frida_control_error":type(error).__name__,"detail":str(error)[:250]})
                         raise RuntimeError("Read-only Unity main-thread snapshot exceeded20seconds; current game diagnostics retained and later cases are unobserved")
             visible_tree = {"screen": tree.get("screen"), "nodes": [node for node in tree.get("nodes", []) if node.get("visible") and node.get("active")]}
             all_text = json.dumps(visible_tree, ensure_ascii=False)
