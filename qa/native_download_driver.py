@@ -1,5 +1,6 @@
 """Execute only conservative fresh native download plans; never load an observer."""
 import json
+import hashlib
 from pathlib import Path
 import time
 
@@ -7,6 +8,7 @@ from PIL import Image
 from feature_client_smoke import game_request_counts
 from native_download_flow import analyze
 from native_ocr_control import ocr_words
+from native_download_guard import SettingsProgress, SuccessfulAssetStarts
 
 
 def home_metadata(image,metadata):
@@ -58,10 +60,70 @@ def verify_home_candidate(context):
     return {'captures':[first[2],second[2]],'surface':second[1],'captured_monotonic':second[3]}
 
 
-def reach_settled_home(context):
+def stop_owned_download_game(context,expected):
+    """A successful command is insufficient: retain actual old-PID absence."""
+    device,args,report=(context[key] for key in ('device','args','report'))
+    def read_processes():
+        raw=device.shell('ps','-A',timeout=2);lines=raw.splitlines()
+        assert lines and 'PID' in lines[0].split(),'Native process list lacks a PID column'
+        column=lines[0].split().index('PID')
+        rows=[line.split() for line in lines[1:] if line.strip()]
+        assert rows and all(len(row)>column and row[column].isdigit() for row in rows),'Native process list is malformed'
+        return raw,any(row[column]==str(expected['pid']) for row in rows)
+    raw,present=read_processes()
+    if present:
+        stat=device.adb('exec-out','cat','/proc/'+str(expected['pid'])+'/stat',raw=True,timeout=2).decode()
+        assert stat.split('(',1)[0].strip()==str(expected['pid']) and stat.rsplit(')',1)[1].split()[19]==expected['start_ticks'],'Refuse to stop a changed game lifetime'
+        device.shell('am','force-stop',context['package'],timeout=5)
+        for _ in range(3):
+            raw,present=read_processes()
+            if not present:break
+            time.sleep(.1)
+    assert not present,'Owned game PID remains after ordinary force-stop'
+    relative='regular-light-owned-stop-processes.txt'
+    (args.evidence/relative).write_text(raw+'\n')
+    report['owned_diagnostic_game_stop_proved']=True
+    report['owned_download_stop_proof']={'before_identity':expected,'package':context['package'],
+        'proof':'Fresh native ps -A PID column contains no original owned PID',
+        'process_list':relative,'sha256':hashlib.sha256((raw+'\n').encode()).hexdigest()}
+
+
+def observe_download_start(context,reader):
+    """Stop on the first fresh real asset response, never wait for bulk work."""
+    args,device,report=(context[k] for k in ('args','device','report'))
+    context['phase_deadline'](30,'regular-Light OK produced no fresh successful asset response within30seconds')
+    began=time.monotonic()
+    while time.monotonic()-began<30:
+        lifetime=context['lifetime']()
+        event=reader.read()
+        if event:
+            # No more UI input is needed. Capture the actual current pixels
+            # quickly, then stop only the same owned game immediately.
+            png=device.adb('exec-out','screencap','-p',raw=True,timeout=5)
+            assert context['lifetime']()==lifetime
+            relative='regular-light-first-asset-response.png'
+            (args.evidence/relative).write_bytes(png)
+            stop_owned_download_game(context,lifetime)
+            event.update({'native_screenshot':relative,'identity':lifetime,
+                'elapsed_after_OK_seconds':round(time.monotonic()-began,3),
+                'limit':'Ordinary concurrent asset requests may begin; stopped at first observed successful response, no bulk completion or exact transfer-byte claim'})
+            (args.evidence/'regular-light-download-start.json').write_text(json.dumps(event,indent=2)+'\n')
+            report['regular_light_download_start']=event
+            context['phase_deadline'](None)
+            context['save']()
+            return {'status':'PARTIAL_REGULAR_LIGHT_DOWNLOAD_STARTED',
+                'scope':'Native-only ordinary regular-Light selection/OK and first real successful asset GET; every full client feature remains unobserved'}
+        time.sleep(.1)
+    raise RuntimeError('No fresh successful regular-Light asset response within30seconds after OK')
+
+
+def reach_settled_home(context,*,stop_at_download_start=False):
     args,device,host,report=(context[k] for k in ('args','device','host','report'))
     resources=context['resources'];phase='settings';scrolls=0;failed_pairs={};seen=set()
     began=time.monotonic();closed_at=None;last_resource=began;sequence=[]
+    settings_progress=SettingsProgress(began)
+    context['phase_deadline'](45,'native download settings made no safe progress within45seconds')
+    start_reader=None
     report['resource_snapshots']=resources.records
     resources.capture('initial-download-settings',pid=context['lifetime']()['pid'])
 
@@ -84,6 +146,9 @@ def reach_settled_home(context):
         context['lifetime']()
         observed,surface,label,captured=capture()
         now=time.monotonic()
+        if phase=='settings':
+            remaining=settings_progress.observe(observed,now)
+            context['phase_deadline'](remaining,'native download settings made no safe progress within45seconds or exceeded120seconds total')
         if now-last_resource>=60:
             resources.capture('native-'+phase.replace('_','-')+'-interval',pid=context['lifetime']()['pid']);last_resource=now
         counts=game_request_counts(host.server_rpc_evidence())
@@ -137,14 +202,24 @@ def reach_settled_home(context):
                 assert proof_state['selected_radio']=='light' and proof_state['both_radio_extents_visible']
                 assert proof_state['unselected_radio']['row']=='full' and proof_state['unselected_radio']['present']
             device.shell('input','tap',*(str(v) for v in point));seen.add(kind)
+            if kind=='confirm-light' and stop_at_download_start:
+                # A response during the input command is deliberately not
+                # counted as post-OK evidence. A later fresh response is needed.
+                start_reader=SuccessfulAssetStarts(host.log_path)
         report['actions'].append({'source':'two-fresh-native-download-OCR-pixel-observations','kind':kind,
             'plan':action,'captures':[label,other_label],'identity':proof,
             'elapsed':round(time.monotonic()-context['started'],3)})
         if kind=='confirm-light':
-            resources.capture('native-light-download-start',pid=proof['pid']);phase='download_wait'
+            context['phase_deadline'](None)
+            phase='download_wait'
             report['native_light_download_confirmed']={'captures':[label,other_label],
                  'selection':'Unique visible Light orange radio and visible unselected Full gray annulus',
                  'ui_estimate_limit':'UI size labels are estimates, not actual transferred bytes'}
+            context['save']()
+            if stop_at_download_start:
+                assert start_reader is not None
+                return observe_download_start(context,start_reader)
+            resources.capture('native-light-download-start',pid=proof['pid'])
         elif kind=='close-complete':
             resources.capture('native-download-complete',pid=proof['pid']);phase='home_wait';closed_at=time.monotonic()
         context['save']();time.sleep(1)

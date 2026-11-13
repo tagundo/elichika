@@ -39,8 +39,8 @@ def _usable(words, width, height):
     return result
 
 
-def phrase(words, first, second):
-    """One exact ordered adjacent pair on one actual OCR baseline."""
+def _phrase_matches(words, first, second):
+    """Exact ordered adjacent pairs on actual OCR baselines; never deduplicate."""
     matches=[]
     for a in words:
         if a['text'].casefold()!=first.casefold():continue
@@ -50,7 +50,44 @@ def phrase(words, first, second):
             if (ab[2]<=bb[0]<=ab[2]+h*3 and abs(_center(ab)[1]-_center(bb)[1])<=h*.65):
                 matches.append({'text':first+' '+second,'bounds':_box([a,b]),
                                 'confidence':min(a['confidence'],b['confidence'])})
+    return matches
+
+
+def phrase(words, first, second):
+    """One exact ordered adjacent pair on one actual OCR baseline."""
+    matches=_phrase_matches(words,first,second)
     return matches[0] if len(matches)==1 else None
+
+
+def _light_options(words):
+    """Identify regular Light by its immediate numeric-size suffix.
+
+    The actual chooser has THREE alternatives.  The Auto-delete variant also
+    starts with the exact words Light Download, so that prefix alone cannot
+    authorize selecting or confirming the regular Light option.  Missing or
+    low-confidence suffixes remain unclassified rather than guessed.
+    """
+    options=[]
+    for match in _phrase_matches(words,'Light','Download'):
+        box=match['bounds'];h=box[3]-box[1];cy=_center(box)[1]
+        tail=sorted((w for w in words if w['bounds'][0]>=box[2] and
+                     abs(_center(w['bounds'])[1]-cy)<=h*.65),key=lambda w:w['bounds'][0])
+        suffix=[];right=box[2]
+        for word in tail:
+            if word['bounds'][0]-right>h*1.5:break
+            suffix.append(word);right=word['bounds'][2]
+        variant='unclassified'
+        if suffix and suffix[0]['text'].casefold()=='(auto-delete':
+            variant='auto-delete'
+        elif (len(suffix)>=2 and re.fullmatch(r'\(\d+(?:\.\d+)?',suffix[0]['text']) and
+              suffix[1]['text'].casefold()=='mb)'):
+            variant='regular'
+            match['confidence']=min(match['confidence'],suffix[0]['confidence'],suffix[1]['confidence'])
+        options.append({**match,'variant':variant,'suffix_words':suffix})
+    regular=[option for option in options if option['variant']=='regular']
+    identified=(len(regular)==1 and all(option['variant']!='unclassified' for option in options)
+                and sum(option['variant']=='auto-delete' for option in options)<=1)
+    return options,regular[0] if identified else None
 
 
 def _exact(words, text):
@@ -136,9 +173,12 @@ def analyze(image, metadata, phase):
         'minimum_confidence':MIN_CONFIDENCE}}
     observation=result['observations']
     if phase=='settings':
-        full=phrase(words,'Full','Download');light=phrase(words,'Light','Download')
+        full=phrase(words,'Full','Download');light_options,light=_light_options(words)
         ok=_exact(buttons,'OK');cancel=_exact(words,'Cancel')
-        observation.update({'full_caption':full,'light_caption':light,'ok_caption':ok,'cancel_caption':cancel})
+        observation.update({'full_caption':full,'light_caption':light,'light_options':light_options,
+                            'ok_caption':ok,'cancel_caption':cancel})
+        if light_options and light is None:
+            result['state']='blocked-settings-regular-light-identity';return result
         if not all((full,light,ok,cancel)):
             result['state']='blocked-settings-caption-context';return result
         fb,lb=full['bounds'],light['bounds'];h=max(fb[3]-fb[1],lb[3]-lb[1])
@@ -167,9 +207,18 @@ def analyze(image, metadata, phase):
         observation.update({'selected_radio':selected_name,'derived_radio_centers':centers,
                             'radio_radius':radius,'both_radio_extents_visible':full_visible})
         if not full_visible:
-            start=[int(_center(lb)[0]),int(lcy)];end=[start[0],int(fcy-h)]
+            # Actual V15r2's whole-row swipe moved content about190px and hid
+            # Full. Reveal only the measured clipping deficit plus one text
+            # height, capped at a quarter of the CURRENT row gap. Runtime
+            # must re-observe both captions/radios; this never assumes motion.
+            deficit=max(center[1]+radius-content_bottom for center in centers.values())
+            distance=min(math.floor(gap*.25),math.ceil(max(0,deficit)+h))
+            start=[int(_center(lb)[0]),int(lcy)];end=[start[0],start[1]-distance]
             if not (fb[1]-gap<end[1]<start[1]<footer-h):
                 result['state']='blocked-scroll-geometry';return result
+            observation['scroll_visibility']={'clipping_deficit':max(0,deficit),'text_height_margin':h,
+                'maximum_distance_from_current_row_gap':gap*.25,'requested_distance':distance,
+                'scope':'Small visibility-recovery request only; actual post-scroll geometry must be captured afresh'}
             result['state']='settings-radio-clipped'
             result['action']=_plan('scroll-download','Full Download / Light Download',_box([full,light]),
                 min(full['confidence'],light['confidence']),start=start,end=end,duration_ms=650)

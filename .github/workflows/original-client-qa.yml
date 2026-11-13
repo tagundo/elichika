@@ -1,14 +1,14 @@
-name: Validate genuine GL duplicate MV after native-only initial download
+name: Validate ordinary GL regular-Light download choice without observers
 
 on:
   push:
-    branches: [codex/android-client-qa-mvfocus-gl-20261113]
+    branches: [codex/android-client-qa-native-download-20261113-v16]
   workflow_dispatch:
     inputs:
       max_seconds:
         description: Bounded genuine-client UI run time per region
         required: true
-        default: "2400"
+        default: "600"
 
 permissions:
   # GitHub requires write scope to read this repository's unpublished drafts.
@@ -28,7 +28,7 @@ jobs:
       matrix:
         region: [GL]
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 70
+    timeout-minutes: 25
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       QA_REGION: ${{ matrix.region }}
@@ -38,7 +38,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read exact root-frozen C7 server source
+      - name: Read exact root-frozen C8 server source
         id: fixture
         run: |
           python3 - <<'PYFIXTURE'
@@ -65,15 +65,14 @@ jobs:
           persist-credentials: false
           submodules: recursive
 
-      - name: Download exact signed client and pinned observer for settled Home only
+      - name: Download exact signed client without any observer
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           python3 qa/download_fixtures.py --manifest qa/frozen-fixtures.json --region "$QA_REGION" \
-            --destination "$RUNNER_TEMP/client-qa-fixtures" --evidence evidence --skip-server-apk
-          xz -d "$RUNNER_TEMP/client-qa-fixtures/frida-server.xz"
+            --destination "$RUNNER_TEMP/client-qa-fixtures" --evidence evidence --skip-server-apk --skip-frida
           git -C server-source rev-parse HEAD > evidence/server-source-commit.txt
           sha256sum qa/*.py qa/unity_ui*.js qa/*manifest*.json qa/frozen-fixtures.json > evidence/qa-source-sha256.txt
           cp qa/frozen-fixtures.json evidence/frozen-fixtures.json
@@ -85,7 +84,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y adb apksigner aapt python3-venv ffmpeg tesseract-ocr tesseract-ocr-eng
           python3 -m venv "$RUNNER_TEMP/qa-venv"
-          "$RUNNER_TEMP/qa-venv/bin/pip" install --disable-pip-version-check 'Pillow==11.0.0' 'frida==16.6.6'
+          "$RUNNER_TEMP/qa-venv/bin/pip" install --disable-pip-version-check 'Pillow==11.0.0'
           if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
             sudo apt-get install -y "linux-modules-extra-$(uname -r)"
             sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
@@ -154,12 +153,12 @@ jobs:
 
       - name: Run genuine regional client UI against owned hash-bound source fixture
         env:
-          QA_SECONDS: ${{ inputs.max_seconds || '2400' }}
+          QA_SECONDS: ${{ inputs.max_seconds || '600' }}
         run: |
           set -euo pipefail
           case "$QA_SECONDS" in *[!0-9]*|'') exit 2;; esac
           test "$QA_SECONDS" -ge 120
-          test "$QA_SECONDS" -le 2400
+          test "$QA_SECONDS" -le 600
           qa_watchdog_seconds=$((QA_SECONDS + 120))
           qa_exit=0
           timeout --signal=TERM --kill-after=20s "${qa_watchdog_seconds}s" "$RUNNER_TEMP/qa-venv/bin/python" -u qa/native_ocr_control.py \
@@ -168,13 +167,12 @@ jobs:
             --host-server-receipt "$RUNNER_TEMP/host-go-fixture/host-go-fixture.json" \
             --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
             --server-source server-source --evidence evidence \
-            --mv-focus --unity-agent qa/unity_ui.bundle.js \
-            --frida-server "$RUNNER_TEMP/client-qa-fixtures/frida-server" --max-seconds "$QA_SECONDS" || qa_exit=$?
+            --download-start-diagnostic --max-seconds "$QA_SECONDS" || qa_exit=$?
           if [ "$qa_exit" = 124 ] || [ "$qa_exit" = 137 ]; then
             python3 - <<'PYTIMEOUT'
           import json
           from pathlib import Path
-          for name in ('native-only-control-report.json','mv-focus-report.json'):
+          for name in ('native-only-control-report.json','regular-light-diagnostic-report.json'):
               path=Path('evidence')/name
               if path.is_file():
                   report=json.loads(path.read_text());report['status']='INCOMPLETE'
@@ -220,7 +218,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sifas-mv-focus-${{ matrix.region }}-runtime-evidence
+          name: sifas-native-download-${{ matrix.region }}-runtime-evidence
           path: evidence/
           if-no-files-found: warn
           retention-days: 7
