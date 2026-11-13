@@ -1,0 +1,115 @@
+name: Actual PlayCover Apple Silicon client QA
+
+on:
+  push:
+    branches: [codex/playcover-qa-20261113]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: actual-playcover-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apple-silicon-playcover:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Read frozen fixture manifest
+        id: fixture
+        run: |
+          mkdir -p "$RUNNER_TEMP/playcover-fixtures" "$RUNNER_TEMP/playcover-evidence"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          m=json.loads(Path('qa/playcover/manifest.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('server_ref='+m['server_source_ref']+'\n')
+          PY
+
+      - name: Fetch only frozen private draft IPA assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          m=json.loads(Path('qa/playcover/manifest.json').read_text())
+          work=Path(os.environ['RUNNER_TEMP'])/'playcover-fixtures'
+          for item in m['candidates']:
+              subprocess.run(['env','-u','GH_TOKEN','gh','release','download',m['draft_tag'],'--repo',os.environ['GITHUB_REPOSITORY'],'--pattern',item['name'],'--dir',str(work)],check=True)
+              with (work/item['name']).open('rb') as stream:
+                  assert hashlib.file_digest(stream,'sha256').hexdigest()==item['sha256']
+          PY
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Checkout exact root-frozen Elichika and official assets
+        uses: actions/checkout@v4
+        with:
+          repository: tagundo/elichika
+          ref: ${{ steps.fixture.outputs.server_ref }}
+          path: server-source
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Build fresh disposable server and synthetic playable account
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          Path('server-source/config.json').write_text(json.dumps({'server_address':'127.0.0.1:8080','locales':'ja,en','tutorial':False,'cdn_cache':False}))
+          PY
+          cd server-source
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/elichika-playcover-server" .
+          "$RUNNER_TEMP/elichika-playcover-server" rebuild_assets > "$RUNNER_TEMP/playcover-evidence/server-data-init.log" 2>&1
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/playcover-seeder" ../qa/playcover/seed_account.go
+          ELICHIKA_TEST_RUNTIME="$PWD" ELICHIKA_TEST_FIXTURE_LANGUAGE=en "$RUNNER_TEMP/playcover-seeder" > "$RUNNER_TEMP/playcover-evidence/synthetic-account-init.log" 2>&1
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          binary=Path(os.environ['RUNNER_TEMP'])/'elichika-playcover-server'
+          record={'server_source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+             'server_binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),
+             'go_version':subprocess.check_output(['go','version'],text=True).strip(),
+             'build_args':['CGO_ENABLED=0','go','build','-trimpath'],
+             'submodules':subprocess.check_output(['git','submodule','status','--recursive'],text=True),
+             'fixture':'Fresh official server data and synthetic playable account123456789; no real user data'}
+          (Path(os.environ['RUNNER_TEMP'])/'playcover-evidence/server-build.json').write_text(json.dumps(record,indent=2)+'\n')
+          PY
+
+      - name: Actually import and launch all three IPAs through pinned PlayCover
+        run: |
+          python3 qa/playcover/run_qa.py --fixtures "$RUNNER_TEMP/playcover-fixtures" \
+            --evidence "$RUNNER_TEMP/playcover-evidence" \
+            --server-source "$GITHUB_WORKSPACE/server-source" \
+            --server-binary "$RUNNER_TEMP/elichika-playcover-server"
+
+      - name: Preserve actual private Mac UI evidence and exact failed stage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playcover-v2-actual-evidence
+          path: ${{ runner.temp }}/playcover-evidence/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
