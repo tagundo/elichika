@@ -85,8 +85,8 @@ def main():
         assert host['hardware']['stdout'].strip() == '1' and host['windowserver']['code'] == 0, 'Apple Silicon WindowServer required'
         assert 'amfi_get_out_of_my_way' not in host['bootargs']['stdout'], 'Unreviewed PlaySign environment'
         build = a.fixtures/'host-tools'; build.mkdir(exist_ok=True)
-        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA', 'MetalHost']:
-            arguments = ['xcrun','swiftc','-target','arm64-apple-macosx13.0',HERE/(name+'.swift'),'-o',build/name]
+        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA', 'MetalHost', 'PlayCoverLaunch']:
+            arguments = ['xcrun','swiftc','-swift-version','5','-target','arm64-apple-macosx13.0',HERE/(name+'.swift'),'-o',build/name]
             if name == 'VisionQA':
                 for framework in ['AppKit','ApplicationServices','CoreGraphics','Vision','ImageIO','CryptoKit']:
                     arguments += ['-framework',framework]
@@ -158,7 +158,6 @@ def main():
                         return response.status == 200
                 except Exception: return False
             assert wait_for(server_ready,180), 'Disposable Go server readiness failed'
-        plain_launch_from_observed_control = False
         def configure_plain_preferences(bundle,folder):
             preferences = Path.home()/'Library/Containers'/bundle/'Data/Library/Preferences'/(bundle+'.plist')
             preferences.parent.mkdir(parents=True,exist_ok=True)
@@ -229,16 +228,14 @@ def main():
             write(folder/'normal-playcover-launch-alias.json',{'alias':str(alias),'entries':alias_entries,'metadata_equal':True})
             private_stdout = a.fixtures/(candidate['region']+'-launch.stdout')
             private_stderr = a.fixtures/(candidate['region']+'-launch.stderr')
-            open_help = host['open_help'].get('stdout','') + host['open_help'].get('stderr','')
-            launch_options = ['--stdout',private_stdout,'--stderr',private_stderr] if '--stdout' in open_help and '--stderr' in open_help else []
-            if plain_launch_from_observed_control:
-                configure_plain_preferences(candidate['bundle_id'],folder)
-            arguments = [] if plain_launch_from_observed_control else ['--args','-SIFASDiagnosticsEnabled','YES','-ServerEndpoint','http://127.0.0.1:8080']
-            result['launch_strategy'] = 'normal-alias-with-supported-container-preferences' if plain_launch_from_observed_control else 'normal-alias-with-launch-arguments'
-            launch_args = ['open',*launch_options,'-a',alias,*arguments]
+            configure_plain_preferences(candidate['bundle_id'],folder)
+            result['launch_strategy'] = 'pinned-standard-default-NSWorkspace-with-supported-container-preferences'
             launch_wall = time.time()
-            launch = command(launch_args)
+            launch_proof = folder/'default-workspace-launch.json'
+            launch = command([build/'PlayCoverLaunch',alias,candidate['bundle_id'],launch_proof],timeout=35)
             write(folder/'normal-launch.json',launch)
+            completion = json.loads(launch_proof.read_text()) if launch_proof.exists() else {}
+            result['default_workspace_launch'] = completion
             def startup_capture(observed_pid,label,since=None,stdout_file=None,stderr_file=None):
                 record = command([sys.executable,HERE/'capture_startup.py','--bundle-id',candidate['bundle_id'],
                     '--executable',installed_info['CFBundleExecutable'],'--pid',str(observed_pid),'--since',str(launch_wall if since is None else since),
@@ -246,13 +243,13 @@ def main():
                     '--launch-stderr',private_stderr if stderr_file is None else stderr_file,
                     '--proof-dir',folder/label],timeout=60)
                 write(folder/(label+'-command.json'),record)
-            running = wait_for(lambda: host_state(candidate['bundle_id']).get('applications'),30)
-            if not running:
+            observed_pid = completion.get('completionPID',0)
+            if launch['code'] != 0 or not isinstance(observed_pid,int) or observed_pid <= 0:
                 result.update(status='FAIL_APP_LAUNCH', launch=launch)
                 startup_capture(0,'startup-no-observed-pid')
                 stage('launch-failed-'+candidate['region'])
                 continue
-            pid = running[0]['pid']; result['actual_pid'] = pid
+            pid = observed_pid; result['actual_pid'] = pid
             result['actual_process_start'] = command(['ps','-p',str(pid),'-o','lstart='])
             result['launch_wall_time'] = launch_wall
             time.sleep(12)
@@ -262,32 +259,6 @@ def main():
                               host_after_early_exit=alive)
                 time.sleep(3)
                 startup_capture(pid,'startup-early-exit')
-                if candidate.get('role') == 'original-control':
-                    configure_plain_preferences(candidate['bundle_id'],folder)
-                    plain_stdout = a.fixtures/(candidate['region']+'-plain.stdout')
-                    plain_stderr = a.fixtures/(candidate['region']+'-plain.stderr')
-                    options = ['--stdout',plain_stdout,'--stderr',plain_stderr] if launch_options else []
-                    plain_since = time.time()
-                    plain_open = command(['open',*options,'-a',alias])
-                    plain_running = wait_for(lambda:host_state(candidate['bundle_id']).get('applications'),30)
-                    plain_pid = plain_running[0]['pid'] if plain_running else 0
-                    if plain_pid:time.sleep(12)
-                    startup_capture(plain_pid,'startup-plain-control',since=plain_since,stdout_file=plain_stdout,stderr_file=plain_stderr)
-                    plain_state = host_state(candidate['bundle_id'])
-                    plain_alive = any(item['pid'] == plain_pid for item in plain_state.get('applications',[]))
-                    result['plain_control_comparison'] = {'launch':plain_open,'observed_pid':plain_pid,'launch_wall_time':plain_since,
-                        'alive_after_observation':plain_alive,'host':plain_state,
-                        'qualification':'Separate normal-alias launch without custom arguments; original failed attempt remains recorded'}
-                    write(folder/'plain-control-comparison.json',result['plain_control_comparison'])
-                    if plain_alive:
-                        command([build/'HostEvidence',candidate['bundle_id'],'--activate'])
-                        result['plain_control_screen'] = record_screen(candidate['bundle_id'],folder,'original-plain-game')
-                        write(folder/'original-plain-vision-command.json',command([build/'VisionQA','snapshot','--pid',str(plain_pid),'--proof-dir',folder/'vision-original-plain'],timeout=30))
-                        plain_launch_from_observed_control = True
-                        report['normal_plain_launch_supported_by_original_control'] = True
-                        try:os.kill(plain_pid,signal.SIGTERM)
-                        except ProcessLookupError:pass
-                        assert wait_for(lambda:not host_state(candidate['bundle_id']).get('applications'),10), 'Original plain control must exit before the next import'
                 stage('early-process-exit-'+candidate['region'])
                 continue
             startup_capture(pid,'startup-visible-process')

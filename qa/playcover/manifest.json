@@ -3,7 +3,7 @@
   "staging_repository": "tagundo/elichika",
   "client_source_repository": "tagundo/SIFAS-Client",
   "draft_tag": "codex-client-qa-20261113",
-  "server_source_ref": "c676bf5f969fafb24244dd0f59f804e1d26db982",
+  "server_source_ref": "28b80a8b43898ef9544d8452fef76181839eec6e",
   "server_source_qualification": "root-frozen final C3 release2026.11.13.1; Go built from exact source",
   "playcover_dmg_url": "https://github.com/PlayCover/PlayCover/releases/download/4.0.0-prerelease/PlayCover_4.0.0-prerelease.dmg",
   "playcover_dmg_sha256": "54e01381205ed7de05f8316ca229eab39ab8f6202b0dda4de07e98396e64d79e",
