@@ -68,5 +68,5 @@
   ],
   "startup_only": true,
   "same_install_relaunch": true,
-  "diagnostic_install_profile": "without-playtools"
+  "diagnostic_install_profile": "standard"
 }
