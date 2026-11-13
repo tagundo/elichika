@@ -251,24 +251,24 @@ class CostumeBatchDeletionTests(unittest.TestCase):
         module = SimpleNamespace(
             plan_delete_batch=lambda values, **options: cm.plan_delete_batch(values, self.root, **options),
             delete_installs=lambda values, **options: cm.delete_installs(values, root=self.root, **options))
-        review_job = Job("synthetic-review", "costume_delete")
+        review_job = Job("synthetic-review", "clone_delete")
         with patch.object(costume_delete, "_module", return_value=module), \
                 patch.object(costume_delete, "installation_server", return_value=nullcontext()) as lifecycle:
-            reviewed = costume_delete.run_costume_delete(review_job, dict(installations=ids, action="preview"))
+            reviewed = costume_delete.run_clone_delete(review_job, dict(installations=ids, action="preview"))
             lifecycle.assert_not_called()
         review = json.loads(review_job._events[0]["line"].split("] ", 1)[1])
-        self.assertEqual(review["event"], "costume-delete-review")
+        self.assertEqual(review["event"], "clone-delete-review")
         self.assertEqual(review["installation_count"], 2)
         self.assertFalse(review["action_performed"])
         self.assertIn("nothing has been deleted", reviewed)
         self.assert_present([first, second])
-        delete_job = Job("synthetic-delete", "costume_delete")
+        delete_job = Job("synthetic-delete", "clone_delete")
         with patch.object(costume_delete, "_module", return_value=module), \
                 patch.object(costume_delete, "installation_server", return_value=nullcontext()), \
                 patch.object(cm, "assert_server_stopped"):
-            costume_delete.run_costume_delete(delete_job, dict(installations=ids, action="delete", review_token=review["review_token"]))
+            costume_delete.run_clone_delete(delete_job, dict(installations=ids, action="delete", review_token=review["review_token"]))
         complete = json.loads(delete_job._events[-1]["line"].split("] ", 1)[1])
-        self.assertEqual(complete["event"], "costume-delete-complete")
+        self.assertEqual(complete["event"], "clone-delete-complete")
         self.assertEqual(complete["status"], "deleted")
         self.assertTrue(complete["action_performed"])
         self.assertEqual(complete["deleted_count"], 2)
@@ -278,12 +278,12 @@ class CostumeBatchDeletionTests(unittest.TestCase):
     def test_failed_actual_delete_never_emits_completed_event(self):
         from adminui.jobs import Job
         from adminui.tools import costume_delete
-        job = Job("synthetic-failed", "costume_delete")
+        job = Job("synthetic-failed", "clone_delete")
         module = SimpleNamespace(delete_installs=lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("synthetic failure")))
         with patch.object(costume_delete, "_module", return_value=module), \
                 patch.object(costume_delete, "installation_server", return_value=nullcontext()):
             with self.assertRaises(OSError):
-                costume_delete.run_costume_delete(job, dict(installations=["a" * 32, "b" * 32], action="delete", review_token="bound-token"))
+                costume_delete.run_clone_delete(job, dict(installations=["a" * 32, "b" * 32], action="delete", review_token="bound-token"))
         self.assertEqual(job._events, [])
 
 

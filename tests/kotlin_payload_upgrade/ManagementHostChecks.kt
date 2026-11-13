@@ -38,15 +38,30 @@ fun main(args: Array<String>) {
     val firstUrl = ManagementServer.url()!!
     check(first.getJSONArray("args").toString() == "[\"management\"]")
     check(first.getString("token").matches(Regex("[0-9a-f]{32}")))
+    val firstAccess = first.getString("local_access")
+    check(firstAccess.matches(Regex("[0-9a-f]{32}")) && firstAccess != first.getString("token"))
+    check(ManagementServer.localWebuiToken() == firstAccess)
+    check(LocalWebuiBootstrap.headers("$firstUrl/webui/admin/", firstAccess) == mapOf(LocalWebuiBootstrap.HEADER to firstAccess))
+    check(LocalWebuiBootstrap.headers("http://[::1]:8080/webui/user/", firstAccess).size == 1)
+    for (untrusted in listOf("http://example.com:8080/webui/admin/", "http://127.0.0.1.evil:8080/webui/admin/",
+        "http://127.0.0.1:8080/_elichika/ready", "http://127.0.0.1:8080/webui-evil/", "http://user@127.0.0.1:8080/webui/admin/",
+        "http://127.999.0.1:8080/webui/admin/", "file:///webui/admin/")) {
+        check(LocalWebuiBootstrap.headers(untrusted, firstAccess).isEmpty())
+    }
+    check(LocalWebuiBootstrap.headers("$firstUrl/webui/admin/", "not-a-capability").isEmpty())
+    check(!LocalWebuiBootstrap.requiresReload("$firstUrl/webui/admin/config_editor", "$firstUrl/webui/admin/", firstAccess, firstAccess))
+    check(LocalWebuiBootstrap.requiresReload("$firstUrl/webui/admin/", "$firstUrl/webui/admin/", firstAccess, "f".repeat(32)))
+    check(LocalWebuiBootstrap.requiresReload("http://127.0.0.1:1/webui/admin/", "$firstUrl/webui/admin/", firstAccess, firstAccess))
+    check(LocalWebuiBootstrap.requiresReload(null, "$firstUrl/webui/admin/", null, firstAccess))
     check(first.getString("parent") == android.os.Process.myPid().toString())
     check(ManagementServer.currentPid() == first.getLong("pid").toInt())
     check(!Bus.serverRunning && !ManagementServer.isPreparing() && !ManagementServer.hasError())
     check(ServerReadiness.responds(URL("$firstUrl/_elichika/ready"), first.getString("token")))
     check(!ServerReadiness.responds(URL("$firstUrl/_elichika/ready"), "0".repeat(32)))
-    check(Bus.logs.none { it.contains("ELICHIKA_MANAGEMENT_READY") || it.contains(first.getString("token")) || it.contains("PRIVATE-PASSWORD-SENTINEL") })
+    check(Bus.logs.none { it.contains("ELICHIKA_MANAGEMENT_READY") || it.contains(first.getString("token")) || it.contains(firstAccess) || it.contains("PRIVATE-PASSWORD-SENTINEL") })
 
     val lease = ManagementServer.suspendForService()
-    check(ManagementServer.url() == null && !ManagementServer.isPreparing())
+    check(ManagementServer.url() == null && !ManagementServer.isPreparing() && ManagementServer.localWebuiToken() == null)
     check(ManagementServer.awaitSuspended(lease))
     eventually { childDead(first.getLong("pid")) }
     check(ManagementServer.currentPid() == null)
@@ -61,6 +76,7 @@ fun main(args: Array<String>) {
     val second = latest()
     check(second.getLong("pid") != first.getLong("pid"))
     check(second.getString("token") != first.getString("token"))
+    check(second.getString("local_access") != firstAccess && ManagementServer.localWebuiToken() == second.getString("local_access"))
 
     // An expensive Python startup admission must not block service reservation
     // on Android's main thread, and a cancelled pending launch must not spawn.
@@ -158,5 +174,24 @@ fun main(args: Array<String>) {
     val stopped = ManagementServer.suspendForService()
     check(ManagementServer.awaitSuspended(stopped))
     check(Bus.logs.none { it.contains("ELICHIKA_MANAGEMENT_READY") || it.contains(final.getString("token")) || it.contains("PRIVATE-PASSWORD-SENTINEL") })
-    println("ANDROID_MANAGEMENT_HOST_CHECKS_PASS: lazy explicit demand, owned PID, private readiness, fresh nonce, parent PID, game OFF, lease exclusion, graceful authenticated-write drain without SIGKILL, blocked takeover until explicit release, stop/reap, restart, cancelled pending launch, recovery refusal, explicit retry, two UI owners, owner release without job restart, rotation handoff, no secret logs")
+    check(ManagementServer.localWebuiToken() == null)
+    // Main-role launches receive an independent capability; CLI verbs receive none.
+    val mainOwner = ServerProcess(ctx)
+    val mainExit = CountDownLatch(1)
+    check(mainOwner.startServer(root) { mainExit.countDown() })
+    eventually { launches().size == 6 }
+    val mainLaunch = latest()
+    val mainAccess = mainLaunch.getString("local_access")
+    check(mainAccess.matches(Regex("[0-9a-f]{32}")) && mainAccess != mainLaunch.getString("token") && mainAccess != firstAccess)
+    check(mainOwner.localWebuiToken() == mainAccess)
+    val mainChild = mainOwner.stop()
+    check(mainOwner.localWebuiToken() == null)
+    check(ServerProcess.awaitStopped(mainChild) && mainExit.await(3, TimeUnit.SECONDS))
+    val oneShotExit = CountDownLatch(1)
+    check(mainOwner.runOnce(listOf("rebuild_assets"), root) { oneShotExit.countDown() })
+    check(oneShotExit.await(3, TimeUnit.SECONDS))
+    val oneShot = latest()
+    check(oneShot.isNull("token") && oneShot.isNull("local_access") && mainOwner.localWebuiToken() == null)
+    check(Bus.logs.none { it.contains(mainAccess) })
+    println("ANDROID_MANAGEMENT_HOST_CHECKS_PASS: lazy explicit demand, owned PID, private readiness, fresh nonce, parent PID, game OFF, lease exclusion, graceful authenticated-write drain without SIGKILL, blocked takeover until explicit release, stop/reap, restart, cancelled pending launch, recovery refusal, explicit retry, two UI owners, owner release without job restart, rotation handoff, separate per-role local capability, loopback-only header policy, immediate revocation, no CLI capability, no secret logs")
 }

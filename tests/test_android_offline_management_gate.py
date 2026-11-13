@@ -29,10 +29,15 @@ def fixture():
               'ownedProcess': {'pid': 102, 'ppid': 101, 'argv': [binary, 'management'], 'allGoPids': [102], 'binaryPath': binary},
               'checks': dict.fromkeys(CHECKS, True), 'panels': {}, 'screenshots': {},
               'excludedRoutes': {'/login/login': 404, '/api/bootstrap': 404, '/static/offline-fixture.pack': 404}}
-    for key, tab, path in [('settings', 'server', '/webui/admin/login'), ('user', 'account', '/webui/user/login')]:
+    for key, tab, path in [('settings', 'server', '/webui/admin/config_editor'), ('user', 'account', '/webui/user/login')]:
         report['panels'][key] = {'url': report['management']['url'] + path, 'origin': report['management']['url'],
-                                 'path': path, 'tabId': tab, 'ready': True, 'loginForm': True, 'passwordInput': True,
-                                 'bodyVisible': True, 'loginFormLoaded': True}
+                                 'path': path, 'tabId': tab, 'ready': True, 'localAccess': True,
+                                 'nativeLocalAccess': True, 'inputVisible': True, 'bodyVisible': True,
+                                 'passwordPrompt': False, 'scriptVisibleLocalCookie': False,
+                                 'requestedDocumentReady': True,
+                                 'requestedSelector': '#config_form [name=CdnServer]' if key == 'settings' else
+                                     '#native-account-picker:not([hidden]) #native-account-filter',
+                                 'nativeLanguageReady': key == 'user', 'nativeCopyReady': key == 'user'}
         report['screenshots'][key] = {'file': 'offline-management-' + key + '.png', 'width': 100, 'height': 100, 'bytes': len(raw)}
     report['menuRoundTrips'] = {key: [dict(viaTab=tab, sameOwnedPid=True, sameOrigin=True, sameWebView=True,
                                         sameDocument=True, draftPreserved=True)
@@ -75,10 +80,69 @@ class OfflineNativeGateTests(unittest.TestCase):
             report, images, _ = fixture(); report['ownedProcess'][field] = value
             with self.assertRaises(ValueError): validate_report(report, images)
 
-    def test_missing_user_panel_or_unready_login_is_rejected(self):
-        for field, value in [('origin', 'http://127.0.0.1:8080'), ('path', '/'), ('ready', False), ('passwordInput', False)]:
+    def test_missing_user_panel_or_wrong_route_is_rejected(self):
+        for field, value in [('origin', 'http://127.0.0.1:8080'), ('path', '/'), ('tabId', 'server')]:
             report, images, _ = fixture(); report['panels']['user'][field] = value
             with self.assertRaises(ValueError): validate_report(report, images)
+
+    def test_every_authorized_dom_witness_is_required_for_both_panels(self):
+        for panel in ('settings', 'user'):
+            for field in ('ready', 'localAccess', 'nativeLocalAccess', 'inputVisible', 'bodyVisible', 'requestedDocumentReady'):
+                for value in (False, 1, None):
+                    report, images, _ = fixture(); report['panels'][panel][field] = value
+                    with self.subTest(panel=panel, field=field, value=value), self.assertRaises(ValueError):
+                        validate_report(report, images)
+                report, images, _ = fixture(); del report['panels'][panel][field]
+                with self.subTest(panel=panel, field=field, value='missing'), self.assertRaises(ValueError):
+                    validate_report(report, images)
+
+    def test_requested_editor_or_picker_and_page_specific_helpers_are_required(self):
+        for panel in ('settings', 'user'):
+            for value in ('body', '#user_password', None):
+                report, images, _ = fixture(); report['panels'][panel]['requestedSelector'] = value
+                with self.subTest(panel=panel, selector=value), self.assertRaises(ValueError): validate_report(report, images)
+            for field in ('nativeLanguageReady', 'nativeCopyReady'):
+                for value in (panel != 'user', int(panel == 'user'), None):
+                    report, images, _ = fixture(); report['panels'][panel][field] = value
+                    with self.subTest(panel=panel, field=field, value=value), self.assertRaises(ValueError):
+                        validate_report(report, images)
+                report, images, _ = fixture(); del report['panels'][panel][field]
+                with self.subTest(panel=panel, field=field, value='missing'), self.assertRaises(ValueError):
+                    validate_report(report, images)
+
+    def test_password_prompt_or_script_visible_local_cookie_is_rejected(self):
+        for panel in ('settings', 'user'):
+            for field in ('passwordPrompt', 'scriptVisibleLocalCookie'):
+                for value in (True, 0, None):
+                    report, images, _ = fixture(); report['panels'][panel][field] = value
+                    with self.subTest(panel=panel, field=field, value=value), self.assertRaises(ValueError):
+                        validate_report(report, images)
+                report, images, _ = fixture(); del report['panels'][panel][field]
+                with self.subTest(panel=panel, field=field, value='missing'), self.assertRaises(ValueError):
+                    validate_report(report, images)
+
+    def test_old_password_login_report_is_rejected(self):
+        report, images, _ = fixture()
+        for panel in ('settings', 'user'):
+            value = report['panels'][panel]
+            value.update(loginForm=True, passwordInput=True, loginFormLoaded=True, passwordPrompt=True)
+            for field in ('localAccess', 'nativeLocalAccess', 'inputVisible'):
+                del value[field]
+        report['panels']['settings'].update(path='/webui/admin/login',
+            url=report['management']['url'] + '/webui/admin/login')
+        with self.assertRaises(ValueError): validate_report(report, images)
+
+    def test_wrong_document_prefix_or_panel_url_credentials_queries_and_fragments_are_rejected(self):
+        for panel in ('settings', 'user'):
+            for suffix in ('/stale', '?token=secret', '#stale'):
+                report, images, _ = fixture(); report['panels'][panel]['url'] += suffix
+                with self.subTest(panel=panel, suffix=suffix), self.assertRaises(ValueError): validate_report(report, images)
+            report, images, _ = fixture(); value = report['panels'][panel]
+            value['url'] = value['url'].replace('http://', 'http://user:password@')
+            with self.subTest(panel=panel, credentials=True), self.assertRaises(ValueError): validate_report(report, images)
+            report, images, _ = fixture(); value = report['panels'][panel]
+            value['path'] += '/stale'; value['url'] += '/stale'
+            with self.subTest(panel=panel, suffix='wrong-path'), self.assertRaises(ValueError): validate_report(report, images)
 
     def test_game_or_cdn_route_exposure_is_rejected(self):
         report, images, _ = fixture(); report['excludedRoutes']['/api/bootstrap'] = 200

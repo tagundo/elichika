@@ -4,6 +4,7 @@ import (
 	"elichika/client/response"
 	"elichika/config"
 	"elichika/log"
+	"elichika/subsystem/managedcredential"
 	"elichika/userdata/database"
 	"elichika/utils"
 
@@ -52,7 +53,7 @@ func (session *Session) ImportDatabaseData(ctx *gin.Context, bytes []byte) (*str
 	var userId *int32
 	// allow importing from a separate user id to
 	for table, inter := range database.UserDataTableNameToInterface {
-		if table == "u_pass_word" || table == "u_authentication" || table == "u_friend_status" {
+		if table == "u_pass_word" || table == "u_authentication" || table == "u_friend_status" || table == managedcredential.Table {
 			continue
 		}
 		rows := reflect.New(reflect.SliceOf(reflect.TypeOf(inter)))
