@@ -53,8 +53,9 @@ private final class LatencySampler {
                 guard !values.isEmpty else { return -1 }
                 return values[min(values.count - 1, Int(Double(values.count - 1) * fraction))]
             }
+            let maximum: Double = values.last ?? -1
             return ["samples": values.count, "p50_ms": percentile(0.50), "p95_ms": percentile(0.95),
-                    "max_ms": values.last ?? -1, "busy_timer_ticks": missed]
+                    "max_ms": maximum, "busy_timer_ticks": missed]
         }
         timer = nil
         withExtendedLifetime(source) {}
@@ -126,7 +127,33 @@ private final class PerformanceProbe {
     }
 
     private func write(_ filename: String, _ value: [String: Any]) throws {
+        var types: [String] = []
+        func inspect(_ member: Any, path: String) {
+            types.append(path + ": " + String(reflecting: type(of: member)))
+            if let values = member as? [String: Any] {
+                for key in values.keys.sorted() {
+                    if let child = values[key] { inspect(child, path: path + "." + key) }
+                }
+            } else if let values = member as? [Any] {
+                for (index, child) in values.enumerated() { inspect(child, path: path + "[\(index)]") }
+            } else if Mirror(reflecting: member).displayStyle == .optional {
+                for child in Mirror(reflecting: member).children { inspect(child.value, path: path + "?") }
+            } else if let number = member as? Double {
+                types.append(path + ".is_finite: " + String(number.isFinite))
+            }
+        }
+        inspect(value, path: "$")
+        guard JSONSerialization.isValidJSONObject(value) else {
+            try? Data(types.joined(separator: "\n").utf8).write(
+                to: output.appendingPathComponent(filename + ".failed-type-diagnostics.txt"), options: .atomic)
+            fputs("QA_JSON_TYPE_FAILURE \(filename)\n" + types.joined(separator: "\n") + "\n", stderr)
+            throw NSError(domain: "PerfProbeUnsupportedJSON", code: 6)
+        }
         let data = try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
+        if filename == "native-performance.json" {
+            try Data(types.joined(separator: "\n").utf8).write(
+                to: output.appendingPathComponent(filename + ".type-diagnostics.txt"), options: .atomic)
+        }
         try data.write(to: output.appendingPathComponent(filename), options: .atomic)
     }
 
@@ -241,7 +268,11 @@ private final class PerformanceProbe {
             result["status"] = "FAILED_NATIVE_PROBE"
             result["variant"] = variant
             result["error_type"] = String(describing: type(of: error))
-            try? write("native-performance.json", result)
+            do { try write("native-performance.json", result) }
+            catch {
+                try? write("native-performance.json", ["schema_version": 1, "status": "FAILED_NATIVE_PROBE",
+                    "variant": variant, "error_type": "Unsupported metric value; see failed type diagnostics"])
+            }
             finishApplicationLoop()
         }
     }

@@ -318,14 +318,15 @@ def main():
     parser.add_argument('--baseline-python', required=True, type=Path)
     parser.add_argument('--patched-python', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--profile', choices=['diagnostic', 'full'], default='full')
     args = parser.parse_args()
     assert platform.system() == 'Darwin' and platform.machine() == 'arm64'
     args.output.mkdir(parents=True, exist_ok=True)
     results = []
     failures = []
-    for mode in ['idle', 'bulk']:
-        for resident in [0, 500, 1500]:
-            for visibility in ['visible', 'hidden']:
+    for mode in (['idle'] if args.profile == 'diagnostic' else ['idle', 'bulk']):
+        for resident in ([0] if args.profile == 'diagnostic' else [0, 500, 1500]):
+            for visibility in (['visible'] if args.profile == 'diagnostic' else ['visible', 'hidden']):
                 for variant in ['baseline', 'patched']:
                     case = args.output / f'{mode}-{resident}-{visibility}-{variant}'
                     print('BEGIN', case.name, flush=True)
@@ -339,12 +340,13 @@ def main():
                                          'type': type(error).__name__, 'message': str(error)})
                         write(case / 'failure.json', failures[-1])
                         print('FAILED', case.name, type(error).__name__, flush=True)
-                        if isinstance(error, (TimeoutError, subprocess.TimeoutExpired, RuntimeError)):
+                        if args.profile == 'full' and isinstance(error, (TimeoutError, subprocess.TimeoutExpired, RuntimeError)):
                             write(args.output / 'performance-summary.json', {'status': 'FAIL_NATIVE_HARNESS_TIMEOUT',
                                   'cases': results, 'failures': failures, 'qualification': __doc__})
                             return 1
-    write(args.output / 'performance-summary.json', {'status': 'MEASURED_PENDING_REVIEW' if not failures else 'FAIL_ACTUAL_CASE',
-          'cases': results, 'failures': failures, 'qualification': __doc__})
+    success = 'DIAGNOSTIC_RUNTIME_PASS' if args.profile == 'diagnostic' else 'MEASURED_PENDING_REVIEW'
+    write(args.output / 'performance-summary.json', {'status': success if not failures else 'FAIL_ACTUAL_CASE',
+          'profile': args.profile, 'cases': results, 'failures': failures, 'qualification': __doc__})
     return bool(failures)
 
 

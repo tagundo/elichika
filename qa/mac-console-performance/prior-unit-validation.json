@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "tests": 44,
+  "candidate_source_commit": "28b80a8b43898ef9544d8452fef76181839eec6e",
+  "candidate_inputs": [
+    {
+      "path": "macos/App/AppModel.swift",
+      "bytes": 43587,
+      "sha256": "87255ada94f888f8245de668e08fb7bd3b874aea40deed134cf14d8887e5d984"
+    },
+    {
+      "path": "macos/App/RuntimeContract.swift",
+      "bytes": 20740,
+      "sha256": "dc4f9d2cf1925604f74ceed06733b5a1ea5f87afc6a4a13bf90526cfe5293eeb"
+    },
+    {
+      "path": "macos/App/ElichikaApp.swift",
+      "bytes": 48987,
+      "sha256": "4636f410efc236f6da80ec56657774fdaec53129de091df9dae190f9a4291fc2"
+    },
+    {
+      "path": "macos/runtime/elichika_macos.py",
+      "bytes": 43070,
+      "sha256": "a8c240571e7c2d9b965f832ffeadff29e5c0aa27d2d60ae3a5446847d1170403"
+    },
+    {
+      "path": "macos/Tests/ConsolePerformanceTests.swift",
+      "bytes": 5175,
+      "sha256": "22d9807d5cfd5a71d69dfd591c6a9f2dc43345ad99cb351bc920d3f4b8d3e142"
+    },
+    {
+      "path": "tests/test_macos_runtime_console_logging.py",
+      "bytes": 4774,
+      "sha256": "3ca2c41f091407778690550da77e621879d467cc8facdf93a180d9a1149e8c0e"
+    }
+  ],
+  "prior_run": 43410932858,
+  "prior_head_sha": "34a1855c3336330b5056bb549e52ab42597242cc",
+  "artifact_id": 14029422773,
+  "artifact_sha256": "e52327febba149d2b06decd2c13647c231c4c0c3a0f8f03d482aeb4446a489f8",
+  "test_log_sha256": "367622a79f516e0e05dba55553784c7ca30bc79bf52993c9a9f656ff284017df"
+}

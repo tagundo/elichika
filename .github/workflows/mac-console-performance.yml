@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: mac-console-performance-${{ github.ref }}
@@ -43,11 +44,13 @@ jobs:
           sw_vers > "$RUNNER_TEMP/perf-evidence/macos.txt"
           xcrun swiftc --version > "$RUNNER_TEMP/perf-evidence/swift-version.txt"
 
-      - name: Compile and run every patched production Swift unit test
+      - name: Bind identical frozen C4 sources to prior actual 44-test native evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          swift test --package-path "$RUNNER_TEMP/perf-build/patched/macos" -c release --jobs 2 \
-            > "$RUNNER_TEMP/perf-evidence/swift-unit-tests.log" 2>&1
+          python3 qa/mac-console-performance/validate_prior_unit.py \
+            --qa qa/mac-console-performance --evidence "$RUNNER_TEMP/perf-evidence"
 
       - name: Compile identical QA host against both full production source variants
         run: |
@@ -66,11 +69,25 @@ jobs:
           import hashlib,json,os
           from pathlib import Path
           root=Path(os.environ['RUNNER_TEMP'])
+          for variant in ['baseline','patched']:
+              log=(root/'perf-evidence'/(variant+'-compile.log')).read_text()
+              warnings=[line for line in log.splitlines() if 'PerfProbe.swift:' in line and 'warning:' in line]
+              assert not warnings, 'QA probe compiler warning: '+repr(warnings)
           values={v:hashlib.sha256((root/'perf-build'/v/'PerfProbe').read_bytes()).hexdigest() for v in ['baseline','patched']}
           (root/'perf-evidence/probe-binaries.json').write_text(json.dumps(values,indent=2)+'\n')
           PY
 
-      - name: Measure real visible and hidden Console idle and with eight controlled local downloads
+      - name: Require actual baseline and patched first-case diagnostics before the full matrix
+        id: diagnostic
+        run: |
+          python3 qa/mac-console-performance/run_performance.py --profile diagnostic \
+            --baseline-binary "$RUNNER_TEMP/perf-build/baseline/PerfProbe" \
+            --patched-binary "$RUNNER_TEMP/perf-build/patched/PerfProbe" \
+            --baseline-python "$RUNNER_TEMP/perf-build/baseline/macos/runtime/elichika_macos.py" \
+            --patched-python "$RUNNER_TEMP/perf-build/patched/macos/runtime/elichika_macos.py" \
+            --output "$RUNNER_TEMP/perf-evidence/diagnostic"
+
+      - name: Measure all 24 real visible and hidden Console idle and bulk cases
         run: |
           python3 qa/mac-console-performance/run_performance.py \
             --baseline-binary "$RUNNER_TEMP/perf-build/baseline/PerfProbe" \
