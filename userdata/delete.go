@@ -1,6 +1,7 @@
 package userdata
 
 import (
+	"elichika/subsystem/managedcredential"
 	"elichika/userdata/database"
 )
 
@@ -8,7 +9,7 @@ import (
 // this is so user can start from "fresh" or import old data while keeping the user id
 func (session *Session) DeleteUserGameData() {
 	for table := range database.UserDataTableNameToInterface {
-		if table == "u_pass_word" || table == "u_authentication" {
+		if table == "u_pass_word" || table == "u_authentication" || table == managedcredential.Table {
 			continue
 		}
 		session.Db.Table(table).Where("user_id = ?", session.UserId).Delete()

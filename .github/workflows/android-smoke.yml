@@ -445,6 +445,45 @@ jobs:
           assert Path('evidence/model-viewer-thumbnail-updater.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
           PYUPDATER
 
+      - name: Measure actual Console batching, persistence and hidden-window rendering separately
+        if: ${{ !inputs.focused_header_diagnostic }}
+        timeout-minutes: 5
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
+        run: |
+          set -euo pipefail
+          trap 'adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika' EXIT
+          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
+          console_test_exit=0
+          adb -s 127.0.0.1:5555 shell am instrument -w \
+            -e class com.tagundo.elichika.ConsolePerformanceTest \
+            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee evidence/native-console-performance.txt || console_test_exit=$?
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,subprocess
+          out=Path('evidence');captures={}
+          def adb(*args):
+              return subprocess.run(['adb','-s','127.0.0.1:5555',*args],capture_output=True,timeout=30)
+          # These live-process graphics files were captured by the test before
+          # Activity.finish. Querying gfxinfo after instrumentation exits loses
+          # the process and produces "No process found" instead of frame data.
+          (out/'console-logcat.txt').write_bytes(adb('logcat','-d','-t','6000').stdout)
+          (out/'console-final-screen.png').write_bytes(adb('exec-out','screencap','-p').stdout)
+          for name in ('console-performance-native.json','console-performance-visible.png',
+                       'console-gfxinfo-before.txt','console-gfxinfo-after.txt',
+                       'console-performance-failure.png','console-gfxinfo-failure.txt'):
+              value=adb('exec-out','cat','/data/user/0/com.tagundo.elichika/files/'+name)
+              captures[name]={'returncode':value.returncode,'bytes':len(value.stdout)}
+              if value.returncode==0:
+                  (out/name).write_bytes(value.stdout)
+              else:
+                  (out/(name+'.capture-error.txt')).write_bytes(value.stdout+value.stderr)
+          (out/'console-capture-status.json').write_text(json.dumps(captures,indent=2)+'\n')
+          PY
+          test "$console_test_exit" = 0
+          python3 tests/android_console_performance_gate.py --evidence evidence --candidate-sha256 "$EXPECTED_CANDIDATE_SHA"
+
       - name: Verify and measure mod-preserving parallel merges in the signed APK
         if: ${{ !inputs.focused_header_diagnostic }}
         timeout-minutes: 10

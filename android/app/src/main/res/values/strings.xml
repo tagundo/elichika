@@ -1,4 +1,5 @@
 <resources>
+    <string name="log_file_paused">Log file paused: check storage and restart the app. Recent logs are still available.</string>
     <string name="app_name">elichika</string>
     <string name="start_server">Start server</string>
     <string name="stop_server">Stop server</string>

@@ -3,6 +3,7 @@ package user
 import (
 	"elichika/config"
 	"elichika/enum"
+	"elichika/nativeaccess"
 	"elichika/router"
 	"elichika/subsystem/user_authentication"
 	"elichika/userdata"
@@ -11,7 +12,6 @@ import (
 
 	"encoding/base64"
 	"encoding/json"
-	"mime/multipart"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,19 +21,17 @@ func Login(ctx *gin.Context) {
 	var respString string
 	resp := webui_utils.Response{}
 
-	form := ctx.MustGet("form").(*multipart.Form)
-
-	userPassword := form.Value["user_password"][0]
+	userPassword := ctx.PostForm("user_password")
 
 	session := ctx.MustGet("session").(*userdata.Session)
 
 	if session == nil {
 		resp.Error = &respString
 		*resp.Error = "User doesn't exist!"
-	} else if !user_authentication.CheckPassWord(session, userPassword) {
+	} else if !nativeaccess.Authorized(ctx) && !user_authentication.CheckPassWord(session, userPassword) {
 		resp.Error = &respString
 		*resp.Error = "Wrong password!"
-	} else if session.UserStatus.TutorialPhase != enum.TutorialPhaseTutorialEnd {
+	} else if !nativeaccess.Authorized(ctx) && session.UserStatus.TutorialPhase != enum.TutorialPhaseTutorialEnd {
 		resp.Error = &respString
 		*resp.Error = "Finish the tutorial (in game) first before using the WebUI!"
 	} else {

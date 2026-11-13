@@ -431,15 +431,14 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertNil(model.process)
 
         model.selectedSection = .settings
-        model.showServerSettings = false
         model.retryManagement()
         XCTAssertFalse(model.managementSessionWanted)
-        model.showServerSettings = true
+        model.selectedSection = .serverSettings
         model.retryManagement()
         XCTAssertTrue(model.managementSessionWanted)
         XCTAssertNil(model.process, "Opening management during preparation must record demand without eagerly launching another runtime.")
 
-        for section in [AppSection.viewer, .content, .server, .accounts, .settings] {
+        for section in [AppSection.viewer, .content, .server, .accounts, .settings, .serverSettings] {
             model.selectedSection = section
             model.retryManagement()
             XCTAssertTrue(model.managementSessionWanted, "Navigating away must not revoke the app session's management demand.")
@@ -462,7 +461,7 @@ final class RuntimeContractTests: XCTestCase {
         model.selectedSection = .accounts
         model.retryManagement()
 
-        for section in [AppSection.viewer, .content, .server, .settings, .accounts] {
+        for section in [AppSection.viewer, .content, .server, .settings, .serverSettings, .accounts] {
             model.selectedSection = section
             XCTAssertTrue(model.applyRuntimeState(ready, for: model.beginRuntimeStateRequest()))
             XCTAssertTrue(model.managementSessionWanted)
@@ -559,6 +558,140 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertTrue(model.browser(.serverSettings) === visible)
         XCTAssertEqual(model.goURL(path: "/webui/admin/")?.port, 43127)
         XCTAssertTrue(model.browser(.assets) === editor)
+    }
+
+    func testAppAndServerSettingsAreDistinctLocalizedSidebarDestinations() {
+        XCTAssertTrue(AppSection.allCases.contains(.settings))
+        XCTAssertTrue(AppSection.allCases.contains(.serverSettings))
+        for (language, app, server) in [("en", "App settings", "Server settings"),
+                                      ("ko", "앱 설정", "서버 설정"), ("ja", "アプリ設定", "サーバー設定")] {
+            XCTAssertEqual(AppSection.settings.title(language), app)
+            XCTAssertEqual(AppSection.serverSettings.title(language), server)
+        }
+        XCTAssertNotEqual(AppSection.settings.symbol, AppSection.serverSettings.symbol)
+        XCTAssertNil(AppSection.serverSettings.assetEditorSection)
+    }
+
+    func testLocalWebUICapabilityFollowsTheReadyRoleAndIsNeverAURLParameter() throws {
+        let main = String(repeating: "a", count: 32), management = String(repeating: "b", count: 32)
+        func state(running: Bool, ready: Bool = true) throws -> RuntimeState {
+            let value: [String: Any] = ["server_running": running,
+                "server": ["running": true, "http_ready": ready, "url": "http://0.0.0.0:18080", "local_webui_token": main],
+                "management": ["running": true, "http_ready": true, "url": "http://127.0.0.1:43127", "local_webui_token": management]]
+            return try JSONDecoder().decode(RuntimeState.self, from: JSONSerialization.data(withJSONObject: value))
+        }
+        for (running, expected, port) in [(true, main, 18080), (false, management, 43127)] {
+            for path in ["/webui/admin/", "/webui/user/"] {
+                let endpoint = try XCTUnwrap(try state(running: running).webUIEndpoint(path: path))
+                XCTAssertEqual(endpoint.localWebUIToken, expected)
+                XCTAssertEqual(endpoint.url.port, port)
+                XCTAssertNil(URLComponents(url: endpoint.url, resolvingAgainstBaseURL: false)?.query)
+                XCTAssertEqual(endpoint.initialRequest.value(forHTTPHeaderField: "X-Elichika-Local-Access"), expected)
+                XCTAssertNil(endpoint.initialRequest.value(forHTTPHeaderField: "X-Elichika-Session"))
+            }
+        }
+        XCTAssertNil(try state(running: true, ready: false).webUIEndpoint(path: "/webui/admin/"),
+                     "A starting game role must never borrow the management role's capability.")
+    }
+
+    func testLocalWebUICapabilityIsOptionalAndRefusedForRemoteOrMalformedTokens() throws {
+        let token = String(repeating: "a", count: 32)
+        func endpoint(url: String, token: String?) throws -> RuntimeState.WebUIEndpoint? {
+            var server: [String: Any] = ["running": true, "http_ready": true, "url": url]
+            if let token { server["local_webui_token"] = token }
+            let data = try JSONSerialization.data(withJSONObject: ["server_running": true, "server": server])
+            return try JSONDecoder().decode(RuntimeState.self, from: data).webUIEndpoint(path: "/webui/admin/")
+        }
+        for value in [nil, "", "short", token + "\n", token + "\r\nInjected: true", String(repeating: "g", count: 32), String(repeating: "A", count: 32), String(repeating: "a", count: 64)] {
+            let target = try XCTUnwrap(try endpoint(url: "http://127.0.0.1:18080", token: value))
+            XCTAssertNil(target.localWebUIToken)
+            XCTAssertNil(target.initialRequest.value(forHTTPHeaderField: "X-Elichika-Local-Access"))
+        }
+        for address in ["192.0.2.8", "[2001:db8::8]"] {
+            let target = try XCTUnwrap(try endpoint(url: "http://\(address):18080", token: token))
+            XCTAssertNil(target.localWebUIToken)
+            XCTAssertNil(target.initialRequest.value(forHTTPHeaderField: "X-Elichika-Local-Access"))
+        }
+        let ipv6 = try XCTUnwrap(try endpoint(url: "http://[::]:18080", token: token))
+        XCTAssertEqual(ipv6.url.absoluteString, "http://[::1]:18080/webui/admin/")
+        XCTAssertEqual(ipv6.initialRequest.value(forHTTPHeaderField: "X-Elichika-Local-Access"), token)
+    }
+
+    @MainActor
+    func testCapabilityRotationAtTheSamePortDisposesOnlyGoBrowsersBeforePublication() throws {
+        _ = NSApplication.shared
+        let model = AppModel(arguments: [], resources: nil)
+        func ready(_ token: String) throws -> RuntimeState {
+            try JSONDecoder().decode(RuntimeState.self, from: Data("""
+                {"phase":"ready","prepared":true,"management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:43127","local_webui_token":"\(token)"}}
+                """.utf8))
+        }
+        let oldToken = String(repeating: "a", count: 32), newToken = String(repeating: "b", count: 32)
+        XCTAssertTrue(model.applyRuntimeState(try ready(oldToken), for: model.beginRuntimeStateRequest()))
+        let settings = model.browser(.serverSettings), accounts = model.browser(.accounts), editor = model.browser(.assets)
+        defer { model.clearGoBrowsers(); editor.dispose() }
+        XCTAssertEqual(settings.initialRequest?.value(forHTTPHeaderField: "X-Elichika-Local-Access"), oldToken)
+        XCTAssertEqual(accounts.initialRequest?.value(forHTTPHeaderField: "X-Elichika-Local-Access"), oldToken)
+        XCTAssertNil(editor.initialRequest)
+        var invalidatedBeforePublication = false
+        let observation = model.$snapshot.dropFirst().sink { value in
+            if value.management?.localWebUIToken == newToken {
+                invalidatedBeforePublication = settings.webView.navigationDelegate == nil && accounts.webView.navigationDelegate == nil
+            }
+        }
+        defer { observation.cancel() }
+        let revision = model.goBrowserRevision
+        XCTAssertTrue(model.applyRuntimeState(try ready(newToken), for: model.beginRuntimeStateRequest()))
+        XCTAssertTrue(invalidatedBeforePublication)
+        XCTAssertEqual(model.goBrowserRevision, revision + 1)
+        XCTAssertFalse(model.browser(.serverSettings) === settings)
+        XCTAssertFalse(model.browser(.accounts) === accounts)
+        XCTAssertEqual(model.browser(.serverSettings).initialRequest?.value(forHTTPHeaderField: "X-Elichika-Local-Access"), newToken)
+        XCTAssertTrue(model.browser(.assets) === editor)
+    }
+
+    @MainActor
+    func testSameCapabilityMenuRoundTripsPreserveAuthorizedBrowserRequestsAndSessions() throws {
+        _ = NSApplication.shared
+        let model = AppModel(arguments: [], resources: nil)
+        let token = String(repeating: "a", count: 32)
+        let ready = try JSONDecoder().decode(RuntimeState.self, from: Data("""
+            {"phase":"ready","prepared":true,"management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:43127","local_webui_token":"\(token)"}}
+            """.utf8))
+        XCTAssertTrue(model.applyRuntimeState(ready, for: model.beginRuntimeStateRequest()))
+        let settings = model.browser(.serverSettings), accounts = model.browser(.accounts)
+        defer { model.clearGoBrowsers() }
+        let revision = model.goBrowserRevision
+        for section in AppSection.allCases {
+            model.selectedSection = section
+            model.retryManagement()
+            XCTAssertTrue(model.applyRuntimeState(ready, for: model.beginRuntimeStateRequest()))
+            XCTAssertTrue(model.browser(.serverSettings) === settings)
+            XCTAssertTrue(model.browser(.accounts) === accounts)
+            XCTAssertEqual(model.goBrowserRevision, revision)
+            XCTAssertEqual(accounts.initialRequest?.value(forHTTPHeaderField: "X-Elichika-Local-Access"), token)
+        }
+    }
+
+    @MainActor
+    func testActiveGameRoleOwnsBothNativeBrowserBootstrapRequests() throws {
+        _ = NSApplication.shared
+        let model = AppModel(arguments: [], resources: nil)
+        let mainToken = String(repeating: "a", count: 32), managementToken = String(repeating: "b", count: 32)
+        let ready = try JSONDecoder().decode(RuntimeState.self, from: Data("""
+            {"phase":"ready","prepared":true,"server_running":true,
+             "server":{"running":true,"http_ready":true,"url":"http://0.0.0.0:18080","local_webui_token":"\(mainToken)"},
+             "management":{"running":true,"http_ready":true,"url":"http://127.0.0.1:43127","local_webui_token":"\(managementToken)"}}
+            """.utf8))
+        XCTAssertTrue(model.applyRuntimeState(ready, for: model.beginRuntimeStateRequest()))
+        defer { model.clearGoBrowsers() }
+        for route in [BrowserRoute.serverSettings, .accounts] {
+            let request = try XCTUnwrap(model.browser(route).initialRequest)
+            XCTAssertEqual(request.url?.host, "127.0.0.1")
+            XCTAssertEqual(request.url?.port, 18080)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Elichika-Local-Access"), mainToken)
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Elichika-Session"))
+        }
     }
 
 }

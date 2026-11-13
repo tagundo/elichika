@@ -134,20 +134,20 @@ function renderForm() {
   }
 
   const form = el("form", { id: "tool-form", onsubmit: (e) => { e.preventDefault(); runTool(); } });
-  if (tool.id === "costume_delete") {
+  if (isRemovalTool(tool.id)) {
     form.appendChild(el("p", { id: "delete-phase", class: "removal-phase", role: "status",
-      text: T("Select costumes, review their use, then confirm removal.") }));
+      text: T(removalText("Select costumes, review their use, then confirm removal.", "Select clones, review their use, then confirm removal.")) }));
   }
   for (const field of tool.fields) form.appendChild(renderField(field));
   const run = el("button", { class: "run-btn", type: "submit",
-    text: T(tool.id === "costume_delete" ? "Review removal" : "Run") });
+    text: T(isRemovalTool(tool.id) ? "Review removal" : "Run") });
   run.disabled = state.running;
   form.appendChild(run);
-  if (tool.id === "costume_delete") {
+  if (isRemovalTool(tool.id)) {
     form.addEventListener("change", (event) => {
       if (!event.target.matches("[data-name]")) return;
       invalidateRemovalReview();
-      if (!state.running) setRemovalPhase("Select costumes, review their use, then confirm removal.");
+      if (!state.running) setRemovalPhase(removalText("Select costumes, review their use, then confirm removal.", "Select clones, review their use, then confirm removal."));
     });
   }
   if (tool.id === "install_costume") {
@@ -168,7 +168,7 @@ function renderForm() {
 
   // auto-load dynamic selects that don't depend on another field
   for (const field of tool.fields) {
-    if (field.type === "dynamic_select" && (!field.depends_on || tool.id === "costume_delete" || tool.id === "restore_costume_cdn")) loadOptions(field);
+    if (field.type === "dynamic_select" && (!field.depends_on || isRemovalTool(tool.id) || tool.id === "restore_costume_cdn")) loadOptions(field);
   }
 }
 
@@ -238,14 +238,14 @@ function renderField(field) {
     }
     const refresh = el("button", { type: "button", title: T("Load options"), text: "↻",
       onclick: () => loadOptions(field) });
-    if (field.multi && state.currentTool.id === "costume_delete") {
+    if (field.multi && isRemovalTool(state.currentTool.id)) {
       sel.hidden = true;
-      const search = el("input", { id: id + "_search", type: "search", placeholder: T("Search costumes"),
-        "aria-label": T("Search costumes") });
+      const search = el("input", { id: id + "_search", type: "search", placeholder: T(removalText("Search costumes", "Search clones")),
+        "aria-label": T(removalText("Search costumes", "Search clones")) });
       search.addEventListener("input", () => filterRemovalChoices(sel, search));
       wrap.appendChild(el("div", { class: "dyn-row" }, [sel, search, refresh]));
       wrap.appendChild(el("div", { id: id + "_choices", class: "multi-choices removal-choices", role: "group", "aria-label": field.label }));
-      wrap.appendChild(el("div", { id: id + "_count", class: "help", "aria-live": "polite", text: T("Selected costumes: ") + "0" }));
+      wrap.appendChild(el("div", { id: id + "_count", class: "help", "aria-live": "polite", text: T(removalText("Selected costumes: ", "Selected clones: ")) + "0" }));
     } else wrap.appendChild(el("div", { class: "dyn-row" }, [sel, refresh]));
   } else {
     wrap.appendChild(el("label", { for: id, text: field.label }));
@@ -285,7 +285,7 @@ async function loadOptions(field) {
   if (!sel) return;
   const toolId = state.currentTool.id;
   const selectedBefore = new Set(Array.from(sel.selectedOptions).map((option) => option.value));
-  if (toolId === "costume_delete") invalidateRemovalReview();
+  if (isRemovalTool(toolId)) invalidateRemovalReview();
   const request = String((Number(sel.dataset.optionsRequest) || 0) + 1);
   sel.dataset.optionsRequest = request;
   const isCurrent = () => sel.isConnected && sel.dataset.optionsRequest === request &&
@@ -304,15 +304,16 @@ async function loadOptions(field) {
     if (!opts.length) sel.appendChild(el("option", { value: "", text: T("— none —") }));
     for (const o of opts) {
       const option = el("option", { value: o.value, text: o.label });
+      if (typeof o.kind === "string") option.dataset.kind = o.kind;
       if (sel.multiple) option.selected = selectedBefore.has(String(o.value));
       sel.appendChild(option);
     }
     if (data.error) sel.appendChild(el("option", { value: "", text: "(error: " + data.error + ")" }));
-    if (toolId === "costume_delete") renderRemovalChoices(sel);
+    if (isRemovalTool(toolId)) renderRemovalChoices(sel);
   } catch (e) {
     if (!isCurrent()) return;
     sel.innerHTML = "<option value=''>(error: " + e + ")</option>";
-    if (toolId === "costume_delete") renderRemovalChoices(sel);
+    if (isRemovalTool(toolId)) renderRemovalChoices(sel);
   }
 }
 
@@ -320,6 +321,7 @@ function renderRemovalChoices(sel) {
   const choices = document.getElementById(sel.id + "_choices");
   if (!choices) return;
   choices.replaceChildren();
+  let legacyGroup = null;
   for (const option of sel.options) {
     if (!option.value) continue;
     const check = el("input", { type: "checkbox", value: option.value });
@@ -331,7 +333,15 @@ function renderRemovalChoices(sel) {
     });
     const row = el("label", {}, [check, document.createTextNode(option.textContent)]);
     row.dataset.search = (option.textContent + " " + option.value).toLocaleLowerCase();
-    choices.appendChild(row);
+    if (option.dataset.kind === "legacy") {
+      if (!legacyGroup) {
+        legacyGroup = el("div", { class: "removal-legacy-group", role: "group", "aria-label": T("Unclassified legacy installations") });
+        legacyGroup.appendChild(el("p", { class: "help", text: T("Unclassified legacy installations") }));
+        legacyGroup.appendChild(el("p", { class: "help", text: T("Without an installation receipt, its costume or clone type cannot be verified. Review and a recovery backup are still required; unowned assets remain cached.") }));
+        choices.appendChild(legacyGroup);
+      }
+      legacyGroup.appendChild(row);
+    } else choices.appendChild(row);
   }
   if (!choices.childElementCount) choices.appendChild(el("p", { class: "help", text: T("— none —") }));
   updateRemovalCount(sel);
@@ -340,7 +350,9 @@ function renderRemovalChoices(sel) {
 
 function updateRemovalCount(sel) {
   const count = document.getElementById(sel.id + "_count");
-  if (count) count.textContent = T("Selected costumes: ") + Array.from(sel.selectedOptions).filter((o) => o.value).length;
+  const selected = Array.from(sel.selectedOptions).filter((o) => o.value);
+  if (count) count.textContent = T(selected.some((o) => o.dataset.kind === "legacy") ? "Selected installations: "
+    : removalText("Selected costumes: ", "Selected clones: ")) + selected.length;
 }
 
 function filterRemovalChoices(sel, search) {
@@ -348,6 +360,16 @@ function filterRemovalChoices(sel, search) {
   if (!choices) return;
   const text = search ? search.value.trim().toLocaleLowerCase() : "";
   for (const row of choices.querySelectorAll("label")) row.hidden = !row.dataset.search.includes(text);
+  const legacyGroup = choices.querySelector(".removal-legacy-group");
+  if (legacyGroup) legacyGroup.hidden = !Array.from(legacyGroup.querySelectorAll("label")).some((row) => !row.hidden);
+}
+
+function isRemovalTool(id) { return id === "costume_delete" || id === "clone_delete"; }
+
+function removalEvent(id, phase) { return (id === "clone_delete" ? "clone" : "costume") + "-delete-" + phase; }
+
+function removalText(costume, clone, id = state.currentTool && state.currentTool.id) {
+  return id === "clone_delete" ? clone : costume;
 }
 
 function removalIds(value) {
@@ -467,14 +489,15 @@ async function runTool(overrides = null) {
   if (state.running || !state.currentTool) return;
   const tool = state.currentTool;
   const params = Object.assign(collectParams(), overrides || {});
-  if (tool.id === "costume_delete") {
+  if (isRemovalTool(tool.id)) {
     params.installations = removalIds(params);
     delete params.installation;
     if (params.installations.length > 100) {
-      setRemovalPhase("Select up to 100 costumes per removal.", "warning");
+      setRemovalPhase(removalText("Select up to 100 costumes per removal.", "Select up to 100 clones per removal."), "warning");
       return;
     }
     params.action = params.action || "preview";
+    if (tool.id === "clone_delete") params.allow_original = false;
     if (params.action === "delete" && (!state.deleteReview ||
         !sameRemovalIds(state.deleteReview, params) || !sameRemovalIds(collectParams(), params) ||
         state.deleteReview.review_token !== params.review_token ||
@@ -483,22 +506,26 @@ async function runTool(overrides = null) {
   }
   const missing = [];
   for (const f of tool.fields) {
-    const value = tool.id === "costume_delete" && f.name === "installation" ? params.installations : params[f.name];
+    const value = isRemovalTool(tool.id) && f.name === "installation" ? params.installations : params[f.name];
     if (f.required && (Array.isArray(value) ? !value.length : !String(value ?? "").trim())) missing.push(f.label);
   }
   if (missing.length) return alert(T("Please fill in: ") + missing.join(", "));
 
-  if (tool.id === "costume_delete") {
+  if (isRemovalTool(tool.id)) {
     invalidateRemovalReview();
     const previous = $("#delete-result");
     if (previous) previous.remove();
-    setRemovalPhase(params.action === "delete" ? "Removing selected costumes…" : "Reviewing selected costumes…");
+    setRemovalPhase(params.action === "delete"
+      ? removalText("Removing selected costumes…", "Removing selected clones…", tool.id)
+      : removalText("Reviewing selected costumes…", "Reviewing selected clones…", tool.id));
   }
   const generation = ++state.formGeneration;
   const context = { toolId: tool.id, toolLabel: tool.label, params, generation };
   setRunning(true);
-  openConsole(tool.label, tool.id === "costume_delete"
-    ? (params.action === "delete" ? "Removing selected costumes…" : "Reviewing selected costumes…") : "running…");
+  openConsole(tool.label, isRemovalTool(tool.id)
+    ? (params.action === "delete"
+      ? removalText("Removing selected costumes…", "Removing selected clones…", tool.id)
+      : removalText("Reviewing selected costumes…", "Reviewing selected clones…", tool.id)) : "running…");
   let resp;
   try {
     if (tool.id === "install_costume" && params.auto_thumbnail !== false) {
@@ -533,15 +560,15 @@ function streamJob(jobId, context) {
     if (state.es !== es) return;
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === "log") {
-      if (context.toolId === "costume_delete") {
+      if (isRemovalTool(context.toolId)) {
         const value = parseJobRecord(msg.line);
         if (value && sameRemovalIds(value, context.params)) {
-          if (context.params.action === "preview" && value.event === "costume-delete-review" &&
+          if (context.params.action === "preview" && value.event === removalEvent(context.toolId, "review") &&
               value.action_performed === false && typeof value.deletable === "boolean" &&
               typeof value.review_token === "string" && value.review_token &&
               value.replace_in_use === context.params.replace_in_use && value.allow_original === context.params.allow_original)
             removalReview = value;
-          else if (context.params.action === "delete" && value.event === "costume-delete-complete" &&
+          else if (context.params.action === "delete" && value.event === removalEvent(context.toolId, "complete") &&
               value.status === "deleted" && value.action_performed === true &&
               value.deleted_count === removalIds(context.params).length && typeof value.backup === "string" && value.backup)
             removalComplete = value;
@@ -554,7 +581,7 @@ function streamJob(jobId, context) {
       if (msg.summary) appendLog("\n" + msg.summary);
       finishConsole(msg.status, context, { removalReview, removalComplete });
       es.close(); state.es = null; state.jobId = null; setRunning(false);
-      if (context.toolId === "costume_delete" &&
+      if (isRemovalTool(context.toolId) &&
           state.formGeneration === context.generation &&
           state.currentTool && state.currentTool.id === context.toolId &&
           sameRemovalIds(collectParams(), context.params)) {
@@ -587,13 +614,16 @@ function confirmOriginalRemoval(plan) {
       resolve(accepted);
     };
     dialog.appendChild(el("h3", { id: "original-confirm-title", text: T("Remove selected built-in costumes?") }));
-    dialog.appendChild(el("p", { text: T("This selection includes built-in costumes. Remove all selected costumes? A backup will be kept. This affects every account.") }));
+    const hasLegacy = removalItems(plan).some((item) => item.kind === "legacy");
+    dialog.appendChild(el("p", { text: T(hasLegacy
+      ? "This selection includes built-in costumes. Remove all selected installations? A backup will be kept. This affects every account."
+      : "This selection includes built-in costumes. Remove all selected costumes? A backup will be kept. This affects every account.") }));
     const names = el("ul");
     for (const item of removalItems(plan)) names.appendChild(el("li", { text: item.label || item.install_id }));
     dialog.appendChild(names);
     dialog.appendChild(el("p", { text: T("Costume IDs: ") + (plan.suit_ids || []).join(", ") }));
     const cancel = el("button", { type: "button", autofocus: "", text: T("Cancel"), onclick: () => finish(false) });
-    const confirm = el("button", { type: "button", class: "danger", text: T("Remove all selected costumes"), onclick: () => finish(true) });
+    const confirm = el("button", { type: "button", class: "danger", text: T(hasLegacy ? "Remove all selected installations" : "Remove all selected costumes"), onclick: () => finish(true) });
     dialog.appendChild(el("div", { class: "original-confirm-actions" }, [cancel, confirm]));
     dialog.addEventListener("cancel", (event) => { event.preventDefault(); finish(false); });
     dialog.addEventListener("close", () => finish(false));
@@ -622,13 +652,27 @@ function showRemovalReview(plan) {
   const panel = el("section", { id: "delete-review", class: "removal-review", "aria-live": "polite" });
   panel.appendChild(el("h3", { text: T("Removal review") }));
   panel.appendChild(el("p", { class: "removal-review-notice", text: T("Review complete — not deleted yet") }));
-  panel.appendChild(el("p", { text: T("Selected costumes: ") + removalIds(plan).length }));
+  const hasLegacy = removalItems(plan).some((item) => item.kind === "legacy");
+  panel.appendChild(el("p", { text: T(hasLegacy ? "Selected installations: " : removalText("Selected costumes: ", "Selected clones: ")) + removalIds(plan).length }));
   const selected = el("ul", { class: "removal-items" });
   for (const item of removalItems(plan)) selected.appendChild(el("li", {
-    text: (item.is_original ? T("Built-in costume: ") : "") + (item.label || item.install_id),
+    text: item.kind === "legacy" ? T("Unclassified legacy installation: ") + (item.suit_ids || [item.install_id]).join(", ")
+      : (item.is_original ? T("Built-in costume: ") : "") + (item.label || item.install_id),
   }));
   panel.appendChild(selected);
   panel.appendChild(el("p", { text: T("Costume IDs: ") + (plan.suit_ids || []).join(", ") }));
+  if (hasLegacy) panel.appendChild(el("p", { class: "help", text: T("Without an installation receipt, its costume or clone type cannot be verified. Review and a recovery backup are still required; unowned assets remain cached.") }));
+  const dependencies = plan.scene_donor_dependencies || [];
+  if (dependencies.length) {
+    panel.appendChild(el("p", { text: T("Remove these dependent installations first, then review again. They are not included in this removal.") }));
+    const list = el("ul", { class: "removal-dependencies" });
+    for (const item of dependencies) list.appendChild(el("li", {
+      text: (item.kind === "clone" ? T("Clone: ") : T("Costume / scene: ")) +
+        (item.label || item.install_id || item.receipt_file || "") +
+        (item.suit_ids ? " · " + T("Costume IDs: ") + item.suit_ids.join(", ") : ""),
+    }));
+    panel.appendChild(list);
+  }
   if (plan.deletable) {
     setRemovalPhase("Review complete — not deleted yet", "ready");
     panel.appendChild(el("p", { text: T("Database rows: ") + plan.row_count + " · " + T("Owned files: ") + plan.file_count }));
@@ -645,7 +689,7 @@ function showRemovalReview(plan) {
       panel.appendChild(list);
     }
     const confirm = el("button", { id: "delete-confirm", type: "button", class: "run-btn danger",
-      text: T("Back up and remove selected costumes / clones"), onclick: async () => {
+      text: T(hasLegacy ? "Back up and remove selected installations" : removalText("Back up and remove selected costumes", "Back up and remove selected clones")), onclick: async () => {
         if (state.running || state.deleteReview !== plan) return;
         confirm.disabled = true;
         try {
@@ -681,7 +725,7 @@ function showRemovalResult(result, status) {
   if (old) old.remove();
   const panel = el("section", { id: "delete-result", class: "removal-review removal-result", role: "status" });
   panel.appendChild(el("h3", { text: T("Removal complete") }));
-  panel.appendChild(el("p", { text: T("Removed costumes: ") + result.deleted_count }));
+  panel.appendChild(el("p", { text: T(result.contains_legacy ? "Removed installations: " : removalText("Removed costumes: ", "Removed clones: ")) + result.deleted_count }));
   panel.appendChild(el("p", { text: T("Restart the server and game to apply the removal.") }));
   panel.appendChild(el("p", { text: T("Recovery backup: ") + result.backup }));
   if (status !== "done") panel.appendChild(el("p", { class: "original-warning", text: T("Removal finished, but the job reported an error or cancellation. Check the log.") }));
@@ -720,7 +764,7 @@ function finishConsole(status, context = null, outcome = {}) {
   // It must be available for reading/copying before a terminal state is shown.
   flushPendingLogs();
   let source = status === "done" ? "done ✓" : status === "cancelled" ? "cancelled" : "error ✗";
-  if (context && context.toolId === "costume_delete") {
+  if (context && isRemovalTool(context.toolId)) {
     if (context.params.action === "preview") {
       source = status === "done"
         ? (outcome.removalReview ? (outcome.removalReview.deletable ? "Review complete — not deleted yet" : "Review complete — removal blocked") : "Review result unavailable — review again")

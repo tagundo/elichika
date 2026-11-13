@@ -32,6 +32,11 @@ object ManagementServer {
                                              internal val owner: ServerProcess?)
 
     fun url(): String? = baseUrl
+    /** In-process only, and unavailable as soon as this owner is suspended/draining. */
+    internal fun localWebuiToken(): String? = synchronized(lock) {
+        if (baseUrl == null || !requested || suspended.isNotEmpty() || drainingOwner != null) null
+        else process?.localWebuiToken()
+    }
     fun isPreparing(): Boolean = preparing
     fun hasError(): Boolean = failure != null
     fun errorMessage(): String? = failure

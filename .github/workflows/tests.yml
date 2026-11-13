@@ -71,6 +71,8 @@ jobs:
           python3 -m unittest discover -s tests -p test_android_app_version.py -v
           python3 -m unittest discover -s tests -p test_android_payload_upgrade.py -v
           python3 -m unittest discover -s tests -p test_android_offline_management_gate.py -v
+          python3 -m unittest discover -s tests -p test_android_console_performance_gate.py -v
+          python3 -m unittest discover -s tests -p test_android_release_smoke.py -v
           python3 -m unittest discover -s tests -p test_android_server_config_payload.py -v
           python3 -m unittest discover -s tests -p test_android_payload_upgrade_benchmark.py -v
           python3 -m unittest discover -s tests -p test_android_payload_noop_probe.py -v
@@ -214,6 +216,7 @@ jobs:
         run: |
           export NODE_PATH="$RUNNER_TEMP/viewer-browser/node_modules"
           mkdir -p "$EVIDENCE_DIR"
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node ../webui/native_local_browser_test.js
           node tests/texture_color_math_test.js
           node tests/texture_color_worker_test.js
           node tests/texture_paint_engine_test.js

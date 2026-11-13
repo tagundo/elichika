@@ -313,9 +313,11 @@ object PayloadUpgrade {
         }
         child = '''import http.server,json,os,pathlib,signal,sys,threading,time
 root=pathlib.Path.cwd()
-token=os.environ['ELICHIKA_READY_TOKEN']
+token=os.environ.get('ELICHIKA_READY_TOKEN')
+local_access=os.environ.get('ELICHIKA_LOCAL_WEBUI_TOKEN')
 with (root/'launches.jsonl').open('a') as stream:
-    stream.write(json.dumps({'args':sys.argv[1:],'pid':os.getpid(),'parent':os.environ.get('ELICHIKA_MANAGEMENT_PARENT_PID'),'token':token})+'\\n')
+    stream.write(json.dumps({'args':sys.argv[1:],'pid':os.getpid(),'parent':os.environ.get('ELICHIKA_MANAGEMENT_PARENT_PID'),'token':token,'local_access':local_access})+'\\n')
+if sys.argv[1:] not in ([],['management']): sys.exit(0)
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def do_GET(self):
@@ -331,6 +333,7 @@ def drain():
     server.shutdown()
 threading.Thread(target=drain,daemon=True).start()
 print('AdminPassword : PRIVATE-PASSWORD-SENTINEL',flush=True)
+print('capability-redaction-check '+local_access,flush=True)
 print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.0.0.1:'+str(server.server_port),'pid':os.getpid()}),flush=True)
 server.serve_forever(poll_interval=.01)
 server.server_close()
