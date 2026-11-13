@@ -175,7 +175,7 @@ def wait_file(path, process, timeout):
     raise TimeoutError(path.name)
 
 
-def run_case(binary, source, output, variant, resident, visibility):
+def run_case(binary, source, output, variant, resident, visibility, mode):
     output.mkdir(parents=True)
     private = output / 'private'
     private.mkdir(mode=0o700)
@@ -191,24 +191,32 @@ def run_case(binary, source, output, variant, resident, visibility):
         wait_file(output / 'ready-for-workload.json', process, 45)
         usage0 = resource.getrusage(resource.RUSAGE_SELF)
         begin = time.monotonic()
-        writer = threading.Thread(target=fixture.append_workload, daemon=True)
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            jobs = [pool.submit(fixture.download, stream) for stream in range(8)]
-            writer.start()
-            write(output / 'workload-started.json', {'monotonic': begin, 'parallel_streams': 8,
-                                                    'bytes_per_stream': TOTAL_BYTES, 'log_lines_per_second': 250})
-            downloads = [job.result(timeout=35) for job in jobs]
+        writer = None
+        if mode == 'bulk':
+            writer = threading.Thread(target=fixture.append_workload, daemon=True)
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                jobs = [pool.submit(fixture.download, stream) for stream in range(8)]
+                writer.start()
+                write(output / 'workload-started.json', {'monotonic': begin, 'mode': mode, 'parallel_streams': 8,
+                                                        'bytes_per_stream': TOTAL_BYTES, 'log_lines_per_second': 250})
+                downloads = [job.result(timeout=35) for job in jobs]
+        else:
+            write(output / 'workload-started.json', {'monotonic': begin, 'mode': mode, 'parallel_streams': 0,
+                                                    'bytes_per_stream': 0, 'log_lines_per_second': 0})
+            time.sleep(8)
+            downloads = []
         elapsed = time.monotonic() - begin
         usage1 = resource.getrusage(resource.RUSAGE_SELF)
         fixture.stop.set()
-        writer.join(timeout=2)
+        if writer:
+            writer.join(timeout=2)
         code = process.wait(timeout=45)
         native = json.loads((output / 'native-performance.json').read_text())
         native_ok = code == 0 and native.get('status') == 'MEASURED_SYNTHETIC_PROTOCOL_FIXTURE'
         document_ok = variant == 'baseline' or native.get('selection_scroll_copy', {}).get('status') == 'PASS'
         cpu = (usage1.ru_utime + usage1.ru_stime) - (usage0.ru_utime + usage0.ru_stime)
         record = {'status': 'MEASURED_REAL_NATIVE_UI' if native_ok and document_ok else 'FAIL_NATIVE_PROBE',
-                  'variant': variant, 'resident_lines': resident, 'visibility': visibility,
+                  'variant': variant, 'resident_lines': resident, 'visibility': visibility, 'mode': mode,
                   'python_source_sha256': fixture.source_sha, 'log_buffer_class_sha256': fixture.class_sha,
                   'native_exit_code': code, 'wall_seconds': elapsed, 'python_cpu_seconds': cpu,
                   'python_cpu_percent_one_core': 100 * cpu / elapsed,
@@ -249,17 +257,19 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     results = []
     failures = []
-    for resident in [0, 500, 1500]:
-        for visibility in ['visible', 'hidden']:
-            for variant in ['baseline', 'patched']:
-                try:
-                    result = run_case(getattr(args, variant + '_binary'), getattr(args, variant + '_python'),
-                                      args.output / f'{resident}-{visibility}-{variant}', variant, resident, visibility)
-                    results.append(result)
-                except Exception as error:
-                    failures.append({'resident_lines': resident, 'visibility': visibility, 'variant': variant,
-                                     'type': type(error).__name__, 'message': str(error)})
-                    write(args.output / f'{resident}-{visibility}-{variant}' / 'failure.json', failures[-1])
+    for mode in ['idle', 'bulk']:
+        for resident in [0, 500, 1500]:
+            for visibility in ['visible', 'hidden']:
+                for variant in ['baseline', 'patched']:
+                    case = args.output / f'{mode}-{resident}-{visibility}-{variant}'
+                    try:
+                        result = run_case(getattr(args, variant + '_binary'), getattr(args, variant + '_python'),
+                                          case, variant, resident, visibility, mode)
+                        results.append(result)
+                    except Exception as error:
+                        failures.append({'resident_lines': resident, 'visibility': visibility, 'variant': variant, 'mode': mode,
+                                         'type': type(error).__name__, 'message': str(error)})
+                        write(case / 'failure.json', failures[-1])
     write(args.output / 'performance-summary.json', {'status': 'MEASURED_PENDING_REVIEW' if not failures else 'FAIL_ACTUAL_CASE',
           'cases': results, 'failures': failures, 'qualification': __doc__})
     return bool(failures)

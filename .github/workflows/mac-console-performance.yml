@@ -70,7 +70,7 @@ jobs:
           (root/'perf-evidence/probe-binaries.json').write_text(json.dumps(values,indent=2)+'\n')
           PY
 
-      - name: Measure real visible and hidden Console with eight controlled local downloads
+      - name: Measure real visible and hidden Console idle and with eight controlled local downloads
         run: |
           python3 qa/mac-console-performance/run_performance.py \
             --baseline-binary "$RUNNER_TEMP/perf-build/baseline/PerfProbe" \

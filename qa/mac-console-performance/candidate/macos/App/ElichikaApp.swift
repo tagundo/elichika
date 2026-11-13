@@ -302,9 +302,9 @@ private struct ConsoleLogView: NSViewRepresentable {
         text.isHorizontallyResizable = false
         text.autoresizingMask = [.width]
         text.minSize = .zero
-        text.maxSize = NSSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         text.textContainer?.widthTracksTextView = true
-        text.textContainer?.containerSize = NSSize(width: scroll.contentSize.width, height: .greatestFiniteMagnitude)
+        text.textContainer?.containerSize = NSSize(width: scroll.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
         text.textContainerInset = NSSize(width: 12, height: 12)
         text.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
         text.textColor = .labelColor

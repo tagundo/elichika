@@ -14,8 +14,8 @@
     },
     {
       "path": "macos/App/ElichikaApp.swift",
-      "bytes": 48966,
-      "sha256": "f49ce4cf7cb0d34461db7997d25e495b1302ccfff65dac0ff25f88db92723b35"
+      "bytes": 48987,
+      "sha256": "4636f410efc236f6da80ec56657774fdaec53129de091df9dae190f9a4291fc2"
     },
     {
       "path": "macos/runtime/elichika_macos.py",
@@ -59,11 +59,12 @@
     "count": 70,
     "skips": 0,
     "status": "PASS",
-    "duration_seconds": 38.322,
-    "log": "python-runtime-tests-final.log",
-    "log_sha256": "e26566288db0018556287615e369c309d14a307e4b8d586bbae4f425b82c99d6",
-    "trusted_dependency_fixture": "/dev/shm/elichika-macos-webui-test-deps/certifi symlink to cached Android NDK pip-vendored certifi; no package install",
-    "source_note": "Current productioncode passed70; strengthenedconcurrencytest then6focusedpass. Exact6filefreeze70recheck running separately withoutsourcechanges."
+    "duration_seconds": 37.646,
+    "log": "python-runtime-tests-frozen.log",
+    "log_sha256": "64ddabdb9d39160cfe3808afc3cd8ea733f312a435e9655458335d9b3298fd58",
+    "trusted_dependency_fixture": "Existing /dev/shm/elichika-macos-webui-test-deps/certifi symlink to cached Android NDK pip-vendored certifi; no package installation",
+    "python_source_sha256_during_run": "a8c240571e7c2d9b965f832ffeadff29e5c0aa27d2d60ae3a5446847d1170403",
+    "python_test_source_sha256_during_run": "3ca2c41f091407778690550da77e621879d467cc8facdf93a180d9a1149e8c0e"
   },
   "profiling_owner": "/root/mac_settings_split",
   "unchanged_semantics": [
@@ -78,12 +79,25 @@
   ],
   "independent_static_review": {
     "path": "independent-static-review.json",
-    "sha256": "b69b3f1a98cde4c8d31f6439d5ec2c02e028ce396c0b672521094446566d4f27"
+    "sha256": "7512080208a3b47b5042f4d5ef39f50d6f123c3a41b7f9d96f29df19a8d257ca"
   },
   "qa_probe": {
     "path": "qa/PerfProbe.swift",
     "sha256": "24fb2c27c8f41b82fc3082d92f0cfb5e437481f699b86212bb99f42f6a21d951",
     "actual_mac_compile_and_run": "PENDING"
   },
-  "frozen_recheck_log": "python-runtime-tests-frozen.log"
+  "independent_python_microbenchmark": {
+    "path": "independent-logbuffer-microbenchmark.json",
+    "sha256": "c52f4168cf76b55a0e02b2a9470412035e13515b90365d3ad353682a43f757d6",
+    "scope": "Synthetic Python only; no Mac app performance gain claim"
+  },
+  "actual_mac_qa": {
+    "repository": "tagundo/elichika",
+    "run_id": 43405130258,
+    "status": "FAILED_SWIFT_COMPILE_BEFORE_MEASUREMENT",
+    "error": "CGFloat/Double ambiguous greatestFiniteMagnitude in NSSize; allthreeconstants nowexplicitCGFloat",
+    "runtime_metrics": "NONE",
+    "owner": "/root/mac_settings_split",
+    "required_next": "Actualnative44tests+baselinepatchedmeasurementrerunwithfixedexactsource"
+  }
 }
