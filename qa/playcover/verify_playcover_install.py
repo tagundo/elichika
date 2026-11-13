@@ -182,6 +182,7 @@ def main():
     p.add_argument('--allow-added-resource', action='append', default=[], help='Exact relative path, reviewed before QA')
     p.add_argument('--expected-entitlements', type=Path, help='Reviewed exact app entitlement plist or JSON; default empty')
     p.add_argument('--diagnostics', type=Path)
+    p.add_argument('--original-control', action='store_true', help='Verify the exact original source IPA control without the new feature library/sections')
     a = p.parse_args()
     app = a.installed_app.resolve(strict=True)
     if not app.is_dir() or app.suffix != '.app': raise SystemExit('Installed app directory required')
@@ -255,15 +256,20 @@ def main():
                     extras.append(relative)
             report['added_resources'] = extras
             if set(extras)-set(a.allow_added_resource): raise ValueError('Unreviewed added installed resources')
-            for name, target, args in (
+            verification_targets = [
                 ('app-verify', app, ['--verify', '--deep', '--strict', '--verbose=4']),
-                ('feature-verify', app/'Frameworks/SIFASFeatures.dylib', ['--verify', '--strict', '--verbose=4']),
                 ('app-signature', app, ['--display', '--verbose=4']),
-            ):
+            ]
+            if not a.original_control:
+                verification_targets.append(('feature-verify', app/'Frameworks/SIFASFeatures.dylib', ['--verify', '--strict', '--verbose=4']))
+            for name, target, args in verification_targets:
                 record, _ = run_record(['/usr/bin/codesign', *args, str(target)], proof/name)
                 report['commands'][name] = record
                 if record['returncode']: raise ValueError('codesign failed: '+name)
-            for name, target in (('app-entitlements', app), ('feature-entitlements', app/'Frameworks/SIFASFeatures.dylib')):
+            entitlement_targets = [('app-entitlements', app)]
+            if not a.original_control:
+                entitlement_targets.append(('feature-entitlements', app/'Frameworks/SIFASFeatures.dylib'))
+            for name, target in entitlement_targets:
                 record, output = run_record(['/usr/bin/codesign', '--display', '--entitlements', '-', '--xml', str(target)], proof/name)
                 report['commands'][name] = record
                 if record['returncode']: raise ValueError('Entitlements display failed: '+name)
@@ -272,7 +278,13 @@ def main():
                 expected = expected_entitlements if name == 'app-entitlements' else {}
                 if actual != expected: raise ValueError('Entitlements differ from reviewed baseline: '+name)
             mainname = original_info['CFBundleExecutable']
-            if '__TEXT,__sifas_text' not in report['macho_files'][mainname]['feature_sections'] or '__DATA,__sifas_cfg' not in report['macho_files'][mainname]['feature_sections']: raise ValueError('Feature sections absent')
+            sections = report['macho_files'][mainname]['feature_sections']
+            if a.original_control:
+                if sections or 'Frameworks/SIFASFeatures.dylib' in expected_paths:
+                    raise ValueError('Original control unexpectedly contains the new feature library/sections')
+                report['original_source_control'] = True
+            elif '__TEXT,__sifas_text' not in sections or '__DATA,__sifas_cfg' not in sections:
+                raise ValueError('Feature sections absent')
             report['candidate_resources_checked'] = len(report['resources'])
             if a.diagnostics:
                 report['diagnostics'] = audit_diagnostics(a.diagnostics)

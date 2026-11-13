@@ -6,7 +6,6 @@ modifies SIP/AMFI, or claims game login/playback from a living process.
 """
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,10 +13,8 @@ import platform
 import plistlib
 import re
 import signal
-import sqlite3
 import subprocess
 import sys
-import threading
 import time
 import urllib.request
 
@@ -46,27 +43,6 @@ def wait_for(predicate, seconds):
         time.sleep(.5)
     return None
 
-def fresh_crash_metadata(executable, since):
-    records = []
-    root = Path.home()/'Library/Logs/DiagnosticReports'
-    for path in root.glob(executable+'*.ips'):
-        if path.stat().st_mtime < since or path.stat().st_size > 4*1024*1024:continue
-        try:
-            text = path.read_text().lstrip()
-            first, end = json.JSONDecoder().raw_decode(text)
-            tail = text[end:].strip()
-            data = json.loads(tail) if tail else first
-            rows = []
-            for thread in data.get('threads',[]):
-                if not thread.get('triggered'):continue
-                rows.append({'triggered':True,'frames':[{key:frame[key] for key in ['imageIndex','imageOffset','symbol','symbolLocation'] if key in frame} for frame in thread.get('frames',[])[:40]]})
-            records.append({'file':path.name,'sha256':sha(path),'procName':data.get('procName'),
-                'exception':{key:data.get('exception',{}).get(key) for key in ['type','signal','codes']},
-                'termination':{key:data.get('termination',{}).get(key) for key in ['namespace','code','indicator']},
-                'triggered_threads':rows,'images':[{key:image[key] for key in ['name','arch','uuid','path','base'] if key in image} for image in data.get('usedImages',[])]})
-        except Exception as error:records.append({'file':path.name,'metadata_error':type(error).__name__})
-    return records
-
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--fixtures', type=Path, required=True)
@@ -92,19 +68,22 @@ def main():
         host = {name: command(argv) for name, argv in {
             'uname': ['uname','-a'], 'macos': ['sw_vers'], 'hardware': ['sysctl','-n','hw.optional.arm64'],
             'windowserver': ['pgrep','-x','WindowServer'], 'sip': ['csrutil','status'],
-            'bootargs': ['sysctl','kern.bootargs']}.items()}
+            'bootargs': ['sysctl','kern.bootargs'], 'displays': ['system_profiler','SPDisplaysDataType','-json'],
+            'open_help':['open','-h']}.items()}
         write(a.evidence/'host.json', host)
         assert host['hardware']['stdout'].strip() == '1' and host['windowserver']['code'] == 0, 'Apple Silicon WindowServer required'
         assert 'amfi_get_out_of_my_way' not in host['bootargs']['stdout'], 'Unreviewed PlaySign environment'
         build = a.fixtures/'host-tools'; build.mkdir(exist_ok=True)
-        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA']:
+        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA', 'MetalHost']:
             arguments = ['xcrun','swiftc','-target','arm64-apple-macosx13.0',HERE/(name+'.swift'),'-o',build/name]
             if name == 'VisionQA':
                 for framework in ['AppKit','ApplicationServices','CoreGraphics','Vision','ImageIO','CryptoKit']:
                     arguments += ['-framework',framework]
+            if name == 'MetalHost': arguments += ['-framework','Metal']
             result = command(arguments, timeout=120)
             write(a.evidence/(name+'-compile.json'), result)
             assert result['code'] == 0, 'Swift helper compilation failed: '+name
+        write(a.evidence/'actual-metal-devices.json',command([build/'MetalHost']))
         def host_state(bundle):
             result = command([build/'HostEvidence',bundle])
             if result['code']: return {'error': result}
@@ -168,7 +147,7 @@ def main():
                         return response.status == 200
                 except Exception: return False
             assert wait_for(server_ready,180), 'Disposable Go server readiness failed'
-        for candidate in manifest['candidates']:
+        for candidate in manifest.get('controls',[]) + manifest['candidates']:
             folder = a.evidence/candidate['region']; folder.mkdir()
             result = dict(candidate, status='IN_PROGRESS', feature_actions=[], game_login_observed=False, mv_playback_observed=False, actual_playcover_import=False)
             report['candidates'].append(result)
@@ -197,6 +176,7 @@ def main():
             write(folder/'playtools-footprint-command.json',footprint)
             result['pinned_standard_playtools_verified'] = footprint['code'] == 0
             additional = []
+            if candidate.get('role') == 'original-control': additional.append('--original-control')
             if footprint['code'] == 0:
                 allowed = json.loads((folder/'playtools-footprint/verifier-arguments.json').read_text())
                 for value in allowed['allow_dylib']:additional += ['--allow-dylib',value]
@@ -206,6 +186,10 @@ def main():
                 '--playcover-app',pc,'--playcover-dmg',dmg,'--expected-entitlements',expected_path,*additional],timeout=180)
             write(folder/'verifier-command.json', verified)
             result['bundle_verification_passed'] = verified['code'] == 0
+            if footprint['code'] != 0 or verified['code'] != 0:
+                result['status'] = 'FAIL_VERIFICATION_BEFORE_GAME_LAUNCH'
+                stage('verification-failed-'+candidate['region'])
+                continue
             stage('launch-imported-app-'+candidate['region'])
             installed_info = plistlib.loads((app/'Info.plist').read_bytes())
             display = installed_info.get('CFBundleDisplayName') or installed_info['CFBundleName']
@@ -213,26 +197,47 @@ def main():
             assert wait_for(lambda:(alias/'Info.plist').exists(),15), 'Normal PlayCover launch alias was not created'
             alias_info = plistlib.loads((alias/'Info.plist').read_bytes())
             assert alias_info == installed_info, 'Normal launch alias metadata differs from verified imported app'
+            assert {entry.name for entry in alias.iterdir()} == {entry.name for entry in app.iterdir()}, 'Normal PlayCover launch alias has an incomplete top-level inventory'
+            assert (alias/installed_info['CFBundleExecutable']).exists(), 'Normal PlayCover launch alias executable is absent'
             alias_entries = {}
             for entry in alias.iterdir():
                 if entry.name == 'Info.plist':continue
                 assert entry.is_symlink() and entry.resolve(strict=True) == (app/entry.name).resolve(strict=True), 'Alias entry is not the normal imported-app symlink'
                 alias_entries[entry.name] = str(entry.resolve())
             write(folder/'normal-playcover-launch-alias.json',{'alias':str(alias),'entries':alias_entries,'metadata_equal':True})
-            launch_args = ['open','-a',alias,'--args','-SIFASDiagnosticsEnabled','YES','-ServerEndpoint','http://127.0.0.1:8080']
+            private_stdout = a.fixtures/(candidate['region']+'-launch.stdout')
+            private_stderr = a.fixtures/(candidate['region']+'-launch.stderr')
+            open_help = host['open_help'].get('stdout','') + host['open_help'].get('stderr','')
+            launch_options = ['--stdout',private_stdout,'--stderr',private_stderr] if '--stdout' in open_help and '--stderr' in open_help else []
+            launch_args = ['open',*launch_options,'-a',alias,'--args','-SIFASDiagnosticsEnabled','YES','-ServerEndpoint','http://127.0.0.1:8080']
             launch_wall = time.time()
             launch = command(launch_args)
             write(folder/'normal-launch.json',launch)
+            def startup_capture(observed_pid,label):
+                record = command([sys.executable,HERE/'capture_startup.py','--bundle-id',candidate['bundle_id'],
+                    '--executable',installed_info['CFBundleExecutable'],'--pid',str(observed_pid),'--since',str(launch_wall),
+                    '--private-log-root',a.fixtures,'--launch-stdout',private_stdout,'--launch-stderr',private_stderr,
+                    '--proof-dir',folder/label],timeout=60)
+                write(folder/(label+'-command.json'),record)
             running = wait_for(lambda: host_state(candidate['bundle_id']).get('applications'),30)
             if not running:
                 result.update(status='FAIL_APP_LAUNCH', launch=launch)
-                write(folder/'launch-crash-metadata.json',fresh_crash_metadata(installed_info['CFBundleExecutable'],launch_wall))
+                startup_capture(0,'startup-no-observed-pid')
                 stage('launch-failed-'+candidate['region'])
                 continue
             pid = running[0]['pid']; result['actual_pid'] = pid
             result['actual_process_start'] = command(['ps','-p',str(pid),'-o','lstart='])
             result['launch_wall_time'] = launch_wall
             time.sleep(12)
+            alive = host_state(candidate['bundle_id'])
+            if not any(item['pid'] == pid for item in alive.get('applications',[])):
+                result.update(status='FAIL_PROCESS_EXITED_BEFORE_VISIBLE_UI',process_alive_after_observation=False,
+                              host_after_early_exit=alive)
+                time.sleep(3)
+                startup_capture(pid,'startup-early-exit')
+                stage('early-process-exit-'+candidate['region'])
+                continue
+            startup_capture(pid,'startup-visible-process')
             command([build/'HostEvidence',candidate['bundle_id'],'--activate'])
             vision_initial = command([build/'VisionQA','snapshot','--pid',str(pid),'--proof-dir',folder/'vision-initial'],timeout=30)
             write(folder/'vision-initial-command.json',vision_initial)
@@ -243,7 +248,10 @@ def main():
                 write(folder/(label+'-command.json'),record)
                 result['feature_actions'].append({'action':action,'label':label,'returncode':record['code']})
                 return record['code'] == 0
-            if not ax('dump','ax-initial'):
+            if candidate.get('role') == 'original-control':
+                ax('dump','ax-original-control')
+                result['feature_ui_status'] = 'ORIGINAL_SOURCE_CONTROL_WITHOUT_NEW_FEATURE_LIBRARY'
+            elif not ax('dump','ax-initial'):
                 result['feature_ui_status'] = 'BLOCKED_ACCESSIBILITY_PERMISSION_OR_AX_UNAVAILABLE'
             elif ax('press','settings-open','SIFASFeatures.Settings'):
                 time.sleep(.6)
@@ -276,6 +284,9 @@ def main():
                 except Exception as error: result['diagnostics_error'] = str(error)
             result['final_host'] = host_state(candidate['bundle_id'])
             result['process_alive_after_observation'] = bool(result['final_host'].get('applications'))
+            if not result['process_alive_after_observation']:
+                time.sleep(3)
+                startup_capture(pid,'startup-exited-during-ui')
             result['final_screen'] = record_screen(candidate['bundle_id'],folder,'game-final')
             command([build/'HostEvidence',candidate['bundle_id'],'--activate'])
             write(folder/'vision-final-command.json',command([build/'VisionQA','snapshot','--pid',str(pid),'--proof-dir',folder/'vision-final'],timeout=30))
@@ -317,9 +328,10 @@ def main():
             verified['native_load'] = diagnostic.get('running_on_mac') is True and diagnostic.get('settings_overlay_attached') is True
             candidate_report = {'schema_version':1,'status':'INCOMPLETE_ACTUAL_RUNTIME',
                 'run':{'id':os.environ.get('GITHUB_RUN_ID',''),'head_sha':os.environ.get('GITHUB_SHA',''),
-                       'workflow':'.github/workflows/playcover-qa.yml',
+                       'repository':os.environ.get('GITHUB_REPOSITORY','tagundo/elichika'),'workflow':'.github/workflows/playcover-qa.yml',
                        'url':'https://github.com/'+os.environ.get('GITHUB_REPOSITORY','tagundo/SIFAS-Client')+'/actions/runs/'+os.environ.get('GITHUB_RUN_ID','')},
                 'fixtures':{'region':candidate['region'],'client_asset_id':candidate['asset_id'],
+                    'original_asset_id':candidate.get('original_asset_id'),'original_sha256':candidate.get('original_sha256'),
                     'client_sha256':candidate['sha256'],'server_source_commit':manifest['server_source_ref'],'server_fixture':fixture},
                 'verified':verified,'cases':{},'actual_observation_status':observed.get('status','NOT_REACHED'),
                 'failed_stage':report.get('failure'),'qualification':report['qualification']}

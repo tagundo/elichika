@@ -52,7 +52,7 @@ jobs:
           from pathlib import Path
           m=json.loads(Path('qa/playcover/manifest.json').read_text())
           work=Path(os.environ['RUNNER_TEMP'])/'playcover-fixtures'
-          for item in m['candidates']:
+          for item in m.get('controls',[])+m['candidates']:
               with (work/item['name']).open('wb') as target:
                   subprocess.run(['env','-u','GH_TOKEN','gh','api','repos/'+os.environ['GITHUB_REPOSITORY']+'/releases/assets/'+str(item['asset_id']),'-H','Accept: application/octet-stream'],stdout=target,check=True)
               with (work/item['name']).open('rb') as stream:

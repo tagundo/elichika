@@ -3,8 +3,8 @@
   "staging_repository": "tagundo/elichika",
   "client_source_repository": "tagundo/SIFAS-Client",
   "draft_tag": "codex-client-qa-20261113",
-  "server_source_ref": "c2ae455b38be1051063853877e493335ff5d9681",
-  "server_source_qualification": "root-frozen final release 2026.11.13.1; Go built from exact source",
+  "server_source_ref": "c676bf5f969fafb24244dd0f59f804e1d26db982",
+  "server_source_qualification": "root-frozen final C3 release2026.11.13.1; Go built from exact source",
   "playcover_dmg_url": "https://github.com/PlayCover/PlayCover/releases/download/4.0.0-prerelease/PlayCover_4.0.0-prerelease.dmg",
   "playcover_dmg_sha256": "54e01381205ed7de05f8316ca229eab39ab8f6202b0dda4de07e98396e64d79e",
   "playcover_source_ref": "a7b1693d4fa4310367990cd35d4ebafb20e5c965",
@@ -14,20 +14,36 @@
       "name": "SIFAS_GL_3.12.0_PlayCover_v2_candidate.ipa",
       "asset_id": 742771438,
       "sha256": "76735a1f734544708c2967d874721e28b3aeff497e8285089d493e09db3f0100",
-      "bundle_id": "com.klab.lovelive.allstars.global"
+      "bundle_id": "com.klab.lovelive.allstars.global",
+      "original_asset_id": 725746123,
+      "original_sha256": "a5d11ee0ff530366461683c574daa27735ccdd0b05830a688062b840def8ea5e"
     },
     {
       "region": "JP",
       "name": "SIFAS_JP_3.12.0_PlayCover_v2_candidate.ipa",
       "asset_id": 742771437,
       "sha256": "6b465e8829f2fdd96b60ebf8f31b07276ab10a8433a4589a758b7268279e5f2f",
-      "bundle_id": "com.klab.lovelive.allstars"
+      "bundle_id": "com.klab.lovelive.allstars",
+      "original_asset_id": 725746632,
+      "original_sha256": "664d68b317a54d923b613e923fc824909b179431d7de3885a9538f99e382f9e8"
     },
     {
-      "region": "GL_Local",
+      "region": "GL_LOCAL",
       "name": "SIFAS_GL_Local_3.12.0_PlayCover_v2_candidate.ipa",
       "asset_id": 742771446,
       "sha256": "b66d0e3931fb24780d3d41c7c692dba58f7f3a91679ecb59ef888e45981b262a",
+      "bundle_id": "com.klab.lovelive.allstars.global",
+      "original_asset_id": 725742794,
+      "original_sha256": "926b160d1607526e5f9924d2723fb576b1da6e2c3ff178473a21b5cab53880f6"
+    }
+  ],
+  "controls": [
+    {
+      "role": "original-control",
+      "region": "GL_ORIGINAL_CONTROL",
+      "name": "QA_ORIGINAL_GL_global_3_12_0_injected_v3.ipa",
+      "asset_id": 742945032,
+      "sha256": "a5d11ee0ff530366461683c574daa27735ccdd0b05830a688062b840def8ea5e",
       "bundle_id": "com.klab.lovelive.allstars.global"
     }
   ]
