@@ -329,6 +329,10 @@ private struct ConsoleLogView: NSViewRepresentable {
         if !tailing, storage.length > 0, let layout = text.layoutManager,
            let container = text.textContainer {
             let point = NSPoint(x: 0, y: max(0, previousOrigin.y - text.textContainerInset.height))
+            // Finish only the visible fragments before reading their on-screen
+            // glyph position; hit testing can otherwise return provisional layout.
+            layout.ensureLayout(forBoundingRect: NSRect(origin: point, size: scroll.contentView.bounds.size),
+                                in: container)
             let character = min(storage.length - 1,
                 layout.characterIndex(for: point, in: container, fractionOfDistanceBetweenInsertionPoints: nil))
             let glyph = layout.glyphIndexForCharacter(at: character)
@@ -371,9 +375,13 @@ private struct ConsoleLogView: NSViewRepresentable {
             if let anchor, storage.length > 0, let layout = text.layoutManager,
                let container = text.textContainer {
                 let character = min(storage.length - 1, max(0, anchor.character - removed))
+                // Head trimming can invalidate preceding wrapped paragraphs.
+                // Noncontiguous layout estimates their heights until requested;
+                // lay out through the retained anchor so its Y stays stable when
+                // AppKit later draws. The suffix remains laid out on demand.
+                layout.ensureLayout(forCharacterRange: NSRange(location: 0, length: character + 1))
                 let glyph = layout.glyphIndexForCharacter(at: character)
                 let range = NSRange(location: glyph, length: 1)
-                layout.ensureLayout(forGlyphRange: range)
                 origin.y = max(0, origin.y + layout.boundingRect(forGlyphRange: range, in: container).minY - anchor.y)
             }
             scroll.contentView.scroll(to: origin)

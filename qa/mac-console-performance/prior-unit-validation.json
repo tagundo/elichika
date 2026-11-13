@@ -1,8 +1,7 @@
 {
-  "schema_version": 1,
   "status": "PASS",
-  "tests": 44,
-  "candidate_source_commit": "28b80a8b43898ef9544d8452fef76181839eec6e",
+  "tests": 45,
+  "candidate_source_commit": "b503631efee12bdf224ae94962bd1403a4658da3",
   "candidate_inputs": [
     {
       "path": "macos/App/AppModel.swift",
@@ -16,8 +15,8 @@
     },
     {
       "path": "macos/App/ElichikaApp.swift",
-      "bytes": 48987,
-      "sha256": "4636f410efc236f6da80ec56657774fdaec53129de091df9dae190f9a4291fc2"
+      "bytes": 49669,
+      "sha256": "dde99f3082353a871ee44163f42c2868850dce15a69bf49bf263a953ba172dcf"
     },
     {
       "path": "macos/runtime/elichika_macos.py",
@@ -33,11 +32,17 @@
       "path": "tests/test_macos_runtime_console_logging.py",
       "bytes": 4774,
       "sha256": "3ca2c41f091407778690550da77e621879d467cc8facdf93a180d9a1149e8c0e"
+    },
+    {
+      "path": "macos/Tests/ConsoleWrappedScrollTests.swift",
+      "bytes": 14762,
+      "sha256": "c79dc308d2c44ce7e840a14fc49df9620e4baec576e7b7a2970881069e32b9f0"
     }
   ],
-  "prior_run": 43410932858,
-  "prior_head_sha": "34a1855c3336330b5056bb549e52ab42597242cc",
-  "artifact_id": 14029422773,
-  "artifact_sha256": "e52327febba149d2b06decd2c13647c231c4c0c3a0f8f03d482aeb4446a489f8",
-  "test_log_sha256": "367622a79f516e0e05dba55553784c7ca30bc79bf52993c9a9f656ff284017df"
+  "prior_run": 43426824789,
+  "prior_head_sha": "80abb71c07d50d3bdfa03dc30b38ba41765feb06",
+  "artifact_id": 14038527053,
+  "artifact_bytes": 114082,
+  "artifact_sha256": "14143009e12fb497abbfdf37631b1c5881c36d2686583bdf8cd377fd72642395",
+  "test_log_sha256": "8113c3f4eed254aba0e3108a172756553108ff39f5ba7e2b4c7e6fc1e2eb3616"
 }

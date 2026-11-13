@@ -44,7 +44,7 @@ jobs:
           sw_vers > "$RUNNER_TEMP/perf-evidence/macos.txt"
           xcrun swiftc --version > "$RUNNER_TEMP/perf-evidence/swift-version.txt"
 
-      - name: Bind identical frozen C4 sources to prior actual 44-test native evidence
+      - name: Bind seven frozen C5 inputs and complete SwiftPM source set to actual fresh45 proof
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |

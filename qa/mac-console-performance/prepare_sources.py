@@ -49,6 +49,11 @@ def main():
                     target = root / row['path']
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(args.qa / 'candidate' / row['path'], target)
+        if variant == 'patched':
+            actual_package = [{'path': 'macos/' + str(path.relative_to(mac)), 'sha256': sha(path)}
+                              for path in sorted(mac.rglob('*.swift'))]
+            assert actual_package == manifest['macos_package_inputs'], 'Complete frozen C5 SwiftPM inputs changed'
+            receipt['candidate_macos_package_inputs'] = actual_package
         # Keep SwiftPM unit tests on the intact production application. A
         # separate compile projection is used only for the QA AppKit host.
         projection = root / 'probe-sources'
