@@ -4,7 +4,7 @@
   "client_source_repository": "tagundo/SIFAS-Client",
   "draft_tag": "codex-client-qa-20261113",
   "server_source_ref": "28b80a8b43898ef9544d8452fef76181839eec6e",
-  "server_source_qualification": "root-frozen final C3 release2026.11.13.1; Go built from exact source",
+  "server_source_qualification": "root-frozen C4 release2026.11.13.1; Go built from exact source",
   "playcover_dmg_url": "https://github.com/PlayCover/PlayCover/releases/download/4.0.0-prerelease/PlayCover_4.0.0-prerelease.dmg",
   "playcover_dmg_sha256": "54e01381205ed7de05f8316ca229eab39ab8f6202b0dda4de07e98396e64d79e",
   "playcover_source_ref": "a7b1693d4fa4310367990cd35d4ebafb20e5c965",
@@ -44,6 +44,22 @@
       "name": "QA_ORIGINAL_GL_global_3_12_0_injected_v3.ipa",
       "asset_id": 742945032,
       "sha256": "a5d11ee0ff530366461683c574daa27735ccdd0b05830a688062b840def8ea5e",
+      "bundle_id": "com.klab.lovelive.allstars.global"
+    },
+    {
+      "role": "original-control",
+      "region": "JP_ORIGINAL_CONTROL",
+      "name": "QA_ORIGINAL_JP_jp_allstars_3_12_0_injected.ipa",
+      "asset_id": 743333910,
+      "sha256": "664d68b317a54d923b613e923fc824909b179431d7de3885a9538f99e382f9e8",
+      "bundle_id": "com.klab.lovelive.allstars"
+    },
+    {
+      "role": "original-control",
+      "region": "GL_LOCAL_ORIGINAL_CONTROL",
+      "name": "QA_ORIGINAL_GL_LOCAL_allstarslocalgl.ipa",
+      "asset_id": 743333911,
+      "sha256": "926b160d1607526e5f9924d2723fb576b1da6e2c3ff178473a21b5cab53880f6",
       "bundle_id": "com.klab.lovelive.allstars.global"
     }
   ]

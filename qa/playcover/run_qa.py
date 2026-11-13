@@ -85,9 +85,9 @@ def main():
         assert host['hardware']['stdout'].strip() == '1' and host['windowserver']['code'] == 0, 'Apple Silicon WindowServer required'
         assert 'amfi_get_out_of_my_way' not in host['bootargs']['stdout'], 'Unreviewed PlaySign environment'
         build = a.fixtures/'host-tools'; build.mkdir(exist_ok=True)
-        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA', 'MetalHost', 'PlayCoverLaunch', 'VisionPlayCoverLaunch']:
+        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA', 'MetalHost', 'PlayCoverLaunch', 'VisionPlayCoverLaunch', 'AXPlayCoverLaunch']:
             arguments = ['xcrun','swiftc','-swift-version','5','-target','arm64-apple-macosx13.0',HERE/(name+'.swift'),'-o',build/name]
-            if name in ['VisionQA','VisionPlayCoverLaunch']:
+            if name in ['VisionQA','VisionPlayCoverLaunch','AXPlayCoverLaunch']:
                 for framework in ['AppKit','ApplicationServices','CoreGraphics','Vision','ImageIO','CryptoKit']:
                     arguments += ['-framework',framework]
             if name == 'MetalHost': arguments += ['-framework','Metal']
@@ -190,6 +190,18 @@ def main():
                 continue
             time.sleep(3)
             result['actual_playcover_import'] = True
+            # Refresh PlayCover's normal app model after replacing a bundle.
+            # GL and Local GL intentionally share a bundle ID; its prior card
+            # title/object must not launch a stale real Info.plist alias.
+            for running_pc in host_state(pcid).get('applications',[]):
+                os.kill(running_pc['pid'],signal.SIGTERM)
+            assert wait_for(lambda:not host_state(pcid).get('applications'),10), 'Owned PlayCover process did not stop for a fresh library scan'
+            reopened = command(['open','-a',pc])
+            assert reopened['code'] == 0 and wait_for(lambda:host_state(pcid).get('applications'),30)
+            command([build/'HostEvidence',pcid,'--activate'])
+            assert wait_for(lambda:any(app.get('windows') for app in host_state(pcid).get('applications',[])),30)
+            write(folder/'fresh-library-process.json',{'reopen':reopened,'state':host_state(pcid),
+                'scope':'Only owned disposable PlayCover process restarted; current imported bundle must be rescanned'})
             stage('verify-imported-bundle-'+candidate['region'])
             footprint = command([sys.executable,HERE/'verify_playtools_footprint.py','--playcover-dmg',dmg,
                 '--pinned-playcover-app',source_app,'--installed-game',app,'--candidate-ipa',ipa,
@@ -238,7 +250,7 @@ def main():
             write(folder/'playcover-imported-library-ax-command.json',
                   command([build/'PlayCoverAX','dump',pc_pid,folder/'playcover-imported-library-ax']))
             launch_wall = time.time()
-            launch = command([build/'VisionPlayCoverLaunch','--pid',pc_pid,'--proof-dir',
+            launch = command([build/'AXPlayCoverLaunch','--pid',pc_pid,'--proof-dir',
                               folder/'actual-library-doubleclick','--exact',display],timeout=45)
             write(folder/'normal-launch.json',launch)
             result['actual_library_doubleclick_delivered'] = launch['code'] == 0
@@ -252,6 +264,9 @@ def main():
             running = wait_for(lambda:host_state(candidate['bundle_id']).get('applications'),30) if launch['code'] == 0 else None
             if not running:
                 result.update(status='FAIL_ACTUAL_LIBRARY_TILE_LAUNCH', launch=launch)
+                result['actual_library_launch_blocker'] = record_screen(pcid,folder,'actual-library-launch-blocker')
+                write(folder/'actual-library-launch-blocker-ax-command.json',
+                      command([build/'PlayCoverAX','dump',pc_pid,folder/'actual-library-launch-blocker-ax']))
                 startup_capture(0,'startup-no-observed-pid')
                 stage('launch-failed-'+candidate['region'])
                 continue
