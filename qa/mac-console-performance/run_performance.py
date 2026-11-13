@@ -18,6 +18,7 @@ from pathlib import Path
 import platform
 import resource
 import secrets
+from socketserver import TCPServer
 import subprocess
 import threading
 import time
@@ -28,6 +29,14 @@ BLOCK = bytes(range(256)) * 256
 BLOCKS = 1024
 TOTAL_BYTES = len(BLOCK) * BLOCKS
 EXPECTED_SHA256 = hashlib.sha256(BLOCK * BLOCKS).hexdigest()
+
+
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # Match the production numeric-loopback listener policy. HTTPServer's
+        # reverse-DNS server-name lookup is unnecessary for this local fixture.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 def write(path, value):
@@ -52,6 +61,7 @@ class Fixture:
         self.logs = buffer_type(secrets_to_hide=[self.token])
         self.folder = folder
         self.stop = threading.Event()
+        self.logging_stop = threading.Event()
         self.lock = threading.Lock()
         self.requests = []
         self.download_records = []
@@ -117,7 +127,7 @@ class Fixture:
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 
-        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server = LoopbackHTTPServer(('127.0.0.1', 0), Handler)
         self.server.daemon_threads = True
         self.url = f'http://127.0.0.1:{self.server.server_port}'
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -125,7 +135,7 @@ class Fixture:
 
     def ready(self):
         # Three live distinct loopback listeners satisfy native readiness validation.
-        self.other_servers = [ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler) for _ in range(2)]
+        self.other_servers = [LoopbackHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler) for _ in range(2)]
         return {'control_url': self.url,
                 'admin_url': f'http://127.0.0.1:{self.other_servers[0].server_port}',
                 'tools_url': f'http://127.0.0.1:{self.other_servers[1].server_port}',
@@ -134,16 +144,17 @@ class Fixture:
 
     def append_workload(self):
         begin = time.monotonic()
-        for number in range(2500):
-            if self.stop.is_set():
-                break
+        number = 0
+        while not self.logging_stop.is_set():
             self.logs.write(f'controlled-download-progress-{number:05d} 測定 😀 ' + 'x' * 480)
             self.log_writes += 1
-            delay = begin + (number + 1) / 250 - time.monotonic()
+            number += 1
+            delay = begin + number / 250 - time.monotonic()
             if delay > 0:
-                self.stop.wait(delay)
+                self.logging_stop.wait(delay)
 
-    def download(self, stream):
+    def download(self, stream, gate):
+        assert gate.wait(timeout=20), 'Native measurement did not start'
         request = urllib.request.Request(self.url + '/download/controlled-64MiB', headers={'Authorization': 'Bearer ' + self.token})
         begin = time.monotonic()
         digest = hashlib.sha256()
@@ -158,6 +169,7 @@ class Fixture:
 
     def close(self):
         self.stop.set()
+        self.logging_stop.set()
         self.server.shutdown()
         self.server.server_close()
         for server in getattr(self, 'other_servers', []):
@@ -189,40 +201,55 @@ def run_case(binary, source, output, variant, resident, visibility, mode):
     process = subprocess.Popen(args, stdout=stdout, stderr=subprocess.STDOUT)
     try:
         wait_file(output / 'ready-for-workload.json', process, 45)
-        usage0 = resource.getrusage(resource.RUSAGE_SELF)
-        begin = time.monotonic()
-        writer = None
-        if mode == 'bulk':
-            writer = threading.Thread(target=fixture.append_workload, daemon=True)
-            with ThreadPoolExecutor(max_workers=8) as pool:
-                jobs = [pool.submit(fixture.download, stream) for stream in range(8)]
+        gate = threading.Event()
+        writer = threading.Thread(target=fixture.append_workload, daemon=True) if mode == 'bulk' else None
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            jobs = [pool.submit(fixture.download, stream, gate) for stream in range(8)] if mode == 'bulk' else []
+            write(output / 'workload-started.json', {'monotonic': time.monotonic(), 'mode': mode,
+                  'parallel_streams': 8 if mode == 'bulk' else 0,
+                  'bytes_per_stream': TOTAL_BYTES if mode == 'bulk' else 0,
+                  'log_lines_per_second': 250 if mode == 'bulk' else 0})
+            wait_file(output / 'measurement-started.json', process, 15)
+            usage0 = resource.getrusage(resource.RUSAGE_SELF)
+            begin = time.monotonic()
+            if writer:
                 writer.start()
-                write(output / 'workload-started.json', {'monotonic': begin, 'mode': mode, 'parallel_streams': 8,
-                                                        'bytes_per_stream': TOTAL_BYTES, 'log_lines_per_second': 250})
-                downloads = [job.result(timeout=35) for job in jobs]
-        else:
-            write(output / 'workload-started.json', {'monotonic': begin, 'mode': mode, 'parallel_streams': 0,
-                                                    'bytes_per_stream': 0, 'log_lines_per_second': 0})
-            time.sleep(8)
-            downloads = []
-        elapsed = time.monotonic() - begin
-        usage1 = resource.getrusage(resource.RUSAGE_SELF)
-        fixture.stop.set()
-        if writer:
-            writer.join(timeout=2)
-        code = process.wait(timeout=45)
+            gate.set()
+            wait_file(output / 'measurement-ended.json', process, 45)
+            elapsed = time.monotonic() - begin
+            usage1 = resource.getrusage(resource.RUSAGE_SELF)
+            fixture.logging_stop.set()
+            if writer:
+                writer.join(timeout=2)
+            downloads = [job.result(timeout=35) for job in jobs]
+        wait_file(output / 'measurement-finished.json', process, 15)
+        exit_timed_out = False
+        try:
+            code = process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            code = None
+            exit_timed_out = True
         native = json.loads((output / 'native-performance.json').read_text())
-        native_ok = code == 0 and native.get('status') == 'MEASURED_SYNTHETIC_PROTOCOL_FIXTURE'
+        log_polls = sum(row['path'] == '/v1/logs' and begin <= row['at'] <= begin + elapsed
+                        for row in fixture.requests)
+        native_ok = (code == 0 and native.get('status') == 'MEASURED_SYNTHETIC_PROTOCOL_FIXTURE'
+                     and native.get('runtime_error_visible') is False
+                     and native.get('main_queue_latency', {}).get('samples', 0) > 0 and log_polls >= 4)
         document_ok = variant == 'baseline' or native.get('selection_scroll_copy', {}).get('status') == 'PASS'
         cpu = (usage1.ru_utime + usage1.ru_stime) - (usage0.ru_utime + usage0.ru_stime)
         record = {'status': 'MEASURED_REAL_NATIVE_UI' if native_ok and document_ok else 'FAIL_NATIVE_PROBE',
                   'variant': variant, 'resident_lines': resident, 'visibility': visibility, 'mode': mode,
                   'python_source_sha256': fixture.source_sha, 'log_buffer_class_sha256': fixture.class_sha,
                   'native_exit_code': code, 'wall_seconds': elapsed, 'python_cpu_seconds': cpu,
+                  'native_process_exit_timed_out': exit_timed_out,
+                  'python_cpu_scope': 'Combined controlled HTTP fixture, exact production LogBuffer, and eight client download/hash threads; paired identical work, not the shipped Python bridge alone',
                   'python_cpu_percent_one_core': 100 * cpu / elapsed,
                   'download_bytes': sum(item['bytes'] for item in downloads), 'downloads': downloads,
-                  'throughput_MiB_per_second': sum(item['bytes'] for item in downloads) / elapsed / (1024 ** 2),
+                  'throughput_MiB_per_second': sum(item['bytes'] for item in downloads) / max((item['wall_seconds'] for item in downloads), default=elapsed) / (1024 ** 2),
+                  'native_measurement_start': json.loads((output / 'measurement-started.json').read_text()),
+                  'native_measurement_end': json.loads((output / 'measurement-ended.json').read_text()),
                   'log_lines_written': fixture.log_writes, 'protocol_requests': fixture.requests,
+                  'log_polls_during_measurement': log_polls,
                   'fixture_scope': 'Controlled authenticated server-running state; exact source LogBuffer and actual local HTTP transfers. No game server or external CDN is claimed.'}
         write(output / 'bridge-and-download-measurements.json', record)
         assert native_ok, f'Native probe exited {code} or did not produce completed real measurements'
@@ -262,14 +289,17 @@ def main():
             for visibility in ['visible', 'hidden']:
                 for variant in ['baseline', 'patched']:
                     case = args.output / f'{mode}-{resident}-{visibility}-{variant}'
+                    print('BEGIN', case.name, flush=True)
                     try:
                         result = run_case(getattr(args, variant + '_binary'), getattr(args, variant + '_python'),
                                           case, variant, resident, visibility, mode)
                         results.append(result)
+                        print('MEASURED', case.name, flush=True)
                     except Exception as error:
                         failures.append({'resident_lines': resident, 'visibility': visibility, 'variant': variant, 'mode': mode,
                                          'type': type(error).__name__, 'message': str(error)})
                         write(case / 'failure.json', failures[-1])
+                        print('FAILED', case.name, type(error).__name__, flush=True)
     write(args.output / 'performance-summary.json', {'status': 'MEASURED_PENDING_REVIEW' if not failures else 'FAIL_ACTUAL_CASE',
           'cases': results, 'failures': failures, 'qualification': __doc__})
     return bool(failures)

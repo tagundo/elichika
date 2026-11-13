@@ -129,6 +129,18 @@ private final class PerformanceProbe {
             + Double(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1_000_000, Int64(usage.ru_maxrss))
     }
 
+    private func finishApplicationLoop() {
+        NSApp.stop(nil)
+        // stop() takes effect after nextEvent returns. An owned empty AppKit
+        // event wakes that wait without touching a game or sending user input.
+        if let wake = NSEvent.otherEvent(with: .applicationDefined, location: .zero,
+                modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0) {
+            NSApp.postEvent(wake, atStart: true)
+        }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
+    }
+
     func run() async {
         do {
             polling = Task { [weak self] in
@@ -166,13 +178,17 @@ private final class PerformanceProbe {
             latency.start()
             try write("measurement-started.json", ["status": "MEASURING", "uptime_seconds": start])
             try await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
-            let wall = ProcessInfo.processInfo.systemUptime - start; let after = cpu()
+            let end = ProcessInfo.processInfo.systemUptime
+            let wall = end - start; let after = cpu()
             let cpuSeconds = after.seconds - before.seconds
+            let latencyResult = latency.stop()
+            try write("measurement-ended.json", ["status": "MEASURED", "uptime_seconds": end])
             result = ["schema_version": 1, "status": "MEASURED_SYNTHETIC_PROTOCOL_FIXTURE",
                 "variant": variant, "visibility": visible ? "visible" : "hidden",
                 "resident_lines": resident, "retained_lines_at_end": model.console.count,
+                "measurement_start_uptime": start, "measurement_end_uptime": end,
                 "wall_seconds": wall, "app_cpu_seconds": cpuSeconds, "app_cpu_percent": 100 * cpuSeconds / wall,
-                "peak_rss_bytes": after.rss, "main_queue_latency": latency.stop(),
+                "peak_rss_bytes": after.rss, "main_queue_latency": latencyResult,
                 "app_model_publications": rootPublications, "log_leaf_publications": logPublications,
                 "hosting_layout_passes": host.layoutPasses, "hosting_draw_passes": host.drawPasses,
                 "runtime_error_visible": model.message != nil,
@@ -181,14 +197,14 @@ private final class PerformanceProbe {
             result["selection_scroll_copy"] = await testSelectionScrollCopy()
             try write("native-performance.json", result)
             try write("measurement-finished.json", ["status": "COMPLETE"])
-            NSApp.stop(nil); CFRunLoopStop(CFRunLoopGetMain())
+            finishApplicationLoop()
         } catch {
             polling?.cancel()
             // Never serialize readiness, URLs, headers or arbitrary exception
             // text. The controller retains private fixture stderr separately.
             try? write("native-performance.json", ["schema_version": 1, "status": "FAILED_NATIVE_PROBE",
                 "variant": variant, "error_type": String(describing: type(of: error))])
-            NSApp.stop(nil); CFRunLoopStop(CFRunLoopGetMain())
+            finishApplicationLoop()
         }
     }
 
@@ -198,14 +214,17 @@ private final class PerformanceProbe {
         return nil
     }
 
-    private func visibleLine(_ text: NSTextView, _ scroll: NSScrollView) -> String? {
+    private func visibleAnchor(_ text: NSTextView, _ scroll: NSScrollView) -> (line: String, character: Int, offset: Double)? {
         guard let layout = text.layoutManager, let container = text.textContainer,
               (text.string as NSString).length > 0 else { return nil }
         let point = NSPoint(x: 0, y: max(0, scroll.contentView.bounds.origin.y - text.textContainerInset.height))
         let raw = text.string as NSString
         let index = min(raw.length - 1, layout.characterIndex(for: point, in: container,
                             fractionOfDistanceBetweenInsertionPoints: nil))
-        return raw.substring(with: raw.lineRange(for: NSRange(location: index, length: 0)))
+        let glyph = layout.glyphIndexForCharacter(at: index)
+        let y = layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).minY
+        return (raw.substring(with: raw.lineRange(for: NSRange(location: index, length: 0))), index,
+                Double(y + text.textContainerInset.height - scroll.contentView.bounds.origin.y))
     }
 
     private func testSelectionScrollCopy() async -> [String: Any] {
@@ -228,19 +247,25 @@ private final class PerformanceProbe {
         text.setSelectedRange(range); text.scrollRangeToVisible(range)
         try? await Task.sleep(nanoseconds: 100_000_000)
         let selected = (text.string as NSString).substring(with: text.selectedRange())
-        let anchor = visibleLine(text, scroll)
+        let anchor = visibleAnchor(text, scroll)
+        let beforeHead = model.consoleLogs.snapshot.headUTF16Offset
         // No await between these appends: SwiftUI must be allowed to coalesce
         // both store revisions before updating the actual NSTextView.
         model.appendLogs((0..<40).map { "QA coalesced A \($0)" })
         model.appendLogs((0..<40).map { "QA coalesced B \($0)" })
         try? await Task.sleep(nanoseconds: 200_000_000)
         let after = (text.string as NSString).substring(with: text.selectedRange())
-        let afterAnchor = visibleLine(text, scroll)
+        let afterAnchor = visibleAnchor(text, scroll)
+        let headShift = model.consoleLogs.snapshot.headUTF16Offset - beforeHead
         text.copy(nil)
         let copied = NSPasteboard.general.string(forType: .string)
         let selectionOK = after == selected && copied == selected
         NSPasteboard.general.clearContents()
-        let anchorOK = anchor != nil && anchor == afterAnchor
+        let characterDelta = anchor.flatMap { old in afterAnchor.map {
+            abs($0.character - max(0, old.character - headShift))
+        }} ?? Int.max
+        let pixelDelta = anchor.flatMap { old in afterAnchor.map { abs($0.offset - old.offset) }} ?? Double.greatestFiniteMagnitude
+        let anchorOK = anchor != nil && anchor?.line == afterAnchor?.line && characterDelta <= 1 && pixelDelta <= 1.5
         text.setSelectedRange(NSRange(location: (text.string as NSString).length, length: 0))
         text.scrollToEndOfDocument(nil)
         model.appendLogs(["QA tail follows last appended line"])
@@ -248,6 +273,7 @@ private final class PerformanceProbe {
         let tailOK = scroll.contentView.bounds.maxY >= text.bounds.maxY - 20
         return ["status": selectionOK && anchorOK && tailOK ? "PASS" : "FAIL",
             "same_selection_and_copy": selectionOK, "same_visible_anchor_after_two_coalesced_batches": anchorOK,
+            "visible_anchor_character_delta": characterDelta, "visible_anchor_pixel_offset_delta": pixelDelta,
             "tail_follows_when_already_at_bottom": tailOK, "selection_sha256": digest(selected),
             "selected_utf16_count": (selected as NSString).length,
             "actual_ns_text_view": true]
