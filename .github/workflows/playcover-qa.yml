@@ -6,7 +6,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # Draft releases are visible only to a token with repository write access.
+  # This workflow uses it solely for hash-bound asset GET downloads.
+  contents: write
   actions: read
 
 concurrency:
@@ -34,6 +36,8 @@ jobs:
           import json,os
           from pathlib import Path
           m=json.loads(Path('qa/playcover/manifest.json').read_text())
+          evidence=Path(os.environ['RUNNER_TEMP'])/'playcover-evidence'
+          (evidence/'allocation-and-fixture-manifest.json').write_text(json.dumps({'status':'MAC_ALLOCATED_FIXTURES_PENDING','run_id':os.environ['GITHUB_RUN_ID'],'head_sha':os.environ['GITHUB_SHA'],'manifest':m},indent=2)+'\n')
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write('server_ref='+m['server_source_ref']+'\n')
           PY
@@ -48,7 +52,8 @@ jobs:
           m=json.loads(Path('qa/playcover/manifest.json').read_text())
           work=Path(os.environ['RUNNER_TEMP'])/'playcover-fixtures'
           for item in m['candidates']:
-              subprocess.run(['env','-u','GH_TOKEN','gh','release','download',m['draft_tag'],'--repo',os.environ['GITHUB_REPOSITORY'],'--pattern',item['name'],'--dir',str(work)],check=True)
+              with (work/item['name']).open('wb') as target:
+                  subprocess.run(['env','-u','GH_TOKEN','gh','api','repos/'+os.environ['GITHUB_REPOSITORY']+'/releases/assets/'+str(item['asset_id']),'-H','Accept: application/octet-stream'],stdout=target,check=True)
               with (work/item['name']).open('rb') as stream:
                   assert hashlib.file_digest(stream,'sha256').hexdigest()==item['sha256']
           PY
