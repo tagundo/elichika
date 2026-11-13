@@ -1,0 +1,57 @@
+name: Sanitize owned PlayCover QA evidence
+on:
+  push:
+    branches: [codex/playcover-evidence-cleanup-20261113]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  retain-only-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hash-bind and sanitize the owned generated probe artifact
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess,zipfile
+          from pathlib import Path,PurePosixPath
+          root=Path(os.environ['RUNNER_TEMP'])/'sanitized-playcover-probe'
+          root.mkdir()
+          raw=Path(os.environ['RUNNER_TEMP'])/'owned-probe.zip'
+          artifact_id=14020716371
+          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/artifacts/'+str(artifact_id)
+          with raw.open('wb') as target:
+              subprocess.run(['env','-u','GH_TOKEN','gh','api',endpoint+'/zip'],stdout=target,check=True)
+          with raw.open('rb') as source:
+              assert hashlib.file_digest(source,'sha256').hexdigest()=='b283f50f683592b8e79636ee038b8f16fa98a5bdafcc3f6f3004f7b0ee404773'
+          omitted=[]
+          with zipfile.ZipFile(raw) as archive:
+              for item in archive.infolist():
+                  path=PurePosixPath(item.filename)
+                  assert not path.is_absolute() and '..' not in path.parts
+                  if 'candidate-macho' in path.parts:
+                      omitted.append(item.filename)
+                      continue
+                  if item.is_dir(): continue
+                  assert path.suffix in ('.json','.log','.stdout','.stderr','.txt','.png'), path
+                  destination=root/item.filename
+                  destination.parent.mkdir(parents=True,exist_ok=True)
+                  destination.write_bytes(archive.read(item))
+          assert omitted and (root/'summary.json').exists()
+          before={str(path.relative_to(root)):hashlib.sha256(path.read_bytes()).hexdigest() for path in root.rglob('*') if path.is_file()}
+          receipt={'source_run_id':43390027326,'source_artifact_id':artifact_id,
+              'source_archive_sha256':'b283f50f683592b8e79636ee038b8f16fa98a5bdafcc3f6f3004f7b0ee404773',
+              'omitted_candidate_macho_scratch_paths':omitted,'retained_files_sha256':before,
+              'scope':'Generated QA scratch copies removed; all actual reports/logs/screens preserved; frozen candidate IPAs and staging drafts unchanged'}
+          (root/'sanitization-provenance.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          subprocess.run(['env','-u','GH_TOKEN','gh','api','--method','DELETE',endpoint],check=True)
+          raw.unlink()
+          print('Owned probe artifact sanitized; binary scratch copies omitted.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playcover-v2-baseline-sanitized-evidence
+          path: ${{ runner.temp }}/sanitized-playcover-probe/
+          if-no-files-found: error
+          retention-days: 7
