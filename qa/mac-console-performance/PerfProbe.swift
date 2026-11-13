@@ -76,6 +76,9 @@ private final class PerformanceProbe {
     let duration: Double
     let variant: String
     private var polling: Task<Void, Never>?
+    private var pollingWanted = true
+    private var refreshInFlight = false
+    private var pollingFinished = false
     private var observers: [AnyCancellable] = []
     private var rootPublications = 0
     private var logPublications = 0
@@ -144,10 +147,15 @@ private final class PerformanceProbe {
     func run() async {
         do {
             polling = Task { [weak self] in
-                while !Task.isCancelled {
-                    guard let self else { return }
+                guard let self else { return }
+                defer { self.pollingFinished = true }
+                while self.pollingWanted && !Task.isCancelled {
+                    self.refreshInFlight = true
                     await self.model.refresh()
-                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    self.refreshInFlight = false
+                    guard self.pollingWanted, !Task.isCancelled else { break }
+                    do { try await Task.sleep(nanoseconds: 700_000_000) }
+                    catch { break }
                 }
             }
             let readyDeadline = ProcessInfo.processInfo.systemUptime + 30
@@ -181,9 +189,10 @@ private final class PerformanceProbe {
             let end = ProcessInfo.processInfo.systemUptime
             let wall = end - start; let after = cpu()
             let cpuSeconds = after.seconds - before.seconds
+            try write("native-stage.json", ["stage": "cpu_captured", "uptime_seconds": end])
             let latencyResult = latency.stop()
             try write("measurement-ended.json", ["status": "MEASURED", "uptime_seconds": end])
-            result = ["schema_version": 1, "status": "MEASURED_SYNTHETIC_PROTOCOL_FIXTURE",
+            result = ["schema_version": 1, "status": "MEASURED_POSTCHECKS_PENDING",
                 "variant": variant, "visibility": visible ? "visible" : "hidden",
                 "resident_lines": resident, "retained_lines_at_end": model.console.count,
                 "measurement_start_uptime": start, "measurement_end_uptime": end,
@@ -193,17 +202,40 @@ private final class PerformanceProbe {
                 "hosting_layout_passes": host.layoutPasses, "hosting_draw_passes": host.drawPasses,
                 "runtime_error_visible": model.message != nil,
                 "original_full_app_runtime_validation": false]
-            polling?.cancel(); await polling?.value
+            // Preserve numeric evidence even if task drain or native document
+            // checks fail. Pending/failed records cannot satisfy the driver.
+            try write("native-performance.json", result)
+            pollingWanted = false
+            polling?.cancel()
+            try write("native-stage.json", ["stage": "poll_cancelled"])
+            let drainDeadline = ProcessInfo.processInfo.systemUptime + 5
+            while (!pollingFinished || refreshInFlight)
+                && ProcessInfo.processInfo.systemUptime < drainDeadline {
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+            result["poll_drain_completed"] = pollingFinished && !refreshInFlight
+            guard pollingFinished, !refreshInFlight else {
+                try write("native-stage.json", ["stage": "poll_drain_timeout"])
+                throw NSError(domain: "PerfProbePollDrain", code: 4)
+            }
+            polling = nil
+            try write("native-stage.json", ["stage": "poll_drained"])
             result["selection_scroll_copy"] = await testSelectionScrollCopy()
+            try write("native-stage.json", ["stage": "document_checked"])
+            result["status"] = "MEASURED_SYNTHETIC_PROTOCOL_FIXTURE"
             try write("native-performance.json", result)
             try write("measurement-finished.json", ["status": "COMPLETE"])
             finishApplicationLoop()
         } catch {
+            pollingWanted = false
             polling?.cancel()
             // Never serialize readiness, URLs, headers or arbitrary exception
             // text. The controller retains private fixture stderr separately.
-            try? write("native-performance.json", ["schema_version": 1, "status": "FAILED_NATIVE_PROBE",
-                "variant": variant, "error_type": String(describing: type(of: error))])
+            result["schema_version"] = 1
+            result["status"] = "FAILED_NATIVE_PROBE"
+            result["variant"] = variant
+            result["error_type"] = String(describing: type(of: error))
+            try? write("native-performance.json", result)
             finishApplicationLoop()
         }
     }

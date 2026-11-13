@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import resource
 import secrets
 from socketserver import TCPServer
@@ -187,13 +188,31 @@ def wait_file(path, process, timeout):
     raise TimeoutError(path.name)
 
 
+def capture_failed_native(process, private, output, tokens):
+    """Capture a standard OS stack sample only after timing has failed."""
+    if process.poll() is None:
+        target = private / 'native-stack-sample.raw'
+        try:
+            subprocess.run(['sample', str(process.pid), '1', '1', '-file', str(target)],
+                           capture_output=True, timeout=10)
+            if target.is_file():
+                value = target.read_text(errors='replace')[:512 * 1024]
+                for token in tokens:
+                    value = value.replace(token, '[redacted]')
+                value = re.sub(r'https?://[^\s\"<>]+', '[URL]', value)
+                (output / 'failed-native-stack-sample.txt').write_text(value)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+
 def run_case(binary, source, output, variant, resident, visibility, mode):
     output.mkdir(parents=True)
     private = output / 'private'
     private.mkdir(mode=0o700)
     fixture = Fixture(source, private, resident)
     ready = private / 'ready.json'
-    write(ready, fixture.ready())
+    readiness = fixture.ready()
+    write(ready, readiness)
     ready.chmod(0o600)
     args = [str(binary), '--ready-file', str(ready), '--output-dir', str(output),
             '--resident-lines', str(resident), '--visibility', visibility, '--duration', '8', '--variant', variant]
@@ -255,6 +274,9 @@ def run_case(binary, source, output, variant, resident, visibility, mode):
         assert native_ok, f'Native probe exited {code} or did not produce completed real measurements'
         assert document_ok, 'Actual native document selection/scroll/copy check failed'
         return record
+    except Exception:
+        capture_failed_native(process, private, output, [readiness['token'], readiness['ui_token']])
+        raise
     finally:
         if process.poll() is None:
             process.terminate()
@@ -300,6 +322,10 @@ def main():
                                          'type': type(error).__name__, 'message': str(error)})
                         write(case / 'failure.json', failures[-1])
                         print('FAILED', case.name, type(error).__name__, flush=True)
+                        if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+                            write(args.output / 'performance-summary.json', {'status': 'FAIL_NATIVE_HARNESS_TIMEOUT',
+                                  'cases': results, 'failures': failures, 'qualification': __doc__})
+                            return 1
     write(args.output / 'performance-summary.json', {'status': 'MEASURED_PENDING_REVIEW' if not failures else 'FAIL_ACTUAL_CASE',
           'cases': results, 'failures': failures, 'qualification': __doc__})
     return bool(failures)
