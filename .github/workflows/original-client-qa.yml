@@ -2,7 +2,7 @@ name: Diagnose fresh GL startup without any injected observer
 
 on:
   push:
-    branches: [codex/android-client-qa-native-gl-20261113]
+    branches: [codex/android-client-qa-native-gl-v13-20261113]
   workflow_dispatch:
     inputs:
       max_seconds:
@@ -114,6 +114,11 @@ jobs:
           adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/webview-command-line" /data/local/tmp/webview-command-line
           adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
           adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+
+      - name: Prepare exact official language OCR models
+        run: |
+          python3 qa/prepare_ocr_languages.py --destination "$RUNNER_TEMP/native-ocr-languages" --evidence evidence
+          echo "TESSDATA_PREFIX=$RUNNER_TEMP/native-ocr-languages" >> "$GITHUB_ENV"
 
       - name: Verify bounded native OCR action regressions
         run: |

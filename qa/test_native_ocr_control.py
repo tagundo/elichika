@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import unittest
 
-from native_ocr_control import classify, stable_action, next_initial_action
+from native_ocr_control import classify, stable_action, next_initial_action, bare_language_target
 
 
 class NativeOcrControlTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class NativeOcrControlTests(unittest.TestCase):
     def test_actual_retained_capture_captions(self):
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture['source_path']):
-                self.assertEqual(classify(fixture['words'],fixture['title_words'],fixture['button_words']),fixture['observed_action'])
+                self.assertEqual(classify(fixture['words'],fixture['title_words'],fixture['button_words'],fixture.get('language_buttons')),fixture['observed_action'])
 
     def test_terms_context_blocks_background_title_without_agree(self):
         fixture=next(f for f in self.fixtures if f['expected']=='terms-agree')
@@ -48,6 +48,23 @@ class NativeOcrControlTests(unittest.TestCase):
         for kind in ('language-English','language-confirm','title-start','terms-agree'):
             self.assertEqual(next_initial_action(seen),kind);seen.add(kind)
         self.assertIsNone(next_initial_action(seen))
+
+    def test_bare_chooser_needs_all_three_languages(self):
+        captions=next(f['language_buttons'] for f in self.fixtures if f['expected']=='language-English')
+        self.assertIsNotNone(bare_language_target(captions))
+        self.assertIsNone(bare_language_target([c for c in captions if c['text']=='English']))
+
+    def test_bare_chooser_needs_distinct_physical_components(self):
+        captions=copy.deepcopy(next(f['language_buttons'] for f in self.fixtures if f['expected']=='language-English'))
+        for c in captions:c['component_id']=0
+        self.assertIsNone(bare_language_target(captions))
+
+    def test_bare_chooser_needs_observed_grid_and_confident_scripts(self):
+        captions=copy.deepcopy(next(f['language_buttons'] for f in self.fixtures if f['expected']=='language-English'))
+        chinese=next(c for c in captions if c['text']=='繁體中文');chinese['confidence']=74.9
+        self.assertIsNone(bare_language_target(captions))
+        chinese['confidence']=99;chinese['bounds'][0]-=250;chinese['bounds'][2]-=250
+        self.assertIsNone(bare_language_target(captions))
 
 
 if __name__=='__main__':unittest.main()

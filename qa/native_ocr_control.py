@@ -33,7 +33,7 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def ocr_words(image, *, crop=None, scale=1, mode='normal', psm=11):
+def ocr_words(image, *, crop=None, scale=1, mode='normal', psm=11, language='eng'):
     """Return actual OCR boxes in original screenshot coordinates plus raw TSV."""
     crop = crop or (0, 0, image.width, image.height)
     region = image.crop(crop).convert('RGB')
@@ -48,7 +48,7 @@ def ocr_words(image, *, crop=None, scale=1, mode='normal', psm=11):
     with tempfile.TemporaryDirectory(prefix='fresh-native-ocr-') as temporary:
         source = Path(temporary)/'input.png'; region.save(source)
         env = dict(os.environ, OMP_THREAD_LIMIT='1')
-        raw = subprocess.check_output(['tesseract',str(source),'stdout','-l','eng',
+        raw = subprocess.check_output(['tesseract',str(source),'stdout','-l',language,
               '--psm',str(psm),'tsv'],env=env,stderr=subprocess.DEVNULL,timeout=15).decode()
     words = []
     for row in csv.DictReader(io.StringIO(raw),delimiter='\t'):
@@ -59,7 +59,7 @@ def ocr_words(image, *, crop=None, scale=1, mode='normal', psm=11):
         words.append({'text':text,'confidence':confidence,
             'bounds':[crop[0]+left/scale,crop[1]+top/scale,
                       crop[0]+(left+width)/scale,crop[1]+(top+height)/scale]})
-    return words, {'crop':list(crop),'scale':scale,'mode':mode,'psm':psm,'tsv':raw}
+    return words, {'crop':list(crop),'scale':scale,'mode':mode,'psm':psm,'language':language,'tsv':raw}
 
 
 def pink_rectangles(image):
@@ -103,7 +103,29 @@ def union_box(words):
             max(w['bounds'][2] for w in words),max(w['bounds'][3] for w in words)]
 
 
-def classify(words, title_words, button_words):
+def language_caption(words, expected, component_id):
+    if words and all(w.get('confidence',-1)>=75 for w in words) and ''.join(w['text'] for w in words)==expected:
+        return {'text':expected,'confidence':min(w['confidence'] for w in words),
+                'bounds':union_box(words),'component_id':component_id}
+    return None
+
+
+def bare_language_target(captions):
+    targets=[exact_word(captions,text) for text in ('English','繁體中文','한국어')]
+    if not all(targets) or not all(w.get('confidence',-1)>=75 for w in targets):return None
+    english,chinese,korean=targets
+    if len({w.get('component_id') for w in targets})!=3:return None
+    ex,ey=((english['bounds'][i]+english['bounds'][i+2])/2 for i in (0,1))
+    cx,cy=((chinese['bounds'][i]+chinese['bounds'][i+2])/2 for i in (0,1))
+    kx,ky=((korean['bounds'][i]+korean['bounds'][i+2])/2 for i in (0,1))
+    height=max(w['bounds'][3]-w['bounds'][1] for w in targets)
+    width=max(w['bounds'][2]-w['bounds'][0] for w in targets)
+    if (abs(ey-cy)<=height*1.5 and cx-ex>width*2 and
+        abs(ex-kx)<=width and height*2<ky-ey<height*8):return english
+    return None
+
+
+def classify(words, title_words, button_words, language_buttons=None):
     """Only known initial-language/Title/Terms captions are actionable."""
     text=' '.join(w['text'] for w in words).casefold()
     captions={w['text'].casefold() for w in words}
@@ -119,6 +141,10 @@ def classify(words, title_words, button_words):
             return {'kind':'terms-agree','bounds':candidates[0]['bounds'],
                     'caption':'Agree','confidence':candidates[0]['confidence']}
         return {'kind':'blocked','reason':'Terms context lacks one exact current Agree and sibling No'}
+    bare=bare_language_target(language_buttons or [])
+    if bare:
+        return {'kind':'language-English','bounds':bare['bounds'],
+                'caption':'English','confidence':bare['confidence']}
     if language:
         if re.search(r'english[?]',text) and 'cancel' in captions:
             candidates=[w for w in button_words if w['text'].casefold()=='ok']
@@ -177,7 +203,7 @@ def main():
     device=Android(args.serial,args.evidence);args.evidence.mkdir(parents=True,exist_ok=True)
     host=HostGoFixture(args.host_server_root,args.host_server_receipt,source,args.evidence)
     semantics.CLIENT=package
-    started=time.monotonic();run_start=int(time.time());pid=None;start_ticks=None;index=0;seen=set()
+    started=time.monotonic();run_start=int(time.time());pid=None;start_ticks=None;index=0;native_index=0;seen=set()
     report={'schema_version':1,'status':'INCOMPLETE','scope':'Fresh no-agent native-only GL startup diagnostic; no full client feature approval',
       'observer_installed':False,'observer_loaded':False,'observer_attached':False,
       'client_sha256':client['sha256'],'client_asset_id':client['asset_id'],
@@ -187,13 +213,17 @@ def main():
         report['elapsed_seconds']=round(time.monotonic()-started,3)
         (args.evidence/'native-only-control-report.json').write_text(json.dumps(report,indent=2)+'\n')
     def native(label):
+        nonlocal native_index
+        native_index+=1;label=f'{label}-capture-{native_index:03d}'
         device.shell('uiautomator','dump','/sdcard/native-only-window.xml',timeout=20)
         raw=device.read('/sdcard/native-only-window.xml')
         (args.evidence/(label+'.xml')).write_bytes(raw)
+        native.last_path=label+'.xml'
         return semantics.parse_native_nodes(raw)
     def input_node(node,reason):
         x,y=semantics.center(node);device.shell('input','tap',str(x),str(y))
-        report['actions'].append({'source':'fresh-Android-UI-tree','reason':reason,'bounds':node['bounds'],'elapsed':round(time.monotonic()-started,3)})
+        report['actions'].append({'source':'fresh-Android-UI-tree','reason':reason,'bounds':node['bounds'],
+            'native_tree':native.last_path,'elapsed':round(time.monotonic()-started,3)})
     def lifetime():
         nonlocal pid,start_ticks
         current=device.shell('pidof','-s',package)
@@ -217,18 +247,25 @@ def main():
         nonlocal index
         index+=1;label=f'native-ocr-{index:03d}'
         nodes=native(label)
+        tree_path=native.last_path
         data=device.adb('exec-out','screencap','-p',raw=True,timeout=20)
         captured=time.monotonic()
         (args.evidence/(label+'.png')).write_bytes(data)
         image=Image.open(io.BytesIO(data));surface=semantics.unity_surface_bounds(nodes,{'width':image.width,'height':image.height})
         words,full=ocr_words(image)
         title,title_meta=ocr_words(image,crop=(0,image.height*9//10,image.width,image.height),scale=4,mode='title')
-        buttons=[];button_meta=[]
-        for box in pink_rectangles(image):
+        buttons=[];button_meta=[];language_buttons=[]
+        for component_id,box in enumerate(pink_rectangles(image)):
             found,meta=ocr_words(image,crop=box,scale=6,mode='pink',psm=7);buttons+=found;button_meta.append(meta)
-        action=classify(words,title,buttons)
-        metadata={'screenshot_sha256':digest(data),'native_tree':label+'.xml','surface':surface,
-           'words':words,'title_words':title,'button_words':buttons,'action':action,
+            if next_initial_action(seen)=='language-English':
+                for model,expected in (('eng','English'),('chi_tra','繁體中文'),('kor','한국어')):
+                    found,meta=ocr_words(image,crop=box,scale=4,mode='pink',psm=7,language=model)
+                    button_meta.append(meta)
+                    caption=language_caption(found,expected,component_id)
+                    if caption:language_buttons.append(caption)
+        action=classify(words,title,buttons,language_buttons)
+        metadata={'screenshot_sha256':digest(data),'native_tree':tree_path,'surface':surface,
+           'words':words,'title_words':title,'button_words':buttons,'language_buttons':language_buttons,'action':action,
            'ocr_transforms':[full,title_meta,*button_meta],'capture_elapsed':round(captured-started,3)}
         (args.evidence/(label+'.json')).write_text(json.dumps(metadata,indent=2)+'\n')
         return action,surface,label,captured

@@ -1191,5 +1191,189 @@
       "caption": "TAP TO START",
       "confidence": 94.861214
     }
+  },
+  {
+    "source_path": "/tmp/sifas-android-qa-20261113/twelfth-run/GL/native-ocr-002.png",
+    "source_sha256": "a07b1895a4db72869910ac10c91c05812cdc0785ebd7e0d16b0afcfa3a776a31",
+    "expected": "language-English",
+    "words": [],
+    "title_words": [],
+    "button_words": [
+      {
+        "text": "English",
+        "confidence": 96.458328,
+        "bounds": [
+          223.5,
+          607.5,
+          267.5,
+          620.8333333333334
+        ]
+      }
+    ],
+    "language_buttons": [
+      {
+        "text": "English",
+        "confidence": 96.864037,
+        "bounds": [
+          223.5,
+          607.5,
+          267.5,
+          620.75
+        ],
+        "component_id": 0
+      },
+      {
+        "text": "\u7e41\u9ad4\u4e2d\u6587",
+        "confidence": 88.528908,
+        "bounds": [
+          451.5,
+          607.5,
+          498.25,
+          623.75
+        ],
+        "component_id": 1
+      },
+      {
+        "text": "\ud55c\uad6d\uc5b4",
+        "confidence": 96.936829,
+        "bounds": [
+          229.0,
+          661.0,
+          261.25,
+          672.75
+        ],
+        "component_id": 2
+      }
+    ],
+    "observed_action": {
+      "kind": "language-English",
+      "bounds": [
+        223.5,
+        607.5,
+        267.5,
+        620.75
+      ],
+      "caption": "English",
+      "confidence": 96.864037
+    },
+    "language_ocr_transforms": [
+      {
+        "crop": [
+          163,
+          592,
+          328,
+          635
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "eng",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t242\t62\t176\t53\t-1\t\n3\t1\t1\t1\t0\t0\t242\t62\t176\t53\t-1\t\n4\t1\t1\t1\t1\t0\t242\t62\t176\t53\t-1\t\n5\t1\t1\t1\t1\t1\t242\t62\t176\t53\t96.864037\tEnglish\n"
+      },
+      {
+        "crop": [
+          163,
+          592,
+          328,
+          635
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "chi_tra",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t242\t62\t176\t53\t-1\t\n3\t1\t1\t1\t0\t0\t242\t62\t176\t53\t-1\t\n4\t1\t1\t1\t1\t0\t242\t62\t176\t53\t-1\t\n5\t1\t1\t1\t1\t1\t242\t62\t176\t53\t89.573128\tEnglish\n"
+      },
+      {
+        "crop": [
+          163,
+          592,
+          328,
+          635
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "kor",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t242\t62\t176\t53\t-1\t\n3\t1\t1\t1\t0\t0\t242\t62\t176\t53\t-1\t\n4\t1\t1\t1\t1\t0\t242\t62\t176\t53\t-1\t\n5\t1\t1\t1\t1\t1\t242\t64\t19\t40\t10.561798\t\u3137\n5\t1\t1\t1\t1\t2\t260\t58\t41\t61\t12.267990\t60\n5\t1\t1\t1\t1\t3\t310\t75\t23\t40\t74.038612\t\uc6a9\n5\t1\t1\t1\t1\t4\t339\t62\t79\t42\t36.178528\t1151\n"
+      },
+      {
+        "crop": [
+          392,
+          592,
+          557,
+          635
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "eng",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t238\t67\t183\t42\t-1\t\n3\t1\t1\t1\t0\t0\t238\t67\t183\t42\t-1\t\n4\t1\t1\t1\t1\t0\t238\t67\t183\t42\t-1\t\n5\t1\t1\t1\t1\t1\t238\t67\t183\t42\t1.426468\tRHP\n"
+      },
+      {
+        "crop": [
+          392,
+          592,
+          557,
+          635
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "chi_tra",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t238\t67\t183\t42\t-1\t\n3\t1\t1\t1\t0\t0\t238\t67\t183\t42\t-1\t\n4\t1\t1\t1\t1\t0\t238\t67\t183\t42\t-1\t\n5\t1\t1\t1\t1\t1\t238\t67\t183\t42\t88.528908\t\u7e41\u9ad4\n5\t1\t1\t1\t1\t2\t351\t62\t42\t65\t96.121185\t\u4e2d\n5\t1\t1\t1\t1\t3\t392\t62\t33\t65\t96.776291\t\u6587\n"
+      },
+      {
+        "crop": [
+          392,
+          592,
+          557,
+          635
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "kor",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t238\t67\t183\t42\t-1\t\n3\t1\t1\t1\t0\t0\t238\t67\t183\t42\t-1\t\n4\t1\t1\t1\t1\t0\t238\t67\t183\t42\t-1\t\n5\t1\t1\t1\t1\t1\t238\t67\t89\t42\t0.000000\t\uc560\n5\t1\t1\t1\t1\t2\t343\t67\t78\t42\t40.279659\t\ub300\n"
+      },
+      {
+        "crop": [
+          163,
+          645,
+          328,
+          688
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "eng",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t264\t64\t129\t47\t-1\t\n3\t1\t1\t1\t0\t0\t264\t64\t129\t47\t-1\t\n4\t1\t1\t1\t1\t0\t264\t64\t129\t47\t-1\t\n5\t1\t1\t1\t1\t1\t264\t64\t129\t47\t0.000000\tSta\n5\t1\t1\t1\t1\t2\t354\t60\t43\t71\t0.000000\t0}\n"
+      },
+      {
+        "crop": [
+          163,
+          645,
+          328,
+          688
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "chi_tra",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t264\t64\t129\t47\t-1\t\n3\t1\t1\t1\t0\t0\t264\t64\t129\t47\t-1\t\n4\t1\t1\t1\t1\t0\t264\t64\t129\t47\t-1\t\n5\t1\t1\t1\t1\t1\t264\t64\t129\t47\t70.752640\t\u5168\n5\t1\t1\t1\t1\t2\t317\t60\t41\t71\t36.588715\t\u624d\n5\t1\t1\t1\t1\t3\t357\t60\t41\t71\t30.115219\t0\n"
+      },
+      {
+        "crop": [
+          163,
+          645,
+          328,
+          688
+        ],
+        "scale": 4,
+        "mode": "pink",
+        "psm": 7,
+        "language": "kor",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t264\t64\t129\t47\t-1\t\n3\t1\t1\t1\t0\t0\t264\t64\t129\t47\t-1\t\n4\t1\t1\t1\t1\t0\t264\t64\t129\t47\t-1\t\n5\t1\t1\t1\t1\t1\t264\t64\t129\t47\t96.936829\t\ud55c\uad6d\uc5b4\n"
+      }
+    ]
   }
 ]
