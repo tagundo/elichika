@@ -2,7 +2,7 @@ name: Diagnose fresh GL startup without any injected observer
 
 on:
   push:
-    branches: [codex/android-client-qa-native-gl-v13-20261113]
+    branches: [codex/android-client-qa-native-gl-v14-20261113]
   workflow_dispatch:
     inputs:
       max_seconds:

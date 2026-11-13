@@ -14,7 +14,7 @@ class NativeOcrControlTests(unittest.TestCase):
     def test_actual_retained_capture_captions(self):
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture['source_path']):
-                self.assertEqual(classify(fixture['words'],fixture['title_words'],fixture['button_words'],fixture.get('language_buttons')),fixture['observed_action'])
+                self.assertEqual(classify(fixture['words'],fixture['title_words'],fixture['button_words'],fixture.get('language_buttons'),fixture.get('title_fallback_words')),fixture['observed_action'])
 
     def test_terms_context_blocks_background_title_without_agree(self):
         fixture=next(f for f in self.fixtures if f['expected']=='terms-agree')
@@ -65,6 +65,25 @@ class NativeOcrControlTests(unittest.TestCase):
         self.assertIsNone(bare_language_target(captions))
         chinese['confidence']=99;chinese['bounds'][0]-=250;chinese['bounds'][2]-=250
         self.assertIsNone(bare_language_target(captions))
+
+    def test_actual_pulsing_title_pair_uses_exact_same_frame_normal_ocr(self):
+        fixtures=[f for f in self.fixtures if f.get('pulsing_title_pair')]
+        self.assertEqual(len(fixtures),2)
+        actions=[classify(f['words'],f['title_words'],f['button_words'],None,f['title_fallback_words']) for f in fixtures]
+        geometry={'left':0,'top':0,'right':720,'bottom':1280}
+        self.assertTrue(stable_action(actions[0],actions[1],geometry,geometry))
+        # The actual second masked OCR says 'te'; it never authorizes input.
+        second=fixtures[1]
+        self.assertIsNone(classify(second['words'],second['title_words'],second['button_words']))
+
+    def test_normal_title_fallback_rejects_wrong_words_and_modal_context(self):
+        fixture=next(f for f in self.fixtures if f.get('pulsing_title_pair'))
+        fallback=copy.deepcopy(fixture['title_fallback_words'])
+        for word in fallback:
+            if word['text'].casefold()=='to':word['text']='te'
+        self.assertIsNone(classify([],[],[],None,fallback))
+        terms=next(f for f in self.fixtures if f['expected']=='terms-agree')
+        self.assertEqual(classify(terms['words'],[],[],None,fixture['title_fallback_words'])['kind'],'blocked')
 
 
 if __name__=='__main__':unittest.main()

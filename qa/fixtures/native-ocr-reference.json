@@ -1375,5 +1375,395 @@
         "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t660\t172\t-1\t\n2\t1\t1\t0\t0\t0\t264\t64\t129\t47\t-1\t\n3\t1\t1\t1\t0\t0\t264\t64\t129\t47\t-1\t\n4\t1\t1\t1\t1\t0\t264\t64\t129\t47\t-1\t\n5\t1\t1\t1\t1\t1\t264\t64\t129\t47\t96.936829\t\ud55c\uad6d\uc5b4\n"
       }
     ]
+  },
+  {
+    "source_path": "/tmp/sifas-android-qa-20261113/thirteenth-run/GL/native-ocr-007.png",
+    "source_sha256": "6c60f9dca6e05e9ba80491636192985f706fa655172ce37df978506c52e5bb9e",
+    "expected": "title-start",
+    "pulsing_title_pair": true,
+    "words": [
+      {
+        "text": "ID",
+        "confidence": 87.614891,
+        "bounds": [
+          143.0,
+          5.0,
+          156.0,
+          15.0
+        ]
+      },
+      {
+        "text": "=",
+        "confidence": 75.873154,
+        "bounds": [
+          687.0,
+          10.0,
+          710.0,
+          47.0
+        ]
+      },
+      {
+        "text": "\\",
+        "confidence": 90.774277,
+        "bounds": [
+          59.0,
+          70.0,
+          73.0,
+          80.0
+        ]
+      },
+      {
+        "text": "\\",
+        "confidence": 85.798523,
+        "bounds": [
+          66.0,
+          80.0,
+          91.0,
+          113.0
+        ]
+      },
+      {
+        "text": "Fes:",
+        "confidence": 88.721657,
+        "bounds": [
+          429.0,
+          359.0,
+          461.0,
+          373.0
+        ]
+      },
+      {
+        "text": "Idol",
+        "confidence": 76.548599,
+        "bounds": [
+          231.0,
+          354.0,
+          270.0,
+          383.0
+        ]
+      },
+      {
+        "text": "iv",
+        "confidence": 81.087288,
+        "bounds": [
+          429.0,
+          708.0,
+          461.0,
+          731.0
+        ]
+      },
+      {
+        "text": "4",
+        "confidence": 90.189339,
+        "bounds": [
+          0.0,
+          961.0,
+          15.0,
+          980.0
+        ]
+      },
+      {
+        "text": "Tao",
+        "confidence": 83.440582,
+        "bounds": [
+          272.0,
+          1205.0,
+          328.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.475792,
+        "bounds": [
+          337.0,
+          1206.0,
+          368.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "Start",
+        "confidence": 95.518684,
+        "bounds": [
+          377.0,
+          1204.0,
+          448.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "B",
+        "confidence": 81.159904,
+        "bounds": [
+          8.0,
+          1248.0,
+          33.0,
+          1274.0
+        ]
+      }
+    ],
+    "title_words": [
+      {
+        "text": "Tap",
+        "confidence": 95.81382,
+        "bounds": [
+          272.0,
+          1205.0,
+          328.0,
+          1236.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 77.90683,
+        "bounds": [
+          338.0,
+          1207.0,
+          368.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "Start",
+        "confidence": 95.722527,
+        "bounds": [
+          377.0,
+          1205.0,
+          448.0,
+          1230.0
+        ]
+      }
+    ],
+    "title_fallback_words": [
+      {
+        "text": "Tao",
+        "confidence": 83.440582,
+        "bounds": [
+          272.0,
+          1205.0,
+          328.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.475792,
+        "bounds": [
+          337.0,
+          1206.0,
+          368.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "Start",
+        "confidence": 95.518684,
+        "bounds": [
+          377.0,
+          1204.0,
+          448.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "B",
+        "confidence": 81.159904,
+        "bounds": [
+          8.0,
+          1248.0,
+          33.0,
+          1274.0
+        ]
+      }
+    ],
+    "button_words": [],
+    "language_buttons": [],
+    "observed_action": {
+      "kind": "title-start",
+      "bounds": [
+        272.0,
+        1205.0,
+        448.0,
+        1236.0
+      ],
+      "caption": "TAP TO START",
+      "confidence": 77.90683
+    }
+  },
+  {
+    "source_path": "/tmp/sifas-android-qa-20261113/thirteenth-run/GL/native-ocr-008.png",
+    "source_sha256": "17e49c0f192879147100e364ea213aec60b4c72e4bbffef1a6db3a5ba30fd0b9",
+    "expected": "title-start",
+    "pulsing_title_pair": true,
+    "words": [
+      {
+        "text": "ID",
+        "confidence": 87.614891,
+        "bounds": [
+          143.0,
+          5.0,
+          156.0,
+          15.0
+        ]
+      },
+      {
+        "text": "Fes:",
+        "confidence": 85.828445,
+        "bounds": [
+          429.0,
+          359.0,
+          461.0,
+          373.0
+        ]
+      },
+      {
+        "text": "Idol",
+        "confidence": 83.876144,
+        "bounds": [
+          231.0,
+          354.0,
+          270.0,
+          383.0
+        ]
+      },
+      {
+        "text": "iv",
+        "confidence": 81.087288,
+        "bounds": [
+          429.0,
+          708.0,
+          461.0,
+          731.0
+        ]
+      },
+      {
+        "text": "7",
+        "confidence": 86.646606,
+        "bounds": [
+          487.0,
+          778.0,
+          494.0,
+          787.0
+        ]
+      },
+      {
+        "text": "\\",
+        "confidence": 91.125465,
+        "bounds": [
+          544.0,
+          1011.0,
+          548.0,
+          1027.0
+        ]
+      },
+      {
+        "text": "Tap",
+        "confidence": 96.235329,
+        "bounds": [
+          272.0,
+          1205.0,
+          328.0,
+          1236.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.893013,
+        "bounds": [
+          337.0,
+          1206.0,
+          367.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "Start",
+        "confidence": 96.859055,
+        "bounds": [
+          377.0,
+          1204.0,
+          448.0,
+          1230.0
+        ]
+      }
+    ],
+    "title_words": [
+      {
+        "text": "Tap",
+        "confidence": 96.259117,
+        "bounds": [
+          272.0,
+          1205.0,
+          328.0,
+          1236.0
+        ]
+      },
+      {
+        "text": "te",
+        "confidence": 83.867798,
+        "bounds": [
+          338.0,
+          1207.0,
+          367.0,
+          1229.0
+        ]
+      },
+      {
+        "text": "Start",
+        "confidence": 96.522827,
+        "bounds": [
+          377.0,
+          1205.0,
+          448.0,
+          1230.0
+        ]
+      }
+    ],
+    "title_fallback_words": [
+      {
+        "text": "Tap",
+        "confidence": 96.235329,
+        "bounds": [
+          272.0,
+          1205.0,
+          328.0,
+          1236.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.893013,
+        "bounds": [
+          337.0,
+          1206.0,
+          367.0,
+          1230.0
+        ]
+      },
+      {
+        "text": "Start",
+        "confidence": 96.859055,
+        "bounds": [
+          377.0,
+          1204.0,
+          448.0,
+          1230.0
+        ]
+      }
+    ],
+    "button_words": [],
+    "language_buttons": [],
+    "observed_action": {
+      "kind": "title-start",
+      "bounds": [
+        272.0,
+        1204.0,
+        448.0,
+        1236.0
+      ],
+      "caption": "TAP TO START",
+      "confidence": 96.235329
+    }
   }
 ]

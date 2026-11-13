@@ -125,7 +125,18 @@ def bare_language_target(captions):
     return None
 
 
-def classify(words, title_words, button_words, language_buttons=None):
+def title_caption(words):
+    title=[exact_word(words,word) for word in ('TAP','TO','START')]
+    if all(title) and all(w.get('confidence',-1)>=75 for w in title):
+        centers=[(w['bounds'][0]+w['bounds'][2])/2 for w in title]
+        ys=[(w['bounds'][1]+w['bounds'][3])/2 for w in title]
+        if centers==sorted(centers) and max(ys)-min(ys)<10:
+            return {'kind':'title-start','bounds':union_box(title),'caption':'TAP TO START',
+                    'confidence':min(w['confidence'] for w in title)}
+    return None
+
+
+def classify(words, title_words, button_words, language_buttons=None, title_fallback_words=None):
     """Only known initial-language/Title/Terms captions are actionable."""
     text=' '.join(w['text'] for w in words).casefold()
     captions={w['text'].casefold() for w in words}
@@ -160,14 +171,7 @@ def classify(words, title_words, button_words, language_buttons=None):
     if ('download' in captions and ('settings' in captions or 'setting' in captions)
             and ('bulk' in captions or 'lightweight' in captions or 'light' in captions)):
         return {'kind':'download-settings-observed'}
-    title=[exact_word(title_words,word) for word in ('TAP','TO','START')]
-    if all(title):
-        centers=[(w['bounds'][0]+w['bounds'][2])/2 for w in title]
-        ys=[(w['bounds'][1]+w['bounds'][3])/2 for w in title]
-        if centers==sorted(centers) and max(ys)-min(ys)<10:
-            return {'kind':'title-start','bounds':union_box(title),'caption':'TAP TO START',
-                    'confidence':min(w['confidence'] for w in title)}
-    return None
+    return title_caption(title_words) or title_caption(title_fallback_words or [])
 
 
 def stable_action(first, second, first_geometry, second_geometry):
@@ -203,7 +207,7 @@ def main():
     device=Android(args.serial,args.evidence);args.evidence.mkdir(parents=True,exist_ok=True)
     host=HostGoFixture(args.host_server_root,args.host_server_receipt,source,args.evidence)
     semantics.CLIENT=package
-    started=time.monotonic();run_start=int(time.time());pid=None;start_ticks=None;index=0;native_index=0;seen=set()
+    started=time.monotonic();run_start=int(time.time());pid=None;start_ticks=None;index=0;native_index=0;seen=set();pair_failures={}
     report={'schema_version':1,'status':'INCOMPLETE','scope':'Fresh no-agent native-only GL startup diagnostic; no full client feature approval',
       'observer_installed':False,'observer_loaded':False,'observer_attached':False,
       'client_sha256':client['sha256'],'client_asset_id':client['asset_id'],
@@ -253,6 +257,9 @@ def main():
         (args.evidence/(label+'.png')).write_bytes(data)
         image=Image.open(io.BytesIO(data));surface=semantics.unity_surface_bounds(nodes,{'width':image.width,'height':image.height})
         words,full=ocr_words(image)
+        # Use the normal OCR from this exact screenshot only within the same
+        # current Surface bottom strip. Never mix words between OCR modes.
+        title_fallback=[w for w in words if w['bounds'][1]>=image.height*9//10]
         title,title_meta=ocr_words(image,crop=(0,image.height*9//10,image.width,image.height),scale=4,mode='title')
         buttons=[];button_meta=[];language_buttons=[]
         for component_id,box in enumerate(pink_rectangles(image)):
@@ -263,9 +270,9 @@ def main():
                     button_meta.append(meta)
                     caption=language_caption(found,expected,component_id)
                     if caption:language_buttons.append(caption)
-        action=classify(words,title,buttons,language_buttons)
+        action=classify(words,title,buttons,language_buttons,title_fallback)
         metadata={'screenshot_sha256':digest(data),'native_tree':tree_path,'surface':surface,
-           'words':words,'title_words':title,'button_words':buttons,'language_buttons':language_buttons,'action':action,
+           'words':words,'title_words':title,'title_fallback_words':title_fallback,'button_words':buttons,'language_buttons':language_buttons,'action':action,
            'ocr_transforms':[full,title_meta,*button_meta],'capture_elapsed':round(captured-started,3)}
         (args.evidence/(label+'.json')).write_text(json.dumps(metadata,indent=2)+'\n')
         return action,surface,label,captured
@@ -318,10 +325,17 @@ def main():
                 assert {'title-start','terms-agree'}<=seen,'Native control did not observe and normally select both Title and Agree'
                 report['status']='PARTIAL_NATIVE_STARTUP_PROGRESS';report['observed_download_settings']=True;break
             if first and first['kind']==next_initial_action(seen):
-                proof=identity('before-'+first['kind'])
+                proof=identity('before-'+first['kind']+'-pair-'+str(pair_failures.get(first['kind'],0)))
                 time.sleep(.3)
                 second,other_geometry,second_label,captured= capture()
-                assert stable_action(first,second,geometry,other_geometry),'Two fresh captures do not agree on one exact caption and geometry'
+                if not stable_action(first,second,geometry,other_geometry):
+                    kind=first['kind'];pair_failures[kind]=pair_failures.get(kind,0)+1
+                    report['observations'].append({'fresh_pair_mismatch':kind,'captures':[first_label,second_label],
+                         'failed_pairs':pair_failures[kind],'input_performed':False})
+                    save()
+                    if pair_failures[kind]>=3:
+                        raise RuntimeError('Three fresh pairs did not agree on exact caption and geometry: '+kind)
+                    continue
                 assert lifetime()=={'pid':proof['pid'],'start_ticks':proof['start_ticks']},'Game lifetime changed before ordinary input'
                 assert time.monotonic()-captured<=8,'Fresh OCR action expired before ordinary input'
                 x=int((second['bounds'][0]+second['bounds'][2])/2);y=int((second['bounds'][1]+second['bounds'][3])/2)
