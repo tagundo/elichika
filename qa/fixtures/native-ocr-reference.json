@@ -1,0 +1,1195 @@
+[
+  {
+    "source_path": "/tmp/sifas-android-qa-20261113/eleventh-run/GL/client-003-bootstrap.png",
+    "source_sha256": "7f5880d717112c3fe038ec1b02c9115d1e8ef28e448683f633577b1dbdcfff29",
+    "expected": "language-confirm",
+    "words": [
+      {
+        "text": "Select",
+        "confidence": 96.769447,
+        "bounds": [
+          291.0,
+          506.0,
+          341.0,
+          520.0
+        ]
+      },
+      {
+        "text": "Language",
+        "confidence": 95.804634,
+        "bounds": [
+          349.0,
+          507.0,
+          430.0,
+          524.0
+        ]
+      },
+      {
+        "text": "Change",
+        "confidence": 96.883957,
+        "bounds": [
+          199.0,
+          619.0,
+          257.0,
+          635.0
+        ]
+      },
+      {
+        "text": "the",
+        "confidence": 93.289391,
+        "bounds": [
+          264.0,
+          619.0,
+          289.0,
+          632.0
+        ]
+      },
+      {
+        "text": "displa",
+        "confidence": 90.711349,
+        "bounds": [
+          295.0,
+          619.0,
+          338.0,
+          632.0
+        ]
+      },
+      {
+        "text": "language",
+        "confidence": 95.776924,
+        "bounds": [
+          358.0,
+          619.0,
+          427.0,
+          635.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 95.873116,
+        "bounds": [
+          433.0,
+          621.0,
+          449.0,
+          632.0
+        ]
+      },
+      {
+        "text": "English?",
+        "confidence": 96.201271,
+        "bounds": [
+          456.0,
+          619.0,
+          521.0,
+          635.0
+        ]
+      },
+      {
+        "text": "You",
+        "confidence": 97.012039,
+        "bounds": [
+          221.0,
+          641.0,
+          251.0,
+          653.0
+        ]
+      },
+      {
+        "text": "will",
+        "confidence": 95.741745,
+        "bounds": [
+          259.0,
+          640.0,
+          284.0,
+          653.0
+        ]
+      },
+      {
+        "text": "return",
+        "confidence": 95.741745,
+        "bounds": [
+          293.0,
+          642.0,
+          340.0,
+          653.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.185699,
+        "bounds": [
+          349.0,
+          642.0,
+          363.0,
+          653.0
+        ]
+      },
+      {
+        "text": "the",
+        "confidence": 96.99733,
+        "bounds": [
+          371.0,
+          640.0,
+          394.0,
+          653.0
+        ]
+      },
+      {
+        "text": "Title",
+        "confidence": 96.98513,
+        "bounds": [
+          401.0,
+          640.0,
+          436.0,
+          653.0
+        ]
+      },
+      {
+        "text": "screen.",
+        "confidence": 96.440125,
+        "bounds": [
+          443.0,
+          644.0,
+          498.0,
+          653.0
+        ]
+      },
+      {
+        "text": "Cancel",
+        "confidence": 94.848534,
+        "bounds": [
+          210.0,
+          753.0,
+          251.0,
+          763.0
+        ]
+      }
+    ],
+    "title_words": [],
+    "button_words": [
+      {
+        "text": "OK",
+        "confidence": 96.901176,
+        "bounds": [
+          480.0,
+          753.1666666666666,
+          499.0,
+          763.1666666666666
+        ]
+      }
+    ],
+    "observed_action": {
+      "kind": "language-confirm",
+      "bounds": [
+        480.0,
+        753.1666666666666,
+        499.0,
+        763.1666666666666
+      ],
+      "caption": "OK",
+      "confidence": 96.901176
+    }
+  },
+  {
+    "source_path": "/tmp/sifas-android-qa-20261113/eleventh-run/GL/detached-control-before-terms-tap.png",
+    "source_sha256": "86927d2c3d5baca09e9fac144730c398cbb6041dc88935922770075b541e9666",
+    "expected": "terms-agree",
+    "words": [
+      {
+        "text": "Contract",
+        "confidence": 96.595558,
+        "bounds": [
+          324.0,
+          462.0,
+          397.0,
+          476.0
+        ]
+      },
+      {
+        "text": "User",
+        "confidence": 96.831871,
+        "bounds": [
+          158.0,
+          508.0,
+          181.0,
+          518.0
+        ]
+      },
+      {
+        "text": "Agreement",
+        "confidence": 90.079857,
+        "bounds": [
+          192.0,
+          508.0,
+          260.0,
+          521.0
+        ]
+      },
+      {
+        "text": "Priv",
+        "confidence": 93.701614,
+        "bounds": [
+          467.0,
+          508.0,
+          491.0,
+          518.0
+        ]
+      },
+      {
+        "text": "Policy",
+        "confidence": 96.916901,
+        "bounds": [
+          518.0,
+          508.0,
+          556.0,
+          519.0
+        ]
+      },
+      {
+        "text": "Terms",
+        "confidence": 96.642029,
+        "bounds": [
+          66.0,
+          559.0,
+          109.0,
+          569.0
+        ]
+      },
+      {
+        "text": "of",
+        "confidence": 96.815048,
+        "bounds": [
+          114.0,
+          558.0,
+          128.0,
+          569.0
+        ]
+      },
+      {
+        "text": "Use",
+        "confidence": 94.525963,
+        "bounds": [
+          133.0,
+          559.0,
+          158.0,
+          569.0
+        ]
+      },
+      {
+        "text": "The",
+        "confidence": 96.941353,
+        "bounds": [
+          66.0,
+          603.0,
+          92.0,
+          615.0
+        ]
+      },
+      {
+        "text": "following",
+        "confidence": 96.277527,
+        "bounds": [
+          97.0,
+          603.0,
+          159.0,
+          618.0
+        ]
+      },
+      {
+        "text": "are",
+        "confidence": 93.203247,
+        "bounds": [
+          164.0,
+          607.0,
+          185.0,
+          615.0
+        ]
+      },
+      {
+        "text": "Bushi",
+        "confidence": 75.954758,
+        "bounds": [
+          191.0,
+          603.0,
+          227.0,
+          615.0
+        ]
+      },
+      {
+        "text": "Internatic",
+        "confidence": 88.344421,
+        "bounds": [
+          265.0,
+          604.0,
+          325.0,
+          615.0
+        ]
+      },
+      {
+        "text": "al",
+        "confidence": 76.024895,
+        "bounds": [
+          340.0,
+          603.0,
+          350.0,
+          615.0
+        ]
+      },
+      {
+        "text": "Pte,",
+        "confidence": 86.2202,
+        "bounds": [
+          357.0,
+          604.0,
+          383.0,
+          615.0
+        ]
+      },
+      {
+        "text": "Ltd.",
+        "confidence": 95.071793,
+        "bounds": [
+          389.0,
+          603.0,
+          414.0,
+          615.0
+        ]
+      },
+      {
+        "text": "and",
+        "confidence": 90.825798,
+        "bounds": [
+          420.0,
+          603.0,
+          444.0,
+          615.0
+        ]
+      },
+      {
+        "text": "its",
+        "confidence": 96.912956,
+        "bounds": [
+          450.0,
+          604.0,
+          465.0,
+          615.0
+        ]
+      },
+      {
+        "text": "related",
+        "confidence": 96.844177,
+        "bounds": [
+          471.0,
+          603.0,
+          518.0,
+          615.0
+        ]
+      },
+      {
+        "text": "(colle",
+        "confidence": 92.364769,
+        "bounds": [
+          579.0,
+          603.0,
+          614.0,
+          616.0
+        ]
+      },
+      {
+        "text": "ctively",
+        "confidence": 92.995499,
+        "bounds": [
+          618.0,
+          603.0,
+          659.0,
+          618.0
+        ]
+      },
+      {
+        "text": "referred",
+        "confidence": 94.164413,
+        "bounds": [
+          67.0,
+          626.0,
+          121.0,
+          637.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.372238,
+        "bounds": [
+          127.0,
+          628.0,
+          140.0,
+          637.0
+        ]
+      },
+      {
+        "text": "as",
+        "confidence": 91.784973,
+        "bounds": [
+          146.0,
+          630.0,
+          160.0,
+          637.0
+        ]
+      },
+      {
+        "text": "\u201cBushiroad",
+        "confidence": 93.035469,
+        "bounds": [
+          166.0,
+          626.0,
+          240.0,
+          637.0
+        ]
+      },
+      {
+        "text": "International\u201d,",
+        "confidence": 93.248108,
+        "bounds": [
+          247.0,
+          626.0,
+          342.0,
+          638.0
+        ]
+      },
+      {
+        "text": "\u2018us\u201d,",
+        "confidence": 84.447449,
+        "bounds": [
+          395.0,
+          630.0,
+          410.0,
+          637.0
+        ]
+      },
+      {
+        "text": "or",
+        "confidence": 92.966011,
+        "bounds": [
+          418.0,
+          630.0,
+          439.0,
+          639.0
+        ]
+      },
+      {
+        "text": "terms",
+        "confidence": 96.870537,
+        "bounds": [
+          490.0,
+          627.0,
+          528.0,
+          637.0
+        ]
+      },
+      {
+        "text": "and",
+        "confidence": 96.211662,
+        "bounds": [
+          534.0,
+          626.0,
+          558.0,
+          637.0
+        ]
+      },
+      {
+        "text": "conditions",
+        "confidence": 96.211662,
+        "bounds": [
+          564.0,
+          628.0,
+          634.0,
+          637.0
+        ]
+      },
+      {
+        "text": "of",
+        "confidence": 95.662041,
+        "bounds": [
+          640.0,
+          627.0,
+          653.0,
+          637.0
+        ]
+      },
+      {
+        "text": "use",
+        "confidence": 96.185097,
+        "bounds": [
+          67.0,
+          652.0,
+          89.0,
+          660.0
+        ]
+      },
+      {
+        "text": "(\u201cTerms\u201d):",
+        "confidence": 85.962677,
+        "bounds": [
+          95.0,
+          649.0,
+          164.0,
+          662.0
+        ]
+      },
+      {
+        "text": "Please",
+        "confidence": 96.940292,
+        "bounds": [
+          67.0,
+          694.0,
+          111.0,
+          705.0
+        ]
+      },
+      {
+        "text": "read",
+        "confidence": 96.638268,
+        "bounds": [
+          116.0,
+          694.0,
+          146.0,
+          705.0
+        ]
+      },
+      {
+        "text": "these",
+        "confidence": 95.522583,
+        "bounds": [
+          151.0,
+          694.0,
+          188.0,
+          705.0
+        ]
+      },
+      {
+        "text": "Terms",
+        "confidence": 95.522583,
+        "bounds": [
+          193.0,
+          695.0,
+          236.0,
+          705.0
+        ]
+      },
+      {
+        "text": "carefully",
+        "confidence": 96.972954,
+        "bounds": [
+          241.0,
+          694.0,
+          300.0,
+          707.0
+        ]
+      },
+      {
+        "text": "because",
+        "confidence": 94.507217,
+        "bounds": [
+          305.0,
+          694.0,
+          360.0,
+          705.0
+        ]
+      },
+      {
+        "text": "they",
+        "confidence": 94.507217,
+        "bounds": [
+          365.0,
+          694.0,
+          395.0,
+          707.0
+        ]
+      },
+      {
+        "text": "govern",
+        "confidence": 96.984802,
+        "bounds": [
+          400.0,
+          698.0,
+          445.0,
+          708.0
+        ]
+      },
+      {
+        "text": "your",
+        "confidence": 96.876038,
+        "bounds": [
+          451.0,
+          698.0,
+          482.0,
+          709.0
+        ]
+      },
+      {
+        "text": "access",
+        "confidence": 96.831268,
+        "bounds": [
+          487.0,
+          698.0,
+          517.0,
+          705.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.890198,
+        "bounds": [
+          536.0,
+          696.0,
+          549.0,
+          705.0
+        ]
+      },
+      {
+        "text": "and",
+        "confidence": 96.890198,
+        "bounds": [
+          555.0,
+          694.0,
+          579.0,
+          705.0
+        ]
+      },
+      {
+        "text": "use",
+        "confidence": 96.961403,
+        "bounds": [
+          585.0,
+          698.0,
+          608.0,
+          705.0
+        ]
+      },
+      {
+        "text": "of",
+        "confidence": 97.013504,
+        "bounds": [
+          613.0,
+          694.0,
+          627.0,
+          705.0
+        ]
+      },
+      {
+        "text": "the",
+        "confidence": 95.169594,
+        "bounds": [
+          631.0,
+          694.0,
+          652.0,
+          705.0
+        ]
+      },
+      {
+        "text": "Bushiroad",
+        "confidence": 93.235886,
+        "bounds": [
+          67.0,
+          717.0,
+          135.0,
+          728.0
+        ]
+      },
+      {
+        "text": "International",
+        "confidence": 96.830574,
+        "bounds": [
+          141.0,
+          717.0,
+          226.0,
+          728.0
+        ]
+      },
+      {
+        "text": "Services",
+        "confidence": 96.959816,
+        "bounds": [
+          232.0,
+          717.0,
+          288.0,
+          728.0
+        ]
+      },
+      {
+        "text": "(as",
+        "confidence": 96.907677,
+        "bounds": [
+          294.0,
+          718.0,
+          313.0,
+          730.0
+        ]
+      },
+      {
+        "text": "defined",
+        "confidence": 96.988388,
+        "bounds": [
+          318.0,
+          717.0,
+          369.0,
+          728.0
+        ]
+      },
+      {
+        "text": "below),",
+        "confidence": 93.281029,
+        "bounds": [
+          376.0,
+          717.0,
+          424.0,
+          730.0
+        ]
+      },
+      {
+        "text": "Bushiroad",
+        "confidence": 89.183701,
+        "bounds": [
+          430.0,
+          717.0,
+          498.0,
+          728.0
+        ]
+      },
+      {
+        "text": "International",
+        "confidence": 95.774185,
+        "bounds": [
+          505.0,
+          717.0,
+          590.0,
+          728.0
+        ]
+      },
+      {
+        "text": "Content,",
+        "confidence": 96.93985,
+        "bounds": [
+          595.0,
+          717.0,
+          653.0,
+          730.0
+        ]
+      },
+      {
+        "text": "and",
+        "confidence": 97.000992,
+        "bounds": [
+          66.0,
+          739.0,
+          91.0,
+          751.0
+        ]
+      },
+      {
+        "text": "User",
+        "confidence": 96.955521,
+        "bounds": [
+          97.0,
+          740.0,
+          127.0,
+          751.0
+        ]
+      },
+      {
+        "text": "Content",
+        "confidence": 95.708397,
+        "bounds": [
+          133.0,
+          740.0,
+          187.0,
+          751.0
+        ]
+      },
+      {
+        "text": "(defined",
+        "confidence": 96.647285,
+        "bounds": [
+          193.0,
+          739.0,
+          248.0,
+          752.0
+        ]
+      },
+      {
+        "text": "Int",
+        "confidence": 88.003799,
+        "bounds": [
+          543.0,
+          740.0,
+          560.0,
+          751.0
+        ]
+      },
+      {
+        "text": "and",
+        "confidence": 88.403099,
+        "bounds": [
+          305.0,
+          739.0,
+          329.0,
+          751.0
+        ]
+      },
+      {
+        "text": "are",
+        "confidence": 95.695435,
+        "bounds": [
+          335.0,
+          743.0,
+          356.0,
+          751.0
+        ]
+      },
+      {
+        "text": "legally",
+        "confidence": 96.785469,
+        "bounds": [
+          362.0,
+          739.0,
+          405.0,
+          754.0
+        ]
+      },
+      {
+        "text": "binding.",
+        "confidence": 90.422714,
+        "bounds": [
+          410.0,
+          739.0,
+          463.0,
+          754.0
+        ]
+      },
+      {
+        "text": "Privacy",
+        "confidence": 96.770348,
+        "bounds": [
+          67.0,
+          762.0,
+          117.0,
+          775.0
+        ]
+      },
+      {
+        "text": "Policy",
+        "confidence": 91.508255,
+        "bounds": [
+          122.0,
+          762.0,
+          163.0,
+          774.0
+        ]
+      },
+      {
+        "text": "is",
+        "confidence": 95.9823,
+        "bounds": [
+          169.0,
+          762.0,
+          171.0,
+          764.0
+        ]
+      },
+      {
+        "text": "incorporated",
+        "confidence": 96.789223,
+        "bounds": [
+          184.0,
+          762.0,
+          270.0,
+          777.0
+        ]
+      },
+      {
+        "text": "as",
+        "confidence": 96.371429,
+        "bounds": [
+          276.0,
+          766.0,
+          290.0,
+          773.0
+        ]
+      },
+      {
+        "text": "a",
+        "confidence": 96.371429,
+        "bounds": [
+          296.0,
+          766.0,
+          303.0,
+          773.0
+        ]
+      },
+      {
+        "text": "part",
+        "confidence": 96.844673,
+        "bounds": [
+          309.0,
+          764.0,
+          335.0,
+          777.0
+        ]
+      },
+      {
+        "text": "of",
+        "confidence": 96.493469,
+        "bounds": [
+          340.0,
+          763.0,
+          354.0,
+          773.0
+        ]
+      },
+      {
+        "text": "these",
+        "confidence": 96.493469,
+        "bounds": [
+          359.0,
+          762.0,
+          395.0,
+          773.0
+        ]
+      },
+      {
+        "text": "Terms",
+        "confidence": 94.015182,
+        "bounds": [
+          400.0,
+          763.0,
+          443.0,
+          773.0
+        ]
+      },
+      {
+        "text": "and,",
+        "confidence": 96.940987,
+        "bounds": [
+          448.0,
+          762.0,
+          477.0,
+          775.0
+        ]
+      },
+      {
+        "text": "by",
+        "confidence": 96.902687,
+        "bounds": [
+          483.0,
+          762.0,
+          496.0,
+          777.0
+        ]
+      },
+      {
+        "text": "installing,",
+        "confidence": 94.793556,
+        "bounds": [
+          504.0,
+          762.0,
+          567.0,
+          776.0
+        ]
+      },
+      {
+        "text": "accessing",
+        "confidence": 93.948128,
+        "bounds": [
+          573.0,
+          762.0,
+          638.0,
+          777.0
+        ]
+      },
+      {
+        "text": "or",
+        "confidence": 96.761932,
+        "bounds": [
+          643.0,
+          766.0,
+          656.0,
+          773.0
+        ]
+      },
+      {
+        "text": "No",
+        "confidence": 96.610489,
+        "bounds": [
+          177.0,
+          801.0,
+          193.0,
+          810.0
+        ]
+      }
+    ],
+    "title_words": [],
+    "button_words": [
+      {
+        "text": "Agree",
+        "confidence": 96.550262,
+        "bounds": [
+          516.3333333333334,
+          799.0,
+          553.0,
+          812.0
+        ]
+      }
+    ],
+    "observed_action": {
+      "kind": "terms-agree",
+      "bounds": [
+        516.3333333333334,
+        799.0,
+        553.0,
+        812.0
+      ],
+      "caption": "Agree",
+      "confidence": 96.550262
+    }
+  },
+  {
+    "source_path": "/tmp/sifas-android-qa-20261113/seventh-run/JP/detached-control-before-caption-tap.png",
+    "source_sha256": "2db3a552440738a832c70831b5683031a92f0a348f93281e003ca9355c84daad",
+    "expected": "title-start",
+    "words": [
+      {
+        "text": "ID",
+        "confidence": 92.832077,
+        "bounds": [
+          157.0,
+          7.0,
+          170.0,
+          16.0
+        ]
+      },
+      {
+        "text": "=|",
+        "confidence": 80.343529,
+        "bounds": [
+          677.0,
+          8.0,
+          712.0,
+          45.0
+        ]
+      },
+      {
+        "text": "\\",
+        "confidence": 93.029839,
+        "bounds": [
+          61.0,
+          70.0,
+          83.0,
+          113.0
+        ]
+      },
+      {
+        "text": "\\",
+        "confidence": 91.947304,
+        "bounds": [
+          86.0,
+          121.0,
+          100.0,
+          135.0
+        ]
+      },
+      {
+        "text": "iv",
+        "confidence": 76.673889,
+        "bounds": [
+          429.0,
+          708.0,
+          461.0,
+          731.0
+        ]
+      },
+      {
+        "text": "\\",
+        "confidence": 92.039131,
+        "bounds": [
+          544.0,
+          1012.0,
+          548.0,
+          1027.0
+        ]
+      },
+      {
+        "text": "TAP",
+        "confidence": 95.306969,
+        "bounds": [
+          244.0,
+          1208.0,
+          308.0,
+          1233.0
+        ]
+      },
+      {
+        "text": "TO",
+        "confidence": 96.220909,
+        "bounds": [
+          317.0,
+          1208.0,
+          363.0,
+          1233.0
+        ]
+      }
+    ],
+    "title_words": [
+      {
+        "text": "TAP",
+        "confidence": 96.150513,
+        "bounds": [
+          244.0,
+          1208.0,
+          308.0,
+          1232.0
+        ]
+      },
+      {
+        "text": "TO",
+        "confidence": 95.268326,
+        "bounds": [
+          317.0,
+          1208.0,
+          363.0,
+          1233.0
+        ]
+      },
+      {
+        "text": "START",
+        "confidence": 94.861214,
+        "bounds": [
+          373.0,
+          1208.0,
+          476.0,
+          1233.0
+        ]
+      },
+      {
+        "text": "=",
+        "confidence": 95.654724,
+        "bounds": [
+          269.0,
+          1263.0,
+          278.0,
+          1266.0
+        ]
+      }
+    ],
+    "button_words": [],
+    "observed_action": {
+      "kind": "title-start",
+      "bounds": [
+        244.0,
+        1208.0,
+        476.0,
+        1233.0
+      ],
+      "caption": "TAP TO START",
+      "confidence": 94.861214
+    }
+  }
+]

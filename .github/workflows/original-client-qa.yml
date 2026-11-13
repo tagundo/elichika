@@ -1,14 +1,14 @@
-name: Validate signed SIFAS ARM64 clients against frozen source-built Go
+name: Diagnose fresh GL startup without any injected observer
 
 on:
   push:
-    branches: [codex/android-client-qa-gl-20261113]
+    branches: [codex/android-client-qa-native-gl-20261113]
   workflow_dispatch:
     inputs:
       max_seconds:
         description: Bounded genuine-client UI run time per region
         required: true
-        default: "1800"
+        default: "600"
 
 permissions:
   # GitHub requires write scope to read this repository's unpublished drafts.
@@ -28,10 +28,11 @@ jobs:
       matrix:
         region: [GL]
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       QA_REGION: ${{ matrix.region }}
+      OMP_THREAD_LIMIT: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,15 +65,14 @@ jobs:
           persist-credentials: false
           submodules: recursive
 
-      - name: Download exact signed client and pinned readonly observer
+      - name: Download exact signed client without any observer
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           python3 qa/download_fixtures.py --manifest qa/frozen-fixtures.json --region "$QA_REGION" \
-            --destination "$RUNNER_TEMP/client-qa-fixtures" --evidence evidence --skip-server-apk
-          xz -d "$RUNNER_TEMP/client-qa-fixtures/frida-server.xz"
+            --destination "$RUNNER_TEMP/client-qa-fixtures" --evidence evidence --skip-server-apk --skip-frida
           git -C server-source rev-parse HEAD > evidence/server-source-commit.txt
           sha256sum qa/*.py qa/unity_ui*.js qa/*manifest*.json qa/frozen-fixtures.json > evidence/qa-source-sha256.txt
           cp qa/frozen-fixtures.json evidence/frozen-fixtures.json
@@ -82,9 +82,9 @@ jobs:
           set -euo pipefail
           test "$(uname -m)" = aarch64
           sudo apt-get update -qq
-          sudo apt-get install -y adb apksigner aapt python3-venv ffmpeg
+          sudo apt-get install -y adb apksigner aapt python3-venv ffmpeg tesseract-ocr tesseract-ocr-eng
           python3 -m venv "$RUNNER_TEMP/qa-venv"
-          "$RUNNER_TEMP/qa-venv/bin/pip" install --disable-pip-version-check 'frida==16.6.6' 'Pillow==11.0.0'
+          "$RUNNER_TEMP/qa-venv/bin/pip" install --disable-pip-version-check 'Pillow==11.0.0'
           if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
             sudo apt-get install -y "linux-modules-extra-$(uname -r)"
             sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
@@ -114,9 +114,10 @@ jobs:
           adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/webview-command-line" /data/local/tmp/webview-command-line
           adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
           adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
-          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/client-qa-fixtures/frida-server" /data/local/tmp/frida-server
-          adb -s 127.0.0.1:5555 shell chmod 755 /data/local/tmp/frida-server
-          adb -s 127.0.0.1:5555 shell 'nohup /data/local/tmp/frida-server -l 127.0.0.1:27042 >/data/local/tmp/frida-server.log 2>&1 </dev/null &'
+
+      - name: Verify bounded native OCR action regressions
+        run: |
+          "$RUNNER_TEMP/qa-venv/bin/python" -B -m unittest discover -s qa -p test_native_ocr_control.py -v
 
       - name: Verify signatures and exact package identities
         run: |
@@ -144,27 +145,26 @@ jobs:
 
       - name: Run genuine regional client UI against owned hash-bound source fixture
         env:
-          QA_SECONDS: ${{ inputs.max_seconds || '1800' }}
+          QA_SECONDS: ${{ inputs.max_seconds || '600' }}
         run: |
           set -euo pipefail
           case "$QA_SECONDS" in *[!0-9]*|'') exit 2;; esac
           test "$QA_SECONDS" -ge 120
-          test "$QA_SECONDS" -le 3000
+          test "$QA_SECONDS" -le 600
           qa_watchdog_seconds=$((QA_SECONDS + 120))
           qa_exit=0
-          timeout --signal=TERM --kill-after=20s "${qa_watchdog_seconds}s" "$RUNNER_TEMP/qa-venv/bin/python" -u qa/feature_client_smoke.py \
-            --fixtures qa/frozen-fixtures.json --region "$QA_REGION" \
+          timeout --signal=TERM --kill-after=20s "${qa_watchdog_seconds}s" "$RUNNER_TEMP/qa-venv/bin/python" -u qa/native_ocr_control.py \
+            --fixtures qa/frozen-fixtures.json \
             --host-server-root "$GITHUB_WORKSPACE/server-source" \
             --host-server-receipt "$RUNNER_TEMP/host-go-fixture/host-go-fixture.json" \
             --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
             --server-source server-source --evidence evidence \
-            --unity-agent qa/unity_ui.bundle.js --max-seconds "$QA_SECONDS" \
-            --settings-orientation portrait --settings-scalar 2.0 --fast-intro --settled-download-modal-control || qa_exit=$?
+            --max-seconds "$QA_SECONDS" || qa_exit=$?
           if [ "$qa_exit" = 124 ] || [ "$qa_exit" = 137 ]; then
             python3 - <<'PYTIMEOUT'
           import json
           from pathlib import Path
-          for name in ('original-client-report.json','candidate-runtime-report.json'):
+          for name in ('native-only-control-report.json',):
               path=Path('evidence')/name
               if path.is_file():
                   report=json.loads(path.read_text());report['status']='INCOMPLETE'
@@ -188,7 +188,6 @@ jobs:
           adb -s 127.0.0.1:5555 shell dumpsys activity activities > evidence/final-activities.txt 2>/dev/null || true
           adb -s 127.0.0.1:5555 shell dumpsys SurfaceFlinger > evidence/surfaceflinger.txt 2>/dev/null || true
           adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-display.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/local/tmp/frida-server.log > evidence/frida-server.txt 2>/dev/null || true
           docker logs original-client-qa > evidence/redroid.log 2>&1 || true
 
       - name: Redact known synthetic fixture credentials from final diagnostics
@@ -211,7 +210,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sifas-b23-${{ matrix.region }}-runtime-evidence
+          name: sifas-native-no-agent-${{ matrix.region }}-evidence
           path: evidence/
           if-no-files-found: warn
           retention-days: 7

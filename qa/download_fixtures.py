@@ -29,6 +29,7 @@ def main():
     parser.add_argument('--destination', required=True, type=Path)
     parser.add_argument('--evidence', required=True, type=Path)
     parser.add_argument('--skip-server-apk', action='store_true', help='Source-built Go mode: download only client and readonly observer')
+    parser.add_argument('--skip-frida', action='store_true', help='Native-only control: do not download any observer binary')
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
     assert manifest['schema_version'] == 1
@@ -41,7 +42,8 @@ def main():
     selected = [('client', manifest['clients'][args.region])]
     if not args.skip_server_apk:
         selected.append(('server', manifest['server']))
-    selected.append(('frida', manifest['frida']))
+    if not args.skip_frida:
+        selected.append(('frida', manifest['frida']))
     for kind, fixture in selected:
         destination = args.destination / ('frida-server.xz' if kind == 'frida' else kind+'.apk')
         request = urllib.request.Request(f"https://api.github.com/repos/{fixture['repository']}/releases/assets/{fixture['asset_id']}?download_nonce={time.time_ns()}",
