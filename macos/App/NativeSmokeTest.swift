@@ -1464,12 +1464,10 @@ final class NativeSmokeTest {
     private func checkOfflineManagement(_ directory: URL) async throws {
         try checkpoint("offline-management-pages")
         let previous = model.selectedSection
-        let previousSettings = model.showServerSettings
-        defer { model.selectedSection = previous; model.showServerSettings = previousSettings }
+        defer { model.selectedSection = previous }
         await model.refresh()
         try require(!model.snapshot.serverRunning, "Management must prepare while the game server remains stopped.")
-        model.showServerSettings = true
-        model.selectedSection = .settings
+        model.selectedSection = .serverSettings
         model.retryManagement()
         try await wait("the local management service", timeout: 120) {
             await self.model.refresh()
@@ -1477,25 +1475,41 @@ final class NativeSmokeTest {
         }
         guard let pid = model.snapshot.management?.pid, pid > 0 else { throw NativeError.invalidResponse }
         let pages: [(BrowserRoute, AppSection, String, String)] = [
-            (.serverSettings, .settings, "/webui/admin/", "offline-management-settings.png"),
+            (.serverSettings, .serverSettings, "/webui/admin/", "offline-management-settings.png"),
             (.accounts, .accounts, "/webui/user/", "offline-management-user.png")]
         var observed: [[String: Any]] = []
         for (route, section, path, filename) in pages {
-            guard let target = model.goURL(path: path), let origin = TrustedOrigin(target) else { throw NativeError.invalidResponse }
-            let (_, response) = try await URLSession.shared.data(from: target)
+            guard let endpoint = model.goEndpoint(path: path), endpoint.localWebUIToken != nil,
+                  let origin = TrustedOrigin(endpoint.url) else { throw NativeError.invalidResponse }
+            let (_, response) = try await URLSession.shared.data(for: endpoint.initialRequest)
             try require((response as? HTTPURLResponse)?.statusCode == 200,
                         "The real management page must respond while the game server is stopped.")
-            model.showServerSettings = true
             model.selectedSection = section
             let webView = model.browser(route).webView
             try await wait("the attached native management page", timeout: 20) { webView.window != nil }
-            try await waitJS(webView, "the management document", timeout: 30, expression:
-                "document.readyState==='complete'&&location.pathname.indexOf('/webui/')===0&&!!document.body&&document.body.innerText.trim().length>20")
+            let requestedDocument = route == .serverSettings
+                ? "(location.pathname==='/webui/admin/'||location.pathname==='/webui/admin')&&!!document.querySelector('button[onclick*=\"config_editor\"]')"
+                : "location.pathname==='/webui/user/login'&&!!document.getElementById('native-account-picker')&&!document.getElementById('native-account-picker').hidden&&!!document.getElementById('native-account-filter')"
+            let documentReady = "document.readyState==='complete'&&!!document.body&&document.body.innerText.trim().length>20&&document.body.dataset.elichikaLocalAccess==='true'&&(" + requestedDocument + ")"
+            try await wait("the completed requested management document", timeout: 30) {
+                guard webView.window != nil, !webView.isLoading else { return false }
+                return (try? await self.js(webView, "return !!(" + documentReady + ");")) as? Bool == true
+            }
             guard let actualURL = webView.url else { throw NativeError.invalidResponse }
             try require(origin.contains(actualURL) && !model.snapshot.serverRunning,
                         "Native management navigation must stay on the ready loopback origin and leave the game server stopped.")
             let page = try await object(webView,
-                "return JSON.stringify({url:location.href,title:document.title,bodyCharacters:document.body.innerText.trim().length});")
+                "return JSON.stringify({url:location.href,title:document.title,bodyCharacters:document.body.innerText.trim().length,localAccess:document.body.dataset.elichikaLocalAccess==='true',requestedDocumentReady:!!(" + documentReady + "),passwordPrompt:Array.from(document.querySelectorAll('#admin_password,#user_password')).some(x=>x.getClientRects().length>0),nativeLanguageReady:typeof window.apply_native_language==='function',loginFormHidden:document.getElementById('login_form')?document.getElementById('login_form').hidden:null,pickerHidden:document.getElementById('native-account-picker')?document.getElementById('native-account-picker').hidden:null,visiblePasswordInputs:Array.from(document.querySelectorAll('#admin_password,#user_password')).filter(x=>x.getClientRects().length>0).map(x=>({id:x.id,formHidden:x.form?x.form.hidden:null,display:getComputedStyle(x).display,visibility:getComputedStyle(x).visibility}))});")
+            // Preserve only visibility metadata, never field values, before a
+            // failing authorization assertion can discard the current page.
+            report["native_offline_management_current_document"] = ["requested_path": path, "document": page]
+            if page["localAccess"] as? Bool != true || page["passwordPrompt"] as? Bool != false {
+                try? await snapshot(webView, directory.appendingPathComponent("offline-management-auth-failure.png"))
+            }
+            try writeReport(directory)
+            try require(!webView.isLoading && page["requestedDocumentReady"] as? Bool == true
+                        && page["localAccess"] as? Bool == true && page["passwordPrompt"] as? Bool == false,
+                        "App-owned management must open authorized server settings and the account picker without a password prompt.")
             try await snapshot(webView, directory.appendingPathComponent(filename))
             observed.append(["requested_path": path, "http_status": 200, "document": page, "screenshot": filename])
         }
@@ -1503,11 +1517,15 @@ final class NativeSmokeTest {
         let accounts = model.browser(.accounts)
         guard let originalOrigin = model.goURL(path: "/webui/admin/") else { throw NativeError.invalidResponse }
         let managementPages = [settings.webView, accounts.webView]
+        _ = try await js(settings.webView, "location.assign('/webui/admin/config_editor');return true;")
+        try await waitJS(settings.webView, "the authorized server config form", timeout: 30, expression:
+            "document.readyState==='complete'&&document.body.dataset.elichikaLocalAccess==='true'&&!!document.querySelector('#config_form [name=CdnServer]')")
         // An unsent form draft exercises actual document preservation, beyond
         // merely reusing a WKWebView with a newly loaded login page.
-        for webView in managementPages {
+        for (index, webView) in managementPages.enumerated() {
+            let selector = index == 0 ? "#config_form [name=CdnServer]" : "#native-account-filter"
             let prepared = try await js(webView, """
-                var field=document.querySelector('#login_form input[type="password"]:not([disabled]):not([readonly])');
+                var field=document.querySelector('\(selector):not([disabled]):not([readonly])');
                 if(!field)return false;
                 window.elichikaNavigationDraft={field:field,previous:field.value};
                 field.value='Elichika unsaved navigation draft';field.dispatchEvent(new Event('input',{bubbles:true}));
@@ -1516,7 +1534,7 @@ final class NativeSmokeTest {
             try require(prepared as? Bool == true, "Each management page must contain a real editable form draft before navigation.")
         }
         let stopRequests = stages.filter { $0["stage"] as? String == "management-demand-stop-requested" }.count
-        for destination in [AppSection.viewer, .content, .server] {
+        for destination in [AppSection.viewer, .content, .server, .settings] {
             model.selectedSection = destination
             // Let SwiftUI detach the hidden page, then exercise the ordinary
             // state refresh that previously stopped and destroyed its session.
@@ -1526,7 +1544,6 @@ final class NativeSmokeTest {
                         && model.goURL(path: "/webui/admin/") == originalOrigin && !model.snapshot.serverRunning,
                         "Visiting another menu must retain the same ready management process and origin.")
             for (route, section, _, _) in pages {
-                model.showServerSettings = true
                 model.selectedSection = section
                 model.retryManagement()
                 let session = model.browser(route)
@@ -1543,7 +1560,6 @@ final class NativeSmokeTest {
             _ = try await js(webView, "var saved=window.elichikaNavigationDraft;if(saved){saved.field.value=saved.previous;saved.field.dispatchEvent(new Event('input',{bubbles:true}));delete window.elichikaNavigationDraft;}return true;")
         }
         model.selectedSection = previous
-        model.showServerSettings = previousSettings
         await model.refresh()
         try require(model.snapshot.management?.pid == pid && model.snapshot.management?.httpReady == true
                     && model.managementSessionWanted && !model.snapshot.serverRunning,
@@ -1552,10 +1568,11 @@ final class NativeSmokeTest {
                     "Menu navigation must not request a management shutdown.")
         report["native_offline_management"] = ["status": "PASS", "server_stayed_stopped": true,
             "management_pid": pid, "management_pid_after_navigation": pid, "pages": observed,
-            "session_retained_while_editing": true, "fast_navigation_cycles": 3,
+            "session_retained_while_editing": true, "fast_navigation_cycles": 4,
             "browser_sessions_preserved": true, "unsaved_form_drafts_preserved": true,
+            "app_owned_access_without_password_prompt": true,
             "origin_unchanged": true, "navigation_shutdown_requests": 0,
-            "scope": "Actual native Settings/Accounts WebViews and the same real loopback Go management process across menu round trips; no game server or account mutation requested"]
+            "scope": "Actual native Server settings/Accounts WebViews, authorized with the app-owned capability, and the same real loopback Go management process across menu round trips; no game server or account mutation requested"]
         try checkpoint("offline-management-pages-passed")
     }
 
@@ -1581,21 +1598,31 @@ final class NativeSmokeTest {
         }
         try require(try Data(contentsOf: configURL) == originalConfigData,
                     "Rejected Console actions must not change the private configuration.")
-        model.selectedSection = .server
+        try await wait("the attached asset window before switching to Console", timeout: 20) {
+            self.model.assetWebView?.window?.contentView != nil
+        }
         guard let window = model.assetWebView?.window, let content = window.contentView else {
             throw NativeError.service("The native Console capture requires the existing application window attached to the asset WebView.")
         }
+        model.selectedSection = .server
         NSApplication.shared.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         try await wait("the actual Console window and laid-out content before capture", timeout: 10) {
             self.model.selectedSection == .server && NSApplication.shared.isActive && window.isVisible && window.isKeyWindow &&
                 NSApplication.shared.keyWindow === window && content.window === window &&
-                !content.isHiddenOrHasHiddenAncestor && content.bounds.width > 0 && content.bounds.height > 0
+                !content.isHiddenOrHasHiddenAncestor && content.bounds.width > 0 && content.bounds.height > 0 &&
+                self.consoleMarker(in: content, window: window) != nil && self.model.assetWebView?.window !== window
         }
+        await Task.yield()
+        try await Task.sleep(nanoseconds: 100_000_000)
         content.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        try require(consoleMarker(in: content, window: window) != nil && model.assetWebView?.window !== window,
+                    "The actual Console layout must have replaced the asset WebView before capture.")
         report["native_console_capture"] = ["owned_asset_window": true, "window_number": window.windowNumber,
             "app_active": NSApplication.shared.isActive, "window_visible": window.isVisible,
-            "window_key": window.isKeyWindow, "content_width": content.bounds.width, "content_height": content.bounds.height]
+            "window_key": window.isKeyWindow, "content_width": content.bounds.width, "content_height": content.bounds.height,
+            "console_render_marker_visible": true, "previous_asset_view_detached": true]
         guard let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {
             throw NativeError.service("The actual native Console view must be visible for capture.")
         }
@@ -1648,6 +1675,7 @@ final class NativeSmokeTest {
             "archive_default_region": ConsoleRegion.defaultRegion(language: model.language).rawValue,
             "cache_toggles": toggles, "original_cache_setting_restored": true,
             "other_config_fields_preserved": true, "native_view_screenshot": "console-menus.png",
+            "console_render_marker_visible": true, "previous_asset_view_detached": true,
             "scope": "Actual native Console sheets/model actions and authenticated bundled Go CDN command in private smoke data; no archive download or reset executed"]
         try checkpoint("native-console-actions-passed")
     }
@@ -1659,6 +1687,15 @@ final class NativeSmokeTest {
         let (_, response) = try await URLSession(configuration: config).data(from: endpoint)
         try require([401, 403].contains((response as? HTTPURLResponse)?.statusCode ?? 0), "Control API must refuse unauthenticated requests.")
         report["unauthenticated_control_refused"] = true
+    }
+
+    private func consoleMarker(in view: NSView, window: NSWindow) -> NSView? {
+        if view.identifier?.rawValue == "elichika.console.rendered", view.window === window,
+           !view.isHiddenOrHasHiddenAncestor, view.bounds.width > 0, view.bounds.height > 0 { return view }
+        for child in view.subviews {
+            if let marker = consoleMarker(in: child, window: window) { return marker }
+        }
+        return nil
     }
 
     private func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {

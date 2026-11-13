@@ -19,6 +19,7 @@ import platform
 import secrets
 import signal
 import socket
+from socketserver import TCPServer
 import subprocess
 import sys
 import threading
@@ -54,8 +55,11 @@ class RuntimeErrorResponse(Exception):
 
 
 class LogBuffer:
+    PAGE_BYTES = 512 * 1024
+
     def __init__(self, secrets_to_hide=(), limit=2000):
         self._entries = deque(maxlen=limit)
+        self._entry_bytes = deque(maxlen=limit)
         self._counter = 0
         self._bytes = 0
         self._lock = threading.Lock()
@@ -71,19 +75,40 @@ class LogBuffer:
 
     def write(self, line):
         line = self.redact(line)
+        raw_bytes = len(line.encode("utf-8"))
+        # Cache escaped wire size once at ingestion. Counting only raw UTF-8
+        # misses JSON punctuation and escaping and can exceed the native cap.
+        encoded_line_bytes = len(json.dumps(line, ensure_ascii=False).encode("utf-8"))
         with self._lock:
             self._counter += 1
             if len(self._entries) == self._entries.maxlen:
-                self._bytes -= len(self._entries[0]["line"].encode("utf-8"))
+                self._bytes -= self._entry_bytes[0][0]
             self._entries.append({"id": self._counter, "line": line})
-            self._bytes += len(line.encode("utf-8"))
+            wire_bytes = len(str(self._counter)) + len('{"id": , "line": }') + encoded_line_bytes
+            self._entry_bytes.append((raw_bytes, wire_bytes))
+            self._bytes += raw_bytes
             while self._bytes > 2 * 1024 * 1024 and self._entries:
-                self._bytes -= len(self._entries.popleft()["line"].encode("utf-8"))
+                self._entries.popleft()
+                self._bytes -= self._entry_bytes.popleft()[0]
 
     def after(self, number):
         with self._lock:
-            return {"entries": [dict(row) for row in self._entries if row["id"] > number],
-                    "next": self._counter}
+            if number >= self._counter:
+                return {"entries": [], "next": self._counter}
+            entries = []
+            # Reserve the response wrapper, next cursor and separators. A
+            # maximum-size escaped line is <100 KiB and always fits one page.
+            size = 128
+            for row, (_, wire_bytes) in zip(self._entries, self._entry_bytes):
+                if row["id"] <= number:
+                    continue
+                if entries and size + wire_bytes + 2 > self.PAGE_BYTES:
+                    break
+                entries.append(dict(row))
+                size += wire_bytes + 2
+            # Advancing to _counter here would silently skip later pages.
+            return {"entries": entries,
+                    "next": entries[-1]["id"] if entries else self._counter}
 
 
 class AuthorizedPaths:
@@ -210,9 +235,24 @@ def secure_ui_handler(base, runtime):
                     length = int(lengths[0]) if len(lengths) == 1 else -1
                 except ValueError:
                     length = -1
-                # The common model API has a tighter state-specific limit.
-                # Bound the other original tools before they parse their JSON.
-                if self.headers.get("Transfer-Encoding") or not 0 <= length <= 1024 * 1024:
+                # Texture endpoints validate PNG/project contents and impose
+                # their own limits. Admit their existing bounded envelopes so
+                # native editing supports the same images as the shared UI.
+                texture_limits = {
+                    "/api/texture/editor/decode": 12 * 1024 * 1024,
+                    "/api/viewer/texture/decode": 12 * 1024 * 1024,
+                    "/api/texture/editor/save": 12 * 1024 * 1024,
+                    "/api/texture/editor/project/save": 32 * 1024 * 1024 + 64 * 1024,
+                    "/api/viewer/edit/export": 32 * 1024 * 1024,
+                    "/api/viewer/edit/package": 32 * 1024 * 1024,
+                    "/api/viewer/edit/restore": 64 * 1024 * 1024,
+                    "/api/viewer/mesh/export": 32 * 1024 * 1024,
+                    "/api/viewer/transplant/run": 32 * 1024 * 1024,
+                    "/api/viewer/thumbnail/plan": 16 * 1024 * 1024,
+                    "/api/viewer/thumbnail/render": 4 * 1024 * 1024,
+                }
+                limit = texture_limits.get(urlsplit(self.path).path, 1024 * 1024)
+                if self.headers.get("Transfer-Encoding") or not 0 <= length <= limit:
                     _json(self, {"error": "Invalid request length."}, 413)
                     return False
             headers = self.headers.get_all("X-Elichika-Session", [])
@@ -264,6 +304,17 @@ class PreparingHandler(BaseHTTPRequestHandler):
         return _json(self, {"error": "Server files are being prepared."}, 503)
 
     do_POST = do_GET
+
+
+class _LoopbackHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # These private listeners already bind numeric 127.0.0.1. The stdlib
+        # HTTPServer implementation performs an unnecessary reverse-DNS lookup
+        # here, which can stall app startup on hosts without a PTR response.
+        if self.server_address[0] != "127.0.0.1":
+            raise ValueError("Private runtime listeners require numeric IPv4 loopback.")
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class ControlHandler(BaseHTTPRequestHandler):
@@ -648,7 +699,12 @@ class Runtime:
 
     def _write_state(self):
         if self.state_file:
-            atomic_json(self.state_file, self.state())
+            state = self.state()
+            # Native bootstrap capabilities belong only to authenticated control
+            # responses, not optional diagnostics snapshots on disk.
+            for role in ("server", "management"):
+                state[role].pop("local_webui_token", None)
+            atomic_json(self.state_file, state)
 
     def _claim_instance(self):
         import fcntl
@@ -673,7 +729,7 @@ class Runtime:
         try:
             for name, handler in (("control", ControlHandler), ("admin", PreparingHandler), ("tools", PreparingHandler)):
                 selected = handler if name == "control" else secure_ui_handler(handler, self)
-                server = ThreadingHTTPServer(("127.0.0.1", 0), selected)
+                server = _LoopbackHTTPServer(("127.0.0.1", 0), selected)
                 server.daemon_threads = True
                 server.runtime = self
                 self._servers[name] = server

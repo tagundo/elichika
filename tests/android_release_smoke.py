@@ -35,6 +35,65 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+LOCAL_CREDENTIAL_TABLE = "u_local_client_credential"
+LOCAL_CREDENTIAL_SQL = "CREATE TABLE `u_local_client_credential` (`user_id` INTEGER PRIMARY KEY NOT NULL, `ciphertext` BLOB NULL)"
+LOCAL_CREDENTIAL_COLUMNS = [[0, "user_id", "INTEGER", 1, None, 1], [1, "ciphertext", "BLOB", 0, None, 0]]
+
+
+def account_database_snapshot(data, destination):
+    """Hash every existing schema/row without recording account secrets in evidence.
+
+    The extra projection is available only for the exact new empty credential
+    table. Every other dump line, including old schemas, indices, auth/password
+    bytes and game progress, remains in that projection.
+    """
+    Path(destination).write_bytes(data)
+    with sqlite3.connect(destination) as connection:
+        assert connection.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+        lines = list(connection.iterdump())
+        logical = "\n".join(lines)
+        accounts = connection.execute("SELECT COUNT(*) FROM u_status").fetchone()[0]
+        objects = connection.execute(
+            "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE tbl_name=? ORDER BY type,name",
+            (LOCAL_CREDENTIAL_TABLE,)).fetchall()
+        credential, projection = None, None
+        if objects:
+            credential = {
+                "objects": [list(row) for row in objects],
+                "columns": [list(row) for row in connection.execute('PRAGMA table_info("u_local_client_credential")')],
+                "indices": [list(row) for row in connection.execute('PRAGMA index_list("u_local_client_credential")')],
+                "foreign_keys": [list(row) for row in connection.execute('PRAGMA foreign_key_list("u_local_client_credential")')],
+                "rows": connection.execute('SELECT COUNT(*) FROM "u_local_client_credential"').fetchone()[0],
+            }
+            expected_objects = [["table", LOCAL_CREDENTIAL_TABLE, LOCAL_CREDENTIAL_TABLE, LOCAL_CREDENTIAL_SQL]]
+            exact_empty = (credential["objects"] == expected_objects and credential["columns"] == LOCAL_CREDENTIAL_COLUMNS
+                           and credential["indices"] == [] and credential["foreign_keys"] == [] and credential["rows"] == 0)
+            if exact_empty:
+                ddl = LOCAL_CREDENTIAL_SQL + ";"
+                assert lines.count(ddl) == 1, "Known credential table dump has an unexpected representation"
+                projection = sha("\n".join(line for line in lines if line != ddl).encode())
+    return {"file_sha256": sha(data), "logical_sha256": sha(logical.encode()), "accounts": accounts,
+            "local_credential_table": credential, "without_new_empty_credential_table_sha256": projection}
+
+
+def assert_account_database_preserved(before, after):
+    """Allow one additive empty-table migration, never an existing account change."""
+    assert after["accounts"] == before["accounts"], "Payload refresh changed account count"
+    if after["logical_sha256"] == before["logical_sha256"]:
+        mode = "IDENTICAL_ALL_SCHEMA_AND_ROWS"
+        projection = after["logical_sha256"]
+    else:
+        assert before["local_credential_table"] is None, "Payload refresh changed an existing credential/account database"
+        projection = after["without_new_empty_credential_table_sha256"]
+        assert projection is not None, "Payload refresh added an unexpected/nonempty credential schema"
+        assert projection == before["logical_sha256"], "Payload refresh changed existing account rows or schema"
+        mode = "ADDED_EXACT_EMPTY_LOCAL_CREDENTIAL_TABLE"
+    return {"status": "PASS_ALL_EXISTING_SCHEMA_AND_ROWS_IDENTICAL", "mode": mode,
+            "before_logical_sha256": before["logical_sha256"], "after_logical_sha256": after["logical_sha256"],
+            "existing_account_projection_sha256": projection,
+            "added_empty_table": LOCAL_CREDENTIAL_TABLE if mode.startswith("ADDED_") else None}
+
+
 class Android:
     def __init__(self, serial, evidence):
         self.serial, self.evidence = serial, evidence
@@ -158,12 +217,7 @@ class Android:
     def snapshot(self, temporary):
         data = self.read(f"{FILES}/userdata.db")
         local = temporary / "userdata-snapshot.db"
-        local.write_bytes(data)
-        with sqlite3.connect(local) as connection:
-            assert connection.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
-            logical = "\n".join(connection.iterdump())
-            accounts = connection.execute("SELECT COUNT(*) FROM u_status").fetchone()[0]
-        return {"file_sha256": sha(data), "logical_sha256": sha(logical.encode()), "accounts": accounts}
+        return account_database_snapshot(data, local)
 
 
 class Client:
@@ -387,7 +441,10 @@ def run(args, report):
         assert android.read(prefs) == prefs_content, "Package update changed application preferences"
         report["candidate_start"] = android.start("candidate-upgrade")
         after = android.snapshot(temporary)
-        assert after["logical_sha256"] == before["logical_sha256"], "Payload refresh changed existing accounts"
+        # Persist both hash-only snapshots before validation, so a genuine row
+        # or schema failure can be diagnosed without uploading account DBs/keys.
+        report["after_update"] = after
+        report["account_database_projection"] = assert_account_database_preserved(before, after)
         actual_config = json.loads(android.read(f"{FILES}/config.json"))
         assert all(actual_config[key] == config[key]
                    for key in ("cdn_cache", "cdn_cache_dir", "webui_language", "locales")), "User settings lost"

@@ -1,4 +1,5 @@
 <resources>
+    <string name="log_file_paused">ログファイルを一時停止しました。ストレージを確認してアプリを再起動してください。最近のログは引き続き確認できます。</string>
     <string name="start_server">サーバー開始</string>
     <string name="stop_server">サーバー停止</string>
     <string name="status_running">● 127.0.0.1:8080</string>

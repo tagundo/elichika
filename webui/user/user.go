@@ -2,6 +2,7 @@ package user
 
 import (
 	"elichika/config"
+	"elichika/nativeaccess"
 	"elichika/router"
 
 	"fmt"
@@ -46,8 +47,12 @@ func init() {
 				*featuresBody += features[i].GetButtonString() + "\n"
 			}
 		}
+		body := *featuresBody
+		if nativeaccess.Authorized(ctx) {
+			body = `<div><button onclick="location.href='client_connection'+window.location.search" data-native-text="Client login / migration">Client login / migration</button></div>` + body + `<script src="/webui/native_local.js"></script><script>document.body.dataset.elichikaLocalAccess='true';apply_native_language()</script>`
+		}
 		ctx.HTML(http.StatusOK, "logged_in_user.html", gin.H{
-			"body": *featuresBody,
+			"body": body,
 		})
 	})
 
