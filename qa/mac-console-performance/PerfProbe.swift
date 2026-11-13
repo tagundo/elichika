@@ -325,6 +325,44 @@ private final class PerformanceProbe {
         catch { return false }
     }
 
+    private struct SettledViewport {
+        let anchor: (line: String, character: Int, offset: Double)
+        let witnesses: [[String: Any]]
+    }
+
+    private func settleVisibleViewport(_ text: NSTextView, _ scroll: NSScrollView) async -> SettledViewport? {
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        var previous: (character: Int, offset: Double, originX: Double, originY: Double)?
+        var stableReads = 0
+        var witnesses: [[String: Any]] = []
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            host.layoutSubtreeIfNeeded()
+            scroll.layoutSubtreeIfNeeded()
+            text.layoutSubtreeIfNeeded()
+            if let layout = text.layoutManager, let container = text.textContainer {
+                layout.ensureLayout(forBoundingRect: text.visibleRect, in: container)
+            }
+            text.displayIfNeeded(); scroll.displayIfNeeded()
+            guard let anchor = visibleAnchor(text, scroll) else { return nil }
+            let x = Double(scroll.contentView.bounds.origin.x)
+            let y = Double(scroll.contentView.bounds.origin.y)
+            let witness = viewportState(text, scroll)
+            witnesses.append(witness)
+            let sameTurnStable = (witness["visible_character"] as? Int) == anchor.character
+                && (witness["glyph_offset_y"] as? Double).map { abs($0 - anchor.offset) <= 0.01 } == true
+                && (witness["origin_x"] as? Double) == x && (witness["origin_y"] as? Double) == y
+            if sameTurnStable, let previous, previous.character == anchor.character,
+               abs(previous.offset - anchor.offset) <= 0.01,
+               abs(previous.originX - x) <= 0.01, abs(previous.originY - y) <= 0.01 {
+                stableReads += 1
+            } else { stableReads = 0 }
+            if stableReads >= 2 { return SettledViewport(anchor: anchor, witnesses: witnesses) }
+            previous = (anchor.character, anchor.offset, x, y)
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return nil
+    }
+
     private func testSelectionScrollCopy() async -> [String: Any] {
         #if ELICHIKA_PERF_PATCHED
         model.selectedSection = .server
@@ -343,9 +381,11 @@ private final class PerformanceProbe {
         let range = NSRange(location: location, length: (lines[line] as NSString).length)
         guard range.length > 0 else { return ["status": "FAIL", "reason": "Empty selection fixture"] }
         text.setSelectedRange(range); text.scrollRangeToVisible(range)
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        guard let beforeSettled = await settleVisibleViewport(text, scroll) else {
+            return ["status": "FAIL", "reason": "Visible layout did not settle before the reader anchor"]
+        }
         let selected = (text.string as NSString).substring(with: text.selectedRange())
-        let anchor = visibleAnchor(text, scroll)
+        let anchor = beforeSettled.anchor
         let beforeHead = model.consoleLogs.snapshot.headUTF16Offset
         let beforeViewport = viewportState(text, scroll)
         let beforeImage = captureViewport(scroll, filename: "viewport-before.png")
@@ -354,26 +394,32 @@ private final class PerformanceProbe {
         // both store revisions before updating the actual NSTextView.
         model.appendLogs((0..<40).map { "QA coalesced A \($0)" })
         model.appendLogs((0..<40).map { "QA coalesced B \($0)" })
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        let renderDeadline = ProcessInfo.processInfo.systemUptime + 2
+        while !text.string.hasSuffix("QA coalesced B 39") && ProcessInfo.processInfo.systemUptime < renderDeadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        guard text.string.hasSuffix("QA coalesced B 39"),
+              let afterSettled = await settleVisibleViewport(text, scroll) else {
+            return ["status": "FAIL", "reason": "Updated native text or visible layout did not settle"]
+        }
         let after = (text.string as NSString).substring(with: text.selectedRange())
-        let afterAnchor = visibleAnchor(text, scroll)
+        let afterAnchor = afterSettled.anchor
         let headShift = model.consoleLogs.snapshot.headUTF16Offset - beforeHead
         let afterViewport = viewportState(text, scroll)
         let afterImage = captureViewport(scroll, filename: "viewport-after.png")
         let afterCaptureViewport = viewportState(text, scroll)
         try? write("viewport-state.json", ["before": beforeViewport, "before_after_capture": beforeCaptureViewport,
             "after": afterViewport, "after_after_capture": afterCaptureViewport,
+            "before_layout_witnesses": beforeSettled.witnesses, "after_layout_witnesses": afterSettled.witnesses,
             "head_shift_utf16": headShift, "before_head_utf16": beforeHead,
             "after_head_utf16": model.consoleLogs.snapshot.headUTF16Offset])
         text.copy(nil)
         let copied = NSPasteboard.general.string(forType: .string)
         let selectionOK = after == selected && copied == selected
         NSPasteboard.general.clearContents()
-        let characterDelta = anchor.flatMap { old in afterAnchor.map {
-            abs($0.character - max(0, old.character - headShift))
-        }} ?? Int.max
-        let pixelDelta = anchor.flatMap { old in afterAnchor.map { abs($0.offset - old.offset) }} ?? Double.greatestFiniteMagnitude
-        let anchorOK = anchor != nil && anchor?.line == afterAnchor?.line && characterDelta <= 1 && pixelDelta <= 1.5
+        let characterDelta = abs(afterAnchor.character - max(0, anchor.character - headShift))
+        let pixelDelta = abs(afterAnchor.offset - anchor.offset)
+        let anchorOK = anchor.line == afterAnchor.line && characterDelta <= 1 && pixelDelta <= 1.5
         text.setSelectedRange(NSRange(location: (text.string as NSString).length, length: 0))
         text.scrollToEndOfDocument(nil)
         model.appendLogs(["QA tail follows last appended line"])
