@@ -1,0 +1,270 @@
+name: Exact C4 Console scroll diagnostic only
+on:
+  push:
+    branches: [codex/c4-console-scroll-diagnostic-20261113-v4]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: exact-c4-console-scroll-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build-diagnostic-instrumentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Require QA-only additions atop exact frozen C4
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 - <<'PY'
+          import subprocess,json,os
+          from pathlib import Path
+          base='28b80a8b43898ef9544d8452fef76181839eec6e'
+          expected={'.github/workflows/android-console-scroll-diagnostic.yml',
+            'qa/android-console-scroll/settings.gradle.kts','qa/android-console-scroll/build.gradle.kts',
+            'qa/android-console-scroll/src/main/AndroidManifest.xml',
+            'qa/android-console-scroll/src/main/java/com/tagundo/elichika/consoleqa/ConsoleScrollDiagnosticTest.kt'}
+          changed=set(subprocess.check_output(['git','diff','--name-only',base,'HEAD'],text=True).splitlines())
+          assert changed==expected, changed
+          assert subprocess.check_output(['git','show','-s','--format=%P','HEAD'],text=True).strip()==base
+          Path('evidence/diagnostic-source.json').write_text(json.dumps({'status':'QA_ONLY_EXACT_C4_PRODUCTION_UNCHANGED',
+             'head':os.environ['GITHUB_SHA'],'base':base,'added_paths':sorted(changed),
+             'apk_sha256':'f97703fd863776882799f9efae7910518600d0ff7df0933cd4e54181a8369f66'},indent=2)+'\n')
+          PY
+      - name: Prepare verified Gradle distribution
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 android/ci/prepare_gradle.py
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install only compilation SDK
+        run: sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+      - name: Use same certificate as normal native instrumentation
+        id: key
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${RELEASE_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/console-diagnostic.keystore"
+            printf 'path=%s\n' "$RUNNER_TEMP/console-diagnostic.keystore" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build tiny separate instrumentation without rebuilding C4 application
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ steps.key.outputs.path }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./android/gradlew -p qa/android-console-scroll --no-daemon --max-workers=1 \
+            -Dorg.gradle.jvmargs=-Xmx768m -Pandroid.useAndroidX=true -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+          ./android/gradlew -p qa/android-console-scroll --no-daemon --max-workers=1 \
+            -Dorg.gradle.jvmargs=-Xmx768m -Pandroid.useAndroidX=true dependencies --configuration releaseRuntimeClasspath \
+            > evidence/diagnostic-runtime-dependencies.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: c4-console-scroll-diagnostic-instrumentation
+          path: qa/android-console-scroll/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: c4-console-scroll-diagnostic-build-evidence
+          path: evidence
+
+  observe-exact-c4-console-scroll:
+    needs: build-diagnostic-instrumentation
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: c4-console-scroll-diagnostic-instrumentation
+          path: instrumentation
+      - uses: actions/download-artifact@v4
+        with:
+          name: elichika-release-apk
+          run-id: 43407606840
+          github-token: ${{ github.token }}
+          repository: tagundo/elichika
+          path: candidate
+      - name: Prepare isolated native ARM64 Android
+        run: |
+          set -euo pipefail
+          mkdir -p evidence "$RUNNER_TEMP/console-scroll-data"
+          sudo env ELICHIKA_APT_EVIDENCE="$PWD/evidence" python3 android/ci/prepare_ubuntu_apt.py
+          sudo apt-get update -qq
+          sudo apt-get install -y adb apksigner
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          test "$(uname -m)" = aarch64
+          uname -a > evidence/host.txt
+          getconf PAGESIZE >> evidence/host.txt
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker image inspect redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa --format '{{json .RepoDigests}} {{.Architecture}}' >> evidence/host.txt
+          docker run --detach --privileged --name c4-console-scroll \
+            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/console-scroll-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 androidboot.redroid_fps=10 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
+          test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
+      - name: Verify exact APK and matching instrumentation signer before installation
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,re,subprocess,struct,zipfile
+          candidate=list(Path('candidate').glob('*.apk')); test=list(Path('instrumentation').glob('*.apk'))
+          assert len(candidate)==len(test)==1
+          raw=candidate[0].read_bytes()
+          assert len(raw)==290920807 and hashlib.sha256(raw).hexdigest()=='f97703fd863776882799f9efae7910518600d0ff7df0933cd4e54181a8369f66'
+          def signer(path):
+              value=subprocess.check_output(['apksigner','verify','--print-certs',str(path)],text=True)
+              return re.search(r'Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})',value).group(1)
+          assert signer(candidate[0])==signer(test[0])=='fed020601692d2e759286831ad229f0c8e4562a8e90f9067d7472fa5fc99f930'
+          def defined_classes(path):
+              result=set()
+              with zipfile.ZipFile(path) as archive:
+                  for name in archive.namelist():
+                      if not re.fullmatch(r'classes(?:[0-9]+)?\.dex',name): continue
+                      data=archive.read(name)
+                      assert data[:4]==b'dex\n' and len(data)==struct.unpack_from('<I',data,32)[0]
+                      strings_count,strings_off=struct.unpack_from('<II',data,56)
+                      types_count,types_off=struct.unpack_from('<II',data,64)
+                      classes_count,classes_off=struct.unpack_from('<II',data,96)
+                      for index in range(classes_count):
+                          class_index=struct.unpack_from('<I',data,classes_off+32*index)[0]
+                          assert class_index<types_count
+                          string_index=struct.unpack_from('<I',data,types_off+4*class_index)[0]
+                          assert string_index<strings_count
+                          offset=struct.unpack_from('<I',data,strings_off+4*string_index)[0]
+                          while data[offset]&0x80: offset+=1
+                          offset+=1
+                          result.add(data[offset:data.index(0,offset)].decode('ascii'))
+              assert result
+              return result
+          target_classes=defined_classes(candidate[0]);test_classes=defined_classes(test[0])
+          expected={'Landroidx/lifecycle/Lifecycle$Event;','Landroidx/lifecycle/Lifecycle$Event$Companion;',
+            'Landroidx/lifecycle/LifecycleRegistry;'}
+          assert expected<=target_classes, expected-target_classes
+          assert not any(name.startswith('Landroidx/lifecycle/') for name in test_classes)
+          Path('evidence/lifecycle-class-ownership.json').write_text(json.dumps({
+            'status':'TARGET_OWNS_ALL_LIFECYCLE_CLASSES','required_target_classes':sorted(expected),
+            'diagnostic_lifecycle_class_count':0,'target_lifecycle_class_count':sum(
+              name.startswith('Landroidx/lifecycle/') for name in target_classes)},indent=2)+'\n')
+          Path('evidence/installed-input-binding.json').write_text(json.dumps({'status':'EXACT_C4_APK_AND_SAME_SIGNER',
+             'candidate_sha256':hashlib.sha256(raw).hexdigest(),'candidate_bytes':len(raw),
+             'diagnostic_sha256':hashlib.sha256(test[0].read_bytes()).hexdigest(),
+             'production_source':'28b80a8b43898ef9544d8452fef76181839eec6e'},indent=2)+'\n')
+          PY
+          adb -s 127.0.0.1:5555 install candidate/*.apk
+          adb -s 127.0.0.1:5555 install -t instrumentation/*.apk
+          adb -s 127.0.0.1:5555 shell appops set com.tagundo.elichika MANAGE_EXTERNAL_STORAGE allow
+          adb -s 127.0.0.1:5555 shell pm grant com.tagundo.elichika android.permission.POST_NOTIFICATIONS
+          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+          adb -s 127.0.0.1:5555 logcat -c
+      - name: Observe original setup and require visible settled prebottom then strict follow
+        run: |
+          set -euo pipefail
+          adb -s 127.0.0.1:5555 shell am instrument -w \
+            -e class com.tagundo.elichika.consoleqa.ConsoleScrollDiagnosticTest \
+            com.tagundo.elichika.consoleqa/androidx.test.runner.AndroidJUnitRunner | tee evidence/instrumentation.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text=Path('evidence/instrumentation.txt').read_text()
+          assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$',text)==['1'] and 'FAILURES' not in text
+          PY
+      - name: Preserve actual prefinish geometry and framebuffers even on failure
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          out=Path('evidence');out.mkdir(exist_ok=True)
+          def adb(*args):
+              return subprocess.run(['adb','-s','127.0.0.1:5555',*args],capture_output=True,timeout=30)
+          (out/'logcat.txt').write_bytes(adb('logcat','-d','-t','6000').stdout)
+          (out/'final-screen.png').write_bytes(adb('exec-out','screencap','-p').stdout)
+          report=adb('exec-out','cat','/data/user/0/com.tagundo.elichika/files/console-scroll-diagnostic.json')
+          (out/'console-scroll-diagnostic.json').write_bytes(report.stdout)
+          listing=adb('exec-out','find','/data/user/0/com.tagundo.elichika/files','-maxdepth','1','-type','f')
+          (out/'device-files-list.txt').write_bytes(listing.stdout+listing.stderr)
+          assert listing.returncode==0
+          names=[name for name in listing.stdout.decode().splitlines() if re.fullmatch(
+            r'/data/user/0/com.tagundo.elichika/files/console-scroll-[A-Za-z0-9-]+\.png',name)]
+          assert len(names)<30
+          for name in names:
+              assert re.fullmatch(r'/data/user/0/com.tagundo.elichika/files/console-scroll-[A-Za-z0-9-]+\.png',name)
+              data=adb('exec-out','cat',name)
+              assert data.returncode==0 and 0<len(data.stdout)<16*1024*1024
+              (out/Path(name).name).write_bytes(data.stdout)
+          PY
+      - name: Validate diagnostic observations without upgrading original C4 failed result
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys,json,re,hashlib
+          sys.path.insert(0,'tests')
+          from android_offline_management_gate import decode_png
+          p=Path('evidence');x=json.loads((p/'console-scroll-diagnostic.json').read_text())
+          text=(p/'instrumentation.txt').read_text()
+          assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$',text)==['1'] and 'FAILURES' not in text
+          assert x['apkSha256']=='f97703fd863776882799f9efae7910518600d0ff7df0933cd4e54181a8369f66'
+          assert x['status']=='DIAGNOSTIC_VISIBLE_PRECONDITION_AND_FOLLOW_PASSED'
+          before=x['B-proven-visible-bottom-before-append'];after=x['B-visible-after-append']
+          assert before['canScrollDown'] is False and after['canScrollDown'] is False
+          assert before['visibleRect']['height']>40 and before['textLineCount']>0 and before['textLayoutRequested'] is False
+          assert x['controlledOlderReadingPositionPreserved'] is True
+          for key in ('B-follow-frame','B-older-reading-frame'):
+              frame=x[key]
+              assert frame['observedRealPreDrawAndSubsequentMainQueueTurn'] is True
+              assert 0<frame['preDrawUptimeMillis']<=frame['completedTraversalQueueUptimeMillis']
+          images={f.name:decode_png(f.read_bytes()) for f in p.glob('console-scroll-*.png')}
+          assert len(images)>=8
+          result={'status':'DIAGNOSTIC_ONLY_EXACT_C4_VISIBLE_SCROLL_OBSERVED','original_C4_failure_preserved':True,
+            'original_setup':x['originalSetup'],'controlled_setup':x['controlledSetup'],
+            'report_sha256':hashlib.sha256((p/'console-scroll-diagnostic.json').read_bytes()).hexdigest(),'images':images,
+            'release_approved':False}
+          (p/'diagnostic-validation.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exact-c4-console-scroll-diagnostic-evidence
+          path: evidence
+          if-no-files-found: error
+      - name: Stop only this isolated diagnostic target
+        if: always()
+        run: |
+          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika || true
+          docker rm -f c4-console-scroll || true
