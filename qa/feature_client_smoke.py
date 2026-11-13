@@ -152,6 +152,89 @@ def title_start_target(tree):
 
 
 
+
+def parse_native_nodes(raw):
+    """Preserve live layout ancestry/index so clipped sibling controls can be associated."""
+    root = ET.fromstring(raw)
+    result = []
+    def visit(node, path, parent, scroll_bounds):
+        points = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
+        bounds = dict(zip(("left", "top", "right", "bottom"), points)) if len(points) == 4 else None
+        index = int(node.get("index", "0"))
+        own_path = path + "/" + str(index)
+        if bounds:
+            record = {"text": node.get("text", ""), "name": node.get("resource-id", ""), "label": node.get("content-desc", ""),
+                      "class": node.get("class", ""), "package": node.get("package", ""), "checked": node.get("checked") == "true",
+                      "scrollable": node.get("scrollable") == "true", "clickable": node.get("clickable") == "true", "enabled": node.get("enabled") == "true",
+                      "bounds": bounds, "center": {"x": (points[0] + points[2]) // 2, "y": (points[1] + points[3]) // 2},
+                      "layout_path": own_path, "parent_path": parent, "child_index": index, "scroll_bounds": scroll_bounds}
+            result.append(record)
+        child_scroll = bounds if node.get("class") == "android.widget.ScrollView" and bounds else scroll_bounds
+        for child in node.findall("node"):
+            visit(child, own_path, own_path, child_scroll)
+    for node in root.findall("node"):
+        visit(node, "", "", None)
+    return result
+
+
+def control_fully_visible(node):
+    bounds = node.get("bounds") or {}
+    if bounds.get("right", 0) <= bounds.get("left", 0) or bounds.get("bottom", 0) <= bounds.get("top", 0):
+        return False
+    viewport = node.get("scroll_bounds")
+    # Bounds are clipped by accessibility. A control touching a viewport edge
+    # is re-searched after scrolling rather than dragging its clipped sliver.
+    return not viewport or (bounds["top"] > viewport["top"] + 1 and bounds["bottom"] < viewport["bottom"] - 1)
+
+
+def slider_caption_value(nodes, role):
+    values = []
+    for node in nodes:
+        match = re.fullmatch(role + r"Aspect\s*=\s*([0-9.]+)", node.get("text", ""), re.I)
+        if match:
+            values.append(float(match[1]))
+    return values[0] if len(set(values)) == 1 else None
+
+
+def native_profile_plan(nodes, state, orientation, fast_intro):
+    """Choose one action from fresh geometry; language selection happens once."""
+    usable = [n for n in nodes if n.get("enabled") and control_fully_visible(n)]
+    if not state.get("language"):
+        english = [n for n in usable if n.get("clickable") and n.get("text") == "English"]
+        if len(english) == 1:
+            return {"kind": "language", "node": english[0]}
+        raise ValueError("Initial English setting is not uniquely visible")
+    catalog = state.setdefault("label_catalog", {})
+    for node in nodes:
+        match = re.match(r"^(Min|Max)Aspect(?:\b|\s*=)", node.get("text", ""), re.I)
+        if match:
+            catalog[(node.get("parent_path"), node.get("child_index"))] = match[1].lower()
+    for bar in sorted([n for n in usable if n.get("class") == "android.widget.SeekBar"], key=lambda n: n["bounds"]["top"]):
+        index = bar.get("child_index")
+        preceding = [(key[1], value) for key, value in catalog.items() if key[0] == bar.get("parent_path") and isinstance(index, int) and isinstance(key[1], int) and 0 < index - key[1] <= 2]
+        if not preceding:
+            continue
+        role = max(preceding)[1]
+        if not state.get(role):
+            return {"kind": "slider", "role": role, "node": bar}
+    if not state.get("orientation"):
+        choices = [n for n in usable if n.get("class") == "android.widget.RadioButton" and n.get("text", "").casefold() == orientation]
+        if len(choices) == 1:
+            return {"kind": "orientation", "node": choices[0], "needs_tap": not choices[0].get("checked")}
+    if not state.get("intro"):
+        checks = [n for n in usable if n.get("class") == "android.widget.CheckBox"]
+        if len(checks) == 1:
+            return {"kind": "intro", "node": checks[0], "needs_tap": checks[0].get("checked") != fast_intro}
+    if all(state.get(key) for key in ("min", "max", "orientation", "intro")):
+        launch = [n for n in usable if n.get("text", "").casefold() == "start game" and n.get("clickable")]
+        if len(launch) == 1:
+            return {"kind": "launch", "node": launch[0]}
+    scrolls = [n for n in nodes if n.get("class") == "android.widget.ScrollView" and n.get("scrollable") and n.get("bounds", {}).get("bottom", 0) > n.get("bounds", {}).get("top", 0)]
+    if len(scrolls) != 1:
+        raise ValueError("No unique live ScrollView to re-search missing feature controls")
+    return {"kind": "scroll", "node": scrolls[0]}
+
+
 REQUIRED_CASES = ("native_load", "fov_actual", "portrait", "landscape", "auto", "intro_timing", "mv_same_suit", "mv_different_suits", "mv_max_slots", "mv_restore", "no_new_costume_entries")
 
 
@@ -311,7 +394,7 @@ def main():
     stage = "bootstrap"
     filled = set()
     seen = {}
-    password = "qa-" + secrets.token_hex(10)
+    password = "".join(secrets.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") for _ in range(16))
     started = time.monotonic()
 
     def save_report():
@@ -320,7 +403,7 @@ def main():
             "workflow": ".github/workflows/original-client-qa.yml",
             "url": os.environ.get("GITHUB_SERVER_URL", "https://github.com") + "/" + os.environ.get("GITHUB_REPOSITORY", "") + "/actions/runs/" + os.environ.get("GITHUB_RUN_ID", "")})
         report["fixtures"].update({"region": args.region, "client_asset_id": client_fixture["asset_id"],
-            "client_sha256": CLIENT_SHA, "client_certificate_sha256": fixtures["client_certificate_sha256"],
+            "client_sha256": CLIENT_SHA, "original_asset_id": client_fixture["original_asset_id"], "original_sha256": client_fixture["original_sha256"], "client_certificate_sha256": fixtures["client_certificate_sha256"],
             "server_sha256": SERVER_SHA, "server_source_commit": server_fixture["source_commit"]})
         payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
         (args.evidence / "original-client-report.json").write_text(payload)
@@ -368,16 +451,7 @@ def main():
             device.shell("uiautomator", "dump", "/sdcard/client-qa-window.xml", timeout=20)
             raw = device.read("/sdcard/client-qa-window.xml")
             (args.evidence / f"native-ui-{index:03d}.xml").write_bytes(raw)
-            root = ET.fromstring(raw)
-            result = []
-            for node in root.iter("node"):
-                points = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
-                if len(points) != 4:
-                    continue
-                result.append({"text": node.get("text", ""), "name": node.get("resource-id", ""), "label": node.get("content-desc", ""),
-                               "class": node.get("class", ""), "package": node.get("package", ""), "checked": node.get("checked") == "true", "scrollable": node.get("scrollable") == "true", "clickable": node.get("clickable") == "true", "enabled": node.get("enabled") == "true",
-                               "bounds": dict(zip(("left", "top", "right", "bottom"), points)), "center": {"x": (points[0] + points[2]) // 2, "y": (points[1] + points[3]) // 2}})
-            return result
+            return parse_native_nodes(raw)
         except Exception as error:
             report["observations"].append({"native_tree": index, "error": type(error).__name__})
             return []
@@ -439,48 +513,64 @@ def main():
         report["client_package_info"] = device.shell("dumpsys", "package", CLIENT)
         device.shell("logcat", "-c")
         report["client_launch"] = device.shell("am", "start", "-W", "-n", LAUNCHER)
-        # Native controls are driven entirely through their live accessibility
-        # bounds. Config files and game/player memory are never written by QA.
-        for attempt in range(12):
-            settings_nodes = native_tree(900 + attempt)
-            english = [n for n in settings_nodes if n["clickable"] and n["text"] == "English"]
-            if len(english) == 1:
-                tap(english[0], "android-uiautomator-tree", "choose-settings-English")
-                time.sleep(.3)
-                settings_nodes = native_tree(920 + attempt)
-            bars = sorted([n for n in settings_nodes if n["class"] == "android.widget.SeekBar" and n["enabled"]], key=lambda n: n["bounds"]["top"])
-            if len(bars) == 2:
-                for bar in bars:
-                    bounds = bar["bounds"]; x, y = center(bar)
-                    end = bounds["right"] - 1 if args.settings_scalar == 2. else bounds["left"] + 1
-                    device.shell("input", "swipe", str(x), str(y), str(end), str(y), "500")
-                    report["actions"].append({"source": "android-uiautomator-tree", "reason": "set-FOV-slider-endpoint", "bounds": bounds, "scalar": args.settings_scalar})
-                settings_nodes = native_tree(940 + attempt)
-                choice = [n for n in settings_nodes if n["text"].casefold() == args.settings_orientation and n["clickable"]]
-                if len(choice) != 1: raise AssertionError("Orientation setting not uniquely exposed by native UI")
-                tap(choice[0], "android-uiautomator-tree", "select-" + args.settings_orientation)
-                settings_nodes = native_tree(960 + attempt)
-                fast = [n for n in settings_nodes if n["class"] == "android.widget.CheckBox"]
-                if len(fast) != 1: raise AssertionError("Fast-intro checkbox not uniquely exposed by native UI")
-                if fast[0]["checked"] != args.fast_intro:
-                    tap(fast[0], "android-uiautomator-tree", "select-fast-intro-state")
-                settings_nodes = native_tree(980 + attempt)
-                launch = [n for n in settings_nodes if n["text"].casefold() == "start game" and n["clickable"]]
-                if len(launch) != 1:
-                    scrolls = [n for n in settings_nodes if n["scrollable"] and n["bounds"]["bottom"] > n["bounds"]["top"]]
-                    if len(scrolls) == 1:
-                        bounds = scrolls[0]["bounds"]; x, _ = center(scrolls[0]); height = bounds["bottom"] - bounds["top"]
-                        device.shell("input", "swipe", str(x), str(int(bounds["bottom"] - height*.2)), str(x), str(int(bounds["top"] + height*.2)), "450")
-                        settings_nodes = native_tree(990 + attempt)
-                        launch = [n for n in settings_nodes if n["text"].casefold() == "start game" and n["clickable"]]
-                    if len(launch) != 1: raise AssertionError("Start game not uniquely exposed by native UI after live-bounds scroll")
+        # The native settings body is a short viewport, not one full screen.
+        # Select English once, then preserve scroll position and handle each
+        # separately visible labeled control from fresh accessibility geometry.
+        profile_state = {"language": False, "min": False, "max": False, "orientation": False, "intro": False}
+        settings_index = 1000
+        trace = report["native_settings_trace"] = []
+        def settings_snapshot(reason):
+            nonlocal settings_index
+            settings_index += 1
+            nodes = native_tree(settings_index)
+            trace.append({"reason": reason, "snapshot": f"native-ui-{settings_index:03d}.xml"})
+            return nodes
+        settings_nodes = settings_snapshot("initial")
+        unchanged_scrolls = 0
+        previous_scroll_fingerprint = None
+        for attempt in range(48):
+            plan = native_profile_plan(settings_nodes, profile_state, args.settings_orientation, args.fast_intro)
+            kind, node = plan["kind"], plan["node"]
+            if kind == "language":
+                tap(node, "android-uiautomator-tree", "choose-settings-English-once")
+                profile_state["language"] = True
+            elif kind == "slider":
+                bounds = node["bounds"]; x, y = center(node)
+                end = bounds["right"] - 1 if args.settings_scalar == 2. else bounds["left"] + 1
+                device.shell("input", "swipe", str(x), str(y), str(end), str(y), "500")
+                profile_state[plan["role"]] = True
+                report["actions"].append({"source": "android-uiautomator-tree", "reason": "set-" + plan["role"] + "-FOV-slider-endpoint", "layout_path": node["layout_path"], "bounds": bounds, "scalar": args.settings_scalar})
+            elif kind in ("orientation", "intro"):
+                if plan["needs_tap"]:
+                    tap(node, "android-uiautomator-tree", "select-" + (args.settings_orientation if kind == "orientation" else "fast-intro-state"))
+                profile_state[kind] = True
+            elif kind == "launch":
                 capture("feature-settings-before-save")
-                tap(launch[0], "android-uiautomator-tree", "save-settings-and-launch-game")
-                report["settings_ui"] = {"orientation": args.settings_orientation, "min": args.settings_scalar, "max": args.settings_scalar, "fast_intro": args.fast_intro, "source": "native-accessibility-tree"}
+                tap(node, "android-uiautomator-tree", "save-settings-and-launch-game")
+                report["settings_ui"] = {"orientation": args.settings_orientation, "min": args.settings_scalar, "max": args.settings_scalar, "fast_intro": args.fast_intro, "source": "native-accessibility-tree", "language_selected_once": True}
+                settings_snapshot("after-launch")
                 break
-            time.sleep(.5)
+            else:
+                bounds = node["bounds"]; x, _ = center(node); height = bounds["bottom"] - bounds["top"]
+                fingerprint = json.dumps([(n.get("class"), n.get("text"), n.get("bounds")) for n in settings_nodes], sort_keys=True)
+                unchanged_scrolls = unchanged_scrolls + 1 if fingerprint == previous_scroll_fingerprint else 0
+                previous_scroll_fingerprint = fingerprint
+                if unchanged_scrolls >= 3:
+                    missing = [key for key in ("min", "max", "orientation", "intro") if not profile_state[key]]
+                    raise AssertionError("Settings viewport stopped scrolling before controls were found: " + ",".join(missing))
+                device.shell("input", "swipe", str(x), str(int(bounds["top"] + height*.8)), str(x), str(int(bounds["top"] + height*.45)), "650")
+                report["actions"].append({"source": "android-uiautomator-tree", "reason": "scroll-settings-to-research-missing-control", "bounds": bounds})
+            time.sleep(.25)
+            settings_nodes = settings_snapshot("after-" + kind)
+            if kind == "slider":
+                value = slider_caption_value(settings_nodes, plan["role"])
+                trace[-1]["slider_role"], trace[-1]["observed_caption_value"] = plan["role"], value
+                if value is not None and abs(value - args.settings_scalar) > .0001:
+                    raise AssertionError("Slider endpoint did not reach requested value: " + plan["role"])
+                # A clipped caption is not treated as behavioral evidence;
+                # runtime RW configuration and actual Correction remain gates.
         else:
-            raise AssertionError("Native feature settings UI did not expose both sliders")
+            raise AssertionError("Bounded sequential settings navigation did not complete")
         report["verified"]["client_launched"] = True
         video = subprocess.Popen(["adb", "-s", args.serial, "shell", "screenrecord", "--bit-rate", "1500000", "--time-limit", "180", "/sdcard/client-qa-start.mp4"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(30):

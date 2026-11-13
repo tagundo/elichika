@@ -10,6 +10,9 @@
       "name": "LLAS_GL_FOVMOD_b22.apk",
       "bytes": 83505847,
       "sha256": "aa46e6d4e07218722f42e6e67e14aad1b86545277d7811420959d7fee2808c0c",
+      "original_repository": "tagundo/SIFAS-Client",
+      "original_asset_id": 725722419,
+      "original_sha256": "39cece83c283a57349fc599421e263ddb1648def01544329948cf82920b59d84",
       "package": "com.klab.lovelive.allstars.global"
     },
     "JP": {
@@ -19,6 +22,9 @@
       "name": "LLAS_JP_FOVMOD_b22.apk",
       "bytes": 79661664,
       "sha256": "b6c92acfe1a5b3baa0ca18be959f6645596bf8eb9309a0f565af5dcfc19b07f2",
+      "original_repository": "tagundo/SIFAS-Client",
+      "original_asset_id": 725722998,
+      "original_sha256": "64a3b329929daf05b93c35b25b1343d202d62399b0a378304bb21433ea81ed2e",
       "package": "com.klab.lovelive.allstars"
     }
   },

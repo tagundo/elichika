@@ -1,0 +1,18 @@
+[
+  {
+    "region": "GL",
+    "file": "settings-start-GL.xml",
+    "sha256": "515c3ce846a8a53a2ac88789c66a66a15143f2a4140261d4b7229792d324aa7b",
+    "source_run_id": 43390366589,
+    "source_file": "native-ui-900.xml",
+    "kind": "actual Android accessibility capture"
+  },
+  {
+    "region": "JP",
+    "file": "settings-start-JP.xml",
+    "sha256": "64884d4d3b155dd4a4a0a663d9e01952899e87629fff103c38ea53b83624c844",
+    "source_run_id": 43390366589,
+    "source_file": "native-ui-900.xml",
+    "kind": "actual Android accessibility capture"
+  }
+]

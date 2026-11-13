@@ -131,5 +131,70 @@ class FeatureEvidenceTests(unittest.TestCase):
         self.assertEqual(case_overall(complete), "PARTIAL")
 
 
+class NativeSettingsViewportTests(unittest.TestCase):
+    def recorded(self, region="GL"):
+        from pathlib import Path
+        from feature_client_smoke import parse_native_nodes
+        return parse_native_nodes((Path(__file__).parent / "fixtures" / ("settings-start-" + region + ".xml")).read_bytes())
+
+    def state(self):
+        return {"language": True, "min": False, "max": False, "orientation": False, "intro": False}
+
+    def test_actual_gl_and_jp_initial_viewport_selects_english_only_once_then_scrolls(self):
+        from feature_client_smoke import native_profile_plan
+        for region in ("GL", "JP"):
+            nodes = self.recorded(region)
+            self.assertFalse(any(n["class"] == "android.widget.SeekBar" for n in nodes))
+            state = self.state(); state["language"] = False
+            self.assertEqual(native_profile_plan(nodes, state, "portrait", False)["kind"], "language")
+            state["language"] = True
+            plan = native_profile_plan(nodes, state, "portrait", False)
+            self.assertEqual(plan["kind"], "scroll")
+            self.assertEqual(plan["node"]["bounds"], next(n["bounds"] for n in nodes if n["class"] == "android.widget.ScrollView"))
+            # The visible footer is not permission to launch before controls.
+            self.assertTrue(any(n["text"] == "Start game" for n in nodes))
+
+    def synthetic_scrolled_slider(self, role, clipped=False):
+        # Synthetic follow-up view tests complement the real initial capture;
+        # they are not represented as proof of a completed Android action.
+        nodes = self.recorded()
+        view = next(n for n in nodes if n["class"] == "android.widget.ScrollView")
+        heading = next(n for n in nodes if n["text"].startswith("MinAspect"))
+        parent = heading["parent_path"]
+        viewport = view["bounds"]
+        height = viewport["bottom"] - viewport["top"]
+        first = 5 if role == "min" else 8
+        label = {**heading, "text": role.title() + "Aspect = 0.75000", "child_index": first}
+        bounds = {"left": viewport["left"] + 20, "right": viewport["right"] - 20,
+                  "top": int(viewport["top"] + height * .45), "bottom": int(viewport["top"] + height * .65)}
+        if clipped: bounds["bottom"] = viewport["bottom"]
+        bar = {**label, "text": "", "class": "android.widget.SeekBar", "child_index": first + 1,
+               "layout_path": parent + "/" + str(first + 1), "bounds": bounds, "scroll_bounds": viewport,
+               "center": {"x": (bounds["left"] + bounds["right"]) // 2, "y": (bounds["top"] + bounds["bottom"]) // 2}}
+        return [view, label, bar]
+
+    def test_one_labeled_slider_per_snapshot_is_sufficient_for_sequential_progress(self):
+        from feature_client_smoke import native_profile_plan
+        state = self.state()
+        plan = native_profile_plan(self.synthetic_scrolled_slider("min"), state, "portrait", False)
+        self.assertEqual((plan["kind"], plan["role"]), ("slider", "min"))
+        state["min"] = True
+        plan = native_profile_plan(self.synthetic_scrolled_slider("max"), state, "portrait", False)
+        self.assertEqual((plan["kind"], plan["role"]), ("slider", "max"))
+        self.assertTrue(state["language"])
+
+    def test_clipped_slider_sliver_requires_another_live_bounds_scroll(self):
+        from feature_client_smoke import native_profile_plan
+        plan = native_profile_plan(self.synthetic_scrolled_slider("min", clipped=True), self.state(), "portrait", False)
+        self.assertEqual(plan["kind"], "scroll")
+
+    def test_observed_complete_profile_can_use_actual_always_visible_footer(self):
+        from feature_client_smoke import native_profile_plan
+        state = dict.fromkeys(("language", "min", "max", "orientation", "intro"), True)
+        plan = native_profile_plan(self.recorded(), state, "portrait", False)
+        self.assertEqual(plan["kind"], "launch")
+        self.assertEqual(plan["node"]["text"], "Start game")
+
+
 if __name__ == "__main__":
     unittest.main()
