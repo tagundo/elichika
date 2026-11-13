@@ -48,14 +48,16 @@ func userInitial(ctx *gin.Context) {
 			session = userdata.GetSession(ctx, int32(userId))
 			if !strings.HasPrefix(ctx.Request.URL.String(), "/webui/user/login") {
 				if !webui_utils.LocalTrusted(ctx) {
-					sessionKey, err := base64.StdEncoding.DecodeString(form.Value["user_session_key"][0])
-					utils.CheckErr(err)
-					if !bytes.Equal(sessionKey, session.SessionKey()) {
-						log.Panic("wrong session key")
+					sessionKey, err := base64.StdEncoding.DecodeString(ctx.PostForm("user_session_key"))
+					if err != nil || session == nil || !bytes.Equal(sessionKey, session.SessionKey()) {
+						ctx.AbortWithStatus(403)
+						return
 					}
 				}
 			} else {
-				session.SessionType = userdata.SessionTypeLogin
+				if session != nil {
+					session.SessionType = userdata.SessionTypeLogin
+				}
 			}
 		}
 		ctx.Set("session", session)

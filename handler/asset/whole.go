@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,20 @@ import (
 type clientWriter struct {
 	w      io.Writer
 	broken bool
+}
+
+// Only complete, successfully closed, private download temps reach this path.
+// The legacy static-file migration still uses moveToCache and its copy policy.
+func promoteDownloadedTemp(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	// External cache volumes (and platforms that cannot replace by rename)
+	// retain the existing destination-temp copy and atomic replacement path.
+	return moveToCache(src, dst)
 }
 
 func (c *clientWriter) Write(p []byte) (int, error) {
@@ -130,13 +145,13 @@ func streamWholeFromCdn(ctx *gin.Context, fileName, dest string) {
 	// finish the cache file - otherwise the next retry would re-download the same slow file forever.
 	cw := &clientWriter{w: ctx.Writer}
 	written, copyErr := io.Copy(io.MultiWriter(cw, tmp), res.Body)
-	tmp.Close()
-	if copyErr != nil || written == 0 || (res.ContentLength >= 0 && written != res.ContentLength) {
+	closeErr := tmp.Close()
+	if copyErr != nil || closeErr != nil || written == 0 || (res.ContentLength >= 0 && written != res.ContentLength) {
 		os.Remove(tmpName) // empty/incomplete: don't keep a corrupt cache file
 		return
 	}
 	// the bytes are downloaded; persist into the cache dir (may be slow shared storage).
-	if err := moveToCache(tmpName, dest); err != nil {
+	if err := promoteDownloadedTemp(tmpName, dest); err != nil {
 		log.Printf("failed to store cache for %s: %v\n", fileName, err)
 		os.Remove(tmpName)
 	}

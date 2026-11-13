@@ -1,4 +1,5 @@
 <resources>
+    <string name="log_file_paused">로그 파일이 일시 중지되었습니다. 저장 공간을 확인하고 앱을 다시 시작하세요. 최근 로그는 계속 볼 수 있습니다.</string>
     <string name="start_server">서버 시작</string>
     <string name="stop_server">서버 중지</string>
     <string name="status_running">● 127.0.0.1:8080</string>

@@ -285,7 +285,10 @@ func moveToCache(src, dst string) error {
 	tmpName := tmp.Name()
 	_, err = io.Copy(tmp, in)
 	in.Close()
-	tmp.Close()
+	closeErr := tmp.Close()
+	if err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		os.Remove(tmpName)
 		return err

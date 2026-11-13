@@ -3,19 +3,65 @@ import Foundation
 import WebKit
 import Darwin
 
+/// Log changes have their own observation surface; they do not redraw menus,
+/// retained browsers, settings drafts or the server controls for every line.
+@MainActor
+final class ConsoleLogStore: ObservableObject {
+    struct Snapshot {
+        let revision: UInt64
+        let previousRevision: UInt64
+        let text: String
+        let removedUTF16Count: Int
+        let appendedText: String
+        let headUTF16Offset: Int
+    }
+    @Published private(set) var snapshot = Snapshot(revision: 0, previousRevision: 0,
+                                                   text: "", removedUTF16Count: 0, appendedText: "", headUTF16Offset: 0)
+    private(set) var lines: [String] = []
+    private let limit: Int
+
+    init(limit: Int = 1500) { precondition(limit > 0); self.limit = limit }
+
+    func append(contentsOf incoming: [String]) {
+        guard !incoming.isEmpty else { return }
+        let boundedIncoming = incoming.map { String($0.prefix(4096)) }
+        let bounded = boundedIncoming.suffix(limit)
+        let oldCount = lines.count
+        let dropped = max(0, oldCount + incoming.count - limit)
+        let headAdvance = lines.prefix(min(dropped, oldCount)).reduce(0) { $0 + $1.utf16.count + 1 }
+            + boundedIncoming.prefix(max(0, dropped - oldCount)).reduce(0) { $0 + $1.utf16.count + 1 }
+        let removed: Int
+        let addition: String
+        if dropped >= oldCount {
+            removed = snapshot.text.utf16.count
+            lines = Array(bounded)
+            addition = lines.joined(separator: "\n")
+        } else {
+            removed = lines.prefix(dropped).reduce(0) { $0 + $1.utf16.count + 1 }
+            if dropped > 0 { lines.removeFirst(dropped) }
+            addition = (lines.isEmpty ? "" : "\n") + bounded.joined(separator: "\n")
+            lines.append(contentsOf: bounded)
+        }
+        let previous = snapshot.revision
+        snapshot = Snapshot(revision: previous &+ 1, previousRevision: previous,
+                            text: lines.joined(separator: "\n"), removedUTF16Count: removed,
+                            appendedText: addition, headUTF16Offset: snapshot.headUTF16Offset + headAdvance)
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var selectedSection: AppSection? = .server
     @Published var snapshot = RuntimeState()
     @Published var connection: RuntimeReady?
     @Published var message: String?
-    @Published var console: [String] = []
+    let consoleLogs = ConsoleLogStore()
+    var console: [String] { consoleLogs.lines }
     @Published var launching = false
     @Published var quitting = false
     @Published private(set) var stoppingRuntime = false
     @Published var language: String
     @Published var libraryDirectory: String
-    @Published var showServerSettings = false
     @Published var serverAddressDraft = "127.0.0.1:8080"
     @Published var cdnServerDraft = ""
     @Published private(set) var savingNetwork = false
@@ -161,10 +207,10 @@ final class AppModel: ObservableObject {
                 let output = Pipe(), errors = Pipe()
                 outputPipe = output; errorPipe = errors
                 child.standardOutput = output; child.standardError = errors
-                readers = [PipeLines(handle: output.fileHandleForReading) { [weak self] line in
-                    Task { @MainActor in self?.consume(line, readinessAllowed: true) }
-                }, PipeLines(handle: errors.fileHandleForReading) { [weak self] line in
-                    Task { @MainActor in self?.consume(line, readinessAllowed: false) }
+                readers = [PipeLines(handle: output.fileHandleForReading) { [weak self] lines in
+                    Task { @MainActor in self?.consume(lines, readinessAllowed: true) }
+                }, PipeLines(handle: errors.fileHandleForReading) { [weak self] lines in
+                    Task { @MainActor in self?.consume(lines, readinessAllowed: false) }
                 }]
                 child.terminationHandler = { [weak self] ended in
                     Task { @MainActor in self?.runtimeExited(pid: ended.processIdentifier, status: ended.terminationStatus) }
@@ -183,6 +229,17 @@ final class AppModel: ObservableObject {
                 appendLog(error.localizedDescription)
             }
         }
+    }
+
+    private func consume(_ lines: [String], readinessAllowed: Bool) {
+        var ordinary: [String] = []
+        for line in lines {
+            if line.hasPrefix("ELICHIKA_READY ") {
+                appendLogs(ordinary); ordinary.removeAll(keepingCapacity: true)
+                consume(line, readinessAllowed: readinessAllowed)
+            } else { ordinary.append(line) }
+        }
+        appendLogs(ordinary)
     }
 
     private func consume(_ line: String, readinessAllowed: Bool) {
@@ -221,9 +278,13 @@ final class AppModel: ObservableObject {
     }
 
     func appendLog(_ line: String) {
-        let bounded = String(line.prefix(4096))
-        console.append(bounded)
-        if console.count > 1500 { console.removeFirst(console.count - 1500) }
+        appendLogs([line])
+    }
+
+    func appendLogs(_ lines: [String]) { consoleLogs.append(contentsOf: lines) }
+
+    private func applyConsoleState(_ value: ConsoleState?) {
+        if consoleState != value { consoleState = value }
     }
 
     private func runtimeExited(pid: Int32, status: Int32) {
@@ -274,11 +335,11 @@ final class AppModel: ObservableObject {
             let updated = try JSONDecoder().decode(RuntimeState.self, from: await request("/v1/state"))
             guard !quitting, !stoppingRuntime, process?.processIdentifier == runtimePID else { return }
             guard applyRuntimeState(updated, for: stateRequest) else { return }
-            if let value = updated.console { consoleState = value }
+            if let value = updated.console { applyConsoleState(value) }
             else if snapshot.prepared {
                 let value = try JSONDecoder().decode(ConsoleState.self, from: await request("/v1/console"))
                 guard stateRequestIsCurrent(stateRequest) else { return }
-                consoleState = value
+                applyConsoleState(value)
             }
             if resetSubmissionUncertain, !submittingConsoleAction, let job = consoleState?.job,
                job.action == .resetServer, job.id != uncertainResetPreviousJobID {
@@ -292,7 +353,8 @@ final class AppModel: ObservableObject {
             }
             if snapshot.prepared && networkApplied == nil { await loadNetworkConfig() }
             let logs = try JSONDecoder().decode(RuntimeLogs.self, from: await request("/v1/logs?after=\(logCursor)"))
-            logs.entries.forEach { appendLog($0.line) }
+            guard stateRequestIsCurrent(stateRequest), logs.next >= logCursor else { return }
+            appendLogs(logs.entries.filter { $0.id > logCursor }.map(\.line))
             logCursor = logs.next
             let currentError = snapshot.error ?? snapshot.server?.error
             if let error = currentError, !error.isEmpty, error != reportedRuntimeError { message = error }
@@ -428,6 +490,10 @@ final class AppModel: ObservableObject {
         snapshot.webUIURL(path: path)
     }
 
+    func goEndpoint(path: String) -> RuntimeState.WebUIEndpoint? {
+        snapshot.webUIEndpoint(path: path)
+    }
+
     struct RuntimeStateRequest {
         fileprivate let sequence: UInt64
         fileprivate let epoch: UInt64
@@ -446,11 +512,16 @@ final class AppModel: ObservableObject {
               request.runtimePID == process?.processIdentifier else { return false }
         // Awaiting a response can let another request publish a ready browser.
         // Compare the live state, and invalidate before SwiftUI sees a new URL.
-        if goURL(path: "/webui/admin/") != value.webUIURL(path: "/webui/admin/") {
+        if goEndpoint(path: "/webui/admin/") != value.webUIEndpoint(path: "/webui/admin/") {
             disposeGoBrowsers()
+            goBrowserRevision &+= 1
         }
         appliedStateSequence = request.sequence
-        snapshot = value
+        // Console state is consumed separately. Progress filenames and log
+        // batches must not republish the whole runtime/browser state.
+        var presentation = value
+        presentation.console = nil
+        if snapshot != presentation { snapshot = presentation }
         return true
     }
 
@@ -471,7 +542,7 @@ final class AppModel: ObservableObject {
     }
 
     private var managementPageVisible: Bool {
-        selectedSection == .accounts || (selectedSection == .settings && showServerSettings)
+        selectedSection == .accounts || selectedSection == .serverSettings
     }
 
     var managementDemandIdle: Bool { managementDemandTask == nil }
@@ -741,7 +812,7 @@ private final class PipeLines {
     private let handle: FileHandle
     private var buffered = Data()
     private let lock = NSLock()
-    init(handle: FileHandle, consume: @escaping (String) -> Void) {
+    init(handle: FileHandle, consume: @escaping ([String]) -> Void) {
         self.handle = handle
         handle.readabilityHandler = { [weak self] source in
             guard let self else { return }
@@ -756,7 +827,7 @@ private final class PipeLines {
             }
             if self.buffered.count > 65_536 { self.buffered.removeAll() }
             self.lock.unlock()
-            lines.forEach(consume)
+            if !lines.isEmpty { consume(lines) }
             if bytes.isEmpty { source.readabilityHandler = nil }
         }
     }

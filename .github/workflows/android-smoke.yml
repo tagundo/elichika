@@ -445,6 +445,25 @@ jobs:
           assert Path('evidence/model-viewer-thumbnail-updater.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
           PYUPDATER
 
+      - name: Measure actual Console batching, persistence and hidden-window rendering separately
+        if: ${{ !inputs.focused_header_diagnostic }}
+        timeout-minutes: 5
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
+        run: |
+          set -euo pipefail
+          trap 'adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika' EXIT
+          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
+          adb -s 127.0.0.1:5555 shell dumpsys gfxinfo com.tagundo.elichika reset > evidence/console-gfxinfo-before.txt
+          adb -s 127.0.0.1:5555 shell am instrument -w \
+            -e class com.tagundo.elichika.ConsolePerformanceTest \
+            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee evidence/native-console-performance.txt
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/console-performance-native.json > evidence/console-performance-native.json
+          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/console-performance-visible.png > evidence/console-performance-visible.png
+          adb -s 127.0.0.1:5555 shell dumpsys gfxinfo com.tagundo.elichika framestats > evidence/console-gfxinfo-after.txt
+          python3 tests/android_console_performance_gate.py --evidence evidence --candidate-sha256 "$EXPECTED_CANDIDATE_SHA"
+
       - name: Verify and measure mod-preserving parallel merges in the signed APK
         if: ${{ !inputs.focused_header_diagnostic }}
         timeout-minutes: 10
