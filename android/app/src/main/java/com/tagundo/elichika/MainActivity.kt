@@ -81,6 +81,8 @@ class MainActivity : AppCompatActivity() {
     // with a running edit/extraction no longer wipes its live page state.
     private val webViewErrored = HashMap<String, Boolean>()
     private val savedWebViews = HashMap<String, Bundle>()
+    // Memory-only identity for each Go document; never persisted in a Bundle or URL.
+    private val webViewLocalTokens = HashMap<String, String?>()
     private lateinit var viewerFullscreen: ViewerFullscreen
     private lateinit var assetNavigation: AssetNavigationBridge
 
@@ -684,6 +686,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun effectiveTabUrl(tab: Tab): String? {
         if (!tab.managementPage) return tab.url
+        if (localWebuiToken(tab) == null) return null
         val path = tab.url?.let { Uri.parse(it).path } ?: return null
         val base = if (Bus.serverRunning || Bus.serverStarting) {
             if (!Bus.serverReady) return null
@@ -693,6 +696,18 @@ class MainActivity : AppCompatActivity() {
             }.getOrNull()
         } else ManagementServer.url()?.trimEnd('/')
         return base?.let { it + path }
+    }
+
+    private fun localWebuiToken(tab: Tab): String? = if (!tab.managementPage) null
+        else if (Bus.serverRunning || Bus.serverStarting) ServerService.localWebuiToken()
+        else ManagementServer.localWebuiToken()
+
+    private fun loadDocument(view: WebView, key: String, destination: String, section: String?, token: String?) {
+        val document = documentUrl(destination, section)
+        val accepted = LocalWebuiBootstrap.acceptedToken(document, token)
+        if (accepted == null) view.loadUrl(document)
+        else view.loadUrl(document, LocalWebuiBootstrap.headers(document, accepted))
+        webViewLocalTokens[key] = accepted
     }
 
     private fun sameWebOrigin(first: String?, second: String): Boolean {
@@ -726,6 +741,7 @@ class MainActivity : AppCompatActivity() {
         // onStop/finish still release the window, and data services suspend Go safely.
         if (tab.managementPage) ManagementServer.requestUi(applicationContext, this)
         val targetUrl = effectiveTabUrl(tab)
+        val localToken = localWebuiToken(tab)
         // Keep a shared WebView visible while its section changes. A transient
         // GONE/VISIBLE cycle can blur editing fields or suspend its renderer.
         val destination: View = when {
@@ -742,14 +758,14 @@ class MainActivity : AppCompatActivity() {
             else -> {
                 val destinationUrl = targetUrl ?: tab.url!!
                 val existed = webViews.containsKey(tab.url)
-                val wv = webViewFor(tab.url, tab.section, destinationUrl)
+                val wv = webViewFor(tab.url, tab.section, destinationUrl, localToken)
                 // Only reload if the previous load actually failed (e.g. the tab was
                 // first opened before the server was up). A successful page is left as
                 // is, so returning to a tab mid-edit keeps the running job's UI.
                 if (existed && (webViewErrored[tab.url] == true ||
-                    (tab.managementPage && wv.url != null && !sameWebOrigin(wv.url, destinationUrl)) ||
+                    (tab.managementPage && LocalWebuiBootstrap.requiresReload(wv.url, destinationUrl, webViewLocalTokens[tab.url], localToken)) ||
                     (tab.section != null && !AssetNavigationBridge.isEmbeddedDocument(Uri.parse(wv.url ?: ""))))) {
-                    wv.loadUrl(documentUrl(destinationUrl, tab.section))
+                    loadDocument(wv, tab.url, destinationUrl, tab.section, localToken)
                 } else if (tab.section != null) assetNavigation.showSection(wv, tab.section)
                 wv
             }
@@ -774,7 +790,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun webViewFor(url: String, section: String? = null, initialUrl: String = url): WebView {
+    private fun webViewFor(url: String, section: String? = null, initialUrl: String = url, localToken: String? = null): WebView {
         val management = tabs.any { it.url == url && it.managementPage }
         return webViews.getOrPut(url) {
             WebView(this).apply {
@@ -830,8 +846,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 content.addView(this)
                 val state = savedWebViews.remove(url)
-                if (state == null || restoreState(state) == null || (management && !sameWebOrigin(this.url, initialUrl))) {
-                    loadUrl(documentUrl(initialUrl, section))
+                if (state == null || restoreState(state) == null || (management &&
+                    (!sameWebOrigin(this.url, initialUrl) || webViewLocalTokens[url] != LocalWebuiBootstrap.acceptedToken(initialUrl, localToken)))) {
+                    loadDocument(this, url, initialUrl, section, localToken)
                 }
             }
         }

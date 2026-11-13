@@ -1,0 +1,113 @@
+<section id="native-client-connection">
+    <h2 data-native-text="Client login / migration">Client login / migration</h2>
+    <p data-native-text="Use this account in another signed game client by entering the same server address, account ID and client login password.">Use this account in another signed game client by entering the same server address, account ID and client login password.</p>
+    <p data-native-text="Reinstalling a differently signed client may remove that client's local files. Your progress remains on this server. Export a backup first; importing is not needed just to log in.">Reinstalling a differently signed client may remove that client's local files. Your progress remains on this server. Export a backup first; importing is not needed just to log in.</p>
+    <button type="button" onclick="submit_form(null, 'export_db', true, function(){})" data-native-text="Export account backup (.db)">Export account backup (.db)</button>
+    <button type="button" onclick="location.href='/webui/user/login'+location.search" data-native-text="Choose another account">Choose another account</button>
+    <p><label for="native-client-address" data-native-text="Client server address">Client server address</label>
+        <input id="native-client-address" type="url" spellcheck="false"><button type="button" onclick="native_copy_field('native-client-address')" data-native-text="Copy">Copy</button></p>
+    <p id="native-address-note"></p>
+    <p><label for="native-client-id" data-native-text="Account ID">Account ID</label>
+        <input id="native-client-id" readonly><button type="button" onclick="native_copy_field('native-client-id')" data-native-text="Copy">Copy</button></p>
+    <p><label for="native-client-password" data-native-text="Client login password">Client login password</label>
+        <input id="native-client-password" type="password" readonly autocomplete="off" placeholder="••••••••">
+        <button id="native-reveal-password" type="button" onclick="native_reveal_password()" data-native-text="Reveal / hide">Reveal / hide</button>
+        <button id="native-copy-password" type="button" onclick="native_copy_password()" data-native-text="Copy password">Copy password</button></p>
+    <p id="native-password-status" role="status"></p>
+    <details>
+        <summary data-native-text="Set / generate client login password">Set / generate client login password</summary>
+        <p data-native-text="Existing passwords are stored as bcrypt hashes and cannot be recovered. Only a password explicitly saved here can later be revealed or copied.">Existing passwords are stored as bcrypt hashes and cannot be recovered. Only a password explicitly saved here can later be revealed or copied.</p>
+        <p data-native-text="Changing this password replaces the old game login password. It preserves your account progress, authorization keys and current sessions.">Changing this password replaces the old game login password. It preserves your account progress, authorization keys and current sessions.</p>
+        <label for="native-new-password" data-native-text="New password (optional; leave blank to generate)">New password (optional; leave blank to generate)</label>
+        <input id="native-new-password" type="password" autocomplete="new-password">
+        <p><label><input id="native-confirm-password" type="checkbox"><span data-native-text="I understand that the old client login password will stop working.">I understand that the old client login password will stop working.</span></label></p>
+        <button type="button" onclick="native_set_password()" data-native-text="Set / generate client login password">Set / generate client login password</button>
+    </details>
+    <p><button id="native-copy-connection" type="button" onclick="native_copy_connection()" data-native-text="Copy connection details">Copy connection details</button></p>
+    <details id="native-public-key-section" hidden>
+        <summary data-native-text="Server public key (if required by your client)">Server public key (if required by your client)</summary>
+        <textarea id="native-public-key" readonly rows="6" spellcheck="false"></textarea>
+        <button type="button" onclick="native_copy_field('native-public-key')" data-native-text="Copy public key">Copy public key</button>
+        <label><input id="native-include-public-key" type="checkbox"><span data-native-text="Include public key in copied connection details">Include public key in copied connection details</span></label>
+    </details>
+    <p id="native-action-status" role="status" aria-live="polite"></p>
+</section>
+<script src="/webui/native_local.js"></script>
+<script>
+document.body.dataset.elichikaLocalAccess = 'true'
+apply_native_language()
+async function native_request(path, values) {
+    const form = new FormData()
+    form.append('user_id', sessionStorage.getItem('user_id') || '')
+    Object.keys(values || {}).forEach(key => form.append(key, values[key]))
+    const result = await fetch('/webui/user/' + path, {method: 'POST', body: form, cache: 'no-store'})
+    const data = await result.json()
+    if (!result.ok || data.error) throw new Error(data.error || native_text('Request failed.'))
+    return data
+}
+function native_status(text) { document.getElementById('native-action-status').textContent = text }
+function native_password_available(available) {
+    document.getElementById('native-reveal-password').disabled = !available
+    document.getElementById('native-copy-password').disabled = !available
+    document.getElementById('native-copy-connection').disabled = !available
+    document.getElementById('native-password-status').textContent = native_text(available ? 'A current managed password is saved. It stays masked until you reveal or copy it.' : 'No current managed password is available. Explicitly set or generate a new password below.')
+}
+function native_hide_password() {
+    const input = document.getElementById('native-client-password')
+    input.value = ''
+    input.type = 'password'
+}
+async function native_reveal_password() {
+    const input = document.getElementById('native-client-password')
+    if (input.type === 'text') { native_hide_password(); return }
+    try {
+        const data = await native_request('native_password/reveal')
+        input.value = data.password
+        input.type = 'text'
+    } catch (error) { native_hide_password(); native_password_available(false); native_status(error.message) }
+}
+async function native_copy_password() {
+    try {
+        const data = await native_request('native_password/reveal')
+        await native_copy_text(data.password)
+        native_status(native_text('Copied.'))
+    } catch (error) { native_status(error.message) }
+}
+async function native_copy_field(id) {
+    try { await native_copy_text(document.getElementById(id).value); native_status(native_text('Copied.')) }
+    catch (error) { native_status(error.message) }
+}
+async function native_copy_connection() {
+    try {
+        const data = await native_request('native_password/reveal')
+        let text = 'Server: ' + document.getElementById('native-client-address').value + '\nAccount ID: ' + document.getElementById('native-client-id').value + '\nPassword: ' + data.password
+        if (document.getElementById('native-include-public-key').checked) text += '\n\n' + document.getElementById('native-public-key').value
+        await native_copy_text(text)
+        native_status(native_text('Copied.'))
+    } catch (error) { native_status(error.message) }
+}
+async function native_set_password() {
+    if (!document.getElementById('native-confirm-password').checked) { native_status(native_text('Confirm the password change first.')); return }
+    try {
+        await native_request('native_password/set', {confirm_password_change: 'yes', new_password: document.getElementById('native-new-password').value})
+        document.getElementById('native-new-password').value = ''
+        document.getElementById('native-confirm-password').checked = false
+        native_hide_password()
+        native_password_available(true)
+        native_status(native_text('Password saved. Reveal or copy it when you are ready to log in.'))
+    } catch (error) { native_status(error.message) }
+}
+if (!sessionStorage.getItem('user_id')) location.replace('/webui/user/login' + location.search)
+else native_request('native_connection').then(function(data) {
+    document.getElementById('native-client-address').value = data.server_address
+    document.getElementById('native-client-id').value = data.user_id
+    document.getElementById('native-address-note').textContent = native_text(data.address_note)
+    native_password_available(data.has_managed_password)
+    if (data.server_public_key) {
+        document.getElementById('native-public-key-section').hidden = false
+        document.getElementById('native-public-key').value = data.server_public_key
+    }
+}).catch(error => native_status(error.message))
+window.addEventListener('pagehide', native_hide_password)
+document.addEventListener('visibilitychange', function() { if (document.hidden) native_hide_password() })
+</script>

@@ -24,7 +24,7 @@ struct ElichikaMacApp: App {
                     .keyboardShortcut("s").disabled(!model.toolsReady)
             }
             CommandGroup(replacing: .appSettings) {
-                Button(model.text("Settings…", "설정…", "設定…")) { model.selectedSection = .settings }
+                Button(model.text("App settings…", "앱 설정…", "アプリ設定…")) { model.selectedSection = .settings }
                     .keyboardShortcut(",")
             }
             CommandMenu(model.text("Server", "서버", "サーバー")) {
@@ -130,6 +130,12 @@ struct RootView: View {
         switch model.selectedSection ?? .server {
         case .server: ServerView(model: model)
         case .settings: SettingsView(model: model)
+        case .serverSettings:
+            if model.goURL(path: "/webui/admin/") != nil {
+                WebPanel(model: model, route: .serverSettings)
+                    .onAppear { model.retryManagement() }
+            }
+            else { ManagementPreparationView(model: model) }
         case .assets, .viewer:
             if model.toolsReady {
                 WebPanel(model: model, route: .assets,
@@ -252,7 +258,7 @@ private struct ServerView: View {
                 HStack {
                     Text(url).font(.body.monospaced()).textSelection(.enabled)
                     Button(model.text("Copy", "복사", "コピー")) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(url, forType: .string) }
-                    Button(model.text("Server settings", "서버 설정", "サーバー設定")) { model.selectedSection = .settings; model.showServerSettings = true }
+                    Button(model.text("Server settings", "서버 설정", "サーバー設定")) { model.selectedSection = .serverSettings }
                 }
             }
             PreparationProgressView(model: model).frame(maxWidth: 420, alignment: .leading)
@@ -269,8 +275,19 @@ private struct ServerView: View {
             }.background(Color(nsColor: .textBackgroundColor)).cornerRadius(8)
                 .frame(minHeight: 120, maxHeight: .infinity)
                 .accessibilityIdentifier("console.logs")
-        }.padding(24)
+        }.padding(24).background(ConsoleRenderMarker())
     }
+}
+
+// An attached marker lets native QA wait for this destination's actual layout
+// after SwiftUI has replaced the previous page.
+private struct ConsoleRenderMarker: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.identifier = NSUserInterfaceItemIdentifier("elichika.console.rendered")
+        return view
+    }
+    func updateNSView(_ view: NSView, context: Context) {}
 }
 
 private struct ConsoleActionsView: View {
@@ -302,9 +319,12 @@ private struct ConsoleActionsView: View {
                         Button { model.presentConsole(.guide) } label: {
                             Label(model.text("Guide", "사용 안내", "ガイド"), systemImage: "questionmark.circle").frame(maxWidth: .infinity, alignment: .leading)
                         }.accessibilityIdentifier("console.guide")
-                        Button { model.selectedSection = .settings; model.showServerSettings = false } label: {
-                            Label(model.text("Settings", "설정", "設定"), systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
+                        Button { model.selectedSection = .settings } label: {
+                            Label(AppSection.settings.title(model.language), systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
                         }.accessibilityIdentifier("console.settings")
+                        Button { model.selectedSection = .serverSettings } label: {
+                            Label(AppSection.serverSettings.title(model.language), systemImage: "slider.horizontal.3").frame(maxWidth: .infinity, alignment: .leading)
+                        }.accessibilityIdentifier("console.serverSettings")
                         Button { model.presentConsole(.about) } label: {
                             Label(model.text("About", "앱 정보", "このアプリについて"), systemImage: "info.circle").frame(maxWidth: .infinity, alignment: .leading)
                         }.accessibilityIdentifier("console.about")
@@ -495,80 +515,66 @@ private struct ConsoleSheet: View {
     private var guideText: String {
         let address = model.connectionAddress ?? "http://127.0.0.1:8080"
         return model.text(
-            "1. Wait for the bundled tools to be ready. Your asset library is selected in Settings.\n2. Click Start server.\n3. Point the game app at \(address) (see the LL-hax guide). For another device, set the listen address to 0.0.0.0:8080 and connect the game to your Mac’s LAN address. Keep the original game CDN address unchanged.\n4. Optional: pre-download game files with Download all (archive.org) or Download missing (CDN).\n\nCDN cache: when on, missing packs download as needed during play and are saved to packs/. Pre-downloading is optional. Keep Elichika running while downloads finish.\n\nPages: Server settings / Accounts = server WebUI; Server content = development tools; Asset editing tools = modding tools; 3D model = model viewer.\n\nAsset library: \(model.libraryDirectory)\nextracted = decrypted models (edit input); modded = edited bundles (edit output); suit / live / card / livetimeline = add-on drop folders; sql = DB patches; packs = game pack cache; backup = DB backups; logs = logs.\n\nUse Server content to make DB backups and Accounts to export your accounts before resetting the server.",
-            "1. 내장 도구 준비가 끝날 때까지 기다리세요. 에셋 보관 폴더는 설정에서 선택합니다.\n2. ‘서버 시작’을 누르세요.\n3. 게임 앱을 \(address)으로 연결하세요(LL-hax 가이드 참고). 다른 기기는 수신 주소를 0.0.0.0:8080으로 설정하고 게임을 Mac의 LAN 주소로 연결하세요. 원본 게임 CDN 주소는 유지하세요.\n4. 선택 사항: ‘전체 받기’(archive.org) 또는 ‘누락분 받기’(CDN)로 게임 파일을 미리 받으세요.\n\nCDN 캐시: 켜져 있으면 플레이 중 필요한 팩을 자동으로 받아 packs/에 저장합니다. 미리 받기는 필수가 아닙니다. 다운로드가 끝날 때까지 Elichika를 실행해 두세요.\n\n화면: 서버 설정 / 계정 = 서버 웹 UI; 서버 콘텐츠 = 개발 도구; 에셋 편집 도구 = 모딩 도구; 3D 모델 = 모델 뷰어.\n\n에셋 보관 폴더: \(model.libraryDirectory)\nextracted = 복호화된 모델(편집 입력); modded = 편집된 번들(편집 출력); suit / live / card / livetimeline = 애드온 드롭 폴더; sql = DB 패치; packs = 게임 팩 캐시; backup = DB 백업; logs = 로그.\n\n서버 초기화 전에 서버 콘텐츠에서 DB를 백업하고 계정에서 계정을 내보내세요.",
-            "1. 内蔵ツールの準備が終わるまでお待ちください。アセット保存先は設定で選択できます。\n2. 「サーバー起動」をクリック。\n3. ゲームアプリを\(address)に接続（LL-haxガイド参照）。別端末では待ち受けアドレスを0.0.0.0:8080にし、MacのLANアドレスに接続してください。元のゲームCDNアドレスは維持してください。\n4. 任意：「全ファイル取得」（archive.org）または「不足分を取得」（CDN）で事前ダウンロード。\n\nCDNキャッシュ：オンの場合、プレイ中に必要なパックを自動取得してpacks/に保存します。事前取得は任意です。完了までElichikaを起動したままにしてください。\n\n画面：サーバー設定 / アカウント = サーバーWeb UI、サーバーコンテンツ = 開発ツール、アセット編集ツール = MODツール、3Dモデル = モデルビューア。\n\nアセット保存先：\(model.libraryDirectory)\nextracted = 復号済みモデル（編集入力）、modded = 編集済みバンドル（編集出力）、suit / live / card / livetimeline = アドオンのドロップ先、sql = DBパッチ、packs = パックキャッシュ、backup = DBバックアップ、logs = ログ。\n\nサーバー初期化前に、サーバーコンテンツでDBをバックアップし、アカウントでエクスポートしてください。")
+            "1. Wait for the bundled tools to be ready. Your asset library is selected in App settings.\n2. Click Start server.\n3. Point the game app at \(address) (see the LL-hax guide). For another device, set the listen address to 0.0.0.0:8080 and connect the game to your Mac’s LAN address. Keep the original game CDN address unchanged.\n4. Optional: pre-download game files with Download all (archive.org) or Download missing (CDN).\n\nCDN cache: when on, missing packs download as needed during play and are saved to packs/. Pre-downloading is optional. Keep Elichika running while downloads finish.\n\nPages: Server settings / Accounts = server WebUI; Server content = development tools; Asset editing tools = modding tools; 3D model = model viewer.\n\nAsset library: \(model.libraryDirectory)\nextracted = decrypted models (edit input); modded = edited bundles (edit output); suit / live / card / livetimeline = add-on drop folders; sql = DB patches; packs = game pack cache; backup = DB backups; logs = logs.\n\nUse Server content to make DB backups and Accounts to export your accounts before resetting the server.",
+            "1. 내장 도구 준비가 끝날 때까지 기다리세요. 에셋 보관 폴더는 앱 설정에서 선택합니다.\n2. ‘서버 시작’을 누르세요.\n3. 게임 앱을 \(address)으로 연결하세요(LL-hax 가이드 참고). 다른 기기는 수신 주소를 0.0.0.0:8080으로 설정하고 게임을 Mac의 LAN 주소로 연결하세요. 원본 게임 CDN 주소는 유지하세요.\n4. 선택 사항: ‘전체 받기’(archive.org) 또는 ‘누락분 받기’(CDN)로 게임 파일을 미리 받으세요.\n\nCDN 캐시: 켜져 있으면 플레이 중 필요한 팩을 자동으로 받아 packs/에 저장합니다. 미리 받기는 필수가 아닙니다. 다운로드가 끝날 때까지 Elichika를 실행해 두세요.\n\n화면: 서버 설정 / 계정 = 서버 웹 UI; 서버 콘텐츠 = 개발 도구; 에셋 편집 도구 = 모딩 도구; 3D 모델 = 모델 뷰어.\n\n에셋 보관 폴더: \(model.libraryDirectory)\nextracted = 복호화된 모델(편집 입력); modded = 편집된 번들(편집 출력); suit / live / card / livetimeline = 애드온 드롭 폴더; sql = DB 패치; packs = 게임 팩 캐시; backup = DB 백업; logs = 로그.\n\n서버 초기화 전에 서버 콘텐츠에서 DB를 백업하고 계정에서 계정을 내보내세요.",
+            "1. 内蔵ツールの準備が終わるまでお待ちください。アセット保存先はアプリ設定で選択できます。\n2. 「サーバー起動」をクリック。\n3. ゲームアプリを\(address)に接続（LL-haxガイド参照）。別端末では待ち受けアドレスを0.0.0.0:8080にし、MacのLANアドレスに接続してください。元のゲームCDNアドレスは維持してください。\n4. 任意：「全ファイル取得」（archive.org）または「不足分を取得」（CDN）で事前ダウンロード。\n\nCDNキャッシュ：オンの場合、プレイ中に必要なパックを自動取得してpacks/に保存します。事前取得は任意です。完了までElichikaを起動したままにしてください。\n\n画面：サーバー設定 / アカウント = サーバーWeb UI、サーバーコンテンツ = 開発ツール、アセット編集ツール = MODツール、3Dモデル = モデルビューア。\n\nアセット保存先：\(model.libraryDirectory)\nextracted = 復号済みモデル（編集入力）、modded = 編集済みバンドル（編集出力）、suit / live / card / livetimeline = アドオンのドロップ先、sql = DBパッチ、packs = パックキャッシュ、backup = DBバックアップ、logs = ログ。\n\nサーバー初期化前に、サーバーコンテンツでDBをバックアップし、アカウントでエクスポートしてください。")
     }
 }
 
 private struct SettingsView: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        VStack(spacing: 0) {
-            Picker(model.text("Settings", "설정", "設定"), selection: $model.showServerSettings) {
-                Text(model.text("App", "앱", "アプリ")).tag(false)
-                Text(model.text("Server", "서버", "サーバー")).tag(true)
-            }.pickerStyle(.segmented).frame(width: 300).padding()
-            if model.showServerSettings {
-                if model.goURL(path: "/webui/admin/") != nil {
-                    WebPanel(model: model, route: .serverSettings)
-                        .onAppear { model.retryManagement() }
+        Form {
+            Section {
+                Picker(model.text("Language", "언어", "言語"), selection: Binding(get: { model.language }, set: model.setLanguage)) {
+                    Text("English").tag("en"); Text("한국어").tag("ko"); Text("日本語").tag("ja")
                 }
-                else { ManagementPreparationView(model: model) }
-            } else {
-                Form {
-                    Section {
-                        Picker(model.text("Language", "언어", "言語"), selection: Binding(get: { model.language }, set: model.setLanguage)) {
-                            Text("English").tag("en"); Text("한국어").tag("ko"); Text("日本語").tag("ja")
-                        }
-                    }
-                    Section(model.text("Asset library", "에셋 보관 폴더", "アセット保存先")) {
-                        Text(model.libraryDirectory).font(.callout.monospaced()).textSelection(.enabled)
-                        HStack {
-                            Button(model.text("Choose folder…", "폴더 선택…", "フォルダーを選択…")) { model.chooseLibraryDirectory() }.disabled(!model.canChangeStorage)
-                            Button(model.text("Show in Finder", "Finder에서 보기", "Finderで表示")) { try? model.reveal(model.libraryDirectory) }
-                        }
-                        Text(model.text("Stop the server and finish running jobs before changing the asset folder.", "에셋 보관 폴더를 바꾸기 전에 서버와 실행 중인 작업을 중지하세요.", "保存先を変更する前にサーバーと実行中の処理を停止してください。"))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Section(model.text("Server data", "서버 데이터", "サーバーデータ")) {
-                        Text(model.dataDirectory.path).font(.callout.monospaced()).textSelection(.enabled)
-                        Button(model.text("Show in Finder", "Finder에서 보기", "Finderで表示")) { try? model.reveal(model.dataDirectory.path) }
-                    }
-                    Section(model.text("Network", "네트워크", "ネットワーク")) {
-                        TextField(model.text("Listen address", "서버 수신 주소", "待ち受けアドレス"), text: $model.serverAddressDraft)
-                            .disabled(!model.canChangeStorage || !model.networkReady || model.savingNetwork)
-                        TextField(model.text("Original game CDN URL", "원본 게임 CDN 주소", "元のゲームCDN URL"), text: $model.cdnServerDraft)
-                            .disabled(!model.canChangeStorage || !model.networkReady || model.savingNetwork)
-                        Text(model.text("Keep the original CDN address here. Installed mod files are provided by Elichika automatically. CDN cache controls whether missing original files are saved locally. For another device, listen on 0.0.0.0:8080 and connect the game to your Mac's LAN address.", "여기에는 기존 원본 CDN 주소를 유지하세요. 설치한 모드 파일은 Elichika에서 자동으로 제공합니다. CDN 캐시는 누락된 원본 파일을 로컬에 저장할지 결정합니다. 다른 기기는 수신 주소를 0.0.0.0:8080으로 설정하고 게임을 맥의 LAN 주소로 연결하세요.", "元のCDNアドレスを維持してください。インストールしたMODファイルはElichikaが自動配信します。CDNキャッシュは不足している元ファイルを保存するかを設定します。別端末からは0.0.0.0:8080で待ち受け、MacのLANアドレスに接続してください。"))
-                            .font(.caption).foregroundStyle(.secondary)
-                        if let original = model.defaultCdnServer {
-                            Button(model.text("Use default original CDN", "기본 원본 CDN 주소 사용", "既定の元CDNを使用")) { model.cdnServerDraft = original }
-                                .disabled(!model.canChangeStorage || model.savingNetwork || model.cdnServerDraft == original)
-                        }
-                        HStack {
-                            Button(model.text("Save network settings", "네트워크 설정 저장", "ネットワーク設定を保存")) { model.saveNetworkConfig() }
-                                .disabled(!model.canChangeStorage || !model.networkChanged || model.savingNetwork)
-                            Button(model.text("Reload", "다시 읽기", "再読み込み")) { Task { await model.loadNetworkConfig() } }
-                                .disabled(!model.toolsReady || model.savingNetwork)
-                            if let address = model.connectionAddress {
-                                Button(model.text("Copy connection address", "연결 주소 복사", "接続アドレスをコピー")) {
-                                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(address, forType: .string)
-                                }
-                            }
-                        }
-                    }
-                    Section {
-                        Text("Elichika " + (Bundle.main.object(forInfoDictionaryKey: "ElichikaVersion") as? String ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""))
-                        Text("Apple silicon · macOS 13+").font(.caption).foregroundStyle(.secondary)
-                        Text(model.text("Quitting Elichika stops its server and bundled tools.", "Elichika를 종료하면 서버와 내장 도구도 함께 종료됩니다.", "Elichikaを終了するとサーバーと内蔵ツールも停止します。"))
-                            .foregroundStyle(.secondary)
-                    }
-                }.formStyle(.grouped)
-                    .onAppear {
-                        if !model.networkChanged { Task { await model.loadNetworkConfig() } }
-                    }
             }
-        }
+            Section(model.text("Asset library", "에셋 보관 폴더", "アセット保存先")) {
+                Text(model.libraryDirectory).font(.callout.monospaced()).textSelection(.enabled)
+                HStack {
+                    Button(model.text("Choose folder…", "폴더 선택…", "フォルダーを選択…")) { model.chooseLibraryDirectory() }.disabled(!model.canChangeStorage)
+                    Button(model.text("Show in Finder", "Finder에서 보기", "Finderで表示")) { try? model.reveal(model.libraryDirectory) }
+                }
+                Text(model.text("Stop the server and finish running jobs before changing the asset folder.", "에셋 보관 폴더를 바꾸기 전에 서버와 실행 중인 작업을 중지하세요.", "保存先を変更する前にサーバーと実行中の処理を停止してください。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section(model.text("Server data", "서버 데이터", "サーバーデータ")) {
+                Text(model.dataDirectory.path).font(.callout.monospaced()).textSelection(.enabled)
+                Button(model.text("Show in Finder", "Finder에서 보기", "Finderで表示")) { try? model.reveal(model.dataDirectory.path) }
+            }
+            Section(model.text("Network", "네트워크", "ネットワーク")) {
+                TextField(model.text("Listen address", "서버 수신 주소", "待ち受けアドレス"), text: $model.serverAddressDraft)
+                    .disabled(!model.canChangeStorage || !model.networkReady || model.savingNetwork)
+                TextField(model.text("Original game CDN URL", "원본 게임 CDN 주소", "元のゲームCDN URL"), text: $model.cdnServerDraft)
+                    .disabled(!model.canChangeStorage || !model.networkReady || model.savingNetwork)
+                Text(model.text("Keep the original CDN address here. Installed mod files are provided by Elichika automatically. CDN cache controls whether missing original files are saved locally. For another device, listen on 0.0.0.0:8080 and connect the game to your Mac's LAN address.", "여기에는 기존 원본 CDN 주소를 유지하세요. 설치한 모드 파일은 Elichika에서 자동으로 제공합니다. CDN 캐시는 누락된 원본 파일을 로컬에 저장할지 결정합니다. 다른 기기는 수신 주소를 0.0.0.0:8080으로 설정하고 게임을 맥의 LAN 주소로 연결하세요.", "元のCDNアドレスを維持してください。インストールしたMODファイルはElichikaが自動配信します。CDNキャッシュは不足している元ファイルを保存するかを設定します。別端末からは0.0.0.0:8080で待ち受け、MacのLANアドレスに接続してください。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                if let original = model.defaultCdnServer {
+                    Button(model.text("Use default original CDN", "기본 원본 CDN 주소 사용", "既定の元CDNを使用")) { model.cdnServerDraft = original }
+                        .disabled(!model.canChangeStorage || model.savingNetwork || model.cdnServerDraft == original)
+                }
+                HStack {
+                    Button(model.text("Save network settings", "네트워크 설정 저장", "ネットワーク設定を保存")) { model.saveNetworkConfig() }
+                        .disabled(!model.canChangeStorage || !model.networkChanged || model.savingNetwork)
+                    Button(model.text("Reload", "다시 읽기", "再読み込み")) { Task { await model.loadNetworkConfig() } }
+                        .disabled(!model.toolsReady || model.savingNetwork)
+                    if let address = model.connectionAddress {
+                        Button(model.text("Copy connection address", "연결 주소 복사", "接続アドレスをコピー")) {
+                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(address, forType: .string)
+                        }
+                    }
+                }
+            }
+            Section {
+                Text("Elichika " + (Bundle.main.object(forInfoDictionaryKey: "ElichikaVersion") as? String ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""))
+                Text("Apple silicon · macOS 13+").font(.caption).foregroundStyle(.secondary)
+                Text(model.text("Quitting Elichika stops its server and bundled tools.", "Elichika를 종료하면 서버와 내장 도구도 함께 종료됩니다.", "Elichikaを終了するとサーバーと内蔵ツールも停止します。"))
+                    .foregroundStyle(.secondary)
+            }
+        }.formStyle(.grouped)
+            .onAppear {
+                if !model.networkChanged { Task { await model.loadNetworkConfig() } }
+            }
     }
 }

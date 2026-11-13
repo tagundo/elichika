@@ -31,7 +31,8 @@
 
     function render_page() {
         document.getElementById("user_id_label").innerText = sessionStorage.getItem("user_id")
-        var locale = localStorage.getItem("user_locale")
+        var requestedLocale = new URLSearchParams(location.search).get('l')
+        var locale = ['en', 'ja', 'ko', 'zh'].includes(requestedLocale) ? requestedLocale : localStorage.getItem("user_locale")
         if (locale != null) {
             document.getElementById("user_locale").value = locale
         } else {
@@ -48,7 +49,7 @@
 
 
     function update_locale() {
-        if (localStorage.getItem("user_local") != document.getElementById("user_locale").value) {
+        if (localStorage.getItem("user_locale") != document.getElementById("user_locale").value) {
             localStorage.setItem("user_locale", document.getElementById("user_locale").value)
         }
         const url = new URL(location.href)

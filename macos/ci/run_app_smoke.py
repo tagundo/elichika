@@ -507,20 +507,22 @@ def check_native_offline_management(observed):
             and observed.get("session_retained_while_editing") is True
             and observed.get("browser_sessions_preserved") is True
             and observed.get("unsaved_form_drafts_preserved") is True
+            and observed.get("app_owned_access_without_password_prompt") is True
             and observed.get("origin_unchanged") is True
             and observed.get("navigation_shutdown_requests") == 0
-            and type(observed.get("fast_navigation_cycles")) is int and observed["fast_navigation_cycles"] == 3
+            and type(observed.get("fast_navigation_cycles")) is int and observed["fast_navigation_cycles"] == 4
             and type(observed.get("management_pid")) is int and observed["management_pid"] > 0
             and observed.get("management_pid_after_navigation") == observed["management_pid"],
             "Actual native management must preserve its process, origin, browser and unsent forms across other menus while the game server stays stopped")
     pages = observed.get("pages", [])
     require(len(pages) == 2 and [page.get("requested_path") for page in pages] == ["/webui/admin/", "/webui/user/"],
-            "Actual native Settings and Accounts must both be exercised")
+            "Actual native Server settings and Accounts must both be exercised")
     for page, image in zip(pages, ("offline-management-settings.png", "offline-management-user.png")):
         document = page.get("document", {})
         url = urllib.parse.urlsplit(document.get("url", ""))
         require(page.get("http_status") == 200 and page.get("screenshot") == image
-                and document.get("bodyCharacters", 0) > 20 and url.scheme == "http"
+                and document.get("bodyCharacters", 0) > 20 and document.get("localAccess") is True
+                and document.get("passwordPrompt") is False and url.scheme == "http"
                 and url.hostname == "127.0.0.1" and url.port and not url.username and not url.password
                 and url.path.startswith("/webui/"),
                 "Actual management pages must be visible successful loopback WebUI documents")
@@ -534,7 +536,9 @@ def check_native_console_actions(observed):
                      "original_cache_setting_restored", "other_config_fields_preserved")),
             "Actual Console must reject unsafe requests, require reset confirmation and preserve cancelled sheets/settings")
     require(observed.get("archive_default_region") in ("gl", "jp")
-            and observed.get("native_view_screenshot") == "console-menus.png",
+            and observed.get("native_view_screenshot") == "console-menus.png"
+            and observed.get("console_render_marker_visible") is True
+            and observed.get("previous_asset_view_detached") is True,
             "Actual Console must expose a localized region default and capture the native grouped controls")
     toggles = observed.get("cache_toggles", [])
     require(len(toggles) == 2 and all(isinstance(item.get("id"), str) and item["id"] and item.get("status") == "done"
