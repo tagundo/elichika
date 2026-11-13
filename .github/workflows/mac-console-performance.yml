@@ -87,7 +87,16 @@ jobs:
             --patched-python "$RUNNER_TEMP/perf-build/patched/macos/runtime/elichika_macos.py" \
             --output "$RUNNER_TEMP/perf-evidence/diagnostic"
 
-      - name: Measure all 24 real visible and hidden Console idle and bulk cases
+      - name: Require actual candidate startup with 1500 resident lines and record bounded baseline outcome
+        run: |
+          python3 qa/mac-console-performance/run_performance.py --profile backlog-diagnostic \
+            --baseline-binary "$RUNNER_TEMP/perf-build/baseline/PerfProbe" \
+            --patched-binary "$RUNNER_TEMP/perf-build/patched/PerfProbe" \
+            --baseline-python "$RUNNER_TEMP/perf-build/baseline/macos/runtime/elichika_macos.py" \
+            --patched-python "$RUNNER_TEMP/perf-build/patched/macos/runtime/elichika_macos.py" \
+            --output "$RUNNER_TEMP/perf-evidence/backlog-diagnostic"
+
+      - name: Measure all 24 planned visible and hidden Console idle and bulk outcomes
         run: |
           python3 qa/mac-console-performance/run_performance.py \
             --baseline-binary "$RUNNER_TEMP/perf-build/baseline/PerfProbe" \

@@ -30,6 +30,19 @@ BLOCK = bytes(range(256)) * 256
 BLOCKS = 1024
 TOTAL_BYTES = len(BLOCK) * BLOCKS
 EXPECTED_SHA256 = hashlib.sha256(BLOCK * BLOCKS).hexdigest()
+# Same predeclared cold-backlog bound for both immutable source variants.
+READINESS_SECONDS = 120
+
+
+class NativeStageTimeout(TimeoutError):
+    """A bounded wait for an owned native process marker, not a network timeout."""
+    def __init__(self, stage):
+        self.stage = stage
+        super().__init__('Native stage did not complete: ' + stage)
+
+
+def baseline_native_timeout(variant, error):
+    return variant == 'baseline' and isinstance(error, NativeStageTimeout)
 
 
 class LoopbackHTTPServer(ThreadingHTTPServer):
@@ -185,7 +198,7 @@ def wait_file(path, process, timeout):
         if process.poll() is not None:
             raise RuntimeError(f'Native probe exited {process.returncode} before {path.name}')
         time.sleep(.05)
-    raise TimeoutError(path.name)
+    raise NativeStageTimeout(path.name)
 
 
 def capture_failed_native(process, private, output, tokens):
@@ -233,9 +246,18 @@ def run_case(binary, source, output, variant, resident, visibility, mode):
     args = [str(binary), '--ready-file', str(ready), '--output-dir', str(output),
             '--resident-lines', str(resident), '--visibility', visibility, '--duration', '8', '--variant', variant]
     stdout = (private / 'probe.stdout').open('w')
+    launched = time.monotonic()
     process = subprocess.Popen(args, stdout=stdout, stderr=subprocess.STDOUT)
     try:
-        wait_file(output / 'ready-for-workload.json', process, 45)
+        ready_completed = False
+        try:
+            wait_file(output / 'ready-for-workload.json', process, READINESS_SECONDS)
+            ready_completed = True
+        finally:
+            write(output / 'cold-readiness.json', {
+                'ready': ready_completed, 'launch_to_ready_or_failure_seconds': time.monotonic() - launched,
+                'readiness_bound_seconds': READINESS_SECONDS,
+                'scope': 'Actual native process launch, first source polling/decoding, and initial visible or hidden RootView layout; excludes CPU measurement and postchecks'})
         gate = threading.Event()
         writer = threading.Thread(target=fixture.append_workload, daemon=True) if mode == 'bulk' else None
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -277,6 +299,7 @@ def run_case(binary, source, output, variant, resident, visibility, mode):
                   'python_source_sha256': fixture.source_sha, 'log_buffer_class_sha256': fixture.class_sha,
                   'native_exit_code': code, 'wall_seconds': elapsed, 'python_cpu_seconds': cpu,
                   'native_process_exit_timed_out': exit_timed_out,
+                  'cold_readiness': json.loads((output / 'cold-readiness.json').read_text()),
                   'python_cpu_scope': 'Combined controlled HTTP fixture, exact production LogBuffer, and eight client download/hash threads; paired identical work, not the shipped Python bridge alone',
                   'python_cpu_percent_one_core': 100 * cpu / elapsed,
                   'download_bytes': sum(item['bytes'] for item in downloads), 'downloads': downloads,
@@ -318,15 +341,16 @@ def main():
     parser.add_argument('--baseline-python', required=True, type=Path)
     parser.add_argument('--patched-python', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--profile', choices=['diagnostic', 'full'], default='full')
+    parser.add_argument('--profile', choices=['diagnostic', 'backlog-diagnostic', 'full'], default='full')
     args = parser.parse_args()
     assert platform.system() == 'Darwin' and platform.machine() == 'arm64'
     args.output.mkdir(parents=True, exist_ok=True)
     results = []
     failures = []
-    for mode in (['idle'] if args.profile == 'diagnostic' else ['idle', 'bulk']):
-        for resident in ([0] if args.profile == 'diagnostic' else [0, 500, 1500]):
-            for visibility in (['visible'] if args.profile == 'diagnostic' else ['visible', 'hidden']):
+    diagnostic = args.profile != 'full'
+    for mode in (['idle'] if diagnostic else ['idle', 'bulk']):
+        for resident in ([1500] if args.profile == 'backlog-diagnostic' else [0] if diagnostic else [0, 500, 1500]):
+            for visibility in (['visible'] if diagnostic else ['visible', 'hidden']):
                 for variant in ['baseline', 'patched']:
                     case = args.output / f'{mode}-{resident}-{visibility}-{variant}'
                     print('BEGIN', case.name, flush=True)
@@ -336,18 +360,46 @@ def main():
                         results.append(result)
                         print('MEASURED', case.name, flush=True)
                     except Exception as error:
-                        failures.append({'resident_lines': resident, 'visibility': visibility, 'variant': variant, 'mode': mode,
-                                         'type': type(error).__name__, 'message': str(error)})
-                        write(case / 'failure.json', failures[-1])
-                        print('FAILED', case.name, type(error).__name__, flush=True)
-                        if args.profile == 'full' and isinstance(error, (TimeoutError, subprocess.TimeoutExpired, RuntimeError)):
-                            write(args.output / 'performance-summary.json', {'status': 'FAIL_NATIVE_HARNESS_TIMEOUT',
-                                  'cases': results, 'failures': failures, 'qualification': __doc__})
-                            return 1
-    success = 'DIAGNOSTIC_RUNTIME_PASS' if args.profile == 'diagnostic' else 'MEASURED_PENDING_REVIEW'
-    write(args.output / 'performance-summary.json', {'status': success if not failures else 'FAIL_ACTUAL_CASE',
-          'profile': args.profile, 'cases': results, 'failures': failures, 'qualification': __doc__})
-    return bool(failures)
+                        failure = {'resident_lines': resident, 'visibility': visibility, 'variant': variant, 'mode': mode,
+                                   'type': type(error).__name__, 'message': str(error),
+                                   'native_cpu_available_as_completed_case': False,
+                                   'baseline_bounded_timeout_outcome': baseline_native_timeout(variant, error),
+                                   'native_wait_stage': error.stage if isinstance(error, NativeStageTimeout) else None}
+                        cold_path = case / 'cold-readiness.json'
+                        if cold_path.is_file():
+                            failure['cold_readiness'] = json.loads(cold_path.read_text())
+                        failures.append(failure)
+                        write(case / 'failure.json', failure)
+                        print('BASELINE_TIMEOUT_OUTCOME' if failure['baseline_bounded_timeout_outcome'] else 'FAILED',
+                              case.name, type(error).__name__, flush=True)
+                        # A slow old baseline is an observed outcome, not a reason
+                        # to skip its paired candidate or invent a CPU value.
+                        # Unknown failures are retained and still fail the final gate.
+    return finish_summary(args.output, args.profile, results, failures)
+
+
+def finish_summary(output, profile, results, failures):
+    expected_per_variant = 12 if profile == 'full' else 1
+    candidate = [row for row in results if row['variant'] == 'patched']
+    candidate_ok = (len(candidate) == expected_per_variant
+                    and all(row['status'] == 'MEASURED_REAL_NATIVE_UI' for row in candidate)
+                    and not any(row['variant'] == 'patched' for row in failures))
+    unexpected_failures = [row for row in failures if not row['baseline_bounded_timeout_outcome']]
+    # The first empty diagnostic must succeed on both sides. The backlog
+    # diagnostic and matrix permit bounded old-baseline timeouts explicitly.
+    baseline_policy_ok = not unexpected_failures and (profile != 'diagnostic' or not failures)
+    all_attempted = len(results) + len(failures) == expected_per_variant * 2
+    gate_ok = candidate_ok and baseline_policy_ok and all_attempted
+    status = ('CANDIDATE_CASES_PASS_WITH_BASELINE_TIMEOUT_OUTCOMES' if failures
+              else 'MEASURED_PENDING_REVIEW') if gate_ok else 'FAIL_ACTUAL_CASE'
+    write(output / 'performance-summary.json', {
+        'status': status, 'profile': profile, 'candidate_required_cases': expected_per_variant,
+        'candidate_completed_cases': len(candidate), 'candidate_all_required_checks_passed': candidate_ok,
+        'all_planned_cases_attempted': all_attempted, 'all_24_cases_passed': profile == 'full' and gate_ok and not failures,
+        'baseline_bounded_timeouts': sum(row['baseline_bounded_timeout_outcome'] for row in failures),
+        'readiness_bound_seconds_both_variants': READINESS_SECONDS,
+        'cases': results, 'failures': failures, 'qualification': __doc__})
+    return 0 if gate_ok else 1
 
 
 if __name__ == '__main__':

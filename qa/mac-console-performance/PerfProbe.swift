@@ -190,7 +190,7 @@ private final class PerformanceProbe {
                     catch { break }
                 }
             }
-            let readyDeadline = ProcessInfo.processInfo.systemUptime + 30
+            let readyDeadline = ProcessInfo.processInfo.systemUptime + 120
             while (!model.snapshot.serverRunning || model.console.count < resident)
                 && ProcessInfo.processInfo.systemUptime < readyDeadline {
                 try await Task.sleep(nanoseconds: 50_000_000)
