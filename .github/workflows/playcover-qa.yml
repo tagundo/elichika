@@ -43,6 +43,7 @@ jobs:
           PY
 
       - name: Fetch only frozen private draft IPA assets
+        id: fixtures
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -76,12 +77,24 @@ jobs:
           persist-credentials: false
 
       - name: Build fresh disposable server and synthetic playable account
+        id: server
         run: |
           set -euo pipefail
           test "$(uname -m)" = arm64
           python3 - <<'PY'
-          import json
+          import hashlib,json,os
           from pathlib import Path
+          runtime=(Path(os.environ['GITHUB_WORKSPACE'])/'server-source').resolve()
+          assert os.environ.get('GITHUB_ACTIONS')=='true' and runtime.is_dir()
+          legacy=runtime/'yumemichi_userdata.db'
+          assert hashlib.sha256(legacy.read_bytes()).hexdigest()=='90680f5885dc680c17eddbbff145a561901f06e69b8e412d98b55157aa5c0b27'
+          assert not (runtime/'userdata.db').exists(), 'Disposable runtime must not contain user data before initial launch'
+          omitted={'scope':'Only task-owned fresh CI runtime; original repository legacy template retained',
+              'omitted_template':'yumemichi_userdata.db','sha256':hashlib.sha256(legacy.read_bytes()).hexdigest(),
+              'userdata_absent_before_first_go_execution':True}
+          legacy.unlink()
+          assert not legacy.exists()
+          (Path(os.environ['RUNNER_TEMP'])/'playcover-evidence/fresh-runtime-fixture.json').write_text(json.dumps(omitted,indent=2)+'\n')
           Path('server-source/config.json').write_text(json.dumps({'server_address':'127.0.0.1:8080','locales':'ja,en','tutorial':False,'cdn_cache':False}))
           PY
           cd server-source
@@ -103,11 +116,19 @@ jobs:
           PY
 
       - name: Actually import and launch all three IPAs through pinned PlayCover
+        if: ${{ always() && steps.fixtures.outcome == 'success' }}
+        env:
+          SERVER_READY_FOR_QA: ${{ steps.server.outcome == 'success' }}
         run: |
-          python3 qa/playcover/run_qa.py --fixtures "$RUNNER_TEMP/playcover-fixtures" \
-            --evidence "$RUNNER_TEMP/playcover-evidence" \
-            --server-source "$GITHUB_WORKSPACE/server-source" \
-            --server-binary "$RUNNER_TEMP/elichika-playcover-server"
+          if [ "$SERVER_READY_FOR_QA" = true ]; then
+            python3 qa/playcover/run_qa.py --fixtures "$RUNNER_TEMP/playcover-fixtures" \
+              --evidence "$RUNNER_TEMP/playcover-evidence" \
+              --server-source "$GITHUB_WORKSPACE/server-source" \
+              --server-binary "$RUNNER_TEMP/elichika-playcover-server"
+          else
+            python3 qa/playcover/run_qa.py --fixtures "$RUNNER_TEMP/playcover-fixtures" \
+              --evidence "$RUNNER_TEMP/playcover-evidence"
+          fi
 
       - name: Preserve actual private Mac UI evidence and exact failed stage
         if: always()
