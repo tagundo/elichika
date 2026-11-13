@@ -366,6 +366,8 @@ def main():
             stage('launch-imported-app-'+candidate['region'])
             installed_info = plistlib.loads((app/'Info.plist').read_bytes())
             display = installed_info.get('CFBundleDisplayName') or installed_info['CFBundleName']
+            library_caption = 'Warning '+display if install_profile == 'without-playtools' else display
+            result['expected_complete_native_library_caption'] = library_caption
             alias = Path.home()/'Applications/PlayCover'/(display+'.app')
             assert wait_for(lambda:(alias/'Info.plist').exists(),15), 'Normal PlayCover launch alias was not created'
             alias_info = plistlib.loads((alias/'Info.plist').read_bytes())
@@ -391,7 +393,7 @@ def main():
                   command([build/'PlayCoverAX','dump',pc_pid,folder/'playcover-imported-library-ax']))
             launch_wall = time.time()
             launch = command([build/'AXPlayCoverLaunch','--pid',pc_pid,'--proof-dir',
-                              folder/'actual-library-doubleclick','--exact',display],timeout=45)
+                              folder/'actual-library-doubleclick','--exact',library_caption],timeout=45)
             write(folder/'normal-launch.json',launch)
             result['actual_library_doubleclick_delivered'] = launch['code'] == 0
             def startup_capture(observed_pid,label,since=None,stdout_file=None,stderr_file=None):
