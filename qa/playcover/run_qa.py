@@ -70,8 +70,12 @@ def main():
                            for region in selected_regions]
     selected_controls = [next(row for row in manifest.get('controls',[])
                               if row['region'] == region+'_ORIGINAL_CONTROL') for region in selected_regions]
+    startup_only = manifest.get('startup_only') is True
+    assert not startup_only or (a.server_source is None and a.server_binary is None), 'Startup-only diagnostics must not claim a running server fixture'
     report = {'status': 'IN_PROGRESS', 'manifest': manifest, 'stages': [], 'candidates': [],
               'execution_regions': selected_regions,
+              'diagnostic_scope':'STARTUP_ONLY_NO_SERVER_FIXTURE' if startup_only else 'SOURCE_BUILT_SERVER_FIXTURE',
+              'server_fixture_built':False, 'host_identity_audit':[],
               'planned_gui_import_order': [row['region'] for row in selected_controls+selected_candidates],
               'game_login_observed': False, 'full_mv_playback_observed': False,
               'duplicate_mv_members_observed': False, 'closet_row_count_unchanged_observed': False,
@@ -104,12 +108,33 @@ def main():
             write(a.evidence/(name+'-compile.json'), result)
             assert result['code'] == 0, 'Swift helper compilation failed: '+name
         write(a.evidence/'actual-metal-devices.json',command([build/'MetalHost']))
+        def host_command(bundle, activate=False):
+            argv = [build/'HostEvidence',bundle] + (['--activate'] if activate else [])
+            result = command(argv)
+            try:
+                state = json.loads(result.get('stdout',''))
+            except (ValueError,TypeError):
+                state = {}
+            row = {'bundle':bundle,'activation_requested':activate,'code':result['code'],
+                **{key:state.get(key) for key in ['helper_pid','frontmost_before_NSScreen','frontmost_after_NSScreen','activation']}}
+            report['host_identity_audit'].append(row)
+            if activate and result['code']:
+                folder = a.evidence/'activation-failures'/str(len(report['host_identity_audit']))
+                write(folder/'activation-command.json',result)
+                front = state.get('frontmost_after_NSScreen',{})
+                front_pid = front.get('pid')
+                if isinstance(front_pid,int) and front_pid > 0:
+                    write(folder/'frontmost-comm.json',command(['ps','-p',str(front_pid),'-o','pid=,comm=']))
+                    write(folder/'frontmost-ax-command.json',command([build/'PlayCoverAX','dump',front_pid,folder/'frontmost-ax']))
+                    write(folder/'frontmost-snapshot-command.json',command([build/'VisionQA','snapshot','--pid',str(front_pid),'--proof-dir',folder/'frontmost-snapshot']))
+                row['failure_evidence_directory'] = str(folder.relative_to(a.evidence))
+            return result
         def host_state(bundle):
-            result = command([build/'HostEvidence',bundle])
+            result = host_command(bundle)
             if result['code']: return {'error': result}
             return json.loads(result['stdout'])
         def record_screen(bundle, folder, label):
-            command([build/'HostEvidence',bundle,'--activate'])
+            host_command(bundle,True)
             state = host_state(bundle)
             write(folder/(label+'-host.json'), state)
             if not state.get('screen_capture_authorized'):
@@ -132,7 +157,7 @@ def main():
             assert len(app_state) == 1, 'Exactly one owned PlayCover process must settle its library'
             owned_pid = app_state[0]['pid']
             for attempt in range(2 if update_prompt_answered else 9):
-                command([build/'HostEvidence',pcid,'--activate'])
+                host_command(pcid,True)
                 observed = command([build/'PlayCoverAX','dump',owned_pid,settled/('observe-'+str(attempt))])
                 write(settled/('observe-'+str(attempt)+'-command.json'),observed)
                 assert observed['code'] == 0, 'Unable to inspect the owned PlayCover first-run UI'
@@ -197,7 +222,7 @@ def main():
         write(a.evidence/'playcover-open.json', opened)
         assert opened['code'] == 0
         assert wait_for(lambda: host_state(pcid).get('applications'), 30), 'PlayCover did not run'
-        command([build/'HostEvidence',pcid,'--activate'])
+        host_command(pcid,True)
         wait_for(lambda:any(app.get('windows') for app in host_state(pcid).get('applications',[])),30)
         settle_playcover_library(a.evidence,'initial-first-run-ui')
         report['playcover_window'] = record_screen(pcid, a.evidence, 'playcover-initial')
@@ -205,6 +230,7 @@ def main():
         write(expected_path, expected(Path.home()))
         write(a.evidence/'reviewed-playcover-entitlements.json', expected(Path.home()))
         if a.server_source and a.server_binary:
+            report['server_fixture_built'] = True
             stage('start-disposable-frozen-elichika')
             serverlog = a.fixtures/'server-private.log'
             output = serverlog.open('w')
@@ -256,7 +282,7 @@ def main():
             assert wait_for(lambda:not host_state(pcid).get('applications'),10), 'Owned PlayCover process did not stop for a fresh library scan'
             reopened = command(['open','-a',pc])
             assert reopened['code'] == 0 and wait_for(lambda:host_state(pcid).get('applications'),30)
-            command([build/'HostEvidence',pcid,'--activate'])
+            host_command(pcid,True)
             assert wait_for(lambda:any(app.get('windows') for app in host_state(pcid).get('applications',[])),30)
             settle_playcover_library(folder,'fresh-library-first-run-ui')
             write(folder/'fresh-library-process.json',{'reopen':reopened,'state':host_state(pcid),
@@ -301,7 +327,7 @@ def main():
             private_stderr = a.fixtures/(candidate['region']+'-launch.stderr')
             configure_plain_preferences(candidate['bundle_id'],folder)
             result['launch_strategy'] = 'actual-PlayCover-library-tile-OS-doubleclick-with-supported-container-preferences'
-            command([build/'HostEvidence',pcid,'--activate'])
+            host_command(pcid,True)
             result['actual_playcover_library_screen'] = record_screen(pcid,folder,'playcover-imported-library')
             pc_apps = host_state(pcid).get('applications',[])
             assert len(pc_apps) == 1, 'Exactly one real PlayCover process must own the library window'
@@ -367,7 +393,7 @@ def main():
                 stage('early-process-exit-'+candidate['region'])
                 continue
             startup_capture(pid,'startup-visible-process')
-            command([build/'HostEvidence',candidate['bundle_id'],'--activate'])
+            host_command(candidate['bundle_id'],True)
             vision_initial = command([build/'VisionQA','snapshot','--pid',str(pid),'--proof-dir',folder/'vision-initial'],timeout=30)
             write(folder/'vision-initial-command.json',vision_initial)
             result['initial_screen'] = record_screen(candidate['bundle_id'],folder,'game-initial')
@@ -402,7 +428,7 @@ def main():
                 time.sleep(3)
                 startup_capture(pid,'startup-exited-during-ui')
             result['final_screen'] = record_screen(candidate['bundle_id'],folder,'game-final')
-            command([build/'HostEvidence',candidate['bundle_id'],'--activate'])
+            host_command(candidate['bundle_id'],True)
             write(folder/'vision-final-command.json',command([build/'VisionQA','snapshot','--pid',str(pid),'--proof-dir',folder/'vision-final'],timeout=30))
             result['status'] = 'ACTUAL_IMPORT_AND_LAUNCH_OBSERVED_GAMEPLAY_UNPROVEN'
             try:os.kill(pid,signal.SIGTERM)
@@ -427,7 +453,7 @@ def main():
         write(a.evidence/'summary.json',report)
         build_receipt = a.evidence/'server-build.json'
         binding = json.loads(build_receipt.read_text()) if build_receipt.exists() else {}
-        fixture = {'kind':'source-build','source_sha':manifest['server_source_ref'],
+        fixture = None if startup_only else {'kind':'source-build','source_sha':manifest['server_source_ref'],
                    'binary_sha256':binding.get('server_binary_sha256',''), 'toolchain':'go1.22.12',
                    'build_args':['CGO_ENABLED=0','go','build','-trimpath'],
                    'submodule_refs':{'assets':'1b0154db2976ba345fb30f3516018bb04d408ce1','modtools':'524518e136107b27b89cf33cb2fd9eca0f8e5acc'}}
@@ -446,7 +472,8 @@ def main():
                        'url':'https://github.com/'+os.environ.get('GITHUB_REPOSITORY','tagundo/SIFAS-Client')+'/actions/runs/'+os.environ.get('GITHUB_RUN_ID','')},
                 'fixtures':{'region':candidate['region'],'client_asset_id':candidate['asset_id'],
                     'original_asset_id':candidate.get('original_asset_id'),'original_sha256':candidate.get('original_sha256'),
-                    'client_sha256':candidate['sha256'],'server_source_commit':manifest['server_source_ref'],'server_fixture':fixture},
+                    'client_sha256':candidate['sha256'],'server_source_commit':None if startup_only else manifest['server_source_ref'],'server_fixture':fixture,
+                    'startup_only_diagnostic':startup_only},
                 'verified':verified,'cases':{},'actual_observation_status':observed.get('status','NOT_REACHED'),
                 'failed_stage':report.get('failure'),'qualification':report['qualification']}
             summary_ref = {'path':'summary.json','sha256':sha(a.evidence/'summary.json')}

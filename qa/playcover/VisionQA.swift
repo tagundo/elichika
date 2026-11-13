@@ -154,6 +154,15 @@ func click(_ record: Observation, _ target: Text) throws -> [String: Double] {
                 && point.x > current.x && point.x < current.x+current.width
                 && point.y > current.y && point.y < current.y+current.height,
                 "OCR center lies outside the target window")
+    var displayCount: UInt32 = 0
+    try require(CGGetActiveDisplayList(0, nil, &displayCount) == .success && displayCount > 0 && displayCount <= 16,
+                "Physical display list is unavailable; no click was sent")
+    var displays = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
+    let displayResult = displays.withUnsafeMutableBufferPointer {
+        CGGetActiveDisplayList(displayCount, $0.baseAddress, &displayCount)
+    }
+    try require(displayResult == .success && displays.prefix(Int(displayCount)).contains(where: { CGDisplayBounds($0).contains(point) }),
+                "OCR target lies outside every active physical display; offscreen window pixels cannot authorize input")
     let eventSource = CGEventSource(stateID: .combinedSessionState)
     guard let move = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left),
           let down = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),

@@ -65,5 +65,6 @@
   ],
   "execution_regions": [
     "GL_LOCAL"
-  ]
+  ],
+  "startup_only": true
 }

@@ -6,6 +6,12 @@ import Foundation
 guard [2, 3].contains(CommandLine.arguments.count) else { exit(2) }
 let wanted = CommandLine.arguments[1]
 let apps = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == wanted }
+func identity(_ app: NSRunningApplication?) -> [String: Any] {
+    guard let app = app else { return [:] }
+    return ["pid":app.processIdentifier,"name":app.localizedName ?? "",
+        "bundle_identifier":app.bundleIdentifier ?? "", "bundle_url":app.bundleURL?.path ?? "",
+        "executable_url":app.executableURL?.path ?? "", "active":app.isActive]
+}
 var activation: [String: Any] = [:]
 var activationFailed = false
 if CommandLine.arguments.count == 3 {
@@ -40,13 +46,17 @@ let records: [[String: Any]] = apps.map { app in
     }
     return ["pid": app.processIdentifier, "bundle_identifier": app.bundleIdentifier ?? "", "bundle_path": app.bundleURL?.path ?? "", "active": app.isActive, "windows": windows]
 }
+let frontmostBeforeScreens = identity(NSWorkspace.shared.frontmostApplication)
 let screens: [[String: Any]] = NSScreen.screens.map { screen in
     ["frame_cocoa_bottom_left": [screen.frame.origin.x, screen.frame.origin.y, screen.frame.width, screen.frame.height],
      "visible_frame_cocoa_bottom_left": [screen.visibleFrame.origin.x, screen.visibleFrame.origin.y, screen.visibleFrame.width, screen.visibleFrame.height],
      "backing_scale_factor": screen.backingScaleFactor]
 }
+let frontmostAfterScreens = identity(NSWorkspace.shared.frontmostApplication)
 let output: [String: Any] = ["AX_trusted": AXIsProcessTrusted(), "screen_capture_authorized": CGPreflightScreenCaptureAccess(), "applications": records,
     "frontmost_pid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0,
+    "helper_pid":ProcessInfo.processInfo.processIdentifier,
+    "frontmost_before_NSScreen":frontmostBeforeScreens,"frontmost_after_NSScreen":frontmostAfterScreens,
     "activation": activation, "screens": screens]
 let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
 FileHandle.standardOutput.write(data)

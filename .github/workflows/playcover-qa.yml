@@ -40,6 +40,7 @@ jobs:
           (evidence/'allocation-and-fixture-manifest.json').write_text(json.dumps({'status':'MAC_ALLOCATED_FIXTURES_PENDING','run_id':os.environ['GITHUB_RUN_ID'],'head_sha':os.environ['GITHUB_SHA'],'manifest':m},indent=2)+'\n')
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write('server_ref='+m['server_source_ref']+'\n')
+              output.write('startup_only='+str(m.get('startup_only') is True).lower()+'\n')
           PY
 
       - name: Test portable original-versus-feature import classification
@@ -80,6 +81,7 @@ jobs:
           persist-credentials: false
 
       - name: Build fresh disposable server and synthetic playable account
+        if: ${{ steps.fixture.outputs.startup_only != 'true' }}
         id: server
         run: |
           set -euo pipefail
