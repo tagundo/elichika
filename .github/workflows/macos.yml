@@ -191,6 +191,15 @@ jobs:
           print(evidence, end='')
           if result.returncode or 'skipped=' in evidence or "... skipped " in evidence:
               raise SystemExit('Bundled runtime tests must all pass without skipped integrations')
+          required_texture_cases = (
+              'test_large_png_and_layer_project_roundtrip_preserves_every_pixel',
+              'test_large_texture_state_exports_packages_and_restores_exact_pixels',
+              'test_texture_envelopes_remain_bounded_and_same_origin_authenticated',
+          )
+          for name in required_texture_cases:
+              passed = name + ' (test_macos_runtime_texture_io.MacTextureIOTests.' + name + ') ... ok'
+              if evidence.splitlines().count(passed) != 1:
+                  raise SystemExit('Bundled texture HTTP integration must execute and pass exactly once: ' + name)
           PY
 
       - name: Verify packaged motion, physics, mesh and transplant workbench

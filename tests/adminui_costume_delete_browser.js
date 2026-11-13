@@ -17,7 +17,12 @@ const { chromium } = require('playwright');
 
 const ROOT = path.resolve(__dirname, '..');
 const A = 'a'.repeat(32), B = 'b'.repeat(32), C = 'c'.repeat(32), STOCK = 'builtin:5005';
-const LABELS = new Map([[A, 'Alpha Costume'], [B, 'Beta Clone'], [C, 'Gamma Clone'], [STOCK, 'Built-in Costume']]);
+const D = 'd'.repeat(32), E = 'e'.repeat(32);
+const LEGACY = 'legacy:7007';
+// Display names intentionally include "Clone" on costume receipts. Routing
+// follows the fixture endpoint, just as the real server follows receipt kind.
+const LABELS = new Map([[A, 'Alpha Costume'], [B, 'Beta Clone'], [C, 'Gamma Clone'], [STOCK, 'Built-in Costume'],
+  [D, 'Independent clone'], [E, 'Clone named ordinary costume'], [LEGACY, 'Legacy name with _cloned suffix']]);
 const BASELINE = process.env.BASELINE_REPRO === '1';
 const EVIDENCE = process.env.EVIDENCE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'elichika-delete-ui-'));
 fs.mkdirSync(EVIDENCE, { recursive: true });
@@ -38,17 +43,20 @@ const hash = data => crypto.createHash('sha256').update(data).digest('hex');
 const report = { status: 'RUNNING', scope: 'Actual Chromium shared UI; mocked jobs/inventory, no game DB or real deletion',
   source_sha256: Object.fromEntries([...snapshot].map(([k, v]) => [k, hash(v)])), cases: [], errors: [] };
 const jobs = new Map(), requests = [], optionsRequests = [];
-let inventory = [A, B, C], nextJob = 0;
+let inventory = [A, B, C], cloneInventory = [D, E], nextJob = 0;
 const body = req => new Promise((resolve, reject) => {
   let value = '';
   req.on('data', part => { value += part; if (value.length > 65536) reject(new Error('Fixture body too large')); });
   req.on('end', () => { try { resolve(JSON.parse(value || '{}')); } catch (error) { reject(error); } });
 });
 const json = (res, value) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
-const tools = () => [{ id: 'costume_delete', label: T('Remove Costume / Clone'), description: '', fields: [
+const tools = () => [{ id: 'costume_delete', label: T('Remove Costume'), description: '', fields: [
   { name: 'allow_original', label: T('Show and allow removal of built-in costumes (advanced)'), type: 'checkbox', default: false },
-  { name: 'installation', label: T('Installed costume or clone'), type: 'dynamic_select', multi: !BASELINE,
+  { name: 'installation', label: T('Installed costumes'), type: 'dynamic_select', multi: !BASELINE,
     required: true, depends_on: 'allow_original' },
+  { name: 'replace_in_use', label: T("Change used costumes to the character's default before removing"), type: 'checkbox', default: false },
+] }, { id: 'clone_delete', label: T('Remove Clone'), description: '', fields: [
+  { name: 'installation', label: T('Installed clones'), type: 'dynamic_select', multi: true, required: true },
   { name: 'replace_in_use', label: T("Change used costumes to the character's default before removing"), type: 'checkbox', default: false },
 ] }, { id: 'backup', label: 'Backup Database', fields: [] }];
 const server = http.createServer(async (req, res) => {
@@ -63,7 +71,11 @@ const server = http.createServer(async (req, res) => {
     else if (url.pathname.startsWith('/api/options/costume_delete')) {
       optionsRequests.push(req.url);
       const ids = url.searchParams.get('allow_original') === 'true' ? [...inventory, STOCK] : inventory;
-      json(res, { options: ids.map(value => ({ value, label: LABELS.get(value) || 'Fixture Costume ' + value })) });
+      json(res, { options: ids.map(value => ({ value, kind: value === LEGACY ? 'legacy' : value === STOCK ? 'builtin' : 'costume',
+        label: (value === LEGACY ? T('Unclassified legacy installation: ') : '') + (LABELS.get(value) || 'Fixture Costume ' + value) })) });
+    } else if (url.pathname.startsWith('/api/options/clone_delete')) {
+      optionsRequests.push(req.url);
+      json(res, { options: cloneInventory.map(value => ({ value, kind: 'clone', label: LABELS.get(value) })) });
     } else if (req.method === 'POST' && url.pathname.startsWith('/api/run/')) {
       const params = await body(req), id = String(++nextJob);
       const item = { id, tool: url.pathname.split('/').at(-1), params, stream: null };
@@ -92,7 +104,9 @@ function planFor(ids, extra = {}) {
   const isOriginal = ids.includes(STOCK);
   return { event: 'costume-delete-review', install_ids: [...ids].sort(), installation_count: ids.length,
     install_id: ids.length === 1 ? ids[0] : undefined,
-    label: ids.map(id => LABELS.get(id)).join(', '), items: ids.map(install_id => ({ install_id, label: LABELS.get(install_id), suit_ids: [ids.indexOf(install_id) + 5000], is_original: install_id === STOCK })),
+    label: ids.map(id => LABELS.get(id)).join(', '), items: ids.map(install_id => ({ install_id, label: LABELS.get(install_id),
+      kind: install_id === LEGACY ? 'legacy' : [D, E].includes(install_id) ? 'clone' : install_id === STOCK ? 'builtin' : 'costume',
+      suit_ids: [ids.indexOf(install_id) + 5000], is_original: install_id === STOCK })),
     suit_ids: ids.map((_, i) => 5000 + i), deletable: true, blocked_reasons: [], active_references: [],
     row_count: 227, file_count: 16, grant_count: ids.length, preserved_assets: [], reference_replacements: [],
     replace_in_use: false, allow_original: isOriginal, is_original: isOriginal,
@@ -100,6 +114,7 @@ function planFor(ids, extra = {}) {
 }
 async function newPage(browser, viewport = { width: 1280, height: 800 }) {
   inventory = [A, B, C];
+  cloneInventory = [D, E];
   const context = await browser.newContext({ viewport });
   await context.addInitScript(() => localStorage.setItem('sifas_lang', 'ko'));
   const page = await context.newPage();
@@ -111,8 +126,8 @@ async function newPage(browser, viewport = { width: 1280, height: 800 }) {
 }
 async function select(page, ids) {
   const field = page.locator('.field').filter({ has: page.locator('#f_installation') });
-  for (const id of [A, B, C, STOCK]) {
-    const box = field.getByRole('checkbox', { name: LABELS.get(id), exact: true });
+  for (const id of [A, B, C, STOCK, D, E, LEGACY]) {
+    const box = field.getByRole('checkbox', { name: (id === LEGACY ? T('Unclassified legacy installation: ') : '') + LABELS.get(id), exact: true });
     if (await box.count()) await box.setChecked(ids.includes(id));
   }
   assert.deepEqual(await page.locator('#f_installation').evaluate(sel => [...sel.selectedOptions].map(o => o.value).sort()), [...ids].sort());
@@ -127,15 +142,17 @@ async function start(page, selector = '#tool-form button[type="submit"]') {
 async function reviewed(page, ids, extra = {}) {
   await select(page, ids); const job = await start(page);
   assert.equal(job.params.action, 'preview'); assert.deepEqual(idsFor(job), [...ids].sort());
-  const plan = planFor(ids, extra); log(job, plan); emit(job, { type: 'done', status: 'done', summary: 'Review complete, not deleted.' });
+  const plan = planFor(ids, { event: job.tool === 'clone_delete' ? 'clone-delete-review' : 'costume-delete-review', ...extra });
+  log(job, plan); emit(job, { type: 'done', status: 'done', summary: 'Review complete, not deleted.' });
   await page.locator('#delete-review').waitFor();
   return { job, plan };
 }
 async function assertNoNewDelete(before) { await pause(80); assert.equal(requests.filter(j => j.params.action === 'delete').length, before); }
 async function complete(job, extra = {}, status = 'done') {
   const ids = idsFor(job);
-  inventory = inventory.filter(id => !ids.includes(id));
-  log(job, { event: 'costume-delete-complete', status: 'deleted', action_performed: true, install_ids: ids,
+  if (job.tool === 'clone_delete') cloneInventory = cloneInventory.filter(id => !ids.includes(id));
+  else inventory = inventory.filter(id => !ids.includes(id));
+  log(job, { event: job.tool === 'clone_delete' ? 'clone-delete-complete' : 'costume-delete-complete', status: 'deleted', action_performed: true, install_ids: ids,
     deleted_count: ids.length, backup: '/synthetic/recovery-backup', ...extra }, 2.7);
   emit(job, { type: 'done', status, summary: 'Fixture removal committed.' });
 }
@@ -161,10 +178,10 @@ async function test(name, callback) { await callback(); report.cases.push({ name
       await test('stamped-batch-review-is-not-deletion-and-confirmation-is-reachable', async () => {
         const { context, page } = await newPage(browser); const before = requests.filter(j => j.params.action === 'delete').length;
         await reviewed(page, [B, A]);
-        assert.equal(await page.locator('#tool-panel h2').textContent(), '코스튬/복제 삭제');
+        assert.equal(await page.locator('#tool-panel h2').textContent(), '코스튬 삭제');
         assert.ok((await page.locator('#console-title').textContent()).includes(T('Review complete — not deleted yet')));
         assert.ok((await page.locator('#delete-phase').textContent()).includes(T('Review complete — not deleted yet')));
-        assert.equal(await page.locator('#delete-confirm').textContent(), T('Back up and remove selected costumes / clones'));
+        assert.equal(await page.locator('#delete-confirm').textContent(), T('Back up and remove selected costumes'));
         await assertNoNewDelete(before);
         await page.locator('#delete-confirm').scrollIntoViewIfNeeded();
         assert.ok(await page.locator('#delete-confirm').evaluate(el => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return hit === el || el.contains(hit); }));
@@ -254,7 +271,7 @@ async function test(name, callback) { await callback(); report.cases.push({ name
         assert.equal(await page.locator('#tool-panel h2').textContent(), 'Backup Database');
         // The source-labelled historical job may finish in its own log sheet;
         // its confirmation must never attach to a different current tool.
-        assert.ok((await page.locator('#console-title').textContent()).startsWith('코스튬/복제 삭제 — ')); await context.close();
+        assert.ok((await page.locator('#console-title').textContent()).startsWith('코스튬 삭제 — ')); await context.close();
       });
       await test('built-in-costume-popup-cancel-and-explicit-batch-consent', async () => {
         const { context, page } = await newPage(browser); await page.locator('#f_allow_original').check();
@@ -287,6 +304,76 @@ async function test(name, callback) { await callback(); report.cases.push({ name
         await pause(80); assert.equal(requests.length, before);
         assert.ok((await page.locator('#delete-phase').textContent()).includes(T('Select up to 100 costumes per removal.')));
         await context.close();
+      });
+      await test('clone-tool-has-independent-selection-review-events-and-compact-confirmation', async () => {
+        const { context, page } = await newPage(browser, { width: 390, height: 844 });
+        await reviewed(page, [A]);
+        await page.locator('#tool-list button[data-id="clone_delete"]').click();
+        await page.waitForFunction(() => document.querySelector('#f_installation')?.options.length === 2);
+        assert.equal(await page.locator('#tool-panel h2').textContent(), '클론 삭제');
+        assert.equal(await page.locator('#f_allow_original, #delete-confirm, #delete-review').count(), 0);
+        assert.deepEqual(await page.locator('#f_installation').evaluate(sel => [...sel.options].map(o => o.value)), [D, E]);
+        assert.deepEqual(await page.locator('#f_installation').evaluate(sel => [...sel.selectedOptions].map(o => o.value)), []);
+        assert.equal(await page.locator('#f_installation_search').getAttribute('placeholder'), T('Search clones'));
+        await select(page, [D, E]);
+        const wrong = await start(page);
+        assert.equal(wrong.tool, 'clone_delete'); assert.equal(wrong.params.allow_original, false);
+        log(wrong, planFor([D, E])); emit(wrong, { type: 'done', status: 'done' });
+        await page.waitForFunction(() => document.querySelector('#cancel-btn').disabled);
+        assert.equal(await page.locator('#delete-confirm').count(), 0, 'A costume review is not accepted by the clone tool');
+        await page.locator('#console-close').click();
+        await reviewed(page, [D, E]);
+        assert.equal(await page.locator('#delete-confirm').textContent(), T('Back up and remove selected clones'));
+        await page.locator('#delete-confirm').scrollIntoViewIfNeeded();
+        const box = await page.locator('#delete-confirm').boundingBox(); assert.ok(box && box.x >= 0 && box.x + box.width <= 390);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: path.join(EVIDENCE, 'clone-review-portrait.png'), fullPage: true });
+        const job = await start(page, '#delete-confirm');
+        assert.deepEqual(job.params.installations, [D, E]); assert.equal(job.params.original_confirmed, false);
+        await complete(job); await page.locator('#delete-result').waitFor();
+        assert.ok((await page.locator('#delete-result').textContent()).includes(T('Removed clones: ') + '2'));
+        assert.deepEqual(inventory, [A, B, C], 'Clone removal does not select or remove costume options');
+        await page.locator('#tool-list button[data-id="costume_delete"]').click();
+        await page.waitForFunction(() => document.querySelector('#f_installation')?.options.length === 3);
+        assert.equal(await page.locator('#delete-review, #delete-confirm, #delete-result').count(), 0);
+        assert.equal(await page.locator('#f_allow_original').isChecked(), false);
+        assert.deepEqual(await page.locator('#f_installation').evaluate(sel => [...sel.selectedOptions].map(o => o.value)), []);
+        await context.close();
+      });
+      await test('dependent-clone-review-explains-separate-removal-without-an-action', async () => {
+        const { context, page } = await newPage(browser);
+        await reviewed(page, [A], { deletable: false,
+          scene_donor_dependencies: [{ install_id: D, kind: 'clone', label: LABELS.get(D), suit_ids: [6010], source_suit_id: 5000 }],
+          blocked_reasons: ['Remove the donor-dependent clone first.'] });
+        const dependency = await page.locator('.removal-dependencies').textContent();
+        assert.ok(dependency.includes(T('Clone: ')) && dependency.includes(LABELS.get(D)) && dependency.includes('6010'));
+        assert.ok((await page.locator('#delete-review').textContent()).includes(T('Remove these dependent installations first, then review again. They are not included in this removal.')));
+        assert.equal(await page.locator('#delete-confirm').count(), 0);
+        assert.deepEqual(await page.locator('#f_installation').evaluate(sel => [...sel.selectedOptions].map(o => o.value)), [A]);
+        await context.close();
+      });
+      await test('legacy-recovery-is-explicitly-unclassified-and-keeps-review-backup-confirmation', async () => {
+        const { context, page } = await newPage(browser, { width: 390, height: 844 });
+        inventory.push(LEGACY);
+        await page.getByTitle(T('Load options'), { exact: true }).click();
+        await page.waitForFunction(() => document.querySelector('#f_installation').options.length === 4);
+        assert.ok((await page.locator('.removal-legacy-group').textContent()).includes(T('Unclassified legacy installations')));
+        const explanation = T('Without an installation receipt, its costume or clone type cannot be verified. Review and a recovery backup are still required; unowned assets remain cached.');
+        assert.ok((await page.locator('.removal-legacy-group').textContent()).includes(explanation));
+        await page.locator('#f_installation_search').fill('Alpha');
+        assert.equal(await page.locator('.removal-legacy-group').isVisible(), false);
+        await page.locator('#f_installation_search').fill('');
+        await reviewed(page, [LEGACY]);
+        assert.ok((await page.locator('#f_installation_count').textContent()).includes(T('Selected installations: ') + '1'));
+        assert.ok((await page.locator('#delete-review').textContent()).includes(explanation));
+        assert.equal(await page.locator('#delete-confirm').textContent(), T('Back up and remove selected installations'));
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: path.join(EVIDENCE, 'legacy-review-portrait.png'), fullPage: true });
+        const job = await start(page, '#delete-confirm');
+        assert.equal(job.tool, 'costume_delete'); assert.deepEqual(job.params.installations, [LEGACY]);
+        await complete(job, { contains_legacy: true }); await page.locator('#delete-result').waitFor();
+        assert.ok((await page.locator('#delete-result').textContent()).includes(T('Removed installations: ') + '1'));
+        assert.deepEqual(cloneInventory, [D, E]); await context.close();
       });
       await test('ordinary-backup-job-keeps-its-existing-run-progress-and-done-flow', async () => {
         const { context, page } = await newPage(browser); await page.locator('#tool-list button[data-id="backup"]').click();

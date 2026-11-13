@@ -4,6 +4,7 @@ import (
 	"elichika/config"
 	"elichika/i18n"
 	"elichika/log"
+	"elichika/nativeaccess"
 	"elichika/readiness"
 	// "elichika/webui/user"
 
@@ -92,6 +93,7 @@ func ManagementRouter(r *gin.Engine) {
 }
 
 func configure(r *gin.Engine, management bool) {
+	r.Use(nativeaccess.Middleware(os.Getenv(nativeaccess.Environment)))
 	r.GET(readiness.Path, gin.WrapH(readiness.Handler(os.Getenv(readiness.Environment))))
 	// whole pack/metapack files are served by the cache-aware /static/:fileName handler
 	// (handler/asset/whole.go), which can download missing packs from the upstream CDN when
@@ -99,6 +101,7 @@ func configure(r *gin.Engine, management bool) {
 
 	r.StaticFile("/favicon.ico", config.RootPath+"webui/favicon.ico")
 	r.StaticFile("/webui/webui.css", config.RootPath+"webui/webui.css")
+	r.StaticFile("/webui/native_local.js", config.RootPath+"webui/native_local.js")
 
 	funcs := template.FuncMap{}
 	funcs["noescape"] = func(s string) template.HTML {

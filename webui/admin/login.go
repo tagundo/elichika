@@ -3,6 +3,7 @@ package admin
 import (
 	"elichika/config"
 	"elichika/i18n"
+	"elichika/nativeaccess"
 	"elichika/router"
 	"elichika/utils"
 	"elichika/webui/webui_utils"
@@ -17,6 +18,12 @@ import (
 )
 
 func login(ctx *gin.Context) {
+	if nativeaccess.Authorized(ctx) {
+		// Native authority lives in the HttpOnly capability cookie, not a new
+		// reusable remote admin session key. Keep existing admin sessions intact.
+		webui_utils.CommonResponse(ctx, "native-local", "")
+		return
+	}
 	var respString string
 	resp := webui_utils.Response{}
 	form := ctx.MustGet("form").(*multipart.Form)
@@ -40,7 +47,17 @@ func login(ctx *gin.Context) {
 
 func init() {
 	router.AddSpecialSetup("/webui/admin", func(group *gin.RouterGroup) {
-		group.StaticFile("/login", config.RootPath+"webui/admin/login.html")
+		group.GET("/login", func(ctx *gin.Context) {
+			if nativeaccess.Authorized(ctx) {
+				target := "/webui/admin"
+				if ctx.Request.URL.RawQuery != "" {
+					target += "?" + ctx.Request.URL.RawQuery
+				}
+				ctx.Redirect(http.StatusFound, target)
+				return
+			}
+			ctx.File(config.RootPath + "webui/admin/login.html")
+		})
 	})
 	router.AddHandler("/webui/admin", "POST", "/login", login)
 }

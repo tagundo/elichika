@@ -76,16 +76,21 @@ def validate_report(report, images):
     require(isinstance(binary, str) and re.fullmatch(r'/data/app/[A-Za-z0-9_~./+=-]+/lib/(?:arm64|arm64-v8a)/libelichika\.so', binary),
             'Management binary must be the installed app executable')
     require(owner.get('argv') == [binary, 'management'], 'Offline process has the wrong role or arguments')
-    expected_paths = {'settings': ('server', '/webui/admin/login'), 'user': ('account', '/webui/user/login')}
-    for panel, (tab, path) in expected_paths.items():
+    expected_panels = {
+        'settings': ('server', '/webui/admin/config_editor', '#config_form [name=CdnServer]', False),
+        'user': ('account', '/webui/user/login', '#native-account-picker:not([hidden]) #native-account-filter', True),
+    }
+    for panel, (tab, path, selector, needs_native_helpers) in expected_panels.items():
         value = report.get('panels', {}).get(panel, {})
         require(value.get('tabId') == tab and value.get('origin') == address['url'] and value.get('path') == path
-                and value.get('ready') is True and value.get('loginForm') is True and value.get('passwordInput') is True
-                and value.get('bodyVisible') is True and value.get('loginFormLoaded') is True,
-                'Actual offline settings and user login panels must both be loaded')
-        panel_url = urlsplit(value.get('url', ''))
-        require((panel_url.scheme, panel_url.hostname, panel_url.port, panel_url.path)
-                == ('http', '127.0.0.1', address['port'], path), 'Offline panel uses a different origin or route')
+                and all(value.get(key) is True for key in
+                        ('ready', 'localAccess', 'nativeLocalAccess', 'inputVisible', 'bodyVisible', 'requestedDocumentReady'))
+                and value.get('requestedSelector') == selector
+                and value.get('nativeLanguageReady') is needs_native_helpers
+                and value.get('nativeCopyReady') is needs_native_helpers
+                and value.get('passwordPrompt') is False and value.get('scriptVisibleLocalCookie') is False,
+                'Actual authorized offline settings editor and account picker must both be loaded without password prompts')
+        require(value.get('url') == address['url'] + path, 'Offline panel uses a different origin or route')
         trips = report.get('menuRoundTrips', {}).get(panel, [])
         require(isinstance(trips, list) and len(trips) == 4
                 and all(isinstance(row, dict) for row in trips)
