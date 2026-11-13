@@ -21,15 +21,28 @@ def actual_fixture():
     return image,copy.deepcopy(fixture['metadata'])
 
 
+def actual_v15r2_fixture(number):
+    stem=ROOT/'fixtures'/f'actual-v15r2-{number:03}'
+    fixture=json.loads(stem.with_suffix('.json').read_text())
+    assert hashlib.sha256(stem.with_suffix('.png').read_bytes()).hexdigest()==fixture['source_png_sha256']
+    with Image.open(stem.with_suffix('.png')) as source:image=source.copy()
+    return image,copy.deepcopy(fixture['metadata'])
+
+
 def synthetic_visible(selected='full', *, gray_other=True, second_gold=False):
     """Hypothetical fully visible radio layout; never an actual runtime proof."""
     source,metadata=actual_fixture()
     image=Image.new('RGB',source.size,'white')
     full=phrase(metadata['words'],'Full','Download')['bounds']
     light=phrase(metadata['words'],'Light','Download')['bounds']
+    # This mock relocates caption rows only. Drop body-copy words rather than
+    # leaving them overlapped with the new rows; it is not a rendered capture.
+    metadata['words']=[word for word in metadata['words'] if
+        word['bounds'][3]<full[1]-20 or word['text']=='Cancel' or
+        any(word['bounds'][0]>=row[0] and abs((word['bounds'][1]+word['bounds'][3])/2-(row[1]+row[3])/2)<=8 for row in (full,light))]
     for word in metadata['words']:
         b=word['bounds']
-        if any(b[0]>=row[0] and b[2]<=row[2] and b[1]>=row[1] and b[3]<=row[3] for row in (full,light)):
+        if any(b[0]>=row[0] and abs((b[1]+b[3])/2-(row[1]+row[3])/2)<=8 for row in (full,light)):
             b[1]-=80;b[3]-=80
     # The exact selected ring/dot pixels are from the source, relocated only in
     # this explicitly synthetic visibility/exclusivity regression.
@@ -54,6 +67,67 @@ class NativeDownloadFlowTests(unittest.TestCase):
         self.assertEqual(result['action']['kind'],'scroll-download')
         self.assertLess(result['action']['end'][1],result['action']['start'][1])
         self.assertNotEqual(result['action']['kind'],'confirm-light')
+
+    def test_actual_v15r2_pre_scroll_uses_small_derived_gesture_only(self):
+        image,metadata=actual_v15r2_fixture(15);result=analyze(image,metadata,'settings')
+        self.assertEqual(result['state'],'settings-radio-clipped')
+        self.assertEqual(result['observations']['selected_radio'],'full')
+        self.assertEqual(result['observations']['light_caption']['variant'],'regular')
+        plan=result['action'];distance=plan['start'][1]-plan['end'][1]
+        self.assertEqual(plan['kind'],'scroll-download')
+        self.assertGreater(distance,0)
+        self.assertLessEqual(distance,result['observations']['scroll_visibility']['maximum_distance_from_current_row_gap'])
+        self.assertLess(distance,115)  # The retained real V15r2 swipe was115px.
+        self.assertEqual(distance,21)  # Actual current clipping deficit6+text height15.
+        self.assertNotIn(plan['kind'],('choose-light','confirm-light'))
+
+    def test_actual_v15r2_overscroll_auto_delete_prefix_cannot_be_regular_light(self):
+        image,metadata=actual_v15r2_fixture(16);result=analyze(image,metadata,'settings')
+        self.assertIsNone(result['action'])
+        self.assertIsNone(result['observations']['full_caption'])
+        self.assertIsNone(result['observations']['light_caption'])
+        self.assertEqual(result['state'],'blocked-settings-regular-light-identity')
+        options=result['observations']['light_options']
+        self.assertEqual(len(options),1)
+        self.assertEqual(options[0]['variant'],'auto-delete')
+        self.assertEqual(options[0]['bounds'],[193.0,650.0,292.0,663.0])
+
+    def test_missing_low_confidence_or_auto_delete_size_suffix_blocks_regular_identity(self):
+        for replacement in ('low-confidence','missing','auto-delete'):
+            image,metadata=synthetic_visible('light')
+            word=next(w for w in metadata['words'] if w['text']=='(10073.62')
+            if replacement=='low-confidence':word['confidence']=74.9
+            elif replacement=='missing':metadata['words'].remove(word)
+            else:word['text']='(Auto-delete'
+            result=analyze(image,metadata,'settings')
+            self.assertIsNone(result['action'],replacement)
+            self.assertIsNone(result['observations']['light_caption'],replacement)
+
+    def test_synthetic_regular_and_auto_delete_variants_are_not_conflated(self):
+        image,metadata=synthetic_visible('light')
+        for text,bounds in [('Light',[193,750,224,763]),('Download',[230,750,292,761]),
+                            ('(Auto-delete',[299,750,377,761]),('story',[382,752,411,761]),
+                            ('data)',[419,750,449,762])]:
+            metadata['words'].append({'text':text,'confidence':99,'bounds':bounds})
+        result=analyze(image,metadata,'settings')
+        self.assertEqual([o['variant'] for o in result['observations']['light_options']],['regular','auto-delete'])
+        self.assertEqual(result['observations']['light_caption']['bounds'][1],660)
+        self.assertEqual(result['action']['kind'],'confirm-light')
+
+    def test_duplicate_regular_options_remain_ambiguous(self):
+        image,metadata=synthetic_visible('light')
+        for text,bounds in [('Light',[193,750,227,765]),('Download',[233,750,300,762]),
+                            ('(500.0',[307,751,368,763]),('MB)',[374,751,400,764])]:
+            metadata['words'].append({'text':text,'confidence':99,'bounds':bounds})
+        self.assertIsNone(analyze(image,metadata,'settings')['action'])
+
+    def test_regular_plus_unclassified_light_prefix_is_refused(self):
+        image,metadata=synthetic_visible('light')
+        for text,bounds in [('Light',[193,750,227,765]),('Download',[233,750,300,762])]:
+            metadata['words'].append({'text':text,'confidence':99,'bounds':bounds})
+        result=analyze(image,metadata,'settings')
+        self.assertEqual([o['variant'] for o in result['observations']['light_options']],['regular','unclassified'])
+        self.assertIsNone(result['action'])
 
     def test_actual_full_png_matches_portable_consulted_pixel_strip_when_available(self):
         fixture=json.loads((ROOT/'fixtures/actual-initial-download.json').read_text())

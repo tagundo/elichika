@@ -1,0 +1,903 @@
+{
+  "scope": "Actual V15r2 unmodified PNG and recorded OCR metadata. No transformed runtime-positive claim. Source contains more OCR transforms than this exact consulted-field extraction.",
+  "source_run": 43468409947,
+  "source_qa_head": "59a50d3d72437ab643c0c3f0e53213f690d6f38f",
+  "source_png_path": "/tmp/sifas-android-qa-20261113/fifteenth-run/GL/native-ocr-016.png",
+  "source_metadata_path": "/tmp/sifas-android-qa-20261113/fifteenth-run/GL/native-ocr-016.json",
+  "source_png_sha256": "fd25dc22a9e7cea64b055b32334b84865262d5020be2e3c679a3d36be4698b56",
+  "source_metadata_sha256": "23450ce352b0c86653a876806b289b7e889ce2b5a7984a3744a5b1091550a6ee",
+  "metadata": {
+    "surface": {
+      "left": 0,
+      "top": 0,
+      "right": 720,
+      "bottom": 1280
+    },
+    "words": [
+      {
+        "text": "Data",
+        "confidence": 96.959351,
+        "bounds": [
+          258.0,
+          460.0,
+          296.0,
+          474.0
+        ]
+      },
+      {
+        "text": "Download",
+        "confidence": 95.026016,
+        "bounds": [
+          303.0,
+          459.0,
+          388.0,
+          474.0
+        ]
+      },
+      {
+        "text": "Settings",
+        "confidence": 95.627075,
+        "bounds": [
+          396.0,
+          460.0,
+          463.0,
+          477.0
+        ]
+      },
+      {
+        "text": "make",
+        "confidence": 96.699219,
+        "bounds": [
+          213.0,
+          489.0,
+          240.0,
+          498.0
+        ]
+      },
+      {
+        "text": "gameplay",
+        "confidence": 95.631981,
+        "bounds": [
+          244.0,
+          489.0,
+          290.0,
+          500.0
+        ]
+      },
+      {
+        "text": "Light",
+        "confidence": 96.983635,
+        "bounds": [
+          193.0,
+          550.0,
+          227.0,
+          564.0
+        ]
+      },
+      {
+        "text": "(10073.62",
+        "confidence": 80.244011,
+        "bounds": [
+          307.0,
+          551.0,
+          378.0,
+          563.0
+        ]
+      },
+      {
+        "text": "MB)",
+        "confidence": 94.355835,
+        "bounds": [
+          384.0,
+          551.0,
+          410.0,
+          564.0
+        ]
+      },
+      {
+        "text": "Downlo",
+        "confidence": 88.430954,
+        "bounds": [
+          193.0,
+          574.0,
+          228.0,
+          582.0
+        ]
+      },
+      {
+        "text": "d",
+        "confidence": 89.075058,
+        "bounds": [
+          241.0,
+          574.0,
+          243.0,
+          582.0
+        ]
+      },
+      {
+        "text": "data",
+        "confidence": 93.251381,
+        "bounds": [
+          248.0,
+          574.0,
+          269.0,
+          582.0
+        ]
+      },
+      {
+        "text": "you",
+        "confidence": 93.251381,
+        "bounds": [
+          273.0,
+          577.0,
+          291.0,
+          583.0
+        ]
+      },
+      {
+        "text": "need",
+        "confidence": 96.898209,
+        "bounds": [
+          295.0,
+          574.0,
+          319.0,
+          582.0
+        ]
+      },
+      {
+        "text": "when",
+        "confidence": 92.770332,
+        "bounds": [
+          323.0,
+          574.0,
+          350.0,
+          582.0
+        ]
+      },
+      {
+        "text": "y",
+        "confidence": 92.770332,
+        "bounds": [
+          354.0,
+          577.0,
+          358.0,
+          584.0
+        ]
+      },
+      {
+        "text": "it.",
+        "confidence": 93.00399,
+        "bounds": [
+          405.0,
+          575.0,
+          410.0,
+          582.0
+        ]
+      },
+      {
+        "text": "The",
+        "confidence": 92.376938,
+        "bounds": [
+          417.0,
+          574.0,
+          436.0,
+          582.0
+        ]
+      },
+      {
+        "text": "initial",
+        "confidence": 92.376938,
+        "bounds": [
+          441.0,
+          574.0,
+          466.0,
+          582.0
+        ]
+      },
+      {
+        "text": "download",
+        "confidence": 96.513985,
+        "bounds": [
+          470.0,
+          574.0,
+          520.0,
+          582.0
+        ]
+      },
+      {
+        "text": "is",
+        "confidence": 94.203468,
+        "bounds": [
+          524.0,
+          577.0,
+          531.0,
+          582.0
+        ]
+      },
+      {
+        "text": "smal,",
+        "confidence": 83.202675,
+        "bounds": [
+          193.0,
+          588.0,
+          221.0,
+          597.0
+        ]
+      },
+      {
+        "text": "but",
+        "confidence": 96.829964,
+        "bounds": [
+          225.0,
+          588.0,
+          241.0,
+          597.0
+        ]
+      },
+      {
+        "text": "new",
+        "confidence": 96.308388,
+        "bounds": [
+          245.0,
+          591.0,
+          256.0,
+          597.0
+        ]
+      },
+      {
+        "text": "Live",
+        "confidence": 96.308388,
+        "bounds": [
+          270.0,
+          589.0,
+          287.0,
+          597.0
+        ]
+      },
+      {
+        "text": "and",
+        "confidence": 96.803986,
+        "bounds": [
+          332.0,
+          588.0,
+          350.0,
+          597.0
+        ]
+      },
+      {
+        "text": "story",
+        "confidence": 95.891899,
+        "bounds": [
+          355.0,
+          591.0,
+          378.0,
+          597.0
+        ]
+      },
+      {
+        "text": "chapters",
+        "confidence": 95.816124,
+        "bounds": [
+          384.0,
+          588.0,
+          427.0,
+          599.0
+        ]
+      },
+      {
+        "text": "will",
+        "confidence": 94.66465,
+        "bounds": [
+          431.0,
+          588.0,
+          447.0,
+          597.0
+        ]
+      },
+      {
+        "text": "have",
+        "confidence": 96.8983,
+        "bounds": [
+          452.0,
+          588.0,
+          474.0,
+          597.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.764389,
+        "bounds": [
+          479.0,
+          590.0,
+          489.0,
+          597.0
+        ]
+      },
+      {
+        "text": "downloaded",
+        "confidence": 78.361755,
+        "bounds": [
+          193.0,
+          603.0,
+          254.0,
+          612.0
+        ]
+      },
+      {
+        "text": "Light",
+        "confidence": 96.906898,
+        "bounds": [
+          193.0,
+          650.0,
+          224.0,
+          663.0
+        ]
+      },
+      {
+        "text": "Download",
+        "confidence": 93.112648,
+        "bounds": [
+          230.0,
+          650.0,
+          292.0,
+          661.0
+        ]
+      },
+      {
+        "text": "(Auto-delete",
+        "confidence": 91.806404,
+        "bounds": [
+          299.0,
+          650.0,
+          377.0,
+          661.0
+        ]
+      },
+      {
+        "text": "story",
+        "confidence": 96.861946,
+        "bounds": [
+          382.0,
+          652.0,
+          411.0,
+          661.0
+        ]
+      },
+      {
+        "text": "data)",
+        "confidence": 96.738472,
+        "bounds": [
+          419.0,
+          650.0,
+          449.0,
+          662.0
+        ]
+      },
+      {
+        "text": "MB]",
+        "confidence": 96.260193,
+        "bounds": [
+          528.0,
+          650.0,
+          551.0,
+          662.0
+        ]
+      },
+      {
+        "text": "Required",
+        "confidence": 93.939285,
+        "bounds": [
+          193.0,
+          673.0,
+          238.0,
+          684.0
+        ]
+      },
+      {
+        "text": "data",
+        "confidence": 95.362267,
+        "bounds": [
+          242.0,
+          673.0,
+          263.0,
+          682.0
+        ]
+      },
+      {
+        "text": "can",
+        "confidence": 96.849625,
+        "bounds": [
+          267.0,
+          676.0,
+          284.0,
+          682.0
+        ]
+      },
+      {
+        "text": "be",
+        "confidence": 96.679001,
+        "bounds": [
+          289.0,
+          673.0,
+          300.0,
+          682.0
+        ]
+      },
+      {
+        "text": "downloaded",
+        "confidence": 96.245949,
+        "bounds": [
+          304.0,
+          673.0,
+          366.0,
+          682.0
+        ]
+      },
+      {
+        "text": "as",
+        "confidence": 96.71196,
+        "bounds": [
+          370.0,
+          676.0,
+          381.0,
+          682.0
+        ]
+      },
+      {
+        "text": "you",
+        "confidence": 96.591095,
+        "bounds": [
+          385.0,
+          676.0,
+          403.0,
+          682.0
+        ]
+      },
+      {
+        "text": "need",
+        "confidence": 90.806351,
+        "bounds": [
+          407.0,
+          673.0,
+          431.0,
+          682.0
+        ]
+      },
+      {
+        "text": "it.",
+        "confidence": 94.89045,
+        "bounds": [
+          435.0,
+          674.0,
+          441.0,
+          682.0
+        ]
+      },
+      {
+        "text": "Although",
+        "confidence": 82.627945,
+        "bounds": [
+          448.0,
+          673.0,
+          492.0,
+          684.0
+        ]
+      },
+      {
+        "text": "the",
+        "confidence": 96.947479,
+        "bounds": [
+          496.0,
+          673.0,
+          512.0,
+          682.0
+        ]
+      },
+      {
+        "text": "data",
+        "confidence": 91.023277,
+        "bounds": [
+          516.0,
+          673.0,
+          537.0,
+          682.0
+        ]
+      },
+      {
+        "text": "download",
+        "confidence": 79.320946,
+        "bounds": [
+          193.0,
+          688.0,
+          242.0,
+          696.0
+        ]
+      },
+      {
+        "text": "small,",
+        "confidence": 96.275612,
+        "bounds": [
+          280.0,
+          688.0,
+          308.0,
+          697.0
+        ]
+      },
+      {
+        "text": "data",
+        "confidence": 96.599617,
+        "bounds": [
+          312.0,
+          688.0,
+          334.0,
+          696.0
+        ]
+      },
+      {
+        "text": "must",
+        "confidence": 96.808212,
+        "bounds": [
+          338.0,
+          689.0,
+          363.0,
+          696.0
+        ]
+      },
+      {
+        "text": "be",
+        "confidence": 96.647934,
+        "bounds": [
+          367.0,
+          688.0,
+          378.0,
+          696.0
+        ]
+      },
+      {
+        "text": "downloaded",
+        "confidence": 96.623734,
+        "bounds": [
+          382.0,
+          688.0,
+          444.0,
+          696.0
+        ]
+      },
+      {
+        "text": "before",
+        "confidence": 92.648209,
+        "bounds": [
+          448.0,
+          688.0,
+          480.0,
+          696.0
+        ]
+      },
+      {
+        "text": "every",
+        "confidence": 96.913826,
+        "bounds": [
+          484.0,
+          690.0,
+          510.0,
+          697.0
+        ]
+      },
+      {
+        "text": "Live",
+        "confidence": 96.259789,
+        "bounds": [
+          516.0,
+          688.0,
+          536.0,
+          696.0
+        ]
+      },
+      {
+        "text": "Show",
+        "confidence": 95.251114,
+        "bounds": [
+          193.0,
+          702.0,
+          220.0,
+          711.0
+        ]
+      },
+      {
+        "text": "and",
+        "confidence": 95.251114,
+        "bounds": [
+          225.0,
+          702.0,
+          243.0,
+          711.0
+        ]
+      },
+      {
+        "text": "story",
+        "confidence": 96.520569,
+        "bounds": [
+          247.0,
+          703.0,
+          272.0,
+          711.0
+        ]
+      },
+      {
+        "text": "Cleared",
+        "confidence": 96.961319,
+        "bounds": [
+          312.0,
+          702.0,
+          350.0,
+          711.0
+        ]
+      },
+      {
+        "text": "story",
+        "confidence": 96.849213,
+        "bounds": [
+          354.0,
+          703.0,
+          378.0,
+          713.0
+        ]
+      },
+      {
+        "text": "data",
+        "confidence": 96.220795,
+        "bounds": [
+          383.0,
+          702.0,
+          404.0,
+          711.0
+        ]
+      },
+      {
+        "text": "will",
+        "confidence": 96.486267,
+        "bounds": [
+          408.0,
+          702.0,
+          425.0,
+          711.0
+        ]
+      },
+      {
+        "text": "be",
+        "confidence": 96.486267,
+        "bounds": [
+          429.0,
+          702.0,
+          441.0,
+          711.0
+        ]
+      },
+      {
+        "text": "de",
+        "confidence": 79.614548,
+        "bounds": [
+          445.0,
+          702.0,
+          455.0,
+          711.0
+        ]
+      },
+      {
+        "text": "ted",
+        "confidence": 94.969376,
+        "bounds": [
+          469.0,
+          702.0,
+          481.0,
+          711.0
+        ]
+      },
+      {
+        "text": "on",
+        "confidence": 94.969376,
+        "bounds": [
+          485.0,
+          705.0,
+          497.0,
+          711.0
+        ]
+      },
+      {
+        "text": "your",
+        "confidence": 96.805305,
+        "bounds": [
+          501.0,
+          705.0,
+          524.0,
+          712.0
+        ]
+      },
+      {
+        "text": "next",
+        "confidence": 96.070152,
+        "bounds": [
+          528.0,
+          703.0,
+          549.0,
+          711.0
+        ]
+      },
+      {
+        "text": "login,",
+        "confidence": 82.045227,
+        "bounds": [
+          193.0,
+          717.0,
+          216.0,
+          727.0
+        ]
+      },
+      {
+        "text": "so",
+        "confidence": 80.821671,
+        "bounds": [
+          228.0,
+          720.0,
+          234.0,
+          725.0
+        ]
+      },
+      {
+        "text": "if",
+        "confidence": 95.681107,
+        "bounds": [
+          238.0,
+          717.0,
+          244.0,
+          725.0
+        ]
+      },
+      {
+        "text": "you",
+        "confidence": 96.738007,
+        "bounds": [
+          248.0,
+          720.0,
+          265.0,
+          725.0
+        ]
+      },
+      {
+        "text": "would",
+        "confidence": 88.855156,
+        "bounds": [
+          270.0,
+          717.0,
+          300.0,
+          725.0
+        ]
+      },
+      {
+        "text": "like",
+        "confidence": 96.075188,
+        "bounds": [
+          305.0,
+          717.0,
+          321.0,
+          725.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 96.818077,
+        "bounds": [
+          325.0,
+          718.0,
+          334.0,
+          725.0
+        ]
+      },
+      {
+        "text": "old",
+        "confidence": 89.722923,
+        "bounds": [
+          372.0,
+          717.0,
+          387.0,
+          725.0
+        ]
+      },
+      {
+        "text": "chapters",
+        "confidence": 96.872391,
+        "bounds": [
+          391.0,
+          717.0,
+          432.0,
+          728.0
+        ]
+      },
+      {
+        "text": "will",
+        "confidence": 81.338966,
+        "bounds": [
+          463.0,
+          717.0,
+          480.0,
+          725.0
+        ]
+      },
+      {
+        "text": "have",
+        "confidence": 81.338966,
+        "bounds": [
+          484.0,
+          717.0,
+          507.0,
+          725.0
+        ]
+      },
+      {
+        "text": "to",
+        "confidence": 83.024292,
+        "bounds": [
+          512.0,
+          718.0,
+          521.0,
+          725.0
+        ]
+      },
+      {
+        "text": "download",
+        "confidence": 80.356934,
+        "bounds": [
+          193.0,
+          731.0,
+          242.0,
+          740.0
+        ]
+      },
+      {
+        "text": "them",
+        "confidence": 96.837448,
+        "bounds": [
+          246.0,
+          731.0,
+          271.0,
+          740.0
+        ]
+      },
+      {
+        "text": "again.",
+        "confidence": 92.239426,
+        "bounds": [
+          275.0,
+          734.0,
+          304.0,
+          742.0
+        ]
+      },
+      {
+        "text": "Cancel",
+        "confidence": 93.832771,
+        "bounds": [
+          210.0,
+          800.0,
+          251.0,
+          810.0
+        ]
+      }
+    ],
+    "button_words": [
+      {
+        "text": "OK",
+        "confidence": 96.891487,
+        "bounds": [
+          480.0,
+          800.0,
+          499.0,
+          810.1666666666666
+        ]
+      }
+    ],
+    "screenshot_sha256": "fd25dc22a9e7cea64b055b32334b84865262d5020be2e3c679a3d36be4698b56",
+    "capture_elapsed": 147.484
+  }
+}

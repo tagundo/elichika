@@ -202,10 +202,13 @@ def main():
     parser.add_argument('--serial',default='127.0.0.1:5555')
     parser.add_argument('--max-seconds',type=int,default=600)
     parser.add_argument('--mv-focus',action='store_true',help='Continue native download/Home into strictly observed MV cases; no unobserved native case passes')
+    parser.add_argument('--download-start-diagnostic',action='store_true',help='Stop the owned game after real regular-Light selection/OK and first successful asset response; no observer or feature approval')
     parser.add_argument('--unity-agent',type=Path)
     parser.add_argument('--frida-server',type=Path)
     args=parser.parse_args(); assert 120<=args.max_seconds<=(2400 if args.mv_focus else 600)
+    assert not (args.mv_focus and args.download_start_diagnostic)
     if args.mv_focus:assert args.unity_agent and args.frida_server
+    if args.download_start_diagnostic:assert not args.unity_agent and not args.frida_server
     fixture=json.loads(args.fixtures.read_text());client=fixture['clients']['GL'];package=client['package']
     assert digest(args.client_apk.read_bytes())==client['sha256']
     source=fixture['server']['source_commit']
@@ -222,14 +225,16 @@ def main():
       'server_fixture':host.binding,'run_head':os.environ.get('GITHUB_SHA'),
       'verified':{case:False for case in semantics.REQUIRED_CASES},'actions':[], 'observations':[]}
     resources=None
-    if args.mv_focus:
+    if args.mv_focus or args.download_start_diagnostic:
         from resource_phases import ResourcePhases
         resources=ResourcePhases(device,host,args.evidence)
-        report['scope']='Native-only initial download/Home, then strict MV focus; every unobserved native case remains false and requires separate final evidence review'
+        report['scope']=('Native-only initial download/Home, then strict MV focus; every unobserved native case remains false and requires separate final evidence review' if args.mv_focus else
+            'Short native-only regular-Light choice/OK/download-start diagnostic; all full feature flags remain false')
     def save():
         report['elapsed_seconds']=round(time.monotonic()-started,3)
         (args.evidence/'native-only-control-report.json').write_text(json.dumps(report,indent=2)+'\n')
         if args.mv_focus:(args.evidence/'mv-focus-report.json').write_text(json.dumps(report,indent=2)+'\n')
+        if args.download_start_diagnostic:(args.evidence/'regular-light-diagnostic-report.json').write_text(json.dumps(report,indent=2)+'\n')
     def native(label):
         nonlocal native_index
         native_index+=1;label=f'{label}-capture-{native_index:03d}'
@@ -290,8 +295,10 @@ def main():
            'ocr_transforms':[full,title_meta,*button_meta],'capture_elapsed':round(captured-started,3)}
         (args.evidence/(label+'.json')).write_text(json.dumps(metadata,indent=2)+'\n')
         return action,surface,label,captured
-    def deadline(signum,frame):raise NativeRunDeadline('Native/MV overall wall bound reached; remaining cases are unobserved')
-    previous=signal.signal(signal.SIGALRM,deadline);signal.setitimer(signal.ITIMER_REAL,args.max_seconds)
+    from native_download_guard import NativeDeadlines
+    deadlines=NativeDeadlines(started,args.max_seconds,NativeRunDeadline)
+    phase_deadline=deadlines.arm
+    previous=signal.signal(signal.SIGALRM,deadlines.handle);deadlines.arm(None)
     try:
         assert device.read(semantics.MARKER).decode().strip()=='disposable-private-client-qa'
         assert device.shell('getprop','ro.product.cpu.abi')=='arm64-v8a'
@@ -339,12 +346,21 @@ def main():
                 assert requests['/login/login']>0,'Rendered download modal without genuine login is insufficient'
                 assert {'title-start','terms-agree'}<=seen,'Native control did not observe and normally select both Title and Agree'
                 report['observed_download_settings']=True
-                if args.mv_focus:
+                if args.download_start_diagnostic:
+                    from native_download_driver import reach_settled_home
+                    report['status']='RUNNING_REGULAR_LIGHT_DIAGNOSTIC'
+                    result=reach_settled_home({'args':args,'device':device,'host':host,'report':report,
+                        'resources':resources,'started':started,'package':package,'capture':capture,
+                        'lifetime':lifetime,'identity':identity,'native':native,'save':save,
+                        'phase_deadline':phase_deadline},stop_at_download_start=True)
+                    report['regular_light_diagnostic']=result;report['status']=result['status']
+                elif args.mv_focus:
                     from native_mv_focus import run_mv_focus
                     report['status']='RUNNING_MV_FOCUS'
                     result=run_mv_focus({'args':args,'device':device,'host':host,'report':report,
                         'resources':resources,'started':started,'package':package,'capture':capture,
-                        'lifetime':lifetime,'identity':identity,'native':native,'save':save})
+                        'lifetime':lifetime,'identity':identity,'native':native,'save':save,
+                        'phase_deadline':phase_deadline,'absolute_phase_deadline':deadlines.arm_until})
                     report['mv_focus']=result;report['status']=result['status']
                 else:report['status']='PARTIAL_NATIVE_STARTUP_PROGRESS'
                 break
@@ -375,16 +391,44 @@ def main():
         report['traceback']=traceback.format_exc()
     finally:
         signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,previous)
+        if args.download_start_diagnostic or args.mv_focus:
+            # A confirmed download must not keep running while failure logs
+            # are collected. Stop/prove the owned game first, then its exact
+            # tracked Go child, on success and every error path alike.
+            try:
+                if report.get('owned_disposable_container_stop_fallback'):
+                    assert report.get('owned_game_stopped_before_observer_unload'),'Owned container stop was not proved'
+                    report['owned_diagnostic_game_stop_proved']=True
+                elif not report.get('owned_diagnostic_game_stop_proved'):
+                    assert pid and start_ticks,'No known owned game lifetime to stop directly'
+                    from native_download_driver import stop_owned_download_game
+                    stop_owned_download_game({'args':args,'device':device,'report':report,'package':package,
+                        'stop_processes_file':'full-owned-stop-processes.txt' if args.mv_focus else 'regular-light-owned-stop-processes.txt'},
+                        {'pid':int(pid),'start_ticks':start_ticks})
+            except Exception as error:
+                report['status']='FAIL';report['early_game_stop_error']=type(error).__name__+': '+str(error)
+                try:
+                    stopped=subprocess.run(['docker','stop','--time','3','original-client-qa'],capture_output=True,text=True,timeout=10)
+                    state=subprocess.check_output(['docker','inspect','--format','{{.State.Running}}','original-client-qa'],text=True,timeout=5).strip()
+                    assert stopped.returncode==0 and state=='false','Owned disposable container stop was not proved'
+                    report['owned_disposable_container_stop_fallback']=True
+                    report['owned_diagnostic_game_stop_proved']=True
+                except Exception as failed:
+                    report['status']='FAIL';report['early_container_stop_error']=type(failed).__name__+': '+str(failed)
+            try:host.stop()
+            except Exception as error:report['status']='FAIL';report['early_server_stop_error']=str(error)
         for name,command in [('native-control-logcat.txt',('logcat','-d','-t','6000')),
                              ('native-control-crashes.txt',('logcat','-b','crash','-d'))]:
+            if report.get('owned_disposable_container_stop_fallback'):continue
             try:(args.evidence/name).write_text(device.shell(*command,timeout=20)+'\n')
             except Exception as error:report['observations'].append({'cleanup':name,'error':type(error).__name__})
         try:
             if report.get('observer_loaded'):lifetime()
-            else:identity('last-alive')
+            elif not report.get('owned_diagnostic_game_stop_proved'):identity('last-alive')
         except Exception as error:report['observations'].append({'last_alive_identity':type(error).__name__})
-        try:device.shell('am','force-stop',package)
-        except Exception:pass
+        if not args.download_start_diagnostic:
+            try:device.shell('am','force-stop',package)
+            except Exception:pass
         try:host.stop(device);report['rpc_log_evidence']=host.finalize_log_evidence()
         except Exception as error:report['status']='FAIL';report['cleanup_error']=str(error)
         report['genuine_requests']=semantics.game_request_counts(host.server_rpc_evidence())
@@ -397,11 +441,11 @@ def main():
                     row=db.execute('SELECT COUNT(*),MAX(s.last_login_at) FROM u_authentication a JOIN u_status s ON s.user_id=a.user_id WHERE a.authorization_count>0 AND s.last_login_at>=?',(run_start,)).fetchone()
                     report['actual_client_authentication']={'successful_recent_accounts':row[0],'latest_login_at':row[1],'minimum_login_at':run_start}
         except Exception as error:report['authentication_observation_error']=type(error).__name__
-        if (report['status']=='PARTIAL_NATIVE_STARTUP_PROGRESS' or report['status']=='MV_FOCUS_CASES_VERIFIED_NATIVE_REVIEW_PENDING') and not report.get('actual_client_authentication',{}).get('successful_recent_accounts',0):
+        if report['status'] in ('PARTIAL_NATIVE_STARTUP_PROGRESS','MV_FOCUS_CASES_VERIFIED_NATIVE_REVIEW_PENDING','PARTIAL_REGULAR_LIGHT_DOWNLOAD_STARTED') and not report.get('actual_client_authentication',{}).get('successful_recent_accounts',0):
             report['status']='FAIL';report['error']='Rendered download settings and login request lacked recent authenticated account proof'
         report['client_bytes_unchanged']=digest(args.client_apk.read_bytes())==client['sha256']
         save()
-    return 0 if report['status'] in ('PARTIAL_NATIVE_STARTUP_PROGRESS','MV_FOCUS_CASES_VERIFIED_NATIVE_REVIEW_PENDING') else 1
+    return 0 if report['status'] in ('PARTIAL_NATIVE_STARTUP_PROGRESS','MV_FOCUS_CASES_VERIFIED_NATIVE_REVIEW_PENDING','PARTIAL_REGULAR_LIGHT_DOWNLOAD_STARTED') else 1
 
 
 if __name__=='__main__':raise SystemExit(main())

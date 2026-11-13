@@ -33,3 +33,16 @@ FOV requires the matched enabled on-screen camera's actual scalar getter effect
 and its own2.0/0.5 corrections, using candidate-bound source arithmetic. Unobserved
 native/intro flags stay false. Any successful focus status still requires final
 per-feature evidence review and is never a blanket client/release approval.
+
+V17 INERT integration: settings use45second stagnant/120second total bounds,
+cleared after the ordinary verified Light/OK input. The full initial download
+then has a fixed1800second phase limit inside the immutable2400second overall
+limit. Current footer OCR is retained as UI estimates only: even100percent
+does not authorize Close, Home, observer attachment, or any feature pass.
+Progress does not renew either absolute limit. Home has its own180second bound
+after two matching guarded Download Complete/Close captures.
+
+Full timeout cleanup now proves owned-game PID disappearance and waits for its
+tracked Go child before slow log collection. The host-Go stop receipt records
+PID/startticks, child returncode, current /proc lifetime, and log-writer shutdown.
+No initial bulk run has been executed for this draft.

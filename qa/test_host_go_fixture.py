@@ -144,6 +144,13 @@ class OwnedLifecycleTests(unittest.TestCase):
         self.assertNotIn(nonce, json.dumps(record))
         fixture.stop(Device())
         self.assertIsNotNone(fixture.process.poll())
+        proof=json.loads((fixture.evidence/'host-go-stop-proof.json').read_text())
+        self.assertTrue(proof['clean_stop'])
+        self.assertTrue(proof['original_lifetime_absent'])
+        self.assertTrue(proof['log_writer_stopped'])
+        self.assertEqual(proof['original_identity']['pid'],record['pid'])
+        self.assertEqual(proof['original_identity']['start_ticks'],record['start_ticks'])
+        self.assertIsNone(proof['current_proc_stat'])
         self.assertEqual(fixture._nonce, '')
         log = fixture.server_log().decode()
         for value in (nonce, 'must-not-export', '?secret=value'): self.assertNotIn(value, log)
@@ -187,6 +194,9 @@ class OwnedLifecycleTests(unittest.TestCase):
         fixture.process.wait(timeout=2)
         with self.assertRaisesRegex(FixtureError, 'exited before QA cleanup'):
             fixture.stop()
+        proof=json.loads((fixture.evidence/'host-go-stop-proof.json').read_text())
+        self.assertFalse(proof['clean_stop'])
+        self.assertTrue(proof['unexpected_early_exit'])
         self.assertEqual(fixture._nonce, '')
 
     def test_database_observation_cannot_escape_runtime(self):

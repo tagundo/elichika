@@ -204,6 +204,25 @@ class HostGoFixture:
                 try: device.adb('reverse', '--remove', f'tcp:{self.port}')
                 except Exception: pass
             self._nonce = ''
+        if process is not None:
+            runtime_path=self.evidence/'host-go-runtime.json'
+            runtime=json.loads(runtime_path.read_text()) if runtime_path.is_file() else {}
+            identity={'pid':process.pid,'start_ticks':runtime.get('start_ticks'),
+                      'binary_sha256':self.binding['binary_sha256']}
+            stat_path=Path('/proc')/str(process.pid)/'stat'
+            after_stat=stat_path.read_text() if stat_path.exists() else None
+            after_ticks=after_stat.rsplit(')',1)[1].split()[19] if after_stat else None
+            lifetime_absent=after_stat is None or (identity['start_ticks'] is not None and after_ticks!=identity['start_ticks'])
+            writer_stopped=self._thread is None or not self._thread.is_alive()
+            proof={'schema_version':1,'original_identity':identity,
+                'returncode':process.poll(),'original_lifetime_absent':lifetime_absent,
+                'current_proc_stat':after_stat,'log_writer_stopped':writer_stopped,
+                'forced':forced,'unexpected_early_exit':unexpected_exit,
+                'clean_stop':process.poll() is not None and lifetime_absent and writer_stopped and not forced and not unexpected_exit,
+                'scope':'Tracked disposable child waited/reaped and current /proc lifetime checked before slow diagnostics; no unrelated process is signalled.'}
+            (self.evidence/'host-go-stop-proof.json').write_text(json.dumps(proof,indent=2)+'\n')
+            require(process.poll() is not None and lifetime_absent and writer_stopped,
+                    'Owned Go process or log writer stop could not be proved')
         if forced:
             raise FixtureError('Disposable Go child required force cleanup; do not claim a clean runtime pass')
         if unexpected_exit:

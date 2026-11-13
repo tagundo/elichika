@@ -1,8 +1,8 @@
-name: Validate genuine GL duplicate MV after native-only initial download
+name: Validate genuine GL full MV on exact C10 after native-only initial download
 
 on:
   push:
-    branches: [codex/android-client-qa-mvfocus-gl-20261113]
+    branches: [codex/android-client-qa-full-gl-20261113-v18]
   workflow_dispatch:
     inputs:
       max_seconds:
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   client:
-    if: github.repository == 'tagundo/elichika' && startsWith(github.ref, 'refs/heads/codex/android-client-qa-')
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-full-gl-20261113-v18'
     strategy:
       fail-fast: false
       matrix:
@@ -38,7 +38,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read exact root-frozen C7 server source
+      - name: Read exact root-frozen C10 server source
         id: fixture
         run: |
           python3 - <<'PYFIXTURE'

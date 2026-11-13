@@ -1,0 +1,137 @@
+{
+  "source_run": 43482708819,
+  "artifact_id": 14067305062,
+  "artifact_sha256": "72700f6002945578dcb474ee943cc2b05c13a28aa01ded5d878dac7e58afdcef",
+  "source_member": "regular-light-first-asset-response.png",
+  "source_png_sha256": "6169df45b76a5a472c65d749b26e56ec9e679eceaf935ad5e04dd5c9af8aeda1",
+  "metadata": {
+    "surface": {
+      "left": 0,
+      "top": 0,
+      "right": 720,
+      "bottom": 1280
+    },
+    "screenshot_sha256": "6169df45b76a5a472c65d749b26e56ec9e679eceaf935ad5e04dd5c9af8aeda1",
+    "words": [],
+    "button_words": [],
+    "download_progress_words": [
+      {
+        "text": "0.48",
+        "confidence": 96.223221,
+        "bounds": [
+          477.3333333333333,
+          1230.8333333333333,
+          500.3333333333333,
+          1239.1666666666667
+        ]
+      },
+      {
+        "text": "MB",
+        "confidence": 92.723152,
+        "bounds": [
+          504.8333333333333,
+          1230.8333333333333,
+          520.3333333333334,
+          1239.1666666666667
+        ]
+      },
+      {
+        "text": "/",
+        "confidence": 88.134949,
+        "bounds": [
+          524.0,
+          1231.1666666666667,
+          527.8333333333334,
+          1238.8333333333333
+        ]
+      },
+      {
+        "text": "10073.62",
+        "confidence": 88.134949,
+        "bounds": [
+          532.1666666666666,
+          1230.8333333333333,
+          582.1666666666666,
+          1239.1666666666667
+        ]
+      },
+      {
+        "text": "MB",
+        "confidence": 96.319603,
+        "bounds": [
+          586.8333333333334,
+          1230.8333333333333,
+          602.5,
+          1239.1666666666667
+        ]
+      },
+      {
+        "text": "(0/8300)",
+        "confidence": 96.045494,
+        "bounds": [
+          606.8333333333334,
+          1230.8333333333333,
+          652.5,
+          1240.5
+        ]
+      },
+      {
+        "text": "2.00%",
+        "confidence": 94.445557,
+        "bounds": [
+          672.0,
+          1231.8333333333333,
+          704.1666666666666,
+          1240.1666666666667
+        ]
+      },
+      {
+        "text": "Downloading",
+        "confidence": 96.344597,
+        "bounds": [
+          605.0,
+          1252.0,
+          671.1666666666666,
+          1263.0
+        ]
+      },
+      {
+        "text": "data...",
+        "confidence": 96.055519,
+        "bounds": [
+          674.8333333333334,
+          1252.0,
+          704.3333333333334,
+          1260.8333333333333
+        ]
+      }
+    ],
+    "download_progress_ocr_transform": {
+      "crop": [
+        466,
+        1216,
+        716,
+        1274
+      ],
+      "scale": 6,
+      "mode": "normal",
+      "psm": 11,
+      "language": "eng",
+      "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t1500\t348\t-1\t\n2\t1\t1\t0\t0\t0\t68\t89\t1051\t58\t-1\t\n3\t1\t1\t1\t0\t0\t68\t89\t1051\t58\t-1\t\n4\t1\t1\t1\t1\t0\t68\t89\t1051\t58\t-1\t\n5\t1\t1\t1\t1\t1\t68\t89\t138\t50\t96.223221\t0.48\n5\t1\t1\t1\t1\t2\t233\t89\t93\t50\t92.723152\tMB\n5\t1\t1\t1\t1\t3\t348\t91\t23\t46\t88.134949\t/\n5\t1\t1\t1\t1\t4\t397\t89\t300\t50\t88.134949\t10073.62\n5\t1\t1\t1\t1\t5\t725\t89\t94\t50\t96.319603\tMB\n5\t1\t1\t1\t1\t6\t845\t89\t274\t58\t96.045494\t(0/8300)\n2\t1\t2\t0\t0\t0\t1236\t95\t193\t50\t-1\t\n3\t1\t2\t1\t0\t0\t1236\t95\t193\t50\t-1\t\n4\t1\t2\t1\t1\t0\t1236\t95\t193\t50\t-1\t\n5\t1\t2\t1\t1\t1\t1236\t95\t193\t50\t94.445557\t2.00%\n2\t1\t3\t0\t0\t0\t834\t216\t596\t66\t-1\t\n3\t1\t3\t1\t0\t0\t834\t216\t596\t66\t-1\t\n4\t1\t3\t1\t1\t0\t834\t216\t596\t66\t-1\t\n5\t1\t3\t1\t1\t1\t834\t216\t397\t66\t96.344597\tDownloading\n5\t1\t3\t1\t1\t2\t1253\t216\t177\t53\t96.055519\tdata...\n",
+      "search_crop": [
+        0,
+        1024,
+        720,
+        1280
+      ],
+      "current_near_white_bounds": [
+        468,
+        194,
+        714,
+        248
+      ],
+      "scope": "Observation-only crop measured from current footer pixels; never an input target or completion proof."
+    }
+  },
+  "scope": "Actual postOK first200 V16 screenshot only; OCR replay proves visible progress labels, not bulk completion or C9 behavior."
+}

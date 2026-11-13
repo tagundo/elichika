@@ -30,7 +30,7 @@
   },
   "server": {
     "repository": "tagundo/elichika",
-    "source_commit": "b166b92f6a9e9c575c5cfd292f52b5e60603aa97",
+    "source_commit": "51727bae11df587bb49bb0a0fd69a270018c380b",
     "kind": "source-build",
     "approval_scope": "final_source_build_fixture",
     "toolchain": "go1.22.12",
@@ -41,7 +41,7 @@
       "-trimpath"
     ],
     "native_server_apk_validation_required_separately": true,
-    "source_record_sha256": "8dd80f0532407f82d1d7686037bfc8765c52c7d87817b7c2a6fd8d346360450e"
+    "source_record_sha256": "ab1b558856f015ef6fdfa989d1d46b3000db125d1a58c059ddaf33c679908277"
   },
   "frida": {
     "repository": "frida/frida",
