@@ -1,0 +1,92 @@
+name: Actual Mac Console baseline and patched performance
+
+on:
+  push:
+    branches: [codex/mac-console-performance-20261113]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-console-performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-native-ui:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact C3 baseline without modifying candidate inputs
+        uses: actions/checkout@v4
+        with:
+          ref: c676bf5f969fafb24244dd0f59f804e1d26db982
+          path: baseline-source
+          persist-credentials: false
+
+      - name: Require actual Apple Silicon WindowServer and bind source projections
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          pgrep -x WindowServer
+          mkdir -p "$RUNNER_TEMP/perf-evidence"
+          python3 qa/mac-console-performance/prepare_sources.py \
+            --checkout baseline-source --qa qa/mac-console-performance \
+            --output "$RUNNER_TEMP/perf-build" --evidence "$RUNNER_TEMP/perf-evidence"
+          sw_vers > "$RUNNER_TEMP/perf-evidence/macos.txt"
+          xcrun swiftc --version > "$RUNNER_TEMP/perf-evidence/swift-version.txt"
+
+      - name: Compile and run every patched production Swift unit test
+        run: |
+          set -euo pipefail
+          swift test --package-path "$RUNNER_TEMP/perf-build/patched/macos" -c release --jobs 2 \
+            > "$RUNNER_TEMP/perf-evidence/swift-unit-tests.log" 2>&1
+
+      - name: Compile identical QA host against both full production source variants
+        run: |
+          set -euo pipefail
+          xcrun swiftc -parse-as-library -O -target arm64-apple-macosx13.0 \
+            "$RUNNER_TEMP"/perf-build/baseline/probe-sources/*.swift \
+            qa/mac-console-performance/PerfProbe.swift \
+            -o "$RUNNER_TEMP/perf-build/baseline/PerfProbe" \
+            > "$RUNNER_TEMP/perf-evidence/baseline-compile.log" 2>&1
+          xcrun swiftc -parse-as-library -O -target arm64-apple-macosx13.0 -D ELICHIKA_PERF_PATCHED \
+            "$RUNNER_TEMP"/perf-build/patched/probe-sources/*.swift \
+            qa/mac-console-performance/PerfProbe.swift \
+            -o "$RUNNER_TEMP/perf-build/patched/PerfProbe" \
+            > "$RUNNER_TEMP/perf-evidence/patched-compile.log" 2>&1
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          values={v:hashlib.sha256((root/'perf-build'/v/'PerfProbe').read_bytes()).hexdigest() for v in ['baseline','patched']}
+          (root/'perf-evidence/probe-binaries.json').write_text(json.dumps(values,indent=2)+'\n')
+          PY
+
+      - name: Measure real visible and hidden Console with eight controlled local downloads
+        run: |
+          python3 qa/mac-console-performance/run_performance.py \
+            --baseline-binary "$RUNNER_TEMP/perf-build/baseline/PerfProbe" \
+            --patched-binary "$RUNNER_TEMP/perf-build/patched/PerfProbe" \
+            --baseline-python "$RUNNER_TEMP/perf-build/baseline/macos/runtime/elichika_macos.py" \
+            --patched-python "$RUNNER_TEMP/perf-build/patched/macos/runtime/elichika_macos.py" \
+            --output "$RUNNER_TEMP/perf-evidence/cases"
+
+      - name: Retain exact source receipts and actual CPU/UI/HTTP measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-mac-console-performance
+          path: |
+            ${{ runner.temp }}/perf-evidence/
+            !${{ runner.temp }}/perf-evidence/**/private/**
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6

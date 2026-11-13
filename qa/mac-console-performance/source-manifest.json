@@ -1,0 +1,89 @@
+{
+  "status": "REVIEW_CANDIDATE_NATIVE_COMPILE_AND_MEASUREMENTS_PENDING",
+  "baseline_source_commit": "c676bf5f969fafb24244dd0f59f804e1d26db982",
+  "files": [
+    {
+      "path": "macos/App/AppModel.swift",
+      "bytes": 43587,
+      "sha256": "87255ada94f888f8245de668e08fb7bd3b874aea40deed134cf14d8887e5d984"
+    },
+    {
+      "path": "macos/App/RuntimeContract.swift",
+      "bytes": 20740,
+      "sha256": "dc4f9d2cf1925604f74ceed06733b5a1ea5f87afc6a4a13bf90526cfe5293eeb"
+    },
+    {
+      "path": "macos/App/ElichikaApp.swift",
+      "bytes": 48966,
+      "sha256": "f49ce4cf7cb0d34461db7997d25e495b1302ccfff65dac0ff25f88db92723b35"
+    },
+    {
+      "path": "macos/runtime/elichika_macos.py",
+      "bytes": 43070,
+      "sha256": "a8c240571e7c2d9b965f832ffeadff29e5c0aa27d2d60ae3a5446847d1170403"
+    },
+    {
+      "path": "macos/Tests/ConsolePerformanceTests.swift",
+      "bytes": 5175,
+      "sha256": "22d9807d5cfd5a71d69dfd591c6a9f2dc43345ad99cb351bc920d3f4b8d3e142"
+    },
+    {
+      "path": "tests/test_macos_runtime_console_logging.py",
+      "bytes": 4774,
+      "sha256": "3ca2c41f091407778690550da77e621879d467cc8facdf93a180d9a1149e8c0e"
+    }
+  ],
+  "new_paths": [
+    "macos/Tests/ConsolePerformanceTests.swift",
+    "tests/test_macos_runtime_console_logging.py"
+  ],
+  "guard": {
+    "parent": {
+      "head": "f67b48f93fe70ee90fa2605d020c84acdb693995",
+      "index_sha256": "805a424249568dd6ab49054a0f017df3eb90cbf4d121749de5fbb320173e0506"
+    },
+    "tools": {
+      "head": "b5a975245607a40eb926704f5d7db1ea94cd44ae",
+      "index_sha256": "228ae3f156116743ed63efb4cfb22e4ecb2026b49e1ed82ae33ed5769a1ee34d"
+    }
+  },
+  "known_functional_reproduction": "log-response-baseline-reproduction.json",
+  "focused_python_log_page_tests": {
+    "count": 6,
+    "status": "PASS",
+    "log": "log-pages-tests.log",
+    "log_sha256": "683bb92ae37b41ae37f9c8f5795033e2590135a412d7fbf2df62192eaf1e7d7f"
+  },
+  "native_tests_added": 6,
+  "full_python_runtime_tests": {
+    "count": 70,
+    "skips": 0,
+    "status": "PASS",
+    "duration_seconds": 38.322,
+    "log": "python-runtime-tests-final.log",
+    "log_sha256": "e26566288db0018556287615e369c309d14a307e4b8d586bbae4f425b82c99d6",
+    "trusted_dependency_fixture": "/dev/shm/elichika-macos-webui-test-deps/certifi symlink to cached Android NDK pip-vendored certifi; no package install",
+    "source_note": "Current productioncode passed70; strengthenedconcurrencytest then6focusedpass. Exact6filefreeze70recheck running separately withoutsourcechanges."
+  },
+  "profiling_owner": "/root/mac_settings_split",
+  "unchanged_semantics": [
+    "700ms polling",
+    "error/readiness/token identity",
+    "retained WebViews and management session latch",
+    "1500UIline and4096character bounds",
+    "2000Pythonrows/2MiBrawring",
+    "fullGo filelogs",
+    "noPythonexceptionhandlingchange",
+    "noCDN/auth/gameRPCchange"
+  ],
+  "independent_static_review": {
+    "path": "independent-static-review.json",
+    "sha256": "b69b3f1a98cde4c8d31f6439d5ec2c02e028ce396c0b672521094446566d4f27"
+  },
+  "qa_probe": {
+    "path": "qa/PerfProbe.swift",
+    "sha256": "24fb2c27c8f41b82fc3082d92f0cfb5e437481f699b86212bb99f42f6a21d951",
+    "actual_mac_compile_and_run": "PENDING"
+  },
+  "frozen_recheck_log": "python-runtime-tests-frozen.log"
+}
