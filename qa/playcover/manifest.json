@@ -66,5 +66,6 @@
   "execution_regions": [
     "GL_LOCAL"
   ],
-  "startup_only": true
+  "startup_only": true,
+  "same_install_relaunch": true
 }

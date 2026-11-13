@@ -72,11 +72,20 @@ def main():
                               if row['region'] == region+'_ORIGINAL_CONTROL') for region in selected_regions]
     startup_only = manifest.get('startup_only') is True
     assert not startup_only or (a.server_source is None and a.server_binary is None), 'Startup-only diagnostics must not claim a running server fixture'
+    execution_plan = []
+    same_install_relaunch = manifest.get('same_install_relaunch') is True
+    assert not same_install_relaunch or startup_only, 'Extra same-install relaunch is diagnostic-only'
+    for entry in selected_controls+selected_candidates:
+        execution_plan.append(entry)
+        if same_install_relaunch:
+            execution_plan.append({**entry,'region':entry['region']+'_RELAUNCH',
+                'reuse_previous_install':True,'base_region':entry['region']})
     report = {'status': 'IN_PROGRESS', 'manifest': manifest, 'stages': [], 'candidates': [],
               'execution_regions': selected_regions,
               'diagnostic_scope':'STARTUP_ONLY_NO_SERVER_FIXTURE' if startup_only else 'SOURCE_BUILT_SERVER_FIXTURE',
               'server_fixture_built':False, 'host_identity_audit':[],
               'planned_gui_import_order': [row['region'] for row in selected_controls+selected_candidates],
+              'planned_execution_plan':[{'region':row['region'],'action':'same-install-relaunch' if row.get('reuse_previous_install') else 'gui-import-and-launch'} for row in execution_plan],
               'game_login_observed': False, 'full_mv_playback_observed': False,
               'duplicate_mv_members_observed': False, 'closet_row_count_unchanged_observed': False,
               'physical_ios_validated': False,
@@ -268,40 +277,62 @@ def main():
             assert value.get('ServerEndpoint') == 'http://127.0.0.1:8080' and value.get('SIFASDiagnosticsEnabled') is True
             write(folder/'plain-launch-preferences.json',{'scope':'Only the two supported connection/diagnostic settings in this fresh synthetic app container',
                 'keys':['ServerEndpoint','SIFASDiagnosticsEnabled'],'supported_values_verified':True,'commands':records})
-        for candidate in selected_controls + selected_candidates:
+        for candidate in execution_plan:
             folder = a.evidence/candidate['region']; folder.mkdir()
             result = dict(candidate, status='IN_PROGRESS', feature_actions=[], game_login_observed=False, mv_playback_observed=False, actual_playcover_import=False)
             report['candidates'].append(result)
-            stage('gui-import-'+candidate['region'])
-            assert not host_state(candidate['bundle_id']).get('applications'), 'Prior app process must exit before importing this bundle identity'
+            assert not host_state(candidate['bundle_id']).get('applications'), 'Prior app process must exit before another import or standard launch'
             ipa = a.fixtures/candidate['name']
             assert sha(ipa) == candidate['sha256'], 'Candidate changed: '+candidate['region']
             app = Path.home()/'Library/Containers/io.playcover.PlayCover/Applications'/(candidate['bundle_id']+'.app')
-            begin = time.time()
-            imported = command(['open','-a',pc,ipa])
-            write(folder/'actual-gui-import.json', imported)
-            def installed():
-                return imported_app_ready(app,begin,candidate.get('role') == 'original-control')
-            if imported['code'] or not wait_for(installed,180):
-                result.update(status='FAIL_GUI_IMPORT', playcover_state=host_state(pcid))
-                result['import_screen'] = record_screen(pcid,folder,'import-blocker')
-                stage('import-failed-'+candidate['region'])
-                continue
-            time.sleep(3)
-            result['actual_playcover_import'] = True
-            # Refresh PlayCover's normal app model after replacing a bundle.
-            # GL and Local GL intentionally share a bundle ID; its prior card
-            # title/object must not launch a stale real Info.plist alias.
-            for running_pc in host_state(pcid).get('applications',[]):
-                os.kill(running_pc['pid'],signal.SIGTERM)
-            assert wait_for(lambda:not host_state(pcid).get('applications'),10), 'Owned PlayCover process did not stop for a fresh library scan'
-            reopened = command(['open','-a',pc])
-            assert reopened['code'] == 0 and wait_for(lambda:host_state(pcid).get('applications'),30)
-            host_command(pcid,True)
-            assert wait_for(lambda:any(app.get('windows') for app in host_state(pcid).get('applications',[])),30)
-            settle_playcover_library(folder,'fresh-library-first-run-ui')
-            write(folder/'fresh-library-process.json',{'reopen':reopened,'state':host_state(pcid),
-                'scope':'Only owned disposable PlayCover process restarted; current imported bundle must be rescanned'})
+            if candidate.get('reuse_previous_install'):
+                base = next(row for row in report['candidates'] if row['region'] == candidate['base_region'])
+                if base.get('status') != 'FAIL_PROCESS_EXITED_BEFORE_VISIBLE_UI':
+                    result['status'] = 'SKIP_RELAUNCH_FIRST_ATTEMPT_NOT_AN_OBSERVED_EARLY_PROCESS_EXIT'
+                    stage('same-install-relaunch-unneeded-'+candidate['region'])
+                    continue
+                if not base.get('actual_playcover_import') or not base.get('bundle_verification_passed') or not base.get('post_actual_gui_launch_bundle_verified'):
+                    result['status'] = 'SKIP_RELAUNCH_WITHOUT_VERIFIED_BASE_IMPORT'
+                    stage('same-install-relaunch-skipped-'+candidate['region'])
+                    continue
+                assert app.is_dir(), 'Verified same-install game bundle disappeared'
+                result['reimport_performed'] = False
+                result['existing_import_binding'] = {'region':candidate['base_region'],'sha256':candidate['sha256'],
+                    'prelaunch_verification_required_again':True,'postlaunch_verification_required_again':True}
+                stage('same-install-normal-relaunch-'+candidate['region'])
+                host_command(pcid,True)
+                settle_playcover_library(folder,'same-install-library-first-run-ui')
+                write(folder/'same-install-no-reimport.json',{'original_import_region':candidate['base_region'],
+                    'import_called':False,'PlayCover_restarted':False,'state':host_state(pcid),
+                    'qualification':'One additional ordinary library launch against the unchanged installed app; first attempt remains recorded separately.'})
+            else:
+                stage('gui-import-'+candidate['region'])
+                result['reimport_performed'] = True
+                begin = time.time()
+                imported = command(['open','-a',pc,ipa])
+                write(folder/'actual-gui-import.json', imported)
+                def installed():
+                    return imported_app_ready(app,begin,candidate.get('role') == 'original-control')
+                if imported['code'] or not wait_for(installed,180):
+                    result.update(status='FAIL_GUI_IMPORT', playcover_state=host_state(pcid))
+                    result['import_screen'] = record_screen(pcid,folder,'import-blocker')
+                    stage('import-failed-'+candidate['region'])
+                    continue
+                time.sleep(3)
+                result['actual_playcover_import'] = True
+                # Refresh PlayCover's normal app model after replacing a bundle.
+                # GL and Local GL intentionally share a bundle ID; its prior card
+                # title/object must not launch a stale real Info.plist alias.
+                for running_pc in host_state(pcid).get('applications',[]):
+                    os.kill(running_pc['pid'],signal.SIGTERM)
+                assert wait_for(lambda:not host_state(pcid).get('applications'),10), 'Owned PlayCover process did not stop for a fresh library scan'
+                reopened = command(['open','-a',pc])
+                assert reopened['code'] == 0 and wait_for(lambda:host_state(pcid).get('applications'),30)
+                host_command(pcid,True)
+                assert wait_for(lambda:any(app.get('windows') for app in host_state(pcid).get('applications',[])),30)
+                settle_playcover_library(folder,'fresh-library-first-run-ui')
+                write(folder/'fresh-library-process.json',{'reopen':reopened,'state':host_state(pcid),
+                    'scope':'Only owned disposable PlayCover process restarted; current imported bundle must be rescanned'})
             stage('verify-imported-bundle-'+candidate['region'])
             footprint = command([sys.executable,HERE/'verify_playtools_footprint.py','--playcover-dmg',dmg,
                 '--pinned-playcover-app',source_app,'--installed-game',app,'--candidate-ipa',ipa,
