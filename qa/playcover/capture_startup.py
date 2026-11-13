@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only, bounded startup/termination evidence for one synthetic game launch.
+"""Read-only, bounded startup/termination evidence for one task-owned app launch.
 
 Never launches, attaches, injects, signs, edits a bundle, changes permissions or
 system settings. Raw crash/log contents are not copied to evidence. Record only
@@ -17,6 +17,9 @@ import subprocess
 import time
 
 BUNDLES = {'com.klab.lovelive.allstars.global', 'com.klab.lovelive.allstars'}
+IDENTITIES = {'com.klab.lovelive.allstars.global':'global',
+              'com.klab.lovelive.allstars':'allstars',
+              'io.playcover.PlayCover':'PlayCover'}
 STARTUP = re.compile(r'^(?:Initialize engine version:|\[Subsystems\]|GfxDevice:|Creating GfxDevice:|Metal\b|Renderer:|Vendor:|VRAM:|No supported renderers|Failed to (?:initialize|load)|Could not (?:initialize|load)|Unable to (?:initialize|load)|\[UnityMemory\]|\[Physics\]|\[XR\]|dyld(?:\[\d+\])?:|Library not loaded:|Symbol not found:|Referenced from:|Expected in:|Reason: tried:|Termination Reason:|Exception Type:)', re.I)
 SCENE_FAILURE = re.compile(r'(?:\bFBWorkspaceScene\b|\bFBSSceneErrorDomain\b|\bUISceneErrorDomain\b|\bscene-creation-failed\b|\bscene creat(?:e|ion) failed\b|\b(?:failed|unable) to (?:create|request|initialize) (?:a |the )?scene\b)', re.I)
 LOADER_REASON = re.compile(r'^(?:Library not loaded:|Symbol not found:|Referenced from:|Expected in:|Reason: tried:|\(terminated at launch; ignore backtrace\))', re.I)
@@ -174,8 +177,8 @@ def unified_startup(pid, since, executable):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--bundle-id',choices=sorted(BUNDLES),required=True)
-    p.add_argument('--executable',choices=('global','allstars'),required=True)
+    p.add_argument('--bundle-id',choices=sorted(IDENTITIES),required=True)
+    p.add_argument('--executable',choices=sorted(set(IDENTITIES.values())),required=True)
     p.add_argument('--pid',type=int,default=0,help='Exact PID observed after this launch; zero only if no process appeared')
     p.add_argument('--since',type=float,required=True,help='time.time() immediately before normal open/GUI launch')
     p.add_argument('--proof-dir',type=Path,required=True)
@@ -183,6 +186,7 @@ def main():
     p.add_argument('--launch-stdout',type=Path)
     p.add_argument('--launch-stderr',type=Path)
     a = p.parse_args()
+    assert IDENTITIES[a.bundle_id] == a.executable, 'Only the exact owned app bundle/executable pair may be inspected'
     assert platform.system() == 'Darwin' and a.pid >= 0 and math.isfinite(a.since)
     assert 0 <= time.time()-a.since <= 900, 'Only fresh launches within fifteen minutes may be inspected'
     assert not a.proof_dir.exists(), 'Fresh proof directory required'
@@ -199,7 +203,8 @@ def main():
                 report['crashes'].append(record)
         except Exception as error:
             report['errors'].append({'file':path.name,'error_type':type(error).__name__})
-    roots = [Path.home()/'Library/Containers'/a.bundle_id/'Data/Library/Logs', Path.home()/'Library/Logs/Unity']
+    roots = ([Path.home()/'Library/Containers'/a.bundle_id/'Data/Library/Logs', Path.home()/'Library/Logs/Unity']
+             if a.bundle_id in BUNDLES else [])
     logs = set()
     for root in roots:
         if root.is_dir():

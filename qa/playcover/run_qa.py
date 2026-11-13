@@ -176,7 +176,7 @@ def main():
             result = command(['screencapture','-x','-l',str(windows[0]['kCGWindowNumber']),target])
             return {'status':'CAPTURED' if result['code'] == 0 and target.exists() else 'CAPTURE_FAILED', 'command': result}
         update_prompt_answered = False
-        def settle_playcover_library(folder, label):
+        def settle_playcover_library(folder, label, allow_post_update_reopen=True):
             # The pinned app asks this ordinary first-run Sparkle question.
             # Answer only its exact observed native button, then prove it is
             # gone. A hidden library tile behind a modal is not a valid target.
@@ -200,6 +200,7 @@ def main():
                     assert len(titles) == 1 and len(buttons) == 1, 'Update prompt is not uniquely identified'
                     before = record_screen(pcid,settled,'observed-normal-update-prompt')
                     assert before['status'] == 'CAPTURED', 'Observe the normal update question before answering'
+                    answered_at = time.time()
                     pressed = command([build/'PlayCoverAX','press',owned_pid,settled/'answer-dont-check','Don’t Check'])
                     write(settled/'answer-dont-check-command.json',pressed)
                     assert pressed['code'] == 0, 'Observed normal Don’t Check button could not be pressed'
@@ -207,7 +208,31 @@ def main():
                     update_prompt_answered = True
                     after = command([build/'PlayCoverAX','dump',owned_pid,settled/'after-answer'])
                     write(settled/'after-answer-command.json',after)
-                    assert after['code'] == 0
+                    if after['code'] != 0:
+                        # The pinned AppDelegate terminates after its last
+                        # window closes. Preserve this actual observed exit;
+                        # do not classify absence as a crash or game success.
+                        state_after = host_state(pcid)
+                        process_after = command(['ps','-p',str(owned_pid),'-o','pid=,comm='])
+                        write(settled/'after-answer-process-state.json',{'observed_pid':owned_pid,
+                            'host':state_after,'process':process_after,'answer_wall_time':answered_at})
+                        time.sleep(3)
+                        diagnostic = command([sys.executable,HERE/'capture_startup.py',
+                            '--bundle-id',pcid,'--executable','PlayCover','--pid',str(owned_pid),
+                            '--since',str(answered_at),'--proof-dir',settled/'after-answer-exit-diagnostic'],timeout=40)
+                        write(settled/'after-answer-exit-diagnostic-command.json',diagnostic)
+                        assert diagnostic['code'] == 0, 'Unable to preserve the exact PlayCover exit diagnostic'
+                        assert allow_post_update_reopen and not state_after.get('error') and not state_after.get('applications'), 'Only one ordinary reopen after the observed update-answer exit is allowed'
+                        assert process_after['code'] == 1 and not process_after['stdout'].strip(), 'The exact prior PlayCover PID must have exited before ordinary reopen'
+                        reopened = command(['open','-a',pc])
+                        write(settled/'ordinary-after-update-reopen-command.json',reopened)
+                        assert reopened['code'] == 0, 'Ordinary PlayCover open failed after the observed prompt exit'
+                        fresh = wait_for(lambda:host_state(pcid).get('applications'),15)
+                        assert fresh and len(fresh) == 1 and fresh[0]['pid'] != owned_pid and Path(fresh[0]['bundle_path']) == pc, 'Reopen must produce a fresh sole owned PlayCover app'
+                        write(settled/'ordinary-after-update-reopen.json',{'status':'ORDINARY_REOPEN_AFTER_OBSERVED_PROMPT_AND_EXIT',
+                            'prior_pid':owned_pid,'fresh_pid':fresh[0]['pid'],
+                            'qualification':'First observed exit and diagnostic retained. No inference of crash cause, successful game launch or runtime feature approval.'})
+                        return settle_playcover_library(settled,'fresh-reopened-library',False)
                     final_tree = json.loads((settled/'after-answer/accessibility.json').read_text())
                     assert not any(item.get('AXTitle') == 'Don’t Check' for item in final_tree['elements']), 'Normal update prompt remains open'
                     break
