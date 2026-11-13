@@ -1,0 +1,47 @@
+name: Derived unvalidated C5 native PCM observation only
+on:
+  push:
+    branches: [codex/mac-pcm-diagnostic-20261113]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  derived-pcm-observation:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch exact unvalidated C5 archive and derive explicitly labelled QA-only app
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          pgrep -x WindowServer
+          env -u GH_TOKEN gh api repos/tagundo/elichika/actions/artifacts/14038842268/zip > "$RUNNER_TEMP/original-C5-artifact.zip"
+          python3 qa/mac-pcm-diagnostic/prepare_derived_app.py --archive "$RUNNER_TEMP/original-C5-artifact.zip" \
+            --qa qa/mac-pcm-diagnostic --scratch "$RUNNER_TEMP/pcm-derived" --evidence "$RUNNER_TEMP/pcm-diagnostic-evidence"
+      - name: Keep original gate and original first-launch official workload while capturing preassert locals
+        run: |
+          python3 qa/mac-pcm-diagnostic/run_derived_diagnostic.py --repo . \
+            --evidence "$RUNNER_TEMP/pcm-diagnostic-evidence" --relocation "$RUNNER_TEMP/PCM 진단 이동/Elichika.app"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unvalidated-derived-native-pcm-diagnostic-only
+          path: |
+            ${{ runner.temp }}/pcm-diagnostic-evidence/
+            !${{ runner.temp }}/pcm-diagnostic-evidence/native-app-data/application-support/**
+            !${{ runner.temp }}/pcm-diagnostic-evidence/native-app-data/sukusta/**
+          if-no-files-found: error
+          retention-days: 7

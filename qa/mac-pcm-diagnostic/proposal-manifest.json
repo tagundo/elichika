@@ -1,0 +1,42 @@
+{
+  "status": "STAGED_QA_ONLY_PCM_OBSERVATION_NOT_EXECUTED",
+  "base_parent_commit": "b503631efee12bdf224ae94962bd1403a4658da3",
+  "failed_run": 43428743619,
+  "failed_artifact": 14038889156,
+  "original_failure_receipt_sha256": "0fcc1ece8804c3ead701820248c3cf25e39e075c1e401972408d44d2ad3cc092",
+  "frozen_inputs": {
+    "macos/ci/native_pcm_qa.js": {
+      "bytes": 38101,
+      "sha256": "61fa22b362a51718a82b1403b414088b9a14ab7fed24434cf64578c8d7811517"
+    },
+    "macos/App/NativeSmokeTest.swift": {
+      "bytes": 147701,
+      "sha256": "48f636835cb31855c1712d3dbe6eeb4fde218eb844d1dd6e7e1346a0d54cca30"
+    },
+    "macos/ci/run_app_smoke.py": {
+      "bytes": 115119,
+      "sha256": "9f2fbc4f5285f3e625b51c61a5a38e24000555871e53c30f6f60ddecde6b9643"
+    },
+    "modtools/webtools/web/static/viewer-motion-audio.js": {
+      "bytes": 19855,
+      "sha256": "f38bd7f59ceade47e096c2331041bc0e056cfbe96b7ab3848778308f86c06ab4"
+    },
+    "modtools/webtools/web/static/viewer-native-pcm-player.js": {
+      "bytes": 18518,
+      "sha256": "de8c649abc7d1611c92389edbc2ecc1c4c77671bf7068995024a9328062cb9e3"
+    }
+  },
+  "diagnostic_delta": [
+    {
+      "path": "macos/ci/native_pcm_qa.js",
+      "local": "/tmp/elichika-mac-pcm-diagnostic-20261113/proposal/macos/ci/native_pcm_qa.js",
+      "bytes": 41296,
+      "sha256": "b8475d7c964eef5004534771d9c5527426b3dd670c3214e6863f10b1766c886d"
+    }
+  ],
+  "assertion_policy": "All original assert bodies byte-identical, including immediate finite clock and strict40ms guard; no retry, clock/getter/factory override, rate change, context change or new delay.",
+  "observer_scope": "Exactly one original getter read preserved per snapshot, raw type/finite captured only for actual playing snapshot; bounded passive own rAF observer64frames, at most2 deeply-cloned playing captures retained in existing __nativePartDiagnostic and pass report. Observer cancelled in original finally.",
+  "production_workspace_modified": false,
+  "executed": false,
+  "promotion_allowed": false
+}
