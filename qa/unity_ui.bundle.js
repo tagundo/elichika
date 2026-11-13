@@ -3485,6 +3485,7 @@ globalThis.Il2Cpp = Il2Cpp;
   "use strict";
   var ready = false, lastError = "", runtime = {}, classCache = {}, initPending = false;
   var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 3;
+  var QA_IDENTITY = {pid:Process.id,architecture:Process.arch,fridaVersion:Frida.version};
   var TEXT_TYPES = ["UnityEngine.UI.Text", "TMPro.TMP_Text", "Jigbox.Components.TextView", "LLAS.Components.UI.ProductTextView"];
   var DEFAULT_TYPES = ["UnityEngine.UI.Button", "UnityEngine.UI.Toggle", "UnityEngine.UI.InputField", "TMPro.TMP_InputField", "UnityEngine.UI.ScrollRect"].concat(TEXT_TYPES);
 
@@ -4014,7 +4015,7 @@ function splashFadeRGBA(splash) {
     },25);
     return {startedMs:introTrace.startedMs,intervalMs:25,scope:"Read-only main-thread splash/tween fields; no callbacks or setters"};
   }
-  function endIntroTrace() { if(introTimer)clearInterval(introTimer);introTimer=null;return introTrace; }
+  function endIntroTrace() { if(introTimer)clearInterval(introTimer);introTimer=null;return Object.assign({},introTrace,{pendingManagedWork:introPending||initPending}); }
   function discoverActiveCustomButtons() {
     if (!runtime.rectTransform || !runtime.component) return [];
     var names = [], seen = {}, rects = allOfType(runtime.rectTransform), inspected = 0;
@@ -4177,8 +4178,8 @@ function splashFadeRGBA(splash) {
     beginintrotrace: function () { return beginIntroTrace(); },
     endintrotrace: function () { return endIntroTrace(); },
     status: function () { return { ready: ready, lastError: lastError, initializing: initPending,
-      bridgeVersion: BRIDGE_VERSION, agentVersion: AGENT_VERSION, fridaVersion: Frida.version,
-      pid: Process.id, architecture: Process.arch }; },
+      bridgeVersion: BRIDGE_VERSION, agentVersion: AGENT_VERSION, fridaVersion: QA_IDENTITY.fridaVersion,
+      pid: QA_IDENTITY.pid, architecture: QA_IDENTITY.architecture, pendingManagedIntroWork:introPending, introTimerActive:!!introTimer }; },
     initialize: function () { return onMain(function () { return metadata(); }); },
     snapshot: function (options) { return onMain(function () { return snapshot(options || {}); }); },
     features: function () { return onMain(function () { return { timestampMs:Date.now(), screen:metadata(), features:featureState() }; }); },

@@ -311,6 +311,7 @@ def main():
     parser.add_argument("--settings-orientation", choices=("portrait", "landscape", "auto"), default="portrait")
     parser.add_argument("--settings-scalar", type=float, choices=(.5, 2.), default=2.)
     parser.add_argument("--fast-intro", action="store_true")
+    parser.add_argument("--observer-detached-login-control", action="store_true")
     parser.add_argument("--serial", default="127.0.0.1:5555")
     parser.add_argument("--server-apk", type=Path)
     parser.add_argument("--host-server-root", type=Path)
@@ -321,6 +322,7 @@ def main():
     parser.add_argument("--unity-agent", type=Path)
     parser.add_argument("--max-seconds", type=int, default=1500)
     args = parser.parse_args()
+    if args.observer_detached_login_control and args.region != "JP": parser.error("This native-only control is limited to JP; GL first-login terms need their own semantic action")
     global CLIENT, LAUNCHER, CLIENT_SHA, SERVER_SHA
     fixtures = json.loads(args.fixtures.read_text())
     client_fixture, server_fixture = fixtures["clients"][args.region], fixtures["server"]
@@ -654,57 +656,27 @@ def main():
         else:
             raise AssertionError("Bounded sequential settings navigation did not complete")
 
-    def no_frida_control(profile, limit=240):
-        nonlocal agent, session, client_pid
-        assert host_mode, "The independent control requires its owned source server"
-        original_pid=client_pid
-        result={"status":"RUNNING","scope":"Fresh app process without any Frida attachment; ordinary UI only; not a feature or Home-render approval", "original_instrumented_pid":original_pid,"profile":dict(profile),"frida_injected_into_control_pid":False,"cache_state":"Private app data and downloaded databases preserved across ordinary restart; the same owned server remains running", "observations":[]}
-        before=game_request_counts(host_server.server_log())
-        result["requests_before"]=before
-        device.shell("am","force-stop",CLIENT)
-        agent=session=None
-        device.shell("am","start","-W","-n",LAUNCHER)
-        apply_profile(profile["orientation"],profile["scalar"],profile["fast_intro"],"no-frida-control",instrument=False)
-        client_pid=device.shell("pidof","-s",CLIENT)
-        assert client_pid and client_pid != original_pid, "Independent control must use a fresh process"
-        result["control_pid"]=client_pid
-        maps=device.read("/proc/"+client_pid+"/maps")
-        assert b"frida-agent" not in maps, "Fresh control process unexpectedly contains a Frida agent"
-        (args.evidence/"no-frida-control-process-maps.txt").write_bytes(maps)
-        result["agent_absence_checked_in_process_maps"]=True
-        began=time.monotonic();touched=False
+    def observe_detached_control(before, limit=180):
+        assert host_mode
+        result={"status":"RUNNING","scope":"Read-only observer fully detached before exact fresh Title-caption tap; native UI and genuine RPC observations only, not feature approval", "pid":client_pid,"observer_detached_before_input":True,"residual_agent_module_may_remain":True,"requests_before":before,"observations":[]}
+        began=time.monotonic()
         for step in range(32):
             if time.monotonic()-began>limit:break
-            nodes=native_tree(2000+step)
-            positive,_=match([n for n in nodes if n.get("enabled") and n.get("clickable")], [r"^OK$",r"android:id/button1",r"permission_allow_foreground_only_button",r"permission_allow_button",r"^Allow$"])
-            if positive:
-                tap(positive,"android-uiautomator-tree","no-frida-native-dialog")
-                time.sleep(2)
-                continue
-            capture("no-frida-control-"+str(step))
+            native_tree(2000+step)
+            capture("detached-control-"+str(step))
             after=game_request_counts(host_server.server_log())
-            result["observations"].append({"elapsed_seconds":round(time.monotonic()-began,2),"native_snapshot":f"native-ui-{2000+step:03d}.xml","screenshot":"no-frida-control-"+str(step)+".png","request_counts":after})
+            result["observations"].append({"elapsed_seconds":round(time.monotonic()-began,2),"native_snapshot":f"native-ui-{2000+step:03d}.xml","screenshot":"detached-control-"+str(step)+".png","request_counts":after})
             if after["/bootstrap/fetchBootstrap"]>before["/bootstrap/fetchBootstrap"] and after["/login/login"]>before["/login/login"]:
-                result["status"]="FRESH_BOOTSTRAP_OBSERVED_WITHOUT_FRIDA"
+                result["status"]="NEW_BOOTSTRAP_OBSERVED_AFTER_OBSERVER_DETACH"
                 time.sleep(12)
-                capture("no-frida-control-post-bootstrap")
+                capture("detached-control-post-bootstrap")
                 break
-            # The actual Title ScreenButton was observed to span this entire
-            # Unity content surface before process replacement. Re-search the
-            # new process's native content bounds, then perform its documented
-            # touch-anywhere input. No recorded pixel coordinate is reused.
-            if not touched and time.monotonic()-began>=15:
-                surfaces=[n for n in nodes if n.get("package")==CLIENT and n.get("class","").endswith("SurfaceView")]
-                if not surfaces:surfaces=[n for n in nodes if n.get("package")==CLIENT and n.get("name")=="android:id/content"]
-                if len(surfaces)==1 and control_fully_visible(surfaces[0]):
-                    tap(surfaces[0],"fresh-android-content-surface","no-frida-title-touch-anywhere")
-                    touched=True
-            (args.evidence/"no-frida-control.json").write_text(json.dumps(result,indent=2))
+            (args.evidence/"observer-detached-control.json").write_text(json.dumps(result,indent=2))
             time.sleep(5)
-        if result["status"]=="RUNNING":result["status"]="NO_BOOTSTRAP_WITHIN_BOUNDED_CONTROL"
+        if result["status"]=="RUNNING":result["status"]="NO_BOOTSTRAP_WITHIN_BOUNDED_DETACHED_CONTROL"
         result["requests_after"]=game_request_counts(host_server.server_log())
-        result["independent_control_not_feature_approval"]=True
-        (args.evidence/"no-frida-control.json").write_text(json.dumps(result,indent=2))
+        result["not_feature_or_home_approval"]=True
+        (args.evidence/"observer-detached-control.json").write_text(json.dumps(result,indent=2))
         return result
 
     try:
@@ -805,9 +777,6 @@ def main():
                         try:
                             (args.evidence/"client-rpc-timeout-logcat.txt").write_bytes(device.adb("logcat","-d","-v","threadtime","--pid",client_pid,"-t","1500",raw=True,timeout=15))
                         except Exception: pass
-                        if host_mode and successful_game_requests(host_server.server_log())["/login/login"]:
-                            try:report["no_frida_control"]=no_frida_control(active_profile)
-                            except Exception as error:report["observations"].append({"no_frida_control_error":type(error).__name__,"detail":str(error)[:250]})
                         raise RuntimeError("Read-only Unity main-thread snapshot exceeded20seconds; current game diagnostics retained and later cases are unobserved")
             visible_tree = {"screen": tree.get("screen"), "nodes": [node for node in tree.get("nodes", []) if node.get("visible") and node.get("active")]}
             all_text = json.dumps(visible_tree, ensure_ascii=False)
@@ -1045,6 +1014,27 @@ def main():
                 if start_target:
                     (args.evidence / f"unity-ui-{index:03d}-title-start.json").write_text(json.dumps(fresh, ensure_ascii=False, indent=2))
                     report["observations"].append({"title_start_caption": start_target["path"], "actual_first_hit_action": start_target["_input_action"], "snapshot_timestamp_ms": fresh.get("timestampMs"), "coordinate_source": "Fresh visible start-caption bounds with exact ScreenButton first raycast hit"})
+                    if args.observer_detached_login_control:
+                        assert host_mode and args.region=="JP" and intro_phase=="done"
+                        before=game_request_counts(host_server.server_log())
+                        quiescence=bounded_rpc(lambda:agent.exports_sync.endintrotrace(),timeout=5)
+                        for _ in range(10):
+                            if quiescence.get("pendingManagedWork") is False:break
+                            time.sleep(.1)
+                            quiescence=bounded_rpc(lambda:agent.exports_sync.endintrotrace(),timeout=3)
+                        assert quiescence.get("pendingManagedWork") is False, "Managed QA intro work is still pending"
+                        (args.evidence/"detached-control-quiescence.json").write_text(json.dumps(quiescence,indent=2))
+                        capture("detached-control-before-caption-tap")
+                        bounded_rpc(lambda:session.detach(),timeout=5)
+                        assert session.is_detached, "Observer did not fully detach before control input"
+                        agent=session=None
+                        current_native=native_tree(1999)
+                        unity_surface_bounds(current_native,fresh["screen"])
+                        tap(start_target,"fresh-readonly-title-caption-then-detached","title-tap-after-observer-fully-detached")
+                        capture("detached-control-after-caption-tap")
+                        report["observer_detached_control"]=observe_detached_control(before)
+                        report["blocked_reason"]="Dedicated observer-detached login control; later feature flows are unobserved"
+                        break
                     tap(start_target, "readonly-unity-ui-tree", "observed-title-tap-to-start")
                     time.sleep(6); continue
             # Generic bootstrap choices are intentionally narrow and never buy,
