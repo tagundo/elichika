@@ -1,0 +1,144 @@
+{
+  "status": "PENDING_INDEPENDENT_SOURCE_REVIEW_NO_EXECUTION_OR_ACTIVATION",
+  "purpose": "Actual normal Mac NSOpenPanel/NSSavePanel post-dialog texture data diagnostic only",
+  "frozen_source_commit": "b503631efee12bdf224ae94962bd1403a4658da3",
+  "source_record_sha256": "b9239fd6489c14304531074ef9c351272813820aec1d78356dbb36d3eea9697e",
+  "original_artifact": {
+    "id": 14038842268,
+    "workflow_run": 43428743619,
+    "outer_zip_bytes": 305441968,
+    "outer_zip_sha256": "5b86c4294bfabca4f894b0c16526b313136552d28cbe24392748642ec7a78330",
+    "unvalidated": true
+  },
+  "qa_files": {
+    "NativeFileMenuDiagnostic.swift": {
+      "bytes": 29057,
+      "sha256": "f435a1f88f658d2013374875b97db2b835a0738fa5d7a2f06813eae2194a3305"
+    },
+    "README.md": {
+      "bytes": 3992,
+      "sha256": "49268959efa0b0b7026239acdd4eb1b4acf128b57edd1ed1f55b0358e8a9f40f"
+    },
+    "fixtures/fixture-generation.json": {
+      "bytes": 784,
+      "sha256": "86918bb07beb31b11f8c0656eb18a426093d990eefd709db78984ca7020e1529"
+    },
+    "fixtures/large-import.png": {
+      "bytes": 3698673,
+      "sha256": "8a7a6f14683d89240f4026d4b849ba5c7fece7ac164856933da334fedd68d696"
+    },
+    "fixtures/large-layers.json": {
+      "bytes": 4959219,
+      "sha256": "963aae9dd6accc648b683bc4af473c41a0441377441bcaafd6d96fc3c78235fc"
+    },
+    "fixtures/large-model.unity": {
+      "bytes": 4267160,
+      "sha256": "5f5288bd72cbfe2c9926883dd000d7ac43c2a4e168222b14be03730b53716f37"
+    },
+    "fixtures/small-import.png": {
+      "bytes": 1026,
+      "sha256": "b0523823d0977292caea43adb85422faed6add8d9a7b3476be90bfa3db109718"
+    },
+    "fixtures/small-layers.json": {
+      "bytes": 1795,
+      "sha256": "943d435764d969bd609f1f7832f2ff8c9165284749d72489a6efa208550e59c6"
+    },
+    "fixtures/small-model.unity": {
+      "bytes": 73880,
+      "sha256": "da0bf6b4f0060d22638ea01b8b58b3415a3e1cee9cb0db5e2084cc3d6c6f990f"
+    },
+    "mac-file-menu-diagnostic.yml": {
+      "bytes": 2730,
+      "sha256": "24eb0485e9d33d9f018b810cc8120e09abb391bb6f2b18c62480fb87d11e0f07"
+    },
+    "make_fixtures.py": {
+      "bytes": 3029,
+      "sha256": "b2cbf33d4c352b9d0724ecf31fde0e387bd00ba74e6da5fa0fa15240bcb839b0"
+    },
+    "prepare_exact_app.py": {
+      "bytes": 4987,
+      "sha256": "d90162573b7c48cc21af977d30e45db2ec927ebea4ab8de20573bde376eafeaa"
+    },
+    "run_native_diagnostic.py": {
+      "bytes": 10845,
+      "sha256": "d078bb31177325989925716e4e3e9f2425364d7236bdaa980f2386bbce99d45c"
+    }
+  },
+  "frozen_packaged_product_files": {
+    "Contents/Resources/python-app/webtools/web/static/app.js": {
+      "bytes": 62030,
+      "sha256": "913c2fbceb33ad7bf3c2034d9abf1e40c65863c6fb00b6ff2aa900622c8a9352"
+    },
+    "Contents/Resources/python-app/webtools/web/static/model-viewer.js": {
+      "bytes": 162703,
+      "sha256": "b2dd7c282f6a68f000c69f71f8dac7971d23fea60574ca61da49df4d1cd1fa4b"
+    },
+    "Contents/Resources/python-app/webtools/web/static/platform.js": {
+      "bytes": 16826,
+      "sha256": "c16dcb8f7b9bcca1c1b8352954fedf0f2711a29d4f65468dbd2afcc65de81e7b"
+    },
+    "Contents/Resources/python-app/webtools/web/static/viewer-texture-tools.js": {
+      "bytes": 165699,
+      "sha256": "a8a2bb8d53659674ac6c84a178c7f0a0eb8721fca353393da2545784eb870098"
+    },
+    "Contents/Resources/python-app/webtools/web/static/texture-paint-engine.js": {
+      "bytes": 72406,
+      "sha256": "b71d6a45885aead662b48cc6297d35d1eb77d4efd01a564210be5eec4723a615"
+    },
+    "Contents/Resources/python-app/webtools/web/static/texture-png.js": {
+      "bytes": 4817,
+      "sha256": "e0a1e2384b670f00cfc651ca90e1c5370dabb96ebc408920f7f29ba8a7063492"
+    },
+    "Contents/Resources/python-app/elichika_macos.py": {
+      "bytes": 43070,
+      "sha256": "a8c240571e7c2d9b965f832ffeadff29e5c0aa27d2d60ae3a5446847d1170403"
+    }
+  },
+  "normal_product_files_changed": [],
+  "app_byte_changes_permitted": [],
+  "no_original_C5_failure_waiver": true,
+  "no_normal_or_client_feature_or_release_approval": true,
+  "normal_app_without_smoke_mode": true,
+  "real_OS_input_and_actual_panels_required": true,
+  "fresh_ephemeral_CI_user_only": true,
+  "fixture_generation": {
+    "original_fixture_sha256": "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1",
+    "phases": {
+      "small": {
+        "width": 16,
+        "height": 16,
+        "png_bytes": 1026,
+        "project_bytes": 1795,
+        "model_texture_RGBA": [
+          80,
+          130,
+          190,
+          255
+        ],
+        "input_contrasts_with_model": true,
+        "PNG_encoded_POST_bytes": 1401,
+        "project_encoded_POST_bytes": 1837
+      },
+      "large": {
+        "width": 1024,
+        "height": 1024,
+        "png_bytes": 3698673,
+        "project_bytes": 4959219,
+        "model_texture_RGBA": [
+          80,
+          130,
+          190,
+          255
+        ],
+        "input_contrasts_with_model": true,
+        "PNG_encoded_POST_bytes": 4931597,
+        "project_encoded_POST_bytes": 4959261
+      }
+    }
+  },
+  "remote_install_paths": {
+    "qa_directory": "qa/mac-file-menu-diagnostic",
+    "workflow": ".github/workflows/mac-file-menu-diagnostic.yml"
+  },
+  "supersedes_manifest_sha256": "784efffdf2de300fc96ae1db6aa9f350cc5909221540bf8746ade3f17dbebc6a"
+}

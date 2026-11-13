@@ -1,0 +1,35 @@
+{
+  "original_fixture_sha256": "0536f659457f2a6df0f3fb7451aa449b65720735c54e571b5204fd6d6602aee1",
+  "phases": {
+    "small": {
+      "width": 16,
+      "height": 16,
+      "png_bytes": 1026,
+      "project_bytes": 1795,
+      "model_texture_RGBA": [
+        80,
+        130,
+        190,
+        255
+      ],
+      "input_contrasts_with_model": true,
+      "PNG_encoded_POST_bytes": 1401,
+      "project_encoded_POST_bytes": 1837
+    },
+    "large": {
+      "width": 1024,
+      "height": 1024,
+      "png_bytes": 3698673,
+      "project_bytes": 4959219,
+      "model_texture_RGBA": [
+        80,
+        130,
+        190,
+        255
+      ],
+      "input_contrasts_with_model": true,
+      "PNG_encoded_POST_bytes": 4931597,
+      "project_encoded_POST_bytes": 4959261
+    }
+  }
+}
