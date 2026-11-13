@@ -108,7 +108,7 @@ def main():
             write(a.evidence/(name+'-compile.json'), result)
             assert result['code'] == 0, 'Swift helper compilation failed: '+name
         write(a.evidence/'actual-metal-devices.json',command([build/'MetalHost']))
-        def host_command(bundle, activate=False):
+        def host_command(bundle, activate=False, allow_crash_cleanup=True):
             argv = [build/'HostEvidence',bundle] + (['--activate'] if activate else [])
             result = command(argv)
             try:
@@ -128,6 +128,21 @@ def main():
                     write(folder/'frontmost-ax-command.json',command([build/'PlayCoverAX','dump',front_pid,folder/'frontmost-ax']))
                     write(folder/'frontmost-snapshot-command.json',command([build/'VisionQA','snapshot','--pid',str(front_pid),'--proof-dir',folder/'frontmost-snapshot']))
                 row['failure_evidence_directory'] = str(folder.relative_to(a.evidence))
+                ax_file = folder/'frontmost-ax/accessibility.json'
+                if allow_crash_cleanup and front.get('bundle_identifier') == 'com.apple.UserNotificationCenter' and ax_file.is_file():
+                    tree = json.loads(ax_file.read_text())
+                    captions = [item.get('AXValue') for item in tree.get('elements',[]) if item.get('AXRole') == 'AXStaticText']
+                    owned = [name for name in ['global','allstars'] if name+' quit unexpectedly.' in captions]
+                    windows = [window for window in tree.get('windows',[]) if window.get('kCGWindowLayer') == 8]
+                    if len(owned) == 1 and len(windows) == 1:
+                        capture = command(['/usr/sbin/screencapture','-x','-o','-l',windows[0]['kCGWindowNumber'],folder/'owned-crash-before-ignore.png'])
+                        write(folder/'owned-crash-capture-command.json',capture)
+                        if capture['code'] == 0:
+                            cleanup = command([build/'PlayCoverAX','dismiss-owned-crash',front_pid,folder/'owned-crash-ignore',owned[0]])
+                            write(folder/'owned-crash-ignore-command.json',cleanup)
+                            row['owned_crash_ignore_input_delivered'] = cleanup['code'] == 0
+                            if cleanup['code'] == 0:
+                                return host_command(bundle,True,allow_crash_cleanup=False)
             return result
         def host_state(bundle):
             result = host_command(bundle)
@@ -394,6 +409,17 @@ def main():
                 continue
             startup_capture(pid,'startup-visible-process')
             host_command(candidate['bundle_id'],True)
+            result['before_window_fit_screen'] = record_screen(candidate['bundle_id'],folder,'game-before-window-fit')
+            fitted = command([build/'PlayCoverAX','fit-game-window',pid,folder/'normal-os-window-fit'])
+            write(folder/'normal-os-window-fit-command.json',fitted)
+            result['ordinary_window_fit_verified'] = fitted['code'] == 0
+            if fitted['code']:
+                result['status'] = 'FAIL_ORDINARY_OS_WINDOW_FIT_NO_GAME_INPUT_SENT'
+                try:os.kill(pid,signal.SIGTERM)
+                except ProcessLookupError:pass
+                assert wait_for(lambda:not host_state(candidate['bundle_id']).get('applications'),10)
+                stage('window-fit-blocked-'+candidate['region'])
+                continue
             vision_initial = command([build/'VisionQA','snapshot','--pid',str(pid),'--proof-dir',folder/'vision-initial'],timeout=30)
             write(folder/'vision-initial-command.json',vision_initial)
             result['initial_screen'] = record_screen(candidate['bundle_id'],folder,'game-initial')
