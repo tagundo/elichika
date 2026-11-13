@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "scope": "Read-only static arithmetic binding for QA camera evidence; no runtime/feature/release approval",
+  "sources": {
+    "original_gl_b21_elf": {
+      "path": "/dev/shm/sifas-client-20261113/android/GL-b21/lib/arm64-v8a/libil2cpp.so",
+      "sha256": "39c2eed48009be7632be5aaf910d76b9316cd8c98f118e180c593b5615dd022e"
+    },
+    "frozen_gl_b22_apk": {
+      "path": "/tmp/sifas-android-qa-20261113/LLAS_GL_FOVMOD_b22.apk",
+      "sha256": "aa46e6d4e07218722f42e6e67e14aad1b86545277d7811420959d7fee2808c0c"
+    },
+    "candidate_elf_entry": {
+      "name": "lib/arm64-v8a/libil2cpp.so",
+      "bytes": 122617888,
+      "sha256": "cf195ed0ee15c6e1d269033716f8adf1ba1bfa76fe0fc3c39dc692f827a88da8"
+    },
+    "metadata": {
+      "path": "/dev/shm/sifas-client-20261113/android/GL-b21/assets/bin/Data/Managed/Metadata/global-metadata.dat",
+      "sha256": "c1ac82ff0b68351ffb3a58fce275b940c26316da64cdfc8201413382afdec14f",
+      "candidate_entry_identical": true
+    }
+  },
+  "correct_method": {
+    "class": "LLAS.Scene.Live.Components.CameraAspectCorrector",
+    "metadata_method_index": 100036,
+    "file_va": "0x2f5dde0",
+    "bytes": 168,
+    "sha256": "960f9a4aaa5aefed01756fd89b981512e769aea2744beb5a8d6e2fbf5d1a7f21",
+    "candidate_bytes_identical": true,
+    "raw_bytes": "e923bd6df44f01a9fd7b02a9fd830091f30300aa25000094740e40f9f40000b4e00314aae1031faa67474d94692a40bd081ca04e0a000014e0031faa5a3cc097e0031faae1031faa5f474d94692a40bde0031faa081ca04e533cc0970019291ee00314aae1031faa72474d94740e40f9e00313aad1ffff97692a40bd081ca04e740000b5e0031faa473cc097e00314aafd7b42a9f44f41a90019291ee1031faae923c36ce9484d14"
+  },
+  "camera_wrapper_method_pointers": [
+    {
+      "method": "get_fieldOfView",
+      "method_index": 18540,
+      "method_table_va": "0x42afba4",
+      "candidate_pointer_identical": true
+    },
+    {
+      "method": "set_fieldOfView",
+      "method_index": 18541,
+      "method_table_va": "0x42afc10",
+      "candidate_pointer_identical": true
+    },
+    {
+      "method": "get_orthographicSize",
+      "method_index": 18554,
+      "method_table_va": "0x42b01bc",
+      "candidate_pointer_identical": true
+    },
+    {
+      "method": "set_orthographicSize",
+      "method_index": 18555,
+      "method_table_va": "0x42b0228",
+      "candidate_pointer_identical": true
+    }
+  ],
+  "correct_instructions": [
+    {
+      "va": "0x2f5dde0",
+      "mnemonic": "stp",
+      "operands": "d9, d8, [sp, #-0x30]!",
+      "bytes": "e923bd6d"
+    },
+    {
+      "va": "0x2f5dde4",
+      "mnemonic": "stp",
+      "operands": "x20, x19, [sp, #0x10]",
+      "bytes": "f44f01a9"
+    },
+    {
+      "va": "0x2f5dde8",
+      "mnemonic": "stp",
+      "operands": "x29, x30, [sp, #0x20]",
+      "bytes": "fd7b02a9"
+    },
+    {
+      "va": "0x2f5ddec",
+      "mnemonic": "add",
+      "operands": "x29, sp, #0x20",
+      "bytes": "fd830091"
+    },
+    {
+      "va": "0x2f5ddf0",
+      "mnemonic": "mov",
+      "operands": "x19, x0",
+      "bytes": "f30300aa"
+    },
+    {
+      "va": "0x2f5ddf4",
+      "mnemonic": "bl",
+      "operands": "#0x2f5de88",
+      "bytes": "25000094"
+    },
+    {
+      "va": "0x2f5ddf8",
+      "mnemonic": "ldr",
+      "operands": "x20, [x19, #0x18]",
+      "bytes": "740e40f9"
+    },
+    {
+      "va": "0x2f5ddfc",
+      "mnemonic": "cbz",
+      "operands": "x20, #0x2f5de18",
+      "bytes": "f40000b4"
+    },
+    {
+      "va": "0x2f5de00",
+      "mnemonic": "mov",
+      "operands": "x0, x20",
+      "bytes": "e00314aa"
+    },
+    {
+      "va": "0x2f5de04",
+      "mnemonic": "mov",
+      "operands": "x1, xzr",
+      "bytes": "e1031faa"
+    },
+    {
+      "va": "0x2f5de08",
+      "mnemonic": "bl",
+      "operands": "#0x42afba4",
+      "bytes": "67474d94"
+    },
+    {
+      "va": "0x2f5de0c",
+      "mnemonic": "ldr",
+      "operands": "s9, [x19, #0x28]",
+      "bytes": "692a40bd"
+    },
+    {
+      "va": "0x2f5de10",
+      "mnemonic": "mov",
+      "operands": "v8.16b, v0.16b",
+      "bytes": "081ca04e"
+    },
+    {
+      "va": "0x2f5de14",
+      "mnemonic": "b",
+      "operands": "#0x2f5de3c",
+      "bytes": "0a000014"
+    },
+    {
+      "va": "0x2f5de18",
+      "mnemonic": "mov",
+      "operands": "x0, xzr",
+      "bytes": "e0031faa"
+    },
+    {
+      "va": "0x2f5de1c",
+      "mnemonic": "bl",
+      "operands": "#0x1f6cf84",
+      "bytes": "5a3cc097"
+    },
+    {
+      "va": "0x2f5de20",
+      "mnemonic": "mov",
+      "operands": "x0, xzr",
+      "bytes": "e0031faa"
+    },
+    {
+      "va": "0x2f5de24",
+      "mnemonic": "mov",
+      "operands": "x1, xzr",
+      "bytes": "e1031faa"
+    },
+    {
+      "va": "0x2f5de28",
+      "mnemonic": "bl",
+      "operands": "#0x42afba4",
+      "bytes": "5f474d94"
+    },
+    {
+      "va": "0x2f5de2c",
+      "mnemonic": "ldr",
+      "operands": "s9, [x19, #0x28]",
+      "bytes": "692a40bd"
+    },
+    {
+      "va": "0x2f5de30",
+      "mnemonic": "mov",
+      "operands": "x0, xzr",
+      "bytes": "e0031faa"
+    },
+    {
+      "va": "0x2f5de34",
+      "mnemonic": "mov",
+      "operands": "v8.16b, v0.16b",
+      "bytes": "081ca04e"
+    },
+    {
+      "va": "0x2f5de38",
+      "mnemonic": "bl",
+      "operands": "#0x1f6cf84",
+      "bytes": "533cc097"
+    },
+    {
+      "va": "0x2f5de3c",
+      "mnemonic": "fdiv",
+      "operands": "s0, s8, s9",
+      "bytes": "0019291e"
+    },
+    {
+      "va": "0x2f5de40",
+      "mnemonic": "mov",
+      "operands": "x0, x20",
+      "bytes": "e00314aa"
+    },
+    {
+      "va": "0x2f5de44",
+      "mnemonic": "mov",
+      "operands": "x1, xzr",
+      "bytes": "e1031faa"
+    },
+    {
+      "va": "0x2f5de48",
+      "mnemonic": "bl",
+      "operands": "#0x42afc10",
+      "bytes": "72474d94"
+    },
+    {
+      "va": "0x2f5de4c",
+      "mnemonic": "ldr",
+      "operands": "x20, [x19, #0x18]",
+      "bytes": "740e40f9"
+    },
+    {
+      "va": "0x2f5de50",
+      "mnemonic": "mov",
+      "operands": "x0, x19",
+      "bytes": "e00313aa"
+    },
+    {
+      "va": "0x2f5de54",
+      "mnemonic": "bl",
+      "operands": "#0x2f5dd98",
+      "bytes": "d1ffff97"
+    },
+    {
+      "va": "0x2f5de58",
+      "mnemonic": "ldr",
+      "operands": "s9, [x19, #0x28]",
+      "bytes": "692a40bd"
+    },
+    {
+      "va": "0x2f5de5c",
+      "mnemonic": "mov",
+      "operands": "v8.16b, v0.16b",
+      "bytes": "081ca04e"
+    },
+    {
+      "va": "0x2f5de60",
+      "mnemonic": "cbnz",
+      "operands": "x20, #0x2f5de6c",
+      "bytes": "740000b5"
+    },
+    {
+      "va": "0x2f5de64",
+      "mnemonic": "mov",
+      "operands": "x0, xzr",
+      "bytes": "e0031faa"
+    },
+    {
+      "va": "0x2f5de68",
+      "mnemonic": "bl",
+      "operands": "#0x1f6cf84",
+      "bytes": "473cc097"
+    },
+    {
+      "va": "0x2f5de6c",
+      "mnemonic": "mov",
+      "operands": "x0, x20",
+      "bytes": "e00314aa"
+    },
+    {
+      "va": "0x2f5de70",
+      "mnemonic": "ldp",
+      "operands": "x29, x30, [sp, #0x20]",
+      "bytes": "fd7b42a9"
+    },
+    {
+      "va": "0x2f5de74",
+      "mnemonic": "ldp",
+      "operands": "x20, x19, [sp, #0x10]",
+      "bytes": "f44f41a9"
+    },
+    {
+      "va": "0x2f5de78",
+      "mnemonic": "fdiv",
+      "operands": "s0, s8, s9",
+      "bytes": "0019291e"
+    },
+    {
+      "va": "0x2f5de7c",
+      "mnemonic": "mov",
+      "operands": "x1, xzr",
+      "bytes": "e1031faa"
+    },
+    {
+      "va": "0x2f5de80",
+      "mnemonic": "ldp",
+      "operands": "d9, d8, [sp], #0x30",
+      "bytes": "e923c36c"
+    },
+    {
+      "va": "0x2f5de84",
+      "mnemonic": "b",
+      "operands": "#0x42b0228",
+      "bytes": "e9484d14"
+    }
+  ],
+  "arithmetic_findings": [
+    "Correct calls UpdateCorrection first",
+    "Camera.get_fieldOfView result is divided by this.Correction and passed directly to Camera.set_fieldOfView",
+    "DefaultOrthographicSize is divided by this.Correction and passed directly to Camera.set_orthographicSize",
+    "No tan/atan transform occurs in this Correct method"
+  ],
+  "expected_qa_ratio": {
+    "named_max_correction": 2.0,
+    "named_min_correction": 0.5,
+    "max_over_min_raw_fieldOfView_or_orthographicSize": 0.25,
+    "inverse_factor": 4.0,
+    "conditions": "Same enabled/on-screen active target camera, own matched corrector has2/.5, held same base MV camera state; account for setter clamps explicitly or leave unproven",
+    "not_valid": "tan-half-FOV ratio is not the arithmetic implemented here"
+  },
+  "runtime_unproven": [
+    "Actual enabled/rendering target camera and corrected property samples",
+    "Same held MV camera base state across UI native roundtrips",
+    "All actual FOV/orientation behavior"
+  ]
+}

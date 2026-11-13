@@ -1,0 +1,370 @@
+{
+  "schema_version": 1,
+  "scope": "Exact original GL static field/type/code evidence and QA-only observer proposal; no runtime/feature/release approval",
+  "sources": {
+    "metadata": {
+      "path": "/dev/shm/sifas-client-20261113/android/GL-b21/assets/bin/Data/Managed/Metadata/global-metadata.dat",
+      "sha256": "c1ac82ff0b68351ffb3a58fce275b940c26316da64cdfc8201413382afdec14f",
+      "metadata_version": 24
+    },
+    "native_elf": {
+      "path": "/dev/shm/sifas-client-20261113/android/GL-b21/lib/arm64-v8a/libil2cpp.so",
+      "sha256": "39c2eed48009be7632be5aaf910d76b9316cd8c98f118e180c593b5615dd022e"
+    },
+    "metadata_parser": {
+      "path": "/dev/shm/sifas-client-20261113/mv/metadata.py",
+      "sha256": "e39bafd2e668e2311f923f28b99b1e0691fd9852cfab83c953b9194fffa900fa"
+    }
+  },
+  "records": [
+    {
+      "type_definition_index": 5702,
+      "name": "LLAS.SuitChangePopup",
+      "type_index": 128783,
+      "declaring_type_index": -1,
+      "parent_type_index": 17114,
+      "fields": [
+        {
+          "index": 22543,
+          "name": "suitChangePopupSuitTileView",
+          "typeindex": 128785,
+          "token": 67111033
+        },
+        {
+          "index": 22544,
+          "name": "toggleRoot",
+          "typeindex": 122613,
+          "token": 67111034
+        },
+        {
+          "index": 22545,
+          "name": "toggleDescription",
+          "typeindex": 128022,
+          "token": 67111035
+        },
+        {
+          "index": 22546,
+          "name": "toggle",
+          "typeindex": 128786,
+          "token": 67111036
+        }
+      ]
+    },
+    {
+      "type_definition_index": 5703,
+      "name": ".Order",
+      "type_index": 17115,
+      "declaring_type_index": 128783,
+      "parent_type_index": 128028,
+      "fields": [
+        {
+          "index": 22547,
+          "name": "<MemberSuitVO>k__BackingField",
+          "typeindex": 128408,
+          "token": 67142527
+        },
+        {
+          "index": 22548,
+          "name": "<MemberSuitVOs>k__BackingField",
+          "typeindex": 128790,
+          "token": 67142528
+        },
+        {
+          "index": 22549,
+          "name": "<RinaBoardToggleVO>k__BackingField",
+          "typeindex": 128791,
+          "token": 67142529
+        },
+        {
+          "index": 22550,
+          "name": "<OnChangeSuit>k__BackingField",
+          "typeindex": 128792,
+          "token": 67142530
+        }
+      ]
+    },
+    {
+      "type_definition_index": 13663,
+      "name": "LLAS.Scene.EntryPoint.SuitChangePopupSuitTileView",
+      "type_index": 151497,
+      "declaring_type_index": -1,
+      "parent_type_index": 84083,
+      "fields": []
+    },
+    {
+      "type_definition_index": 15597,
+      "name": "LLAS.Components.UI.ProductTileViewVerticalController`2",
+      "type_index": 156964,
+      "declaring_type_index": -1,
+      "parent_type_index": 156966,
+      "fields": []
+    },
+    {
+      "type_definition_index": 15671,
+      "name": "LLAS.Components.UI.ProductSimpleVirtualCollectionViewController`4",
+      "type_index": 157175,
+      "declaring_type_index": -1,
+      "parent_type_index": 157177,
+      "fields": []
+    },
+    {
+      "type_definition_index": 15677,
+      "name": "LLAS.Components.UI.ProductVirtualCollectionViewController`5",
+      "type_index": 157202,
+      "declaring_type_index": -1,
+      "parent_type_index": 157204,
+      "fields": [
+        {
+          "index": 69911,
+          "name": "collectionView",
+          "typeindex": 157209,
+          "token": 67133457
+        }
+      ]
+    },
+    {
+      "type_definition_index": 15264,
+      "name": "LLAS.Components.UI.ProductCellViewController`3",
+      "type_index": 155984,
+      "declaring_type_index": -1,
+      "parent_type_index": 155986,
+      "fields": [
+        {
+          "index": 68711,
+          "name": "cellBridge",
+          "typeindex": 155990,
+          "token": 67132709
+        },
+        {
+          "index": 68712,
+          "name": "<DeliveryObject>k__BackingField",
+          "typeindex": 155991,
+          "token": 67132710
+        },
+        {
+          "index": 68713,
+          "name": "<CellTemplate>k__BackingField",
+          "typeindex": 122613,
+          "token": 67132711
+        }
+      ]
+    },
+    {
+      "type_definition_index": 8697,
+      "name": "LLAS.DM.ValueObject.MemberSuitVO",
+      "type_index": 17118,
+      "declaring_type_index": -1,
+      "parent_type_index": 1,
+      "fields": [
+        {
+          "index": 33936,
+          "name": "<MasterId>k__BackingField",
+          "typeindex": 109781,
+          "token": 67114151
+        },
+        {
+          "index": 33937,
+          "name": "<MemberMasterId>k__BackingField",
+          "typeindex": 109781,
+          "token": 67114152
+        },
+        {
+          "index": 33938,
+          "name": "<ThumbnailImageAsset>k__BackingField",
+          "typeindex": 125682,
+          "token": 67114153
+        },
+        {
+          "index": 33939,
+          "name": "<HasSuitBonus>k__BackingField",
+          "typeindex": 109782,
+          "token": 67114154
+        },
+        {
+          "index": 33940,
+          "name": "<Name>k__BackingField",
+          "typeindex": 125676,
+          "token": 67114155
+        }
+      ]
+    },
+    {
+      "type_definition_index": 6025,
+      "name": "LLAS.PopupContentBase`1",
+      "fields": [
+        {
+          "index": 24180,
+          "name": "<PopupOrder>k__BackingField",
+          "typeindex": 129656,
+          "token": 67111920
+        }
+      ]
+    }
+  ],
+  "offline_type_table": {
+    "file_va": "0x69cb660",
+    "validated_anchors": [
+      {
+        "type_index": 128783,
+        "expected_type_definition_index": 5702,
+        "type_pointer_file_va": "0x52c7190",
+        "kind": 18
+      },
+      {
+        "type_index": 17118,
+        "expected_type_definition_index": 8697,
+        "type_pointer_file_va": "0x5265410",
+        "kind": 18
+      },
+      {
+        "type_index": 151497,
+        "expected_type_definition_index": 13663,
+        "type_pointer_file_va": "0x52c71d0",
+        "kind": 18
+      }
+    ],
+    "member_suit_array_field_type_index": 128790,
+    "array_kind": "IL2CPP_TYPE_SZARRAY=0x1d",
+    "element_type_definition_index": 8697
+  },
+  "closed_view_inheritance": [
+    "LLAS.Scene.EntryPoint.SuitChangePopupSuitTileView",
+    "LLAS.Components.UI.ProductTileViewVerticalController<MemberSuitVO,CellBridge>",
+    "LLAS.Components.UI.ProductSimpleVirtualCollectionViewController<MemberSuitVO,CellBridge,ProductTileViewVertical,ITilingLayout>",
+    "LLAS.Components.UI.ProductVirtualCollectionViewController<IList<MemberSuitVO>,MemberSuitVO,CellBridge,ProductTileViewVertical,ITilingLayout>",
+    "LLAS.Components.UI.ProductCellViewController<IList<MemberSuitVO>,MemberSuitVO,CellBridge>",
+    "LLAS.UIComponent<IList<MemberSuitVO>>"
+  ],
+  "complete_field_chain": [
+    "active LLAS.SuitChangePopup",
+    "<PopupOrder>k__BackingField inherited from LLAS.PopupContentBase<SuitChangePopup.Order>",
+    "SuitChangePopup.Order.<MemberSuitVOs>k__BackingField: MemberSuitVO[]",
+    "every array element: MemberSuitVO.<MasterId>k__BackingField and <MemberMasterId>k__BackingField",
+    "popup.suitChangePopupSuitTileView.<DeliveryObject>k__BackingField must reference EXACT SAME Order array"
+  ],
+  "native_static_support": {
+    "getter": {
+      "index": 38301,
+      "name": "get_MemberSuitVOs",
+      "classindex": 5703,
+      "returntype": 128788,
+      "paramstart": -1,
+      "generic": -1,
+      "methodindex": 110806,
+      "token": 100715927,
+      "flags": 2182,
+      "params": 0
+    },
+    "getter_file_va": "0x247169c",
+    "getter_bytes": "004040f9c0035fd6",
+    "array_field_offset_from_readonly_getter_disassembly": "0x80",
+    "onapply_passes_order_array_to_referenced_view": [
+      {
+        "address": "0x24713e8",
+        "mnemonic": "ldr",
+        "operands": "x21, [x20, #0x28]"
+      },
+      {
+        "address": "0x24713ec",
+        "mnemonic": "cbnz",
+        "operands": "x19, #0x24713f8"
+      },
+      {
+        "address": "0x24713f0",
+        "mnemonic": "mov",
+        "operands": "x0, xzr"
+      },
+      {
+        "address": "0x24713f4",
+        "mnemonic": "bl",
+        "operands": "#0x1f6cf84"
+      },
+      {
+        "address": "0x24713f8",
+        "mnemonic": "ldr",
+        "operands": "x22, [x19, #0x80]"
+      },
+      {
+        "address": "0x24713fc",
+        "mnemonic": "cbnz",
+        "operands": "x21, #0x2471408"
+      },
+      {
+        "address": "0x2471400",
+        "mnemonic": "mov",
+        "operands": "x0, xzr"
+      },
+      {
+        "address": "0x2471404",
+        "mnemonic": "bl",
+        "operands": "#0x1f6cf84"
+      },
+      {
+        "address": "0x2471408",
+        "mnemonic": "adrp",
+        "operands": "x8, #0x70b7000"
+      },
+      {
+        "address": "0x247140c",
+        "mnemonic": "ldr",
+        "operands": "x8, [x8, #0x2c8]"
+      },
+      {
+        "address": "0x2471410",
+        "mnemonic": "mov",
+        "operands": "x0, x21"
+      },
+      {
+        "address": "0x2471414",
+        "mnemonic": "mov",
+        "operands": "x1, x22"
+      },
+      {
+        "address": "0x2471418",
+        "mnemonic": "ldr",
+        "operands": "x2, [x8]"
+      },
+      {
+        "address": "0x247141c",
+        "mnemonic": "bl",
+        "operands": "#0x2b41dd8"
+      }
+    ],
+    "onapply_excerpt_sha256": "7a7897bf597e8bb5a2a7b1c15c45b6439c18c4b5a99fbf2348db977ebea852d5",
+    "limit": "Static disassembly only; no getter, setup, Apply or callback was executed"
+  },
+  "completeness_gates": [
+    "exactly one active SuitChangePopup",
+    "correct nested Order declaring class and active referenced SuitTileView",
+    "Order field is actual rank1 array with exact MemberSuitVO element class",
+    "N is integer1..4096; never truncate an over-bound array",
+    "all N elements have positive integer suit/member IDs and same selected character",
+    "view DeliveryObject is EXACT SAME Order array pointer and equal length",
+    "array pointer/count/every logical row and popup/view bindings unchanged on reread in callback",
+    "host must require two stable complete callbacks for same target character, array length and raw logical rows",
+    "host captures baseline BEFORE first MVDriver.step that can duplicate-edit, and repeats after full restore/reopen",
+    "host compares raw logical ID multiplicities; never dedup existing clones; selected ID presence is diagnostic only"
+  ],
+  "runtime_unproven": [
+    "array/reference binding in actual current game process",
+    "before/after client catalog completeness and multiplicity preservation",
+    "full MV duplicate/different-suit/12instance/persistence behavior"
+  ],
+  "fragment": {
+    "path": "/tmp/sifas-native-download-20261113/catalog_observer.fragment.js",
+    "sha256": "510cb124a6936a7a4f8040de340b65b500c141693304ba05c68420a509bc8aee",
+    "syntax_check": "node --check PASS"
+  },
+  "structural_mock_tests": {
+    "path": "/tmp/sifas-native-download-20261113/test_catalog_observer.cjs",
+    "sha256": "e5d0ba94befb86df327c35a61bce721abd7a734386c6dfca68d238d16a02d21e",
+    "passed": 8,
+    "scope": "Mocks validate failclosed field/array shape and multiplicity policy only; no actual game catalog/feature/runtime approval"
+  },
+  "integration_contract": {
+    "function": "observeExistingSuitCatalogs()",
+    "output": "{complete,suitCatalogs:[{id,path,active,complete,memberId,arrayLength,rows:[{memberId,suitId}],...binding/error evidence}],errors}",
+    "requirement": "Multiple active popups force every flattened record incomplete; no implicit filtering of that ambiguity",
+    "runtime_calls": "Existing platform visibility/identity helpers and bridge native metadata/array reads only; no C# collection/property methods, callbacks, setters, count delegates, enumerators, or sorting"
+  }
+}

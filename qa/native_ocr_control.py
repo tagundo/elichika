@@ -29,6 +29,10 @@ import feature_client_smoke as semantics
 from host_go_fixture import HostGoFixture
 
 
+class NativeRunDeadline(BaseException):
+    """A diagnostic helper must never consume the one-shot overall deadline."""
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -197,7 +201,11 @@ def main():
     parser.add_argument('--evidence',type=Path,required=True)
     parser.add_argument('--serial',default='127.0.0.1:5555')
     parser.add_argument('--max-seconds',type=int,default=600)
-    args=parser.parse_args(); assert 120<=args.max_seconds<=600
+    parser.add_argument('--mv-focus',action='store_true',help='Continue native download/Home into strictly observed MV cases; no unobserved native case passes')
+    parser.add_argument('--unity-agent',type=Path)
+    parser.add_argument('--frida-server',type=Path)
+    args=parser.parse_args(); assert 120<=args.max_seconds<=(2400 if args.mv_focus else 600)
+    if args.mv_focus:assert args.unity_agent and args.frida_server
     fixture=json.loads(args.fixtures.read_text());client=fixture['clients']['GL'];package=client['package']
     assert digest(args.client_apk.read_bytes())==client['sha256']
     source=fixture['server']['source_commit']
@@ -213,9 +221,15 @@ def main():
       'client_sha256':client['sha256'],'client_asset_id':client['asset_id'],
       'server_fixture':host.binding,'run_head':os.environ.get('GITHUB_SHA'),
       'verified':{case:False for case in semantics.REQUIRED_CASES},'actions':[], 'observations':[]}
+    resources=None
+    if args.mv_focus:
+        from resource_phases import ResourcePhases
+        resources=ResourcePhases(device,host,args.evidence)
+        report['scope']='Native-only initial download/Home, then strict MV focus; every unobserved native case remains false and requires separate final evidence review'
     def save():
         report['elapsed_seconds']=round(time.monotonic()-started,3)
         (args.evidence/'native-only-control-report.json').write_text(json.dumps(report,indent=2)+'\n')
+        if args.mv_focus:(args.evidence/'mv-focus-report.json').write_text(json.dumps(report,indent=2)+'\n')
     def native(label):
         nonlocal native_index
         native_index+=1;label=f'{label}-capture-{native_index:03d}'
@@ -276,13 +290,14 @@ def main():
            'ocr_transforms':[full,title_meta,*button_meta],'capture_elapsed':round(captured-started,3)}
         (args.evidence/(label+'.json')).write_text(json.dumps(metadata,indent=2)+'\n')
         return action,surface,label,captured
-    def deadline(signum,frame):raise TimeoutError('Native-only control overall wall bound reached')
+    def deadline(signum,frame):raise NativeRunDeadline('Native/MV overall wall bound reached; remaining cases are unobserved')
     previous=signal.signal(signal.SIGALRM,deadline);signal.setitimer(signal.ITIMER_REAL,args.max_seconds)
     try:
         assert device.read(semantics.MARKER).decode().strip()=='disposable-private-client-qa'
         assert device.shell('getprop','ro.product.cpu.abi')=='arm64-v8a'
         assert not re.search(r'frida[-_](?:agent|server|gadget)',device.shell('ps','-A'),re.I)
         host.start(device)
+        if resources:resources.capture('before-client-install')
         device.adb('install','-r',str(args.client_apk),timeout=180)
         installed=device.shell('pm','path',package).splitlines()[0].removeprefix('package:')
         assert device.shell('sha256sum',installed).split()[0]==client['sha256']
@@ -323,7 +338,16 @@ def main():
             if first and first['kind']=='download-settings-observed':
                 assert requests['/login/login']>0,'Rendered download modal without genuine login is insufficient'
                 assert {'title-start','terms-agree'}<=seen,'Native control did not observe and normally select both Title and Agree'
-                report['status']='PARTIAL_NATIVE_STARTUP_PROGRESS';report['observed_download_settings']=True;break
+                report['observed_download_settings']=True
+                if args.mv_focus:
+                    from native_mv_focus import run_mv_focus
+                    report['status']='RUNNING_MV_FOCUS'
+                    result=run_mv_focus({'args':args,'device':device,'host':host,'report':report,
+                        'resources':resources,'started':started,'package':package,'capture':capture,
+                        'lifetime':lifetime,'identity':identity,'native':native,'save':save})
+                    report['mv_focus']=result;report['status']=result['status']
+                else:report['status']='PARTIAL_NATIVE_STARTUP_PROGRESS'
+                break
             if first and first['kind']==next_initial_action(seen):
                 proof=identity('before-'+first['kind']+'-pair-'+str(pair_failures.get(first['kind'],0)))
                 time.sleep(.3)
@@ -355,7 +379,9 @@ def main():
                              ('native-control-crashes.txt',('logcat','-b','crash','-d'))]:
             try:(args.evidence/name).write_text(device.shell(*command,timeout=20)+'\n')
             except Exception as error:report['observations'].append({'cleanup':name,'error':type(error).__name__})
-        try:identity('last-alive')
+        try:
+            if report.get('observer_loaded'):lifetime()
+            else:identity('last-alive')
         except Exception as error:report['observations'].append({'last_alive_identity':type(error).__name__})
         try:device.shell('am','force-stop',package)
         except Exception:pass
@@ -371,11 +397,11 @@ def main():
                     row=db.execute('SELECT COUNT(*),MAX(s.last_login_at) FROM u_authentication a JOIN u_status s ON s.user_id=a.user_id WHERE a.authorization_count>0 AND s.last_login_at>=?',(run_start,)).fetchone()
                     report['actual_client_authentication']={'successful_recent_accounts':row[0],'latest_login_at':row[1],'minimum_login_at':run_start}
         except Exception as error:report['authentication_observation_error']=type(error).__name__
-        if report['status']=='PARTIAL_NATIVE_STARTUP_PROGRESS' and not report.get('actual_client_authentication',{}).get('successful_recent_accounts',0):
+        if (report['status']=='PARTIAL_NATIVE_STARTUP_PROGRESS' or report['status']=='MV_FOCUS_CASES_VERIFIED_NATIVE_REVIEW_PENDING') and not report.get('actual_client_authentication',{}).get('successful_recent_accounts',0):
             report['status']='FAIL';report['error']='Rendered download settings and login request lacked recent authenticated account proof'
         report['client_bytes_unchanged']=digest(args.client_apk.read_bytes())==client['sha256']
         save()
-    return 0 if report['status']=='PARTIAL_NATIVE_STARTUP_PROGRESS' else 1
+    return 0 if report['status'] in ('PARTIAL_NATIVE_STARTUP_PROGRESS','MV_FOCUS_CASES_VERIFIED_NATIVE_REVIEW_PENDING') else 1
 
 
 if __name__=='__main__':raise SystemExit(main())

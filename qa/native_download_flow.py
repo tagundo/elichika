@@ -1,0 +1,213 @@
+"""Pure, fail-closed native OCR/pixel plans for the owned GL QA run.
+
+No input is executed here. The caller must validate two fresh screenshots,
+current native Surface, process lifetime and age before executing any plan.
+The real reference covers only the initial Full-selected clipped chooser.
+English completion and Home recognition remain runtime-unverified candidates.
+"""
+from __future__ import annotations
+
+import math
+import re
+
+
+MIN_CONFIDENCE = 75
+
+
+def _box(words):
+    return [min(w['bounds'][0] for w in words), min(w['bounds'][1] for w in words),
+            max(w['bounds'][2] for w in words), max(w['bounds'][3] for w in words)]
+
+
+def _center(box):
+    return ((box[0]+box[2])/2, (box[1]+box[3])/2)
+
+
+def _text(word):
+    return word['text'].casefold().strip('.,:;!?')
+
+
+def _usable(words, width, height):
+    result=[]
+    for word in words:
+        bounds=word.get('bounds') or []
+        score=word.get('confidence',-1)
+        if not isinstance(score,(int,float)) or not math.isfinite(score) or score<MIN_CONFIDENCE:continue
+        if len(bounds)!=4 or not all(isinstance(v,(int,float)) and math.isfinite(v) for v in bounds):continue
+        if not (0<=bounds[0]<bounds[2]<=width and 0<=bounds[1]<bounds[3]<=height):continue
+        if isinstance(word.get('text'),str) and word['text'].strip():result.append(word)
+    return result
+
+
+def phrase(words, first, second):
+    """One exact ordered adjacent pair on one actual OCR baseline."""
+    matches=[]
+    for a in words:
+        if a['text'].casefold()!=first.casefold():continue
+        for b in words:
+            if b['text'].casefold()!=second.casefold():continue
+            ab,bb=a['bounds'],b['bounds'];h=max(ab[3]-ab[1],bb[3]-bb[1])
+            if (ab[2]<=bb[0]<=ab[2]+h*3 and abs(_center(ab)[1]-_center(bb)[1])<=h*.65):
+                matches.append({'text':first+' '+second,'bounds':_box([a,b]),
+                                'confidence':min(a['confidence'],b['confidence'])})
+    return matches[0] if len(matches)==1 else None
+
+
+def _exact(words, text):
+    matches=[w for w in words if w['text'].casefold()==text.casefold()]
+    return matches[0] if len(matches)==1 else None
+
+
+def _orange_circles(image, region, text_height):
+    """Current saturated orange annulus/dot; never remembered screen positions."""
+    width,height=image.size;left,top,right,bottom=map(int,region)
+    left=max(0,left);top=max(0,top);right=min(width,right);bottom=min(height,bottom)
+    pixels=image.convert('RGB').load()
+    points=set()
+    for y in range(top,bottom):
+        for x in range(left,right):
+            r,g,b=pixels[x,y]
+            if r>=230 and 70<=g<=210 and b<=80 and r-g>=30:points.add((x,y))
+    parts=[]
+    while points:
+        initial=points.pop();pending=[initial];members=[initial]
+        while pending:
+            x,y=pending.pop()
+            for near in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
+                if near in points:points.remove(near);pending.append(near);members.append(near)
+        parts.append({'bounds':[min(x for x,y in members),min(y for x,y in members),
+                                max(x for x,y in members)+1,max(y for x,y in members)+1],
+                      'pixels':len(members)})
+    # The ring and inner disk are distinct components of one radio control.
+    groups=[]
+    for part in sorted(parts,key=lambda p:p['pixels'],reverse=True):
+        b=part['bounds'];related=[]
+        for index,group in enumerate(groups):
+            g=group['bounds']
+            if min(b[2],g[2])>max(b[0],g[0]) and min(b[3],g[3])>max(b[1],g[1]):related.append(index)
+        if not related:groups.append(part);continue
+        merged=[part]+[groups[index] for index in related]
+        for index in reversed(related):groups.pop(index)
+        groups.append({'bounds':[min(p['bounds'][0] for p in merged),min(p['bounds'][1] for p in merged),
+                                  max(p['bounds'][2] for p in merged),max(p['bounds'][3] for p in merged)],
+                       'pixels':sum(p['pixels'] for p in merged)})
+    circles=[]
+    for group in groups:
+        b=group['bounds'];w,h=b[2]-b[0],b[3]-b[1]
+        if (text_height*.5<=w<=text_height*1.8 and text_height*.5<=h<=text_height*1.8
+                and .65<=w/h<=1.55 and .12<=group['pixels']/(w*h)<=.85):
+            circles.append({**group,'center':list(_center(b))})
+    return circles
+
+
+def _gray_annulus(image, center, radius):
+    """Verify an actually visible unselected circle in at least six octants."""
+    pixels=image.convert('RGB').load();width,height=image.size;cx,cy=center
+    sectors=set();count=0
+    for y in range(max(0,int(cy-radius*1.35)),min(height,int(cy+radius*1.35)+1)):
+        for x in range(max(0,int(cx-radius*1.35)),min(width,int(cx+radius*1.35)+1)):
+            distance=math.hypot(x-cx,y-cy)
+            if not radius*.65<=distance<=radius*1.25:continue
+            values=pixels[x,y]
+            if 130<=min(values) and max(values)<=245 and max(values)-min(values)<=18:
+                sectors.add(int((math.atan2(y-cy,x-cx)+math.pi)/(math.pi/4))%8);count+=1
+    return {'present':len(sectors)>=6 and count>=radius*2,'covered_octants':len(sectors),'gray_pixels':count}
+
+
+def _plan(kind, caption, bounds, confidence, **extra):
+    return {'kind':kind,'caption':caption,'bounds':bounds,'confidence':confidence,**extra}
+
+
+def analyze(image, metadata, phase):
+    """Return state, optional ordinary-input plan, and read-only observations.
+
+    Phases: settings, download_wait, home_wait. Completion/Home rules have no
+    real GL reference yet and remain candidates until independently observed.
+    """
+    if phase not in ('settings','download_wait','home_wait'):raise ValueError('Unknown native download phase')
+    width,height=image.size
+    surface=metadata.get('surface') or {}
+    if surface!={'left':0,'top':0,'right':width,'bottom':height}:
+        raise ValueError('Native Surface does not match the current screenshot')
+    words=_usable(metadata.get('words') or [],width,height)
+    buttons=_usable(metadata.get('button_words') or [],width,height)
+    result={'state':'unrecognized','action':None,'observations':{
+        'phase':phase,'surface':surface,'source_screenshot_sha256':metadata.get('screenshot_sha256'),
+        'minimum_confidence':MIN_CONFIDENCE}}
+    observation=result['observations']
+    if phase=='settings':
+        full=phrase(words,'Full','Download');light=phrase(words,'Light','Download')
+        ok=_exact(buttons,'OK');cancel=_exact(words,'Cancel')
+        observation.update({'full_caption':full,'light_caption':light,'ok_caption':ok,'cancel_caption':cancel})
+        if not all((full,light,ok,cancel)):
+            result['state']='blocked-settings-caption-context';return result
+        fb,lb=full['bounds'],light['bounds'];h=max(fb[3]-fb[1],lb[3]-lb[1])
+        fcy,lcy=_center(fb)[1],_center(lb)[1];gap=lcy-fcy
+        footer=min(ok['bounds'][1],cancel['bounds'][1]);content_bottom=footer-h*1.2
+        if not (h*2<gap<h*20 and abs(fb[0]-lb[0])<=h and footer>lb[3]+h):
+            result['state']='blocked-settings-row-layout';return result
+        # Both alternatives and the footer must belong to one visible modal.
+        context_words={_text(w) for w in words if w['bounds'][3]<fb[1]}
+        if not ('data' in context_words and 'settings' in context_words):
+            result['state']='blocked-settings-header-context';return result
+        left=min(fb[0],lb[0]);region=[left-h*4,fb[1]-h*.5,left-h*.2,content_bottom]
+        circles=_orange_circles(image,region,h)
+        observation.update({'orange_radio_markers':circles,'content_bottom':content_bottom})
+        if len(circles)!=1:
+            result['state']='blocked-radio-not-unique';return result
+        marker=circles[0];mx,my=marker['center'];radius=max(marker['bounds'][2]-marker['bounds'][0],marker['bounds'][3]-marker['bounds'][1])/2
+        selected=[]
+        for name,cy in (('full',fcy),('light',lcy)):
+            if h*.5<my-cy<min(gap*.8,h*6):selected.append((name,cy))
+        if len(selected)!=1:
+            result['state']='blocked-marker-not-owned-by-one-row';return result
+        selected_name,selected_cy=selected[0];offset=my-selected_cy
+        centers={'full':[mx,fcy+offset],'light':[mx,lcy+offset]}
+        full_visible=all(center[1]-radius>fb[1]-h and center[1]+radius<content_bottom for center in centers.values())
+        observation.update({'selected_radio':selected_name,'derived_radio_centers':centers,
+                            'radio_radius':radius,'both_radio_extents_visible':full_visible})
+        if not full_visible:
+            start=[int(_center(lb)[0]),int(lcy)];end=[start[0],int(fcy-h)]
+            if not (fb[1]-gap<end[1]<start[1]<footer-h):
+                result['state']='blocked-scroll-geometry';return result
+            result['state']='settings-radio-clipped'
+            result['action']=_plan('scroll-download','Full Download / Light Download',_box([full,light]),
+                min(full['confidence'],light['confidence']),start=start,end=end,duration_ms=650)
+            return result
+        other='light' if selected_name=='full' else 'full'
+        gray=_gray_annulus(image,centers[other],radius)
+        observation['unselected_radio']={'row':other,**gray}
+        if not gray['present']:
+            result['state']='blocked-unselected-radio-not-observed';return result
+        if selected_name=='full':
+            result['state']='settings-full-selected'
+            result['action']=_plan('choose-light','Light Download',lb,light['confidence'])
+        else:
+            result['state']='settings-light-exclusively-selected'
+            result['action']=_plan('confirm-light','OK',ok['bounds'],ok['confidence'])
+        return result
+    if phase=='download_wait':
+        complete=phrase(words,'Download','Complete')
+        close=_exact(buttons,'Close')
+        observation['completion_reference_status']='No real GL completion reference yet; runtime must retain the actual matching captures'
+        observation.update({'completion_caption':complete,'close_caption':close})
+        if complete and close and complete['bounds'][3]<close['bounds'][1]:
+            result['state']='download-complete-candidate'
+            result['action']=_plan('close-complete','Close',close['bounds'],close['confidence'])
+        elif complete:result['state']='blocked-complete-without-exact-close'
+        else:result['state']='downloading-or-other-screen'
+        return result
+    footer=[w for w in words if w['bounds'][1]>=height*.70]
+    rank=_exact([w for w in words if w['bounds'][3]<=height*.35],'Rank')
+    home=_exact(footer,'Home');captions={}
+    for name in ('Story','Scouting','Shop'):
+        found=_exact(footer,name)
+        if found:captions[name]=found['bounds']
+    for name,pair in (('School Idols',('School','Idols')),('Live Shows',('Live','Shows'))):
+        found=phrase(footer,*pair)
+        if found:captions[name]=found['bounds']
+    observation.update({'home_reference_status':'Native visual candidate only; actual Unity Home scene must be verified after independent native-TID-bound read-only attach',
+                        'home_caption':home,'rank_caption':rank,'other_footer_captions':captions})
+    if home and rank and len(captions)>=2:result['state']='native-home-candidate'
+    else:result['state']='waiting-for-native-home-candidate'
+    return result

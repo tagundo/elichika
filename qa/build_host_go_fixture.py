@@ -135,6 +135,12 @@ def main():
     run(['go', 'build', '-trimpath', '-o', str(seeder), str(args.seed_source.resolve(strict=True))],
         source, environment, output / 'seed-build.log')
     require(clean_go_sources(source) == sources, 'Go source bytes changed during compilation')
+    compiler_environment=json.loads(subprocess.check_output(['go','env','-json','GOOS','GOARCH','CGO_ENABLED','GOFLAGS','GOTOOLCHAIN','GOEXPERIMENT'],cwd=source,env=environment,text=True))
+    require(compiler_environment.get('GOOS')=='linux' and compiler_environment.get('GOARCH')=='arm64' and
+            compiler_environment.get('CGO_ENABLED')=='0' and not compiler_environment.get('GOFLAGS') and
+            not compiler_environment.get('GOEXPERIMENT'),'Unexpected extra Go target/compiler flags')
+    server_build_info=subprocess.check_output(['go','version','-m',str(binary)],cwd=source,env=environment,text=True)
+    seeder_build_info=subprocess.check_output(['go','version','-m',str(seeder)],cwd=source,env=environment,text=True)
     # A clean compile has completed. Before executing either Go program, omit
     # only the known legacy-account template from this fresh disposable runtime.
     CURRENT_STAGE = 'prepare_configuration_config.json'
@@ -165,6 +171,10 @@ def main():
                'runtime_root': str(source), 'binary_path': str(binary), 'private_account_file': str(private),
                'server_fixture': binding, 'config_sha256': file_sha256(source / 'config.json'),
                'seed_helper_sha256': file_sha256(args.seed_source),
+               'seeder_binary_sha256': file_sha256(seeder),
+               'compiler_environment': compiler_environment,
+               'server_build_info': server_build_info,
+               'seeder_build_info': seeder_build_info,
                'legacy_template_omitted': {'name': 'yumemichi_userdata.db', 'sha256': LEGACY_SHA256,
                                            'scope': 'Only this fresh task-owned Actions runtime'},
                'synthetic_accounts': 1, 'go_version': version,
