@@ -1,12 +1,12 @@
 {
   "bridge": "0.9.1",
   "frida_server_and_client": "16.6.6",
-  "agent_version": 4,
+  "agent_version": 5,
   "bundle": "unity_ui.bundle.js",
-  "bytes": 206725,
-  "sha256": "63b3e9a0e01af10e5034fb5ea26a7af3cad1f4e74efc07c1d98d408f51e7c43e",
-  "observer_sha256": "652da17218f1e590183217ff3bfffa509feeb79c7852dd103cff06f2499c0c50",
+  "bytes": 207048,
+  "sha256": "912d91190c529bb21fdb9682cf66b987174938412ba2365af2a7adae91986bb5",
+  "observer_sha256": "37ed015e0dc5ed38cad1dd2a4cf128640d08ce8ac6617e534f006a88d7f1f05c",
   "bridge_sha256": "426db768c062908b685d713ee27f87b5eea3d8ea2a4d28cf8db465a6900da787",
-  "runtime_validation": "Pending actual cached native-TID-bound observer; V7 detached control separately authenticated and reached normal download modal",
+  "runtime_validation": "Pending settled-modal control; V8 cached native binding and responsive frames proved, but ordinary post-login loading/modal progress was unobserved",
   "dispatcher_sha256": "844f52ae68019e1c30b54cc8164e68e664d1a675d22e6c6b02f4f4d068a89e65"
 }

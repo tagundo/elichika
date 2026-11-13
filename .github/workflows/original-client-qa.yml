@@ -159,7 +159,7 @@ jobs:
             --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
             --server-source server-source --evidence evidence \
             --unity-agent qa/unity_ui.bundle.js --max-seconds "$QA_SECONDS" \
-            --settings-orientation portrait --settings-scalar 2.0 --fast-intro --download-modal-diagnostic || qa_exit=$?
+            --settings-orientation portrait --settings-scalar 2.0 --fast-intro --download-modal-diagnostic --settled-download-modal-control || qa_exit=$?
           if [ "$qa_exit" = 124 ] || [ "$qa_exit" = 137 ]; then
             python3 - <<'PYTIMEOUT'
           import json

@@ -5,7 +5,7 @@
 (function () {
   "use strict";
   var ready = false, lastError = "", runtime = {}, classCache = {}, initPending = false;
-  var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 4;
+  var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 5;
   var QA_IDENTITY = {pid:Process.id,architecture:Process.arch,fridaVersion:Frida.version};
   var TEXT_TYPES = ["UnityEngine.UI.Text", "TMPro.TMP_Text", "Jigbox.Components.TextView", "LLAS.Components.UI.ProductTextView"];
   var DEFAULT_TYPES = ["UnityEngine.UI.Button", "UnityEngine.UI.Toggle", "UnityEngine.UI.InputField", "TMPro.TMP_InputField", "UnityEngine.UI.ScrollRect"].concat(TEXT_TYPES);
@@ -480,7 +480,13 @@ function splashFadeRGBA(splash) {
       var info={id:String(instanceId(popup)),path:hierarchy(transform(popup)),options:[],toggles:[],downloadType:numericField(popup,"downloadType")};
       ["fullDownloadItemText","lightnessDownloadItemText","autoDeleteDownloadItemText"].forEach(function(name){
         var caption=mvReadField(popup,name);
-        if(exists(caption))info.options.push({role:name,path:hierarchy(transform(caption)),text:componentText(caption)});
+        if(exists(caption)) {
+          // The frozen popup references a DynamicTextLocalizer. Its existing
+          // textView field owns the actually displayed ProductTextView string.
+          var view=mvReadField(caption,"textView");
+          if(exists(view))info.options.push({role:name,referencePath:hierarchy(transform(caption)),
+            path:hierarchy(transform(view)),text:componentText(view)});
+        }
       });
       var group=mvReadField(popup,"productToggleGroup"),list=mvReadField(group,"toggles"),items=mvReadField(list,"_items"),size=mvNumber(mvReadField(list,"_size"));
       if(items&&typeof items.length==="number"&&size!==null)for(var j=0;j<size&&j<items.length&&j<8;j++) {
@@ -494,7 +500,7 @@ function splashFadeRGBA(splash) {
     return result;
   }
   function featureState() {
-    var result = { native: nativeFeatureState(), aspectCorrectors: [], splashScreens: [], mv:observeExistingMvState(), downloadSettings:observeDownloadSettings(metadata()), diagnostics: [] };
+    var result = { native: nativeFeatureState(), aspectCorrectors: [], splashScreens: [], mv:observeExistingMvState(), downloadSettings:cachedMainRequested?observeDownloadSettings(metadata()):[], diagnostics: [] };
     var aspect = findClass("LLAS.Scene.Live.Components.CameraAspectCorrector", true);
     if (aspect) try {
       var objects = allOfType(aspect);
