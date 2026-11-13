@@ -296,6 +296,35 @@ private final class PerformanceProbe {
                 Double(y + text.textContainerInset.height - scroll.contentView.bounds.origin.y))
     }
 
+    private func viewportState(_ text: NSTextView, _ scroll: NSScrollView) -> [String: Any] {
+        var state: [String: Any] = [
+            "origin_x": Double(scroll.contentView.bounds.origin.x),
+            "origin_y": Double(scroll.contentView.bounds.origin.y),
+            "viewport_width": Double(scroll.contentView.bounds.width),
+            "viewport_height": Double(scroll.contentView.bounds.height),
+            "document_height": Double(text.bounds.height),
+            "container_inset_y": Double(text.textContainerInset.height),
+            "selected_location": text.selectedRange().location,
+            "selected_length": text.selectedRange().length,
+            "text_utf16_count": (text.string as NSString).length,
+        ]
+        if let anchor = visibleAnchor(text, scroll) {
+            state["visible_character"] = anchor.character
+            state["glyph_offset_y"] = anchor.offset
+            state["visible_line_sha256"] = digest(anchor.line)
+        }
+        return state
+    }
+
+    private func captureViewport(_ scroll: NSScrollView, filename: String) -> Bool {
+        let view = scroll.contentView
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        guard let data = bitmap.representation(using: .png, properties: [:]) else { return false }
+        do { try data.write(to: output.appendingPathComponent(filename), options: .atomic); return true }
+        catch { return false }
+    }
+
     private func testSelectionScrollCopy() async -> [String: Any] {
         #if ELICHIKA_PERF_PATCHED
         model.selectedSection = .server
@@ -318,6 +347,9 @@ private final class PerformanceProbe {
         let selected = (text.string as NSString).substring(with: text.selectedRange())
         let anchor = visibleAnchor(text, scroll)
         let beforeHead = model.consoleLogs.snapshot.headUTF16Offset
+        let beforeViewport = viewportState(text, scroll)
+        let beforeImage = captureViewport(scroll, filename: "viewport-before.png")
+        let beforeCaptureViewport = viewportState(text, scroll)
         // No await between these appends: SwiftUI must be allowed to coalesce
         // both store revisions before updating the actual NSTextView.
         model.appendLogs((0..<40).map { "QA coalesced A \($0)" })
@@ -326,6 +358,13 @@ private final class PerformanceProbe {
         let after = (text.string as NSString).substring(with: text.selectedRange())
         let afterAnchor = visibleAnchor(text, scroll)
         let headShift = model.consoleLogs.snapshot.headUTF16Offset - beforeHead
+        let afterViewport = viewportState(text, scroll)
+        let afterImage = captureViewport(scroll, filename: "viewport-after.png")
+        let afterCaptureViewport = viewportState(text, scroll)
+        try? write("viewport-state.json", ["before": beforeViewport, "before_after_capture": beforeCaptureViewport,
+            "after": afterViewport, "after_after_capture": afterCaptureViewport,
+            "head_shift_utf16": headShift, "before_head_utf16": beforeHead,
+            "after_head_utf16": model.consoleLogs.snapshot.headUTF16Offset])
         text.copy(nil)
         let copied = NSPasteboard.general.string(forType: .string)
         let selectionOK = after == selected && copied == selected
@@ -340,9 +379,11 @@ private final class PerformanceProbe {
         model.appendLogs(["QA tail follows last appended line"])
         try? await Task.sleep(nanoseconds: 100_000_000)
         let tailOK = scroll.contentView.bounds.maxY >= text.bounds.maxY - 20
-        return ["status": selectionOK && anchorOK && tailOK ? "PASS" : "FAIL",
+        return ["status": selectionOK && anchorOK && tailOK && beforeImage && afterImage ? "PASS" : "FAIL",
             "same_selection_and_copy": selectionOK, "same_visible_anchor_after_two_coalesced_batches": anchorOK,
             "visible_anchor_character_delta": characterDelta, "visible_anchor_pixel_offset_delta": pixelDelta,
+            "viewport_before": beforeViewport, "viewport_after": afterViewport,
+            "viewport_images_captured": beforeImage && afterImage,
             "tail_follows_when_already_at_bottom": tailOK, "selection_sha256": digest(selected),
             "selected_utf16_count": (selected as NSString).length,
             "actual_ns_text_view": true]
