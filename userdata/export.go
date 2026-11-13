@@ -2,6 +2,7 @@ package userdata
 
 import (
 	"elichika/config"
+	"elichika/subsystem/managedcredential"
 	"elichika/userdata/database"
 	"elichika/utils"
 
@@ -33,7 +34,7 @@ func (session *Session) ExportDb() []byte {
 	err = writeSession.Begin()
 	utils.CheckErr(err)
 	for table, inter := range database.UserDataTableNameToInterface {
-		if table == "u_friend_status" || table == "u_member_guild_daily_coop_point" || table == "u_authentication" {
+		if table == "u_friend_status" || table == "u_member_guild_daily_coop_point" || table == "u_authentication" || table == managedcredential.Table {
 			// do not extract this info as it is server side only, and importing friend connection lead to bad data
 			continue
 		}

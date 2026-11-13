@@ -23,10 +23,17 @@
     assert(target && !target.disabled, 'The actual motion Play control is available');
     target.click(); await settle();
   }
-  function snapshot() {
+  var observedClockRead = null;
+  function snapshot(observeClock) {
+    var started = observeClock ? performance.now() : null;
     var motion = ModelViewer.getMotionState(), audio = ViewerMotionAudio.getState();
-    return clone({ rig: motion.rig, audio: audio, manager: ViewerNativePCM.getState(),
-      clock: ViewerMotionAudio.getPlaybackClock(motion.rig) });
+    // Keep the original manager/getter order and exactly one product clock read.
+    var manager = ViewerNativePCM.getState(), clock = ViewerMotionAudio.getPlaybackClock(motion.rig);
+    if (observeClock) observedClockRead = { startedAt: started, finishedAt: performance.now(),
+      type: typeof clock, isNull: clock === null, isUndefined: clock === undefined,
+      finite: Number.isFinite(clock), number: typeof clock === 'number' ? (Number.isFinite(clock) ? clock : String(clock)) : null,
+      motion: clone(motion) };
+    return clone({ rig: motion.rig, audio: audio, manager: manager, clock: clock });
   }
   function fixture() {
     var channels = 2, sampleRate = 44100, frames = sampleRate * 4, bytes = new ArrayBuffer(44 + frames * channels * 2);
@@ -59,6 +66,37 @@
     var preferenceKey = 'elichika.viewer.motion-audio.v2', storedPreference = localStorage.getItem(preferenceKey);
     var originalFetch = window.fetch, originalClock = ViewerMotionAudio.getPlaybackClock, originalFactory = ViewerNativePCM.create;
     var generated = fixture(), fetchCalls = [], unexpectedFetches = [], rounds = [], cleared = null;
+    // Passive QA observer only: never wrap the product clock, player or rAF.
+    var clockCaptures = [], frameHistory = [], frameRequest = 0, trackingStartedAt = null;
+    function observeFrame(timestamp) {
+      var now = performance.now(), previous = frameHistory.length ? frameHistory[frameHistory.length - 1] : null;
+      frameHistory.push({ timestamp: timestamp, observedAt: now,
+        timestampGapMs: previous ? timestamp - previous.timestamp : null,
+        callbackGapMs: previous ? now - previous.observedAt : null });
+      if (frameHistory.length > 64) frameHistory.shift();
+      frameRequest = requestAnimationFrame(observeFrame);
+    }
+    function retainPlayingClock(playing, round, rate, offset) {
+      var now = performance.now(), previous = window.__nativePartDiagnostic;
+      var lastFrame = frameHistory.length ? frameHistory[frameHistory.length - 1] : null;
+      clockCaptures.push({ schemaVersion: 1, round: round, expectedRate: rate, authoredOffset: offset,
+        observedAt: now, trackingStartedAt: trackingStartedAt, rawClockRead: clone(observedClockRead),
+        playing: clone(playing), clockTypeAfterJSONClone: typeof playing.clock,
+        rigTimeType: typeof playing.rig.time, clockFinite: Number.isFinite(playing.clock),
+        clockMinusRigSeconds: Number.isFinite(playing.clock) && Number.isFinite(playing.rig.time) ? playing.clock - playing.rig.time : null,
+        unchangedClockAndFactory: ViewerMotionAudio.getPlaybackClock === originalClock && ViewerNativePCM.create === originalFactory,
+        document: { hidden: document.hidden, visibilityState: document.visibilityState, hasFocus: document.hasFocus(), readyState: document.readyState },
+        performanceTimeOrigin: performance.timeOrigin, lastFrameAgeMs: lastFrame ? now - lastFrame.observedAt : null,
+        recentAnimationFrames: clone(frameHistory) });
+      if (clockCaptures.length > 2) clockCaptures.shift();
+      var diagnostic = previous && typeof previous === 'object' ? previous : {};
+      diagnostic.previousPCMPhase = diagnostic.phase || null;
+      diagnostic.phase = 'native-pcm-clock-before-assertion';
+      // Deep clones survive the original finally block's clear/pose restore.
+      diagnostic.nativePCMClockAssertions = clone(clockCaptures);
+      window.__nativePartDiagnostic = diagnostic;
+    }
+
     var hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', generated.bytes))).map(function (value) { return value.toString(16).padStart(2, '0'); }).join('');
     function exactFetch(input, options) {
       if (input !== fixtureURL) {
@@ -70,6 +108,7 @@
       return Promise.resolve(new Response(generated.bytes.slice(0), { status: 200, headers: { 'Content-Type': 'audio/wav', 'Content-Length': String(generated.bytes.byteLength) } }));
     }
     try {
+      trackingStartedAt = performance.now(); frameRequest = requestAnimationFrame(observeFrame);
       input('viewer-motion-audio-enabled', true); input('viewer-motion-audio-muted', false);
       input('viewer-motion-audio-volume', '.4', 'input'); input('viewer-time', '0', 'input');
       for (var round = 0; round < 2; round++) {
@@ -95,7 +134,8 @@
           var observed = snapshot(), p = observed.audio.tracks[0].player;
           return observed.rig.playing && observed.rig.time > .25 && p.contextState === 'running' && p.sourceActive && p.sourceStarts >= 1;
         });
-        var playing = snapshot(), player = playing.audio.tracks[0].player;
+        var playing = snapshot(true), player = playing.audio.tracks[0].player;
+        retainPlayingClock(playing, round, rate, offset);
         assert(Number.isFinite(playing.clock) && Math.abs(playing.clock - playing.rig.time) < .04,
           'The unchanged product getter maps the actual PCM clock into motion time');
         assert(Math.abs(player.sourceRate - rate) < 1e-6 && Math.abs(player.gain - .4) < 1e-6,
@@ -137,6 +177,7 @@
       assert(originalClock === ViewerMotionAudio.getPlaybackClock && originalFactory === ViewerNativePCM.create,
         'The production clock and native player factory stay unchanged');
     } finally {
+      if (frameRequest) cancelAnimationFrame(frameRequest);
       window.fetch = originalFetch;
       if (ModelViewer.getState().rig.playing) await playButton();
       ViewerMotionAudio.clear();
@@ -155,6 +196,7 @@
     return { status: 'PASS', platform: platform, fixture: { url: fixtureURL, sha256: hash, encodedBytes: generated.bytes.byteLength,
       sampleRate: generated.sampleRate, channels: generated.channels, bits: generated.bits, frames: generated.frames, duration: generated.duration },
       fetchCalls: fetchCalls, unexpectedFetches: unexpectedFetches, rounds: rounds, cleared: cleared, final: final,
+      passiveClockDiagnostics: { schemaVersion: 1, captures: clone(clockCaptures) },
       checks: { actualNativeBridge: true, actualContextAndSource: true, unchangedClockAndFactory: true, pausedDecode: true,
         authoredOffsets: true, actualGainMuteVolume: true, pausedClocks: true, seekOffset: true, sourceRecreated: true,
         narrowFixtureBoundary: true, buffersReleased: true, sourceAndPreferencesRestored: true },

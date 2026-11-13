@@ -2,15 +2,17 @@ package webui_utils
 
 import (
 	"elichika/config"
+	"elichika/nativeaccess"
 
 	"net"
 
 	"github.com/gin-gonic/gin"
 )
 
-// LocalTrusted reports whether a WebUI request may skip session-key auth because
-// the operator enabled config local_trust_loopback AND the request's real TCP
-// peer is a loopback address.
+// LocalTrusted reports app-owned capability authentication, or the older
+// explicit local_trust_loopback option. New local account/password APIs require
+// nativeaccess.Authorized directly; enabling the compatibility option alone
+// does not grant access to the account directory or managed passwords.
 //
 // It deliberately uses ctx.RemoteIP() (the actual socket peer) rather than
 // ctx.ClientIP() (which honours X-Forwarded-For and similar headers), so a
@@ -18,6 +20,9 @@ import (
 // the flag left at its default (false) this always returns false, so normal
 // deployments are unaffected.
 func LocalTrusted(ctx *gin.Context) bool {
+	if nativeaccess.Authorized(ctx) {
+		return true
+	}
 	if config.Conf == nil || config.Conf.LocalTrustLoopback == nil || !*config.Conf.LocalTrustLoopback {
 		return false
 	}

@@ -39,7 +39,7 @@ struct TrustedOrigin: Equatable, Hashable {
     func contains(_ url: URL) -> Bool { TrustedOrigin(url) == self }
 }
 
-struct RuntimeState: Decodable {
+struct RuntimeState: Decodable, Equatable {
     var phase = "preparing"
     var serverRunning = false
     var busy = false
@@ -50,7 +50,7 @@ struct RuntimeState: Decodable {
     var management: ServerState?
     var console: ConsoleState?
 
-    struct ProgressState: Decodable {
+    struct ProgressState: Decodable, Equatable {
         let stage: String?
         let completed: Int?
         let total: Int?
@@ -69,7 +69,22 @@ struct RuntimeState: Decodable {
 
     var serverLoading: Bool { serverRunning && server?.httpReady != true }
 
-    func webUIURL(path: String) -> URL? {
+    struct WebUIEndpoint: Equatable {
+        let url: URL
+        let localWebUIToken: String?
+
+        var initialRequest: URLRequest {
+            var request = URLRequest(url: url)
+            if let localWebUIToken {
+                request.setValue(localWebUIToken, forHTTPHeaderField: "X-Elichika-Local-Access")
+            }
+            return request
+        }
+    }
+
+    func webUIURL(path: String) -> URL? { webUIEndpoint(path: path)?.url }
+
+    func webUIEndpoint(path: String) -> WebUIEndpoint? {
         let source: ServerState?
         if serverRunning {
             source = server?.httpReady == true ? server : nil
@@ -88,21 +103,35 @@ struct RuntimeState: Decodable {
         guard IPAddress.isLiteral(literal) else { return nil }
         let normalized = ["0.0.0.0", "localhost"].contains(rawHost) ? "127.0.0.1" : rawHost == "::" ? "::1" : literal
         let host = normalized.contains(":") ? "[\(normalized)]" : normalized
-        return URL(string: "http://\(host):\(port)" + path)
+        guard let url = URL(string: "http://\(host):\(port)" + path) else { return nil }
+        // This capability comes only from the authenticated native control
+        // state. Never send it to a LAN endpoint or put it in a URL.
+        let token = source?.localWebUIToken
+        let validToken = token.map { value in
+            value.utf8.count == 32 && value.utf8.allSatisfy {
+                (48...57).contains($0) || (97...102).contains($0)
+            }
+        } ?? false
+        let localToken = ["127.0.0.1", "::1"].contains(normalized) && validToken ? token : nil
+        return WebUIEndpoint(url: url, localWebUIToken: localToken)
     }
 
     var preparationPercent: Int? {
         guard phase == "preparing", !prepared else { return nil }
         return progress?.displayPercent
     }
-    struct ServerState: Decodable {
+    struct ServerState: Decodable, Equatable {
         let running: Bool?
         let pid: Int?
         let url: String?
         let status: String?
         let error: String?
         let httpReady: Bool?
-        enum CodingKeys: String, CodingKey { case running, pid, url, status, error; case httpReady = "http_ready" }
+        let localWebUIToken: String?
+        enum CodingKeys: String, CodingKey {
+            case running, pid, url, status, error
+            case httpReady = "http_ready", localWebUIToken = "local_webui_token"
+        }
     }
 
     enum CodingKeys: String, CodingKey { case phase, busy, prepared, error, progress, server, management, console; case serverRunning = "server_running" }
@@ -121,13 +150,13 @@ struct RuntimeState: Decodable {
     }
 }
 
-struct ConsoleState: Decodable {
+struct ConsoleState: Decodable, Equatable {
     var cacheEnabled: Bool?
     var job: Job?
 
     enum CodingKeys: String, CodingKey { case cacheEnabled = "cache_enabled", job }
 
-    struct Job: Decodable {
+    struct Job: Decodable, Equatable {
         let id: String
         let action: ConsoleAction
         let region: ConsoleRegion?
@@ -138,7 +167,7 @@ struct ConsoleState: Decodable {
         let error: String?
         let progress: Progress?
 
-        struct Progress: Decodable {
+        struct Progress: Decodable, Equatable {
             let stage: String?
             let completed: Int?
             let total: Int?
@@ -369,12 +398,13 @@ enum EditorSurface: String, Codable, CaseIterable, Sendable {
 typealias AssetEditorSection = EditorSurface
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case server, accounts, content, assets, viewer, settings
+    case server, accounts, serverSettings, content, assets, viewer, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .server: return "server.rack"
         case .accounts: return "person.crop.circle"
+        case .serverSettings: return "slider.horizontal.3"
         case .content: return "externaldrive"
         case .assets: return "wrench.and.screwdriver"
         case .viewer: return "cube.transparent"
@@ -388,7 +418,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             "content": ["Server content", "서버 콘텐츠", "サーバーコンテンツ"],
             "assets": ["Asset editing tools", "에셋 편집 도구", "アセット編集ツール"],
             "viewer": ["3D model", "3D 모델", "3Dモデル"],
-            "settings": ["Settings", "설정", "設定"],
+            "settings": ["App settings", "앱 설정", "アプリ設定"],
+            "serverSettings": ["Server settings", "서버 설정", "サーバー設定"],
         ]
         return strings[rawValue]![language == "ko" ? 1 : language == "ja" ? 2 : 0]
     }

@@ -572,6 +572,12 @@ class ServerService : Service() {
     companion object {
         @Volatile internal var current: ServerService? = null
             private set
+        /** No capability is published through Bus, logs, readiness, or an Intent. */
+        internal fun localWebuiToken(): String? {
+            val owner = current ?: return null
+            if (!Bus.serverRunning || !Bus.serverReady || owner.destroyed || owner.closing || owner.stopping) return null
+            return owner.server.localWebuiToken()
+        }
         internal var cancellation = 0L
             private set
         const val ACTION_START = "com.tagundo.elichika.START"

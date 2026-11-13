@@ -55,6 +55,11 @@
         window.location.replace(u)
     }
     function apply_i18n() {
+        fetch('/webui/admin/native_access', {cache: 'no-store'}).then(function(result) {
+            return result.json()
+        }).then(function(data) {
+            if (data.native_local) window.location.replace('/webui/admin' + window.location.search)
+        }).catch(function() {})
         var l = cur_lang()
         document.querySelectorAll("[data-i18n]").forEach(function (n) { n.textContent = T(n.dataset.i18n) })
         document.querySelectorAll("[data-i18n-val]").forEach(function (n) { n.value = T(n.dataset.i18nVal) })
