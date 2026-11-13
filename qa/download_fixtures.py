@@ -28,6 +28,7 @@ def main():
     parser.add_argument('--region', choices=['GL', 'JP'], required=True)
     parser.add_argument('--destination', required=True, type=Path)
     parser.add_argument('--evidence', required=True, type=Path)
+    parser.add_argument('--skip-server-apk', action='store_true', help='Source-built Go mode: download only client and readonly observer')
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
     assert manifest['schema_version'] == 1
@@ -37,7 +38,11 @@ def main():
     args.destination.mkdir(mode=0o700, parents=True, exist_ok=False)
     args.evidence.mkdir(parents=True, exist_ok=True)
     receipts = {}
-    for kind, fixture in [('client', manifest['clients'][args.region]), ('server', manifest['server']), ('frida', manifest['frida'])]:
+    selected = [('client', manifest['clients'][args.region])]
+    if not args.skip_server_apk:
+        selected.append(('server', manifest['server']))
+    selected.append(('frida', manifest['frida']))
+    for kind, fixture in selected:
         destination = args.destination / ('frida-server.xz' if kind == 'frida' else kind+'.apk')
         request = urllib.request.Request(f"https://api.github.com/repos/{fixture['repository']}/releases/assets/{fixture['asset_id']}?download_nonce={time.time_ns()}",
             headers={'Authorization':'Bearer '+token, 'Accept':'application/octet-stream', 'User-Agent':'SIFAS-private-client-QA', 'X-GitHub-Api-Version':'2022-11-28'})

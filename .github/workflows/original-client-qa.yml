@@ -1,4 +1,4 @@
-name: Validate signed SIFAS ARM64 clients against frozen Elichika
+name: Validate signed SIFAS ARM64 clients against frozen source-built Go
 
 on:
   push:
@@ -37,23 +37,41 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout frozen server helpers without rebuilding the APK
+      - name: Read exact root-frozen C3 server source
+        id: fixture
+        run: |
+          python3 - <<'PYFIXTURE'
+          import json,os,re
+          from pathlib import Path
+          m=json.loads(Path('qa/frozen-fixtures.json').read_text())['server']
+          assert m['approval_scope']=='final_source_build_fixture'
+          assert re.fullmatch('[0-9a-f]{40}',m['source_commit'])
+          assert not any(k in m for k in ('asset_id','sha256','version_code')), 'Source mode cannot imply a server APK'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write('server_ref='+m['source_commit']+'\n')
+          PYFIXTURE
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
+
+      - name: Checkout root-frozen Go server and official recursive assets
         uses: actions/checkout@v4
         with:
           repository: tagundo/elichika
-          ref: a91843474f9d672189c1ca2f15ca846de8e41458
+          ref: ${{ steps.fixture.outputs.server_ref }}
           path: server-source
           persist-credentials: false
-          submodules: false
+          submodules: recursive
 
-      - name: Download exact signed client, server and pinned observer dependency
+      - name: Download exact signed client and pinned readonly observer
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           python3 qa/download_fixtures.py --manifest qa/frozen-fixtures.json --region "$QA_REGION" \
-            --destination "$RUNNER_TEMP/client-qa-fixtures" --evidence evidence
+            --destination "$RUNNER_TEMP/client-qa-fixtures" --evidence evidence --skip-server-apk
           xz -d "$RUNNER_TEMP/client-qa-fixtures/frida-server.xz"
           git -C server-source rev-parse HEAD > evidence/server-source-commit.txt
           sha256sum qa/*.py qa/unity_ui*.js qa/*manifest*.json qa/frozen-fixtures.json > evidence/qa-source-sha256.txt
@@ -64,7 +82,7 @@ jobs:
           set -euo pipefail
           test "$(uname -m)" = aarch64
           sudo apt-get update -qq
-          sudo apt-get install -y adb apksigner aapt python3-venv
+          sudo apt-get install -y adb apksigner aapt python3-venv ffmpeg
           python3 -m venv "$RUNNER_TEMP/qa-venv"
           "$RUNNER_TEMP/qa-venv/bin/pip" install --disable-pip-version-check 'frida==16.6.6' 'Pillow==11.0.0'
           if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
@@ -103,7 +121,6 @@ jobs:
       - name: Verify signatures and exact package identities
         run: |
           set -euo pipefail
-          apksigner verify --verbose --print-certs "$RUNNER_TEMP/client-qa-fixtures/server.apk" > evidence/server-signature.txt
           apksigner verify --verbose --print-certs "$RUNNER_TEMP/client-qa-fixtures/client.apk" > evidence/client-signature.txt
           grep -q '5ccf5b5f73dcebad61255f6bfca848eb2022eedb741515d16ac84f94c405a9e3' evidence/client-signature.txt
           aapt dump badging "$RUNNER_TEMP/client-qa-fixtures/client.apk" > evidence/client-badging.txt
@@ -117,23 +134,56 @@ jobs:
           assert Path('evidence/server-source-commit.txt').read_text().strip()==manifest['server']['source_commit']
           PY
 
-      - name: Run genuine regional client UI and record incomplete cases explicitly
+      - name: Build exact Go fixture and normally create one synthetic account
+        run: |
+          set -euo pipefail
+          python3 qa/build_host_go_fixture.py \
+            --source-root "$GITHUB_WORKSPACE/server-source" \
+            --source-sha "${{ steps.fixture.outputs.server_ref }}" \
+            --output "$RUNNER_TEMP/host-go-fixture"
+
+      - name: Run genuine regional client UI against owned hash-bound source fixture
         env:
           QA_SECONDS: ${{ inputs.max_seconds || '1500' }}
         run: |
           set -euo pipefail
-          "$RUNNER_TEMP/qa-venv/bin/python" -u qa/feature_client_smoke.py \
+          case "$QA_SECONDS" in *[!0-9]*|'') exit 2;; esac
+          test "$QA_SECONDS" -ge 120
+          test "$QA_SECONDS" -le 3000
+          qa_watchdog_seconds=$((QA_SECONDS + 120))
+          qa_exit=0
+          timeout --signal=TERM --kill-after=20s "${qa_watchdog_seconds}s" "$RUNNER_TEMP/qa-venv/bin/python" -u qa/feature_client_smoke.py \
             --fixtures qa/frozen-fixtures.json --region "$QA_REGION" \
-            --server-apk "$RUNNER_TEMP/client-qa-fixtures/server.apk" \
+            --host-server-root "$GITHUB_WORKSPACE/server-source" \
+            --host-server-receipt "$RUNNER_TEMP/host-go-fixture/host-go-fixture.json" \
             --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
             --server-source server-source --evidence evidence \
             --unity-agent qa/unity_ui.bundle.js --max-seconds "$QA_SECONDS" \
-            --settings-orientation portrait --settings-scalar 2.0 --fast-intro
+            --settings-orientation portrait --settings-scalar 2.0 --fast-intro || qa_exit=$?
+          if [ "$qa_exit" = 124 ] || [ "$qa_exit" = 137 ]; then
+            python3 - <<'PYTIMEOUT'
+          import json
+          from pathlib import Path
+          for name in ('original-client-report.json','candidate-runtime-report.json'):
+              path=Path('evidence')/name
+              if path.is_file():
+                  report=json.loads(path.read_text());report['status']='INCOMPLETE'
+                  report['blocked_reason']='External overall QA watchdog stopped a hung process; unobserved cases are not approved'
+                  path.write_text(json.dumps(report,indent=2)+'\n')
+          PYTIMEOUT
+          fi
+          exit "$qa_exit"
 
       - name: Retain actual crash, native feature and rendering diagnostics
         if: always()
         run: |
           mkdir -p evidence
+          # Explicit allowlist: never upload private synthetic credentials, DBs,
+          # binaries, caches, or the entire source/fixture output directory.
+          for name in host-go-fixture.json go-build.log seed-build.log server-data-init.log synthetic-account-init.log; do
+            if [ -f "$RUNNER_TEMP/host-go-fixture/$name" ]; then cp "$RUNNER_TEMP/host-go-fixture/$name" "evidence/$name"; fi
+          done
+          timeout 20s adb -s 127.0.0.1:5555 logcat -d -t 4000 > evidence/final-logcat.txt 2>/dev/null || true
           adb -s 127.0.0.1:5555 logcat -b crash -d > evidence/final-crashes.txt 2>/dev/null || true
           adb -s 127.0.0.1:5555 shell dumpsys activity activities > evidence/final-activities.txt 2>/dev/null || true
           adb -s 127.0.0.1:5555 shell dumpsys SurfaceFlinger > evidence/surfaceflinger.txt 2>/dev/null || true
@@ -141,14 +191,55 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out cat /data/local/tmp/frida-server.log > evidence/frida-server.txt 2>/dev/null || true
           docker logs original-client-qa > evidence/redroid.log 2>&1 || true
 
+      - name: Redact known synthetic fixture credentials from final diagnostics
+        if: always()
+        run: |
+          python3 - <<'PYREDACT'
+          import json,os
+          from pathlib import Path
+          credential=Path(os.environ['RUNNER_TEMP'])/'host-go-fixture/synthetic-account.private.json'
+          if credential.is_file():
+              password=json.loads(credential.read_text())['password'].encode()
+              assert len(password)==16 and password.isalnum()
+              for path in Path('evidence').rglob('*'):
+                  if path.is_file() and path.suffix in ('.json','.xml','.txt','.log'):
+                      data=path.read_bytes()
+                      if password in data:path.write_bytes(data.replace(password,b'[redacted synthetic password]'))
+          PYREDACT
+
       - name: Upload private regional execution evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sifas-b22-${{ matrix.region }}-runtime-evidence
+          name: sifas-b23-${{ matrix.region }}-runtime-evidence
           path: evidence/
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Stop only any surviving owned source-Go fixture
+        if: always()
+        run: |
+          python3 - <<'PYCLEANUP'
+          import hashlib,json,os,signal,time
+          from pathlib import Path
+          runtime=Path('evidence/host-go-runtime.json')
+          receipt=Path(os.environ['RUNNER_TEMP'])/'host-go-fixture/host-go-fixture.json'
+          if runtime.is_file() and receipt.is_file():
+              record=json.loads(runtime.read_text());expected=json.loads(receipt.read_text())
+              pid=record['pid'];assert type(pid) is int and pid>1
+              proc=Path('/proc')/str(pid)
+              if proc.exists():
+                  ticks=(proc/'stat').read_text().rsplit(')',1)[1].split()[19]
+                  executable=(proc/'exe').resolve(strict=True)
+                  assert ticks==record['start_ticks'] and str(executable)==expected['binary_path'], 'Process identity changed; left untouched'
+                  assert hashlib.file_digest((proc/'exe').open('rb'),'sha256').hexdigest()==record['binary_sha256']==expected['server_fixture']['binary_sha256']
+                  os.kill(pid,signal.SIGTERM)
+                  end=time.monotonic()+8
+                  while proc.exists() and time.monotonic()<end:time.sleep(.1)
+                  if proc.exists():
+                      assert (proc/'stat').read_text().rsplit(')',1)[1].split()[19]==ticks
+                      os.kill(pid,signal.SIGKILL)
+          PYCLEANUP
 
       - name: Stop disposable Android
         if: always()

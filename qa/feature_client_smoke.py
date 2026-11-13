@@ -14,6 +14,7 @@ from pathlib import Path
 import queue
 import re
 import secrets
+import signal
 import shlex
 import sqlite3
 import subprocess
@@ -32,6 +33,10 @@ LAUNCHER = CLIENT + "/com.klab.lovelive.allstars.global.GlobalUnsafeMainActivity
 SERVER_SHA = "12844d3d43ea77cc518d16d407fa603efefc87f8183db7b48760a2982773d604"
 CLIENT_SHA = "8aaaeac075afa1c7908e6b91ab4d7f6a9e3cbf298574c0fa59fab51081dde82e"
 MARKER = "/data/local/tmp/CODEX_DISPOSABLE_CLIENT_QA"
+
+
+class OverallQATimeout(BaseException):
+    """The overall wall deadline cannot be swallowed by routine RPC retries."""
 
 
 def digest(path):
@@ -303,7 +308,9 @@ def main():
     parser.add_argument("--settings-scalar", type=float, choices=(.5, 2.), default=2.)
     parser.add_argument("--fast-intro", action="store_true")
     parser.add_argument("--serial", default="127.0.0.1:5555")
-    parser.add_argument("--server-apk", type=Path, required=True)
+    parser.add_argument("--server-apk", type=Path)
+    parser.add_argument("--host-server-root", type=Path)
+    parser.add_argument("--host-server-receipt", type=Path)
     parser.add_argument("--client-apk", type=Path, required=True)
     parser.add_argument("--server-source", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
@@ -313,11 +320,27 @@ def main():
     global CLIENT, LAUNCHER, CLIENT_SHA, SERVER_SHA
     fixtures = json.loads(args.fixtures.read_text())
     client_fixture, server_fixture = fixtures["clients"][args.region], fixtures["server"]
-    CLIENT, CLIENT_SHA, SERVER_SHA = client_fixture["package"], client_fixture["sha256"], server_fixture["sha256"]
+    CLIENT, CLIENT_SHA = client_fixture["package"], client_fixture["sha256"]
+    host_mode = args.host_server_root is not None or args.host_server_receipt is not None
+    host_server = None
+    if host_mode:
+        if not args.host_server_root or not args.host_server_receipt or args.server_apk:
+            parser.error("Host mode requires both host paths and must not claim a server APK")
+        from host_go_fixture import HostGoFixture
+        host_server = HostGoFixture(args.host_server_root, args.host_server_receipt,
+                                   server_fixture["source_commit"], args.evidence)
+        SERVER_SHA = host_server.binding["binary_sha256"]
+    else:
+        if args.server_apk is None:
+            parser.error("APK mode requires --server-apk")
+        SERVER_SHA = server_fixture["sha256"]
     LAUNCHER = CLIENT + "/com.klab.lovelive.allstars.fovmod.FovSettingsActivity"
-    if args.server_version_code is not None and args.server_version_code != server_fixture["version_code"]:
-        parser.error("server-version-code differs from frozen manifest")
-    args.server_version_code = server_fixture["version_code"]
+    if not host_mode:
+        if args.server_version_code is not None and args.server_version_code != server_fixture["version_code"]:
+            parser.error("server-version-code differs from frozen manifest")
+        args.server_version_code = server_fixture["version_code"]
+    elif args.server_version_code is not None:
+        parser.error("Source-built Go mode must not claim a server APK version")
     assert all(re.fullmatch(r"[0-9a-f]{64}", x) for x in (CLIENT_SHA, SERVER_SHA))
     if not 120 <= args.max_seconds <= 3000:
         parser.error("max-seconds must be between 120 and 3000")
@@ -380,22 +403,28 @@ def main():
     device = GameOnlyAndroid(args.serial, args.evidence)
     run_start_unix = int(time.time())
     report = {"schema_version": 1, "region": args.region, "status": "RUNNING", "scope": "Frozen signed game and server fixtures inside disposable native ARM64 Android; incomplete cases fail approval",
-              "run": {"id": os.environ.get("GITHUB_RUN_ID"), "attempt": os.environ.get("GITHUB_RUN_ATTEMPT"), "source_commit": os.environ.get("GITHUB_SHA"), "repository": os.environ.get("GITHUB_REPOSITORY"), "server_source_commit": server_fixture["source_commit"]},
+              "run": {"id": int(os.environ["GITHUB_RUN_ID"]) if os.environ.get("GITHUB_RUN_ID") else None, "attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]) if os.environ.get("GITHUB_RUN_ATTEMPT") else None, "source_commit": os.environ.get("GITHUB_SHA"), "repository": os.environ.get("GITHUB_REPOSITORY"), "server_source_commit": server_fixture["source_commit"]},
               "fixtures": {"server": server_fixture, "client": client_fixture},
-              "cases": {name: {"status": "NOT_RUN", "evidence": []} for name in REQUIRED_CASES}, "run_start_unix": run_start_unix, "workflow_repository": os.environ.get("GITHUB_REPOSITORY"), "workflow_run_id": os.environ.get("GITHUB_RUN_ID"), "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"), "qa_source_commit": os.environ.get("GITHUB_SHA"), "server_source_commit": server_fixture["source_commit"], "server_apk_sha256": digest(args.server_apk),
+              "cases": {name: {"status": "NOT_RUN", "evidence": []} for name in REQUIRED_CASES}, "run_start_unix": run_start_unix, "workflow_repository": os.environ.get("GITHUB_REPOSITORY"), "workflow_run_id": os.environ.get("GITHUB_RUN_ID"), "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"), "qa_source_commit": os.environ.get("GITHUB_SHA"), "server_source_commit": server_fixture["source_commit"], "server_apk_sha256": digest(args.server_apk) if not host_mode else None, "server_binary_sha256": SERVER_SHA if host_mode else None, "server_fixture_mode": "source-build" if host_mode else "delivered-artifact",
               "client_apk_sha256": digest(args.client_apk), "client_package": CLIENT,
               "actions": [], "observations": [], "ui_candidates": {}, "verified": {"server_started": False, "client_launched": False, "client_login": False, "home": False, "members": False, "mv": False},
               "limits": ["Virtual Android, not a physical phone", "Frida instrumentation only reads Unity UI objects for semantic input bounds; no APK bytes, game logic or network responses are patched", "A server API response alone cannot establish Home/member/MV rendering"]}
     report["verified"].update({name: False for name in REQUIRED_CASES})
-    report["unimplemented_flow_limits"] = ["Automatic orientation transition trace", "Paired fast/off intro timing trace", "MV same/different suit, maximum-slot independent-instance playback and restored deck UI flows"]
+    report["unimplemented_flow_limits"] = []
     session = agent = video = None
     client_pid = ""
     last_tree = {}
     stage = "bootstrap"
     filled = set()
     seen = {}
-    password = "".join(secrets.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") for _ in range(16))
+    password = (host_server.credentials["password"] if host_mode and host_server.credentials else
+                "".join(secrets.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") for _ in range(16)))
+    fixture_user_id = str(host_server.credentials["user_id"]) if host_mode and host_server.credentials else "893611090"
     started = time.monotonic()
+    def wall_deadline(signum, frame):
+        raise OverallQATimeout("Overall genuine-client QA deadline reached; remaining cases are not approved")
+    previous_alarm = signal.signal(signal.SIGALRM, wall_deadline)
+    signal.setitimer(signal.ITIMER_REAL, args.max_seconds)
 
     def save_report():
         report["elapsed_seconds"] = round(time.monotonic() - started, 2)
@@ -404,8 +433,9 @@ def main():
             "url": os.environ.get("GITHUB_SERVER_URL", "https://github.com") + "/" + os.environ.get("GITHUB_REPOSITORY", "") + "/actions/runs/" + os.environ.get("GITHUB_RUN_ID", "")})
         report["fixtures"].update({"region": args.region, "client_asset_id": client_fixture["asset_id"],
             "client_sha256": CLIENT_SHA, "original_asset_id": client_fixture["original_asset_id"], "original_sha256": client_fixture["original_sha256"], "client_certificate_sha256": fixtures["client_certificate_sha256"],
-            "server_sha256": SERVER_SHA, "server_source_commit": server_fixture["source_commit"]})
-        payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+            "server_sha256": SERVER_SHA, "server_source_commit": server_fixture["source_commit"],
+            "server_fixture": host_server.binding if host_mode else {"kind": "delivered-artifact", "source_sha": server_fixture["source_commit"], "sha256": SERVER_SHA}})
+        payload = (json.dumps(report, ensure_ascii=False, indent=2) + "\n").replace(password,"[redacted synthetic password]")
         (args.evidence / "original-client-report.json").write_text(payload)
         (args.evidence / "candidate-runtime-report.json").write_text(payload)
 
@@ -428,13 +458,14 @@ def main():
                        ("owned", f"/data/user/0/{SERVER}/files/userdata.db", "u_suit")]
             for name, remote, table in targets:
                 path = folder / (name + ".db")
-                path.write_bytes(device.read(remote))
+                relative = f"assets/db/{'gl' if args.region == 'GL' else 'jp'}/masterdata.db" if name == "master" else "userdata.db"
+                path.write_bytes(host_server.read_database(relative) if host_mode else device.read(remote))
                 for suffix in ("-wal", "-shm"):
-                    try: Path(str(path) + suffix).write_bytes(device.read(remote + suffix))
+                    try: Path(str(path) + suffix).write_bytes(host_server.read_database(relative + suffix) if host_mode else device.read(remote + suffix))
                     except Exception: pass
                 with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as database:
                     assert database.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-                    result["counts"][table] = database.execute("SELECT COUNT(*) FROM " + table).fetchone()[0]
+                    result["counts"]["master_costumes" if name == "master" else "owned_costumes"] = database.execute("SELECT COUNT(*) FROM " + table).fetchone()[0]
             relative = label + "-costume-counts.json"
             (args.evidence / relative).write_text(json.dumps(result, indent=2) + "\n")
             report.setdefault("costume_entry_snapshots", {})[label] = {"path": relative, "sha256": digest(args.evidence / relative), "counts": result["counts"]}
@@ -478,6 +509,14 @@ def main():
 
     def choose(tree, expressions, reason):
         node, expression = match(buttons(tree), expressions)
+        if node is None:
+            captions = [n for n in tree.get("nodes", []) if n.get("kind") == "text" and n.get("active") and n.get("visible") and (n.get("hit") or {}).get("available")]
+            caption, expression = match(captions, expressions)
+            if caption:
+                hit_path = (caption.get("hit") or {}).get("firstPath") or ""
+                ancestors = [b for b in buttons(tree) if b.get("path") and (hit_path == b["path"] or hit_path.startswith(b["path"] + "/"))]
+                if ancestors:
+                    node = caption
         if node:
             key = stage + ":" + label(node)
             if time.monotonic() - seen.get(key, -1000) < 12:
@@ -495,30 +534,34 @@ def main():
             return True
         return False
 
-    try:
-        assert report["server_apk_sha256"] == SERVER_SHA, "Frozen server APK identity mismatch"
-        assert report["client_apk_sha256"] == CLIENT_SHA, "Original client APK identity mismatch"
-        assert device.read(MARKER).decode().strip() == "disposable-private-client-qa", "This is not an explicitly disposable QA target"
-        assert device.shell("getprop", "ro.product.cpu.abi") == "arm64-v8a", "Real ARM64 Android is required"
-        report["environment"] = {"abi": device.shell("getprop", "ro.product.cpu.abi"), "api": device.shell("getprop", "ro.build.version.sdk"), "model": device.shell("getprop", "ro.product.model"), "kernel": device.shell("uname", "-a")}
-        report["server_install"] = device.install(args.server_apk, args.server_version_code)
-        report["server_start"] = device.start("elichika-ready")
-        report["verified"]["server_started"] = True
-        config = json.loads(device.read("/data/user/0/" + SERVER + "/files/config.json"))
-        report["server_cdn"] = {key: config.get(key) for key in ("cdn_cache", "cdn_cache_dir", "cdn_server", "locales")}
-        assert config.get("cdn_cache") is True, "Enable the app's normal CDN cache before original-client asset loading"
-        device.adb("install", "-r", str(args.client_apk), timeout=180)
-        installed = device.shell("pm", "path", CLIENT).splitlines()[0].removeprefix("package:")
-        assert device.shell("sha256sum", installed).split()[0] == CLIENT_SHA, "The original client APK changed during installation"
-        report["client_package_info"] = device.shell("dumpsys", "package", CLIENT)
-        device.shell("logcat", "-c")
-        report["client_launch"] = device.shell("am", "start", "-W", "-n", LAUNCHER)
+    def attach_reader():
+        nonlocal agent, session, client_pid
+        if session:
+            try: bounded_rpc(lambda: session.detach(), timeout=5)
+            except Exception: pass
+        agent = session = None
+        client_pid = device.shell("pidof", "-s", CLIENT)
+        assert client_pid, "Game settings process is not running"
+        import frida
+        device.adb("forward", "tcp:27042", "tcp:27042")
+        remote = frida.get_device_manager().add_remote_device("127.0.0.1:27042")
+        session = bounded_rpc(lambda: remote.attach(int(client_pid)), timeout=15)
+        agent = session.create_script(args.unity_agent.read_text())
+        agent.on("message", lambda message, data: None)
+        bounded_rpc(lambda: agent.load(), timeout=15)
+        bounded_rpc(lambda: agent.exports_sync.beginintrotrace(), timeout=5)
+        report["readonly_ui_instrumentation"] = True
+
+    def apply_profile(orientation, scalar, fast_intro, profile_name, *, restart=False):
+        if restart:
+            device.shell("am", "force-stop", CLIENT)
+            device.shell("am", "start", "-W", "-n", LAUNCHER)
         # The native settings body is a short viewport, not one full screen.
         # Select English once, then preserve scroll position and handle each
         # separately visible labeled control from fresh accessibility geometry.
         profile_state = {"language": False, "min": False, "max": False, "orientation": False, "intro": False}
-        settings_index = 1000
-        trace = report["native_settings_trace"] = []
+        settings_index = 1000 + len(report.get("native_settings_trace", []))
+        trace = report.setdefault("native_settings_trace", [])
         def settings_snapshot(reason):
             nonlocal settings_index
             settings_index += 1
@@ -529,25 +572,26 @@ def main():
         unchanged_scrolls = 0
         previous_scroll_fingerprint = None
         for attempt in range(48):
-            plan = native_profile_plan(settings_nodes, profile_state, args.settings_orientation, args.fast_intro)
+            plan = native_profile_plan(settings_nodes, profile_state, orientation, fast_intro)
             kind, node = plan["kind"], plan["node"]
             if kind == "language":
                 tap(node, "android-uiautomator-tree", "choose-settings-English-once")
                 profile_state["language"] = True
             elif kind == "slider":
                 bounds = node["bounds"]; x, y = center(node)
-                end = bounds["right"] - 1 if args.settings_scalar == 2. else bounds["left"] + 1
-                device.shell("input", "swipe", str(x), str(y), str(end), str(y), "500")
+                end = bounds["right"] - 1 if scalar == 2. else bounds["left"] + 1
+                device.shell("input", "tap", str(end), str(y))
                 profile_state[plan["role"]] = True
-                report["actions"].append({"source": "android-uiautomator-tree", "reason": "set-" + plan["role"] + "-FOV-slider-endpoint", "layout_path": node["layout_path"], "bounds": bounds, "scalar": args.settings_scalar})
+                report["actions"].append({"source": "android-uiautomator-tree", "reason": "set-" + plan["role"] + "-FOV-slider-endpoint", "layout_path": node["layout_path"], "bounds": bounds, "scalar": scalar})
             elif kind in ("orientation", "intro"):
                 if plan["needs_tap"]:
-                    tap(node, "android-uiautomator-tree", "select-" + (args.settings_orientation if kind == "orientation" else "fast-intro-state"))
+                    tap(node, "android-uiautomator-tree", "select-" + (orientation if kind == "orientation" else "fast-intro-state"))
                 profile_state[kind] = True
             elif kind == "launch":
-                capture("feature-settings-before-save")
+                capture("feature-settings-" + profile_name + "-before-save")
+                attach_reader()
                 tap(node, "android-uiautomator-tree", "save-settings-and-launch-game")
-                report["settings_ui"] = {"orientation": args.settings_orientation, "min": args.settings_scalar, "max": args.settings_scalar, "fast_intro": args.fast_intro, "source": "native-accessibility-tree", "language_selected_once": True}
+                report.setdefault("settings_profiles", {})[profile_name] = {"orientation": orientation, "min": scalar, "max": scalar, "fast_intro": fast_intro, "source": "native-accessibility-tree", "language_selected_once": True}
                 settings_snapshot("after-launch")
                 break
             else:
@@ -565,12 +609,51 @@ def main():
             if kind == "slider":
                 value = slider_caption_value(settings_nodes, plan["role"])
                 trace[-1]["slider_role"], trace[-1]["observed_caption_value"] = plan["role"], value
-                if value is not None and abs(value - args.settings_scalar) > .0001:
+                if value is not None and abs(value - scalar) > .0001:
                     raise AssertionError("Slider endpoint did not reach requested value: " + plan["role"])
                 # A clipped caption is not treated as behavioral evidence;
                 # runtime RW configuration and actual Correction remain gates.
         else:
             raise AssertionError("Bounded sequential settings navigation did not complete")
+
+    try:
+        if not host_mode:
+            assert report["server_apk_sha256"] == SERVER_SHA, "Frozen server APK identity mismatch"
+        else:
+            assert report["server_binary_sha256"] == host_server.binding["binary_sha256"], "Frozen source-build identity mismatch"
+        assert report["client_apk_sha256"] == CLIENT_SHA, "Original client APK identity mismatch"
+        assert device.read(MARKER).decode().strip() == "disposable-private-client-qa", "This is not an explicitly disposable QA target"
+        assert device.shell("getprop", "ro.product.cpu.abi") == "arm64-v8a", "Real ARM64 Android is required"
+        report["environment"] = {"abi": device.shell("getprop", "ro.product.cpu.abi"), "api": device.shell("getprop", "ro.build.version.sdk"), "model": device.shell("getprop", "ro.product.model"), "kernel": device.shell("uname", "-a")}
+        if host_mode:
+            report["server_install"] = {"status": "NOT_APPLICABLE", "reason": "Actual source-built Go fixture; no server APK installation is claimed"}
+            report["server_start"] = host_server.start(device)
+            config = host_server.config
+        else:
+            report["server_install"] = device.install(args.server_apk, args.server_version_code)
+            report["server_start"] = device.start("elichika-ready")
+            config = json.loads(device.read("/data/user/0/" + SERVER + "/files/config.json"))
+        report["verified"]["server_started"] = True
+        report["server_cdn"] = {key: config.get(key) for key in ("cdn_cache", "cdn_cache_dir", "cdn_server", "locales")}
+        assert config.get("cdn_cache") is True, "Enable the app's normal CDN cache before original-client asset loading"
+        device.adb("install", "-r", str(args.client_apk), timeout=180)
+        installed = device.shell("pm", "path", CLIENT).splitlines()[0].removeprefix("package:")
+        assert device.shell("sha256sum", installed).split()[0] == CLIENT_SHA, "The original client APK changed during installation"
+        report["client_package_info"] = device.shell("dumpsys", "package", CLIENT)
+        device.shell("logcat", "-c")
+        report["client_launch"] = device.shell("am", "start", "-W", "-n", LAUNCHER)
+        active_profile = {"orientation":args.settings_orientation,"scalar":args.settings_scalar,"fast_intro":False}
+        intro_phase = "off"
+        intro_traces = {}
+        control_phase = "initial"
+        fov_measurements = {}
+        auto_before = None
+        from mv_driver import MVDriver
+        mv_driver = MVDriver(args.evidence)
+        mv_video = None
+        selected_twelve_song = None
+        music_scrolls = 0
+        apply_profile(active_profile["orientation"], active_profile["scalar"], False, "intro-off")
         report["verified"]["client_launched"] = True
         video = subprocess.Popen(["adb", "-s", args.serial, "shell", "screenrecord", "--bit-rate", "1500000", "--time-limit", "180", "/sdcard/client-qa-start.mp4"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(30):
@@ -582,19 +665,6 @@ def main():
                 break
             time.sleep(2)
         assert client_pid, "The original game process did not stay running"
-        if args.unity_agent and args.unity_agent.is_file():
-            try:
-                import frida
-                device.adb("forward", "tcp:27042", "tcp:27042")
-                remote = frida.get_device_manager().add_remote_device("127.0.0.1:27042")
-                session = remote.attach(int(client_pid))
-                agent = session.create_script(args.unity_agent.read_text())
-                agent.on("message", lambda message, data: None)
-                agent.load()
-                report["readonly_ui_instrumentation"] = True
-            except Exception as error:
-                report["observations"].append({"unity_ui_reader": type(error).__name__, "message": str(error)[:300]})
-                agent = None
         capture("client-launched")
         save_report()
         for index in range(160):
@@ -618,18 +688,23 @@ def main():
             tree = {}
             if agent:
                 try:
-                    tree = bounded_rpc(lambda: agent.exports_sync.snapshot({"maxNodes": 1500, "raycastText": True, "featureRegion": args.region}), timeout=20)
+                    tree = bounded_rpc(lambda: agent.exports_sync.snapshot({"maxNodes": 1500, "raycastText": True, "featureRegion": args.region, "numericTestId": fixture_user_id}), timeout=20)
                     if not isinstance(tree, dict):
                         tree = {"raw": str(tree)}
                     (args.evidence / f"unity-ui-{index:03d}.json").write_text(json.dumps(tree, ensure_ascii=False, indent=2))
                     last_tree = tree
-                    feature_cases = feature_observations(tree, args.settings_orientation, args.settings_scalar)
+                    feature_cases = feature_observations(tree, active_profile["orientation"], active_profile["scalar"])
                     for case_name, case_status in feature_cases.items():
-                        record_case(case_name, case_status, [f"unity-ui-{index:03d}.json"], "Observed live module/config or actual active camera correction and display geometry; not inferred from server requests")
+                        if case_name == "fov_actual":
+                            if active_profile["orientation"] == "portrait": fov_measurements[active_profile["scalar"]] = f"unity-ui-{index:03d}.json"
+                            if set(fov_measurements) >= {.5, 2.}:
+                                record_case(case_name, case_status, list(fov_measurements.values()), "Actual active mode-one camera Correction changed between both UI-selected endpoint clamps across live settings round trips")
+                        else:
+                            record_case(case_name, case_status, [f"unity-ui-{index:03d}.json"], "Observed live module/config or actual active camera correction and display geometry; not inferred from server requests")
                 except Exception as error:
                     report["observations"].append({"unity_snapshot": index, "error": type(error).__name__, "message": str(error)[:300]})
                     if isinstance(error, queue.Empty):
-                        try: session.detach()
+                        try: bounded_rpc(lambda: session.detach(), timeout=5)
                         except Exception: pass
                         agent = session = None
             visible_tree = {"screen": tree.get("screen"), "nodes": [node for node in tree.get("nodes", []) if node.get("visible") and node.get("active")]}
@@ -639,12 +714,31 @@ def main():
                 capture(f"client-{index:03d}-{stage}")
             # Goals require active original-client UI, not just server API calls.
             scene = (tree.get("screen") or {}).get("scene")
+            if scene == "Title" and not (tree.get("features") or {}).get("splashScreens") and intro_phase in ("off", "on"):
+                trace = bounded_rpc(lambda: agent.exports_sync.endintrotrace(), timeout=5)
+                trace["profile"] = dict(active_profile)
+                trace_path = "intro-" + intro_phase + "-trace.json"
+                (args.evidence / trace_path).write_text(json.dumps(trace, indent=2))
+                intro_traces[intro_phase] = trace
+                if intro_phase == "off":
+                    active_profile["fast_intro"] = True
+                    apply_profile(active_profile["orientation"], active_profile["scalar"], True, "intro-on", restart=True)
+                    intro_phase = "on"
+                    filled.clear()
+                    continue
+                from control_evidence import intro_pair_evidence
+                measured = intro_pair_evidence(intro_traces["off"], intro_traces["on"])
+                if measured:
+                    (args.evidence / "intro-paired-measurement.json").write_text(json.dumps(measured, indent=2))
+                    record_case("intro_timing", "PASS", ["intro-off-trace.json", "intro-on-trace.json", "intro-paired-measurement.json"], measured["proof"])
+                intro_phase = "done"
             home = scene == "Home" or re.search(r"(?:Home(?:Top|Scene|View|Page|Screen|Menu)|ホーム|ホーム画面)", all_text, re.I)
             members = scene in ("CardList", "CardDetail", "CommunicationMemberSelect", "CommunicationMemberDetail") or re.search(r"(?:Member(?:Top|List|Scene|View|Page|Screen)|School\s*Idols|部員一覧|スクールアイドル一覧)", all_text, re.I)
             mv = scene in ("LiveMv", "LiveMvCore") or re.search(r"(?:MusicVideo(?:Scene|Player|View)|MV(?:Scene|Player|Play|View)|Music Video Playing)", all_text, re.I)
             if stage == "bootstrap" and home and available:
                 report["ui_candidates"]["home"] = {"snapshot": f"unity-ui-{index:03d}.json", "reason": "Visible UI candidate only; independent screenshot/scene/render proof required"}
                 capture("home-ui-candidate")
+                if scene == "Home": report["verified"]["home"] = True
                 if "before_mv" not in report.get("costume_entry_snapshots", {}):
                     try: costume_counts("before_mv")
                     except Exception as error: report["observations"].append({"costume_count_snapshot": "before_mv", "error": type(error).__name__})
@@ -652,6 +746,7 @@ def main():
             if stage == "members" and members and available:
                 report["ui_candidates"]["members"] = {"snapshot": f"unity-ui-{index:03d}.json", "reason": "Visible member UI candidate only; footer/path labels alone do not prove member content"}
                 capture("members-ui-candidate")
+                if scene in ("CardList", "CardDetail", "CommunicationMemberSelect", "CommunicationMemberDetail"): report["verified"]["members"] = True
                 stage = "mv"
             if stage == "mv" and mv:
                 capture("mv-frame-1")
@@ -661,7 +756,139 @@ def main():
                 if first.is_file() and second.is_file() and digest(first) != digest(second):
                     report["ui_candidates"]["mv"] = {"snapshot": f"unity-ui-{index:03d}.json", "frame1_sha256": digest(first), "frame2_sha256": digest(second), "interval_seconds": 3,
                         "reason": "Changed frames are not MV proof; require actual /liveMv/start plus active MV scene/model timeline before confirming"}
+            # Apply changes through the normal settings Activity. Retain each
+            # actual Unity snapshot and re-attach only the read-only observer.
+            if intro_phase == "done" and control_phase == "initial" and 2. in fov_measurements:
+                active_profile = {"orientation":"portrait","scalar":.5,"fast_intro":True}
+                device.shell("am", "start", "-W", "-n", LAUNCHER)
+                apply_profile("portrait", .5, True, "live-portrait-min")
+                control_phase = "minimum-portrait"
+                continue
+            if control_phase == "minimum-portrait" and .5 in fov_measurements:
+                active_profile = {"orientation":"landscape","scalar":.5,"fast_intro":True}
+                device.shell("am", "start", "-W", "-n", LAUNCHER)
+                apply_profile("landscape", .5, True, "landscape-lock")
+                control_phase = "minimum"
+                continue
+            if control_phase == "minimum" and .5 in fov_measurements and report["cases"]["landscape"]["status"] == "PASS":
+                active_profile = {"orientation":"portrait","scalar":2.,"fast_intro":True}
+                device.shell("am", "start", "-W", "-n", LAUNCHER)
+                apply_profile("portrait", 2., True, "portrait-before-auto")
+                control_phase = "portrait-before-auto"
+                continue
+            if control_phase == "portrait-before-auto" and "portrait" in feature_observations(tree,"portrait",2.):
+                auto_before = f"unity-ui-{index:03d}.json"
+                active_profile = {"orientation":"auto","scalar":2.,"fast_intro":True}
+                device.shell("am", "start", "-W", "-n", LAUNCHER)
+                apply_profile("auto", 2., True, "auto-engine-return")
+                control_phase = "auto"
+                continue
+            if control_phase == "auto":
+                native_state = (tree.get("features") or {}).get("native") or {}
+                current_config = native_state.get("config") or {}
+                display = tree.get("screen") or {}
+                if (auto_before and current_config.get("orientation") == 0 and native_state.get("requestedOrientation") == 0 and
+                        display.get("width",0) > display.get("height",0) > 0):
+                    record_case("auto", "PASS", [auto_before,f"unity-ui-{index:03d}.json"], "Normal settings transition releases forced portrait: the actual Unity Activity requests its ordinary landscape orientation and renders a landscape surface after Auto")
+                    control_phase = "done"
+            if stage == "mv" and control_phase == "done" and scene == "LiveMusicSelect" and selected_twelve_song is None:
+                observed_mv=(tree.get("features") or {}).get("mv") or {}
+                rows=[r for r in observed_mv.get("musicRows",[]) if r.get("liveMasterId") in (12074,12096,12097,12121,12128) and r.get("isPlayable") is True and (r.get("target") or {}).get("visible") and ((r.get("target") or {}).get("hit") or {}).get("hittable") is True]
+                if rows:
+                    row=sorted(rows,key=lambda r:(r["liveMasterId"]!=12074,r["liveMasterId"]))[0]
+                    picked=bounded_rpc(lambda:agent.exports_sync.pickmv({"role":"music","liveMasterId":row["liveMasterId"]}),timeout=10)
+                    target=picked["target"];target["_unity_screen"]=picked["screen"]
+                    tap(target,"readonly-official-music-VO-and-raycast","select-official-twelve-standing-song")
+                    selected_twelve_song=row["liveMasterId"]
+                    report["selected_official_twelve_song"]={"liveMasterId":selected_twelve_song,"snapshot":f"unity-ui-{index:03d}.json","verified_capacity_required":12}
+                    time.sleep(2)
+                    continue
+                scrolls=[n for n in tree.get("nodes",[]) if n.get("kind")=="scroll" and n.get("active") and n.get("visible") and re.search("LiveMusicSelect",n.get("path") or "") and n.get("scroll",{}).get("vertical") != n.get("scroll",{}).get("horizontal")]
+                if len(scrolls)==1 and music_scrolls<32:
+                    scroll=scrolls[0];bounds=scroll.get("visibleBounds") or scroll["bounds"]
+                    x=int((bounds["left"]+bounds["right"])/2);y=int((bounds["top"]+bounds["bottom"])/2)
+                    width=bounds["right"]-bounds["left"];height=bounds["bottom"]-bounds["top"]
+                    if scroll["scroll"]["vertical"]:
+                        device.shell("input","swipe",str(x),str(int(bounds["top"]+height*.8)),str(x),str(int(bounds["top"]+height*.25)),"600")
+                    else:
+                        device.shell("input","swipe",str(int(bounds["left"]+width*.8)),str(y),str(int(bounds["left"]+width*.25)),str(y),"600")
+                    music_scrolls+=1
+                    report["actions"].append({"source":"readonly-music-ScrollRect","reason":"re-search-twelve-standing-song","bounds":bounds,"axes":scroll["scroll"]})
+                    time.sleep(1)
+                    continue
+                report["observations"].append({"twelve_song_navigation":"No unique current song-list ScrollRect or bounded search exhausted; no fixed tap invented"})
+                continue
+            if stage == "mv" and control_phase == "done":
+                server_bytes = host_server.server_log() if host_mode else device.read("/sdcard/Download/sukusta/logs/elichika.log")
+                from mv_driver import successful_live_start_count
+                live_starts = successful_live_start_count(server_bytes)
+                action = mv_driver.step(tree,f"unity-ui-{index:03d}.json",now=time.monotonic(),live_start_count=live_starts)
+                mv_results = mv_driver.results()
+                report["mv_flow"] = mv_results
+                for name, result in mv_results["cases"].items():
+                    report["cases"][name] = result
+                    report["verified"][name] = result["status"] == "PASS"
+                if mv_results["phase"] == "done":
+                    report["verified"]["mv"] = True
                     break
+                if mv_results["phase"] == "failed":
+                    report["status"] = "FAIL"
+                    report["blocked_reason"] = mv_results.get("blocked_reason")
+                    break
+                if action:
+                    kind=action["kind"]
+                    if kind == "pickmv":
+                        from mv_driver import validated_pick
+                        try:
+                            picked=bounded_rpc(lambda:agent.exports_sync.pickmv(action["query"]),timeout=10)
+                            validated_pick(picked,action["query"])
+                            node=picked["target"];node["_unity_screen"]=picked["screen"]
+                            tap(node,"readonly-mv-model-and-raycast",action["reason"])
+                        except Exception as error:
+                            report["observations"].append({"mv_tap_blocked":action["query"],"error":type(error).__name__})
+                    elif kind == "semantic":
+                        custom_tabs=[t for g in ((tree.get("features") or {}).get("mv") or {}).get("deckTabGroups",[]) for t in g.get("tabs",[]) if t.get("deckType")==2 and (t.get("target") or {}).get("visible") and ((t.get("target") or {}).get("hit") or {}).get("hittable") is True]
+                        if scene=="LiveMvDeckSelect" and re.search("custom",action["reason"],re.I) and len(custom_tabs)==1:
+                            picked=bounded_rpc(lambda:agent.exports_sync.pickmv({"role":"customTab"}),timeout=10)
+                            target=picked["target"];target["_unity_screen"]=picked["screen"]
+                            tap(target,"readonly-MV-tab-VO-and-raycast",action["reason"])
+                        else:
+                            choose(tree,action["patterns"],action["reason"])
+                    elif kind == "key":
+                        assert action["key"] == "KEYCODE_BACK"
+                        device.shell("input","keyevent",action["key"])
+                    elif kind == "scroll":
+                        context = r"LiveMv.*(?:Member|Select)|Categorized" if action["context"] == "mv_member_picker" else r"SuitChangePopup"
+                        scrolls=[n for n in tree.get("nodes",[]) if n.get("kind")=="scroll" and n.get("active") and n.get("visible") and re.search(context,n.get("path") or "",re.I)]
+                        unique={json.dumps(n.get("visibleBounds") or n.get("bounds"),sort_keys=True):n for n in scrolls}
+                        if len(unique)==1:
+                            scroll=next(iter(unique.values()));bounds=scroll.get("visibleBounds") or scroll["bounds"]
+                            x=int((bounds["left"]+bounds["right"])/2);height=bounds["bottom"]-bounds["top"]
+                            device.shell("input","swipe",str(x),str(int(bounds["top"]+height*.8)),str(x),str(int(bounds["top"]+height*.25)),"500")
+                            report["actions"].append({"source":"readonly-unity-ScrollRect","reason":action["reason"],"bounds":bounds})
+                        else:
+                            report["observations"].append({"mv_scroll_blocked":"No unique active popup ScrollRect","context":action["context"]})
+                    elif kind == "video_start":
+                        device.shell("pkill","-2","screenrecord")
+                        case=action["case"];assert re.fullmatch("mv_[a-z_]+",case)
+                        remote_path="/sdcard/"+case+".mp4"
+                        mv_video={"case":case,"remote":remote_path,"process":subprocess.Popen(["adb","-s",args.serial,"shell","screenrecord","--bit-rate","1800000","--time-limit","180",remote_path],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)}
+                    elif kind == "video_stop":
+                        assert mv_video and mv_video["case"]==action["case"]
+                        device.shell("pkill","-2","screenrecord")
+                        try: mv_video["process"].wait(timeout=8)
+                        except subprocess.TimeoutExpired: mv_video["process"].terminate()
+                        relative=action["case"]+"-playback.mp4"
+                        device.adb("pull",mv_video["remote"],str(args.evidence/relative),timeout=45)
+                        mv_driver.record_video(action["case"],relative)
+                        mv_video=None
+                    elif kind == "wait":
+                        time.sleep(min(1.,max(0.,action.get("seconds",.3))))
+                    else:
+                        raise AssertionError("Unknown actual MV driver action")
+                    save_report()
+                    time.sleep(1)
+                    continue
             # Genuine text entry in a disposable profile. No account/token is
             # inserted into the game or simulated by direct login API calls.
             inputs = tree.get("inputs") or tree.get("inputFields") or [node for node in tree.get("nodes", []) if node.get("kind") == "input" and node.get("visible") and node.get("input")]
@@ -673,7 +900,7 @@ def main():
                     continue
                 value = None
                 if re.search(r"(?:User|Player|Transfer).*(?:Id|ID)|(?:user|player)_?id", field_label, re.I):
-                    value = "893611090"
+                    value = fixture_user_id
                 elif (field.get("input") or {}).get("password") or re.search(r"pass(?:word)?", field_label, re.I):
                     value = password
                 elif re.search(r"(?:player|nick).*name|NameInput", field_label, re.I):
@@ -697,9 +924,9 @@ def main():
                 if choose(tree, [r"^CommunicationMemberDetailButton$", r"^CommunicationMemberSelectButton$", r"^CardListButton$", r"^CardButton$", r"^Members?$", r"(?:Main|Bottom|Footer).*Member", r"スクールアイドル"], "open-members"):
                     time.sleep(5); continue
             if stage == "mv":
-                if scene == "LiveMvDeckSelect" and choose(tree, [r"^PlayButton$"], "start-selected-music-video"):
+                if control_phase != "done" and scene == "LiveMvDeckSelect" and choose(tree, [r"^PlayButton$"], "start-selected-music-video"):
                     time.sleep(6); continue
-                if scene == "LiveMusicSelect" and choose(tree, [r"^EnableMvBtn$", r"^MvBtnDownload$"], "select-original-music-video"):
+                if (control_phase != "done" or selected_twelve_song is not None) and scene == "LiveMusicSelect" and choose(tree, [r"^EnableMvBtn$", r"^MvBtnDownload$"], "select-original-music-video"):
                     time.sleep(6); continue
                 if choose(tree, [r"^Music\s*Video$", r"^Watch\s*MV$", r"(?:Button|Btn).*MV(?:$|/)", r"^MV$", r"^Live\s*Shows?$", r"^Live$", r"(?:Main|Bottom|Footer).*Live", r"^Songs?$"], "open-music-video"):
                     time.sleep(6); continue
@@ -710,7 +937,7 @@ def main():
                 if choose(tree, [r"^ButtonPositive[MLS]$"], "confirm-observed-english-language-choice"):
                     time.sleep(5); continue
             if title_start_visible(tree) and agent:
-                fresh = bounded_rpc(lambda: agent.exports_sync.snapshot({"maxNodes": 1500, "raycastText": True, "featureRegion": args.region}), timeout=20)
+                fresh = bounded_rpc(lambda: agent.exports_sync.snapshot({"maxNodes": 1500, "raycastText": True, "featureRegion": args.region, "numericTestId": fixture_user_id}), timeout=20)
                 start_target = title_start_target(fresh)
                 if start_target:
                     (args.evidence / f"unity-ui-{index:03d}-title-start.json").write_text(json.dumps(fresh, ensure_ascii=False, indent=2))
@@ -747,22 +974,24 @@ def main():
         report["status"] = "PASS" if all(report["verified"].values()) and case_overall(report["cases"]) == "PASS" else "PARTIAL"
         if report["status"] != "PASS":
             report.setdefault("blocked_reason", "Requested real-client rendering stages were not all observed within the bounded run")
-    except Exception as error:
+    except (Exception, OverallQATimeout) as error:
         report["status"] = "FAIL"
         report["error"] = type(error).__name__ + ": " + str(error)[:1000]
-        (args.evidence / "qa-exception.txt").write_text(traceback.format_exc())
+        (args.evidence / "qa-exception.txt").write_text(traceback.format_exc().replace(password,"[redacted synthetic password]"))
     finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_alarm)
         capture("client-final")
         try:
             (args.evidence / "client-logcat.txt").write_bytes(device.adb("logcat", "-d", "-v", "threadtime", "--pid", client_pid, raw=True, timeout=20) if client_pid else device.adb("logcat", "-d", raw=True, timeout=20))
             (args.evidence / "client-crash-logcat.txt").write_bytes(device.adb("logcat", "-b", "crash", "-d", raw=True, timeout=20))
-            server_log = device.read("/sdcard/Download/sukusta/logs/elichika.log")[-2 * 1024 * 1024:]
+            server_log = (host_server.server_log() if host_mode else device.read("/sdcard/Download/sukusta/logs/elichika.log"))[-2 * 1024 * 1024:]
             (args.evidence / "elichika-client-session.log").write_bytes(server_log)
             report["genuine_client_requests"] = successful_game_requests(server_log)
         except Exception as error:
             report["observations"].append({"log_collection": type(error).__name__})
         if session:
-            try: session.detach()
+            try: bounded_rpc(lambda: session.detach(), timeout=5)
             except Exception: pass
         try:
             device.shell("pkill", "-2", "screenrecord")
@@ -774,9 +1003,18 @@ def main():
             pass
         try:
             device.shell("am", "force-stop", CLIENT)
-            device.stop()
-        except Exception:
-            pass
+            if host_mode:
+                host_server.stop(device)
+                server_log = host_server.server_log()[-2 * 1024 * 1024:]
+                (args.evidence / "elichika-client-session.log").write_bytes(server_log)
+                report["genuine_client_requests"] = successful_game_requests(server_log)
+            else:
+                device.stop()
+        except Exception as error:
+            report["observations"].append({"owned_fixture_cleanup": type(error).__name__})
+            if host_mode:
+                report["status"] = "FAIL"
+                report["error"] = "Owned host-Go fixture did not cleanly stop; inspect sanitized diagnostics"
         # Only a count is retained; no database, account key or password hash is
         # uploaded from the synthetic disposable profile.
         try:
@@ -784,7 +1022,7 @@ def main():
                 folder = Path(temporary)
                 for suffix in ("", "-wal", "-shm"):
                     try:
-                        (folder / ("userdata.db" + suffix)).write_bytes(device.read("/data/user/0/" + SERVER + "/files/userdata.db" + suffix))
+                        (folder / ("userdata.db" + suffix)).write_bytes(host_server.read_database("userdata.db" + suffix) if host_mode else device.read("/data/user/0/" + SERVER + "/files/userdata.db" + suffix))
                     except Exception:
                         pass
                 with sqlite3.connect(folder / "userdata.db") as db:
@@ -794,7 +1032,15 @@ def main():
                         "proof": "Read-only authorization_count>0 joined to last_login_at from this genuine-client run; keys/session fields are never exported"}
         except Exception as error:
             report["observations"].append({"synthetic_account_count": type(error).__name__})
-        report["apk_bytes_unchanged"] = digest(args.server_apk) == SERVER_SHA and digest(args.client_apk) == CLIENT_SHA
+        report["client_apk_bytes_unchanged"] = digest(args.client_apk) == CLIENT_SHA
+        if host_mode:
+            from host_go_fixture import file_sha256
+            report["apk_bytes_unchanged"] = None
+            report["host_server_binary_unchanged"] = file_sha256(host_server.binary) == SERVER_SHA
+            if not report["host_server_binary_unchanged"]: report["status"] = "FAIL"
+        else:
+            report["apk_bytes_unchanged"] = digest(args.server_apk) == SERVER_SHA and report["client_apk_bytes_unchanged"]
+        if not report["client_apk_bytes_unchanged"]: report["status"] = "FAIL"
         auth = report.get("actual_client_authentication", {})
         requests = report.get("genuine_client_requests", {})
         report["verified"]["client_login"] = bool(auth.get("successful_recent_accounts", 0) > 0 and requests.get("/login/login") and requests.get("/bootstrap/fetchBootstrap"))
@@ -811,15 +1057,23 @@ def main():
         if all(report["cases"][name]["status"] == "PASS" for name in ("mv_same_suit", "mv_different_suits", "mv_max_slots", "mv_restore")) and set(snapshots) >= {"before_mv", "after_mv"}:
             unchanged = snapshots["before_mv"]["counts"] == snapshots["after_mv"]["counts"]
             record_case("no_new_costume_entries", "PASS" if unchanged else "FAIL", [snapshots[name]["path"] for name in ("before_mv", "after_mv")], "All existing costume rows/clones remain visible; MV choices allocate no persistent costume rows")
+            report["cases"]["no_new_costume_entries"]["counts_before"] = snapshots["before_mv"]["counts"]
+            report["cases"]["no_new_costume_entries"]["counts_after"] = snapshots["after_mv"]["counts"]
         report["case_status"] = case_overall(report["cases"])
+        if report["status"] != "FAIL":
+            report["status"] = "PASS" if all(report["verified"].values()) and report["case_status"] == "PASS" else "PARTIAL"
         if report["case_status"] == "FAIL": report["status"] = "FAIL"
         for case_name, case in report["cases"].items():
             if case["status"] == "NOT_RUN":
                 case["detail"] = "Dedicated genuine UI flow has not completed; no approval inferred from configuration, static analysis, API calls or changed screenshots"
-        if server_fixture.get("approval_scope") != "final_release_fixture":
+        if server_fixture.get("approval_scope") not in ("final_release_fixture", "final_source_build_fixture"):
             report["status"] = "PARTIAL" if report["status"] != "FAIL" else "FAIL"
             report["approval_limit"] = "Diagnostic baseline server only; fresh frozen server QA required"
         save_report()
+        for path in args.evidence.rglob("*"):
+            if path.is_file() and path.suffix in (".json",".xml",".txt",".log"):
+                raw=path.read_bytes()
+                if password.encode() in raw: path.write_bytes(raw.replace(password.encode(),b"[redacted synthetic password]"))
         print(json.dumps({"status": report["status"], "verified": report["verified"], "blocked_reason": report.get("blocked_reason"), "report": str(args.evidence / "original-client-report.json")}))
     return 0 if report["status"] == "PASS" else 1
 

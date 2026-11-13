@@ -32,7 +32,7 @@ node --check unity_ui.bundle.js
 
 ## Driver contract
 
-Attach after the actual game Activity is foreground and IL2CPP has initialized.
+Attach the read-only observer to the settings process before its normal Save and Launch action to capture startup splash timing. The bridge waits for IL2CPP; game reads execute only after initialization on the Unity main thread.
 Load `unity_ui.bundle.js` using the Frida Python API, then retain messages from
 the script. `status()` is nonblocking; `initialize()`, `snapshot()`, `pick()` and
 `classes()` are asynchronous RPC calls executed on the Unity main thread.
@@ -90,3 +90,7 @@ bound driver waits. Treat unavailable geometry/raycast metadata as a diagnostic,
 not as proof that a game button is usable. `requireHitTest=True` fails safely when
 the actual Unity hit test cannot be performed. Do not weaken a failed login/home/
 member/MV assertion based only on observer readiness or server API success.
+
+The current workflow binds GL b22 and JP b23 to exact assets, a stable public signing certificate, and a fresh source-built ARM64 Go fixture from frozen C3. Source-build game RPC evidence does not claim server APK installation. Only synthetic accounts are created; private credentials, raw databases, binaries and caches are excluded from uploads. See HOST_GO_INTEGRATION.md.
+
+The overall driver deadline interrupts blocking waits; Frida attach/load/detach use bounded calls. Intro timing requires paired normal/fast real tween progress across advancing Unity frames and real elapsed time. Live FOV requires observed mode-one corrections at both endpoint clamps selected through ordinary settings controls. Auto requires a real display/request transition from forced portrait back to the game's ordinary landscape request. Missing observations remain NOT_RUN.

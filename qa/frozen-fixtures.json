@@ -18,10 +18,10 @@
     "JP": {
       "repository": "tagundo/elichika",
       "release_id": 443949312,
-      "asset_id": 742770122,
-      "name": "LLAS_JP_FOVMOD_b22.apk",
+      "asset_id": 742996342,
+      "name": "LLAS_JP_FOVMOD_b23.apk",
       "bytes": 79661664,
-      "sha256": "b6c92acfe1a5b3baa0ca18be959f6645596bf8eb9309a0f565af5dcfc19b07f2",
+      "sha256": "c9d6555acd71605ae4b4aa083021932ec398b9b83d312c14c8f385c98a0e816f",
       "original_repository": "tagundo/SIFAS-Client",
       "original_asset_id": 725722998,
       "original_sha256": "64a3b329929daf05b93c35b25b1343d202d62399b0a378304bb21433ea81ed2e",
@@ -30,14 +30,17 @@
   },
   "server": {
     "repository": "tagundo/elichika",
-    "release_id": 443463117,
-    "asset_id": 740946521,
-    "name": "elichika-2026.11.12.4.apk",
-    "bytes": 290866852,
-    "sha256": "f1b9b1060f2fd7b3fec912aa76b1c53c9f368f99841df18f8872b0a25169a7e3",
-    "version_code": 2026111204,
-    "source_commit": "a91843474f9d672189c1ca2f15ca846de8e41458",
-    "approval_scope": "diagnostic_baseline_only"
+    "source_commit": "c676bf5f969fafb24244dd0f59f804e1d26db982",
+    "kind": "source-build",
+    "approval_scope": "final_source_build_fixture",
+    "toolchain": "go1.22.12",
+    "build_args": [
+      "CGO_ENABLED=0",
+      "go",
+      "build",
+      "-trimpath"
+    ],
+    "native_server_apk_validation_required_separately": true
   },
   "frida": {
     "repository": "frida/frida",

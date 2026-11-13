@@ -3484,9 +3484,9 @@ globalThis.Il2Cpp = Il2Cpp;
 (function () {
   "use strict";
   var ready = false, lastError = "", runtime = {}, classCache = {}, initPending = false;
-  var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 2;
+  var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 3;
   var TEXT_TYPES = ["UnityEngine.UI.Text", "TMPro.TMP_Text", "Jigbox.Components.TextView", "LLAS.Components.UI.ProductTextView"];
-  var DEFAULT_TYPES = ["UnityEngine.UI.Button", "UnityEngine.UI.Toggle", "UnityEngine.UI.InputField", "TMPro.TMP_InputField"].concat(TEXT_TYPES);
+  var DEFAULT_TYPES = ["UnityEngine.UI.Button", "UnityEngine.UI.Toggle", "UnityEngine.UI.InputField", "TMPro.TMP_InputField", "UnityEngine.UI.ScrollRect"].concat(TEXT_TYPES);
 
   function exists(value) { return !!value && !(typeof value.isNull === "function" && value.isNull()); }
   function text(value) { return exists(value) ? String(value.content === undefined ? value : value.content || "") : ""; }
@@ -3715,8 +3715,226 @@ globalThis.Il2Cpp = Il2Cpp;
     } catch (error) { result.platformReadError = String(error); }
     return result;
   }
+// Optional fragment for the existing, main-thread, read-only Unity observer.
+// Uses its existing findClass/allOfType/exists/active/maybe/instanceId helpers.
+// No game actions, setters, callbacks, scene changes, or player-state writes.
+function mvReadField(object, name) {
+  if (!object || (object.handle && object.handle.isNull())) return null;
+  try { var value = object.field(name).value; return value && value.handle && value.handle.isNull() ? null : value; } catch (_) { return null; }
+}
+function mvBacking(object, name) { return mvReadField(object, "<" + name + ">k__BackingField"); }
+function mvNumber(value) {
+  if (value === null || value === undefined) return null;
+  var n = Number(value); return Number.isFinite(n) ? n : null;
+}
+function mvExistingComponentInfo(object) {
+  var tr = transform(object), position = maybe(tr, "get_position", null);
+  var info = { id: String(instanceId(object)), gameObjectId: String(instanceId(gameObject(object))),
+    path: hierarchy(tr), active: active(object).active };
+  if (position) info.position = {x: field(position,"x"), y: field(position,"y"), z: field(position,"z")};
+  return info;
+}
+// Read-only additions to mv_observer.fragment.js; same Unity main-thread observer.
+// GL/JP metadata verified. No game actions, callbacks, setters, or state writes.
+function observeExistingMvExtras(screen,raycaster) {
+  var result = { deckRoots: [], suitPickerCells: [], directorAssets: [], errors: [] };
+  function collect(type, callback) {
+    var klass = findClass(type, true);
+    if (!klass) { result.errors.push({type:type,error:"Type absent"}); return; }
+    try {
+      var objects=allOfType(klass);
+      for (var i=0;i<objects.length && i<128;i++) {
+        var object=objects.get(i);
+        if (exists(object) && active(object).active) callback(object);
+      }
+    } catch(error) { result.errors.push({type:type,error:String(error)}); }
+  }
+  collect("LLAS.Scene.LiveMvDeckSelect.LiveMvDeckSelectRoot", function(object) {
+    var vo=mvReadField(object,"liveMvDeckSelectVO"),info=mvExistingComponentInfo(object);
+    info.liveMasterId=mvNumber(mvBacking(vo,"LiveMasterId"));
+    info.standingMemberNum=mvNumber(mvBacking(vo,"StandingMemberNum"));
+    info.voClass=vo?fullType(vo):null;
+    result.deckRoots.push(info);
+  });
+  collect("LLAS.SuitChangePopupSuitTileViewCell", function(object) {
+    var vo=mvReadField(object,"memberSuitVO"),info=mvExistingComponentInfo(object);
+    info.memberId=mvNumber(mvBacking(vo,"MemberMasterId"));
+    info.suitId=mvNumber(mvBacking(vo,"MasterId"));
+    info.voClass=vo?fullType(vo):null;
+    // MemberSuitVO has no IsUnlocked field. Actual active/hittable button and
+    // observed successful resulting deck change establish selectability.
+    var button=mvReadField(object,"button");
+    if(exists(button)) {info.button={id:String(instanceId(button)),path:hierarchy(transform(button)),type:fullType(button)};info.target=mvUiTarget(button,screen,raycaster);}
+    result.suitPickerCells.push(info);
+  });
+  collect("LLAS.Scene.Live.LiveDirector", function(object) {
+    var asset=mvReadField(object,"asset"),members=mvBacking(asset,"Members"),info=mvExistingComponentInfo(object);
+    info.assetClass=asset?fullType(asset):null;info.members=[];
+    // Live3DAssetVO retains the asset VOs; actual instantiated model identity
+    // is separately observed via LiveCoreMember + its formation position.
+    if(members && typeof members.length === "number") {
+      for(var i=0;i<members.length && i<12;i++) {
+        var vo=members.get(i),nullable=mvBacking(vo,"SuitId"),suitId=null;
+        // System.Nullable<Int32> fields, read only; a missing value stays null.
+        try { if(nullable.field("has_value").value===true) suitId=mvNumber(nullable.field("value").value); } catch(_) {}
+        info.members.push({memberId:mvNumber(mvBacking(vo,"MemberMasterId")),
+          formationPosition:mvNumber(mvBacking(vo,"FormationPosition")),suitId:suitId,voClass:vo?fullType(vo):null});
+      }
+    }
+    result.directorAssets.push(info);
+  });
+  return result;
+}
+
+// Optional read-only MV music/tab observation; GL/JP field names verified.
+// Requires the helpers of mv_observer.fragment.js. No actions/callbacks/setters.
+function observeExistingMusicRowsAndMvTabs(screen,raycaster) {
+  var result={musicRows:[],deckTabGroups:[],errors:[]};
+  function collect(type,callback) {
+    var klass=findClass(type,true);
+    if(!klass){result.errors.push({type:type,error:"Type absent"});return;}
+    try{var objects=allOfType(klass);for(var i=0;i<objects.length&&i<128;i++){
+      var object=objects.get(i);if(exists(object)&&active(object).active)callback(object);
+    }}catch(error){result.errors.push({type:type,error:String(error)});}
+  }
+  collect("LLAS.Scene.LiveMusicSelect.LiveMusicSelectScrollCell",function(object){
+    var vo=mvBacking(object,"CellVO"),info=mvExistingComponentInfo(object);
+    info.liveMasterId=mvNumber(mvBacking(vo,"LiveMasterId"));
+    info.isPlayable=mvBacking(vo,"IsPlayable");
+    info.voClass=vo?fullType(vo):null;
+    // This cell has no button field. Its existing GameObject/component path
+    // and actual jacket/title graphics identify its real visible pointer area.
+    // Use only the observer's current projected and raycast-tested hit bounds;
+    // do not invent a callback, button reference, or fixed coordinate.
+    ["jacket","title"].forEach(function(key){var component=mvReadField(object,key);
+      if(exists(component))info[key]={id:String(instanceId(component)),path:hierarchy(transform(component)),type:fullType(component)};
+    });
+    info.target=mvUiTarget(object,screen,raycaster);
+    result.musicRows.push(info);
+  });
+  collect("LLAS.Components.UI.LiveMvDeckTabGroup",function(object){
+    var info=mvExistingComponentInfo(object),vos=mvReadField(object,"deckTabVOs"),group=mvReadField(object,"deckSwitchToggleGroup");
+    var list=mvReadField(group,"toggles"),items=mvReadField(list,"_items"),size=mvNumber(mvReadField(list,"_size"));
+    info.selectedDeckIndex=mvNumber(mvReadField(object,"selectedDeckIndex"));info.tabs=[];
+    if(vos&&typeof vos.length==="number")for(var i=0;i<vos.length&&i<8;i++){
+      var vo=vos.get(i),entry={index:i,liveMasterId:mvNumber(mvBacking(vo,"LiveMasterId")),deckType:mvNumber(mvBacking(vo,"LiveMvDeckType"))};
+      // Existing Setup/OnClickDeckSwitchButton consumes this matching tab index.
+      // Record actual referenced toggles, then verify resulting deck VO class.
+      if(items&&typeof items.length==="number"&&size!==null&&i<size&&i<items.length){
+        var toggle=items.get(i),button=mvReadField(toggle,"button");
+        if(exists(toggle))entry.toggle={id:String(instanceId(toggle)),path:hierarchy(transform(toggle)),isOn:mvReadField(toggle,"isOn")};
+        if(exists(button)){entry.button={id:String(instanceId(button)),path:hierarchy(transform(button)),type:fullType(button)};entry.target=mvUiTarget(button,screen,raycaster);}
+      }
+      info.tabs.push(entry);
+    }
+    result.deckTabGroups.push(info);
+  });
+  return result;
+}
+
+function observeExistingMvState(screen) {
+  screen = screen || metadata();
+  var raycaster = makeRaycaster(screen);
+  var result = { deckCells: [], pickerCells: [], liveMembers: [], errors: [] };
+  var specifications = [
+    ["LLAS.Components.UI.LiveMvDeckMemberParts", function (object) {
+      var vo = mvReadField(object,"deckMemberVO"), suit = mvBacking(vo,"MemberSuitVO");
+      var info = mvExistingComponentInfo(object);
+      info.memberId = mvNumber(mvBacking(vo,"MemberMasterId"));
+      info.formationPosition = mvNumber(mvBacking(vo,"Position"));
+      info.suitId = mvNumber(mvBacking(suit,"MasterId"));
+      info.voClass = vo ? fullType(vo) : null;
+      // Button references identify the actual visible targets. Existing
+      // snapshot projection can compute their current RectTransform bounds.
+      ["memberButton","suitButton"].forEach(function (key) {
+        var button = mvReadField(object,key);
+        if (exists(button)) info[key] = mvUiTarget(button,screen,raycaster);
+      });
+      result.deckCells.push(info);
+    }],
+    ["LLAS.Scene.LiveMvDeckSelect.LiveMvDeckMemberSelectCategorizedListViewCell", function (object) {
+      var vo = mvBacking(object,"liveMvMemberVO"), info = mvExistingComponentInfo(object);
+      var thumbnail = mvBacking(vo,"MemberThumbnailVO");
+      info.memberId = mvNumber(mvBacking(vo,"MemberMasterId"));
+      if (info.memberId === null) info.memberId = mvNumber(mvBacking(thumbnail,"MemberMasterId"));
+      try { info.target = mvUiTarget(object,screen,raycaster); } catch (_) {}
+      // If a regional VO computes this getter rather than storing it, record
+      // null and the real class; do not invent an ID or call a selection action.
+      info.voClass = vo ? fullType(vo) : null;
+      result.pickerCells.push(info);
+    }],
+    ["LLAS.Scene.Live.Components.LiveCoreMember", function (object) {
+      var memberInfo = mvReadField(object,"memberInfo"), info = mvExistingComponentInfo(object);
+      info.formationPosition = mvNumber(mvBacking(memberInfo,"FormationPosition"));
+      result.liveMembers.push(info);
+    }]
+  ];
+  specifications.forEach(function (specification) {
+    var klass = findClass(specification[0],true);
+    if (!klass) { result.errors.push({type:specification[0],error:"Type absent"}); return; }
+    try {
+      var objects = allOfType(klass);
+      for (var i=0;i<objects.length && i<128;i++) {
+        var object = objects.get(i);
+        if (exists(object) && active(object).active) specification[1](object);
+      }
+    } catch(error) { result.errors.push({type:specification[0],error:String(error)}); }
+  });
+  var extras=observeExistingMvExtras(screen,raycaster);
+  result.deckRoots=extras.deckRoots;result.suitPickerCells=extras.suitPickerCells;result.directorAssets=extras.directorAssets;
+  result.errors=result.errors.concat(extras.errors);
+  result.standingMemberNum=extras.deckRoots.length===1?extras.deckRoots[0].standingMemberNum:null;
+  result.liveMasterId=extras.deckRoots.length===1?extras.deckRoots[0].liveMasterId:null;
+  var music=observeExistingMusicRowsAndMvTabs(screen,raycaster);result.musicRows=music.musicRows;result.deckTabGroups=music.deckTabGroups;result.errors=result.errors.concat(music.errors);
+  result.liveMembers.forEach(function(member){
+    var found=[];
+    extras.directorAssets.forEach(function(director){director.members.forEach(function(asset){
+      if(asset.formationPosition===member.formationPosition && asset.memberId!==null && asset.suitId!==null) found.push({asset:asset,path:director.path});
+    });});
+    if(found.length===1){member.memberId=found[0].asset.memberId;member.suitId=found[0].asset.suitId;member.assetIdentitySource=found[0].path;}
+  });
+  return result;
+}
+
+function mvUiTarget(object,screen,raycaster) {
+  var geometry = rectAndClipping(transform(object),screen), activity = active(object);
+  var target = {id:String(instanceId(object)),name:text(maybe(object,"get_name",null)),path:hierarchy(transform(object)),
+    active:activity.active,enabled:activity.enabled,visible:activity.active && activity.enabled && geometry.visible,
+    bounds:geometry.bounds,visibleBounds:geometry.visibleBounds,center:geometry.center,
+    groupsInteractable:geometry.groupsInteractable,blocksRaycasts:geometry.blocksRaycasts};
+  if (target.visible && raycaster.available) target.hit = raycaster.test(target.center,object);
+  return target;
+}
+function pickExistingMvTarget(query) {
+  query = query || {}; var screen = metadata(), state = observeExistingMvState(screen), matches = [];
+  if (query.role === "member" || query.role === "suit") {
+    state.deckCells.forEach(function(cell) {
+      if (cell.formationPosition === Number(query.formationPosition) && /DeckMemberCustomVO$/.test(cell.voClass || "")) {
+        var target = cell[query.role + "Button"]; if (target) matches.push({target:target,cell:cell});
+      }
+    });
+  } else if (query.role === "picker") {
+    state.pickerCells.forEach(function(cell) {
+      if (cell.memberId === Number(query.memberId) && cell.target) matches.push({target:cell.target,cell:cell});
+    });
+  } else if(query.role === "suitPicker") {
+    state.suitPickerCells.forEach(function(cell){
+      if(cell.suitId===Number(query.suitId) && (query.memberId===undefined || cell.memberId===Number(query.memberId)) && cell.target) matches.push({target:cell.target,cell:cell});
+    });
+  } else if(query.role === "music") {
+    state.musicRows.forEach(function(cell){if(cell.liveMasterId===Number(query.liveMasterId) && cell.isPlayable===true && cell.target) matches.push({target:cell.target,cell:cell});});
+  } else if(query.role === "customTab") {
+    state.deckTabGroups.forEach(function(group){group.tabs.forEach(function(tab){if(tab.deckType===2 && tab.target)matches.push({target:tab.target,cell:tab});});});
+  } else throw new Error("Unknown read-only MV picker role");
+  matches = matches.filter(function(entry) {var t=entry.target;return t.active && t.enabled && t.visible && t.groupsInteractable && t.blocksRaycasts && t.hit && t.hit.available && t.hit.hittable;});
+  if (matches.length !== 1) throw new Error(JSON.stringify({error:"MV target absent, obscured or ambiguous",query:query,matches:matches.length,state:state,screen:screen}));
+  return {timestampMs:Date.now(),screen:screen,target:matches[0].target,catalog:matches[0].cell,
+    input:{method:"adb shell input tap",x:matches[0].target.center.x,y:matches[0].target.center.y},
+    coordinateSource:"Existing MV model identity and live RectTransform/raycast geometry; no selection method invoked"};
+}
+
   function featureState() {
-    var result = { native: nativeFeatureState(), aspectCorrectors: [], splashScreens: [], diagnostics: [] };
+    var result = { native: nativeFeatureState(), aspectCorrectors: [], splashScreens: [], mv:observeExistingMvState(), diagnostics: [] };
     var aspect = findClass("LLAS.Scene.Live.Components.CameraAspectCorrector", true);
     if (aspect) try {
       var objects = allOfType(aspect);
@@ -3754,6 +3972,32 @@ globalThis.Il2Cpp = Il2Cpp;
     } catch (error) { result.diagnostics.push({type:"splash", error:String(error)}); }
     return result;
   }
+  var introTrace = { samples: [], startedMs: null, lastError: null }, introTimer = null, introPending = false;
+  function beginIntroTrace() {
+    if (introTimer) clearInterval(introTimer);
+    introTrace = { samples: [], startedMs:Date.now(), lastError:null };
+    introTimer = setInterval(function () {
+      if (introPending || introTrace.samples.length >= 3000 || Date.now()-introTrace.startedMs > 180000) return;
+      introPending = true;
+      onMain(function () {
+        var klass=findClass("LLAS.Scene.Title.SplashScreen",true), items=[];
+        if (klass) {
+          var objects=allOfType(klass);
+          for(var i=0;i<objects.length && i<24;i++) {
+            var object=objects.get(i); if(!active(object).active) continue;
+            var item={id:String(instanceId(object)),fadeDuration:numericField(object,"fadeDuration"),splashDuration:numericField(object,"splashDuration")};
+            var tween=mvReadField(object,"fadeTween");
+            if(exists(tween)) item.tween={id:tween.handle.toString(),duration:numericField(tween,"duration"),position:numericField(tween,"position"),completedLoops:numericField(tween,"completedLoops")};
+            items.push(item);
+          }
+        }
+        var sample={timestampMs:Date.now(),screen:metadata(),config:nativeFeatureState().config,splashScreens:items};
+        if(items.length || introTrace.samples.length<3 || (introTrace.samples.length && introTrace.samples[introTrace.samples.length-1].splashScreens.length)) introTrace.samples.push(sample);
+      }).catch(function(error){introTrace.lastError=String(error);}).finally(function(){introPending=false;});
+    },25);
+    return {startedMs:introTrace.startedMs,intervalMs:25,scope:"Read-only main-thread splash/tween fields; no callbacks or setters"};
+  }
+  function endIntroTrace() { if(introTimer)clearInterval(introTimer);introTimer=null;return introTrace; }
   function discoverActiveCustomButtons() {
     if (!runtime.rectTransform || !runtime.component) return [];
     var names = [], seen = {}, rects = allOfType(runtime.rectTransform), inspected = 0;
@@ -3831,7 +4075,7 @@ globalThis.Il2Cpp = Il2Cpp;
             continue;
           }
           var selected = runtime.selectable && (object.class.handle.equals(runtime.selectable.handle) || object.class.isSubclassOf(runtime.selectable, false)) ? object : nearestSelectable(tr);
-          var kind = TEXT_TYPES.indexOf(typeName) >= 0 ? "text" : /InputField/.test(typeName) ? "input" : /Toggle/.test(typeName) ? "toggle" : "button";
+          var kind = TEXT_TYPES.indexOf(typeName) >= 0 ? "text" : /InputField/.test(typeName) ? "input" : /Toggle/.test(typeName) ? "toggle" : /ScrollRect/.test(typeName) ? "scroll" : "button";
           var inputOwner = kind === "input" ? object : kind === "text" ? nearestInput(tr) : null;
           var inputState = exists(inputOwner) ? inputDescription(inputOwner, options.numericTestId) : null;
           var ownText = redactInputText(componentText(object), inputOwner, inputState);
@@ -3844,6 +4088,11 @@ globalThis.Il2Cpp = Il2Cpp;
             visible: activity.active && activity.enabled && geometry.visible,
             alpha: geometry.alpha, groupsInteractable: geometry.groupsInteractable,
             blocksRaycasts: geometry.blocksRaycasts, canvas: geometry.canvas };
+          if(kind === "scroll") {
+            record.scroll={horizontal:!!maybe(object,"get_horizontal",false),vertical:!!maybe(object,"get_vertical",false)};
+            var position=maybe(object,"get_normalizedPosition",null);
+            if(position)record.scroll.normalizedPosition={x:field(position,"x"),y:field(position,"y")};
+          }
           if (inputState) record.input = inputState;
           if (exists(selected)) record.action = { id: String(instanceId(selected)), type: fullType(selected), name: text(maybe(selected, "get_name", null)), path: hierarchy(transform(selected)) };
           if (record.visible && record.interactable !== false && geometry.groupsInteractable && geometry.blocksRaycasts && raycaster.available && (kind !== "text" || options.raycastText)) {
@@ -3908,6 +4157,8 @@ globalThis.Il2Cpp = Il2Cpp;
     return Il2Cpp.perform(function () { if (!ready) initialize(); return action(); }, "main");
   }
   rpc.exports = {
+    beginintrotrace: function () { return beginIntroTrace(); },
+    endintrotrace: function () { return endIntroTrace(); },
     status: function () { return { ready: ready, lastError: lastError, initializing: initPending,
       bridgeVersion: BRIDGE_VERSION, agentVersion: AGENT_VERSION, fridaVersion: Frida.version,
       pid: Process.id, architecture: Process.arch }; },
@@ -3915,6 +4166,7 @@ globalThis.Il2Cpp = Il2Cpp;
     snapshot: function (options) { return onMain(function () { return snapshot(options || {}); }); },
     features: function () { return onMain(function () { return { timestampMs:Date.now(), screen:metadata(), features:featureState() }; }); },
     pick: function (query) { return onMain(function () { return choose(query || {}); }); },
+    pickmv: function (query) { return onMain(function () { return pickExistingMvTarget(query || {}); }); },
     classes: function (pattern, maximum) {
       return onMain(function () {
         var needle = normalize(pattern || "button"), result = [], limit = Math.min(500, Math.max(1, Number(maximum) || 100));
