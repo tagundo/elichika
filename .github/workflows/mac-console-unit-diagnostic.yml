@@ -1,0 +1,47 @@
+name: Diagnose native Console regression test state and optimization factors
+on:
+  push:
+    branches: [codex/mac-console-unit-diagnostic-20261113]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-unit-factor-diagnostic:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 28b80a8b43898ef9544d8452fef76181839eec6e
+          path: frozen-C4
+          persist-credentials: false
+      - name: Bind exact C4, unchanged App proposal, and explicit QA-only unit observation projection
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          pgrep -x WindowServer
+          python3 qa/mac-console-performance/prepare_anchor_preview.py --checkout frozen-C4 \
+            --qa qa/mac-console-performance --output "$RUNNER_TEMP/unit-factor-build" --evidence "$RUNNER_TEMP/unit-factor-evidence"
+          python3 qa/mac-console-performance/prepare_unit_diagnostic.py --build "$RUNNER_TEMP/unit-factor-build" \
+            --evidence "$RUNNER_TEMP/unit-factor-evidence" --qa qa/mac-console-performance
+          sw_vers > "$RUNNER_TEMP/unit-factor-evidence/macos.txt"
+          swift --version > "$RUNNER_TEMP/unit-factor-evidence/swift-version.txt"
+      - name: Observe four C4 cases then the matching proposal for a genuine reproduced anchor failure
+        run: |
+          python3 qa/mac-console-performance/run_unit_diagnostic.py --build "$RUNNER_TEMP/unit-factor-build" \
+            --evidence "$RUNNER_TEMP/unit-factor-evidence" --qa qa/mac-console-performance
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: actual-console-unit-factor-diagnostic
+          path: |
+            ${{ runner.temp }}/unit-factor-evidence/
+            !${{ runner.temp }}/unit-factor-evidence/private-*/**
+          if-no-files-found: error
+          retention-days: 7
