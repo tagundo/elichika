@@ -123,6 +123,16 @@ class WindowBusTest {
         var secondToolsUpdates = 0
         val initialState = Bus.serverRunning
         try {
+            // A prior Activity may still have a coalesced startup notification.
+            // Settle it before these listeners begin their independent lifetime.
+            val settleOwner = Any()
+            var settled = false
+            instrumentation.runOnMainSync {
+                Bus.addListener(settleOwner, { settled = true }, {})
+                Bus.log("window bus listener barrier")
+            }
+            try { awaitLogs { settled } }
+            finally { instrumentation.runOnMainSync { Bus.removeListener(settleOwner) } }
             instrumentation.runOnMainSync {
                 Bus.addListener(firstWindow, { firstLogs.add(it) }, { firstStates.add(it) }, { firstToolsUpdates++ })
                 Bus.addListener(secondWindow, { secondLogs.add(it) }, { secondStates.add(it) }, { secondToolsUpdates++ })
@@ -131,6 +141,7 @@ class WindowBusTest {
                 Bus.toolsStateChanged()
             }
             instrumentation.waitForIdleSync()
+            awaitLogs { firstLogs.size == 1 && secondLogs.size == 1 }
             assertEquals(listOf("both windows visible"), firstLogs)
             assertEquals(firstLogs, secondLogs)
             assertEquals(listOf(!initialState), firstStates)
@@ -145,6 +156,7 @@ class WindowBusTest {
                 Bus.toolsStateChanged()
             }
             instrumentation.waitForIdleSync()
+            awaitLogs { secondLogs.size == 2 }
             assertEquals(listOf("both windows visible"), firstLogs)
             assertEquals(listOf("both windows visible", "second window visible"), secondLogs)
             assertEquals(listOf(!initialState), firstStates)
@@ -159,5 +171,17 @@ class WindowBusTest {
             }
             instrumentation.waitForIdleSync()
         }
+    }
+
+    private fun awaitLogs(ready: () -> Boolean) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3)
+        while (System.nanoTime() < deadline) {
+            var complete = false
+            instrumentation.runOnMainSync { complete = ready() }
+            if (complete) return
+            Thread.sleep(10)
+        }
+        throw AssertionError("Coalesced log updates were not delivered to every visible window")
     }
 }

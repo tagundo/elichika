@@ -382,14 +382,14 @@ class CostumeManagementTests(unittest.TestCase):
         receipt=self.install()
         plan=self.preview(receipt)
         logs=[]
-        module=SimpleNamespace(plan_delete=lambda _,**kwargs:plan)
+        module=SimpleNamespace(plan_delete=lambda value,**kwargs:cm.plan_delete(value,self.root,**kwargs))
         with patch.object(costume_delete,"_module",return_value=module), \
                 patch.object(costume_delete,"installation_server") as stop:
-            result=costume_delete.run_costume_delete(SimpleNamespace(log=logs.append),
+            result=costume_delete.run_clone_delete(SimpleNamespace(log=logs.append),
                 dict(installation=receipt.install_id,action="preview"))
         event=json.loads(logs[0])
-        self.assertEqual(event["event"],"costume-delete-review")
-        self.assertEqual(event["review_token"],plan["review_token"])
+        self.assertEqual(event["event"],"clone-delete-review")
+        self.assertEqual(event["review_token"],cm.plan_delete(receipt.install_id,self.root,expected_kinds=("clone",))["review_token"])
         self.assertEqual(event["row_count"],len(plan["delete_rows"]))
         self.assertEqual(event["file_count"],len(plan["delete_files"]))
         stop.assert_not_called()
@@ -937,6 +937,50 @@ class CostumeManagementTests(unittest.TestCase):
             plan=cm.plan_delete("builtin:300",self.root,allow_original=True,replace_in_use=replace)
             self.assertFalse(plan["deletable"])
             self.assertTrue(any("requires donor costume 300" in r for r in plan["blocked_reasons"]))
+
+    def test_deletion_kind_scope_is_bound_to_review_and_checked_under_guard(self):
+        receipt=self.install()
+        clone_plan=cm.plan_delete(receipt.install_id,self.root,expected_kinds=("clone",))
+        self.assertEqual(clone_plan["items"][0]["kind"],"clone")
+        self.assertNotEqual(clone_plan["review_token"],self.preview(receipt)["review_token"])
+        with self.assertRaisesRegex(cm.ManagementError,"Remove Costume cannot remove clones"):
+            cm.plan_delete(receipt.install_id,self.root,expected_kinds=("costume","scene","builtin"))
+        def change_kind_after_guard():
+            value=json.loads(receipt.path.read_text())
+            value["kind"]="costume"
+            receipt.path.write_text(json.dumps(value))
+        with patch.object(cm,"assert_server_stopped",side_effect=change_kind_after_guard):
+            with self.assertRaisesRegex(cm.ManagementError,"only accepts managed clone"):
+                cm.delete_install(receipt.install_id,root=self.root,expected_token=clone_plan["review_token"],
+                    expected_kinds=("clone",),log=lambda _:None)
+        self.assertFalse((self.root/cm.STATE_DIR/"deletions").exists())
+        self.assertEqual(self.execute(cm.MASTERS[0],"SELECT COUNT(*) FROM m_suit WHERE id=900"),[(1,)])
+
+    def test_costume_review_names_dependent_clone_without_deleting_either(self):
+        from adminui.tools import costume_delete
+        donor=self.install()
+        value=json.loads(donor.path.read_text())
+        value["kind"]="costume"
+        donor.path.write_text(json.dumps(value))
+        child=self.lineage_child(kind="clone",canonical=True)
+        logs=[]
+        module=SimpleNamespace(plan_delete=lambda value,**kwargs:cm.plan_delete(value,self.root,**kwargs))
+        with patch.object(costume_delete,"_module",return_value=module), \
+                patch.object(costume_delete,"installation_server") as lifecycle:
+            costume_delete.run_costume_delete(SimpleNamespace(log=logs.append),
+                dict(installation=donor.install_id,action="preview"))
+        review=json.loads(logs[0])
+        self.assertFalse(review["deletable"])
+        self.assertEqual(review["install_ids"],[donor.install_id])
+        dependency=review["scene_donor_dependencies"][0]
+        self.assertEqual((dependency["kind"],dependency["install_id"],dependency["suit_ids"]),
+            ("clone",child.install_id,[901]))
+        self.assertTrue(any("Remove that clone first" in reason for reason in review["blocked_reasons"]))
+        self.assertEqual(json.loads(child.path.read_text())["state"],"committed")
+        self.assertTrue((self.root/"static/privatepack").exists())
+        lifecycle.assert_not_called()
+        self.delete(child)
+        self.assertTrue(cm.plan_delete(donor.install_id,self.root,expected_kinds=("costume","scene","builtin"))["deletable"])
 
 
 if __name__ == "__main__":

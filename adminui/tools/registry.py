@@ -15,7 +15,9 @@ from adminui.tools.assets_extract import run_extract
 from adminui.tools.backup import run_backup
 from adminui.tools.reset import run_clear_packs
 from adminui.tools.costume_clone import character_choices, costume_options, run_costume_clone
-from adminui.tools.costume_delete import costume_delete_options, run_costume_delete
+from adminui.tools.costume_delete import (
+    clone_delete_options, costume_delete_options, run_clone_delete, run_costume_delete,
+)
 from adminui.tools.costume_cdn import costume_cdn_options, run_costume_cdn
 from adminui.tools.game_quality import run_game_quality
 from adminui.tools.installers import (
@@ -137,8 +139,8 @@ TOOLS = [
     },
     {
         "id": "costume_delete",
-        "label": "Remove Costume / Clone",
-        "description": ("Review and remove installed costumes or clones. Original game costumes and "
+        "label": "Remove Costume",
+        "description": ("Review and remove installed costumes. Original game costumes and "
                         "costumes currently in use are protected. A recovery backup is always kept."),
         "run": run_costume_delete,
         "options": costume_delete_options,
@@ -146,9 +148,25 @@ TOOLS = [
             {"name": "allow_original", "label": "Show and allow removal of built-in costumes (advanced)",
              "type": "checkbox", "default": False,
              "help": "Built-in costumes require an additional confirmation popup. Game-required references stay protected."},
-            {"name": "installation", "label": "Installed costumes or clones", "type": "dynamic_select",
+            {"name": "installation", "label": "Installed costumes", "type": "dynamic_select",
              "source": "installation", "depends_on": "allow_original", "required": True, "multi": True,
-             "help": "Select up to 100 costumes. Review first, then confirm removal."},
+             "help": "Select up to 100 installations. Review first, then confirm removal. Older installations without a receipt appear in the unclassified legacy group."},
+            {"name": "replace_in_use", "label": "Change used costumes to the character's default before removing",
+             "type": "checkbox", "default": False,
+             "help": "Review the HOME and MV slots that will change before confirming removal."},
+        ],
+    },
+    {
+        "id": "clone_delete",
+        "label": "Remove Clone",
+        "description": ("Review and remove installed clones. Costumes and original game assets are protected. "
+                        "A recovery backup is always kept."),
+        "run": run_clone_delete,
+        "options": clone_delete_options,
+        "fields": [
+            {"name": "installation", "label": "Installed clones", "type": "dynamic_select",
+             "source": "installation", "required": True, "multi": True,
+             "help": "Select up to 100 clones. Review first, then confirm removal. Only verified clones are listed; unclassified legacy installations are available under Remove Costume."},
             {"name": "replace_in_use", "label": "Change used costumes to the character's default before removing",
              "type": "checkbox", "default": False,
              "help": "Review the HOME and MV slots that will change before confirming removal."},

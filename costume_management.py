@@ -371,6 +371,26 @@ def _legacy_receipt(root, sid):
         raise ManagementError("Legacy costume needs the bundled stock index; original/custom ownership is unknown")
     if any(sid in baseline["regions"][region]["suit_ids"] for region in ("gl", "jp")):
         raise ManagementError("Original game costumes cannot be deleted")
+    # The legacy namespace is a recovery route for genuinely untracked rows.
+    # It must never disguise a managed clone as an unclassified installation.
+    directory = root / STATE_DIR / "receipts"
+    if directory.exists() or directory.is_symlink():
+        if directory.is_symlink() or not directory.is_dir():
+            raise ManagementError("Installation provenance cannot be verified before legacy removal")
+        for path in sorted(directory.glob("*.json")):
+            try:
+                receipt = _read_receipt(root, path.stem)
+            except (OSError, ValueError, KeyError, ManagementError) as error:
+                raise ManagementError("Installation provenance cannot be verified before legacy removal") from error
+            if receipt.get("state") in ("deleted", "rolled_back"):
+                continue
+            ids = receipt.get("suit_ids")
+            if (receipt.get("state") not in ("committed", "intent", "incomplete")
+                    or receipt.get("kind") not in ("costume", "clone", "scene") or not isinstance(ids, list) or not ids
+                    or any(not isinstance(value, int) or isinstance(value, bool) or not 0 < value < 10**12 for value in ids)):
+                raise ManagementError("Installation provenance cannot be verified before legacy removal")
+            if sid in ids:
+                raise ManagementError("This costume has a managed installation receipt; select its recorded installation in Remove Costume or Remove Clone")
     rows = []
     for relative in MASTERS:
         with _connection(root, relative) as conn:
@@ -383,7 +403,7 @@ def _legacy_receipt(root, sid):
                 for row in _rows_for_values(conn, table, column, [sid]):
                     rows.append(dict(db=relative, table=table, row=row, key=_logical_key(conn, table, row)))
     return dict(schema=1, install_id="legacy:" + str(sid), state="legacy", kind="legacy",
-        label="Legacy costume " + str(sid), suit_ids=[sid], owned_rows=rows, owned_files=[],
+        label="Unclassified legacy installation " + str(sid), suit_ids=[sid], owned_rows=rows, owned_files=[],
         stock_index_sha256=_digest(baseline), legacy_preserve_assets=True)
 
 
@@ -880,9 +900,10 @@ def _scene_donor_dependencies(root,install_id,suit_ids,*,selected_install_ids=()
             if not isinstance(ids,list) or not ids or any(not isinstance(sid,int) or isinstance(sid,bool) for sid in ids) or not isinstance(label,str):
                 raise ManagementError("Unverifiable installed scene identity")
             proof.append(dict(install_id=other["install_id"],label=label,suit_ids=ids,
-                source_suit_id=donor,state=other["state"],receipt_sha256=digest))
-            reasons.append("Installed scene '"+label+"' (costumes "+", ".join(str(sid) for sid in ids)
-                +") requires donor costume "+str(donor)+" for re-editing. Remove that scene first or recover its interrupted installation.")
+                kind=other["kind"],source_suit_id=donor,state=other["state"],receipt_sha256=digest))
+            dependent = "clone" if other["kind"] == "clone" else "scene"
+            reasons.append("Installed "+dependent+" '"+label+"' (costumes "+", ".join(str(sid) for sid in ids)
+                +") requires donor costume "+str(donor)+" for re-editing. Remove that "+dependent+" first or recover its interrupted installation.")
         except (OSError,ValueError,KeyError,ManagementError):
             proof.append(dict(receipt_file=path.name,receipt_sha256=digest,status="unverifiable"))
             reasons.append("Another installation receipt cannot be verified; recover its provenance before deleting costumes")
@@ -900,12 +921,13 @@ def normalize_install_ids(install_ids):
     return sorted(install_ids)
 
 
-def plan_delete(install_id, root=".", *, replace_in_use=False,allow_original=False):
+def plan_delete(install_id, root=".", *, replace_in_use=False,allow_original=False,expected_kinds=None):
     """Read-only single-install compatibility API."""
-    return plan_delete_batch([install_id], root, replace_in_use=replace_in_use, allow_original=allow_original)
+    return plan_delete_batch([install_id], root, replace_in_use=replace_in_use, allow_original=allow_original,
+                             expected_kinds=expected_kinds)
 
 
-def plan_delete_batch(install_ids, root=".", *, replace_in_use=False,allow_original=False):
+def plan_delete_batch(install_ids, root=".", *, replace_in_use=False,allow_original=False,expected_kinds=None):
     """Review a union of costumes against every installed catalog and account.
 
     Selected installations share one review token. Cross-references among the
@@ -919,6 +941,17 @@ def plan_delete_batch(install_ids, root=".", *, replace_in_use=False,allow_origi
     if not isinstance(allow_original,bool):
         raise ManagementError("allow_original must be an explicit boolean")
     receipts = [_get_install(root, value) for value in install_ids]
+    if expected_kinds is not None:
+        if (not isinstance(expected_kinds, (list, tuple)) or not expected_kinds
+                or any(kind not in ("costume", "clone", "scene", "legacy", "builtin") for kind in expected_kinds)):
+            raise ManagementError("Invalid deletion tool installation kinds")
+        for receipt in receipts:
+            if receipt["kind"] not in expected_kinds:
+                if expected_kinds == ("clone",) or expected_kinds == ["clone"]:
+                    raise ManagementError("Remove Clone only accepts managed clone installations; use Remove Costume for costumes")
+                if receipt["kind"] == "clone":
+                    raise ManagementError("Remove Costume cannot remove clones; use Remove Clone for clone installations")
+                raise ManagementError("This installation has no verified costume or scene receipt; recover its provenance before removal")
     install_id = install_ids[0] if len(install_ids) == 1 else None
     owned_rows, owned_files, seen_rows, seen_files, seen_suits = [], [], {}, {}, set()
     for receipt in receipts:
@@ -942,9 +975,10 @@ def plan_delete_batch(install_ids, root=".", *, replace_in_use=False,allow_origi
                 continue
             seen_files[key] = verified
             owned_files.append(verified)
-    items = [dict(install_id=value, label=receipt["label"], suit_ids=receipt["suit_ids"])
+    items = [dict(install_id=value, label=receipt["label"], suit_ids=receipt["suit_ids"], kind=receipt["kind"])
              for value, receipt in zip(install_ids, receipts)]
-    label = receipts[0]["label"] if len(receipts) == 1 else str(len(receipts)) + " selected costumes"
+    label = receipts[0]["label"] if len(receipts) == 1 else str(len(receipts)) + (
+        " selected installations" if any(receipt["kind"] == "legacy" for receipt in receipts) else " selected costumes")
     result = dict(install_id=install_id, install_ids=install_ids, items=items, label=label,
         suit_ids=sorted(seen_suits),
         blocked_reasons=[], active_references=[], preserved_assets=[], delete_rows=[], delete_files=[],
@@ -952,6 +986,10 @@ def plan_delete_batch(install_ids, root=".", *, replace_in_use=False,allow_origi
         reference_replacements=[], userdata_updates=[], fallback_evidence=[], fallback_grants=[],
         unresolved_references=[],allow_original=allow_original,is_original=False,
         requires_original_confirmation=False)
+    if expected_kinds is not None:
+        # Tool identity participates in the review token, and deletion validates
+        # these receipt kinds again while holding the management guard.
+        result["expected_kinds"] = sorted(set(expected_kinds))
     blockers = result["blocked_reasons"]
     for receipt in receipts:
         if receipt.get("state") not in ("committed", "legacy","builtin"):
@@ -1174,15 +1212,15 @@ def assert_server_stopped():
 
 
 def delete_install(install_id, *, expected_token, root=".", log=print, replace_in_use=False,
-                   allow_original=False,original_confirmed=False):
+                   allow_original=False,original_confirmed=False,expected_kinds=None):
     """Single-install compatibility wrapper for reviewed batch removal."""
     return delete_installs([install_id], expected_token=expected_token, root=root, log=log,
         replace_in_use=replace_in_use, allow_original=allow_original,
-        original_confirmed=original_confirmed)
+        original_confirmed=original_confirmed,expected_kinds=expected_kinds)
 
 
 def delete_installs(install_ids, *, expected_token, root=".", log=print, replace_in_use=False,
-                    allow_original=False,original_confirmed=False):
+                    allow_original=False,original_confirmed=False,expected_kinds=None):
     """Offline deletion with mandatory DB backups and reversible file quarantine.
 
     This is deliberately strict: active/favorite/formation references must be
@@ -1197,7 +1235,8 @@ def delete_installs(install_ids, *, expected_token, root=".", log=print, replace
         raise ManagementError("Original deletion options must be explicit booleans")
     with guard(root):
         assert_server_stopped()
-        plan = plan_delete_batch(install_ids, root,replace_in_use=replace_in_use,allow_original=allow_original)
+        plan = plan_delete_batch(install_ids, root,replace_in_use=replace_in_use,allow_original=allow_original,
+                                 expected_kinds=expected_kinds)
         if plan["is_original"] and not (allow_original and original_confirmed):
             raise ManagementError("Original costume deletion requires the advanced option and an explicit confirmation")
         if not expected_token or expected_token != plan["review_token"]:
@@ -1239,7 +1278,8 @@ def delete_installs(install_ids, *, expected_token, root=".", log=print, replace
                 conn.execute("BEGIN IMMEDIATE")
             # Close the preflight/write-lock gap, including catalogs which are
             # read-only for this deletion but could gain another mod's refs.
-            locked_plan = plan_delete_batch(install_ids, root,replace_in_use=replace_in_use,allow_original=allow_original)
+            locked_plan = plan_delete_batch(install_ids, root,replace_in_use=replace_in_use,allow_original=allow_original,
+                                            expected_kinds=expected_kinds)
             if locked_plan["review_token"] != expected_token:
                 raise ManagementError("Deletion review changed before writer locks were acquired")
             for index, relative in enumerate(dbs):

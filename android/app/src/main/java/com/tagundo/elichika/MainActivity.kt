@@ -28,6 +28,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.doOnPreDraw
 import androidx.core.widget.NestedScrollView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
@@ -56,7 +57,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logPanel: View
     private lateinit var logToggle: Button
     private var logExpanded = false
-    private var logRefreshPending = false
+    private var logRefreshTask: Runnable? = null
+    private var logWindowStarted = false
+    private var logStartOffset = -1L
+    private var logEndOffset = -1L
     private var advancedExpanded = false
 
     // Shown in a web tab when the server isn't running yet (instead of a raw
@@ -81,6 +85,8 @@ class MainActivity : AppCompatActivity() {
     // with a running edit/extraction no longer wipes its live page state.
     private val webViewErrored = HashMap<String, Boolean>()
     private val savedWebViews = HashMap<String, Bundle>()
+    // Memory-only identity for each Go document; never persisted in a Bundle or URL.
+    private val webViewLocalTokens = HashMap<String, String?>()
     private lateinit var viewerFullscreen: ViewerFullscreen
     private lateinit var assetNavigation: AssetNavigationBridge
 
@@ -256,32 +262,52 @@ class MainActivity : AppCompatActivity() {
 
     private fun clearLog() {
         Bus.clear()
-        logText.text = ""
+        cancelLogRefresh()
+        logStartOffset = -1L
+        logEndOffset = -1L
+        logText.setText("", TextView.BufferType.EDITABLE)
+        refreshLog(false)
     }
 
     private fun setLogExpanded(expanded: Boolean) {
         logExpanded = expanded
         logPanel.visibility = if (expanded) View.VISIBLE else View.GONE
-        logToggle.setText(if (expanded) R.string.hide_log else R.string.show_log)
+        refreshLogToggle()
         // Keep collecting logs in Bus while collapsed without rendering them in
         // the menu. Opening the panel always shows the latest complete buffer.
-        logText.text = if (expanded) Bus.snapshot() else ""
-        if (expanded) logScroll.post { logScroll.scrollTo(0, logText.height) }
+        cancelLogRefresh()
+        if (expanded) refreshLog(true)
+        else {
+            logText.text = ""
+            logStartOffset = -1L
+            logEndOffset = -1L
+        }
+    }
+
+    private fun refreshLogToggle() {
+        val title = getString(if (logExpanded) R.string.hide_log else R.string.show_log) +
+            if (Bus.logFilePaused) "\n" + getString(R.string.log_file_paused) else ""
+        if (logToggle.text.toString() != title) logToggle.text = title
     }
 
     override fun onStart() {
         super.onStart()
+        logWindowStarted = true
         viewerFullscreen.onStart()
         // A split-screen window may be paused while still visible. Keep its status
         // and console subscribed until it is actually stopped.
-        Bus.addListener(this, { appendLog(it) }, { updateRunning(it) }, { updateToolsState() })
-        if (logExpanded) logText.text = Bus.snapshot()
+        Bus.addListener(this, { appendLog(it) }, { updateRunning(it) }, { updateToolsState() }, { refreshCdnLabel() })
+        refreshLogToggle()
+        refreshLog(false)
         updateRunning(Bus.serverRunning)
         updateToolsState()
         refreshCdnLabel()
     }
 
     override fun onStop() {
+        logWindowStarted = false
+        cancelLogRefresh()
+        Bus.flushLogFile()
         viewerFullscreen.onStop()
         Bus.removeListener(this)
         ManagementServer.releaseUi(this)
@@ -321,6 +347,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         if (isFinishing) ManagementServer.releaseUi(this)
         headerDisposed = true
+        cancelLogRefresh()
         headerLayoutObserver?.let { observer ->
             adaptiveHeader?.viewTreeObserver?.takeIf { it.isAlive }
                 ?.removeOnGlobalLayoutListener(observer)
@@ -387,23 +414,44 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun appendLog(line: String) {
-        if (logExpanded && !logRefreshPending) {
-            val follow = !logScroll.canScrollVertically(1)
-            logRefreshPending = true
-            logScroll.postOnAnimation {
-                logRefreshPending = false
-                if (logExpanded) {
-                    // Coalesce bursts and use the bounded buffer. A queued event
-                    // already included when opening the log is never duplicated.
-                    logText.text = Bus.snapshot()
-                    // scrollTo affects only the log viewport, preserving the
-                    // outer action list's position while new messages arrive.
-                    if (follow) logScroll.post { if (logExpanded) logScroll.scrollTo(0, logText.height) }
-                }
-            }
+    private fun logIsVisible(): Boolean = logWindowStarted && logExpanded && !headerDisposed &&
+        tabs[currentTab].id == TAB_CONSOLE && consolePanel.visibility == View.VISIBLE
+
+    private fun cancelLogRefresh() {
+        logRefreshTask?.let { logScroll.removeCallbacks(it) }
+        logRefreshTask = null
+    }
+
+    private fun refreshLog(follow: Boolean) {
+        if (!logIsVisible()) return
+        val update = Bus.readLog(logEndOffset)
+        val editable = logText.editableText
+        if (update.reset || editable == null) {
+            logText.setText(update.text, TextView.BufferType.EDITABLE)
+        } else {
+            val remove = (update.start - logStartOffset).coerceAtLeast(0).coerceAtMost(editable.length.toLong()).toInt()
+            if (remove > 0) editable.delete(0, remove)
+            if (update.text.isNotEmpty()) editable.append(update.text)
         }
-        if (line.contains("cdn_cache:")) refreshCdnLabel()
+        logStartOffset = update.start
+        logEndOffset = update.end
+        // This scroll belongs only to the log viewport. Never reset the outer
+        // action-list position or drag a reader away from an older log section.
+        if (follow) logText.doOnPreDraw {
+            if (logIsVisible()) logScroll.scrollTo(0, logText.height)
+        }
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun appendLog(line: String) {
+        refreshLogToggle()
+        if (!logIsVisible() || logRefreshTask != null) return
+        val task = Runnable {
+            logRefreshTask = null
+            if (logIsVisible()) refreshLog(!logScroll.canScrollVertically(1))
+        }
+        logRefreshTask = task
+        logScroll.postDelayed(task, 150L)
     }
 
     /** Resolve a localized action label from its label_id resource, falling back to json. */
@@ -684,6 +732,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun effectiveTabUrl(tab: Tab): String? {
         if (!tab.managementPage) return tab.url
+        if (localWebuiToken(tab) == null) return null
         val path = tab.url?.let { Uri.parse(it).path } ?: return null
         val base = if (Bus.serverRunning || Bus.serverStarting) {
             if (!Bus.serverReady) return null
@@ -693,6 +742,18 @@ class MainActivity : AppCompatActivity() {
             }.getOrNull()
         } else ManagementServer.url()?.trimEnd('/')
         return base?.let { it + path }
+    }
+
+    private fun localWebuiToken(tab: Tab): String? = if (!tab.managementPage) null
+        else if (Bus.serverRunning || Bus.serverStarting) ServerService.localWebuiToken()
+        else ManagementServer.localWebuiToken()
+
+    private fun loadDocument(view: WebView, key: String, destination: String, section: String?, token: String?) {
+        val document = documentUrl(destination, section)
+        val accepted = LocalWebuiBootstrap.acceptedToken(document, token)
+        if (accepted == null) view.loadUrl(document)
+        else view.loadUrl(document, LocalWebuiBootstrap.headers(document, accepted))
+        webViewLocalTokens[key] = accepted
     }
 
     private fun sameWebOrigin(first: String?, second: String): Boolean {
@@ -726,6 +787,7 @@ class MainActivity : AppCompatActivity() {
         // onStop/finish still release the window, and data services suspend Go safely.
         if (tab.managementPage) ManagementServer.requestUi(applicationContext, this)
         val targetUrl = effectiveTabUrl(tab)
+        val localToken = localWebuiToken(tab)
         // Keep a shared WebView visible while its section changes. A transient
         // GONE/VISIBLE cycle can blur editing fields or suspend its renderer.
         val destination: View = when {
@@ -742,14 +804,14 @@ class MainActivity : AppCompatActivity() {
             else -> {
                 val destinationUrl = targetUrl ?: tab.url!!
                 val existed = webViews.containsKey(tab.url)
-                val wv = webViewFor(tab.url, tab.section, destinationUrl)
+                val wv = webViewFor(tab.url, tab.section, destinationUrl, localToken)
                 // Only reload if the previous load actually failed (e.g. the tab was
                 // first opened before the server was up). A successful page is left as
                 // is, so returning to a tab mid-edit keeps the running job's UI.
                 if (existed && (webViewErrored[tab.url] == true ||
-                    (tab.managementPage && wv.url != null && !sameWebOrigin(wv.url, destinationUrl)) ||
+                    (tab.managementPage && LocalWebuiBootstrap.requiresReload(wv.url, destinationUrl, webViewLocalTokens[tab.url], localToken)) ||
                     (tab.section != null && !AssetNavigationBridge.isEmbeddedDocument(Uri.parse(wv.url ?: ""))))) {
-                    wv.loadUrl(documentUrl(destinationUrl, tab.section))
+                    loadDocument(wv, tab.url, destinationUrl, tab.section, localToken)
                 } else if (tab.section != null) assetNavigation.showSection(wv, tab.section)
                 wv
             }
@@ -758,6 +820,8 @@ class MainActivity : AppCompatActivity() {
             val child = content.getChildAt(i)
             child.visibility = if (child === destination) View.VISIBLE else View.GONE
         }
+        if (destination === consolePanel) refreshLog(!logScroll.canScrollVertically(1))
+        else cancelLogRefresh()
     }
 
     private fun documentUrl(url: String, section: String?): String =
@@ -774,7 +838,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun webViewFor(url: String, section: String? = null, initialUrl: String = url): WebView {
+    private fun webViewFor(url: String, section: String? = null, initialUrl: String = url, localToken: String? = null): WebView {
         val management = tabs.any { it.url == url && it.managementPage }
         return webViews.getOrPut(url) {
             WebView(this).apply {
@@ -830,8 +894,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 content.addView(this)
                 val state = savedWebViews.remove(url)
-                if (state == null || restoreState(state) == null || (management && !sameWebOrigin(this.url, initialUrl))) {
-                    loadUrl(documentUrl(initialUrl, section))
+                if (state == null || restoreState(state) == null || (management &&
+                    (!sameWebOrigin(this.url, initialUrl) || webViewLocalTokens[url] != LocalWebuiBootstrap.acceptedToken(initialUrl, localToken)))) {
+                    loadDocument(this, url, initialUrl, section, localToken)
                 }
             }
         }

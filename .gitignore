@@ -41,3 +41,6 @@ __pycache__/
 /macos/.build/
 /macos/dist/
 .DS_Store
+
+# Per-install encryption key for explicitly managed client login passwords.
+/.local-webui-credentials.key
