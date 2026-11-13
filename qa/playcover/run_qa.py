@@ -304,27 +304,12 @@ def main():
             if candidate.get('role') == 'original-control':
                 ax('dump','ax-original-control')
                 result['feature_ui_status'] = 'ORIGINAL_SOURCE_CONTROL_WITHOUT_NEW_FEATURE_LIBRARY'
-            elif not ax('dump','ax-initial'):
-                result['feature_ui_status'] = 'BLOCKED_ACCESSIBILITY_PERMISSION_OR_AX_UNAVAILABLE'
-            elif ax('press','settings-open','SIFASFeatures.Settings'):
-                time.sleep(.6)
-                ax('dump','ax-settings')
-                if ax('press','camera-open','Adjust FOV bounds'):
-                    time.sleep(.6)
-                    if ax('set-text','camera-min','0','1.4375') and ax('set-text','camera-max','1','1.5'):
-                        ax('press','camera-apply','Apply'); time.sleep(1)
-                        result['fov_settings_screen'] = record_screen(candidate['bundle_id'],folder,'after-fov-input')
-                for orientation in ['Portrait','Landscape']:
-                    if not ax('press','settings-'+orientation,'SIFASFeatures.Settings'): break
-                    time.sleep(.4)
-                    if not ax('press','orientation-open-'+orientation,'Orientation lock'): break
-                    time.sleep(.4)
-                    if not ax('press','orientation-'+orientation,orientation): break
-                    time.sleep(2)
-                    result[orientation.lower()+'_screen'] = record_screen(candidate['bundle_id'],folder,'orientation-'+orientation)
-                result['feature_ui_status'] = 'ACTIONS_RECORDED_REVIEW_RESULTING_UI_AND_DIAGNOSTICS'
             else:
-                result['feature_ui_status'] = 'SETTINGS_BUTTON_ABSENT_FROM_AX_TREE'
+                ax('dump','ax-initial')
+                from game_ui_steps import run_steps
+                result['native_ui_progression'] = run_steps(pid,build,folder/'native-ui-progression',
+                                                            candidate['bundle_id'],candidate['region'])
+                result['feature_ui_status'] = result['native_ui_progression']['status']
             diagnostics = [path for path in (Path.home()/'Library/Containers'/candidate['bundle_id']).glob('**/SIFASFeatures-diagnostics.json')
                            if path.stat().st_mtime >= launch_wall]
             if diagnostics:
