@@ -3682,7 +3682,7 @@ globalThis.Il2Cpp = Il2Cpp;
 (function () {
   "use strict";
   var ready = false, lastError = "", runtime = {}, classCache = {}, initPending = false;
-  var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 5;
+  var BRIDGE_VERSION = "0.9.1", AGENT_VERSION = 6;
   var QA_IDENTITY = {pid:Process.id,architecture:Process.arch,fridaVersion:Frida.version};
   var TEXT_TYPES = ["UnityEngine.UI.Text", "TMPro.TMP_Text", "Jigbox.Components.TextView", "LLAS.Components.UI.ProductTextView"];
   var DEFAULT_TYPES = ["UnityEngine.UI.Button", "UnityEngine.UI.Toggle", "UnityEngine.UI.InputField", "TMPro.TMP_InputField", "UnityEngine.UI.ScrollRect"].concat(TEXT_TYPES);
@@ -4149,31 +4149,30 @@ function splashFadeRGBA(splash) {
 }
 
   function observeDownloadSettings(screen) {
-    var result=[],klass=findClass("LLAS.DownloadSettingPopup",true);
-    if (!klass) return result;
-    var raycaster=makeRaycaster(screen),objects=allOfType(klass);
-    for(var i=0;i<objects.length && i<12;i++) {
-      var popup=objects.get(i);if(!active(popup).active)continue;
-      var info={id:String(instanceId(popup)),path:hierarchy(transform(popup)),options:[],toggles:[],downloadType:numericField(popup,"downloadType")};
-      ["fullDownloadItemText","lightnessDownloadItemText","autoDeleteDownloadItemText"].forEach(function(name){
-        var caption=mvReadField(popup,name);
-        if(exists(caption)) {
-          // The frozen popup references a DynamicTextLocalizer. Its existing
-          // textView field owns the actually displayed ProductTextView string.
-          var view=mvReadField(caption,"textView");
+    var result=[],raycaster=makeRaycaster(screen);
+    // The first-login dialog and the normal settings dialog have distinct
+    // observed MonoBehaviour types with the same serialized caption/toggle fields.
+    ["LLAS.ModeSelectableDownloadConfirmPopup","LLAS.DownloadSettingPopup"].forEach(function(typeName){
+      var klass=findClass(typeName,true);if(!klass)return;
+      var objects=allOfType(klass);
+      for(var i=0;i<objects.length && i<12;i++) {
+        var popup=objects.get(i);if(!active(popup).active)continue;
+        var info={id:String(instanceId(popup)),type:typeName,path:hierarchy(transform(popup)),options:[],toggles:[],downloadType:numericField(popup,"downloadType")};
+        ["fullDownloadItemText","lightnessDownloadItemText","autoDeleteDownloadItemText"].forEach(function(name){
+          var caption=mvReadField(popup,name),view=mvReadField(caption,"textView");
           if(exists(view))info.options.push({role:name,referencePath:hierarchy(transform(caption)),
             path:hierarchy(transform(view)),text:componentText(view)});
+        });
+        var group=mvReadField(popup,"productToggleGroup"),list=mvReadField(group,"toggles"),items=mvReadField(list,"_items"),size=mvNumber(mvReadField(list,"_size"));
+        if(items&&typeof items.length==="number"&&size!==null)for(var j=0;j<size&&j<items.length&&j<8;j++) {
+          var toggle=items.get(j),button=mvReadField(toggle,"button");
+          var entry={path:hierarchy(transform(toggle)),isOn:mvReadField(toggle,"isOn"),label:exists(button)?descendantText(button):""};
+          if(exists(button))entry.target=mvUiTarget(button,screen,raycaster);
+          info.toggles.push(entry);
         }
-      });
-      var group=mvReadField(popup,"productToggleGroup"),list=mvReadField(group,"toggles"),items=mvReadField(list,"_items"),size=mvNumber(mvReadField(list,"_size"));
-      if(items&&typeof items.length==="number"&&size!==null)for(var j=0;j<size&&j<items.length&&j<8;j++) {
-        var toggle=items.get(j),button=mvReadField(toggle,"button");
-        var entry={path:hierarchy(transform(toggle)),isOn:mvReadField(toggle,"isOn"),label:exists(button)?descendantText(button):""};
-        if(exists(button))entry.target=mvUiTarget(button,screen,raycaster);
-        info.toggles.push(entry);
+        result.push(info);
       }
-      result.push(info);
-    }
+    });
     return result;
   }
   function featureState() {

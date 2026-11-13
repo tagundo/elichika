@@ -8,7 +8,7 @@ on:
       max_seconds:
         description: Bounded genuine-client UI run time per region
         required: true
-        default: "600"
+        default: "1800"
 
 permissions:
   # GitHub requires write scope to read this repository's unpublished drafts.
@@ -37,7 +37,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read exact root-frozen C4 server source
+      - name: Read exact root-frozen C5 server source
         id: fixture
         run: |
           python3 - <<'PYFIXTURE'
@@ -144,7 +144,7 @@ jobs:
 
       - name: Run genuine regional client UI against owned hash-bound source fixture
         env:
-          QA_SECONDS: ${{ inputs.max_seconds || '600' }}
+          QA_SECONDS: ${{ inputs.max_seconds || '1800' }}
         run: |
           set -euo pipefail
           case "$QA_SECONDS" in *[!0-9]*|'') exit 2;; esac
@@ -159,7 +159,7 @@ jobs:
             --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
             --server-source server-source --evidence evidence \
             --unity-agent qa/unity_ui.bundle.js --max-seconds "$QA_SECONDS" \
-            --settings-orientation portrait --settings-scalar 2.0 --fast-intro --download-modal-diagnostic --settled-download-modal-control || qa_exit=$?
+            --settings-orientation portrait --settings-scalar 2.0 --fast-intro --settled-download-modal-control || qa_exit=$?
           if [ "$qa_exit" = 124 ] || [ "$qa_exit" = 137 ]; then
             python3 - <<'PYTIMEOUT'
           import json

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from rpc_log_evidence import IncrementalRpcEvidence, compact_owned_log
 import http.client
 import json
 import os
@@ -119,6 +120,8 @@ class HostGoFixture:
         self.port, self.evidence = port, Path(evidence)
         self.evidence.mkdir(parents=True, exist_ok=True)
         self.log_path = self.evidence / 'elichika-client-session.log'
+        self._rpc_reader = IncrementalRpcEvidence(self.log_path)
+        self._final_log_receipt = None
         self.process = self._thread = None
         self._nonce = ''
         self._stopped = False
@@ -213,3 +216,16 @@ class HostGoFixture:
 
     def server_log(self):
         return self.log_path.read_bytes() if self.log_path.exists() else b''
+
+    def server_rpc_evidence(self):
+        if self._final_log_receipt is not None:
+            return (self.evidence/'genuine-rpc-evidence.log').read_bytes()
+        return self._rpc_reader.read()
+
+    def finalize_log_evidence(self):
+        if self._final_log_receipt is not None:return self._final_log_receipt
+        require(self._stopped and (self.process is None or self.process.poll() is not None)
+                and (self._thread is None or not self._thread.is_alive()),
+                'Never compact an owned Go log while its process or writer is active')
+        self._final_log_receipt=compact_owned_log(self.log_path,self.evidence)
+        return self._final_log_receipt

@@ -103,6 +103,27 @@ def semantic_match(nodes, expressions):
     return None, None
 
 
+def caption_action_target(caption, active_buttons):
+    """Resolve a rendered caption's current first hit to one actual parent action."""
+    hit=caption.get("hit") or {}
+    if not caption.get("active") or not caption.get("visible") or not hit.get("available"):
+        return None
+    path=hit.get("firstPath") or ""
+    caption_path=caption.get("path") or ""
+    if not path or not caption_path:return None
+    actions={}
+    for node in active_buttons:
+        target_path=node.get("path") or ""
+        target_hit=node.get("hit") or {}
+        if (not target_path or not (path==target_path or path.startswith(target_path+"/")) or
+            not (caption_path==target_path or caption_path.startswith(target_path+"/")) or
+            not node.get("active") or not node.get("visible") or not target_hit.get("available") or not target_hit.get("hittable")):
+            continue
+        key=(target_path,json.dumps(node.get("bounds"),sort_keys=True),json.dumps(node.get("center"),sort_keys=True))
+        actions.setdefault(key,node)
+    return next(iter(actions.values())) if len(actions)==1 else None
+
+
 def unity_surface_bounds(nodes, screen):
     surfaces = [node for node in nodes if node.get("package") == CLIENT and node.get("class", "").endswith("SurfaceView")]
     if not surfaces:
@@ -128,6 +149,15 @@ def game_request_counts(log):
         if 200 <= int(match[1]) < 300 and path in result:
             result[path] += 1
     return result
+
+
+def game_request_evidence(log):
+    """Keep exact real Gin RPC lines before a large asset log is tailed."""
+    paths={path.encode("ascii") for path in game_request_counts(b"")}
+    pattern=rb'^\[GIN\].*?\|\s*(\d{3})\s*\|.*?\|\s*POST\s+"([^"\r\n]+)"\s*$'
+    lines=[match[0] for match in re.finditer(pattern,log,re.M)
+           if match[2].split(b"?",1)[0] in paths]
+    return b"\n".join(lines)+(b"\n" if lines else b"")
 
 
 def successful_game_requests(log):
@@ -354,8 +384,8 @@ def main():
     parser.add_argument("--max-seconds", type=int, default=1500)
     args = parser.parse_args()
     if args.observer_detached_login_control and args.region != "JP": parser.error("This native-only control is limited to JP; GL first-login terms need their own semantic action")
-    if args.settled_download_modal_control and (args.region != "JP" or not args.download_modal_diagnostic or args.observer_detached_login_control):
-        parser.error("Settled-modal control requires the dedicated JP modal diagnostic and cannot combine detached-only mode")
+    if args.settled_download_modal_control and (args.region != "JP" or args.observer_detached_login_control):
+        parser.error("Settled-modal control requires JP and cannot combine detached-only mode")
     global CLIENT, LAUNCHER, CLIENT_SHA, SERVER_SHA
     fixtures = json.loads(args.fixtures.read_text())
     client_fixture, server_fixture = fixtures["clients"][args.region], fixtures["server"]
@@ -552,12 +582,11 @@ def main():
             captions = [n for n in tree.get("nodes", []) if n.get("kind") == "text" and n.get("active") and n.get("visible") and (n.get("hit") or {}).get("available")]
             caption, expression = match(captions, expressions)
             if caption:
-                hit_path = (caption.get("hit") or {}).get("firstPath") or ""
-                ancestors = [b for b in buttons(tree) if b.get("path") and (hit_path == b["path"] or hit_path.startswith(b["path"] + "/"))]
-                if ancestors:
-                    node = caption
+                # Captions usually raycast to their parent ProductButton;
+                # repick the actual hittable action, never a non-hittable label.
+                node = caption_action_target(caption, buttons(tree))
         if node:
-            key = stage + ":" + label(node)
+            key = stage + ":" + str(node.get("path") or node.get("id") or label(node))
             if time.monotonic() - seen.get(key, -1000) < 12:
                 return False
             if agent:
@@ -758,7 +787,7 @@ def main():
             if time.monotonic()-began>limit:break
             native_tree(2000+step)
             capture("detached-control-"+str(step))
-            after=game_request_counts(host_server.server_log())
+            after=game_request_counts(host_server.server_rpc_evidence())
             result["observations"].append({"elapsed_seconds":round(time.monotonic()-began,2),"native_snapshot":f"native-ui-{2000+step:03d}.xml","screenshot":"detached-control-"+str(step)+".png","request_counts":after})
             if after["/bootstrap/fetchBootstrap"]>before["/bootstrap/fetchBootstrap"] and after["/login/login"]>before["/login/login"]:
                 result["status"]="NEW_BOOTSTRAP_OBSERVED_AFTER_OBSERVER_DETACH"
@@ -769,7 +798,7 @@ def main():
             (args.evidence/"observer-detached-control.json").write_text(json.dumps(result,indent=2))
             time.sleep(5)
         if result["status"]=="RUNNING":result["status"]="NO_BOOTSTRAP_WITHIN_BOUNDED_DETACHED_CONTROL"
-        result["requests_after"]=game_request_counts(host_server.server_log())
+        result["requests_after"]=game_request_counts(host_server.server_rpc_evidence())
         result["not_feature_or_home_approval"]=True
         (args.evidence/"observer-detached-control.json").write_text(json.dumps(result,indent=2))
         return result
@@ -825,7 +854,7 @@ def main():
         assert client_pid, "The original game process did not stay running"
         capture("client-launched")
         save_report()
-        for index in range(160):
+        for index in range(600):
             if time.monotonic() - started >= args.max_seconds:
                 break
             try:
@@ -989,7 +1018,7 @@ def main():
                 report["observations"].append({"twelve_song_navigation":"No unique current song-list ScrollRect or bounded search exhausted; no fixed tap invented"})
                 continue
             if stage == "mv" and control_phase == "done":
-                server_bytes = host_server.server_log() if host_mode else device.read("/sdcard/Download/sukusta/logs/elichika.log")
+                server_bytes = host_server.server_rpc_evidence() if host_mode else device.read("/sdcard/Download/sukusta/logs/elichika.log")
                 from mv_driver import successful_live_start_count
                 live_starts = successful_live_start_count(server_bytes)
                 action = mv_driver.step(tree,f"unity-ui-{index:03d}.json",now=time.monotonic(),live_start_count=live_starts)
@@ -1119,7 +1148,7 @@ def main():
                             assert not report.get("settled_control_started"),"Settled login control is once-only"
                             report["settled_control_started"]=True
                         assert host_mode and args.region=="JP" and intro_phase=="done"
-                        before=game_request_counts(host_server.server_log())
+                        before=game_request_counts(host_server.server_rpc_evidence())
                         quiescence=bounded_rpc(lambda:agent.exports_sync.endintrotrace(),timeout=5)
                         for _ in range(10):
                             if quiescence.get("pendingManagedWork") is False:break
@@ -1151,15 +1180,14 @@ def main():
                             capture("settled-before-reattach")
                             report["settled_modal_control"]={"phase":"native-only-control-complete","observer_active":False,
                                 "pid":int(client_pid),"process_start_ticks":start_ticks,"backtrace_path":probe.name,
-                                "backtrace_sha256":digest(probe),"requests":game_request_counts(host_server.server_log()),
+                                "backtrace_sha256":digest(probe),"requests":game_request_counts(host_server.server_rpc_evidence()),
                                 "not_feature_or_home_approval":True}
                             (args.evidence/"settled-before-reattach-status.json").write_text(json.dumps(report["settled_modal_control"],indent=2))
                             # The old hierarchy is never used for modal input.
                             # Install fresh binding, then re-search current UI.
                             attach_reader(trace_intro=False,cache_now=True)
                             assert report["cached_main_bindings"][-1]["process_start_ticks"]==start_ticks,"Fresh cached observer bound to a different process lifetime"
-                            report["settled_modal_control"]["phase"]="fresh-cached-observer-attached"
-                            report["settled_modal_control"]["researches"]=0
+                            report["settled_modal_control"].update({"phase":"fresh-cached-observer-attached","observer_active":True,"researches":0})
                             continue
                         report["blocked_reason"]="Dedicated observer-detached login control; later feature flows are unobserved"
                         break
@@ -1178,7 +1206,7 @@ def main():
             if args.download_modal_diagnostic and report.get("download_choices") and not download_plan:
                 capture("download-modal-diagnostic-after-confirmation")
                 report["download_modal_diagnostic"]={"status":"ORDINARY_LIGHTWEIGHT_RADIO_AND_OK_COMPLETED",
-                    "snapshot":f"unity-ui-{index:03d}.json","request_counts":game_request_counts(host_server.server_log()),
+                    "snapshot":f"unity-ui-{index:03d}.json","request_counts":game_request_counts(host_server.server_rpc_evidence()),
                     "not_feature_or_home_approval":True}
                 report["blocked_reason"]="Dedicated cached-observer modal diagnostic completed; later feature flows are unobserved"
                 break
@@ -1194,6 +1222,12 @@ def main():
                 else:
                     report["qa_navigation_blocker"]=download_plan["reason"]
                     capture("download-settings-awaiting-semantic-target")
+                    if args.download_modal_diagnostic or args.settled_download_modal_control:
+                        counts=report.setdefault("download_semantic_blockers",{})
+                        counts[download_plan["reason"]]=counts.get(download_plan["reason"],0)+1
+                        if counts[download_plan["reason"]]>=3:
+                            report["blocked_reason"]="Three fresh download-modal hierarchies remain blocked: "+download_plan["reason"]
+                            break
                 time.sleep(3)
                 continue
             # Generic bootstrap choices are intentionally narrow and never buy,
@@ -1237,9 +1271,12 @@ def main():
         try:
             (args.evidence / "client-logcat.txt").write_bytes(device.adb("logcat", "-d", "-v", "threadtime", "--pid", client_pid, raw=True, timeout=20) if client_pid else device.adb("logcat", "-d", raw=True, timeout=20))
             (args.evidence / "client-crash-logcat.txt").write_bytes(device.adb("logcat", "-b", "crash", "-d", raw=True, timeout=20))
-            server_log = (host_server.server_log() if host_mode else device.read("/sdcard/Download/sukusta/logs/elichika.log"))[-2 * 1024 * 1024:]
-            (args.evidence / "elichika-client-session.log").write_bytes(server_log)
-            report["genuine_client_requests"] = successful_game_requests(server_log)
+            if not host_mode:
+                server_log=device.read("/sdcard/Download/sukusta/logs/elichika.log")
+                rpc_evidence=game_request_evidence(server_log)
+                (args.evidence/"genuine-rpc-evidence.log").write_bytes(rpc_evidence)
+                (args.evidence/"elichika-client-session.log").write_bytes(server_log[-2*1024*1024:])
+                report["genuine_client_requests"]=successful_game_requests(rpc_evidence)
         except Exception as error:
             report["observations"].append({"log_collection": type(error).__name__})
         if session:
@@ -1262,9 +1299,7 @@ def main():
             device.shell("am", "force-stop", CLIENT)
             if host_mode:
                 host_server.stop(device)
-                server_log = host_server.server_log()[-2 * 1024 * 1024:]
-                (args.evidence / "elichika-client-session.log").write_bytes(server_log)
-                report["genuine_client_requests"] = successful_game_requests(server_log)
+
             else:
                 device.stop()
         except Exception as error:
@@ -1272,6 +1307,14 @@ def main():
             if host_mode:
                 report["status"] = "FAIL"
                 report["error"] = "Owned host-Go fixture did not cleanly stop; inspect sanitized diagnostics"
+        if host_mode:
+            try:
+                report["genuine_rpc_log_evidence"]=host_server.finalize_log_evidence()
+                report["genuine_client_requests"]=successful_game_requests(host_server.server_rpc_evidence())
+            except Exception as error:
+                report["observations"].append({"owned_log_evidence":type(error).__name__})
+                report["status"]="FAIL"
+                report["error"]="Owned Go log could not be safely compacted after writer shutdown; no runtime pass claimed"
         # Only a count is retained; no database, account key or password hash is
         # uploaded from the synthetic disposable profile.
         try:

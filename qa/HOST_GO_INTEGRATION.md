@@ -7,7 +7,7 @@ already contain additional MV selectors. The slider control uses a single tap at
 the live SeekBar endpoint; dragging from its center transiently changes the paired
 slider and is unsuitable for equal min/max QA.
 
-Root has frozen exact C3 commit 28b80a8b43898ef9544d8452fef76181839eec6e. In the current fresh manifest,
+Root has frozen exact C5 commit b503631efee12bdf224ae94962bd1403a4658da3. In the current fresh manifest,
 set server.source_commit to that 40-character SHA and server.approval_scope to
 `final_source_build_fixture`. Remove the server APK asset/version/hash fields from
 that source-build server descriptor. Keep the independently reviewed client asset,
@@ -28,7 +28,7 @@ signature checks. Replace only these workflow portions:
 ```sh
 python3 qa/build_host_go_fixture.py \
   --source-root "$GITHUB_WORKSPACE/server-source" \
-  --source-sha "$FROZEN_C4_SHA" \
+  --source-sha "$FROZEN_C5_SHA" \
   --output "$RUNNER_TEMP/host-go-fixture"
 ```
 
@@ -78,5 +78,5 @@ cannot turn those cases into PASS.
 
 Local transport proof: 28 Python tests pass, including a separately compiled tiny
 authored C HTTP transport executable. No Elichika/game ARM64 binary ran locally.
-Actual root-frozen C4 source compilation and genuine ARM64 Android UI execution
-remain required; current manifest is bound to final C3 source-build scope; actual runtime remains unvalidated.
+Actual root-frozen C5 source compilation and genuine ARM64 Android UI execution
+remain required; current manifest is bound to final C5 source-build scope; actual runtime remains unvalidated.

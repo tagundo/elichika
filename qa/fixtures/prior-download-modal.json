@@ -1,0 +1,1552 @@
+{
+  "timestampMs": 1794573099265,
+  "screen": {
+    "width": 720,
+    "height": 1280,
+    "orientation": -1,
+    "scene": "Title",
+    "frame": 965,
+    "unityVersion": "2018.4.23f1"
+  },
+  "nodes": [
+    {
+      "id": "-2816",
+      "type": "UnityEngine.UI.ScrollRect",
+      "kind": "scroll",
+      "name": "ScrollView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 122.51873779296875,
+        "top": 488.3349609375,
+        "right": 597.4812622070312,
+        "bottom": 779.7900390625,
+        "width": 474.9625244140625,
+        "height": 291.455078125
+      },
+      "visibleBounds": {
+        "left": 122.51873779296875,
+        "top": 488.3349609375,
+        "right": 597.4812622070312,
+        "bottom": 779.7900390625,
+        "width": 474.9625244140625,
+        "height": 291.455078125
+      },
+      "center": {
+        "x": 360,
+        "y": 634
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "scroll": {
+        "horizontal": false,
+        "vertical": true,
+        "normalizedPosition": {
+          "x": 0,
+          "y": 0.9999944567680359
+        }
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "NoteText",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/NoteArea/NoteText"
+      }
+    },
+    {
+      "id": "-3122",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "DownloadBriefTextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/AutoDeleteToggle/DownloadBriefTextView",
+      "text": "必要なデータを、必要なタイミングでダウンロードします<br/>一度にダウンロードする容量は少量ですが<br/>ライブやストーリーなどでダウンロードが都度発生します<br/>次回のログイン時にクリアしたシナリオのデータを自動で削除するため、<br/>もう一度ストーリーやエピソードを再生する場合は<br/>再度ダウンロードが発生します",
+      "label": "必要なデータを、必要なタイミングでダウンロードします<br/>一度にダウンロードする容量は少量ですが<br/>ライブやストーリーなどでダウンロードが都度発生します<br/>次回のログイン時にクリアしたシナリオのデータを自動で削除するため、<br/>もう一度ストーリーやエピソードを再生する場合は<br/>再度ダウンロードが発生します",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 192.1439208984375,
+        "top": 861.4501953125,
+        "right": 551.604248046875,
+        "bottom": 965.078125,
+        "width": 359.4603271484375,
+        "height": 103.6279296875
+      },
+      "visibleBounds": {
+        "left": 192.1439208984375,
+        "top": 861.4501953125,
+        "right": 551.604248046875,
+        "bottom": 779.7900390625,
+        "width": 359.4603271484375,
+        "height": 0
+      },
+      "center": {
+        "x": 372,
+        "y": 821
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "-3106",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "DownloadTypeTextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/AutoDeleteToggle/DownloadTypeTextView",
+      "text": "軽量ダウンロード(シナリオ自動削除) [5858.95 MB]",
+      "label": "軽量ダウンロード(シナリオ自動削除) [5858.95 MB]",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 192.1439208984375,
+        "top": 835.543212890625,
+        "right": 554.8425903320312,
+        "bottom": 857.13134765625,
+        "width": 362.69866943359375,
+        "height": 21.588134765625
+      },
+      "visibleBounds": {
+        "left": 192.1439208984375,
+        "top": 835.543212890625,
+        "right": 554.8425903320312,
+        "bottom": 779.7900390625,
+        "width": 362.69866943359375,
+        "height": 0
+      },
+      "center": {
+        "x": 373,
+        "y": 808
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "-3042",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "DownloadBriefTextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle/DownloadBriefTextView",
+      "text": "必要なデータを、必要なタイミングでダウンロードします\n一度にダウンロードする容量は少量ですが\nライブやストーリーなどでダウンロードが発生します",
+      "label": "必要なデータを、必要なタイミングでダウンロードします\n一度にダウンロードする容量は少量ですが\nライブやストーリーなどでダウンロードが発生します",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 192.1439208984375,
+        "top": 762.139892578125,
+        "right": 551.604248046875,
+        "bottom": 824.747314453125,
+        "width": 359.4603271484375,
+        "height": 62.607421875
+      },
+      "visibleBounds": {
+        "left": 192.1439208984375,
+        "top": 762.139892578125,
+        "right": 551.604248046875,
+        "bottom": 779.7900390625,
+        "width": 359.4603271484375,
+        "height": 17.650146484375
+      },
+      "center": {
+        "x": 372,
+        "y": 771
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "LightnessToggle",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle"
+      }
+    },
+    {
+      "id": "-3026",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "DownloadTypeTextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle/DownloadTypeTextView",
+      "text": "軽量ダウンロード [5858.95 MB]",
+      "label": "軽量ダウンロード [5858.95 MB]",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 192.1439208984375,
+        "top": 736.23291015625,
+        "right": 554.8425903320312,
+        "bottom": 757.822265625,
+        "width": 362.69866943359375,
+        "height": 21.58935546875
+      },
+      "visibleBounds": {
+        "left": 192.1439208984375,
+        "top": 736.23291015625,
+        "right": 554.8425903320312,
+        "bottom": 757.822265625,
+        "width": 362.69866943359375,
+        "height": 21.58935546875
+      },
+      "center": {
+        "x": 373,
+        "y": 747
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "LightnessToggle",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle"
+      }
+    },
+    {
+      "id": "-2962",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "DownloadBriefTextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/FullDownloadToggle/DownloadBriefTextView",
+      "text": "すべてのデータをまとめてダウンロードします\n一度にダウンロードする容量は多く時間がかかりますが\nその後快適にプレイできます",
+      "label": "すべてのデータをまとめてダウンロードします\n一度にダウンロードする容量は多く時間がかかりますが\nその後快適にプレイできます",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 192.1439208984375,
+        "top": 662.82958984375,
+        "right": 551.604248046875,
+        "bottom": 725.438232421875,
+        "width": 359.4603271484375,
+        "height": 62.608642578125
+      },
+      "visibleBounds": {
+        "left": 192.1439208984375,
+        "top": 662.82958984375,
+        "right": 551.604248046875,
+        "bottom": 725.438232421875,
+        "width": 359.4603271484375,
+        "height": 62.608642578125
+      },
+      "center": {
+        "x": 372,
+        "y": 694
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "ScrollView",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView"
+      }
+    },
+    {
+      "id": "-2942",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "DownloadTypeTextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/FullDownloadToggle/DownloadTypeTextView",
+      "text": "一括ダウンロード [15416.53 MB]",
+      "label": "一括ダウンロード [15416.53 MB]",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 192.1439208984375,
+        "top": 636.922607421875,
+        "right": 554.8425903320312,
+        "bottom": 658.511962890625,
+        "width": 362.69866943359375,
+        "height": 21.58935546875
+      },
+      "visibleBounds": {
+        "left": 192.1439208984375,
+        "top": 636.922607421875,
+        "right": 554.8425903320312,
+        "bottom": 658.511962890625,
+        "width": 362.69866943359375,
+        "height": 21.58935546875
+      },
+      "center": {
+        "x": 373,
+        "y": 648
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "ScrollView",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView"
+      }
+    },
+    {
+      "id": "-2870",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "NoteText",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/NoteArea/NoteText",
+      "text": "※通信環境によっては時間がかかる場合があります\n※Wi-Fi環境でのダウンロードをお勧めします\n※設定はタイトルメニューやシステム設定から後で変更することができます",
+      "label": "※通信環境によっては時間がかかる場合があります\n※Wi-Fi環境でのダウンロードをお勧めします\n※設定はタイトルメニューやシステム設定から後で変更することができます",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 146.26686096191406,
+        "top": 561.73828125,
+        "right": 573.733154296875,
+        "bottom": 635.140380859375,
+        "width": 427.46629333496094,
+        "height": 73.402099609375
+      },
+      "visibleBounds": {
+        "left": 146.26686096191406,
+        "top": 561.73828125,
+        "right": 573.733154296875,
+        "bottom": 635.140380859375,
+        "width": 427.46629333496094,
+        "height": 73.402099609375
+      },
+      "center": {
+        "x": 360,
+        "y": 598
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "NoteText",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/NoteArea/NoteText"
+      }
+    },
+    {
+      "id": "-2848",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "DescriptionText",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/DescriptionArea/DescriptionText",
+      "text": "データダウンロードの設定を行ってください\n端末の空き容量：約101651.10 MB",
+      "label": "データダウンロードの設定を行ってください\n端末の空き容量：約101651.10 MB",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 146.26686096191406,
+        "top": 488.3349609375,
+        "right": 573.733154296875,
+        "bottom": 561.737060546875,
+        "width": 427.46629333496094,
+        "height": 73.402099609375
+      },
+      "visibleBounds": {
+        "left": 146.26686096191406,
+        "top": 488.336181640625,
+        "right": 573.733154296875,
+        "bottom": 561.737060546875,
+        "width": 427.46629333496094,
+        "height": 73.40087890625
+      },
+      "center": {
+        "x": 360,
+        "y": 525
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "DescriptionText",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/DescriptionArea/DescriptionText"
+      }
+    },
+    {
+      "id": "-2788",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+      "text": "OK",
+      "label": "OK",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 430.1649169921875,
+        "top": 794.903564453125,
+        "right": 548.905517578125,
+        "bottom": 814.332275390625,
+        "width": 118.7406005859375,
+        "height": 19.4287109375
+      },
+      "visibleBounds": {
+        "left": 430.1649169921875,
+        "top": 794.903564453125,
+        "right": 548.905517578125,
+        "bottom": 814.332275390625,
+        "width": 118.7406005859375,
+        "height": 19.4287109375
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2696",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM/TextView",
+      "text": "キャンセル",
+      "label": "キャンセル",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 171.0944366455078,
+        "top": 794.903564453125,
+        "right": 289.8350830078125,
+        "bottom": 814.332275390625,
+        "width": 118.74064636230469,
+        "height": 19.4287109375
+      },
+      "visibleBounds": {
+        "left": 171.0944366455078,
+        "top": 794.903564453125,
+        "right": 289.8350830078125,
+        "bottom": 814.332275390625,
+        "width": 118.74064636230469,
+        "height": 19.4287109375
+      },
+      "center": {
+        "x": 230,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "ButtonNegativeM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM"
+      }
+    },
+    {
+      "id": "-2620",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TitleText",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Header/TitleText",
+      "text": "データダウンロード設定",
+      "label": "データダウンロード設定",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 157.6011962890625,
+        "top": 453.253173828125,
+        "right": 562.3988037109375,
+        "bottom": 481.319580078125,
+        "width": 404.797607421875,
+        "height": 28.06640625
+      },
+      "visibleBounds": {
+        "left": 157.6011962890625,
+        "top": 453.253173828125,
+        "right": 562.3988037109375,
+        "bottom": 481.319580078125,
+        "width": 404.797607421875,
+        "height": 28.06640625
+      },
+      "center": {
+        "x": 360,
+        "y": 467
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "TitleText",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Header/TitleText"
+      }
+    },
+    {
+      "id": "-3060",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "AutoDeleteToggle",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/AutoDeleteToggle",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 157.6011962890625,
+        "top": 833.76220703125,
+        "right": 562.3988037109375,
+        "bottom": 966.53564453125,
+        "width": 404.797607421875,
+        "height": 132.7734375
+      },
+      "visibleBounds": {
+        "left": 157.6011962890625,
+        "top": 833.76220703125,
+        "right": 562.3988037109375,
+        "bottom": 779.7900390625,
+        "width": 404.797607421875,
+        "height": 0
+      },
+      "center": {
+        "x": 360,
+        "y": 807
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "-2980",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "LightnessToggle",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 157.6011962890625,
+        "top": 734.451904296875,
+        "right": 562.3988037109375,
+        "bottom": 825.125732421875,
+        "width": 404.797607421875,
+        "height": 90.673828125
+      },
+      "visibleBounds": {
+        "left": 157.6011962890625,
+        "top": 734.451904296875,
+        "right": 562.3988037109375,
+        "bottom": 779.7900390625,
+        "width": 404.797607421875,
+        "height": 45.338134765625
+      },
+      "center": {
+        "x": 360,
+        "y": 757
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "LightnessToggle",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle"
+      }
+    },
+    {
+      "id": "-2896",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "FullDownloadToggle",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/FullDownloadToggle",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 157.6011962890625,
+        "top": 635.1416015625,
+        "right": 562.3988037109375,
+        "bottom": 725.8154296875,
+        "width": 404.797607421875,
+        "height": 90.673828125
+      },
+      "visibleBounds": {
+        "left": 157.6011962890625,
+        "top": 635.1416015625,
+        "right": 562.3988037109375,
+        "bottom": 725.8154296875,
+        "width": 404.797607421875,
+        "height": 90.673828125
+      },
+      "center": {
+        "x": 360,
+        "y": 680
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "ScrollView",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView"
+      }
+    },
+    {
+      "id": "-2756",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2672",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "ButtonNegativeM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 230,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonNegativeM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM"
+      }
+    },
+    {
+      "id": "236730",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "LoadingGuard",
+      "path": "EntryPoint/LoadingUICanvas/LoadingGuard",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "LoadingCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "ScrollView",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView"
+      }
+    },
+    {
+      "id": "-3066",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "AutoDeleteToggle",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/AutoDeleteToggle",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 157.6011962890625,
+        "top": 833.76220703125,
+        "right": 562.3988037109375,
+        "bottom": 966.53564453125,
+        "width": 404.797607421875,
+        "height": 132.7734375
+      },
+      "visibleBounds": {
+        "left": 157.6011962890625,
+        "top": 833.76220703125,
+        "right": 562.3988037109375,
+        "bottom": 779.7900390625,
+        "width": 404.797607421875,
+        "height": 0
+      },
+      "center": {
+        "x": 360,
+        "y": 807
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "-2986",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "LightnessToggle",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 157.6011962890625,
+        "top": 734.451904296875,
+        "right": 562.3988037109375,
+        "bottom": 825.125732421875,
+        "width": 404.797607421875,
+        "height": 90.673828125
+      },
+      "visibleBounds": {
+        "left": 157.6011962890625,
+        "top": 734.451904296875,
+        "right": 562.3988037109375,
+        "bottom": 779.7900390625,
+        "width": 404.797607421875,
+        "height": 45.338134765625
+      },
+      "center": {
+        "x": 360,
+        "y": 757
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "LightnessToggle",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/LightnessToggle"
+      }
+    },
+    {
+      "id": "-2902",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "FullDownloadToggle",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView/Viewport/Content/RadioButtonToggle/FullDownloadToggle",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 157.6011962890625,
+        "top": 635.1416015625,
+        "right": 562.3988037109375,
+        "bottom": 725.8154296875,
+        "width": 404.797607421875,
+        "height": 90.673828125
+      },
+      "visibleBounds": {
+        "left": 157.6011962890625,
+        "top": 635.1416015625,
+        "right": 562.3988037109375,
+        "bottom": 725.8154296875,
+        "width": 404.797607421875,
+        "height": 90.673828125
+      },
+      "center": {
+        "x": 360,
+        "y": 680
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "ScrollView",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/ModeSelectableDownloadConfirmPopup(Clone)/ScrollView"
+      }
+    },
+    {
+      "id": "-2762",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2678",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "ButtonNegativeM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 230,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonNegativeM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM"
+      }
+    },
+    {
+      "id": "-2758",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2674",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "ButtonNegativeM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 230,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonNegativeM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM"
+      }
+    },
+    {
+      "id": "-2760",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2676",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "ButtonNegativeM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 230,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonNegativeM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM"
+      }
+    },
+    {
+      "id": "-2772",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2770",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2768",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2766",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2764",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 426.926513671875,
+        "top": 785.186767578125,
+        "right": 552.1439208984375,
+        "bottom": 824.049072265625,
+        "width": 125.2174072265625,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 490,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-2680",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "ButtonNegativeM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "visibleBounds": {
+        "left": 167.8560791015625,
+        "top": 785.186767578125,
+        "right": 293.0734558105469,
+        "bottom": 824.049072265625,
+        "width": 125.21737670898438,
+        "height": 38.8623046875
+      },
+      "center": {
+        "x": 230,
+        "y": 805
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 5,
+        "firstName": "ButtonNegativeM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonNegativeM"
+      }
+    }
+  ],
+  "provenance": {
+    "run_id": 43424838171,
+    "artifact_id": 14037811914,
+    "artifact_sha256": "4d4c044c4e5d69df6784c64e0cffb1ff028f872c6d489d39a143d3b17c259991",
+    "original_file": "unity-ui-006.json",
+    "original_file_sha256": "e966e4beb4403a0c9f60d1168048fca6aaacefe93eef830f719098b1f6545e1c",
+    "scope": "Actual readonly popup hierarchy; no selected-radio or successful input inferred"
+  }
+}

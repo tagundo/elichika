@@ -50,4 +50,40 @@ class DownloadSettingsTests(unittest.TestCase):
             with self.assertRaises(TidProofError):proc_stat_starttime(changed,pid)
 
 
+
+
+class ActualCaptionActionTests(unittest.TestCase):
+    def recorded(self):
+        import json
+        from pathlib import Path
+        return json.loads((Path(__file__).parent/"fixtures/prior-download-modal.json").read_text())
+
+    def test_real_ok_caption_routes_to_its_hittable_parent_action_not_label(self):
+        from feature_client_smoke import caption_action_target
+        tree=self.recorded();caption=next(n for n in tree["nodes"] if n.get("kind")=="text" and n.get("text")=="OK")
+        self.assertFalse(caption["hit"]["hittable"])
+        buttons=[n for n in tree["nodes"] if n.get("kind")=="button"]
+        target=caption_action_target(caption,buttons)
+        self.assertEqual(target["type"],"LLAS.Components.UI.ProductButton")
+        self.assertEqual(target["name"],"ButtonPositiveM")
+        self.assertTrue(target["hit"]["hittable"])
+        self.assertEqual(tree["provenance"]["run_id"],43424838171)
+
+    def test_wrong_caption_first_hit_blocked_parent_or_ambiguous_actions_fail_closed(self):
+        from feature_client_smoke import caption_action_target
+        tree=self.recorded();caption=next(n for n in tree["nodes"] if n.get("kind")=="text" and n.get("text")=="OK")
+        buttons=[n for n in tree["nodes"] if n.get("kind")=="button"]
+        for change in ("wrong-hit","overlay-first-hit","hidden-caption","no-hit","blocked-actions","ambiguous-geometry"):
+            c=copy.deepcopy(caption);b=copy.deepcopy(buttons)
+            if change=="wrong-hit":c["hit"]["firstPath"]="Unrelated/OtherAction"
+            elif change=="overlay-first-hit":c["hit"]["firstPath"]=next(n["path"] for n in b if n.get("name")=="ButtonNegativeM")
+            elif change=="hidden-caption":c["visible"]=False
+            elif change=="no-hit":c["hit"]["available"]=False
+            elif change=="blocked-actions":
+                for node in b:node.setdefault("hit",{})["hittable"]=False
+            else:
+                other=copy.deepcopy(next(n for n in b if n.get("type")=="LLAS.Components.UI.ProductButton" and n.get("name")=="ButtonPositiveM"))
+                other["center"]={"x":other["center"]["x"]+10,"y":other["center"]["y"]};b.append(other)
+            with self.subTest(change=change):self.assertIsNone(caption_action_target(c,b))
+
 if __name__=="__main__":unittest.main()
