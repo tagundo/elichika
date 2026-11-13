@@ -85,9 +85,9 @@ def main():
         assert host['hardware']['stdout'].strip() == '1' and host['windowserver']['code'] == 0, 'Apple Silicon WindowServer required'
         assert 'amfi_get_out_of_my_way' not in host['bootargs']['stdout'], 'Unreviewed PlaySign environment'
         build = a.fixtures/'host-tools'; build.mkdir(exist_ok=True)
-        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA', 'MetalHost', 'PlayCoverLaunch']:
+        for name in ['HostEvidence', 'PlayCoverAX', 'VisionQA', 'MetalHost', 'PlayCoverLaunch', 'VisionPlayCoverLaunch']:
             arguments = ['xcrun','swiftc','-swift-version','5','-target','arm64-apple-macosx13.0',HERE/(name+'.swift'),'-o',build/name]
-            if name == 'VisionQA':
+            if name in ['VisionQA','VisionPlayCoverLaunch']:
                 for framework in ['AppKit','ApplicationServices','CoreGraphics','Vision','ImageIO','CryptoKit']:
                     arguments += ['-framework',framework]
             if name == 'MetalHost': arguments += ['-framework','Metal']
@@ -229,13 +229,19 @@ def main():
             private_stdout = a.fixtures/(candidate['region']+'-launch.stdout')
             private_stderr = a.fixtures/(candidate['region']+'-launch.stderr')
             configure_plain_preferences(candidate['bundle_id'],folder)
-            result['launch_strategy'] = 'pinned-standard-default-NSWorkspace-with-supported-container-preferences'
+            result['launch_strategy'] = 'actual-PlayCover-library-tile-OS-doubleclick-with-supported-container-preferences'
+            command([build/'HostEvidence',pcid,'--activate'])
+            result['actual_playcover_library_screen'] = record_screen(pcid,folder,'playcover-imported-library')
+            pc_apps = host_state(pcid).get('applications',[])
+            assert len(pc_apps) == 1, 'Exactly one real PlayCover process must own the library window'
+            pc_pid = pc_apps[0]['pid']
+            write(folder/'playcover-imported-library-ax-command.json',
+                  command([build/'PlayCoverAX','dump',pc_pid,folder/'playcover-imported-library-ax']))
             launch_wall = time.time()
-            launch_proof = folder/'default-workspace-launch.json'
-            launch = command([build/'PlayCoverLaunch',alias,candidate['bundle_id'],launch_proof],timeout=35)
+            launch = command([build/'VisionPlayCoverLaunch','--pid',pc_pid,'--proof-dir',
+                              folder/'actual-library-doubleclick','--exact',display],timeout=45)
             write(folder/'normal-launch.json',launch)
-            completion = json.loads(launch_proof.read_text()) if launch_proof.exists() else {}
-            result['default_workspace_launch'] = completion
+            result['actual_library_doubleclick_delivered'] = launch['code'] == 0
             def startup_capture(observed_pid,label,since=None,stdout_file=None,stderr_file=None):
                 record = command([sys.executable,HERE/'capture_startup.py','--bundle-id',candidate['bundle_id'],
                     '--executable',installed_info['CFBundleExecutable'],'--pid',str(observed_pid),'--since',str(launch_wall if since is None else since),
@@ -243,13 +249,38 @@ def main():
                     '--launch-stderr',private_stderr if stderr_file is None else stderr_file,
                     '--proof-dir',folder/label],timeout=60)
                 write(folder/(label+'-command.json'),record)
-            observed_pid = completion.get('completionPID',0)
-            if launch['code'] != 0 or not isinstance(observed_pid,int) or observed_pid <= 0:
-                result.update(status='FAIL_APP_LAUNCH', launch=launch)
+            running = wait_for(lambda:host_state(candidate['bundle_id']).get('applications'),30) if launch['code'] == 0 else None
+            if not running:
+                result.update(status='FAIL_ACTUAL_LIBRARY_TILE_LAUNCH', launch=launch)
                 startup_capture(0,'startup-no-observed-pid')
                 stage('launch-failed-'+candidate['region'])
                 continue
-            pid = observed_pid; result['actual_pid'] = pid
+            pid = running[0]['pid']; result['actual_pid'] = pid
+            # The real GUI path performs PlayCover's normal launch-time repairs.
+            # Recheck its result against the same original IPA and pinned source
+            # rules; only that verified installed image may provide runtime proof.
+            post_footprint = command([sys.executable,HERE/'verify_playtools_footprint.py','--playcover-dmg',dmg,
+                '--pinned-playcover-app',source_app,'--installed-game',app,'--candidate-ipa',ipa,
+                '--candidate-sha256',candidate['sha256'],'--proof-dir',folder/'post-gui-playtools-footprint'],timeout=180)
+            write(folder/'post-gui-playtools-footprint-command.json',post_footprint)
+            post_allowed = []
+            if candidate.get('role') == 'original-control':post_allowed.append('--original-control')
+            if post_footprint['code'] == 0:
+                allowed = json.loads((folder/'post-gui-playtools-footprint/verifier-arguments.json').read_text())
+                for value in allowed['allow_dylib']:post_allowed += ['--allow-dylib',value]
+                for value in allowed['allow_added_resource']:post_allowed += ['--allow-added-resource',value]
+            post_verified = command([sys.executable,HERE/'verify_playcover_install.py','--installed-app',app,
+                '--candidate-ipa',ipa,'--candidate-sha256',candidate['sha256'],'--proof-dir',folder/'post-gui-install-verification',
+                '--playcover-app',pc,'--playcover-dmg',dmg,'--expected-entitlements',expected_path,*post_allowed],timeout=180)
+            write(folder/'post-gui-verifier-command.json',post_verified)
+            result['post_actual_gui_launch_bundle_verified'] = post_footprint['code'] == 0 and post_verified['code'] == 0
+            if not result['post_actual_gui_launch_bundle_verified']:
+                result['status'] = 'FAIL_VERIFICATION_AFTER_ACTUAL_GUI_LAUNCH'
+                try:os.kill(pid,signal.SIGTERM)
+                except ProcessLookupError:pass
+                assert wait_for(lambda:not host_state(candidate['bundle_id']).get('applications'),10)
+                stage('post-gui-verification-failed-'+candidate['region'])
+                continue
             result['actual_process_start'] = command(['ps','-p',str(pid),'-o','lstart='])
             result['launch_wall_time'] = launch_wall
             time.sleep(12)
