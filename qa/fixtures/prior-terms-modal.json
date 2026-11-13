@@ -1,0 +1,159 @@
+{
+  "screen": {
+    "width": 1280,
+    "height": 720,
+    "orientation": -1,
+    "scene": "Title",
+    "frame": 2907,
+    "unityVersion": "2018.4.23f1"
+  },
+  "nodes": [
+    {
+      "id": "-3658",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM/TextView",
+      "text": "Agree",
+      "label": "Agree",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 760.8995361328125,
+        "top": 635.3819274902344,
+        "right": 1140.86962890625,
+        "bottom": 669.9250030517578,
+        "width": 379.9700927734375,
+        "height": 34.54307556152344
+      },
+      "visibleBounds": {
+        "left": 760.8995361328125,
+        "top": 635.3819274902344,
+        "right": 1140.86962890625,
+        "bottom": 669.9250030517578,
+        "width": 379.9700927734375,
+        "height": 34.54307556152344
+      },
+      "center": {
+        "x": 951,
+        "y": 653
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    },
+    {
+      "id": "-3786",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "PrivacyPolicyButton",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/PopupTermsGL(Clone)/Tab/Tabs/PrivacyPolicyButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 640,
+        "top": 102.8485107421875,
+        "right": 1177.3314208984375,
+        "bottom": 171.9339599609375,
+        "width": 537.3314208984375,
+        "height": 69.08544921875
+      },
+      "visibleBounds": {
+        "left": 640,
+        "top": 102.8485107421875,
+        "right": 1177.3314208984375,
+        "bottom": 171.9339599609375,
+        "width": 537.3314208984375,
+        "height": 69.08544921875
+      },
+      "center": {
+        "x": 909,
+        "y": 137
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 3,
+        "firstName": "PrivacyPolicyButton",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Content/PopupTermsGL(Clone)/Tab/Tabs/PrivacyPolicyButton"
+      }
+    },
+    {
+      "id": "-3626",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "ButtonPositiveM",
+      "path": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 755.1424560546875,
+        "top": 618.1107330322266,
+        "right": 1146.626708984375,
+        "bottom": 687.1961975097656,
+        "width": 391.4842529296875,
+        "height": 69.08546447753906
+      },
+      "visibleBounds": {
+        "left": 755.1424560546875,
+        "top": 618.1107330322266,
+        "right": 1146.626708984375,
+        "bottom": 687.1961975097656,
+        "width": 391.4842529296875,
+        "height": 69.08546447753906
+      },
+      "center": {
+        "x": 951,
+        "y": 653
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 4,
+        "firstName": "ButtonPositiveM",
+        "firstPath": "EntryPoint/PopupView/Container/BasicPopupFrame(Clone)/UICanvas/Window/Background/Footer/ButtonGroup/ButtonPositiveM"
+      }
+    }
+  ],
+  "provenance": {
+    "artifact_sha256": "51a947f630b0a8eeb1afb883d64cf3be13de6e9f1247f798f1b35b259fc675b3",
+    "run_id": 42607675623,
+    "source_file": "unity-ui-071.json",
+    "scope": "Only existing Agree/positive/context nodes retained; no screenshot-derived coordinates"
+  }
+}

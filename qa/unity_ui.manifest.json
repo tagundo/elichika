@@ -1,0 +1,11 @@
+{
+  "bridge": "0.9.1",
+  "frida_server_and_client": "16.6.6",
+  "agent_version": 2,
+  "bundle": "unity_ui.bundle.js",
+  "bytes": 173763,
+  "sha256": "486b1c3fc274e52cbd6e4c3639d7dde7b43887e5ce1ead6f523521e1445f86b2",
+  "observer_sha256": "976054b836f700abb01c8e131af25153074908d2476f3437175495951bceb8ea",
+  "bridge_sha256": "426db768c062908b685d713ee27f87b5eea3d8ea2a4d28cf8db465a6900da787",
+  "runtime_validation": "Pending actual Unity process; syntax checks alone are not runtime proof"
+}

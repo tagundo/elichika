@@ -1,0 +1,155 @@
+name: Validate signed SIFAS ARM64 clients against frozen Elichika
+
+on:
+  push:
+    branches: [codex/android-client-qa-20261113]
+  workflow_dispatch:
+    inputs:
+      max_seconds:
+        description: Bounded genuine-client UI run time per region
+        required: true
+        default: "1500"
+
+permissions:
+  # GitHub requires write scope to read this repository's unpublished drafts.
+  # The fixture helper makes GET requests only; no release is changed by CI.
+  contents: write
+  actions: read
+
+concurrency:
+  group: signed-sifas-client-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  client:
+    if: github.repository == 'tagundo/elichika' && startsWith(github.ref, 'refs/heads/codex/android-client-qa-')
+    strategy:
+      fail-fast: false
+      matrix:
+        region: [GL, JP]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      QA_REGION: ${{ matrix.region }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout frozen server helpers without rebuilding the APK
+        uses: actions/checkout@v4
+        with:
+          repository: tagundo/elichika
+          ref: a91843474f9d672189c1ca2f15ca846de8e41458
+          path: server-source
+          persist-credentials: false
+          submodules: false
+
+      - name: Download exact signed client, server and pinned observer dependency
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 qa/download_fixtures.py --manifest qa/frozen-fixtures.json --region "$QA_REGION" \
+            --destination "$RUNNER_TEMP/client-qa-fixtures" --evidence evidence
+          xz -d "$RUNNER_TEMP/client-qa-fixtures/frida-server.xz"
+          git -C server-source rev-parse HEAD > evidence/server-source-commit.txt
+          sha256sum qa/*.py qa/unity_ui*.js qa/*manifest*.json qa/frozen-fixtures.json > evidence/qa-source-sha256.txt
+          cp qa/frozen-fixtures.json evidence/frozen-fixtures.json
+
+      - name: Prepare disposable native ARM64 Android host
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb apksigner aapt python3-venv
+          python3 -m venv "$RUNNER_TEMP/qa-venv"
+          "$RUNNER_TEMP/qa-venv/bin/pip" install --disable-pip-version-check 'frida==16.6.6' 'Pillow==11.0.0'
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          mkdir -p "$RUNNER_TEMP/android-data"
+          uname -a > evidence/host.txt
+          getconf PAGESIZE >> evidence/host.txt
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker run --detach --privileged --name original-client-qa \
+            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=1280 androidboot.redroid_height=720 \
+            androidboot.redroid_fps=15 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
+          adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
+          adb -s 127.0.0.1:5555 shell getconf PAGESIZE > evidence/android-page-size.txt
+          adb -s 127.0.0.1:5555 shell 'echo disposable-private-client-qa > /data/local/tmp/CODEX_DISPOSABLE_CLIENT_QA'
+          printf '%s\n' '_ --use-gl=angle --use-angle=vulkan' > "$RUNNER_TEMP/webview-command-line"
+          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/webview-command-line" /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/client-qa-fixtures/frida-server" /data/local/tmp/frida-server
+          adb -s 127.0.0.1:5555 shell chmod 755 /data/local/tmp/frida-server
+          adb -s 127.0.0.1:5555 shell 'nohup /data/local/tmp/frida-server -l 127.0.0.1:27042 >/data/local/tmp/frida-server.log 2>&1 </dev/null &'
+
+      - name: Verify signatures and exact package identities
+        run: |
+          set -euo pipefail
+          apksigner verify --verbose --print-certs "$RUNNER_TEMP/client-qa-fixtures/server.apk" > evidence/server-signature.txt
+          apksigner verify --verbose --print-certs "$RUNNER_TEMP/client-qa-fixtures/client.apk" > evidence/client-signature.txt
+          grep -q '5ccf5b5f73dcebad61255f6bfca848eb2022eedb741515d16ac84f94c405a9e3' evidence/client-signature.txt
+          aapt dump badging "$RUNNER_TEMP/client-qa-fixtures/client.apk" > evidence/client-badging.txt
+          grep -q "native-code: 'arm64-v8a'" evidence/client-badging.txt
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          manifest=json.loads(Path('qa/frozen-fixtures.json').read_text())
+          expected=manifest['clients'][os.environ['QA_REGION']]['package']
+          assert "name='"+expected+"'" in Path('evidence/client-badging.txt').read_text()
+          assert Path('evidence/server-source-commit.txt').read_text().strip()==manifest['server']['source_commit']
+          PY
+
+      - name: Run genuine regional client UI and record incomplete cases explicitly
+        env:
+          QA_SECONDS: ${{ inputs.max_seconds || '1500' }}
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/qa-venv/bin/python" -u qa/feature_client_smoke.py \
+            --fixtures qa/frozen-fixtures.json --region "$QA_REGION" \
+            --server-apk "$RUNNER_TEMP/client-qa-fixtures/server.apk" \
+            --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
+            --server-source server-source --evidence evidence \
+            --unity-agent qa/unity_ui.bundle.js --max-seconds "$QA_SECONDS" \
+            --settings-orientation portrait --settings-scalar 2.0 --fast-intro
+
+      - name: Retain actual crash, native feature and rendering diagnostics
+        if: always()
+        run: |
+          mkdir -p evidence
+          adb -s 127.0.0.1:5555 logcat -b crash -d > evidence/final-crashes.txt 2>/dev/null || true
+          adb -s 127.0.0.1:5555 shell dumpsys activity activities > evidence/final-activities.txt 2>/dev/null || true
+          adb -s 127.0.0.1:5555 shell dumpsys SurfaceFlinger > evidence/surfaceflinger.txt 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-display.png 2>/dev/null || true
+          adb -s 127.0.0.1:5555 exec-out cat /data/local/tmp/frida-server.log > evidence/frida-server.txt 2>/dev/null || true
+          docker logs original-client-qa > evidence/redroid.log 2>&1 || true
+
+      - name: Upload private regional execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sifas-b22-${{ matrix.region }}-runtime-evidence
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Stop disposable Android
+        if: always()
+        run: docker rm -f original-client-qa || true
