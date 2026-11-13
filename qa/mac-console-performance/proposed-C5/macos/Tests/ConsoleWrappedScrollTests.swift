@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Network
 import SwiftUI
 import XCTest
 @testable import ElichikaMac
@@ -10,6 +11,16 @@ final class ConsoleWrappedScrollTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppModel(arguments: [], resources: nil)
         model.selectedSection = .server
+        // Use the running server presentation: its address/action rows change
+        // the viewport height and expose the wrapped-line anchor regression.
+        let bridge = try await ConsoleReadyFixture.start()
+        defer { bridge.stop() }
+        model.connection = try bridge.readiness()
+        await model.refresh()
+        XCTAssertTrue(model.snapshot.serverRunning && model.snapshot.prepared)
+        XCTAssertEqual(model.consoleState?.cacheEnabled, false)
+        XCTAssertNil(model.consoleState?.job)
+        XCTAssertNil(model.message)
         let host = NSHostingView(rootView: RootView(model: model))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -143,5 +154,124 @@ final class ConsoleWrappedScrollTests: XCTestCase {
             pixels.append(bytes.advanced(by: row * image.bytesPerRow), count: rowBytes)
         }
         return pixels
+    }
+}
+
+
+/// A test-owned, authenticated numeric-loopback bridge. It exercises the real
+/// refresh boundary without a game server, Python, environment variables or
+/// private AppModel setters. All listeners and connections close after the test.
+private final class ConsoleReadyFixture {
+    private let queue = DispatchQueue(label: "ConsoleWrappedScrollTests.bridge")
+    private var listeners: [NWListener] = []
+    private var connections: [NWConnection] = []
+    private let token = UUID().uuidString + UUID().uuidString
+    private let uiToken = UUID().uuidString + UUID().uuidString
+
+    static func start() async throws -> ConsoleReadyFixture {
+        let value = ConsoleReadyFixture()
+        do {
+            for _ in 0..<3 { try await value.addListener() }
+            return value
+        } catch {
+            value.stop()
+            throw error
+        }
+    }
+
+    private func addListener() async throws {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        let listener = try NWListener(using: parameters)
+        listeners.append(listener)
+        listener.newConnectionHandler = { [weak self] connection in
+            guard let self else { connection.cancel(); return }
+            self.connections.append(connection)
+            connection.start(queue: self.queue)
+            self.receive(connection, accumulated: Data())
+        }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    listener.stateUpdateHandler = nil
+                    continuation.resume()
+                case .failed(let error):
+                    listener.stateUpdateHandler = nil
+                    continuation.resume(throwing: error)
+                case .cancelled:
+                    listener.stateUpdateHandler = nil
+                    continuation.resume(throwing: NSError(domain: "ConsoleReadyFixtureCancelled", code: 1))
+                default: break
+                }
+            }
+            listener.start(queue: queue)
+        }
+    }
+
+    func readiness() throws -> RuntimeReady {
+        let ports = try listeners.map { listener -> UInt16 in
+            guard let port = listener.port else { throw NSError(domain: "ConsoleReadyFixturePort", code: 1) }
+            return port.rawValue
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        let value: [String: Any] = [
+            "control_url": "http://127.0.0.1:\(ports[0])", "admin_url": "http://127.0.0.1:\(ports[1])",
+            "tools_url": "http://127.0.0.1:\(ports[2])", "token": token, "ui_token": uiToken,
+            "data_dir": directory, "sukusta_dir": directory + "/sukusta",
+        ]
+        let ready = try JSONDecoder().decode(RuntimeReady.self, from: JSONSerialization.data(withJSONObject: value))
+        try ready.validate()
+        return ready
+    }
+
+    private func receive(_ connection: NWConnection, accumulated: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, done, error in
+            guard let self else { connection.cancel(); return }
+            var request = accumulated
+            if let data { request.append(data) }
+            guard request.count <= 65_536, error == nil else { connection.cancel(); return }
+            if request.range(of: Data("\r\n\r\n".utf8)) != nil {
+                self.respond(connection, request: String(decoding: request, as: UTF8.self))
+            } else if done { connection.cancel() }
+            else { self.receive(connection, accumulated: request) }
+        }
+    }
+
+    private func respond(_ connection: NWConnection, request: String) {
+        let lines = request.components(separatedBy: "\r\n")
+        let credential = lines.first { $0.lowercased().hasPrefix("authorization:") }?
+            .split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces)
+        let path = lines.first?.split(separator: " ").dropFirst().first?
+            .split(separator: "?", maxSplits: 1).first.map(String.init) ?? ""
+        var status = "200 OK"
+        let value: [String: Any]
+        if credential != "Bearer " + token {
+            status = "403 Forbidden"; value = ["error": "Test bridge authorization required"]
+        } else {
+            switch path {
+            case "/v1/state":
+                value = ["phase": "ready", "prepared": true, "busy": false, "server_running": true,
+                    "server": ["running": true, "http_ready": true, "pid": ProcessInfo.processInfo.processIdentifier,
+                               "url": "http://127.0.0.1:8080", "status": "running"],
+                    "console": ["cache_enabled": false]]
+            case "/v1/console": value = ["cache_enabled": false]
+            case "/v1/server/config": value = ["server_address": "127.0.0.1:8080", "cdn_server": "http://127.0.0.1:9"]
+            case "/v1/logs": value = ["entries": [], "next": 0]
+            default: status = "404 Not Found"; value = ["error": "Unknown test bridge route"]
+            }
+        }
+        guard let body = try? JSONSerialization.data(withJSONObject: value) else { connection.cancel(); return }
+        var response = Data("HTTP/1.1 \(status)\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
+        response.append(body)
+        connection.send(content: response, completion: .contentProcessed { _ in connection.cancel() })
+    }
+
+    func stop() {
+        queue.sync {
+            listeners.forEach { $0.newConnectionHandler = nil; $0.cancel() }
+            connections.forEach { $0.cancel() }
+            connections.removeAll()
+        }
     }
 }
