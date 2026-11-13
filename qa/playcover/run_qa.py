@@ -72,6 +72,10 @@ def main():
                               if row['region'] == region+'_ORIGINAL_CONTROL') for region in selected_regions]
     startup_only = manifest.get('startup_only') is True
     assert not startup_only or (a.server_source is None and a.server_binary is None), 'Startup-only diagnostics must not claim a running server fixture'
+    install_profile = manifest.get('diagnostic_install_profile','standard')
+    assert install_profile in ['standard','without-playtools'], 'Unknown standard installer diagnostic profile'
+    assert install_profile == 'standard' or startup_only, 'Without-PlayTools comparison is diagnostic-only'
+    footprint_script = 'verify_playtools_footprint.py' if install_profile == 'standard' else 'verify_no_playtools_profile.py'
     execution_plan = []
     same_install_relaunch = manifest.get('same_install_relaunch') is True
     assert not same_install_relaunch or startup_only, 'Extra same-install relaunch is diagnostic-only'
@@ -82,6 +86,8 @@ def main():
                 'reuse_previous_install':True,'base_region':entry['region']})
     report = {'status': 'IN_PROGRESS', 'manifest': manifest, 'stages': [], 'candidates': [],
               'execution_regions': selected_regions,
+              'diagnostic_install_profile':install_profile,
+              'normal_PlayTools_feature_approval':False,
               'diagnostic_scope':'STARTUP_ONLY_NO_SERVER_FIXTURE' if startup_only else 'SOURCE_BUILT_SERVER_FIXTURE',
               'server_fixture_built':False, 'host_identity_audit':[],
               'planned_gui_import_order': [row['region'] for row in selected_controls+selected_candidates],
@@ -239,7 +245,7 @@ def main():
         signature = command(['codesign','--verify','--deep','--strict','--verbose=4',pc])
         write(a.evidence/'playcover-signature.json', signature)
         assert signature['code'] == 0, 'Pinned PlayCover app signature failed'
-        for key, value in [('AlwaysInstallPlayTools','true'),('ShowInstallPopup','false'),('ShowAppStorePopup','false')]:
+        for key, value in [('AlwaysInstallPlayTools','true' if install_profile == 'standard' else 'false'),('ShowInstallPopup','false'),('ShowAppStorePopup','false')]:
             assert command(['defaults','write',pcid,key,'-bool',value])['code'] == 0
         stage('open-actual-playcover')
         opened = command(['open','-a',pc])
@@ -279,7 +285,7 @@ def main():
                 'keys':['ServerEndpoint','SIFASDiagnosticsEnabled'],'supported_values_verified':True,'commands':records})
         for candidate in execution_plan:
             folder = a.evidence/candidate['region']; folder.mkdir()
-            result = dict(candidate, status='IN_PROGRESS', feature_actions=[], game_login_observed=False, mv_playback_observed=False, actual_playcover_import=False)
+            result = dict(candidate, status='IN_PROGRESS', diagnostic_install_profile=install_profile, feature_actions=[], game_login_observed=False, mv_playback_observed=False, actual_playcover_import=False)
             report['candidates'].append(result)
             assert not host_state(candidate['bundle_id']).get('applications'), 'Prior app process must exit before another import or standard launch'
             ipa = a.fixtures/candidate['name']
@@ -334,15 +340,18 @@ def main():
                 write(folder/'fresh-library-process.json',{'reopen':reopened,'state':host_state(pcid),
                     'scope':'Only owned disposable PlayCover process restarted; current imported bundle must be rescanned'})
             stage('verify-imported-bundle-'+candidate['region'])
-            footprint = command([sys.executable,HERE/'verify_playtools_footprint.py','--playcover-dmg',dmg,
+            footprint = command([sys.executable,HERE/footprint_script,'--playcover-dmg',dmg,
                 '--pinned-playcover-app',source_app,'--installed-game',app,'--candidate-ipa',ipa,
                 '--candidate-sha256',candidate['sha256'],'--proof-dir',folder/'playtools-footprint'],timeout=180)
             write(folder/'playtools-footprint-command.json',footprint)
-            result['pinned_standard_playtools_verified'] = footprint['code'] == 0
+            result['pinned_standard_playtools_verified'] = footprint['code'] == 0 and install_profile == 'standard'
+            result['diagnostic_without_playtools_verified'] = footprint['code'] == 0 and install_profile == 'without-playtools'
             additional = []
             if candidate.get('role') == 'original-control': additional.append('--original-control')
             if footprint['code'] == 0:
                 allowed = json.loads((folder/'playtools-footprint/verifier-arguments.json').read_text())
+                if install_profile == 'without-playtools':
+                    assert allowed.get('profile') == 'without-playtools' and allowed.get('allow_dylib') == [] and allowed.get('allow_added_resource') == [], 'Diagnostic profile must authorize no extra game load/resource'
                 for value in allowed['allow_dylib']:additional += ['--allow-dylib',value]
                 for value in allowed['allow_added_resource']:additional += ['--allow-added-resource',value]
             verified = command([sys.executable,HERE/'verify_playcover_install.py','--installed-app',app,
@@ -405,7 +414,7 @@ def main():
             # The real GUI path performs PlayCover's normal launch-time repairs.
             # Recheck its result against the same original IPA and pinned source
             # rules; only that verified installed image may provide runtime proof.
-            post_footprint = command([sys.executable,HERE/'verify_playtools_footprint.py','--playcover-dmg',dmg,
+            post_footprint = command([sys.executable,HERE/footprint_script,'--playcover-dmg',dmg,
                 '--pinned-playcover-app',source_app,'--installed-game',app,'--candidate-ipa',ipa,
                 '--candidate-sha256',candidate['sha256'],'--proof-dir',folder/'post-gui-playtools-footprint'],timeout=180)
             write(folder/'post-gui-playtools-footprint-command.json',post_footprint)
@@ -413,6 +422,8 @@ def main():
             if candidate.get('role') == 'original-control':post_allowed.append('--original-control')
             if post_footprint['code'] == 0:
                 allowed = json.loads((folder/'post-gui-playtools-footprint/verifier-arguments.json').read_text())
+                if install_profile == 'without-playtools':
+                    assert allowed.get('profile') == 'without-playtools' and allowed.get('allow_dylib') == [] and allowed.get('allow_added_resource') == [], 'Postlaunch diagnostic profile must authorize no extra game load/resource'
                 for value in allowed['allow_dylib']:post_allowed += ['--allow-dylib',value]
                 for value in allowed['allow_added_resource']:post_allowed += ['--allow-added-resource',value]
             post_verified = command([sys.executable,HERE/'verify_playcover_install.py','--installed-app',app,
@@ -530,7 +541,7 @@ def main():
                 'fixtures':{'region':candidate['region'],'client_asset_id':candidate['asset_id'],
                     'original_asset_id':candidate.get('original_asset_id'),'original_sha256':candidate.get('original_sha256'),
                     'client_sha256':candidate['sha256'],'server_source_commit':None if startup_only else manifest['server_source_ref'],'server_fixture':fixture,
-                    'startup_only_diagnostic':startup_only},
+                    'startup_only_diagnostic':startup_only,'diagnostic_install_profile':install_profile},
                 'verified':verified,'cases':{},'actual_observation_status':observed.get('status','NOT_REACHED'),
                 'failed_stage':report.get('failure'),'qualification':report['qualification']}
             summary_ref = {'path':'summary.json','sha256':sha(a.evidence/'summary.json')}
