@@ -1,0 +1,24 @@
+{
+  "status": "ISOLATED_PROPOSAL_NOT_APPLIED_OR_NATIVE_VALIDATED",
+  "baseline_candidate_commit": "28b80a8b43898ef9544d8452fef76181839eec6e",
+  "files": [
+    {
+      "path": "macos/App/ElichikaApp.swift",
+      "local": "/tmp/elichika-mac-perf-20261113/proposed-C5/macos/App/ElichikaApp.swift",
+      "bytes": 49669,
+      "sha256": "dde99f3082353a871ee44163f42c2868850dce15a69bf49bf263a953ba172dcf"
+    },
+    {
+      "path": "macos/Tests/ConsoleWrappedScrollTests.swift",
+      "local": "/tmp/elichika-mac-perf-20261113/proposed-C5/macos/Tests/ConsoleWrappedScrollTests.swift",
+      "bytes": 8307,
+      "sha256": "49cacaafaab2beff76efe76ade0a2aac63237c03f1e4e350aa712c6ab9453bc1"
+    }
+  ],
+  "changes_other_files": false,
+  "go_webui_config_runtime_python_assets_gitlinks_changed": false,
+  "rationale": "Stabilize only old visible fragments for hit testing, then lay out prefix through surviving anchor after head trim; retain suffix lazy layout, selection/copy/tail and all polling/renderer semantics.",
+  "regression": "Actual RootView AppKit window1500wrappedUnicode paragraphs; coalesced80-lineheadtrim, exact40720UTF16shift, sameglyph<=1char/1.5px, selectedcopy, viewportpixels and tailfollow. Must fail C4 and pass proposal on actual Mac before acceptance.",
+  "regression_test_robustness": "Guard empty native document; compare format/dimensions and packed pixel bytes only, excluding row padding.",
+  "test_fixture_timing_revision": "Render and display the actual empty RootView log document at its final window width before appending1500wrapped lines, matching actual asynchronous log loading. Production App delta unchanged."
+}

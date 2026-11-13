@@ -10,9 +10,6 @@ final class ConsoleWrappedScrollTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppModel(arguments: [], resources: nil)
         model.selectedSection = .server
-        model.appendLogs((0..<1500).map {
-            String(format: "resident-%04d Unicode 測定 😀 ", $0) + String(repeating: "x", count: 480)
-        })
         let host = NSHostingView(rootView: RootView(model: model))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -20,9 +17,22 @@ final class ConsoleWrappedScrollTests: XCTestCase {
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
         defer { window.orderOut(nil); window.contentView = nil; window.close() }
-        try await waitUntil { self.logDocument(in: host)?.string.hasSuffix(String(repeating: "x", count: 480)) == true }
+        // Match actual log loading: the empty native document must already
+        // have its real window width before the first large batch arrives.
+        // Seeding before window creation can eagerly lay out the whole prefix
+        // during initial sizing and miss the noncontiguous-layout regression.
+        try await waitUntil { self.logDocument(in: host) != nil }
         let text = try XCTUnwrap(logDocument(in: host))
         let scroll = try XCTUnwrap(text.enclosingScrollView)
+        host.layoutSubtreeIfNeeded(); scroll.layoutSubtreeIfNeeded()
+        text.displayIfNeeded(); window.displayIfNeeded()
+        XCTAssertTrue(text.string.isEmpty)
+        XCTAssertGreaterThan(scroll.contentView.bounds.width, 0)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        model.appendLogs((0..<1500).map {
+            String(format: "resident-%04d Unicode 測定 😀 ", $0) + String(repeating: "x", count: 480)
+        })
+        try await waitUntil { text.string.hasSuffix(String(repeating: "x", count: 480)) }
         let lines = text.string.components(separatedBy: "\n")
         XCTAssertEqual(lines.count, 1500)
         let middle = lines.count / 2

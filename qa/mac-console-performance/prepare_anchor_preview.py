@@ -3,7 +3,7 @@ import argparse,hashlib,json,pathlib,shutil,subprocess
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 p=argparse.ArgumentParser();p.add_argument('--checkout',type=pathlib.Path,required=True);p.add_argument('--qa',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True);p.add_argument('--evidence',type=pathlib.Path,required=True);a=p.parse_args()
 commit=subprocess.check_output(['git','-C',str(a.checkout),'rev-parse','HEAD'],text=True).strip();assert commit=='28b80a8b43898ef9544d8452fef76181839eec6e'
-frozen=json.loads((a.qa/'source-manifest.json').read_text());proposal=json.loads((a.qa/'proposed-C5/proposal-manifest-v2.json').read_text())
+frozen=json.loads((a.qa/'source-manifest.json').read_text());proposal=json.loads((a.qa/'proposed-C5/proposal-manifest-v3.json').read_text())
 for row in frozen['files']:assert sha(a.checkout/row['path'])==row['sha256'],row['path']
 for row in proposal['files']:assert sha(a.qa/'proposed-C5'/row['path'])==row['sha256'],row['path']
 receipt={'status':'SOURCE_BOUND_EXPERIMENT_NOT_RELEASE_CANDIDATE','baseline_commit':commit,'frozen_six':frozen['files'],'proposed_delta':proposal['files'],'variants':{},'prior44_reused_for_changed_source':False}
