@@ -19,6 +19,7 @@ import platform
 import secrets
 import signal
 import socket
+from socketserver import TCPServer
 import subprocess
 import sys
 import threading
@@ -264,6 +265,17 @@ class PreparingHandler(BaseHTTPRequestHandler):
         return _json(self, {"error": "Server files are being prepared."}, 503)
 
     do_POST = do_GET
+
+
+class _LoopbackHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # These private listeners already bind numeric 127.0.0.1. The stdlib
+        # HTTPServer implementation performs an unnecessary reverse-DNS lookup
+        # here, which can stall app startup on hosts without a PTR response.
+        if self.server_address[0] != "127.0.0.1":
+            raise ValueError("Private runtime listeners require numeric IPv4 loopback.")
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class ControlHandler(BaseHTTPRequestHandler):
@@ -648,7 +660,12 @@ class Runtime:
 
     def _write_state(self):
         if self.state_file:
-            atomic_json(self.state_file, self.state())
+            state = self.state()
+            # Native bootstrap capabilities belong only to authenticated control
+            # responses, not optional diagnostics snapshots on disk.
+            for role in ("server", "management"):
+                state[role].pop("local_webui_token", None)
+            atomic_json(self.state_file, state)
 
     def _claim_instance(self):
         import fcntl
@@ -673,7 +690,7 @@ class Runtime:
         try:
             for name, handler in (("control", ControlHandler), ("admin", PreparingHandler), ("tools", PreparingHandler)):
                 selected = handler if name == "control" else secure_ui_handler(handler, self)
-                server = ThreadingHTTPServer(("127.0.0.1", 0), selected)
+                server = _LoopbackHTTPServer(("127.0.0.1", 0), selected)
                 server.daemon_threads = True
                 server.runtime = self
                 self._servers[name] = server

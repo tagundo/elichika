@@ -40,12 +40,14 @@ class ServerController:
         self._generation = 0
         self._closed = False
         self._process = None
+        self._local_webui_token = ""
         self._last_exit = None
         self._error = None
         self._http_ready = False
         self._started_at = None
         self._management_enabled = False
         self._management_process = None
+        self._management_local_webui_token = ""
         self._management_url = ""
         self._management_ready = False
         self._management_error = None
@@ -74,6 +76,8 @@ class ServerController:
     def state(self):
         with self._lock:
             running = self._running_locked()
+            if not running:
+                self._local_webui_token = ""
             return {
                 "running": running,
                 "pid": self._process.pid if running else None,
@@ -83,12 +87,15 @@ class ServerController:
                 "last_exit": self._last_exit,
                 "error": self._error,
                 "started_at": self._started_at,
+                "local_webui_token": self._local_webui_token if running and self._http_ready and not self._closed else "",
             }
 
     def management_state(self):
         with self._lock:
             process = self._management_process
             running = process is not None and process.poll() is None
+            if not running:
+                self._management_local_webui_token = ""
             return {
                 "running": running, "pid": process.pid if running else None,
                 "status": "stopping" if running and self._management_stopping else "running" if running and self._management_ready else "starting" if running else "error" if self._management_error else "stopped",
@@ -96,6 +103,7 @@ class ServerController:
                 "url": self._management_url if running and self._management_ready else "",
                 "last_exit": self._management_last_exit, "error": self._management_error,
                 "started_at": self._management_started_at,
+                "local_webui_token": self._management_local_webui_token if running and self._management_ready and not self._management_stopping and not self._closed else "",
             }
 
     def enable_management(self, *, retry=False):
@@ -135,6 +143,8 @@ class ServerController:
             return False
         if self._management_process is not None and self._management_process.poll() is None:
             return True
+        self._management_local_webui_token = ""
+        token = local_webui_token = ""
         try:
             from costume_management import assert_safe_to_start
             from database_maintenance import guard
@@ -144,7 +154,9 @@ class ServerController:
                 raise RuntimeError("Bundled server executable is unavailable.")
             environment = fresh_macos_memory_env(os.environ)
             token = secrets.token_hex(16)
+            local_webui_token = secrets.token_hex(16)
             environment["ELICHIKA_READY_TOKEN"] = token
+            environment["ELICHIKA_LOCAL_WEBUI_TOKEN"] = local_webui_token
             environment["ELICHIKA_MANAGEMENT_PARENT_PID"] = str(os.getpid())
             process = subprocess.Popen(
                 [str(self.binary), "management"], cwd=self.data, env=environment,
@@ -152,14 +164,15 @@ class ServerController:
                 text=True, encoding="utf-8", errors="replace", bufsize=1,
                 close_fds=True, start_new_session=False)
             self._management_process = process
+            self._management_local_webui_token = local_webui_token
             self._management_ready = False
             self._management_stopping = False
             self._management_url = ""
             self._management_last_exit = None
             self._management_started_at = time.time()
         except Exception as error:
-            self._management_error = str(error)
-            self.log("[management] " + str(error))
+            self._management_error = self._redact_tokens(error, token, local_webui_token)
+            self.log("[management] " + self._management_error)
             return False
 
         announced, candidate = threading.Event(), {}
@@ -186,12 +199,13 @@ class ServerController:
                         except (ValueError, KeyError, TypeError):
                             pass
                         continue  # Never publish the private startup protocol.
-                    self.log("[management] " + line.rstrip("\r\n"))
+                    self.log("[management] " + self._redact_tokens(line.rstrip("\r\n"), token, local_webui_token))
             finally:
                 process.stdout.close()
             code = process.wait()
             with self._lock:
                 if self._management_process is process:
+                    self._management_local_webui_token = ""
                     self._management_ready = False
                     self._management_url = ""
                     self._management_last_exit = code
@@ -235,6 +249,7 @@ class ServerController:
     def _stop_management_locked(self):
         from database_maintenance import BusyError
         process = self._management_process
+        self._management_local_webui_token = ""
         self._management_ready = False
         self._management_url = ""
         if process is not None:
@@ -301,11 +316,20 @@ class ServerController:
         except Exception:
             return ""
 
+    @staticmethod
+    def _redact_tokens(value, *tokens):
+        message = str(value)
+        for token in tokens:
+            if token:
+                message = message.replace(token, "[redacted]")
+        return message
+
     def _launch_locked(self):
         if self._closed or not self.ready():
             raise RuntimeError("Server files are not ready.")
         if self._running_locked():
             return True
+        self._local_webui_token = ""
         if not self.binary.is_file() or not os.access(self.binary, os.X_OK):
             raise RuntimeError("Bundled server executable is unavailable.")
         from costume_management import assert_safe_to_start
@@ -322,13 +346,19 @@ class ServerController:
         # descendants, including legacy CLI and codec workers.
         environment = fresh_macos_memory_env(os.environ)
         ready_token = secrets.token_hex(16)
+        local_webui_token = secrets.token_hex(16)
         environment["ELICHIKA_READY_TOKEN"] = ready_token
-        process = subprocess.Popen(
-            [str(self.binary)], cwd=self.data, env=environment,
-            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding="utf-8", errors="replace", bufsize=1,
-            close_fds=True, start_new_session=False)
+        environment["ELICHIKA_LOCAL_WEBUI_TOKEN"] = local_webui_token
+        try:
+            process = subprocess.Popen(
+                [str(self.binary)], cwd=self.data, env=environment,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace", bufsize=1,
+                close_fds=True, start_new_session=False)
+        except Exception as error:
+            raise RuntimeError(self._redact_tokens(error, ready_token, local_webui_token)) from None
         self._process = process
+        self._local_webui_token = local_webui_token
         self._error, self._http_ready, self._last_exit = None, False, None
         self._started_at = time.time()
 
@@ -336,12 +366,13 @@ class ServerController:
             assert process.stdout is not None
             try:
                 for line in process.stdout:
-                    self.log("[server] " + line.rstrip("\r\n"))
+                    self.log("[server] " + self._redact_tokens(line.rstrip("\r\n"), ready_token, local_webui_token))
             finally:
                 process.stdout.close()
             code = process.wait()
             with self._lock:
                 if self._process is process:
+                    self._local_webui_token = ""
                     self._http_ready = False
                     self._last_exit = code
                     if code not in (0, -signal.SIGTERM, 128 + signal.SIGTERM) and not self._closed:
@@ -445,6 +476,7 @@ class ServerController:
 
     def _stop_locked(self):
         process = self._process
+        self._local_webui_token = ""
         if process is None:
             return True
         if process.poll() is None:

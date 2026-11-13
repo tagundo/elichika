@@ -16,12 +16,17 @@ import java.util.concurrent.TimeUnit
 class ServerProcess(private val ctx: Context) {
 
     @Volatile private var proc: Process? = null
-    internal data class Launch(val process: Process, val token: String)
+    internal class Launch(val process: Process, val token: String, localWebuiToken: String) {
+        @Volatile private var localAccess: String? = localWebuiToken
+        internal fun localWebuiToken(): String? = localAccess
+        internal fun clearLocalWebuiToken() { localAccess = null }
+    }
     @Volatile private var launch: Launch? = null
     @Volatile private var startFailure: String? = null
     internal fun startupError(): String? = startFailure
     internal fun currentLaunch(): Launch? = launch?.takeIf { proc === it.process && it.process.isAlive }
     internal fun owns(candidate: Launch): Boolean = proc === candidate.process && launch === candidate && candidate.process.isAlive
+    internal fun localWebuiToken(): String? = currentLaunch()?.let { if (owns(it)) it.localWebuiToken() else null }
 
     private fun binary(): File = File(ctx.applicationInfo.nativeLibraryDir, "libelichika.so")
 
@@ -85,6 +90,12 @@ class ServerProcess(private val ctx: Context) {
         // Never reuse a token across process launches. A listener left on the
         // configured port cannot make a new process look ready.
         val readyToken = if (args.isEmpty() || args == listOf("management")) java.util.UUID.randomUUID().toString().replace("-", "") else null
+        // This independent 128-bit capability authorizes only the app-owned local
+        // WebUI. The readiness nonce is public through its HTTP proof and must
+        // never authorize management access.
+        val localWebuiToken = if (readyToken != null) newLocalWebuiToken() else null
+        if (localWebuiToken != null) pb.environment()["ELICHIKA_LOCAL_WEBUI_TOKEN"] = localWebuiToken
+        else pb.environment().remove("ELICHIKA_LOCAL_WEBUI_TOKEN")
         if (readyToken != null) pb.environment()["ELICHIKA_READY_TOKEN"] = readyToken
         else pb.environment().remove("ELICHIKA_READY_TOKEN")
         if (args == listOf("management")) {
@@ -98,12 +109,13 @@ class ServerProcess(private val ctx: Context) {
         val p = try {
             pb.start()
         } catch (e: Exception) {
-            startFailure = e.message
-            Bus.log(ctx.getString(R.string.log_error_exec_failed, e.message ?: ""))
+            val message = e.message.orEmpty().let { if (localWebuiToken == null) it else it.replace(localWebuiToken, "[redacted]") }
+            startFailure = message
+            Bus.log(ctx.getString(R.string.log_error_exec_failed, message))
             return false
         }
         proc = p
-        launch = readyToken?.let { Launch(p, it) }
+        launch = readyToken?.let { Launch(p, it, checkNotNull(localWebuiToken)) }
         Thread {
             try {
                 p.inputStream.bufferedReader().forEachLineSafe { line ->
@@ -111,13 +123,13 @@ class ServerProcess(private val ctx: Context) {
                         val visible = if (args == listOf("management") && line.contains("AdminPassword :")) {
                             line.substringBefore("AdminPassword :") + "AdminPassword : [redacted]"
                         } else line
-                        Bus.log(visible)
+                        Bus.log(if (localWebuiToken == null) visible else visible.replace(localWebuiToken, "[redacted]"))
                     }
                 }
             } catch (_: Exception) {
             }
             val code = try { p.waitFor() } catch (_: InterruptedException) { -1 }
-            synchronized(this) { if (proc === p) { proc = null; launch = null } }
+            synchronized(this) { if (proc === p) { launch?.clearLocalWebuiToken(); proc = null; launch = null } }
             onExit(code)
         }.start()
         return true
@@ -126,11 +138,21 @@ class ServerProcess(private val ctx: Context) {
     @Synchronized
     fun stop(): Process? {
         val p = proc ?: return null
+        launch?.clearLocalWebuiToken()
         p.destroy()
         return p
     }
 
     companion object {
+        private val localWebuiRandom = java.security.SecureRandom()
+        private fun newLocalWebuiToken(): String {
+            val bytes = ByteArray(16).also(localWebuiRandom::nextBytes)
+            val digits = "0123456789abcdef"
+            return buildString(32) { for (byte in bytes) {
+                val value = byte.toInt() and 255
+                append(digits[value ushr 4]); append(digits[value and 15])
+            } }
+        }
         /** Call on a worker thread before writing DBs or starting a replacement. */
         fun awaitStopped(process: Process?): Boolean {
             if (process == null) return true
@@ -148,4 +170,34 @@ class ServerProcess(private val ctx: Context) {
             action(line)
         }
     }
+}
+
+/** Header policy shared by native document loads and host-only security checks. */
+internal object LocalWebuiBootstrap {
+    const val HEADER = "X-Elichika-Local-Access"
+    private val tokenPattern = Regex("[0-9a-f]{32}")
+
+    fun acceptedToken(url: String, token: String?): String? {
+        if (token == null || !tokenPattern.matches(token)) return null
+        val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return null
+        if (uri.scheme !in listOf("http", "https") || uri.rawUserInfo != null ||
+            uri.port !in 1..65535 || !(uri.path == "/webui" || uri.path.orEmpty().startsWith("/webui/"))) return null
+        val host = uri.host?.removePrefix("[")?.removeSuffix("]")?.lowercase() ?: return null
+        val loopback = host == "localhost" || host == "::1" || host.split('.').let { pieces ->
+            pieces.size == 4 && pieces[0] == "127" && pieces.all { part ->
+                part.isNotEmpty() && part.all { it in '0'..'9' } && part.toIntOrNull() in 0..255
+            }
+        }
+        return if (loopback) token else null
+    }
+
+    fun requiresReload(currentUrl: String?, destination: String, previousToken: String?, token: String?): Boolean {
+        val current = currentUrl?.let { runCatching { java.net.URI(it) }.getOrNull() }
+        val target = runCatching { java.net.URI(destination) }.getOrNull()
+        return current == null || target == null || current.scheme != target.scheme ||
+            current.rawAuthority != target.rawAuthority || previousToken != acceptedToken(destination, token)
+    }
+
+    fun headers(url: String, token: String?): Map<String, String> =
+        acceptedToken(url, token)?.let { mapOf(HEADER to it) } ?: emptyMap()
 }
