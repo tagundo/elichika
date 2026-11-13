@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "region": "JP",
+  "client": {
+    "package": "com.klab.lovelive.allstars",
+    "asset_id": 742996342,
+    "apk_sha256": "c9d6555acd71605ae4b4aa083021932ec398b9b83d312c14c8f385c98a0e816f",
+    "unity_build_id": "86298b394480be9517e412413294186d4ac5a942",
+    "master_db": "assets/db/jp/masterdata.db",
+    "feature_region": "JP",
+    "normal_account_seed_language": "ja",
+    "native_feature_menu_language": "English",
+    "observed_initial_game_action_sequence": [
+      "title-start"
+    ],
+    "unexpected_terms_policy": "STOP unless a separately grounded current exact Japanese terms context is implemented; never use a generic positive button",
+    "native_ocr_language": "jpn",
+    "actual_JP_native_Home_reference": null,
+    "complete_caption_strict_OCR_status": "BLOCKED_IN_RETAINED_HOST_PROBES_AT_UNCHANGED75_THRESHOLD",
+    "home_popup_exact_close_pattern": "(?:とじる|OK)",
+    "exact_missing_services_message": "スクスタ won't run without Google Play services, which are not supported by your device.",
+    "caption_grammar_reference": "jp_caption_grammar_v2.inert.py",
+    "native_Home_status": "PENDING_FRESH_REFERENCE_AND_REAL_BOOTSTRAP_BEFORE_OBSERVER"
+  },
+  "signer_sha256": "5ccf5b5f73dcebad61255f6bfca848eb2022eedb741515d16ac84f94c405a9e3",
+  "requested_native_settings": {
+    "language": "English",
+    "min": 2.0,
+    "max": 2.0,
+    "orientation": "portrait",
+    "fast_intro": true
+  },
+  "UI_limit_seconds": 180,
+  "overall_limit_seconds": 300,
+  "maximum_chooser_swipes": 2,
+  "all11_feature_flags_must_remain_false": true
+}

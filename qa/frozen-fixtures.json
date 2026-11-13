@@ -3,18 +3,6 @@
   "staging_release_id": 443949312,
   "client_certificate_sha256": "5ccf5b5f73dcebad61255f6bfca848eb2022eedb741515d16ac84f94c405a9e3",
   "clients": {
-    "GL": {
-      "repository": "tagundo/elichika",
-      "release_id": 443949312,
-      "asset_id": 742770125,
-      "name": "LLAS_GL_FOVMOD_b22.apk",
-      "bytes": 83505847,
-      "sha256": "aa46e6d4e07218722f42e6e67e14aad1b86545277d7811420959d7fee2808c0c",
-      "original_repository": "tagundo/SIFAS-Client",
-      "original_asset_id": 725722419,
-      "original_sha256": "39cece83c283a57349fc599421e263ddb1648def01544329948cf82920b59d84",
-      "package": "com.klab.lovelive.allstars.global"
-    },
     "JP": {
       "repository": "tagundo/elichika",
       "release_id": 443949312,
@@ -42,12 +30,5 @@
     ],
     "native_server_apk_validation_required_separately": true,
     "source_record_sha256": "ab1b558856f015ef6fdfa989d1d46b3000db125d1a58c059ddaf33c679908277"
-  },
-  "frida": {
-    "repository": "frida/frida",
-    "asset_id": 224038968,
-    "name": "frida-server-16.6.6-android-arm64.xz",
-    "bytes_limit": 20000000,
-    "sha256": "65770e25c81e5a2d83d6d11f6529701ebe22dce73d3e38d515881f036b77f7d9"
   }
 }

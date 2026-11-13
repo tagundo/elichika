@@ -1,0 +1,675 @@
+{
+  "agentVersion": 6,
+  "timestampMs": 1794575904280,
+  "screen": {
+    "width": 720,
+    "height": 1280,
+    "orientation": -1,
+    "scene": "Title",
+    "frame": 166,
+    "unityVersion": "2018.4.23f1"
+  },
+  "nodes": [
+    {
+      "id": "237554",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "JASRACText",
+      "path": "EntryPoint/Canvas/SafeArea/Down/DownAnimationRoot/LicenseObject/JASRACText",
+      "text": "JASRAC許諾 第9014302014Y43031号",
+      "label": "JASRAC許諾 第9014302014Y43031号",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 38.863277435302734,
+        "top": 1217.3902130126953,
+        "right": 224.5304412841797,
+        "bottom": 1243.2972717285156,
+        "width": 185.66716384887695,
+        "height": 25.907058715820312
+      },
+      "visibleBounds": {
+        "left": 38.863277435302734,
+        "top": 1217.3902130126953,
+        "right": 224.5304412841797,
+        "bottom": 1243.2972717285156,
+        "width": 185.66716384887695,
+        "height": 25.907058715820312
+      },
+      "center": {
+        "x": 132,
+        "y": 1230
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 1,
+        "firstName": "ScreenButton",
+        "firstPath": "EntryPoint/Canvas/ScreenButton"
+      }
+    },
+    {
+      "id": "237570",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TapTextView",
+      "path": "EntryPoint/Canvas/SafeArea/TapToScreen/TapTextView",
+      "text": "TAP TO START",
+      "label": "TAP TO START",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 226.14691162109375,
+        "top": 1204.4384002685547,
+        "right": 493.85308837890625,
+        "bottom": 1231.424903869629,
+        "width": 267.7061767578125,
+        "height": 26.98650360107422
+      },
+      "visibleBounds": {
+        "left": 226.14691162109375,
+        "top": 1204.4384002685547,
+        "right": 493.85308837890625,
+        "bottom": 1231.424903869629,
+        "width": 267.7061767578125,
+        "height": 26.98650360107422
+      },
+      "center": {
+        "x": 360,
+        "y": 1218
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 1,
+        "firstName": "ScreenButton",
+        "firstPath": "EntryPoint/Canvas/ScreenButton"
+      }
+    },
+    {
+      "id": "237586",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "CopyRightText",
+      "path": "EntryPoint/Canvas/SafeArea/Down/DownAnimationRoot/CopyRightText",
+      "text": "©2013 プロジェクトラブライブ！ ©2017 プロジェクトラブライブ！サンシャイン!!\n©2022 プロジェクトラブライブ！虹ヶ咲学園スクールアイドル同好会 ©SUNRISE ©bushiroad",
+      "label": "©2013 プロジェクトラブライブ！ ©2017 プロジェクトラブライブ！サンシャイン!!\n©2022 プロジェクトラブライブ！虹ヶ咲学園スクールアイドル同好会 ©SUNRISE ©bushiroad",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 36.16368865966797,
+        "top": 1246.5367126464844,
+        "right": 683.83984375,
+        "bottom": 1272.4437713623047,
+        "width": 647.676155090332,
+        "height": 25.907058715820312
+      },
+      "visibleBounds": {
+        "left": 36.16368865966797,
+        "top": 1246.5367126464844,
+        "right": 683.83984375,
+        "bottom": 1272.4437713623047,
+        "width": 647.676155090332,
+        "height": 25.907058715820312
+      },
+      "center": {
+        "x": 360,
+        "y": 1259
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 1,
+        "firstName": "ScreenButton",
+        "firstPath": "EntryPoint/Canvas/ScreenButton"
+      }
+    },
+    {
+      "id": "237632",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "PlayerIDText",
+      "path": "EntryPoint/Canvas/SafeArea/Up/UpAnimationRoot/PlayerIDText",
+      "text": "PLAYER ID",
+      "label": "PLAYER ID",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 97.15233612060547,
+        "top": 4.85791015625,
+        "right": 275.2632751464844,
+        "bottom": 16.73193359375,
+        "width": 178.1109390258789,
+        "height": 11.8740234375
+      },
+      "visibleBounds": {
+        "left": 97.15233612060547,
+        "top": 4.85791015625,
+        "right": 275.2632751464844,
+        "bottom": 16.73193359375,
+        "width": 178.1109390258789,
+        "height": 11.8740234375
+      },
+      "center": {
+        "x": 186,
+        "y": 11
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 1,
+        "firstName": "ScreenButton",
+        "firstPath": "EntryPoint/Canvas/ScreenButton"
+      }
+    },
+    {
+      "id": "237650",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "VersionText",
+      "path": "EntryPoint/Canvas/SafeArea/Up/UpAnimationRoot/VersionText",
+      "text": "ver 3.12.0-fovmod.b23",
+      "label": "ver 3.12.0-fovmod.b23",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 7.554688453674316,
+        "top": 4.85791015625,
+        "right": 78.799072265625,
+        "bottom": 16.73193359375,
+        "width": 71.24438381195068,
+        "height": 11.8740234375
+      },
+      "visibleBounds": {
+        "left": 7.554688453674316,
+        "top": 4.85791015625,
+        "right": 78.799072265625,
+        "bottom": 16.73193359375,
+        "width": 71.24438381195068,
+        "height": 11.8740234375
+      },
+      "center": {
+        "x": 43,
+        "y": 11
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 1,
+        "firstName": "ScreenButton",
+        "firstPath": "EntryPoint/Canvas/ScreenButton"
+      }
+    },
+    {
+      "id": "237602",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "MenuButton",
+      "path": "EntryPoint/Canvas/SafeArea/RightTop/RightTopAnimationRoot/MenuButtons/MenuButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 671.425048828125,
+        "top": 3.2396240234375,
+        "right": 716.762451171875,
+        "bottom": 48.5767822265625,
+        "width": 45.33740234375,
+        "height": 45.337158203125
+      },
+      "visibleBounds": {
+        "left": 671.425048828125,
+        "top": 3.2396240234375,
+        "right": 716.762451171875,
+        "bottom": 48.5767822265625,
+        "width": 45.33740234375,
+        "height": 45.337158203125
+      },
+      "center": {
+        "x": 694,
+        "y": 26
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 2,
+        "firstName": "MenuButton",
+        "firstPath": "EntryPoint/Canvas/SafeArea/RightTop/RightTopAnimationRoot/MenuButtons/MenuButton"
+      }
+    },
+    {
+      "id": "237672",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "ScreenButton",
+      "path": "EntryPoint/Canvas/ScreenButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 2,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/Canvas/SafeArea/BackKeyHandler"
+      }
+    },
+    {
+      "id": "237714",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "DataLinkButton",
+      "path": "EntryPoint/Canvas/SafeArea/RightTop/RightTopAnimationRoot/MenuButtons/DataLinkButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 626.0879516601562,
+        "top": 5.3984375,
+        "right": 667.107421875,
+        "bottom": 46.41796875,
+        "width": 41.01947021484375,
+        "height": 41.01953125
+      },
+      "visibleBounds": {
+        "left": 626.0879516601562,
+        "top": 5.3984375,
+        "right": 667.107421875,
+        "bottom": 46.41796875,
+        "width": 41.01947021484375,
+        "height": 41.01953125
+      },
+      "center": {
+        "x": 647,
+        "y": 26
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 2,
+        "firstName": "DataLinkButton",
+        "firstPath": "EntryPoint/Canvas/SafeArea/RightTop/RightTopAnimationRoot/MenuButtons/DataLinkButton"
+      }
+    },
+    {
+      "id": "237598",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "MenuButton",
+      "path": "EntryPoint/Canvas/SafeArea/RightTop/RightTopAnimationRoot/MenuButtons/MenuButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 671.425048828125,
+        "top": 3.2396240234375,
+        "right": 716.762451171875,
+        "bottom": 48.5767822265625,
+        "width": 45.33740234375,
+        "height": 45.337158203125
+      },
+      "visibleBounds": {
+        "left": 671.425048828125,
+        "top": 3.2396240234375,
+        "right": 716.762451171875,
+        "bottom": 48.5767822265625,
+        "width": 45.33740234375,
+        "height": 45.337158203125
+      },
+      "center": {
+        "x": 694,
+        "y": 26
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 2,
+        "firstName": "MenuButton",
+        "firstPath": "EntryPoint/Canvas/SafeArea/RightTop/RightTopAnimationRoot/MenuButtons/MenuButton"
+      }
+    },
+    {
+      "id": "237668",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "ScreenButton",
+      "path": "EntryPoint/Canvas/ScreenButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 2,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/Canvas/SafeArea/BackKeyHandler"
+      }
+    },
+    {
+      "id": "237712",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "DataLinkButton",
+      "path": "EntryPoint/Canvas/SafeArea/RightTop/RightTopAnimationRoot/MenuButtons/DataLinkButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 626.0879516601562,
+        "top": 5.3984375,
+        "right": 667.107421875,
+        "bottom": 46.41796875,
+        "width": 41.01947021484375,
+        "height": 41.01953125
+      },
+      "visibleBounds": {
+        "left": 626.0879516601562,
+        "top": 5.3984375,
+        "right": 667.107421875,
+        "bottom": 46.41796875,
+        "width": 41.01947021484375,
+        "height": 41.01953125
+      },
+      "center": {
+        "x": 647,
+        "y": 26
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": true,
+        "hits": 2,
+        "firstName": "DataLinkButton",
+        "firstPath": "EntryPoint/Canvas/SafeArea/RightTop/RightTopAnimationRoot/MenuButtons/DataLinkButton"
+      }
+    },
+    {
+      "id": "237670",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "ScreenButton",
+      "path": "EntryPoint/Canvas/ScreenButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 2,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/Canvas/SafeArea/BackKeyHandler"
+      }
+    },
+    {
+      "id": "237666",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "ScreenButton",
+      "path": "EntryPoint/Canvas/ScreenButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 2,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/Canvas/SafeArea/BackKeyHandler"
+      }
+    }
+  ],
+  "features": {
+    "native": {
+      "bridgeLoaded": true,
+      "gameLoaded": true,
+      "config": {
+        "magic": "SFOVRW22",
+        "version": 1,
+        "size": 32,
+        "min": 2,
+        "max": 2,
+        "fastIntro": 1,
+        "generation": 4,
+        "writable": true,
+        "executable": false,
+        "orientation": 1
+      },
+      "requestedOrientation": 1
+    },
+    "aspectCorrectors": [],
+    "splashScreens": [],
+    "mv": {
+      "deckCells": [],
+      "pickerCells": [],
+      "liveMembers": [],
+      "errors": [],
+      "deckRoots": [],
+      "suitPickerCells": [],
+      "directorAssets": [],
+      "standingMemberNum": null,
+      "liveMasterId": null,
+      "musicRows": [],
+      "deckTabGroups": []
+    },
+    "downloadSettings": [],
+    "diagnostics": []
+  },
+  "enumeratedObjects": 81,
+  "customButtonTypes": [
+    "LLAS.Components.UI.ProductButton",
+    "LLAS.Components.UI.ButtonTransition",
+    "LLAS.Components.UI.ButtonConcept",
+    "LLAS.Components.UI.ProductButtonSound"
+  ],
+  "truncated": false,
+  "elapsedMs": 117,
+  "hitTest": {
+    "available": true,
+    "error": null
+  },
+  "diagnostics": []
+}

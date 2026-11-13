@@ -1,0 +1,124 @@
+name: Short JP native reference capture only on exact C10
+
+on:
+  push:
+    branches: [codex/android-client-qa-jp-short-capture-20261113-v1]
+  workflow_dispatch:
+
+permissions:
+  # Same V19 scope required to GET unpublished private APK fixture; no writes.
+  contents: write
+  actions: read
+
+concurrency:
+  group: jp-short-capture-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-jp-short-capture-20261113-v1'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      OMP_THREAD_LIMIT: '1'
+      QA_REGION: JP
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
+      - name: Checkout exact direct C10 Go fixture and recursive official data
+        uses: actions/checkout@v4
+        with:
+          repository: tagundo/elichika
+          ref: 51727bae11df587bb49bb0a0fd69a270018c380b
+          path: server-source
+          persist-credentials: false
+          submodules: recursive
+      - name: Download only exact signed JP b23 client
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-download-cache.XXXXXXXX")
+          python3 -B -X "pycache_prefix=$task_cache" qa/download_fixtures.py --manifest qa/frozen-fixtures.json --region JP --destination "$RUNNER_TEMP/jp-client" --evidence evidence --skip-server-apk --skip-frida
+      - name: Prepare native Android and English OCR without observer dependencies
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb apksigner aapt python3-venv tesseract-ocr tesseract-ocr-eng
+          python3 -m venv "$RUNNER_TEMP/jp-venv"
+          "$RUNNER_TEMP/jp-venv/bin/pip" install --disable-pip-version-check 'Pillow==11.0.0'
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          mkdir -p "$RUNNER_TEMP/jp-android-data"
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker run --detach --privileged --name jp-short-capture-owned --cidfile "$RUNNER_TEMP/jp-short-container.id" \
+            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/jp-android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest androidboot.redroid_width=1280 androidboot.redroid_height=720 androidboot.redroid_fps=15 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          adb -s 127.0.0.1:5555 shell 'echo disposable-private-client-qa > /data/local/tmp/CODEX_DISPOSABLE_CLIENT_QA'
+          printf '%s\n' '_ --use-gl=angle --use-angle=vulkan' > "$RUNNER_TEMP/jp-webview-command-line"
+          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/jp-webview-command-line" /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+      - name: Check pure short-capture safety rules
+        run: |
+          set -euo pipefail
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-test-cache.XXXXXXXX")
+          "$RUNNER_TEMP/jp-venv/bin/python" -B -X "pycache_prefix=$task_cache" qa/verify_jp_capture.py --receipt evidence/jp-pure-test-receipt.json
+      - name: Build exact C10 Go with explicit normal Japanese account language
+        run: |
+          set -euo pipefail
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-builder-cache.XXXXXXXX")
+          python3 -B -X "pycache_prefix=$task_cache" qa/build_host_go_fixture_jp.py --source-root "$GITHUB_WORKSPACE/server-source" --source-sha 51727bae11df587bb49bb0a0fd69a270018c380b --output "$RUNNER_TEMP/jp-host-go-fixture"
+      - name: Capture current JP Portrait and chooser, stop before any choice or confirmation
+        run: |
+          set -euo pipefail
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-runtime-cache.XXXXXXXX")
+          timeout --signal=TERM --kill-after=5s 300s "$RUNNER_TEMP/jp-venv/bin/python" -B -X "pycache_prefix=$task_cache" qa/jp_short_capture.py \
+            --client-apk "$RUNNER_TEMP/jp-client/client.apk" --server-source server-source \
+            --host-server-root "$GITHUB_WORKSPACE/server-source" --host-server-receipt "$RUNNER_TEMP/jp-host-go-fixture/host-go-fixture.json" --evidence evidence/runtime
+      - name: Always stop only the tracked Go source fixture
+        if: always()
+        run: |
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-cleanup-cache.XXXXXXXX")
+          timeout 15s python3 -B -X "pycache_prefix=$task_cache" qa/cleanup_owned_go.py --evidence evidence/runtime --receipt "$RUNNER_TEMP/jp-host-go-fixture/host-go-fixture.json"
+      - name: Always stop and prove absence of this exact owned Android container
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          if [ -f "$RUNNER_TEMP/jp-short-container.id" ]; then
+            container_id=$(cat "$RUNNER_TEMP/jp-short-container.id")
+            case "$container_id" in *[!a-f0-9]*|'') exit 2;; esac
+            test "${#container_id}" = 64
+            if docker inspect "$container_id" >/dev/null 2>&1; then
+              test "$(docker inspect --format '{{.Name}}' "$container_id")" = /jp-short-capture-owned
+              timeout 15s docker rm -f "$container_id"
+            fi
+            if docker inspect "$container_id" >/dev/null 2>&1; then exit 1; fi
+            printf '%s\n' "$container_id" > evidence/owned-container-absent.txt
+          fi
+      - name: Upload only source-safe public diagnostic evidence after owned cleanup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sifas-JP-SHORT-CAPTURE-ONLY
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
