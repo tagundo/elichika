@@ -1,9 +1,17 @@
 import copy
+import contextlib
+import hashlib
+import io
 import json
 from pathlib import Path
+import tempfile
+import time
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
-from native_ocr_control import classify, stable_action, next_initial_action, bare_language_target
+from native_ocr_control import classify, stable_action, next_initial_action, bare_language_target, checkpoint_failure
+from native_mv_focus import run_mv_focus
 
 
 class NativeOcrControlTests(unittest.TestCase):
@@ -84,6 +92,100 @@ class NativeOcrControlTests(unittest.TestCase):
         self.assertIsNone(classify([],[],[],None,fallback))
         terms=next(f for f in self.fixtures if f['expected']=='terms-agree')
         self.assertEqual(classify(terms['words'],[],[],None,fixture['title_fallback_words'])['kind'],'blocked')
+
+
+class PrimaryFailureCheckpointTests(unittest.TestCase):
+    def test_primary_artifact_survives_a_later_cleanup_failure(self):
+        with tempfile.TemporaryDirectory() as directory,contextlib.redirect_stdout(io.StringIO()):
+            path=Path(directory)/'report.json';report={}
+            with self.assertRaisesRegex(OSError,'secondary cleanup failure'):
+                try:
+                    raise RuntimeError('original failure')
+                except RuntimeError as error:
+                    checkpoint_failure(report,error,lambda:path.write_text(json.dumps(report)),time.monotonic())
+                finally:
+                    raise OSError('secondary cleanup failure')
+            persisted=json.loads(path.read_text())
+            self.assertEqual(persisted['status'],'FAIL')
+            self.assertEqual(persisted['error'],'RuntimeError: original failure')
+            self.assertIn('RuntimeError: original failure',persisted['traceback'])
+            self.assertNotIn('secondary cleanup failure',persisted['traceback'])
+
+    def test_stdout_breadcrumb_has_only_bounded_safe_trace_metadata(self):
+        secret='synthetic-password-and-raw-exception-secret';report={};output=io.StringIO()
+        with contextlib.redirect_stdout(output):
+            try:
+                exec(compile('raise RuntimeError(secret)','/private/'+secret+'/ordinary.py','exec'),{'secret':secret})
+            except RuntimeError as error:
+                checkpoint_failure(report,error,lambda:None,time.monotonic())
+        text=output.getvalue();breadcrumb=json.loads(text)
+        self.assertLess(len(text),4096)
+        self.assertNotIn(secret,text);self.assertNotIn('/private/',text)
+        self.assertEqual(set(breadcrumb),{'event','exception_class','traceback_sha256','trace_frames','elapsed_seconds'})
+        self.assertEqual(breadcrumb['exception_class'],'RuntimeError')
+        self.assertEqual(breadcrumb['traceback_sha256'],hashlib.sha256(report['traceback'].encode()).hexdigest())
+        self.assertTrue(0<len(breadcrumb['trace_frames'])<=16)
+        self.assertTrue(all(set(frame)=={'filename','line'} and '/' not in frame['filename'] and
+            len(frame['filename'])<=96 and type(frame['line']) is int for frame in breadcrumb['trace_frames']))
+        self.assertEqual(breadcrumb['trace_frames'][-1]['filename'],'ordinary.py')
+
+    def test_checkpoint_IO_error_retains_primary_and_allows_cleanup(self):
+        report={};output=io.StringIO();cleanup=[];secret='private-IO-error-text'
+        def save():raise OSError(secret)
+        with contextlib.redirect_stdout(output):
+            try:
+                try:raise ValueError('primary exception')
+                except ValueError as error:checkpoint_failure(report,error,save,time.monotonic())
+            finally:cleanup.append('ran')
+        self.assertEqual(report['status'],'FAIL')
+        self.assertEqual(report['error'],'ValueError: primary exception')
+        self.assertIn('ValueError: primary exception',report['traceback'])
+        self.assertEqual(report['primary_failure_checkpoint_error_class'],'OSError')
+        self.assertEqual(cleanup,['ran'])
+        self.assertNotIn(secret,output.getvalue())
+        self.assertNotIn('primary exception',output.getvalue())
+        self.assertEqual(json.loads(output.getvalue())['checkpoint_error_class'],'OSError')
+
+    def test_inner_core_failure_is_saved_before_diagnostics_and_outer_failure_cannot_replace_it(self):
+        """Host fault injection only: no Android, observer, or runtime qualification."""
+        with tempfile.TemporaryDirectory() as directory:
+            evidence=Path(directory);path=evidence/'report.json';report={'verified':{}};output=io.StringIO()
+            primary_secret='inner-primary-private-message';secondary_secret='secondary-diagnostics-private-message'
+            identity={'pid':10,'start_ticks':'100'};started=time.monotonic();before_diagnostics=[]
+            def save():path.write_text(json.dumps(report))
+            def fail_inside_core():raise RuntimeError(primary_secret)
+            def capture_resource(label,**kwargs):
+                if label=='observer-failure':
+                    before_diagnostics.append(json.loads(path.read_text()))
+                    raise OSError(secondary_secret)
+            device=SimpleNamespace(shell=lambda *a,**kw:'host-only native backtrace',
+                read=lambda name:b'UnityMain\n' if name.endswith('/comm') else b'host-only stat',
+                adb=lambda *a,**kw:b'host-only diagnostic')
+            context={'args':SimpleNamespace(evidence=evidence,frida_server=SimpleNamespace(is_file=fail_inside_core)),
+                'device':device,'host':SimpleNamespace(),'report':report,'resources':SimpleNamespace(capture=capture_resource),
+                'package':'com.klab.lovelive.allstars.global','started':started,'save':save,
+                'lifetime':lambda:dict(identity),'identity':lambda label:dict(identity),
+                'checkpoint_failure':lambda error:checkpoint_failure(report,error,save,started)}
+            with contextlib.redirect_stdout(output),patch('native_download_driver.reach_settled_home',return_value={}),\
+                    patch('native_mv_focus.select_unity_main_tid',return_value={'main_tid':11}),\
+                    patch('native_mv_focus.proc_stat_starttime',return_value='100'),\
+                    patch('native_mv_focus.MVDriver'),patch('native_mv_focus.SuitCatalogAudit'):
+                try:run_mv_focus(context)
+                except OSError as error:checkpoint_failure(report,error,save,started)
+                else:self.fail('The injected secondary diagnostics error must reach the outer checkpoint')
+            self.assertEqual(len(before_diagnostics),1)
+            first=before_diagnostics[0];persisted=json.loads(path.read_text())
+            self.assertTrue(first['primary_failure_recorded'])
+            self.assertEqual(first['error'],'RuntimeError: '+primary_secret)
+            self.assertEqual(persisted['error'],first['error'])
+            self.assertEqual(persisted['traceback'],first['traceback'])
+            self.assertEqual(persisted['secondary_failure_checkpoints'][0]['error'],'OSError: '+secondary_secret)
+            breadcrumbs=[json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual([row['event'] for row in breadcrumbs],['qa-primary-failure','qa-secondary-failure'])
+            self.assertEqual([row['exception_class'] for row in breadcrumbs],['RuntimeError','OSError'])
+            self.assertEqual(breadcrumbs[0]['traceback_sha256'],hashlib.sha256(first['traceback'].encode()).hexdigest())
+            self.assertEqual(breadcrumbs[1]['traceback_sha256'],hashlib.sha256(persisted['secondary_failure_checkpoints'][0]['traceback'].encode()).hexdigest())
+            self.assertNotIn(primary_secret,output.getvalue());self.assertNotIn(secondary_secret,output.getvalue())
 
 
 if __name__=='__main__':unittest.main()

@@ -2,7 +2,7 @@ name: Validate genuine GL full MV on exact C10 after native-only initial downloa
 
 on:
   push:
-    branches: [codex/android-client-qa-full-gl-20261113-v22]
+    branches: [codex/android-client-qa-full-gl-20261113-v23-r2]
   workflow_dispatch:
     inputs:
       max_seconds:
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   client:
-    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-full-gl-20261113-v22'
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-full-gl-20261113-v23-r2'
     strategy:
       fail-fast: false
       matrix:
@@ -189,17 +189,31 @@ jobs:
         if: always()
         run: |
           mkdir -p evidence
+          diagnostics_exit=0
+          printf 'START\t%s\tbudget_seconds=150\tkill_after_seconds=5\n' "$EPOCHREALTIME" > evidence/diagnostics-budget.txt
+          timeout --signal=TERM --kill-after=5s 150s bash -s > evidence/diagnostics-wrapper.log 2> evidence/diagnostics-wrapper.stderr.log <<'DIAGNOSTICS' || diagnostics_exit=$?
+          set -euo pipefail
           # Explicit allowlist: never upload private synthetic credentials, DBs,
           # binaries, caches, or the entire source/fixture output directory.
           for name in host-go-fixture.json go-build.log seed-build.log server-data-init.log synthetic-account-init.log; do
             if [ -f "$RUNNER_TEMP/host-go-fixture/$name" ]; then cp "$RUNNER_TEMP/host-go-fixture/$name" "evidence/$name"; fi
           done
-          timeout 20s adb -s 127.0.0.1:5555 logcat -d -t 4000 > evidence/final-logcat.txt 2>/dev/null || true
-          adb -s 127.0.0.1:5555 logcat -b crash -d > evidence/final-crashes.txt 2>/dev/null || true
-          adb -s 127.0.0.1:5555 shell dumpsys activity activities > evidence/final-activities.txt 2>/dev/null || true
-          adb -s 127.0.0.1:5555 shell dumpsys SurfaceFlinger > evidence/surfaceflinger.txt 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-display.png 2>/dev/null || true
-          docker logs original-client-qa > evidence/redroid.log 2>&1 || true
+          capture() {
+            local output="$1" exit_code=0
+            shift
+            printf 'START\t%s\t%s\tlimit_seconds=20\tkill_after_seconds=2\n' "$output" "$EPOCHREALTIME" >> evidence/diagnostics-command-status.txt
+            # Keep captures in the outer timeout's process group.
+            timeout --foreground --signal=TERM --kill-after=2s 20s "$@" </dev/null > "evidence/$output" 2> "evidence/$output.stderr.log" || exit_code=$?
+            printf 'END\t%s\t%s\texit=%s\n' "$output" "$EPOCHREALTIME" "$exit_code" >> evidence/diagnostics-command-status.txt
+          }
+          capture final-logcat.txt adb -s 127.0.0.1:5555 logcat -d -t 4000
+          capture final-crashes.txt adb -s 127.0.0.1:5555 logcat -b crash -d
+          capture final-activities.txt adb -s 127.0.0.1:5555 shell dumpsys activity activities
+          capture surfaceflinger.txt adb -s 127.0.0.1:5555 shell dumpsys SurfaceFlinger
+          capture final-display.png adb -s 127.0.0.1:5555 exec-out screencap -p
+          capture redroid.log docker logs original-client-qa
+          DIAGNOSTICS
+          printf 'END\t%s\texit=%s\n' "$EPOCHREALTIME" "$diagnostics_exit" >> evidence/diagnostics-budget.txt
 
       - name: Redact known synthetic fixture credentials from final diagnostics
         if: always()

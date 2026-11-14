@@ -37,6 +37,35 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def checkpoint_failure(report, error, save, started):
+    """Preserve the primary failure before cleanup; log no exception text."""
+    current_error=type(error).__name__+': '+str(error);current_trace=traceback.format_exc()
+    primary=report.get('primary_failure_recorded') is not True
+    report['status']='FAIL'
+    if primary:
+        report['primary_failure_recorded']=True
+        report['error']=current_error;report['traceback']=current_trace
+    else:
+        report.setdefault('secondary_failure_checkpoints',[]).append({'error':current_error,'traceback':current_trace})
+    try:
+        save()
+    except Exception as failed:
+        report[('primary' if primary else 'secondary')+'_failure_checkpoint_error_class']=type(failed).__name__
+    safe_name=lambda value:re.sub(r'[^A-Za-z0-9_.<>-]','_',value)[:96]
+    breadcrumb={'event':'qa-primary-failure' if primary else 'qa-secondary-failure','exception_class':safe_name(type(error).__name__),
+        'traceback_sha256':digest(current_trace.encode()),
+        'trace_frames':[{'filename':safe_name(Path(frame.filename).name),'line':frame.lineno}
+            for frame in traceback.extract_tb(error.__traceback__,limit=-16)],
+        'elapsed_seconds':round(time.monotonic()-started,3)}
+    checkpoint_error=report.get(('primary' if primary else 'secondary')+'_failure_checkpoint_error_class')
+    if checkpoint_error:
+        breadcrumb['checkpoint_error_class']=safe_name(checkpoint_error)
+    try:
+        print(json.dumps(breadcrumb,separators=(',',':')),flush=True)
+    except Exception as failed:
+        report[('primary' if primary else 'secondary')+'_failure_breadcrumb_error_class']=type(failed).__name__
+
+
 def ocr_words(image, *, crop=None, scale=1, mode='normal', psm=11, language='eng'):
     """Return actual OCR boxes in original screenshot coordinates plus raw TSV."""
     crop = crop or (0, 0, image.width, image.height)
@@ -372,6 +401,7 @@ def main():
                     result=run_mv_focus({'args':args,'device':device,'host':host,'report':report,
                         'resources':resources,'started':started,'package':package,'capture':capture,
                         'lifetime':lifetime,'identity':identity,'native':native,'save':save,
+                        'checkpoint_failure':lambda error:checkpoint_failure(report,error,save,started),
                         'phase_deadline':phase_deadline,'absolute_phase_deadline':deadlines.arm_until,
                         'overall_deadline':deadlines.overall_deadline,'network_diagnostics':network_diagnostics})
                     report['mv_focus']=result;report['status']=result['status']
@@ -400,8 +430,7 @@ def main():
                    'captures':[first_label,second_label],'identity':proof,'elapsed':round(time.monotonic()-started,3)})
             save()
     except BaseException as error:
-        report['status']='FAIL';report['error']=type(error).__name__+': '+str(error)
-        report['traceback']=traceback.format_exc()
+        checkpoint_failure(report,error,save,started)
     finally:
         signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,previous)
         if args.download_start_diagnostic or args.mv_focus:

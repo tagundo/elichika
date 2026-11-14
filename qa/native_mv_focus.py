@@ -383,6 +383,7 @@ def run_mv_focus(context):
             time.sleep(.5)
         raise RuntimeError('Bounded MV snapshot count exhausted; later cases unobserved')
     except BaseException as error:
+        context['checkpoint_failure'](error)
         retain_failure(error)
         raise
     finally:
