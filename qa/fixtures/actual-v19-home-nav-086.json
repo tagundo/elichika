@@ -1,0 +1,139 @@
+{
+  "scope": "Exact retained navigation pixels. Tests reconstruct only these pixels; all other model pixels are synthetic, never runtime proof.",
+  "source_run": 43524638144,
+  "source_head": "d258db1a39195ecb6c9b1cba9d754f597229f041",
+  "source_archive_sha256": "4f982da3b5d693a0fabadde7c2b82bd6a44eb71d5c5ce1e689b464afa1e3e889",
+  "source_png_sha256": "2abc5f2d6d062e83aa7192644faa8a213beee79d3ab71ffdd46b70ad45dec454",
+  "source_png_archive_member": "native-ocr-086.png",
+  "source_size": [
+    720,
+    1280
+  ],
+  "strip_box": [
+    32,
+    1213,
+    206,
+    1270
+  ],
+  "strip_sha256": "9701842e6f8e892dd4ec0824261f870e38a7dde643292cca992f1767c239791e",
+  "source_metadata": {
+    "screenshot_sha256": "2abc5f2d6d062e83aa7192644faa8a213beee79d3ab71ffdd46b70ad45dec454",
+    "native_tree": "native-ocr-086-capture-111.xml",
+    "surface": {
+      "left": 0,
+      "top": 0,
+      "right": 720,
+      "bottom": 1280
+    },
+    "words": [
+      {
+        "text": "Download",
+        "confidence": 96.749718,
+        "bounds": [
+          274.0,
+          506.0,
+          359.0,
+          521.0
+        ]
+      },
+      {
+        "text": "Complete",
+        "confidence": 96.553429,
+        "bounds": [
+          366.0,
+          506.0,
+          447.0,
+          524.0
+        ]
+      },
+      {
+        "text": "Download",
+        "confidence": 96.018158,
+        "bounds": [
+          275.0,
+          629.0,
+          355.0,
+          643.0
+        ]
+      },
+      {
+        "text": "is",
+        "confidence": 95.858284,
+        "bounds": [
+          362.0,
+          630.0,
+          373.0,
+          643.0
+        ]
+      },
+      {
+        "text": "finished.",
+        "confidence": 96.379639,
+        "bounds": [
+          379.0,
+          629.0,
+          445.0,
+          643.0
+        ]
+      }
+    ],
+    "title_words": [],
+    "title_fallback_words": [],
+    "button_words": [
+      {
+        "text": "Close",
+        "confidence": 95.447639,
+        "bounds": [
+          342.8333333333333,
+          752.8333333333334,
+          377.0,
+          763.3333333333334
+        ]
+      }
+    ],
+    "language_buttons": [],
+    "action": null,
+    "ocr_transforms": [
+      {
+        "crop": [
+          0,
+          0,
+          720,
+          1280
+        ],
+        "scale": 1,
+        "mode": "normal",
+        "psm": 11,
+        "language": "eng",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t720\t1280\t-1\t\n2\t1\t1\t0\t0\t0\t274\t506\t173\t18\t-1\t\n3\t1\t1\t1\t0\t0\t274\t506\t173\t18\t-1\t\n4\t1\t1\t1\t1\t0\t274\t506\t173\t18\t-1\t\n5\t1\t1\t1\t1\t1\t274\t506\t85\t15\t96.749718\tDownload\n5\t1\t1\t1\t1\t2\t366\t506\t81\t18\t96.553429\tComplete\n2\t1\t2\t0\t0\t0\t275\t629\t170\t14\t-1\t\n3\t1\t2\t1\t0\t0\t275\t629\t170\t14\t-1\t\n4\t1\t2\t1\t1\t0\t275\t629\t170\t14\t-1\t\n5\t1\t2\t1\t1\t1\t275\t629\t80\t14\t96.018158\tDownload\n5\t1\t2\t1\t1\t2\t362\t630\t11\t13\t95.858284\tis\n5\t1\t2\t1\t1\t3\t379\t629\t66\t14\t96.379639\tfinished.\n"
+      },
+      {
+        "crop": [
+          0,
+          1152,
+          720,
+          1280
+        ],
+        "scale": 4,
+        "mode": "title",
+        "psm": 11,
+        "language": "eng",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t2880\t512\t-1\t\n"
+      },
+      {
+        "crop": [
+          277,
+          736,
+          443,
+          779
+        ],
+        "scale": 6,
+        "mode": "pink",
+        "psm": 7,
+        "language": "eng",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t996\t258\t-1\t\n2\t1\t1\t0\t0\t0\t395\t101\t205\t63\t-1\t\n3\t1\t1\t1\t0\t0\t395\t101\t205\t63\t-1\t\n4\t1\t1\t1\t1\t0\t395\t101\t205\t63\t-1\t\n5\t1\t1\t1\t1\t1\t395\t101\t205\t63\t95.447639\tClose\n"
+      }
+    ],
+    "capture_elapsed": 837.799
+  }
+}

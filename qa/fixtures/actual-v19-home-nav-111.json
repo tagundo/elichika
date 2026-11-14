@@ -1,0 +1,85 @@
+{
+  "scope": "Exact retained navigation pixels. Tests reconstruct only these pixels; all other model pixels are synthetic, never runtime proof.",
+  "source_run": 43524638144,
+  "source_head": "d258db1a39195ecb6c9b1cba9d754f597229f041",
+  "source_archive_sha256": "4f982da3b5d693a0fabadde7c2b82bd6a44eb71d5c5ce1e689b464afa1e3e889",
+  "source_png_sha256": "2134243a91a3b4680f8f4cb50553bf4a341732c24ce0dd64698965fcf12928a3",
+  "source_png_archive_member": "native-ocr-111.png",
+  "source_size": [
+    720,
+    1280
+  ],
+  "strip_box": [
+    32,
+    1213,
+    206,
+    1270
+  ],
+  "strip_sha256": "afc9157d0d5e27b7756d731c2917ecb395a9e0c55c354ab485c8f03dfcf5bd72",
+  "source_metadata": {
+    "screenshot_sha256": "2134243a91a3b4680f8f4cb50553bf4a341732c24ce0dd64698965fcf12928a3",
+    "native_tree": "native-ocr-111-capture-136.xml",
+    "surface": {
+      "left": 0,
+      "top": 0,
+      "right": 720,
+      "bottom": 1280
+    },
+    "words": [
+      {
+        "text": "\\",
+        "confidence": 86.487656,
+        "bounds": [
+          188.0,
+          404.0,
+          214.0,
+          503.0
+        ]
+      },
+      {
+        "text": "w",
+        "confidence": 75.253922,
+        "bounds": [
+          662.0,
+          1145.0,
+          718.0,
+          1190.0
+        ]
+      }
+    ],
+    "title_words": [],
+    "title_fallback_words": [],
+    "button_words": [],
+    "language_buttons": [],
+    "action": null,
+    "ocr_transforms": [
+      {
+        "crop": [
+          0,
+          0,
+          720,
+          1280
+        ],
+        "scale": 1,
+        "mode": "normal",
+        "psm": 11,
+        "language": "eng",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t720\t1280\t-1\t\n2\t1\t1\t0\t0\t0\t550\t9\t141\t28\t-1\t\n3\t1\t1\t1\t0\t0\t550\t9\t141\t28\t-1\t\n4\t1\t1\t1\t1\t0\t550\t9\t141\t28\t-1\t\n5\t1\t1\t1\t1\t1\t550\t9\t29\t28\t36.410923\ta)\n5\t1\t1\t1\t1\t2\t635\t23\t56\t9\t0.000000\thoarse\n2\t1\t2\t0\t0\t0\t175\t257\t60\t97\t-1\t\n3\t1\t2\t1\t0\t0\t175\t257\t60\t97\t-1\t\n4\t1\t2\t1\t1\t0\t175\t257\t60\t97\t-1\t\n5\t1\t2\t1\t1\t1\t175\t257\t60\t97\t70.910042\t4\n2\t1\t3\t0\t0\t0\t281\t388\t44\t38\t-1\t\n3\t1\t3\t1\t0\t0\t281\t388\t44\t38\t-1\t\n4\t1\t3\t1\t1\t0\t281\t388\t44\t38\t-1\t\n5\t1\t3\t1\t1\t1\t281\t388\t44\t38\t35.532982\tYe,\n2\t1\t4\t0\t0\t0\t188\t404\t26\t99\t-1\t\n3\t1\t4\t1\t0\t0\t188\t404\t26\t99\t-1\t\n4\t1\t4\t1\t1\t0\t188\t404\t26\t99\t-1\t\n5\t1\t4\t1\t1\t1\t188\t404\t26\t99\t86.487656\t\\\n2\t1\t5\t0\t0\t0\t545\t524\t175\t106\t-1\t\n3\t1\t5\t1\t0\t0\t545\t524\t175\t106\t-1\t\n4\t1\t5\t1\t1\t0\t545\t524\t175\t106\t-1\t\n5\t1\t5\t1\t1\t1\t545\t524\t175\t106\t57.807266\ta\n2\t1\t6\t0\t0\t0\t64\t699\t54\t15\t-1\t\n3\t1\t6\t1\t0\t0\t64\t699\t54\t15\t-1\t\n4\t1\t6\t1\t1\t0\t64\t699\t54\t15\t-1\t\n5\t1\t6\t1\t1\t1\t64\t699\t54\t15\t21.122837\t_\u2014J\n2\t1\t7\t0\t0\t0\t93\t572\t16\t86\t-1\t\n3\t1\t7\t1\t0\t0\t93\t572\t16\t86\t-1\t\n4\t1\t7\t1\t1\t0\t93\t572\t16\t86\t-1\t\n5\t1\t7\t1\t1\t1\t93\t572\t16\t86\t53.633324\t|\n2\t1\t8\t0\t0\t0\t634\t667\t84\t42\t-1\t\n3\t1\t8\t1\t0\t0\t634\t667\t86\t42\t-1\t\n4\t1\t8\t1\t1\t0\t634\t667\t84\t42\t-1\t\n5\t1\t8\t1\t1\t1\t634\t667\t84\t42\t50.006618\tDry\n2\t1\t9\t0\t0\t0\t148\t745\t29\t61\t-1\t\n3\t1\t9\t1\t0\t0\t148\t745\t29\t61\t-1\t\n4\t1\t9\t1\t1\t0\t148\t745\t29\t61\t-1\t\n5\t1\t9\t1\t1\t1\t148\t745\t29\t61\t53.401646\ty\n2\t1\t10\t0\t0\t0\t642\t690\t78\t144\t-1\t\n3\t1\t10\t1\t0\t0\t642\t690\t78\t144\t-1\t\n4\t1\t10\t1\t1\t0\t642\t690\t78\t144\t-1\t\n5\t1\t10\t1\t1\t1\t642\t690\t78\t144\t39.482712\tY\n2\t1\t11\t0\t0\t0\t282\t960\t104\t40\t-1\t\n3\t1\t11\t1\t0\t0\t282\t960\t104\t40\t-1\t\n4\t1\t11\t1\t1\t0\t282\t960\t104\t40\t-1\t\n5\t1\t11\t1\t1\t1\t282\t960\t104\t40\t71.484062\taan\n2\t1\t12\t0\t0\t0\t508\t933\t55\t96\t-1\t\n3\t1\t12\t1\t0\t0\t508\t933\t55\t96\t-1\t\n4\t1\t12\t1\t1\t0\t508\t933\t55\t96\t-1\t\n5\t1\t12\t1\t1\t1\t508\t933\t55\t96\t11.259279\tz\n2\t1\t13\t0\t0\t0\t43\t942\t90\t104\t-1\t\n3\t1\t13\t1\t0\t0\t43\t942\t90\t104\t-1\t\n4\t1\t13\t1\t1\t0\t43\t942\t90\t104\t-1\t\n5\t1\t13\t1\t1\t1\t43\t942\t90\t104\t49.014038\tae\n2\t1\t14\t0\t0\t0\t91\t1009\t58\t96\t-1\t\n3\t1\t14\t1\t0\t0\t91\t1009\t58\t96\t-1\t\n4\t1\t14\t1\t1\t0\t91\t1009\t58\t96\t-1\t\n5\t1\t14\t1\t1\t1\t91\t1009\t58\t96\t29.529118\tNX\n2\t1\t15\t0\t0\t0\t591\t1040\t129\t64\t-1\t\n3\t1\t15\t1\t0\t0\t591\t1040\t129\t64\t-1\t\n4\t1\t15\t1\t1\t0\t591\t1040\t129\t64\t-1\t\n5\t1\t15\t1\t1\t1\t591\t1040\t129\t64\t0.000000\tey]\n2\t1\t16\t0\t0\t0\t516\t1135\t202\t58\t-1\t\n3\t1\t16\t1\t0\t0\t516\t1135\t204\t58\t-1\t\n4\t1\t16\t1\t1\t0\t516\t1135\t202\t58\t-1\t\n5\t1\t16\t1\t1\t1\t516\t1135\t113\t58\t52.767639\tOF\n5\t1\t16\t1\t1\t2\t662\t1145\t56\t45\t75.253922\tw\n2\t1\t17\t0\t0\t0\t61\t1249\t16\t8\t-1\t\n3\t1\t17\t1\t0\t0\t61\t1249\t16\t8\t-1\t\n4\t1\t17\t1\t1\t0\t61\t1249\t16\t8\t-1\t\n5\t1\t17\t1\t1\t1\t61\t1249\t16\t8\t68.184830\too\n2\t1\t18\t0\t0\t0\t157\t1252\t38\t10\t-1\t\n3\t1\t18\t1\t0\t0\t157\t1252\t38\t10\t-1\t\n4\t1\t18\t1\t1\t0\t157\t1252\t38\t10\t-1\t\n5\t1\t18\t1\t1\t1\t157\t1252\t38\t10\t71.431870\tchange\n"
+      },
+      {
+        "crop": [
+          0,
+          1152,
+          720,
+          1280
+        ],
+        "scale": 4,
+        "mode": "title",
+        "psm": 11,
+        "language": "eng",
+        "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t2880\t512\t-1\t\n2\t1\t1\t0\t0\t0\t344\t0\t88\t20\t-1\t\n3\t1\t1\t1\t0\t0\t344\t0\t88\t20\t-1\t\n4\t1\t1\t1\t1\t0\t344\t0\t88\t20\t-1\t\n5\t1\t1\t1\t1\t1\t344\t0\t35\t31\t8.398743\tae\n5\t1\t1\t1\t1\t2\t394\t0\t38\t20\t34.867134\toe\n2\t1\t2\t0\t0\t0\t372\t28\t124\t40\t-1\t\n3\t1\t2\t1\t0\t0\t372\t28\t124\t40\t-1\t\n4\t1\t2\t1\t1\t0\t372\t28\t124\t40\t-1\t\n5\t1\t2\t1\t1\t1\t372\t28\t124\t40\t39.992634\tAZ\n2\t1\t3\t0\t0\t0\t504\t40\t80\t20\t-1\t\n3\t1\t3\t1\t0\t0\t504\t40\t80\t20\t-1\t\n4\t1\t3\t1\t1\t0\t504\t40\t80\t20\t-1\t\n5\t1\t3\t1\t1\t1\t504\t44\t20\t16\t14.086723\ttie\n5\t1\t3\t1\t1\t2\t572\t40\t12\t20\t38.486309\t|\n2\t1\t4\t0\t0\t0\t524\t0\t88\t48\t-1\t\n3\t1\t4\t1\t0\t0\t524\t0\t88\t48\t-1\t\n4\t1\t4\t1\t1\t0\t524\t0\t88\t48\t-1\t\n5\t1\t4\t1\t1\t1\t524\t0\t88\t48\t0.000000\tBey\n2\t1\t5\t0\t0\t0\t2368\t44\t196\t44\t-1\t\n3\t1\t5\t1\t0\t0\t2368\t44\t196\t44\t-1\t\n4\t1\t5\t1\t1\t0\t2368\t44\t196\t44\t-1\t\n5\t1\t5\t1\t1\t1\t2368\t44\t148\t44\t0.000000\ta\n5\t1\t5\t1\t1\t2\t2548\t76\t16\t8\t31.734123\t7\n2\t1\t6\t0\t0\t0\t376\t60\t88\t64\t-1\t\n3\t1\t6\t1\t0\t0\t376\t60\t88\t64\t-1\t\n4\t1\t6\t1\t1\t0\t376\t60\t88\t64\t-1\t\n5\t1\t6\t1\t1\t1\t376\t60\t88\t64\t0.000000\tities\n2\t1\t7\t0\t0\t0\t468\t56\t48\t48\t-1\t\n3\t1\t7\t1\t0\t0\t468\t56\t48\t48\t-1\t\n4\t1\t7\t1\t1\t0\t468\t56\t48\t48\t-1\t\n5\t1\t7\t1\t1\t1\t468\t56\t48\t48\t54.903450\tin\n2\t1\t8\t0\t0\t0\t520\t72\t96\t48\t-1\t\n3\t1\t8\t1\t0\t0\t520\t72\t96\t48\t-1\t\n4\t1\t8\t1\t1\t0\t520\t72\t96\t48\t-1\t\n5\t1\t8\t1\t1\t1\t520\t72\t48\t48\t19.924698\tBhat\n5\t1\t8\t1\t1\t2\t596\t88\t20\t28\t38.788666\t|\n2\t1\t9\t0\t0\t0\t380\t132\t232\t32\t-1\t\n3\t1\t9\t1\t0\t0\t380\t132\t232\t32\t-1\t\n4\t1\t9\t1\t1\t0\t380\t132\t232\t32\t-1\t\n5\t1\t9\t1\t1\t1\t380\t132\t104\t32\t31.822453\tSH\n5\t1\t9\t1\t1\t2\t496\t132\t116\t28\t18.558035\tCau]\n2\t1\t10\t0\t0\t0\t56\t224\t784\t104\t-1\t\n3\t1\t10\t1\t0\t0\t56\t224\t784\t104\t-1\t\n4\t1\t10\t1\t1\t0\t56\t224\t784\t104\t-1\t\n5\t1\t10\t1\t1\t1\t56\t224\t348\t104\t32.001366\t2\n5\t1\t10\t1\t1\t2\t511\t244\t49\t64\t44.554386\t=\n5\t1\t10\t1\t1\t3\t556\t224\t284\t104\t52.681458\tAS\n2\t1\t11\t0\t0\t0\t2112\t188\t248\t148\t-1\t\n3\t1\t11\t1\t0\t0\t2112\t188\t248\t148\t-1\t\n4\t1\t11\t1\t1\t0\t2112\t188\t248\t148\t-1\t\n5\t1\t11\t1\t1\t1\t2112\t188\t248\t148\t74.940590\ta\n2\t1\t12\t0\t0\t0\t68\t364\t728\t108\t-1\t\n3\t1\t12\t1\t0\t0\t68\t364\t728\t108\t-1\t\n4\t1\t12\t1\t1\t0\t68\t364\t728\t108\t-1\t\n5\t1\t12\t1\t1\t1\t68\t364\t336\t108\t28.730192\tvi:\n5\t1\t12\t1\t1\t2\t492\t388\t304\t60\t22.539015\tee\n2\t1\t13\t0\t0\t0\t2308\t256\t424\t212\t-1\t\n3\t1\t13\t1\t0\t0\t2308\t256\t424\t212\t-1\t\n4\t1\t13\t1\t1\t0\t2308\t256\t424\t212\t-1\t\n5\t1\t13\t1\t1\t1\t2308\t256\t424\t212\t47.240543\tXZ\n"
+      }
+    ],
+    "capture_elapsed": 1017.612
+  }
+}

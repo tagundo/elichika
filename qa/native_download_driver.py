@@ -112,6 +112,11 @@ def download_metadata(image,metadata):
 
 def home_metadata(image,metadata):
     """Read small footer/rank text from this screenshot with explicit crops."""
+    from native_home_profile import targeted_metadata
+    targeted=targeted_metadata(image,metadata,ocr_words)
+    if targeted is not None:
+        return {**metadata,'home_targeted_ocr':targeted,
+                'home_ocr_transforms':[region['transform'] for region in targeted['regions']]}
     width,height=image.size
     footer,footer_transform=ocr_words(image,crop=(0,int(height*.70),width,height),scale=3)
     header,header_transform=ocr_words(image,crop=(0,0,width,int(height*.35)),scale=3)
@@ -134,6 +139,17 @@ def matching_home(first,second):
     if first.get('state')!='native-home-candidate' or second.get('state')!='native-home-candidate':return False
     a,b=first['observations'],second['observations']
     if a.get('surface')!=b.get('surface'):return False
+    if a.get('home_profile') or b.get('home_profile'):
+        from native_home_profile import PROFILE,ANCHORS,_valid_word
+        if a.get('home_profile')!=PROFILE or b.get('home_profile')!=PROFILE:return False
+        left,right=a.get('home_anchors',{}),b.get('home_anchors',{})
+        if not a.get('accepted') or not b.get('accepted') or set(left)!=set(ANCHORS) or set(right)!=set(ANCHORS):return False
+        surface=a['surface'];box=[surface['left'],surface['top'],surface['right'],surface['bottom']]
+        try:
+            return all(left[key].get('text')==right[key].get('text')==key and
+                _valid_word(left[key],box) and _valid_word(right[key],box) and
+                all(abs(x-y)<=3 for x,y in zip(left[key]['bounds'],right[key]['bounds'])) for key in ANCHORS)
+        except (KeyError,TypeError):return False
     for key in ('home_caption','rank_caption'):
         if any(abs(x-y)>3 for x,y in zip(a[key]['bounds'],b[key]['bounds'])):return False
     shared=set(a['other_footer_captions'])&set(b['other_footer_captions'])
@@ -142,21 +158,45 @@ def matching_home(first,second):
 
 def verify_home_candidate(context):
     """Recheck current native Home pixels immediately before read-only attach."""
-    values=[]
-    for _ in range(2):
-        _,surface,label,captured=context['capture']()
-        metadata=json.loads((context['args'].evidence/(label+'.json')).read_text())
-        with Image.open(context['args'].evidence/(label+'.png')) as image:
-            metadata=home_metadata(image,metadata)
-            result=analyze(image,metadata,'home_wait')
-        result['observations']['home_ocr_transforms']=metadata['home_ocr_transforms']
-        (context['args'].evidence/(label+'-home-reattach-check.json')).write_text(json.dumps(result,indent=2)+'\n')
-        values.append((result,surface,label,captured));time.sleep(.2)
-    first,second=values
-    assert first[1]==second[1] and matching_home(first[0],second[0]),'Fresh settled Home candidate no longer matches before attach'
-    assert time.monotonic()-second[3]<=8,'Fresh Home candidate expired before attach'
-    assert game_request_counts(context['host'].server_rpc_evidence())['/bootstrap/fetchBootstrap']>0
-    return {'captures':[first[2],second[2]],'surface':second[1],'captured_monotonic':second[3]}
+    ends=context['report']['native_home_fixed_ends']
+    deadline=min(ends['home_end'],ends['overall_end'])
+    assert time.monotonic()<deadline,'Original fixed Home/overall end reached before fresh Home check'
+    context['absolute_phase_deadline'](deadline,'Original fixed Home/overall end reached during fresh Home check')
+    identity=context['lifetime']()
+    for attempt in range(3):
+        assert time.monotonic()<deadline,'Original fixed Home/overall end reached before Home resampling'
+        values=[]
+        for _ in range(2):
+            assert context['lifetime']()==identity,'Game lifetime changed during fresh Home check'
+            _,surface,label,captured=context['capture']()
+            assert context['lifetime']()==identity,'Game lifetime changed during fresh Home capture'
+            metadata=json.loads((context['args'].evidence/(label+'.json')).read_text())
+            with Image.open(context['args'].evidence/(label+'.png')) as image:
+                metadata=home_metadata(image,metadata)
+                result=analyze(image,metadata,'home_wait')
+            result['observations']['home_ocr_transforms']=metadata['home_ocr_transforms']
+            (context['args'].evidence/(label+'-home-reattach-check.json')).write_text(json.dumps(result,indent=2)+'\n')
+            values.append((result,surface,label,captured));time.sleep(.2)
+        first,second=values
+        assert first[1]==second[1] and matching_home(first[0],second[0]),'Fresh settled Home profile/Surface/anchors changed before attach'
+        assert time.monotonic()<deadline,'Original fixed Home/overall end reached during Home capture pair'
+        if not fresh_home_pair(context,values,'before-attach'):continue
+        assert game_request_counts(context['host'].server_rpc_evidence())['/bootstrap/fetchBootstrap']>0
+        context['phase_deadline'](None)
+        return {'captures':[first[2],second[2]],'surface':second[1],'captured_monotonic':second[3]}
+    raise RuntimeError('Three recognized Home pairs were stale; no attach/read allowed and original ends were not renewed')
+
+
+def fresh_home_pair(context,values,stage):
+    """Retain stale recognized pairs; recollection never changes a deadline."""
+    now=time.monotonic()
+    fresh=values[0][3]<values[1][3]<=now and all(0<=now-value[3]<=8 for value in values)
+    if not fresh:
+        context['report'].setdefault('observations',[]).append({'native_home_stale_pair_refused':stage,
+            'captures':[value[2] for value in values],'ages_seconds':[round(now-value[3],3) for value in values],
+            'input_or_attach_performed':False,'fixed_ends':context['report']['native_home_fixed_ends']})
+        context['save']()
+    return fresh
 
 
 def stop_owned_download_game(context,expected):
@@ -279,6 +319,8 @@ def reach_settled_home(context,*,stop_at_download_start=False):
             if now-closed_at>=20 and counts['/bootstrap/fetchBootstrap']>0 and observed['state']=='native-home-candidate':
                 time.sleep(.3);second,other_surface,other_label,second_time=capture()
                 if surface==other_surface and matching_home(observed,second):
+                    if not fresh_home_pair(context,[(observed,surface,label,captured),
+                        (second,other_surface,other_label,second_time)],'eligibility'):continue
                     context['identity']('native-home-candidate-no-agent')
                     resources.capture('native-home-candidate',pid=context['lifetime']()['pid'])
                     context['phase_deadline'](None)
@@ -343,5 +385,7 @@ def reach_settled_home(context,*,stop_at_download_start=False):
             resources.capture('native-light-download-start',pid=proof['pid'])
         elif kind=='close-complete':
             resources.capture('native-download-complete',pid=proof['pid']);phase='home_wait';closed_at=time.monotonic()
+            report['native_home_fixed_ends']={'close_monotonic':closed_at,'home_end':closed_at+180,
+                'overall_end':context.get('overall_deadline',context['started']+getattr(args,'max_seconds',2400))}
             context['absolute_phase_deadline'](closed_at+180,'No stable native Home candidate within180seconds after guarded Download Complete/Close; no observer attached')
         context['save']();time.sleep(1)

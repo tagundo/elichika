@@ -282,6 +282,12 @@ def analyze(image, metadata, phase):
         elif progress:result['state']='downloading-observed-progress' if progress['valid_metrics'] else 'downloading-progress-text-unreadable'
         else:result['state']='unrecognized-download-wait-screen'
         return result
+    from native_home_profile import recognize
+    targeted=recognize(metadata,width,height)
+    if targeted is not None:
+        observation.update(targeted)
+        result['state']='native-home-candidate' if targeted['accepted'] else 'waiting-for-native-home-candidate'
+        return result
     footer=[w for w in words if w['bounds'][1]>=height*.70]
     rank=_exact([w for w in words if w['bounds'][3]<=height*.35],'Rank')
     home=_exact(footer,'Home');captions={}
