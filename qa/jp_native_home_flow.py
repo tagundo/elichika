@@ -144,13 +144,19 @@ class NativeReferenceFlow:
     """Minimal callback-driven chooser→download→raw post-close capture adapter."""
     def __init__(self, *, capture, send, lifetime, clock, pause, report, save,
             persist, log, overall_started, progress=lambda frame:{},prechooser_started=None,
-            light_planner=None):
+            light_planner=None,manual_label_review=False):
         self.capture=capture;self.send=send;self.lifetime=lifetime;self.clock=clock
         self.pause=pause;self.report=report;self.save=save;self.persist=persist
         self.log=log;self.started=overall_started;self.settings=None
         self.progress=progress
         self.light=light if light_planner is None else light_planner
         self.recollect_light=light_planner is not None
+        if type(manual_label_review) is not bool:raise ValueError('Manual native label review must be explicit boolean')
+        self.chooser_idle_seconds=120 if manual_label_review else 45
+        self.report['chooser_wait_budget']={'idle_seconds':self.chooser_idle_seconds,
+            'absolute_settings_seconds':120,'manual_review_enabled':manual_label_review,
+            'native_label_offer_max_seconds':90,'overall_seconds':2400,
+            'scope':'Explicit manual review waiting allowance only; Git I/O is not semantic progress and cannot extend original absolute ends'}
         self.settings_started=None;self.bulk=None;self.post_close_end=None
         self.prechooser_started=complete._time(clock() if prechooser_started is None else prechooser_started)
         self.prechooser_end=min(overall_started+2400,self.prechooser_started+180)
@@ -160,7 +166,7 @@ class NativeReferenceFlow:
 
     def begin_settings(self):
         if self.settings is None:
-            self.settings_started=self.clock();self.settings=SettingsProgress(self.settings_started)
+            self.settings_started=self.clock();self.settings=SettingsProgress(self.settings_started,idle_seconds=self.chooser_idle_seconds)
             self.report['original_settings_started']=self.settings_started
 
     def phase_end(self):

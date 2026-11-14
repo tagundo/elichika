@@ -50,19 +50,22 @@ def _settings_identity(observed):
 
 class SettingsProgress:
     """A missing caption never extends the deadline; pixel animation is ignored."""
-    def __init__(self,now):
+    def __init__(self,now,*,idle_seconds=45):
+        if type(idle_seconds) is not int or idle_seconds not in (45,120):
+            raise ValueError('Chooser idle budget must be default45 or explicit manual120seconds')
+        self.idle_seconds=idle_seconds
         self.absolute_deadline=now+120
-        self.stagnant_deadline=now+45
+        self.stagnant_deadline=now+idle_seconds
         self.identity=None
 
     def observe(self,observed,now):
         current=_settings_identity(observed)
         changed=current is not None and (self.identity is None or current[:2]!=self.identity[:2] or
             any(abs(a-b)>4 for before,after in zip(self.identity[2:],current[2:]) for a,b in zip(before,after)))
-        if changed:self.identity=current;self.stagnant_deadline=now+45
+        if changed:self.identity=current;self.stagnant_deadline=now+self.idle_seconds
         remaining=min(self.absolute_deadline,self.stagnant_deadline)-now
-        if remaining<=0:raise RuntimeError('Native download settings made no safe semantic progress within45seconds or exceeded120seconds total')
-        return min(45,remaining)
+        if remaining<=0:raise RuntimeError('Native download settings made no safe semantic progress within'+str(self.idle_seconds)+'seconds or exceeded120seconds total')
+        return min(self.idle_seconds,remaining)
 
 
 class BulkDownloadProgress:

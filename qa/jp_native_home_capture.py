@@ -112,7 +112,9 @@ def main():
         'native_unity_build_id_expected_from_exact_APK_profile':UNITY,
         'native_unity_build_id_runtime_verified':False,'expected_game_activity':ACTIVITY,
         'original_overall_started':started,'original_overall_end':overall_end,
-        'overall_limit_seconds':2400,'settings_total_seconds':120,'settings_stagnant_seconds':45,
+        'overall_limit_seconds':2400,'settings_total_seconds':120,
+        'settings_stagnant_seconds':120 if args.root_visual_light_approval else 45,
+        'default_settings_stagnant_seconds':45,'manual_chooser_review_enabled':args.root_visual_light_approval,
         'bulk_limit_seconds':1800,'post_close_limit_seconds_within_overall':180,
         'separate_cleanup_reserve_seconds':120,'actions':[],'captures':[],
         'external_owned_Android_container_cleanup_required':True}
@@ -304,7 +306,8 @@ def main():
         profile_path=root/'jp-native-home-profile.json'
         profile=json.loads(profile_path.read_text());validate_native_home_profile(profile)
         report['native_reference_profile']={'file':profile_path.name,'sha256':file_sha256(profile_path),
-            'scope':profile['scope'],'limits':dict(profile['limits'])}
+            'scope':profile['scope'],'limits':dict(profile['limits']),
+            'limits_scope':'Default limits; explicit Root visual chooser idle override is recorded separately by chooser_wait_budget'}
         receipt=json.loads(args.host_server_receipt.read_text())
         validate_binding(fixtures,profile,receipt)
         if receipt['server_fixture']['submodule_refs']!={'assets':ASSETS,'modtools':TOOLS}:
@@ -381,7 +384,8 @@ def main():
         flow=NativeReferenceFlow(capture=capture,send=send,lifetime=lifetime,
             clock=time.monotonic,pause=time.sleep,report=report,save=save,
             persist=lambda name,value:durable(args.evidence/name,value),log=log,overall_started=started,
-            progress=observe_progress,prechooser_started=title_started,light_planner=current_light)
+            progress=observe_progress,prechooser_started=title_started,light_planner=current_light,
+            manual_label_review=args.root_visual_light_approval)
         title_sent=False;budget=chooser.ChooserScrollBudget()
         title_pairs=TitleCandidates(owned_identity=flow.owned,overall_started=started,title_started=title_started)
         while True:
