@@ -2,7 +2,7 @@ name: Original JP native bootstrap to raw post-Close references on exact C10
 
 on:
   push:
-    branches: [codex/android-client-qa-jp-native-home-20261114-v2]
+    branches: [codex/android-client-qa-jp-native-home-20261114-v3]
 
 permissions:
   # Same V19 scope required to GET unpublished private APK fixture; no writes.
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   capture:
-    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-jp-native-home-20261114-v2'
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-jp-native-home-20261114-v3'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 70
     env:
@@ -76,7 +76,7 @@ jobs:
           adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/jp-webview-command-line" /data/local/tmp/webview-command-line
           adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
           adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
-      - name: Check all 68 focused native reference source cases without feature qualification
+      - name: Check all 79 focused native reference source cases without feature qualification
         run: |
           set -euo pipefail
           task_cache=$(mktemp -d "$RUNNER_TEMP/jp-test-cache.XXXXXXXX")

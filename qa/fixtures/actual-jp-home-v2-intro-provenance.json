@@ -1,0 +1,17 @@
+{
+  "scope": "Actual raw regression fixtures only; no runtime logo library, input authority, Home or feature qualification",
+  "repository": "tagundo/elichika",
+  "run_id": 43564504224,
+  "job_id": 132355264327,
+  "head": "a8937eef0c96d15dcb8109a2f65a37dc65ef4cd6",
+  "tree": "bdcd6d52eca5da408d04441eac6f5d925f1c4627",
+  "main_artifact": {"id": 14101658037, "bytes": 3897702, "sha256": "047f929cf14140201ccd54b313a76d0645df1d1ea6321153625e86d4fca38d85"},
+  "verified_raw_source_proof_sha256": "481c42d1bc3f350f59d33f37bc444ded398c8f9a92607486d621a0f494f953ad",
+  "frames": [
+    {"fixture_png": "actual-jp-home-v2-030.png", "original_png": "runtime/jp-native-0030.png", "png_bytes": 10408, "png_sha256": "4b1f987961be872fd7b02ded8a9150230cd1d600355b21d3eac114307d5ed35a", "fixture_xml": "actual-jp-home-v2-030.xml", "original_xml": "runtime/jp-native-0030.xml", "native_xml_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22", "native_at": 2767.406487553, "captured_at": 2767.593062123, "activity": "com.klab.lovelive.allstars.MainActivity", "owned_identity": {"pid": 1917, "start_ticks": "269179"}, "ROOT_visual_observation": "BUSHIMO white-logo native splash before ordinary Title input"},
+    {"fixture_png": "actual-jp-home-v2-031.png", "original_png": "runtime/jp-native-0031.png", "png_bytes": 1179286, "png_sha256": "b82c710ae480b41d9bc90f64212a7db9ccbe79b7c2809c86770713ae0167e5db", "fixture_xml": "actual-jp-home-v2-031.xml", "original_xml": "runtime/jp-native-0031.xml", "native_xml_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22", "native_at": 2770.034504347, "captured_at": 2771.008414727, "activity": "com.klab.lovelive.allstars.MainActivity", "owned_identity": {"pid": 1917, "start_ticks": "269179"}, "ROOT_visual_observation": "Real native Title art in the bounded diagnostic capture"}
+  ],
+  "no_ordinary_Title_input_in_V2": true,
+  "all11_feature_flags_false": true,
+  "no_Home_reference": true
+}

@@ -23,7 +23,8 @@ from jp_capture_guard import (PACKAGE, CASES, StopCapture, digest, image_of,
     fresh_pair, require_JP_settings, uniform_startup_frame)
 from jp_short_capture import (SOURCE, APK, SIGNER, UNITY, MARKER, WallBound,
     durable, pidof, public_frame, validate_binding, confirm_requested_settings,
-    stop_owned_game, stop_owned_go, bounded_host_device)
+    stop_owned_go, bounded_host_device)
+from jp_native_home_cleanup import stop_owned_game
 from failure_checkpoint import checkpoint_failure
 from native_download_guard import NativeDeadlines
 from jp_native_home_flow import NativeReferenceFlow, NativeLog, pale_modal_candidate
@@ -80,6 +81,11 @@ def require_planned_input(proof,kind,point,swipe_end=None):
         raise StopCapture('Current native planned action changed')
     if kind=='diagnostic-chooser-upward-scroll' and proof.get('end')!=swipe_end:
         raise StopCapture('Current diagnostic chooser swipe endpoint changed')
+
+
+def should_stop_game_modal(title_sent,scroll_attempts,raw):
+    """Intro frames grant no input; unknown-game-modal stops begin after Title."""
+    return title_sent and (scroll_attempts or has_large_pale_panel(raw) or pale_modal_candidate(raw))
 
 
 def main():
@@ -365,7 +371,7 @@ def main():
                         now=time.monotonic(),overall_started=started,settings_started=flow.settings_started)
                 send(intent['kind'],intent['start'],(first,second),swipe_end=intent['end'],verifier=scroll_plan)
                 continue
-            if budget.attempts or has_large_pale_panel(first['png_bytes']) or pale_modal_candidate(first['png_bytes']):
+            if should_stop_game_modal(title_sent,budget.attempts,first['png_bytes']):
                 raise StopCapture('Current JP full-Light mismatch; phase='+report['phase']+
                     '; raw='+first['id']+'.png; full-row='+full_refusal+
                     '; partial-scroll='+partial_refusal+'; no grounded selection')
