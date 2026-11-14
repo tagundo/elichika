@@ -1,0 +1,6528 @@
+{
+  "agentVersion": 8,
+  "timestampMs": 1794630512469,
+  "screen": {
+    "width": 720,
+    "height": 1280,
+    "orientation": -1,
+    "scene": "Home",
+    "frame": 12394,
+    "unityVersion": "2018.4.23f1"
+  },
+  "nodes": [
+    {
+      "id": "236610",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TipsTitle",
+      "path": "EntryPoint/LoadingUICanvas/LoadingTips/TipsTitle",
+      "text": "Merits of Limit Increases",
+      "label": "Merits of Limit Increases",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 213.19338989257812,
+        "top": 567.677001953125,
+        "right": 506.8066101074219,
+        "bottom": 610.8544921875,
+        "width": 293.61322021484375,
+        "height": 43.177490234375
+      },
+      "visibleBounds": {
+        "left": 213.19338989257812,
+        "top": 567.677001953125,
+        "right": 506.8066101074219,
+        "bottom": 610.8544921875,
+        "width": 293.61322021484375,
+        "height": 43.177490234375
+      },
+      "center": {
+        "x": 360,
+        "y": 589
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "LoadingCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "236748",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TipsDescription",
+      "path": "EntryPoint/LoadingUICanvas/LoadingTips/TipsDescription",
+      "text": "When you perform Limit Increases, you will unlock more Practice tiles. Keep performing Limit Increases and make your school idols grow even more.",
+      "label": "When you perform Limit Increases, you will unlock more Practice tiles. Keep performing Limit Increases and make your school idols grow even more.",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 208.87554931640625,
+        "top": 612.474365234375,
+        "right": 511.12445068359375,
+        "bottom": 711.78466796875,
+        "width": 302.2489013671875,
+        "height": 99.310302734375
+      },
+      "visibleBounds": {
+        "left": 208.87554931640625,
+        "top": 612.474365234375,
+        "right": 511.12445068359375,
+        "bottom": 711.78466796875,
+        "width": 302.2489013671875,
+        "height": 99.310302734375
+      },
+      "center": {
+        "x": 360,
+        "y": 662
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "LoadingCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239614",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/Rank/TextView",
+      "text": "Rank",
+      "label": "Rank",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 356.7615966796875,
+        "top": 7.55615234375,
+        "right": 391.3043518066406,
+        "bottom": 18.3507080078125,
+        "width": 34.542755126953125,
+        "height": 10.7945556640625
+      },
+      "visibleBounds": {
+        "left": 356.7615966796875,
+        "top": 7.55615234375,
+        "right": 391.3043518066406,
+        "bottom": 18.3507080078125,
+        "width": 34.542755126953125,
+        "height": 10.7945556640625
+      },
+      "center": {
+        "x": 374,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239630",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "SNSCoinCountTextView",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/Money/SNSCoin/SNSCoinCountTextView",
+      "text": "999,999+",
+      "label": "999,999+",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 630.6747436523438,
+        "top": 8.0958251953125,
+        "right": 690.0449829101562,
+        "bottom": 18.8905029296875,
+        "width": 59.3702392578125,
+        "height": 10.794677734375
+      },
+      "visibleBounds": {
+        "left": 630.6747436523438,
+        "top": 8.0958251953125,
+        "right": 690.0449829101562,
+        "bottom": 18.8905029296875,
+        "width": 59.3702392578125,
+        "height": 10.794677734375
+      },
+      "center": {
+        "x": 660,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239668",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/AP/TextView",
+      "text": "AP",
+      "label": "AP",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 531.6341552734375,
+        "top": 8.0958251953125,
+        "right": 547.8261108398438,
+        "bottom": 18.8905029296875,
+        "width": 16.19195556640625,
+        "height": 10.794677734375
+      },
+      "visibleBounds": {
+        "left": 531.6341552734375,
+        "top": 8.0958251953125,
+        "right": 547.8261108398438,
+        "bottom": 18.8905029296875,
+        "width": 16.19195556640625,
+        "height": 10.794677734375
+      },
+      "center": {
+        "x": 540,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239702",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "LPTextView",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/LP/LPTextView",
+      "text": "420/420",
+      "label": "420/420",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 445.27734375,
+        "top": 7.55615234375,
+        "right": 489.5352478027344,
+        "bottom": 18.3507080078125,
+        "width": 44.257904052734375,
+        "height": 10.7945556640625
+      },
+      "visibleBounds": {
+        "left": 445.27734375,
+        "top": 7.55615234375,
+        "right": 489.5352478027344,
+        "bottom": 18.3507080078125,
+        "width": 44.257904052734375,
+        "height": 10.7945556640625
+      },
+      "center": {
+        "x": 467,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239792",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "ExpTextView",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/Rank/RankGauge/ExpTextView",
+      "text": "3330914",
+      "label": "3330914",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 356.7615966796875,
+        "top": 18.8905029296875,
+        "right": 413.9729919433594,
+        "bottom": 27.5262451171875,
+        "width": 57.211395263671875,
+        "height": 8.6357421875
+      },
+      "visibleBounds": {
+        "left": 356.7615966796875,
+        "top": 18.8905029296875,
+        "right": 413.9729919433594,
+        "bottom": 27.5262451171875,
+        "width": 57.211395263671875,
+        "height": 8.6357421875
+      },
+      "center": {
+        "x": 385,
+        "y": 23
+      },
+      "visible": false,
+      "alpha": 0,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      }
+    },
+    {
+      "id": "239830",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "GameMoneyCountTextView",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/Money/GameMoney/GameMoneyCountTextView",
+      "text": "1,073,741,823",
+      "label": "1,073,741,823",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 630.6747436523438,
+        "top": 22.12890625,
+        "right": 690.0449829101562,
+        "bottom": 32.9234619140625,
+        "width": 59.3702392578125,
+        "height": 10.7945556640625
+      },
+      "visibleBounds": {
+        "left": 630.6747436523438,
+        "top": 22.12890625,
+        "right": 690.0449829101562,
+        "bottom": 32.9234619140625,
+        "width": 59.3702392578125,
+        "height": 10.7945556640625
+      },
+      "center": {
+        "x": 660,
+        "y": 28
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239908",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/LP/TextView",
+      "text": "LP",
+      "label": "LP",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 433.4033203125,
+        "top": 7.55615234375,
+        "right": 449.59521484375,
+        "bottom": 18.3507080078125,
+        "width": 16.19189453125,
+        "height": 10.7945556640625
+      },
+      "visibleBounds": {
+        "left": 433.4033203125,
+        "top": 7.55615234375,
+        "right": 449.59521484375,
+        "bottom": 18.3507080078125,
+        "width": 16.19189453125,
+        "height": 10.7945556640625
+      },
+      "center": {
+        "x": 441,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "240002",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "RankTextView",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/Rank/RankTextView",
+      "text": "320",
+      "label": "320",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 384.8276062011719,
+        "top": 7.55615234375,
+        "right": 411.8140869140625,
+        "bottom": 18.3507080078125,
+        "width": 26.986480712890625,
+        "height": 10.7945556640625
+      },
+      "visibleBounds": {
+        "left": 384.8276062011719,
+        "top": 7.55615234375,
+        "right": 411.8140869140625,
+        "bottom": 18.3507080078125,
+        "width": 26.986480712890625,
+        "height": 10.7945556640625
+      },
+      "center": {
+        "x": 398,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241826",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLessonEdit/DeckLessonEditButton/TextView",
+      "text": "Training Formation",
+      "label": "Training Formation",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 57.7496337890625,
+        "top": 1187.16552734375,
+        "right": 165.69580078125,
+        "bottom": 1230.3466796875,
+        "width": 107.9461669921875,
+        "height": 43.18115234375
+      },
+      "visibleBounds": {
+        "left": 57.7496337890625,
+        "top": 1187.16552734375,
+        "right": 165.69580078125,
+        "bottom": 1230.3466796875,
+        "width": 107.9461669921875,
+        "height": 43.18115234375
+      },
+      "center": {
+        "x": 112,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241944",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLiveEdit/DeckLiveEditButton/TextView",
+      "text": "Show Formation",
+      "label": "Show Formation",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 57.7496337890625,
+        "top": 1087.8564453125,
+        "right": 165.69580078125,
+        "bottom": 1131.03515625,
+        "width": 107.9461669921875,
+        "height": 43.1787109375
+      },
+      "visibleBounds": {
+        "left": 57.7496337890625,
+        "top": 1087.8564453125,
+        "right": 165.69580078125,
+        "bottom": 1131.03515625,
+        "width": 107.9461669921875,
+        "height": 43.1787109375
+      },
+      "center": {
+        "x": 112,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241980",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton/TextView",
+      "text": "School\nIdols",
+      "label": "School\nIdols",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 34.541015625,
+        "top": 1245.45654296875,
+        "right": 94.9932861328125,
+        "bottom": 1268.125,
+        "width": 60.4522705078125,
+        "height": 22.66845703125
+      },
+      "visibleBounds": {
+        "left": 34.541015625,
+        "top": 1245.45654296875,
+        "right": 94.9932861328125,
+        "bottom": 1268.125,
+        "width": 60.4522705078125,
+        "height": 22.66845703125
+      },
+      "center": {
+        "x": 65,
+        "y": 1257
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242086",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/CardList/CardListButton/TextView",
+      "text": "School Idols",
+      "label": "School Idols",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 167.8546142578125,
+        "top": 1187.16552734375,
+        "right": 275.80078125,
+        "bottom": 1230.3466796875,
+        "width": 107.9461669921875,
+        "height": 43.18115234375
+      },
+      "visibleBounds": {
+        "left": 167.8546142578125,
+        "top": 1187.16552734375,
+        "right": 275.80078125,
+        "bottom": 1230.3466796875,
+        "width": 107.9461669921875,
+        "height": 43.18115234375
+      },
+      "center": {
+        "x": 222,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242222",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Trade/TradeButton/TextView",
+      "text": "Exchange",
+      "label": "Exchange",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 143.5693359375,
+        "top": 1245.45654296875,
+        "right": 204.0216064453125,
+        "bottom": 1268.125,
+        "width": 60.4522705078125,
+        "height": 22.66845703125
+      },
+      "visibleBounds": {
+        "left": 143.5693359375,
+        "top": 1245.45654296875,
+        "right": 204.0216064453125,
+        "bottom": 1268.125,
+        "width": 60.4522705078125,
+        "height": 22.66845703125
+      },
+      "center": {
+        "x": 174,
+        "y": 1257
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242256",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Shop/ShopButton/TextView",
+      "text": "Shop",
+      "label": "Shop",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 143.5693359375,
+        "top": 1209.83642578125,
+        "right": 204.0216064453125,
+        "bottom": 1232.5048828125,
+        "width": 60.4522705078125,
+        "height": 22.66845703125
+      },
+      "visibleBounds": {
+        "left": 143.5693359375,
+        "top": 1209.83642578125,
+        "right": 204.0216064453125,
+        "bottom": 1232.5048828125,
+        "width": 60.4522705078125,
+        "height": 22.66845703125
+      },
+      "center": {
+        "x": 174,
+        "y": 1221
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242330",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Accessory/AccessoryButton/TextView",
+      "text": "Accessory",
+      "label": "Accessory",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 34.541015625,
+        "top": 1209.83642578125,
+        "right": 94.9932861328125,
+        "bottom": 1232.5048828125,
+        "width": 60.4522705078125,
+        "height": 22.66845703125
+      },
+      "visibleBounds": {
+        "left": 34.541015625,
+        "top": 1209.83642578125,
+        "right": 94.9932861328125,
+        "bottom": 1232.5048828125,
+        "width": 60.4522705078125,
+        "height": 22.66845703125
+      },
+      "center": {
+        "x": 65,
+        "y": 1221
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242360",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/TrainingTree/TrainingTreeButton/TextView",
+      "text": "Practice",
+      "label": "Practice",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 167.8546142578125,
+        "top": 1087.8564453125,
+        "right": 275.80078125,
+        "bottom": 1131.03515625,
+        "width": 107.9461669921875,
+        "height": 43.1787109375
+      },
+      "visibleBounds": {
+        "left": 167.8546142578125,
+        "top": 1087.8564453125,
+        "right": 275.80078125,
+        "bottom": 1131.03515625,
+        "width": 107.9461669921875,
+        "height": 43.1787109375
+      },
+      "center": {
+        "x": 222,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242574",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Mission/PickupInfoSmallBadge/TextView",
+      "text": "Event",
+      "label": "Event",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "visibleBounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 56,
+        "y": 1189
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242644",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Mission/MissionButton/TextView",
+      "text": "Goals",
+      "label": "Goals",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "visibleBounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 56,
+        "y": 1189
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242672",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "BadgeTextView",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Mission/CountBadge/CountBadge/BadgeTextView",
+      "text": "34",
+      "label": "34",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "visibleBounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 56,
+        "y": 1189
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "244488",
+      "type": "LLAS.Components.UI.ProductTextView",
+      "kind": "text",
+      "name": "TextView",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/SubscriptionButton/Subscribed/TextView",
+      "text": "Membership",
+      "label": "Membership",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 601.3673706054688,
+        "top": 532.2158813476562,
+        "right": 667.2144775390625,
+        "bottom": 550.5667114257812,
+        "width": 65.84710693359375,
+        "height": 18.350830078125
+      },
+      "visibleBounds": {
+        "left": 601.3673706054688,
+        "top": 532.2158813476562,
+        "right": 667.2144775390625,
+        "bottom": 550.5667114257812,
+        "width": 65.84710693359375,
+        "height": 18.350830078125
+      },
+      "center": {
+        "x": 634,
+        "y": 541
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "236824",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "LoadingGuard",
+      "path": "EntryPoint/LoadingUICanvas/LoadingGuard",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "LoadingCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/LoadingUICanvas/SafeArea/BackKeyHandler"
+      }
+    },
+    {
+      "id": "239764",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "UserStatus",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 720,
+        "bottom": 38.860595703125,
+        "width": 435.5622253417969,
+        "height": 38.860595703125
+      },
+      "visibleBounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 720,
+        "bottom": 38.860595703125,
+        "width": 435.5622253417969,
+        "height": 38.860595703125
+      },
+      "center": {
+        "x": 502,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239806",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "EmblemButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/EmblemButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 344.8875427246094,
+        "bottom": 38.8604736328125,
+        "width": 60.44976806640625,
+        "height": 38.8604736328125
+      },
+      "visibleBounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 344.8875427246094,
+        "bottom": 38.8604736328125,
+        "width": 60.44976806640625,
+        "height": 38.8604736328125
+      },
+      "center": {
+        "x": 315,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239940",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "APPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/AP/APPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 575.3523559570312,
+        "top": 5.9368896484375,
+        "right": 601.2593994140625,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "visibleBounds": {
+        "left": 575.3523559570312,
+        "top": 5.9368896484375,
+        "right": 601.2593994140625,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "center": {
+        "x": 588,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239972",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "SNSCoinPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/Money/SNSCoin/SNSCoinPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 687.8860473632812,
+        "top": 0.5396728515625,
+        "right": 713.7930908203125,
+        "bottom": 26.4466552734375,
+        "width": 25.90704345703125,
+        "height": 25.906982421875
+      },
+      "visibleBounds": {
+        "left": 687.8860473632812,
+        "top": 0.5396728515625,
+        "right": 713.7930908203125,
+        "bottom": 26.4466552734375,
+        "width": 25.90704345703125,
+        "height": 25.906982421875
+      },
+      "center": {
+        "x": 701,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239980",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "LPPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/LP/LPPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 490.074951171875,
+        "top": 5.9368896484375,
+        "right": 515.9819946289062,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "visibleBounds": {
+        "left": 490.074951171875,
+        "top": 5.9368896484375,
+        "right": 515.9819946289062,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "center": {
+        "x": 503,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241778",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "ToolTipBackgroundButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipBackgroundButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/LoadingUICanvas/SafeArea/BackKeyHandler"
+      }
+    },
+    {
+      "id": "241814",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "TrainingTreeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/TrainingTree/TrainingTreeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241854",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "DeckLiveEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLiveEdit/DeckLiveEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241884",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "CardButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 56,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241916",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "DeckLessonEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLessonEdit/DeckLessonEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1161.4306640625,
+        "right": 159.049072265625,
+        "bottom": 1256.0791015625,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1161.4306640625,
+        "right": 159.049072265625,
+        "bottom": 1256.0791015625,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241928",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "CommunicationButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Communication/CommunicationButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 587.2467041015625,
+        "top": 999.3603515625,
+        "right": 712.4249267578125,
+        "bottom": 1124.53857421875,
+        "width": 125.17822265625,
+        "height": 125.17822265625
+      },
+      "visibleBounds": {
+        "left": 587.2467041015625,
+        "top": 999.3603515625,
+        "right": 712.4249267578125,
+        "bottom": 1124.53857421875,
+        "width": 125.17822265625,
+        "height": 125.17822265625
+      },
+      "center": {
+        "x": 650,
+        "y": 1062
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241998",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "AccessoryButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Accessory/AccessoryButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1206.5966796875,
+        "right": 105.787353515625,
+        "bottom": 1242.21923828125,
+        "width": 100.3875732421875,
+        "height": 35.62255859375
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1206.5966796875,
+        "right": 105.787353515625,
+        "bottom": 1242.21923828125,
+        "width": 100.3875732421875,
+        "height": 35.62255859375
+      },
+      "center": {
+        "x": 56,
+        "y": 1224
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242010",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "LiveButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Live/LiveButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 557.0013427734375,
+        "top": 1196.3427734375,
+        "right": 702.7294921875,
+        "bottom": 1270.8251953125,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "visibleBounds": {
+        "left": 557.0013427734375,
+        "top": 1196.3427734375,
+        "right": 702.7294921875,
+        "bottom": 1270.8251953125,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "center": {
+        "x": 630,
+        "y": 1234
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242158",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "CardListButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/CardList/CardListButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1161.4306640625,
+        "right": 269.154052734375,
+        "bottom": 1256.0791015625,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1161.4306640625,
+        "right": 269.154052734375,
+        "bottom": 1256.0791015625,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242170",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "TowerButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Tower/TowerButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 510.611572265625,
+        "top": 1116.48681640625,
+        "right": 591.5203857421875,
+        "bottom": 1197.3974609375,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "visibleBounds": {
+        "left": 510.611572265625,
+        "top": 1116.48681640625,
+        "right": 591.5203857421875,
+        "bottom": 1197.3974609375,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "center": {
+        "x": 551,
+        "y": 1157
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242182",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "TradeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Trade/TradeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 114.422607421875,
+        "top": 1242.21923828125,
+        "right": 214.815673828125,
+        "bottom": 1277.83935546875,
+        "width": 100.39306640625,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 114.422607421875,
+        "top": 1242.21923828125,
+        "right": 214.815673828125,
+        "bottom": 1277.83935546875,
+        "width": 100.39306640625,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 165,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242242",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "ShopButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Shop/ShopButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 114.422607421875,
+        "top": 1206.5966796875,
+        "right": 214.815673828125,
+        "bottom": 1242.21923828125,
+        "width": 100.39306640625,
+        "height": 35.62255859375
+      },
+      "visibleBounds": {
+        "left": 114.422607421875,
+        "top": 1206.5966796875,
+        "right": 214.815673828125,
+        "bottom": 1242.21923828125,
+        "width": 100.39306640625,
+        "height": 35.62255859375
+      },
+      "center": {
+        "x": 165,
+        "y": 1224
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242486",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "StoryMainButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/StoryMain/StoryMainButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "visibleBounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "center": {
+        "x": 552,
+        "y": 1233
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242624",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "EventButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Event/EventButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 548.931884765625,
+        "top": 1077.62451171875,
+        "right": 629.8406982421875,
+        "bottom": 1158.53515625,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "visibleBounds": {
+        "left": 548.931884765625,
+        "top": 1077.62451171875,
+        "right": 629.8406982421875,
+        "bottom": 1158.53515625,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "center": {
+        "x": 589,
+        "y": 1118
+      },
+      "visible": false,
+      "alpha": 0,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242640",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "MissionButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Mission/MissionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "visibleBounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 56,
+        "y": 1189
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242664",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "GachaButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Gacha/GachaButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "visibleBounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "center": {
+        "x": 630,
+        "y": 1155
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242740",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "LessonButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Lesson/LessonButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 624.385986328125,
+        "top": 1064.0234375,
+        "right": 759.48486328125,
+        "bottom": 1199.1259765625,
+        "width": 135.098876953125,
+        "height": 135.1025390625
+      },
+      "visibleBounds": {
+        "left": 624.385986328125,
+        "top": 1064.0234375,
+        "right": 720,
+        "bottom": 1199.1259765625,
+        "width": 95.614013671875,
+        "height": 135.1025390625
+      },
+      "center": {
+        "x": 672,
+        "y": 1132
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244004",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "SubscriptionButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/SubscriptionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "visibleBounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "center": {
+        "x": 634,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244070",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "ReferenceBookButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/ReferenceBookButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "visibleBounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "center": {
+        "x": 690,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244100",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "LoveRankingButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/LoveRankingButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "visibleBounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "center": {
+        "x": 595,
+        "y": 581
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244240",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "Button",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/MissionBanner/ChallengeBeginnerButton/Button",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 70.70463562011719,
+        "top": 1125.6372375488281,
+        "right": 165.69712829589844,
+        "bottom": 1203.358383178711,
+        "width": 94.99249267578125,
+        "height": 77.72114562988281
+      },
+      "visibleBounds": {
+        "left": 70.70463562011719,
+        "top": 1125.6372375488281,
+        "right": 165.69712829589844,
+        "bottom": 1203.358383178711,
+        "width": 94.99249267578125,
+        "height": 77.72114562988281
+      },
+      "center": {
+        "x": 118,
+        "y": 1164
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244408",
+      "type": "LLAS.Components.UI.ProductButton",
+      "kind": "button",
+      "name": "ButtonPositiveS",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/DailyTheater/ButtonPositiveS",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "visibleBounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "center": {
+        "x": 550,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239768",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "UserStatus",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 720,
+        "bottom": 38.860595703125,
+        "width": 435.5622253417969,
+        "height": 38.860595703125
+      },
+      "visibleBounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 720,
+        "bottom": 38.860595703125,
+        "width": 435.5622253417969,
+        "height": 38.860595703125
+      },
+      "center": {
+        "x": 502,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239800",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "EmblemButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/EmblemButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 344.8875427246094,
+        "bottom": 38.8604736328125,
+        "width": 60.44976806640625,
+        "height": 38.8604736328125
+      },
+      "visibleBounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 344.8875427246094,
+        "bottom": 38.8604736328125,
+        "width": 60.44976806640625,
+        "height": 38.8604736328125
+      },
+      "center": {
+        "x": 315,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239936",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "APPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/AP/APPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 575.3523559570312,
+        "top": 5.9368896484375,
+        "right": 601.2593994140625,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "visibleBounds": {
+        "left": 575.3523559570312,
+        "top": 5.9368896484375,
+        "right": 601.2593994140625,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "center": {
+        "x": 588,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239974",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "SNSCoinPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/Money/SNSCoin/SNSCoinPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 687.8860473632812,
+        "top": 0.5396728515625,
+        "right": 713.7930908203125,
+        "bottom": 26.4466552734375,
+        "width": 25.90704345703125,
+        "height": 25.906982421875
+      },
+      "visibleBounds": {
+        "left": 687.8860473632812,
+        "top": 0.5396728515625,
+        "right": 713.7930908203125,
+        "bottom": 26.4466552734375,
+        "width": 25.90704345703125,
+        "height": 25.906982421875
+      },
+      "center": {
+        "x": 701,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239988",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "LPPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/LP/LPPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 490.074951171875,
+        "top": 5.9368896484375,
+        "right": 515.9819946289062,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "visibleBounds": {
+        "left": 490.074951171875,
+        "top": 5.9368896484375,
+        "right": 515.9819946289062,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "center": {
+        "x": 503,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241782",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "ToolTipBackgroundButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipBackgroundButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/LoadingUICanvas/SafeArea/BackKeyHandler"
+      }
+    },
+    {
+      "id": "241808",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "TrainingTreeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/TrainingTree/TrainingTreeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241848",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "DeckLiveEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLiveEdit/DeckLiveEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241878",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "CardButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 56,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241910",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "DeckLessonEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLessonEdit/DeckLessonEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1161.4306640625,
+        "right": 159.049072265625,
+        "bottom": 1256.0791015625,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1161.4306640625,
+        "right": 159.049072265625,
+        "bottom": 1256.0791015625,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241922",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "CommunicationButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Communication/CommunicationButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 587.2467041015625,
+        "top": 999.3603515625,
+        "right": 712.4249267578125,
+        "bottom": 1124.53857421875,
+        "width": 125.17822265625,
+        "height": 125.17822265625
+      },
+      "visibleBounds": {
+        "left": 587.2467041015625,
+        "top": 999.3603515625,
+        "right": 712.4249267578125,
+        "bottom": 1124.53857421875,
+        "width": 125.17822265625,
+        "height": 125.17822265625
+      },
+      "center": {
+        "x": 650,
+        "y": 1062
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241992",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "AccessoryButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Accessory/AccessoryButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1206.5966796875,
+        "right": 105.787353515625,
+        "bottom": 1242.21923828125,
+        "width": 100.3875732421875,
+        "height": 35.62255859375
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1206.5966796875,
+        "right": 105.787353515625,
+        "bottom": 1242.21923828125,
+        "width": 100.3875732421875,
+        "height": 35.62255859375
+      },
+      "center": {
+        "x": 56,
+        "y": 1224
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242004",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "LiveButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Live/LiveButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 557.0013427734375,
+        "top": 1196.3427734375,
+        "right": 702.7294921875,
+        "bottom": 1270.8251953125,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "visibleBounds": {
+        "left": 557.0013427734375,
+        "top": 1196.3427734375,
+        "right": 702.7294921875,
+        "bottom": 1270.8251953125,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "center": {
+        "x": 630,
+        "y": 1234
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242152",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "CardListButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/CardList/CardListButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1161.4306640625,
+        "right": 269.154052734375,
+        "bottom": 1256.0791015625,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1161.4306640625,
+        "right": 269.154052734375,
+        "bottom": 1256.0791015625,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242166",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "TowerButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Tower/TowerButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 510.611572265625,
+        "top": 1116.48681640625,
+        "right": 591.5203857421875,
+        "bottom": 1197.3974609375,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "visibleBounds": {
+        "left": 510.611572265625,
+        "top": 1116.48681640625,
+        "right": 591.5203857421875,
+        "bottom": 1197.3974609375,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "center": {
+        "x": 551,
+        "y": 1157
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242176",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "TradeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Trade/TradeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 114.422607421875,
+        "top": 1242.21923828125,
+        "right": 214.815673828125,
+        "bottom": 1277.83935546875,
+        "width": 100.39306640625,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 114.422607421875,
+        "top": 1242.21923828125,
+        "right": 214.815673828125,
+        "bottom": 1277.83935546875,
+        "width": 100.39306640625,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 165,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242236",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "ShopButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Shop/ShopButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 114.422607421875,
+        "top": 1206.5966796875,
+        "right": 214.815673828125,
+        "bottom": 1242.21923828125,
+        "width": 100.39306640625,
+        "height": 35.62255859375
+      },
+      "visibleBounds": {
+        "left": 114.422607421875,
+        "top": 1206.5966796875,
+        "right": 214.815673828125,
+        "bottom": 1242.21923828125,
+        "width": 100.39306640625,
+        "height": 35.62255859375
+      },
+      "center": {
+        "x": 165,
+        "y": 1224
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242496",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "StoryMainButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/StoryMain/StoryMainButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "visibleBounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "center": {
+        "x": 552,
+        "y": 1233
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242622",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "EventButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Event/EventButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 548.931884765625,
+        "top": 1077.62451171875,
+        "right": 629.8406982421875,
+        "bottom": 1158.53515625,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "visibleBounds": {
+        "left": 548.931884765625,
+        "top": 1077.62451171875,
+        "right": 629.8406982421875,
+        "bottom": 1158.53515625,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "center": {
+        "x": 589,
+        "y": 1118
+      },
+      "visible": false,
+      "alpha": 0,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242638",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "MissionButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Mission/MissionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "visibleBounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 56,
+        "y": 1189
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242660",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "GachaButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Gacha/GachaButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "visibleBounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "center": {
+        "x": 630,
+        "y": 1155
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242738",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "LessonButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Lesson/LessonButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 624.385986328125,
+        "top": 1064.0234375,
+        "right": 759.48486328125,
+        "bottom": 1199.1259765625,
+        "width": 135.098876953125,
+        "height": 135.1025390625
+      },
+      "visibleBounds": {
+        "left": 624.385986328125,
+        "top": 1064.0234375,
+        "right": 720,
+        "bottom": 1199.1259765625,
+        "width": 95.614013671875,
+        "height": 135.1025390625
+      },
+      "center": {
+        "x": 672,
+        "y": 1132
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "243998",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "SubscriptionButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/SubscriptionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "visibleBounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "center": {
+        "x": 634,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244072",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "ReferenceBookButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/ReferenceBookButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "visibleBounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "center": {
+        "x": 690,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244102",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "LoveRankingButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/LoveRankingButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "visibleBounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "center": {
+        "x": 595,
+        "y": 581
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244236",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "Button",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/MissionBanner/ChallengeBeginnerButton/Button",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 70.70463562011719,
+        "top": 1125.6372375488281,
+        "right": 165.69712829589844,
+        "bottom": 1203.358383178711,
+        "width": 94.99249267578125,
+        "height": 77.72114562988281
+      },
+      "visibleBounds": {
+        "left": 70.70463562011719,
+        "top": 1125.6372375488281,
+        "right": 165.69712829589844,
+        "bottom": 1203.358383178711,
+        "width": 94.99249267578125,
+        "height": 77.72114562988281
+      },
+      "center": {
+        "x": 118,
+        "y": 1164
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244414",
+      "type": "LLAS.Components.UI.ProductButtonSound",
+      "kind": "button",
+      "name": "ButtonPositiveS",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/DailyTheater/ButtonPositiveS",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "visibleBounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "center": {
+        "x": 550,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239804",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "EmblemButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/EmblemButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 344.8875427246094,
+        "bottom": 38.8604736328125,
+        "width": 60.44976806640625,
+        "height": 38.8604736328125
+      },
+      "visibleBounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 344.8875427246094,
+        "bottom": 38.8604736328125,
+        "width": 60.44976806640625,
+        "height": 38.8604736328125
+      },
+      "center": {
+        "x": 315,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239984",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "LPPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/LP/LPPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 490.074951171875,
+        "top": 5.9368896484375,
+        "right": 515.9819946289062,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "visibleBounds": {
+        "left": 490.074951171875,
+        "top": 5.9368896484375,
+        "right": 515.9819946289062,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "center": {
+        "x": 503,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241812",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "TrainingTreeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/TrainingTree/TrainingTreeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241852",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "DeckLiveEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLiveEdit/DeckLiveEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241882",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "CardButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 56,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241914",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "DeckLessonEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLessonEdit/DeckLessonEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1161.4306640625,
+        "right": 159.049072265625,
+        "bottom": 1256.0791015625,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1161.4306640625,
+        "right": 159.049072265625,
+        "bottom": 1256.0791015625,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241926",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "CommunicationButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Communication/CommunicationButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 587.2467041015625,
+        "top": 999.3603515625,
+        "right": 712.4249267578125,
+        "bottom": 1124.53857421875,
+        "width": 125.17822265625,
+        "height": 125.17822265625
+      },
+      "visibleBounds": {
+        "left": 587.2467041015625,
+        "top": 999.3603515625,
+        "right": 712.4249267578125,
+        "bottom": 1124.53857421875,
+        "width": 125.17822265625,
+        "height": 125.17822265625
+      },
+      "center": {
+        "x": 650,
+        "y": 1062
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241996",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "AccessoryButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Accessory/AccessoryButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1206.5966796875,
+        "right": 105.787353515625,
+        "bottom": 1242.21923828125,
+        "width": 100.3875732421875,
+        "height": 35.62255859375
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1206.5966796875,
+        "right": 105.787353515625,
+        "bottom": 1242.21923828125,
+        "width": 100.3875732421875,
+        "height": 35.62255859375
+      },
+      "center": {
+        "x": 56,
+        "y": 1224
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242156",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "CardListButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/CardList/CardListButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1161.4306640625,
+        "right": 269.154052734375,
+        "bottom": 1256.0791015625,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1161.4306640625,
+        "right": 269.154052734375,
+        "bottom": 1256.0791015625,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242180",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "TradeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Trade/TradeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 114.422607421875,
+        "top": 1242.21923828125,
+        "right": 214.815673828125,
+        "bottom": 1277.83935546875,
+        "width": 100.39306640625,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 114.422607421875,
+        "top": 1242.21923828125,
+        "right": 214.815673828125,
+        "bottom": 1277.83935546875,
+        "width": 100.39306640625,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 165,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242240",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "ShopButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Shop/ShopButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 114.422607421875,
+        "top": 1206.5966796875,
+        "right": 214.815673828125,
+        "bottom": 1242.21923828125,
+        "width": 100.39306640625,
+        "height": 35.62255859375
+      },
+      "visibleBounds": {
+        "left": 114.422607421875,
+        "top": 1206.5966796875,
+        "right": 214.815673828125,
+        "bottom": 1242.21923828125,
+        "width": 100.39306640625,
+        "height": 35.62255859375
+      },
+      "center": {
+        "x": 165,
+        "y": 1224
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242632",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "MissionButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Mission/MissionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "visibleBounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 56,
+        "y": 1189
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242744",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "LessonButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Lesson/LessonButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 624.385986328125,
+        "top": 1064.0234375,
+        "right": 759.48486328125,
+        "bottom": 1199.1259765625,
+        "width": 135.098876953125,
+        "height": 135.1025390625
+      },
+      "visibleBounds": {
+        "left": 624.385986328125,
+        "top": 1064.0234375,
+        "right": 720,
+        "bottom": 1199.1259765625,
+        "width": 95.614013671875,
+        "height": 135.1025390625
+      },
+      "center": {
+        "x": 672,
+        "y": 1132
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244002",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "SubscriptionButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/SubscriptionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "visibleBounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "center": {
+        "x": 634,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244078",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "ReferenceBookButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/ReferenceBookButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "visibleBounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "center": {
+        "x": 690,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244110",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "LoveRankingButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/LoveRankingButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "visibleBounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "center": {
+        "x": 595,
+        "y": 581
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244410",
+      "type": "LLAS.Components.UI.ButtonConcept",
+      "kind": "button",
+      "name": "ButtonPositiveS",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/DailyTheater/ButtonPositiveS",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "visibleBounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "center": {
+        "x": 550,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239802",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "EmblemButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/EmblemButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 344.8875427246094,
+        "bottom": 38.8604736328125,
+        "width": 60.44976806640625,
+        "height": 38.8604736328125
+      },
+      "visibleBounds": {
+        "left": 284.4377746582031,
+        "top": 0,
+        "right": 344.8875427246094,
+        "bottom": 38.8604736328125,
+        "width": 60.44976806640625,
+        "height": 38.8604736328125
+      },
+      "center": {
+        "x": 315,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239938",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "APPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/AP/APPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 575.3523559570312,
+        "top": 5.9368896484375,
+        "right": 601.2593994140625,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "visibleBounds": {
+        "left": 575.3523559570312,
+        "top": 5.9368896484375,
+        "right": 601.2593994140625,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "center": {
+        "x": 588,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239970",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "SNSCoinPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/Money/SNSCoin/SNSCoinPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 687.8860473632812,
+        "top": 0.5396728515625,
+        "right": 713.7930908203125,
+        "bottom": 26.4466552734375,
+        "width": 25.90704345703125,
+        "height": 25.906982421875
+      },
+      "visibleBounds": {
+        "left": 687.8860473632812,
+        "top": 0.5396728515625,
+        "right": 713.7930908203125,
+        "bottom": 26.4466552734375,
+        "width": 25.90704345703125,
+        "height": 25.906982421875
+      },
+      "center": {
+        "x": 701,
+        "y": 13
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "239990",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "LPPurchaseButton",
+      "path": "EntryPoint/Canvas/SafeArea/UserStatus/LP/LPPurchaseButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 490.074951171875,
+        "top": 5.9368896484375,
+        "right": 515.9819946289062,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "visibleBounds": {
+        "left": 490.074951171875,
+        "top": 5.9368896484375,
+        "right": 515.9819946289062,
+        "bottom": 31.843994140625,
+        "width": 25.90704345703125,
+        "height": 25.9071044921875
+      },
+      "center": {
+        "x": 503,
+        "y": 19
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241810",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "TrainingTreeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/TrainingTree/TrainingTreeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241850",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "DeckLiveEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLiveEdit/DeckLiveEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241880",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "CardButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 56,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241912",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "DeckLessonEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLessonEdit/DeckLessonEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1161.4306640625,
+        "right": 159.049072265625,
+        "bottom": 1256.0791015625,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1161.4306640625,
+        "right": 159.049072265625,
+        "bottom": 1256.0791015625,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241924",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "CommunicationButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Communication/CommunicationButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 587.2467041015625,
+        "top": 999.3603515625,
+        "right": 712.4249267578125,
+        "bottom": 1124.53857421875,
+        "width": 125.17822265625,
+        "height": 125.17822265625
+      },
+      "visibleBounds": {
+        "left": 587.2467041015625,
+        "top": 999.3603515625,
+        "right": 712.4249267578125,
+        "bottom": 1124.53857421875,
+        "width": 125.17822265625,
+        "height": 125.17822265625
+      },
+      "center": {
+        "x": 650,
+        "y": 1062
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241994",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "AccessoryButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Accessory/AccessoryButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1206.5966796875,
+        "right": 105.787353515625,
+        "bottom": 1242.21923828125,
+        "width": 100.3875732421875,
+        "height": 35.62255859375
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1206.5966796875,
+        "right": 105.787353515625,
+        "bottom": 1242.21923828125,
+        "width": 100.3875732421875,
+        "height": 35.62255859375
+      },
+      "center": {
+        "x": 56,
+        "y": 1224
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242006",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "LiveButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Live/LiveButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 557.0013427734375,
+        "top": 1196.3427734375,
+        "right": 702.7294921875,
+        "bottom": 1270.8251953125,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "visibleBounds": {
+        "left": 557.0013427734375,
+        "top": 1196.3427734375,
+        "right": 702.7294921875,
+        "bottom": 1270.8251953125,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "center": {
+        "x": 630,
+        "y": 1234
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242154",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "CardListButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/CardList/CardListButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1161.4306640625,
+        "right": 269.154052734375,
+        "bottom": 1256.0791015625,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1161.4306640625,
+        "right": 269.154052734375,
+        "bottom": 1256.0791015625,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1209
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242168",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "TowerButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Tower/TowerButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 510.611572265625,
+        "top": 1116.48681640625,
+        "right": 591.5203857421875,
+        "bottom": 1197.3974609375,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "visibleBounds": {
+        "left": 510.611572265625,
+        "top": 1116.48681640625,
+        "right": 591.5203857421875,
+        "bottom": 1197.3974609375,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "center": {
+        "x": 551,
+        "y": 1157
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242178",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "TradeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Trade/TradeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 114.422607421875,
+        "top": 1242.21923828125,
+        "right": 214.815673828125,
+        "bottom": 1277.83935546875,
+        "width": 100.39306640625,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 114.422607421875,
+        "top": 1242.21923828125,
+        "right": 214.815673828125,
+        "bottom": 1277.83935546875,
+        "width": 100.39306640625,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 165,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242238",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "ShopButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Shop/ShopButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 114.422607421875,
+        "top": 1206.5966796875,
+        "right": 214.815673828125,
+        "bottom": 1242.21923828125,
+        "width": 100.39306640625,
+        "height": 35.62255859375
+      },
+      "visibleBounds": {
+        "left": 114.422607421875,
+        "top": 1206.5966796875,
+        "right": 214.815673828125,
+        "bottom": 1242.21923828125,
+        "width": 100.39306640625,
+        "height": 35.62255859375
+      },
+      "center": {
+        "x": 165,
+        "y": 1224
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242494",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "StoryMainButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/StoryMain/StoryMainButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "visibleBounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "center": {
+        "x": 552,
+        "y": 1233
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242626",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "EventButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Event/EventButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 548.931884765625,
+        "top": 1077.62451171875,
+        "right": 629.8406982421875,
+        "bottom": 1158.53515625,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "visibleBounds": {
+        "left": 548.931884765625,
+        "top": 1077.62451171875,
+        "right": 629.8406982421875,
+        "bottom": 1158.53515625,
+        "width": 80.9088134765625,
+        "height": 80.91064453125
+      },
+      "center": {
+        "x": 589,
+        "y": 1118
+      },
+      "visible": false,
+      "alpha": 0,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242642",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "MissionButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Mission/MissionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "visibleBounds": {
+        "left": 55.5963134765625,
+        "top": 1188.7841796875,
+        "right": 55.5963134765625,
+        "bottom": 1188.7841796875,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 56,
+        "y": 1189
+      },
+      "visible": false,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      }
+    },
+    {
+      "id": "242658",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "GachaButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Gacha/GachaButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "visibleBounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "center": {
+        "x": 630,
+        "y": 1155
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242736",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "LessonButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Lesson/LessonButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 624.385986328125,
+        "top": 1064.0234375,
+        "right": 759.48486328125,
+        "bottom": 1199.1259765625,
+        "width": 135.098876953125,
+        "height": 135.1025390625
+      },
+      "visibleBounds": {
+        "left": 624.385986328125,
+        "top": 1064.0234375,
+        "right": 720,
+        "bottom": 1199.1259765625,
+        "width": 95.614013671875,
+        "height": 135.1025390625
+      },
+      "center": {
+        "x": 672,
+        "y": 1132
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244000",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "SubscriptionButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/SubscriptionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "visibleBounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "center": {
+        "x": 634,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244074",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "ReferenceBookButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/ReferenceBookButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "visibleBounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "center": {
+        "x": 690,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244104",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "LoveRankingButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/LoveRankingButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "visibleBounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "center": {
+        "x": 595,
+        "y": 581
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244242",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "Button",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/MissionBanner/ChallengeBeginnerButton/Button",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 70.70463562011719,
+        "top": 1125.6372375488281,
+        "right": 165.69712829589844,
+        "bottom": 1203.358383178711,
+        "width": 94.99249267578125,
+        "height": 77.72114562988281
+      },
+      "visibleBounds": {
+        "left": 70.70463562011719,
+        "top": 1125.6372375488281,
+        "right": 165.69712829589844,
+        "bottom": 1203.358383178711,
+        "width": 94.99249267578125,
+        "height": 77.72114562988281
+      },
+      "center": {
+        "x": 118,
+        "y": 1164
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244416",
+      "type": "LLAS.Components.UI.ButtonTransition",
+      "kind": "button",
+      "name": "ButtonPositiveS",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/DailyTheater/ButtonPositiveS",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "visibleBounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "center": {
+        "x": 550,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241818",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "TrainingTreeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/TrainingTree/TrainingTreeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241820",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "TrainingTreeButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/TrainingTree/TrainingTreeButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 174.5068359375,
+        "top": 1062.12158203125,
+        "right": 269.154052734375,
+        "bottom": 1156.77001953125,
+        "width": 94.647216796875,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 222,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241858",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "DeckLiveEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLiveEdit/DeckLiveEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241860",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "DeckLiveEditButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/CardToolTip/Buttons/DeckLiveEdit/DeckLiveEditButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "visibleBounds": {
+        "left": 64.3963623046875,
+        "top": 1062.12158203125,
+        "right": 159.049072265625,
+        "bottom": 1156.77001953125,
+        "width": 94.6527099609375,
+        "height": 94.6484375
+      },
+      "center": {
+        "x": 112,
+        "y": 1109
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241888",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "CardButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 56,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241890",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "CardButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 56,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241892",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "CardButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 56,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241894",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "CardButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/LeftBottomButtons/Card/CardButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "visibleBounds": {
+        "left": 5.3997802734375,
+        "top": 1242.21923828125,
+        "right": 105.787353515625,
+        "bottom": 1277.83935546875,
+        "width": 100.3875732421875,
+        "height": 35.6201171875
+      },
+      "center": {
+        "x": 56,
+        "y": 1260
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242488",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "StoryMainButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/StoryMain/StoryMainButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "visibleBounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "center": {
+        "x": 552,
+        "y": 1233
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242490",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "StoryMainButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/StoryMain/StoryMainButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "visibleBounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "center": {
+        "x": 552,
+        "y": 1233
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242492",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "StoryMainButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/StoryMain/StoryMainButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "visibleBounds": {
+        "left": 479.2840576171875,
+        "top": 1195.80078125,
+        "right": 625.0067138671875,
+        "bottom": 1270.28564453125,
+        "width": 145.72265625,
+        "height": 74.48486328125
+      },
+      "center": {
+        "x": 552,
+        "y": 1233
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242666",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "GachaButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Gacha/GachaButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "visibleBounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "center": {
+        "x": 630,
+        "y": 1155
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "242670",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "GachaButton",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Gacha/GachaButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "visibleBounds": {
+        "left": 557.0013427734375,
+        "top": 1118.0810546875,
+        "right": 702.7294921875,
+        "bottom": 1192.5634765625,
+        "width": 145.7281494140625,
+        "height": 74.482421875
+      },
+      "center": {
+        "x": 630,
+        "y": 1155
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244080",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "ReferenceBookButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/ReferenceBookButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "visibleBounds": {
+        "left": 664.4078369140625,
+        "top": 495.352294921875,
+        "right": 716.221923828125,
+        "bottom": 547.1664428710938,
+        "width": 51.8140869140625,
+        "height": 51.81414794921875
+      },
+      "center": {
+        "x": 690,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244108",
+      "type": "LLAS.Components.UI.TutorialGuideButtonMarker",
+      "kind": "button",
+      "name": "LoveRankingButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/LoveRankingButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "visibleBounds": {
+        "left": 568.8756103515625,
+        "top": 554.72265625,
+        "right": 620.689697265625,
+        "bottom": 606.5367431640625,
+        "width": 51.8140869140625,
+        "height": 51.8140869140625
+      },
+      "center": {
+        "x": 595,
+        "y": 581
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 4,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "241936",
+      "type": "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController",
+      "kind": "button",
+      "name": "GlobalMenu",
+      "path": "EntryPoint/Canvas/UnSafeArea/GlobalMenu",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "Camera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/LoadingUICanvas/SafeArea/BackKeyHandler"
+      }
+    },
+    {
+      "id": "244008",
+      "type": "LLAS.Scene.Home.HomeSubscriptionPassButton",
+      "kind": "button",
+      "name": "SubscriptionButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/SubscriptionButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "visibleBounds": {
+        "left": 601.3673706054688,
+        "top": 488.06591796875,
+        "right": 667.2144775390625,
+        "bottom": 553.9130249023438,
+        "width": 65.84710693359375,
+        "height": 65.84710693359375
+      },
+      "center": {
+        "x": 634,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244096",
+      "type": "LLAS.Scene.Home.HomeDailyTheaterButton",
+      "kind": "button",
+      "name": "DailyTheater",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/HorizontalLayoutGroup/DailyTheater",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "visibleBounds": {
+        "left": 506.9146728515625,
+        "top": 486.44677734375,
+        "right": 593.271484375,
+        "bottom": 555.5322265625,
+        "width": 86.3568115234375,
+        "height": 69.08544921875
+      },
+      "center": {
+        "x": 550,
+        "y": 521
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    },
+    {
+      "id": "244112",
+      "type": "LLAS.Scene.Home.HomeMenuButtonsController",
+      "kind": "button",
+      "name": "Buttons",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "visibleBounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280,
+        "width": 720,
+        "height": 1280
+      },
+      "center": {
+        "x": 360,
+        "y": 640
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 5,
+        "firstName": "BackKeyHandler",
+        "firstPath": "EntryPoint/LoadingUICanvas/SafeArea/BackKeyHandler"
+      }
+    },
+    {
+      "id": "244120",
+      "type": "LLAS.Scene.Home.ChallengeButton",
+      "kind": "button",
+      "name": "ChallengeBeginnerButton",
+      "path": "EntryPoint/Canvas/SafeArea/Buttons/Margin/MissionBanner/ChallengeBeginnerButton",
+      "text": "",
+      "label": "",
+      "active": true,
+      "enabled": true,
+      "interactable": null,
+      "bounds": {
+        "left": 70.70463562011719,
+        "top": 1125.6372375488281,
+        "right": 165.69712829589844,
+        "bottom": 1203.358383178711,
+        "width": 94.99249267578125,
+        "height": 77.72114562988281
+      },
+      "visibleBounds": {
+        "left": 70.70463562011719,
+        "top": 1125.6372375488281,
+        "right": 165.69712829589844,
+        "bottom": 1203.358383178711,
+        "width": 94.99249267578125,
+        "height": 77.72114562988281
+      },
+      "center": {
+        "x": 118,
+        "y": 1164
+      },
+      "visible": true,
+      "alpha": 1,
+      "groupsInteractable": true,
+      "blocksRaycasts": true,
+      "canvas": {
+        "mode": null,
+        "camera": "UICommonCamera"
+      },
+      "hit": {
+        "available": true,
+        "hittable": false,
+        "hits": 3,
+        "firstName": "LoadingGuard",
+        "firstPath": "EntryPoint/LoadingUICanvas/LoadingGuard"
+      }
+    }
+  ],
+  "features": {
+    "native": {
+      "bridgeLoaded": true,
+      "gameLoaded": true,
+      "config": {
+        "magic": "SFOVRW22",
+        "version": 1,
+        "size": 32,
+        "min": 2,
+        "max": 2,
+        "fastIntro": 1,
+        "generation": 4,
+        "writable": true,
+        "executable": false,
+        "orientation": 1
+      },
+      "requestedOrientation": 1
+    },
+    "aspectCorrectors": [],
+    "splashScreens": [],
+    "mv": {
+      "deckCells": [],
+      "pickerCells": [],
+      "liveMembers": [],
+      "errors": [],
+      "suitCatalogs": [],
+      "suitCatalogErrors": [],
+      "deckRoots": [],
+      "suitPickerCells": [],
+      "directorAssets": [],
+      "standingMemberNum": null,
+      "liveMasterId": null,
+      "musicRows": [],
+      "deckTabGroups": []
+    },
+    "downloadSettings": [],
+    "diagnostics": []
+  },
+  "enumeratedObjects": 553,
+  "customButtonTypes": [
+    "LLAS.Components.UI.ProductButton",
+    "LLAS.Components.UI.ProductButtonSound",
+    "LLAS.Components.UI.ButtonConcept",
+    "LLAS.Components.UI.ButtonTransition",
+    "LLAS.Components.UI.TutorialGuideButtonMarker",
+    "LLAS.Scene.GlobalMenu.GlobalMenuButtonsController",
+    "LLAS.Scene.Home.HomeSubscriptionPassButton",
+    "LLAS.Scene.Home.HomeDailyTheaterButton",
+    "LLAS.Scene.Home.HomeMenuButtonsController",
+    "LLAS.Scene.Home.ChallengeButton"
+  ],
+  "truncated": false,
+  "elapsedMs": 1364,
+  "hitTest": {
+    "available": true,
+    "error": null
+  },
+  "diagnostics": []
+}

@@ -1,0 +1,42 @@
+{
+  "canonical_zip": "/dev/shm/sifas-v23-r2-actual-20261114/GL/artifact.zip",
+  "canonical_zip_sha256": "24d5c5d56ef7d7ff92ed4cad91436e68247377142f9cce07fe46a38ec75a4c25",
+  "source_run": 43555080796,
+  "source_head": "0189d24e520634a5b79f7e9dc7dd82a90897bcd5",
+  "source_tree": "ff8358f97ea1193adb1b9cc50604cc0b8faf1653",
+  "additional_streamed_json_bytes": 577651,
+  "additional_streamed_json_limit_bytes": 4194304,
+  "members": [
+    {
+      "name": "mv-ui-000.json",
+      "bytes": 183572,
+      "sha256": "a98886fcfb1d939d50e70aad7b6404b2f638f4665755b781875b374eff2f9817",
+      "source": "same canonical ZIP, newly streamed"
+    },
+    {
+      "name": "mv-ui-001.json",
+      "bytes": 217403,
+      "sha256": "c8dba6c98ecb104ffd871b552508c111b0b04de9a6111fd5b51bbe2f981aa4e9",
+      "source": "same canonical ZIP, newly streamed"
+    },
+    {
+      "name": "mv-ui-002.json",
+      "bytes": 176676,
+      "sha256": "77c1fbe07e36c3e6ecfad5acec015bd7e7e86e2058b319d19151c8e1ab380754",
+      "source": "same canonical ZIP, newly streamed"
+    },
+    {
+      "name": "mv-ui-209.json",
+      "bytes": 283941,
+      "sha256": "8fb2ce1b8dc51a43909b226e3dc384e751ddabb194fe026e21045d99ac634f5d",
+      "source": "previously selected original actual snapshot"
+    },
+    {
+      "name": "mv-ui-210.json",
+      "bytes": 283934,
+      "sha256": "05f69a882eea14956aee827b1911019691d47a5a9ad9960d41d8e2a3d2f71efe",
+      "source": "previously selected original actual snapshot"
+    }
+  ],
+  "scope": "Actual failed QA route snapshots, never client feature approval; raw original files unchanged"
+}

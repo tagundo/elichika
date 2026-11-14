@@ -17,11 +17,16 @@ import time
 
 from PIL import Image
 import feature_client_smoke as semantics
-from mv_driver import MVDriver, validated_pick, successful_live_start_count, deck_layout
+from mv_driver import MVDriver, validated_pick, successful_live_start_count, deck_layout, standing_count
 from mv_catalog_audit import SuitCatalogAudit
 from unity_main_tid import select_unity_main_tid, proc_stat_starttime
 
 MEMBER_SCENES={'CardList','CardDetail','CommunicationMemberSelect','CommunicationMemberDetail'}
+MEMBER_BACK_PATH='EntryPoint/Canvas/UnSafeArea/BackButtonSafeArea/BackButton'
+HOME_LIVE_PATH='EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Live/LiveButton'
+NAVIGATION_CONTROLS={'CardButton','CardListButton','CommunicationMemberDetailButton',
+    'CommunicationMemberSelectButton','LiveButton','BackButton','EnableMvBtn','MvBtnDownload',
+    'CloseButton','ButtonClose'}
 
 
 def require_same_target(original,fresh):
@@ -44,8 +49,77 @@ def fresh_scroll_target(original,scene,tree):
 def navigation_stage(stage,scene):
     # Footer names are shared by unrelated scenes; never advance on them.
     if stage=='bootstrap' and scene=='Home':return 'members'
-    if stage=='members' and scene in MEMBER_SCENES:return 'mv'
+    if stage=='members' and scene in MEMBER_SCENES:return 'return-home'
+    if stage=='return-home' and scene=='Home':return 'mv'
     return stage
+
+
+def route_action(stage,scene):
+    """Use only routes exposed by the actual Home and member captures."""
+    if stage=='return-home' and scene in MEMBER_SCENES:
+        return {'patterns':['^'+re.escape(MEMBER_BACK_PATH)+'$'],
+                'reason':'return-from-observed-members-to-home',
+                'blocked_reason':'Await actual Home after the current member Back control'}
+    if stage=='mv' and scene=='Home':
+        return {'patterns':['^'+re.escape(HOME_LIVE_PATH)+'$'],
+                'reason':'open-live-from-observed-home',
+                'blocked_reason':'Await the current hittable Home Live control and its observed transition'}
+    return None
+
+
+def actionable_nodes(tree):
+    return [n for n in tree.get('nodes',[]) if n.get('kind') in ('button','toggle') and
+            all(n.get(key) is True for key in ('active','visible','enabled')) and
+            (n.get('hit') or {}).get('available') is True and
+            (n.get('hit') or {}).get('hittable') is True]
+
+
+class MVNavigationStagnation(RuntimeError):
+    """The QA route stopped making observed semantic progress."""
+
+
+class MVProgressGuard:
+    def __init__(self,*,timeout=50,required_capacity=12):
+        self.timeout=timeout;self.seen=set();self.last_progress=None;self.elapsed=0
+        self.navigation_complete=False;self.required_capacity=required_capacity
+
+    def observe(self,tree,*,stage,phase,case,selected_song,snapshot,
+                blocked_reason,last_action=None,now=None):
+        now=time.monotonic() if now is None else now
+        if self.navigation_complete:return
+        layout=deck_layout(tree);capacity=standing_count(tree)
+        if (tree.get('screen',{}).get('scene')=='LiveMvDeckSelect' and
+            capacity==self.required_capacity and layout is not None and len(layout)==capacity):
+            # This guard owns navigation/pre-custom-deck waits only. Genuine
+            # recording, catalog and camera controls keep their existing gates.
+            self.navigation_complete=True;return
+        mv=(tree.get('features') or {}).get('mv') or {}
+        # Content matters; frame/time, animation transforms, coordinates,
+        # instance IDs and repeated attempted gestures do not.
+        state={'stage':stage,'scene':tree.get('screen',{}).get('scene'),
+               'phase':phase,'case':case,'selected_song':selected_song,
+               'liveMasterId':mv.get('liveMasterId'),'standingMemberNum':mv.get('standingMemberNum'),
+               'deck':deck_layout(tree),
+               'controls':sorted({n.get('path') or n.get('name') or '' for n in actionable_nodes(tree)
+                                  if n.get('name') in NAVIGATION_CONTROLS}),
+               'music':sorted({str(r.get('liveMasterId')) for r in mv.get('musicRows',[]) if r.get('isPlayable') is True and
+                              (r.get('target') or {}).get('visible') is True}),
+               'members':sorted({str(c.get('memberId')) for c in mv.get('pickerCells',[]) if c.get('active') is True}),
+               'suits':sorted({str((c.get('memberId'),c.get('suitId'))) for c in mv.get('suitPickerCells',[]) if c.get('active') is True})}
+        fingerprint=hashlib.sha256(json.dumps(state,sort_keys=True).encode()).digest()
+        # Revisiting a known state cannot keep a navigation cycle alive.
+        if fingerprint not in self.seen:
+            self.seen.add(fingerprint);self.last_progress=now
+        self.elapsed=now-self.last_progress
+        if self.elapsed>=self.timeout:
+            raise MVNavigationStagnation(
+                'No new semantic MV navigation progress for %.1fs (limit %ss); stage=%s scene=%s phase=%s case=%s; '
+                'blocked=%s; last_snapshot=%s; last_action=%s' %
+                (self.elapsed,self.timeout,stage,state['scene'],phase,case,blocked_reason,snapshot,last_action))
+
+    def status(self):
+        return {'timeout_seconds':self.timeout,'seconds_without_new_semantic_progress':round(self.elapsed,3),
+                'distinct_semantic_states':len(self.seen),'navigation_complete':self.navigation_complete}
 
 
 def costume_counts(host,evidence,label):
@@ -90,6 +164,7 @@ def run_mv_focus(context):
     session=agent=remote=None;video=None;driver=MVDriver(evidence);catalog_audit=SuitCatalogAudit(evidence)
     sessions=[];scripts=[]
     stage='bootstrap';selected_song=None;music_scrolls=0;seen={};last_phase=None
+    progress_guard=MVProgressGuard(required_capacity=driver.required_capacity)
 
     def rpc(function,timeout=20):
         return semantics.bounded_rpc(function,timeout=timeout)
@@ -132,6 +207,7 @@ def run_mv_focus(context):
         hit=target.get('hit') or {};assert hit.get('available') and hit.get('hittable')
         assert target.get('active') and target.get('visible')
         x,y=semantics.center(target);assert 0<=x<screen['width'] and 0<=y<screen['height']
+        assert context['lifetime']()=={'pid':int(pid),'start_ticks':before_ticks}
         device.shell('input','tap',str(x),str(y))
         report['actions'].append({'source':'fresh-readonly-target-and-native-surface','reason':reason,
             'query':query,'path':target.get('path'),'center':[x,y],'snapshot_index':index})
@@ -149,19 +225,19 @@ def run_mv_focus(context):
         elif selected['scroll'].get('horizontal') is True and selected['scroll'].get('vertical') is not True:
             start=[int(b['left']+(b['right']-b['left'])*.8),y];end=[int(b['left']+(b['right']-b['left'])*.25),y]
         else:raise ValueError('Fresh ScrollRect has no unique scrolling axis')
+        assert context['lifetime']()=={'pid':int(pid),'start_ticks':before_ticks}
         device.shell('input','swipe',*(str(v) for v in (*start,*end)),str(duration))
         report['actions'].append({'source':'fresh-same-ScrollRect-after-native-surface-capture','path':selected['path'],
             'bounds':b,'start':start,'end':end,'snapshot':f'mv-ui-{index:03d}-fresh-scroll.json'})
 
     def choose(tree,patterns,reason,index):
-        candidates=[n for n in tree.get('nodes',[]) if n.get('kind') in ('button','toggle') and
-            n.get('active') and n.get('visible') and n.get('enabled') and
-            (n.get('hit') or {}).get('hittable') is True]
+        candidates=actionable_nodes(tree)
         target,expression=semantics.semantic_match(candidates,patterns)
         if not target:return False
         key=(reason,target.get('path'),expression)
         if time.monotonic()-seen.get(key,0)<4:return False
         picked=rpc(lambda:agent.exports_sync.pick({'id':target['id'],'requireHitTest':True}),timeout=10)
+        require_same_target({'screen':tree['screen'],'target':target},picked)
         tap_picked(picked,reason,index);seen[key]=time.monotonic();return True
 
     def stop_video():
@@ -252,7 +328,22 @@ def run_mv_focus(context):
             assert context['lifetime']()=={'pid':int(pid),'start_ticks':before_ticks}
             tree=rpc(lambda:agent.exports_sync.snapshot({'maxNodes':1500,'raycastText':True,'featureRegion':'GL'}))
             relative=f'mv-ui-{index:03d}.json';(evidence/relative).write_text(json.dumps(tree,ensure_ascii=False,indent=2)+'\n')
-            screen=tree['screen'];scene=screen.get('scene');geometry=fresh_native_geometry(screen,index)
+            screen=tree['screen'];scene=screen.get('scene')
+            route=route_action(stage,scene)
+            blocked=(route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
+            report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
+                'last_snapshot':relative,'blocked_reason':blocked,
+                'progress_guard':progress_guard.status()}
+            try:
+                # Check before every branch continue, including popup/song waits.
+                # Recording, catalog proof and later camera controls are outside this guard.
+                progress_guard.observe(tree,stage=stage,phase=driver.phase,case=driver.case,
+                    selected_song=selected_song,snapshot=relative,blocked_reason=blocked,
+                    last_action=report['actions'][-1] if report['actions'] else None)
+            finally:
+                report['mv_focus_progress']['progress_guard']=progress_guard.status()
+            context['save']()
+            geometry=fresh_native_geometry(screen,index)
             if scene=='Home':
                 # Dismiss only an exact currently rendered startup popup
                 # caption whose raycast target is its own physical ancestor.
@@ -266,6 +357,7 @@ def run_mv_focus(context):
                 if len(targets)==1:
                     target=next(iter(targets.values()))
                     picked=rpc(lambda:agent.exports_sync.pick({'id':target['id'],'requireHitTest':True}),timeout=10)
+                    require_same_target({'screen':tree['screen'],'target':target},picked)
                     tap_picked(picked,'close-exact-initial-home-popup',index);continue
             if stage=='bootstrap' and scene=='Home':report['verified']['home']=True
             if stage=='members' and scene in MEMBER_SCENES:
@@ -277,7 +369,8 @@ def run_mv_focus(context):
             if phase!=last_phase:
                 resources.capture('mv-'+driver.case.replace('_','-')+'-'+driver.phase.replace('_','-'),pid=pid);last_phase=phase
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
-                'last_snapshot':relative,'blocked_reason':driver.blocked_reason}
+                'last_snapshot':relative,'blocked_reason':(route_action(stage,scene) or {}).get('blocked_reason') or driver.blocked_reason,
+                'progress_guard':progress_guard.status()}
             print(json.dumps({'event':'actual-mv-focus','scene':scene,'stage':stage,'phase':driver.phase,'case':driver.case}),flush=True)
             context['save']()
             if stage=='bootstrap':
@@ -287,7 +380,16 @@ def run_mv_focus(context):
                 if popup:choose(tree,[r'^CloseButton$',r'^ButtonClose$'], 'close-current-initial-popup',index)
             elif stage=='members':
                 choose(tree,[r'^CommunicationMemberDetailButton$',r'^CommunicationMemberSelectButton$',r'^CardListButton$',r'^CardButton$',r'^Members?$',r'(?:Main|Bottom|Footer).*Member',r'スクールアイドル'],'open-members',index)
+            elif stage=='return-home':
+                route=route_action(stage,scene)
+                report['mv_focus_progress']['blocked_reason']=(route or {}).get('blocked_reason') or 'Await actual member Back control or actual Home; no guessed navigation'
+                if route:choose(tree,route['patterns'],route['reason'],index)
             elif stage=='mv':
+                route=route_action(stage,scene)
+                if route:
+                    report['mv_focus_progress']['blocked_reason']=route['blocked_reason']
+                    choose(tree,route['patterns'],route['reason'],index)
+                    time.sleep(.5);continue
                 if scene=='LiveMusicSelect' and selected_song is None:
                     rows=[r for r in ((tree.get('features') or {}).get('mv') or {}).get('musicRows',[]) if r.get('liveMasterId') in (12074,12096,12097,12121,12128) and r.get('isPlayable') is True and (r.get('target') or {}).get('visible') and ((r.get('target') or {}).get('hit') or {}).get('hittable')]
                     if rows:
