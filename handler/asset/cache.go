@@ -13,11 +13,9 @@ package asset
 import (
 	"elichika/config"
 	"elichika/log"
-	"elichika/utils"
 
 	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -112,48 +110,79 @@ func cacheLockFor(name string) *sync.Mutex {
 	return lock.(*sync.Mutex)
 }
 
-// Pack files can live at any depth under the cache dir: flat (files/<name>), or in buckets like the
-// archive.org dumps (files/pac0/<name>, ...). We index every file by basename once so a pack can be
-// found by name regardless of how the cache is organised, like llas_asset_extractor.py does.
-// The index is built lazily and reflects on-disk files at that moment; files added later (e.g. a
-// fresh tar extract) are picked up after a server restart.
+// Pack files can live in flat, bucketed or linked directories. Cache the file
+// names for fast hits, tied to the configured root; refresh on a miss only when
+// a traversed directory has changed since the last scan.
 var (
-	packIndex     map[string]string
-	packIndexOnce sync.Once
-	packIndexMu   sync.RWMutex
+	packIndex            map[string]string
+	packIndexOnce        sync.Once
+	packIndexMu          sync.RWMutex
+	packIndexBuildMu     sync.Mutex
+	packIndexRoot        string
+	packIndexDirectories []packDirectoryState
 )
 
 func buildPackIndex() {
-	idx := map[string]string{}
-	root := cacheDir()
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip unreadable dirs/files
-		}
-		if d.IsDir() {
-			return nil
-		}
-		name := d.Name()
-		if strings.HasPrefix(name, ".") {
-			return nil // skip temp/hidden files (.cdncache-*, .tmp-*)
-		}
-		idx[name] = path
-		return nil
-	})
-	packIndexMu.Lock()
-	packIndex = idx
-	packIndexMu.Unlock()
-	log.Printf("cdn cache: indexed %d files under %s\n", len(idx), root)
+	packIndexBuildMu.Lock()
+	defer packIndexBuildMu.Unlock()
+	publishPackIndex(cacheDir())
 }
 
-// indexLookup finds a pack file by name anywhere under the cache dir.
+// Called only while holding packIndexBuildMu.
+func publishPackIndex(root string) {
+	idx, directories, problems := scanPackFiles(root)
+	packIndexMu.Lock()
+	packIndex, packIndexRoot, packIndexDirectories = idx, root, directories
+	packIndexMu.Unlock()
+	log.Printf("cdn cache: indexed %d files under %s\n", len(idx), root)
+	// Do not turn a permissions or missing-volume problem into an unexplained
+	// upstream-only cache miss. Bound the number of path lines on a large library.
+	for number, problem := range problems {
+		if number == 8 {
+			break
+		}
+		log.Printf("cdn cache: cannot inspect %s: %v\n", problem.path, problem.err)
+	}
+	if len(problems) > 8 {
+		log.Printf("cdn cache: %d additional file/directory inspection errors\n", len(problems)-8)
+	}
+}
+
+func indexedPackSnapshot(name string) (string, bool, string, []packDirectoryState) {
+	packIndexMu.RLock()
+	defer packIndexMu.RUnlock()
+	path, exists := packIndex[name]
+	return path, exists, packIndexRoot, packIndexDirectories
+}
+
+// A second miss may have waited while another goroutine refreshed. Recheck
+// after taking the build lock so a single directory change causes one scan.
+func refreshPackIndexIfChanged() {
+	packIndexBuildMu.Lock()
+	defer packIndexBuildMu.Unlock()
+	_, _, indexedRoot, directories := indexedPackSnapshot("")
+	root := cacheDir()
+	if indexedRoot != root || packDirectoriesChanged(directories) {
+		publishPackIndex(root)
+	}
+}
+
+// indexLookup discovers files added under existing nested directories during a
+// running session. A changed library root is rebuilt before considering an old
+// result, so an old mounted volume cannot satisfy a new library's request.
 func indexLookup(name string) (string, bool) {
 	packIndexOnce.Do(buildPackIndex)
-	packIndexMu.RLock()
-	p, ok := packIndex[name]
-	packIndexMu.RUnlock()
-	if ok && utils.PathExists(p) {
-		return p, true
+	path, exists, root, directories := indexedPackSnapshot(name)
+	currentRoot := cacheDir()
+	if root == currentRoot && exists && regularPackFile(path) {
+		return path, true
+	}
+	if root != currentRoot || packDirectoriesChanged(directories) {
+		refreshPackIndexIfChanged()
+		path, exists, root, _ = indexedPackSnapshot(name)
+		if root == cacheDir() && exists && regularPackFile(path) {
+			return path, true
+		}
 	}
 	return "", false
 }
@@ -216,7 +245,7 @@ func packPath(file string) string {
 // When the file isn't found, it returns the canonical path (where it would be downloaded) and false.
 func localPath(file string) (string, bool) {
 	canonical := packPath(file)
-	if utils.PathExists(canonical) {
+	if regularPackFile(canonical) {
 		return canonical, true
 	}
 	// bucketed dumps (e.g. pac0/<name>): find it by name via the recursive index.
@@ -226,7 +255,7 @@ func localPath(file string) (string, bool) {
 		}
 	}
 	staticPath := config.StaticDataPath + file
-	if (cacheDir() != config.StaticDataPath) && utils.PathExists(staticPath) {
+	if (cacheDir() != config.StaticDataPath) && regularPackFile(staticPath) {
 		if !strings.Contains(file, "/") {
 			// legacy pack file placed in static/ by an older setup: move it into the cache.
 			if err := moveToCache(staticPath, canonical); err == nil {
