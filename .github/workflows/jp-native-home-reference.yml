@@ -1,0 +1,239 @@
+name: Original JP native bootstrap to raw post-Close references on exact C10
+
+on:
+  push:
+    branches: [codex/android-client-qa-jp-native-home-20261114-v1]
+
+permissions:
+  # Same V19 scope required to GET unpublished private APK fixture; no writes.
+  contents: write
+  actions: read
+
+concurrency:
+  group: jp-native-home-reference-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-jp-native-home-20261114-v1'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 70
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONOPTIMIZE: '0'
+      OMP_THREAD_LIMIT: '1'
+      QA_REGION: JP
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
+      - name: Checkout exact direct C10 Go fixture and recursive official data
+        uses: actions/checkout@v4
+        with:
+          repository: tagundo/elichika
+          ref: 51727bae11df587bb49bb0a0fd69a270018c380b
+          path: server-source
+          persist-credentials: false
+          submodules: recursive
+      - name: Download only exact signed JP b23 client
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-download-cache.XXXXXXXX")
+          python3 -B -X "pycache_prefix=$task_cache" qa/download_fixtures.py --manifest qa/frozen-fixtures.json --region JP --destination "$RUNNER_TEMP/jp-client" --evidence evidence --skip-server-apk --skip-frida
+      - name: Prepare native Android and English OCR without observer dependencies
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb apksigner aapt python3-venv tesseract-ocr tesseract-ocr-eng
+          python3 -m venv "$RUNNER_TEMP/jp-venv"
+          "$RUNNER_TEMP/jp-venv/bin/pip" install --disable-pip-version-check 'Pillow==11.0.0'
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          mkdir -p "$RUNNER_TEMP/jp-android-data"
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker run --detach --privileged --name jp-native-home-owned --cidfile "$RUNNER_TEMP/jp-native-home-container.id" \
+            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/jp-android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest androidboot.redroid_width=1280 androidboot.redroid_height=720 androidboot.redroid_fps=15 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          adb -s 127.0.0.1:5555 shell 'echo disposable-private-client-qa > /data/local/tmp/CODEX_DISPOSABLE_CLIENT_QA'
+          printf '%s\n' '_ --use-gl=angle --use-angle=vulkan' > "$RUNNER_TEMP/jp-webview-command-line"
+          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/jp-webview-command-line" /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+      - name: Check all 53 focused native reference source cases without feature qualification
+        run: |
+          set -euo pipefail
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-test-cache.XXXXXXXX")
+          "$RUNNER_TEMP/jp-venv/bin/python" -B -X "pycache_prefix=$task_cache" qa/verify_native_home_source.py --receipt evidence/jp-native-home-pure-test-receipt.json
+      - name: Build exact C10 Go with explicit normal Japanese account language
+        run: |
+          set -euo pipefail
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-builder-cache.XXXXXXXX")
+          python3 -B -X "pycache_prefix=$task_cache" qa/build_host_go_fixture_jp.py --source-root "$GITHUB_WORKSPACE/server-source" --source-sha 51727bae11df587bb49bb0a0fd69a270018c380b --output "$RUNNER_TEMP/jp-host-go-fixture"
+      - name: Collect original JP native bootstrap and raw post-Close candidates only
+        run: |
+          set -euo pipefail
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-runtime-cache.XXXXXXXX")
+          # Runtime2400 + separate owned cleanup120; one outer20second kill grace.
+          qa_exit=0
+          timeout --signal=TERM --kill-after=20s 2520s "$RUNNER_TEMP/jp-venv/bin/python" -B -u -X "pycache_prefix=$task_cache" qa/jp_native_home_capture.py \
+            --client-apk "$RUNNER_TEMP/jp-client/client.apk" --server-source server-source \
+            --host-server-root "$GITHUB_WORKSPACE/server-source" --host-server-receipt "$RUNNER_TEMP/jp-host-go-fixture/host-go-fixture.json" --evidence evidence/runtime || qa_exit=$?
+          printf 'exit=%s\ncontrol_seconds=2400\ncleanup_seconds=120\nwatchdog_seconds=2520\nkill_after_seconds=20\n' "$qa_exit" > evidence/native-home-body-exit.txt
+          exit "$qa_exit"
+      - name: Retain bounded actual native and rendering diagnostics
+        if: always()
+        run: |
+          mkdir -p evidence
+          diagnostics_exit=0
+          printf 'START\t%s\tbudget_seconds=150\tkill_after_seconds=5\n' "$EPOCHREALTIME" > evidence/diagnostics-budget.txt
+          timeout --signal=TERM --kill-after=5s 150s bash -s > evidence/diagnostics-wrapper.log 2> evidence/diagnostics-wrapper.stderr.log <<'DIAGNOSTICS' || diagnostics_exit=$?
+          set -euo pipefail
+          # Explicit allowlist: no private credentials, DBs, installables or caches.
+          for name in host-go-fixture.json go-build.log seed-build.log server-data-init.log synthetic-account-init.log; do
+            if [ -f "$RUNNER_TEMP/jp-host-go-fixture/$name" ]; then cp "$RUNNER_TEMP/jp-host-go-fixture/$name" "evidence/$name"; fi
+          done
+          capture() {
+            local output="$1" exit_code=0
+            shift
+            printf 'START\t%s\t%s\tlimit_seconds=20\tkill_after_seconds=2\n' "$output" "$EPOCHREALTIME" >> evidence/diagnostics-command-status.txt
+            # Keep captures in the outer timeout's process group.
+            timeout --foreground --signal=TERM --kill-after=2s 20s "$@" </dev/null > "evidence/$output" 2> "evidence/$output.stderr.log" || exit_code=$?
+            printf 'END\t%s\t%s\texit=%s\n' "$output" "$EPOCHREALTIME" "$exit_code" >> evidence/diagnostics-command-status.txt
+          }
+          capture final-logcat.txt adb -s 127.0.0.1:5555 logcat -d -t 4000
+          capture final-crashes.txt adb -s 127.0.0.1:5555 logcat -b crash -d
+          capture final-activities.txt adb -s 127.0.0.1:5555 shell dumpsys activity activities
+          capture surfaceflinger.txt adb -s 127.0.0.1:5555 shell dumpsys SurfaceFlinger
+          capture final-display.png adb -s 127.0.0.1:5555 exec-out screencap -p
+          capture redroid.log docker logs jp-native-home-owned
+          DIAGNOSTICS
+          printf 'END\t%s\texit=%s\n' "$EPOCHREALTIME" "$diagnostics_exit" >> evidence/diagnostics-budget.txt
+      - name: Export only redacted allowlisted public native reference evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-public-export-cache.XXXXXXXX")
+          timeout --signal=TERM --kill-after=5s 60s python3 -B -X "pycache_prefix=$task_cache" - <<'PUBLIC'
+          import hashlib,json,os,re
+          from pathlib import Path
+          evidence=Path('evidence')
+          public=Path(os.environ['RUNNER_TEMP'])/'jp-native-home-public'
+          public.mkdir(mode=0o700,exist_ok=False)
+          private=Path(os.environ['RUNNER_TEMP'])/'jp-host-go-fixture/synthetic-account.private.json'
+          password=None
+          if private.is_file():
+              password=json.loads(private.read_text())['password'].encode()
+              assert len(password)==16 and password.isalnum()
+          root_names={
+              'fixture-downloads.json','jp-native-home-pure-test-receipt.json',
+              'native-home-body-exit.txt','host-go-fixture.json','go-build.log','seed-build.log',
+              'server-data-init.log','synthetic-account-init.log','diagnostics-budget.txt',
+              'diagnostics-command-status.txt','diagnostics-wrapper.log','diagnostics-wrapper.stderr.log'}
+          diagnostic_names={'final-logcat.txt','final-crashes.txt','final-activities.txt',
+              'surfaceflinger.txt','final-display.png','redroid.log'}
+          root_names.update(diagnostic_names)
+          root_names.update(name+'.stderr.log' for name in diagnostic_names)
+          runtime_names={
+              'jp-native-home-reference-report.json','client-signature.txt','client-badging.txt',
+              'actual-selected-Light-state.json','ordinary-OK-sealed-source-boundary.json',
+              'successful-static-GET-source-offsets.jsonl','host-go-runtime.json','host-go-stop-proof.json',
+              'genuine-rpc-evidence.log','genuine-rpc-evidence-index.json','elichika-client-session.log',
+              'owned-game-stop-proof.json','owned-game-stop-processes.txt','owned-game-stop-failure-processes.txt',
+              'owned-game-cleanup-context.json','owned-game-cleanup-failure.json','owned-go-cleanup-deadline.json'}
+          frame=re.compile(r'jp-native-[0-9]{4}(?:\.(?:png|xml|json)|-activity\.txt|-title-ocr\.json|-download-progress-ocr\.json)')
+          intent=re.compile(r'(?:input-intent-[0-9]{3}|chooser-scroll-reservation-[0-9]{2})\.json')
+          entries=[]
+          def export(source,relative):
+              assert source.is_file() and not source.is_symlink()
+              data=source.read_bytes();original=hashlib.sha256(data).hexdigest()
+              assert len(data)<=64*1024**2
+              if source.suffix in ('.json','.jsonl','.xml','.txt','.log'):
+                  if password:data=data.replace(password,b'[redacted synthetic password]')
+                  if source.suffix in ('.txt','.log'):
+                      data=re.sub(rb'(?im)^.*admin[_ ]?password\s*[:=].*$',b'[redacted administrative credential line]',data)
+                      data=re.sub(rb'(?im)^(.*?(?:authorization|cookie)\s*[:=]).*$',rb'\1 [redacted]',data)
+              target=public/relative;target.parent.mkdir(parents=True,exist_ok=True)
+              with target.open('xb') as output:output.write(data)
+              entries.append({'path':relative.as_posix(),'source_sha256':original,
+                  'export_sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data),
+                  'redacted':hashlib.sha256(data).hexdigest()!=original})
+          for name in sorted(root_names):
+              source=evidence/name
+              if source.is_file():export(source,Path(name))
+          runtime=evidence/'runtime'
+          if runtime.is_dir():
+              for source in sorted(runtime.iterdir()):
+                  if source.name in runtime_names or frame.fullmatch(source.name) or intent.fullmatch(source.name):
+                      export(source,Path('runtime')/source.name)
+          profile=Path('qa/jp-native-home-profile.json')
+          if profile.is_file():export(profile,Path('jp-native-home-profile.json'))
+          index={'scope':'Original JP native reference evidence only; all11 feature flags false; raw post-Close candidates do not establish Home',
+              'allowlist_only':True,'databases_credentials_installables_and_caches_excluded':True,'entries':entries}
+          (public/'public-export-index.json').write_text(json.dumps(index,ensure_ascii=False,indent=2)+'\n')
+          PUBLIC
+      - name: Upload public native reference evidence before outer owned cleanup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sifas-JP-NATIVE-HOME-REFERENCE-ONLY
+          path: ${{ runner.temp }}/jp-native-home-public/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Always stop only a surviving tracked Go source fixture within one fixed bound
+        if: always()
+        run: |
+          mkdir -p evidence/outer-cleanup
+          task_cache=$(mktemp -d "$RUNNER_TEMP/jp-cleanup-cache.XXXXXXXX")
+          cleanup_exit=0
+          timeout --signal=TERM --kill-after=5s 20s python3 -B -X "pycache_prefix=$task_cache" qa/cleanup_owned_go.py \
+            --evidence evidence/runtime --receipt "$RUNNER_TEMP/jp-host-go-fixture/host-go-fixture.json" \
+            > evidence/outer-cleanup/Go-cleanup.stdout.txt 2> evidence/outer-cleanup/Go-cleanup.stderr.txt || cleanup_exit=$?
+          if [ -f evidence/runtime/fallback-owned-Go-stop.json ]; then cp evidence/runtime/fallback-owned-Go-stop.json evidence/outer-cleanup/; fi
+          printf 'exit=%s\nlimit_seconds=20\nkill_after_seconds=5\n' "$cleanup_exit" > evidence/outer-cleanup/Go-cleanup-status.txt
+          exit "$cleanup_exit"
+      - name: Always stop and prove absence of this exact owned Android container within one fixed bound
+        if: always()
+        run: |
+          mkdir -p evidence/outer-cleanup
+          cleanup_exit=0
+          timeout --signal=TERM --kill-after=5s 40s bash -s > evidence/outer-cleanup/container-cleanup.stdout.txt 2> evidence/outer-cleanup/container-cleanup.stderr.txt <<'CONTAINER' || cleanup_exit=$?
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/jp-native-home-container.id" ]; then
+            container_id=$(cat "$RUNNER_TEMP/jp-native-home-container.id")
+            case "$container_id" in *[!a-f0-9]*|'') exit 2;; esac
+            test "${#container_id}" = 64
+            if docker inspect "$container_id" >/dev/null 2>&1; then
+              test "$(docker inspect --format '{{.Name}}' "$container_id")" = /jp-native-home-owned
+              timeout --foreground --signal=TERM --kill-after=2s 15s docker rm -f "$container_id"
+            fi
+            if docker inspect "$container_id" >/dev/null 2>&1; then exit 1; fi
+            printf '%s\n' "$container_id" > evidence/outer-cleanup/owned-container-absent.txt
+          fi
+          CONTAINER
+          printf 'exit=%s\nlimit_seconds=40\nkill_after_seconds=5\n' "$cleanup_exit" > evidence/outer-cleanup/container-cleanup-status.txt
+          exit "$cleanup_exit"
+      - name: Retain bounded outer owned cleanup proofs only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sifas-JP-NATIVE-HOME-REFERENCE-ONLY-CLEANUP
+          path: evidence/outer-cleanup/
+          if-no-files-found: warn
+          retention-days: 7

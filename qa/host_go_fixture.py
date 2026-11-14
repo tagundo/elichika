@@ -126,7 +126,7 @@ class HostGoFixture:
         self._nonce = ''
         self._stopped = False
 
-    def start(self, device=None, timeout=60):
+    def start(self, device=None, timeout=60, *, checkpoint_failure=None):
         require(self.process is None, 'Owned Go source fixture was already started')
         require(file_sha256(self.binary) == self.binding['binary_sha256'], 'Go binary changed before launch')
         require(file_sha256(self.root / 'config.json') == self.receipt['config_sha256'],
@@ -177,7 +177,8 @@ class HostGoFixture:
                     return record
                 time.sleep(.15)
             raise FixtureError('Owned source-built Go child exited or did not publish its matching readiness nonce')
-        except BaseException:
+        except BaseException as error:
+            if checkpoint_failure is not None:checkpoint_failure(error)
             self.stop(device)
             raise
 
