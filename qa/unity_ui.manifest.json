@@ -3,10 +3,10 @@
   "frida_server_and_client": "16.6.6",
   "agent_version": 6,
   "bundle": "unity_ui.bundle.js",
-  "bytes": 215501,
-  "sha256": "c4d7a2f5975c4ab2ce29273d3d9f3d7afee966567f6a8ace6b153cae6fc71be8",
-  "observer_sha256": "9ee35771b8cc000a0b62f3f897dfa5bd7041cdc8308f79f1363efcd31a2f3cc1",
+  "bytes": 220589,
+  "sha256": "739fd471a086316d9658d3bf838129ba2309022bd8bae5125e53bf59968d2171",
+  "observer_sha256": "04c7c9f27cd6d2b5d7ba49e24286cfdf6bdd888e20e8da46848ae8922542b1e6",
   "bridge_sha256": "426db768c062908b685d713ee27f87b5eea3d8ea2a4d28cf8db465a6900da787",
-  "runtime_validation": "Pending exact frozen C5 full JP1800s genuine UI execution; all unreached native/FOV/orientation/MV/persistence/costume gates remain false",
+  "runtime_validation": "Pending actual Unity process; same-prefix bundle and source tests are not runtime proof",
   "dispatcher_sha256": "844f52ae68019e1c30b54cc8164e68e664d1a675d22e6c6b02f4f4d068a89e65"
 }

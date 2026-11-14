@@ -231,6 +231,7 @@ def main():
     parser.add_argument('--serial',default='127.0.0.1:5555')
     parser.add_argument('--max-seconds',type=int,default=600)
     parser.add_argument('--mv-focus',action='store_true',help='Continue native download/Home into strictly observed MV cases; no unobserved native case passes')
+    parser.add_argument('--predeck-operator-bridge',action='store_true',help='Allow at most two bounded predeck-only operator windows; no case or feature approval')
     parser.add_argument('--one-native-download-retry',action='store_true',help='Permit at most one fresh exact-modal ordinary Yes input under the original 1800/2400 second bounds')
     parser.add_argument('--download-start-diagnostic',action='store_true',help='Stop the owned game after real regular-Light selection/OK and first successful asset response; no observer or feature approval')
     parser.add_argument('--unity-agent',type=Path)
@@ -238,6 +239,7 @@ def main():
     args=parser.parse_args(); assert 120<=args.max_seconds<=(2400 if args.mv_focus else 600)
     assert not (args.mv_focus and args.download_start_diagnostic)
     if args.one_native_download_retry:assert args.mv_focus and args.max_seconds==2400
+    if args.predeck_operator_bridge:assert args.mv_focus and args.max_seconds==2400
     if args.mv_focus:assert args.unity_agent and args.frida_server
     if args.download_start_diagnostic:assert not args.unity_agent and not args.frida_server
     fixture=json.loads(args.fixtures.read_text());client=fixture['clients']['GL'];package=client['package']

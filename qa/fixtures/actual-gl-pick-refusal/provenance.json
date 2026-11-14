@@ -1,0 +1,22 @@
+{
+  "canonical_zip": "/dev/shm/sifas-gl-typed-scroll-r5-actual-20261114/artifact.zip",
+  "canonical_zip_sha256": "d1635cb250f855b91ac6a908664a71fb7f2ecea10e85a3cb344164871d02f73b",
+  "capsule_sha256": "dada7fb66edfeec6fbf163f2ae9df426d4388b905fb4ad8b0872208bb812e715",
+  "run_id": 43569335384,
+  "head_sha": "54c90af7b2a51de9b2e2abc7e4a397f3f435e0b6",
+  "raw_report_sha256": "7def760e0dad0660e1d24fdc3ce20bfab0f07e3143832fe8c2ba53bcff6521d4",
+  "members": [
+    {
+      "name": "mv-ui-028.json",
+      "sha256": "d8ff06ceaca6ca9624b831a6f49af414fc88cc41bcbf9a20045d479047d425e4",
+      "source": "Previously selected original member"
+    },
+    {
+      "name": "pick-refusal.json",
+      "sha256": "f956c88de679eb759df36366da2397910e84a4befd813395bf69995013231a49",
+      "source": "Derived verbatim exception string from report.error after exact RPCException prefix removal; no cause inferred"
+    }
+  ],
+  "additional_zip_extraction_bytes": 0,
+  "scope": "Previous snapshot and later read-only refusal are different captures; song12074 is a tap intent, not actual selected-ID or MV proof"
+}

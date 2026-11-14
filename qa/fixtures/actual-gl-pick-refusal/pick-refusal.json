@@ -1,0 +1,5 @@
+{
+  "exception_class": "RPCException",
+  "error_message": "Error: {\"error\":\"No active semantic UI target\",\"query\":{\"kind\":\"text\",\"id\":\"251586\",\"path\":\"EntryPoint/Canvas/SafeArea/RightArea/Info/ButtonContainer/MvBtnDownload/MvBtnDownloadLabel\",\"text\":\"Download\",\"requireHitTest\":true},\"matches\":[],\"screen\":{\"width\":720,\"height\":1280,\"orientation\":-1,\"scene\":\"LiveMusicSelect\",\"frame\":13548,\"unityVersion\":\"2018.4.23f1\"},\"hitTest\":{\"available\":true,\"error\":null},\"diagnostics\":[]}\n    at choose (/script1.js:4508)\n    at <anonymous> (/script1.js:4584)\n    at <anonymous> (/script1.js:3536)\n    at forEach (native)\n    at deliver (/script1.js:3542)\n    at <anonymous> (/script1.js:3621)\n    at call (native)\n    at <anonymous> (/script1.js:2732)",
+  "scope": "Actual first read-only pick refusal; preceding UI snapshot is a different frame and does not establish cause"
+}

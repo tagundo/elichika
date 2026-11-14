@@ -20,6 +20,7 @@ import feature_client_smoke as semantics
 from mv_driver import MVDriver, validated_pick, successful_live_start_count, deck_layout, standing_count
 from mv_catalog_audit import SuitCatalogAudit
 from unity_main_tid import select_unity_main_tid, proc_stat_starttime
+from predeck_availability import classified_semantic_refusal, music_selection_witness, music_selection_blocker
 
 MEMBER_SCENES={'CardList','CardDetail','CommunicationMemberSelect','CommunicationMemberDetail'}
 MEMBER_BACK_PATH='EntryPoint/Canvas/UnSafeArea/BackButtonSafeArea/BackButton'
@@ -221,6 +222,7 @@ class MVProgressGuard:
         state={'stage':stage,'scene':tree.get('screen',{}).get('scene'),
                'phase':phase,'case':case,'selected_song':selected_song,
                'liveMasterId':mv.get('liveMasterId'),'standingMemberNum':mv.get('standingMemberNum'),
+               'observed_music_selection':[(row.get('currentSelectedCellVO'),row.get('decidedCellVO')) for row in mv.get('musicSelection',[])],
                'deck':deck_layout(tree),
                'controls':sorted({n.get('path') or n.get('name') or '' for n in actionable_nodes(tree)
                                   if n.get('name') in NAVIGATION_CONTROLS} |
@@ -288,9 +290,45 @@ def run_mv_focus(context):
     sessions=[];scripts=[]
     stage='bootstrap';selected_song=None;music_scrolls=0;seen={};last_phase=None
     progress_guard=MVProgressGuard(required_capacity=driver.required_capacity)
+    availability_count=0
+    selection_observation_count=0
+    operator=None
 
     def rpc(function,timeout=20):
+        if operator is not None and operator.deadline is not None:timeout=min(timeout,operator.remaining(timeout))
         return semantics.bounded_rpc(function,timeout=timeout)
+
+    def semantic_pick(query,reason,index,*,selected_music_id=None):
+        nonlocal availability_count,selection_observation_count
+        try:picked=rpc(lambda:agent.exports_sync.pick(query),timeout=10)
+        except Exception as error:
+            # This is not dispatcher recovery: the exact read-only choose
+            # refusal issued no input. Every later attempt starts a new capture.
+            observation=classified_semantic_refusal(error,query,rpc_exception_type=frida.core.RPCException,
+                predeck=driver.phase=='baseline' and not progress_guard.navigation_complete)
+            if observation is None:raise
+            availability_count+=1
+            if availability_count>64:raise RuntimeError('Bounded predeck semantic availability observations exhausted') from error
+            relative='predeck-semantic-refusal-%03d.json'%availability_count
+            observation.update({'reason':reason,'snapshot_index':index,'phase':driver.phase,'case':driver.case})
+            with (evidence/relative).open('x') as output:json.dump(observation,output,ensure_ascii=False,indent=2);output.write('\n')
+            report.setdefault('predeck_semantic_availability',[]).append({'path':relative,
+                'sha256':hashlib.sha256((evidence/relative).read_bytes()).hexdigest(),
+                'error':observation['pick_snapshot']['error'],'input_performed':False})
+            context['save']();return None
+        if selected_music_id is not None:
+            witness=music_selection_witness(picked.get('musicSelection'),selected_music_id)
+            report['mv_song_selection']=witness
+            if not witness['current_selected_matches_requested']:
+                selection_observation_count+=1
+                if selection_observation_count>64:raise RuntimeError('Bounded predeck selection observations exhausted')
+                relative='predeck-selection-witness-%03d.json'%selection_observation_count
+                with (evidence/relative).open('x') as output:
+                    json.dump({'query':query,'pick':picked,'witness':witness,'input_performed':False},output,ensure_ascii=False,indent=2);output.write('\n')
+                report.setdefault('predeck_selection_observations',[]).append({'path':relative,
+                    'sha256':hashlib.sha256((evidence/relative).read_bytes()).hexdigest(),'input_performed':False})
+                context['save']();return None
+        return picked
 
     def retain_failure(error):
         report['mv_flow_failure']={'type':type(error).__name__,'message':str(error)[:1200],
@@ -313,7 +351,7 @@ def run_mv_focus(context):
         nodes=context['native'](f'mv-native-{index:03d}')
         return semantics.unity_surface_bounds(nodes,screen)
 
-    def tap_picked(picked,reason,index,query=None,*,semantic_query=None):
+    def tap_picked(picked,reason,index,query=None,*,semantic_query=None,selected_music_id=None,input_deadline=None,proof_prefix=None):
         if query is not None:validated_pick(picked,query)
         original=picked;target,screen=picked['target'],picked['screen']
         geometry=fresh_native_geometry(screen,index)
@@ -322,7 +360,10 @@ def run_mv_focus(context):
             picked=rpc(lambda:agent.exports_sync.pickmv(query),timeout=10);validated_pick(picked,query)
         else:
             request=dict(semantic_query or {},id=target['id'],requireHitTest=True)
-            picked=rpc(lambda:agent.exports_sync.pick(request),timeout=10)
+            selected_id=selected_music_id
+            if selected_id is None and (request.get('path')==MV_DOWNLOAD_LABEL_PATH or reason=='open-selected-music-video-deck'):selected_id=selected_song
+            picked=semantic_pick(request,'post-native-'+reason,index,selected_music_id=selected_id)
+            if picked is None:return False
             require_same_target(original,picked)
         assert original['screen'].get('scene')==picked['screen'].get('scene'),'MV pick changed scene before input'
         validated_pick(picked,query or {'role':'semantic'})
@@ -331,12 +372,28 @@ def run_mv_focus(context):
         hit=target.get('hit') or {};assert hit.get('available') and hit.get('hittable')
         assert target.get('active') and target.get('visible')
         x,y=semantics.center(target);assert 0<=x<screen['width'] and 0<=y<screen['height']
+        if proof_prefix:
+            from predeck_operator import proof,native_xml_reference
+            xml=native_xml_reference(context)
+            proof(evidence,proof_prefix+'-fresh.json',{'original_pick':original,'fresh_pick':picked,'native_surface':geometry,
+                'native_xml':xml['path'],'native_xml_sha256':xml['sha256'],'owned_identity':{'pid':int(pid),'start_ticks':before_ticks},
+                'input_deadline':input_deadline,'input_performed':False})
         assert context['lifetime']()=={'pid':int(pid),'start_ticks':before_ticks}
-        device.shell('input','tap',str(x),str(y))
+        if input_deadline is not None:
+            if time.monotonic()>=min(input_deadline,context['overall_deadline']):raise RuntimeError('Operator input end reached before tap')
+            validated_pick(picked,query or {'role':'semantic'})
+        try:
+            options={} if input_deadline is None else {'timeout':min(5,input_deadline-time.monotonic())}
+            device.shell('input','tap',str(x),str(y),**options)
+        except BaseException as error:
+            if proof_prefix:proof(evidence,proof_prefix+'-result.json',{'input_returned':False,'error_class':type(error).__name__})
+            raise
+        if proof_prefix:proof(evidence,proof_prefix+'-result.json',{'input_returned':True,'scope':'Ordinary input returned; semantic progress unproved'})
         report['actions'].append({'source':'fresh-readonly-target-and-native-surface','reason':reason,
             'query':query,'path':target.get('path'),'center':[x,y],'snapshot_index':index})
+        return True
 
-    def scroll_fresh(node,screen,index,duration,typed_context):
+    def scroll_fresh(node,screen,index,duration,typed_context,*,direction='forward',input_deadline=None,proof_prefix=None):
         surface=fresh_native_geometry(screen,index)
         fresh=rpc(lambda:agent.exports_sync.snapshot({'maxNodes':1500,'raycastText':True,'featureRegion':'GL'}))
         (evidence/f'mv-ui-{index:03d}-fresh-scroll.json').write_text(json.dumps(fresh,indent=2)+'\n')
@@ -349,10 +406,26 @@ def run_mv_focus(context):
         elif selected['scroll'].get('horizontal') is True and selected['scroll'].get('vertical') is not True:
             start=[int(b['left']+(b['right']-b['left'])*.8),y];end=[int(b['left']+(b['right']-b['left'])*.25),y]
         else:raise ValueError('Fresh ScrollRect has no unique scrolling axis')
+        if direction=='backward':start,end=end,start
+        elif direction!='forward':raise ValueError('Unknown typed scroll direction')
+        if proof_prefix:
+            from predeck_operator import proof,native_xml_reference
+            xml=native_xml_reference(context)
+            proof(evidence,proof_prefix+'-fresh.json',{'snapshot':fresh,'scroll':selected,'typed_context':typed_context,
+                'native_surface':surface,'native_xml':xml['path'],'native_xml_sha256':xml['sha256'],
+                'owned_identity':{'pid':int(pid),'start_ticks':before_ticks},'input_deadline':input_deadline,'input_performed':False})
         assert context['lifetime']()=={'pid':int(pid),'start_ticks':before_ticks}
-        device.shell('input','swipe',*(str(v) for v in (*start,*end)),str(duration))
+        if input_deadline is not None and time.monotonic()>=min(input_deadline,context['overall_deadline']):raise RuntimeError('Operator input end reached before swipe')
+        try:
+            options={} if input_deadline is None else {'timeout':min(5,input_deadline-time.monotonic())}
+            device.shell('input','swipe',*(str(v) for v in (*start,*end)),str(duration),**options)
+        except BaseException as error:
+            if proof_prefix:proof(evidence,proof_prefix+'-result.json',{'input_returned':False,'error_class':type(error).__name__})
+            raise
+        if proof_prefix:proof(evidence,proof_prefix+'-result.json',{'input_returned':True,'scope':'Ordinary input returned; semantic progress unproved'})
         report['actions'].append({'source':'fresh-same-ScrollRect-after-native-surface-capture','path':selected['path'],
             'bounds':b,'start':start,'end':end,'snapshot':f'mv-ui-{index:03d}-fresh-scroll.json'})
+        return True
 
     def choose(tree,patterns,reason,index):
         candidates=actionable_nodes(tree)
@@ -360,9 +433,12 @@ def run_mv_focus(context):
         if not target:return False
         key=(reason,target.get('path'),expression)
         if time.monotonic()-seen.get(key,0)<4:return False
-        picked=rpc(lambda:agent.exports_sync.pick({'id':target['id'],'requireHitTest':True}),timeout=10)
+        selected_id=selected_song if reason=='open-selected-music-video-deck' else None
+        picked=semantic_pick({'id':target['id'],'requireHitTest':True},reason,index,selected_music_id=selected_id)
+        if picked is None:return False
         require_same_target({'screen':tree['screen'],'target':target},picked)
-        tap_picked(picked,reason,index);seen[key]=time.monotonic();return True
+        if not tap_picked(picked,reason,index):return False
+        seen[key]=time.monotonic();return True
 
     def stop_video():
         nonlocal video
@@ -448,26 +524,55 @@ def run_mv_focus(context):
         assert context['lifetime']()=={'pid':int(pid),'start_ticks':before_ticks}
         (evidence/'home-cached-main-binding.json').write_text(json.dumps({'expected':expected,'observed':observed,
             'frame_samples':[first,second],'scope':'Actual TID/context/frame proof, not client feature approval'},indent=2)+'\n')
+        def operator_scope(current):
+            layout=deck_layout(current);capacity=standing_count(current)
+            validated=(current.get('screen',{}).get('scene')=='LiveMvDeckSelect' and capacity==driver.required_capacity and
+                       layout is not None and len(layout)==capacity and predeck_song_blocker(current,selected_song) is None)
+            return {'stage':stage,'phase':driver.phase,'selected_song_intent':selected_song,'deck_validated':validated,
+                    'cases_started':driver.phase!='baseline' or driver.baseline is not None or any(case['status']!='NOT_RUN' for case in driver.cases.values())}
+        def operator_song_intent(song):
+            nonlocal selected_song
+            if song not in OFFICIAL_TWELVE_STANDING_SONGS:raise ValueError('Operator song is outside requested official list')
+            selected_song=song
+        if getattr(args,'predeck_operator_bridge',False):
+            from predeck_operator import PredeckOperator
+            operator=PredeckOperator(dict(context,agent=lambda:agent),rpc=rpc,semantic_pick=semantic_pick,tap=tap_picked,
+                scroll=scroll_fresh,typed_scroll=typed_scroll_target,scope=operator_scope,on_song_intent=operator_song_intent)
         for index in range(1200):
             assert context['lifetime']()=={'pid':int(pid),'start_ticks':before_ticks}
             tree=rpc(lambda:agent.exports_sync.snapshot({'maxNodes':1500,'raycastText':True,'featureRegion':'GL'}))
             relative=f'mv-ui-{index:03d}.json';(evidence/relative).write_text(json.dumps(tree,ensure_ascii=False,indent=2)+'\n')
             screen=tree['screen'];scene=screen.get('scene')
+            report['mv_song_selection']=music_selection_witness(((tree.get('features') or {}).get('mv') or {}).get('musicSelection'),selected_song)
             route=route_action(stage,scene,tree=tree)
             song_plan=music_search_plan(tree,selected_song,music_scrolls)
-            blocked=predeck_song_blocker(tree,selected_song) or (song_plan or {}).get('blocked_reason') or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
+            blocked=predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or (song_plan or {}).get('blocked_reason') or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
                 'last_snapshot':relative,'blocked_reason':blocked,
                 'progress_guard':progress_guard.status()}
+            stalled=None
             try:
                 # Check before every branch continue, including popup/song waits.
                 # Recording, catalog proof and later camera controls are outside this guard.
                 progress_guard.observe(tree,stage=stage,phase=driver.phase,case=driver.case,
                     selected_song=selected_song,snapshot=relative,blocked_reason=blocked,
                     last_action=report['actions'][-1] if report['actions'] else None)
+            except MVNavigationStagnation as error:stalled=error
             finally:
                 report['mv_focus_progress']['progress_guard']=progress_guard.status()
             context['save']()
+            if operator is not None and progress_guard.navigation_complete:operator.seal_validated_deck()
+            if (operator is not None and not operator.closed and progress_guard.elapsed>=15 and
+                stage in ('members','return-home','mv') and not operator_scope(tree)['cases_started']):
+                before_progress=progress_guard.last_progress
+                def observe_operator(current):
+                    operator_relative='operator-capture-%04d-ui.json'%operator.sequence
+                    progress_guard.observe(current,stage=stage,phase=driver.phase,case=driver.case,selected_song=selected_song,
+                        snapshot=operator_relative,blocked_reason=blocked,last_action=report['actions'][-1] if report['actions'] else None)
+                    observe_operator.progressed=progress_guard.last_progress>before_progress
+                observe_operator.progressed=False
+                if operator.wait(observe_operator,MVNavigationStagnation):continue
+            if stalled is not None:raise stalled
             geometry=fresh_native_geometry(screen,index)
             if scene=='Home':
                 # Dismiss only an exact currently rendered startup popup
@@ -481,7 +586,8 @@ def run_mv_focus(context):
                         if target:targets[target['id']]=target
                 if len(targets)==1:
                     target=next(iter(targets.values()))
-                    picked=rpc(lambda:agent.exports_sync.pick({'id':target['id'],'requireHitTest':True}),timeout=10)
+                    picked=semantic_pick({'id':target['id'],'requireHitTest':True},'close-exact-initial-home-popup',index)
+                    if picked is None:continue
                     require_same_target({'screen':tree['screen'],'target':target},picked)
                     tap_picked(picked,'close-exact-initial-home-popup',index);continue
             if stage=='bootstrap' and scene=='Home':report['verified']['home']=True
@@ -494,7 +600,7 @@ def run_mv_focus(context):
             if phase!=last_phase:
                 resources.capture('mv-'+driver.case.replace('_','-')+'-'+driver.phase.replace('_','-'),pid=pid);last_phase=phase
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
-                'last_snapshot':relative,'blocked_reason':predeck_song_blocker(tree,selected_song) or (song_plan or {}).get('blocked_reason') or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
+                'last_snapshot':relative,'blocked_reason':predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or (song_plan or {}).get('blocked_reason') or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
                 'progress_guard':progress_guard.status()}
             print(json.dumps({'event':'actual-mv-focus','scene':scene,'stage':stage,'phase':driver.phase,'case':driver.case}),flush=True)
             context['save']()
@@ -529,6 +635,10 @@ def run_mv_focus(context):
                 if scene not in ('LiveMusicSelect','LiveMvDeckSelect','LiveMv','LiveMvCore'):
                     if choose(tree,[r'^Music\s*Video$',r'^Watch\s*MV$',r'(?:Button|Btn).*MV(?:$|/)',r'^MV$',r'^Live\s*Shows?$',r'^Live$',r'(?:Main|Bottom|Footer).*Live',r'^Songs?$'],'open-music-video',index):continue
                 if scene=='LiveMusicSelect' and selected_song is not None:
+                    selection_blocked=music_selection_blocker(tree,selected_song)
+                    if selection_blocked:
+                        report['mv_focus_progress']['blocked_reason']=selection_blocked
+                        time.sleep(.5);continue
                     if choose(tree,[r'^EnableMvBtn$',r'^MvBtnDownload$'],'open-selected-music-video-deck',index):continue
                     target=mv_download_text_target(tree,selected_song)
                     if target:
@@ -536,9 +646,10 @@ def run_mv_focus(context):
                         if time.monotonic()-seen.get(key,0)<4:time.sleep(.3);continue
                         text_query={'kind':'text','id':target['id'],'path':MV_DOWNLOAD_LABEL_PATH,
                                     'text':'Download','requireHitTest':True}
-                        picked=rpc(lambda:agent.exports_sync.pick(text_query),timeout=10)
+                        picked=semantic_pick(text_query,'download-selected-music-video-assets',index,selected_music_id=selected_song)
+                        if picked is None:continue
                         require_same_target({'screen':tree['screen'],'target':target},picked)
-                        tap_picked(picked,'download-selected-music-video-assets',index,semantic_query=text_query)
+                        if not tap_picked(picked,'download-selected-music-video-assets',index,semantic_query=text_query):continue
                         seen[key]=time.monotonic();continue
                 blocked=predeck_song_blocker(tree,selected_song)
                 if blocked:

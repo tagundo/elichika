@@ -311,7 +311,7 @@ function observeExistingMvExtras(screen,raycaster) {
 // Optional read-only MV music/tab observation; GL/JP field names verified.
 // Requires the helpers of mv_observer.fragment.js. No actions/callbacks/setters.
 function observeExistingMusicRowsAndMvTabs(screen,raycaster) {
-  var result={musicRows:[],deckTabGroups:[],errors:[]};
+  var result={musicRows:[],musicSelection:[],deckTabGroups:[],errors:[]};
   function collect(type,callback) {
     var klass=findClass(type,true);
     if(!klass){result.errors.push({type:type,error:"Type absent"});return;}
@@ -333,6 +333,18 @@ function observeExistingMusicRowsAndMvTabs(screen,raycaster) {
     });
     info.target=mvUiTarget(object,screen,raycaster);
     result.musicRows.push(info);
+  });
+  // Static GL metadata SHA256 c1ac82ff0b68351ffb3a58fce275b940c26316da64cdfc8201413382afdec14f:
+  // both fields reference LLAS.DM.LiveMusicSelectDM+CellVO. Record their
+  // independent existing IDs; neither field implies timing or MV readiness.
+  collect("LLAS.Scene.LiveMusicSelect.LiveMusicSelectController",function(object){
+    var info=mvExistingComponentInfo(object);
+    ["currentSelectedCellVO","decidedCellVO"].forEach(function(key){
+      var vo=mvReadField(object,key);
+      info[key]={liveMasterId:mvNumber(mvBacking(vo,"LiveMasterId")),
+        isPlayable:mvBacking(vo,"IsPlayable"),voClass:vo?fullType(vo):null};
+    });
+    result.musicSelection.push(info);
   });
   collect("LLAS.Components.UI.LiveMvDeckTabGroup",function(object){
     var info=mvExistingComponentInfo(object),vos=mvReadField(object,"deckTabVOs"),group=mvReadField(object,"deckSwitchToggleGroup");
@@ -527,7 +539,7 @@ function observeExistingMvState(screen) {
   result.errors=result.errors.concat(extras.errors);
   result.standingMemberNum=extras.deckRoots.length===1?extras.deckRoots[0].standingMemberNum:null;
   result.liveMasterId=extras.deckRoots.length===1?extras.deckRoots[0].liveMasterId:null;
-  var music=observeExistingMusicRowsAndMvTabs(screen,raycaster);result.musicRows=music.musicRows;result.deckTabGroups=music.deckTabGroups;result.errors=result.errors.concat(music.errors);
+  var music=observeExistingMusicRowsAndMvTabs(screen,raycaster);result.musicRows=music.musicRows;result.musicSelection=music.musicSelection;result.deckTabGroups=music.deckTabGroups;result.errors=result.errors.concat(music.errors);
   result.liveMembers.forEach(function(member){
     var found=[];
     extras.directorAssets.forEach(function(director){director.members.forEach(function(asset){
@@ -806,9 +818,55 @@ function splashFadeRGBA(splash) {
   function choose(query) {
     query = query || {};
     if (!query.id && !query.text && !query.name && !query.path && !Array.isArray(query.textAny)) throw new Error("pick needs id, text, textAny, name or path");
-    var observed = snapshot({ maxNodes: query.maxNodes || 1000, extraTypes: query.extraTypes || [], allSelectables: !!query.allSelectables, raycastText: true,
-      customButtons: query.customButtons !== false, numericTestId: query.numericTestId });
+    var snapshotOptions = { maxNodes: query.maxNodes || 1000, extraTypes: query.extraTypes || [], allSelectables: !!query.allSelectables, raycastText: true,
+      customButtons: query.customButtons !== false, numericTestId: query.numericTestId };
+    var observed = snapshot(snapshotOptions);
     function matches(actual, expected) { return query.exact === false ? normalize(actual).indexOf(normalize(expected)) >= 0 : normalize(actual) === normalize(expected); }
+    // Diagnose only this same returned enumeration, before actionability
+    // filters. An absent candidate is not proof of destruction or inactivity.
+    // A kind alone never selects unrelated nodes for these bounded summaries.
+    var identityCandidates = [];
+    observed.nodes.forEach(function (node) {
+      var by = [];
+      if (query.id && node.id === String(query.id)) by.push("id");
+      if (query.path && matches(node.path, query.path)) by.push("path");
+      if (query.name && matches(node.name, query.name)) by.push("name");
+      if (query.text && (matches(node.text, query.text) || matches(node.label, query.text))) by.push("text");
+      if (Array.isArray(query.textAny) && query.textAny.some(function (value) { return matches(node.text, value) || matches(node.label, value); })) by.push("textAny");
+      if (by.length) identityCandidates.push({ node: node, matchedBy: by });
+    });
+    function rejectionReasons(node) {
+      var reasons = [];
+      if (!node.visible) reasons.push("not-visible");
+      if (!node.enabled) reasons.push("not-enabled");
+      if (node.interactable === false) reasons.push("not-interactable");
+      if (!node.groupsInteractable) reasons.push("groups-not-interactable");
+      if (!node.blocksRaycasts) reasons.push("raycasts-not-blocked");
+      if (node.kind === "input" && node.input && node.input.readOnly) reasons.push("read-only-input");
+      if (query.kind && node.kind !== query.kind) reasons.push("kind-mismatch");
+      if (query.id && node.id !== String(query.id)) reasons.push("id-mismatch");
+      if (query.name && !matches(node.name, query.name)) reasons.push("name-mismatch");
+      if (query.path && !matches(node.path, query.path)) reasons.push("path-mismatch");
+      if (query.text && !matches(node.text, query.text) && !matches(node.label, query.text)) reasons.push("text-mismatch");
+      if (Array.isArray(query.textAny) && !query.textAny.some(function (value) { return matches(node.text, value) || matches(node.label, value); })) reasons.push("textAny-mismatch");
+      if (node.hit && node.hit.hittable === false) reasons.push("raycast-rejected");
+      if (query.requireHitTest && (!node.hit || !node.hit.available || !node.hit.hittable)) reasons.push("required-hit-test-failed");
+      return reasons;
+    }
+    function boundedText(value,limit) { return value === undefined || value === null ? null : String(value).slice(0,limit); }
+    function candidateSummary(entry) {
+      var node=entry.node,hit=node.hit,action=node.action;
+      return { id:node.id,kind:node.kind,name:boundedText(node.name,128),path:boundedText(node.path,384),
+        text:boundedText(node.text,160),label:boundedText(node.label,160),matchedBy:entry.matchedBy,
+        active:node.active,visible:node.visible,enabled:node.enabled,
+        interactable:node.interactable === undefined ? null : node.interactable,
+        groupsInteractable:node.groupsInteractable,blocksRaycasts:node.blocksRaycasts,
+        inputReadOnly:node.input ? !!node.input.readOnly : null,
+        hit:hit ? {available:hit.available,hittable:hit.hittable,hits:hit.hits,
+          firstName:boundedText(hit.firstName,128),firstPath:boundedText(hit.firstPath,384)} : null,
+        action:action ? {id:action.id,type:boundedText(action.type,160),path:boundedText(action.path,384)} : null,
+        bounds:node.bounds,visibleBounds:node.visibleBounds,center:node.center,rejectedBy:rejectionReasons(node) };
+    }
     var matchesFound = observed.nodes.filter(function (node) {
       if (!node.visible || !node.enabled || node.interactable === false || !node.groupsInteractable || !node.blocksRaycasts) return false;
       if (node.kind === "input" && node.input && node.input.readOnly) return false;
@@ -825,10 +883,18 @@ function splashFadeRGBA(splash) {
     var unique = [], actionIds = {};
     matchesFound.sort(function (a, b) { return (a.kind === "text" ? 1 : 0) - (b.kind === "text" ? 1 : 0); });
     matchesFound.forEach(function (node) { var key = node.action ? "action:" + node.action.id : "object:" + node.id; if (!actionIds[key]) { unique.push(node); actionIds[key] = true; } });
-    if (unique.length !== 1) throw new Error(JSON.stringify({ error: unique.length ? "Ambiguous active semantic UI targets" : "No active semantic UI target", query: query,
+    if (unique.length !== 1) throw new Error(JSON.stringify({ error: unique.length ? "Ambiguous active semantic UI targets" : "No active semantic UI target",
+      errorCode:unique.length ? "SEMANTIC_TARGET_AMBIGUOUS" : "SEMANTIC_TARGET_UNAVAILABLE",query: query,
       matches: unique.slice(0, 12).map(function (node) { return { id: node.id, name: node.name, path: node.path, text: node.text, label: node.label, center: node.center }; }),
+      candidateCount:identityCandidates.length,candidateLimit:16,candidatesTruncated:identityCandidates.length>16,
+      candidates:identityCandidates.slice(0,16).map(candidateSummary),matchCount:matchesFound.length,uniqueMatchCount:unique.length,
+      timestampMs:observed.timestampMs,snapshot:{nodeCount:observed.nodes.length,enumeratedObjects:observed.enumeratedObjects,
+        truncated:observed.truncated,options:snapshotOptions,includeInactive:false,
+        effectiveMaxNodes:Math.min(3000,Math.max(1,Number(snapshotOptions.maxNodes)||1000))},
+      musicSelection:observed.features && observed.features.mv ? observed.features.mv.musicSelection : [],
       screen: observed.screen, hitTest: observed.hitTest, diagnostics: observed.diagnostics }));
     return { timestampMs: observed.timestampMs, screen: observed.screen, target: unique[0],
+      musicSelection:observed.features && observed.features.mv ? observed.features.mv.musicSelection : [],
       input: { method: "adb shell input tap", x: unique[0].center.x, y: unique[0].center.y },
       coordinateSource: "Live Unity RectTransform world corners projected through its Canvas camera; Android top-left origin" };
   }
