@@ -1,0 +1,29 @@
+{
+  "id": "jp-native-0046",
+  "reason": "native-real-Light-download",
+  "png_sha256": "32c893aea976007c46c4a091b086a2228e859311132facdef4a2b66ab15995c3",
+  "native_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+  "native_at": 771.873585177,
+  "captured_at": 772.722278708,
+  "identity_before": {
+    "pid": 1906,
+    "start_ticks": "54498"
+  },
+  "identity_after": {
+    "pid": 1906,
+    "start_ticks": "54498"
+  },
+  "frame": [
+    720,
+    1280
+  ],
+  "surface": {
+    "left": 0,
+    "top": 0,
+    "right": 720,
+    "bottom": 1280
+  },
+  "activity": "com.klab.lovelive.allstars.MainActivity",
+  "activity_at": 772.788015141,
+  "activity_sha256": "211c7cd1b8cc3cc8427854fff33b6abffda769c5af915296d70e8c4613c6e136"
+}

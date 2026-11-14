@@ -1,0 +1,29 @@
+{
+  "id": "jp-native-0047",
+  "reason": "one-bounded-primary-failure-original",
+  "png_sha256": "5fb2dfdcebc5aa12f3b48a2dd51f19f01ecb0b8166b1a814f66615b61f52216b",
+  "native_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+  "native_at": 775.784878596,
+  "captured_at": 776.875982925,
+  "identity_before": {
+    "pid": 1906,
+    "start_ticks": "54498"
+  },
+  "identity_after": {
+    "pid": 1906,
+    "start_ticks": "54498"
+  },
+  "frame": [
+    720,
+    1280
+  ],
+  "surface": {
+    "left": 0,
+    "top": 0,
+    "right": 720,
+    "bottom": 1280
+  },
+  "activity": "com.klab.lovelive.allstars.MainActivity",
+  "activity_at": 776.991225144,
+  "activity_sha256": "1222c81bf0062568a3ed7c554ec9d856bf9c47690b1c4cc41b4d354d7304710a"
+}

@@ -36,7 +36,8 @@ def main():
             'test_jp_native_home_v3_phase.py','test_jp_native_home_cleanup.py','test_jp_title_pulse.py',
             'test_jp_current_light.py','test_jp_native_label_approval.py','test_jp_visual_label_integration.py',
             'test_jp_geometric_scroll.py','test_jp_manual_chooser_budget.py','test_jp_actual_selected_style.py',
-            'test_jp_modal_cancel_raster.py','test_jp_complete_interior.py','test_jp_chooser_routing.py'))
+            'test_jp_modal_cancel_raster.py','test_jp_complete_interior.py','test_jp_chooser_routing.py',
+            'test_jp_download_wait_policy.py'))
     started=time.monotonic();result=unittest.TextTestRunner(verbosity=2).run(suite)
     assert sources()==original and not list(cache.iterdir())
     after=memory_snapshot();require_headroom(after,allowance=0)

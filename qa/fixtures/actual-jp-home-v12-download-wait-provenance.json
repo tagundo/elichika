@@ -1,0 +1,51 @@
+{
+  "scope": "Original R12 post-validated-OK unclassified download frames; no completion, Home, feature or input authority",
+  "source_archive": {
+    "path": "/dev/shm/sifas-jp-native-home-v12-actual-20261114/artifact.zip",
+    "sha256": "ae55bb6f434f765c439cb172591d43b63694108fd55a787bc164a786260d9ff1"
+  },
+  "expected_files": {
+    "actual-jp-home-v12-0046.png": {
+      "sha256": "32c893aea976007c46c4a091b086a2228e859311132facdef4a2b66ab15995c3",
+      "source_member": "runtime/jp-native-0046.png",
+      "source_sha256": "32c893aea976007c46c4a091b086a2228e859311132facdef4a2b66ab15995c3",
+      "bytes": 352050
+    },
+    "actual-jp-home-v12-0046.xml": {
+      "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "source_member": "runtime/jp-native-0046.xml",
+      "source_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "bytes": 2106
+    },
+    "actual-jp-home-v12-0046.json": {
+      "sha256": "98ef498ee81f2b73c8d6363514e16afcfec933641c9be32b984c438f8d76b598",
+      "source_member": "runtime/jp-native-0046.json",
+      "source_sha256": "98ef498ee81f2b73c8d6363514e16afcfec933641c9be32b984c438f8d76b598",
+      "bytes": 747
+    },
+    "actual-jp-home-v12-0047.png": {
+      "sha256": "5fb2dfdcebc5aa12f3b48a2dd51f19f01ecb0b8166b1a814f66615b61f52216b",
+      "source_member": "runtime/jp-native-0047.png",
+      "source_sha256": "5fb2dfdcebc5aa12f3b48a2dd51f19f01ecb0b8166b1a814f66615b61f52216b",
+      "bytes": 382001
+    },
+    "actual-jp-home-v12-0047.xml": {
+      "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "source_member": "runtime/jp-native-0047.xml",
+      "source_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "bytes": 2106
+    },
+    "actual-jp-home-v12-0047.json": {
+      "sha256": "cc864a7a451b48bb72557e8418d37321f229f32fddb0d7cc07583c0ccfc25d4d",
+      "source_member": "runtime/jp-native-0047.json",
+      "source_sha256": "cc864a7a451b48bb72557e8418d37321f229f32fddb0d7cc07583c0ccfc25d4d",
+      "bytes": 757
+    }
+  },
+  "original_capture_metadata_unchanged": true,
+  "original_overall_started": 527.576578645,
+  "original_settings_started": 652.936042919,
+  "original_bulk_started": 763.459061684,
+  "test_orchestration": "Callback and Close-input fakes are unit-only. Original image/native-surface parsing is pure; controlled replay timestamps and plans do not prove new native execution.",
+  "no_OCR_or_new_actual_run_for_fixture_preparation": true
+}

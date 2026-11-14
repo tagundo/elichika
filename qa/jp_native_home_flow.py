@@ -15,6 +15,14 @@ import jp_complete_matcher as complete
 from native_download_guard import SettingsProgress, BulkDownloadProgress
 
 
+# Only rendering refusals before any Close attempt may be retained read-only.
+# Raw/native integrity, reference, phase, lifetime and freshness failures escape.
+UNCLASSIFIED_COMPLETE_RENDERING_REFUSALS=frozenset((
+    'Whole modal absent, altered, clipped, colliding, or ambiguous',
+    'Current Complete modal is clipped',
+    'Current Complete interior differs from exact pixels or caption RGB limit1'))
+
+
 class NativeLog:
     """Bounded incremental owned-log evidence; content is legal only after OK.
 
@@ -142,16 +150,35 @@ def pale_modal_candidate(raw):
 
 
 class NativeReferenceFlow:
-    """Minimal callback-driven chooser→download→raw post-close capture adapter."""
+    """Chooser→download→raw candidates; explicit reference wait is read-only.
+
+    The legacy default still stops on a pale unmatched download frame. The
+    native-reference opt-in retains bounded unclassified post-OK evidence
+    without using brightness as modal identity, error proof or progress.
+    Every Close still requires the unchanged pinned two-capture gate.
+    """
     def __init__(self, *, capture, send, lifetime, clock, pause, report, save,
             persist, log, overall_started, progress=lambda frame:{},prechooser_started=None,
-            light_planner=None,manual_label_review=False):
+            light_planner=None,manual_label_review=False,native_reference_download_wait=False):
         self.capture=capture;self.send=send;self.lifetime=lifetime;self.clock=clock
         self.pause=pause;self.report=report;self.save=save;self.persist=persist
         self.log=log;self.started=overall_started;self.settings=None
         self.progress=progress
         self.light=light if light_planner is None else light_planner
         self.recollect_light=light_planner is not None
+        if type(native_reference_download_wait) is not bool:
+            raise ValueError('Native reference download-wait policy must be explicit boolean')
+        self.native_reference_download_wait=native_reference_download_wait
+        self.report['download_wait_policy']={
+            'name':'native-reference-readonly-unclassified-post-OK-v1' if native_reference_download_wait else 'legacy-strict-pale-stop',
+            'active_only_after_validated_ordinary_OK':True,'unclassified_metadata_limit':8,
+            'brightness_is_modal_identity_or_error_proof':False,
+            'brightness_is_semantic_progress_or_deadline_renewal':False,
+            'unmatched_Complete_rendering':'read-only before any Close attempt; final gate stays strict',
+            'known_errors_and_native_context_failures':'immediate refusal',
+            'Close_requires':'unchanged pinned Complete and two fresh native captures',
+            'bulk_seconds':1800,'overall_seconds':2400,
+            'scope':'Native reference only; no Complete, Home or feature success inferred from logs or unclassified frames'}
         if type(manual_label_review) is not bool:raise ValueError('Manual native label review must be explicit boolean')
         self.chooser_idle_seconds=120 if manual_label_review else 45
         self.report['chooser_wait_budget']={'idle_seconds':self.chooser_idle_seconds,
@@ -192,6 +219,40 @@ class NativeReferenceFlow:
         return self.light.plan_pair(first,second,state=state,now=self.clock(),
             owned_identity=self.owned,current_identity=self.lifetime(),
             overall_started=self.started,settings_started=self.settings_started)
+
+    def _require_download_wait_context(self,frame):
+        """The opt-in read-only wait retains current native ownership proof."""
+        if (self.report.get('ordinary_OK_returned') is not True or self.bulk is None
+                or self.report.get('phase')!='download_wait'):
+            raise StopCapture('Read-only download wait requires validated returned ordinary OK')
+        now=complete._time(self.clock())
+        if now>=self.phase_end():
+            raise StopCapture('Original bulk/overall end reached without guarded Complete; unclassified frames do not renew bounds')
+        owned=complete._identity(self.owned)
+        if (complete._identity(self.lifetime())!=owned
+                or any(complete._identity(frame.get(key))!=owned for key in ('identity_before','identity_after'))):
+            raise StopCapture('Owned native lifetime changed during read-only download wait')
+        if not frame.get('surface') or frame.get('activity')!='com.klab.lovelive.allstars.MainActivity':
+            raise StopCapture('Current native Surface/Activity missing during read-only download wait')
+        times=[complete._time(frame[key]) for key in ('native_at','captured_at','activity_at')]
+        if times!=sorted(times) or any(not 0<=now-value<=8 for value in times):
+            raise StopCapture('Current native download observation is stale')
+
+    def _record_unclassified_download(self,frame,complete_match_refusal=None):
+        """Bounded evidence only; this never touches bulk progress or timers."""
+        if (not self.native_reference_download_wait or self.report.get('ordinary_OK_returned') is not True
+                or self.bulk is None or self.report.get('phase')!='download_wait'):
+            raise StopCapture('Unclassified download evidence is restricted to the explicit post-OK policy')
+        evidence=self.report.setdefault('unclassified_download_wait_candidates',{
+            'total_observed':0,'retained_limit':8,'retained':[],
+            'reason':'No pinned Complete match; remain read-only under original bulk/overall ends. Brightness is not modal identity, error proof or semantic progress.'})
+        evidence['total_observed']+=1
+        evidence['retained'].append({'capture':frame['id'],'PNG_sha256':frame['png_sha256'],
+            'native_sha256':frame['native_sha256'],'captured_at':frame['captured_at'],
+            'observed_at':self.clock(),'read_only':True,'input_authorized':False,
+            'Home_qualified':False,'semantic_progress_from_frame_classification':False,
+            'Complete_pixel_match_refusal':complete_match_refusal})
+        if len(evidence['retained'])>8:del evidence['retained'][1]
 
     def collect_light_pair(self,state,first=None):
         """Recollect read-only proof under the original ends; never retry input."""
@@ -257,19 +318,36 @@ class NativeReferenceFlow:
         while True:
             self.pause(.5)
             frame=self.capture('native-real-Light-download')
-            match=complete_observation(frame)
+            if self.native_reference_download_wait:self._require_download_wait_context(frame)
+            complete_match_refusal=None
+            try:match=complete_observation(frame)
+            except complete.Refusal as error:
+                # Only rendering mismatches become read-only candidates. Raw
+                # integrity, pinned-source and native-window failures escape.
+                if not self.native_reference_download_wait or str(error) not in UNCLASSIFIED_COMPLETE_RENDERING_REFUSALS:
+                    raise
+                match=None;complete_match_refusal=str(error)
             if match is not None:
                 other=self.capture('current-native-Complete-close-recheck')
+                if self.native_reference_download_wait:self._require_download_wait_context(other)
                 def close_plan():
                     return complete.plan_pair(complete_frame(frame),complete_frame(other),
                         phase='download_wait',now=self.clock(),owned_identity=self.owned,
                         current_identity=self.lifetime(),fixed_starts=fixed,complete_interior=True)
-                close=close_plan()
-                self.send(close['kind'],close['center'],(frame,other),verifier=close_plan)
-                self.report['native_Complete_close_evidence']=close
-                self.report['phase']='raw_post_close_candidates';self.post_close_end=min(self.started+2400,self.clock()+180)
-                self.report['original_post_close_end']=self.post_close_end;self.save();break
-            if pale_modal_candidate(frame['png_bytes']):
+                try:close=close_plan()
+                except complete.Refusal as error:
+                    if not self.native_reference_download_wait or str(error) not in UNCLASSIFIED_COMPLETE_RENDERING_REFUSALS:
+                        raise
+                    frame=other;complete_match_refusal=str(error)
+                else:
+                    # Never catch or retry an attempted/ambiguous Close send.
+                    self.send(close['kind'],close['center'],(frame,other),verifier=close_plan)
+                    self.report['native_Complete_close_evidence']=close
+                    self.report['phase']='raw_post_close_candidates';self.post_close_end=min(self.started+2400,self.clock()+180)
+                    self.report['original_post_close_end']=self.post_close_end;self.save();break
+            if self.native_reference_download_wait:
+                self._record_unclassified_download(frame,complete_match_refusal)
+            elif pale_modal_candidate(frame['png_bytes']):
                 raise StopCapture('Unknown, altered or unmatched native download modal captured; no grounded input')
             progress=self.progress(frame)
             self.report['bulk_progress']=self.bulk.observe({'state':'download_wait',

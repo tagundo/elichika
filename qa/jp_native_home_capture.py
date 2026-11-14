@@ -405,7 +405,7 @@ def main():
             clock=time.monotonic,pause=time.sleep,report=report,save=save,
             persist=lambda name,value:durable(args.evidence/name,value),log=log,overall_started=started,
             progress=observe_progress,prechooser_started=title_started,light_planner=current_light,
-            manual_label_review=args.root_visual_light_approval)
+            manual_label_review=args.root_visual_light_approval,native_reference_download_wait=True)
         title_sent=False;budget=chooser.ChooserScrollBudget()
         title_pairs=TitleCandidates(owned_identity=flow.owned,overall_started=started,title_started=title_started)
         while True:
