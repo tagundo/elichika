@@ -10,8 +10,9 @@ function geometry(changes={}) {
     pivot:{x:.25,y:.75}},changes);
 }
 function cell(ordinal,changes={}) {
-  return Object.assign({ordinal,index:ordinal,positionIndex:ordinal,rectId:'rect-'+ordinal,cellId:'cell-'+ordinal,
-    activeSelf:true,activeInHierarchy:true,liveMasterId:10000+ordinal,
+  return Object.assign({ordinal,index:ordinal,positionIndex:ordinal,rectId:'rect-'+ordinal,
+    rectGameObjectId:'rect-go-'+ordinal,typedRowId:'typed-row-'+ordinal,typedVOId:'typed-vo-'+ordinal,associationQualified:true,
+    activeSelf:true,activeInHierarchy:true,typedActive:true,isPlayable:true,liveMasterId:10000+ordinal,
     nativeBounds:{min:point(0,0,0),max:point(10,10,0)}},changes);
 }
 function orderedCells(count,changes={}) {
@@ -114,7 +115,8 @@ test('storage-order first-containing match includes inactive entries and never f
 test('native scan requires every intended identity field and active first match',()=>{
   const first=cell(7),world=point(5,5,0);
   assert.strictEqual(api.nativeMusicScan([first],first,world).qualified,true);
-  for(const [key,value] of [['ordinal',8],['rectId','other-rect'],['cellId','other-cell'],['liveMasterId',12074],['index',8],['positionIndex',8]]){
+  for(const [key,value] of [['ordinal',8],['rectId','other-rect'],['rectGameObjectId','other-go'],
+    ['typedRowId','other-row'],['typedVOId','other-vo'],['associationQualified',false],['liveMasterId',12074],['index',8],['positionIndex',8]]){
     const intended=Object.assign({},first,{[key]:value});
     assert.strictEqual(api.nativeMusicScan([first],intended,world).qualified,false,key);
   }
@@ -188,14 +190,16 @@ test('native hit orchestrates integer-point conversion before first scan and ref
   const camera={id:'owned-event-camera',path:'Camera'},drag={id:'owned-drag',path:'Scroll/Proxy'},
     dragRect={id:'owned-drag-rect'},module={id:'owned-raycaster'},view={id:'owned-view'},
     proxy={id:'owned-proxy',path:'Owned/Scroll/Proxy',active:true,enabled:true};
-  const entry=cell(0,{cellId:'typed-row',liveMasterId:12074,isPlayable:true});
+  const entry=cell(0,{typedRowId:'typed-row',typedVOId:'typed-vo',rectGameObjectId:'typed-go',liveMasterId:12074,isPlayable:true});
   const owner={view,proxy,geometry:{visibleBounds:viewport},proof:{
     managedCells:{complete:true,entries:[entry]},modelState:{selectedCellIndex:0,moveToCellIndex:0},
     storedProxyState:{scope:'STORED_STATE_NOT_CURRENT_INPUT_EVENT',isDragging:false},transition:{id:'owned-transition'},
     ownership:{viewId:view.id,modelId:'owned-model',
       inputProxyId:proxy.id,inputProxyGameObjectId:drag.id,transitionId:'owned-transition'}}};
-  const row={id:'typed-row',liveMasterId:12074,target:{id:'row-graphic',center:{x:40,y:40}}},contexts={owners:[owner]};
-  const state={nativeMusicSelection:{complete:true},musicSelection:[{active:true,
+  const row={id:'typed-row',voId:'typed-vo',gameObjectId:'typed-go',liveMasterId:12074,active:true,isPlayable:true,
+    target:{id:'row-graphic',center:{x:40,y:40}}},contexts={owners:[owner]};
+  const completeTypedRows={complete:true,limit:512,totalObjects:1,activeObjects:1,error:null};
+  const state={nativeMusicSelection:{complete:true},musicRowsEnumeration:completeTypedRows,musicSelection:[{active:true,
     currentSelectedCellVO:{liveMasterId:12074},decidedCellVO:{liveMasterId:12096}}]},events=[];let mode='qualified';
   const cameraProof={resolved:true,isNull:false,id:camera.id,path:camera.path,error:null};
   class OwnedValue {
@@ -245,6 +249,7 @@ test('native hit orchestrates integer-point conversion before first scan and ref
     assert.deepStrictEqual(plain(qualified.target.center),{x:50,y:50});assert.strictEqual(qualified.target.bounds,viewport);
     assert.strictEqual(qualified.target.visibleBounds,viewport);assert.strictEqual(qualified.target.hit.hittable,true);
     assert.strictEqual(qualified.proof.intendedLiveMasterId,12074);
+    assert.strictEqual(qualified.proof.typedRowsEnumeration,completeTypedRows);
     assert.strictEqual(qualified.proof.nativeStateBefore.frame,123);
     assert.strictEqual(qualified.proof.nativeStateBefore.scope,'READ_ONLY_STORED_STATE_NOT_CURRENT_INPUT_EVENT');
     assert.strictEqual(qualified.proof.nativeStateBefore.modelState,owner.proof.modelState);
@@ -253,16 +258,21 @@ test('native hit orchestrates integer-point conversion before first scan and ref
     assert.deepStrictEqual(plain(qualified.proof.intended),plain(api.nativeMusicCellIdentity(entry)));
     assert(events.findIndex(event=>event.kind==='convert')<events.findIndex(event=>event.kind==='scan'));
     assert.strictEqual(Object.prototype.hasOwnProperty.call(qualified,'input'),false);
-    for(const refusedMode of ['camera-unresolved','conversion-false','incomplete-enumeration']){
+    for(const refusedMode of ['camera-unresolved','conversion-false','incomplete-enumeration','truncated-typed-enumeration']){
       mode=refusedMode;events.length=0;
-      state.nativeMusicSelection.complete=refusedMode!=='incomplete-enumeration';
+      const incomplete=refusedMode==='incomplete-enumeration'||refusedMode==='truncated-typed-enumeration';
+      state.nativeMusicSelection.complete=!incomplete;
+      state.musicRowsEnumeration=refusedMode==='truncated-typed-enumeration'?
+        {complete:false,limit:512,totalObjects:513,activeObjects:512,error:'Typed music enumeration exceeds512'}:completeTypedRows;
       owner.proof.managedCells.complete=refusedMode!=='incomplete-enumeration';
       const result=api.nativeMusicHit(screen,state,contexts,row,{});
       assert.strictEqual(result.proof.qualified,false,refusedMode);assert.strictEqual(result.target,row.target);
       assert.strictEqual(typeof result.proof.reason,'string');assert(result.proof.reason.length>0);
       assert.strictEqual(Object.prototype.hasOwnProperty.call(result,'input'),false);
+      assert.strictEqual(result.proof.typedRowsEnumeration,state.musicRowsEnumeration);
       assert.strictEqual(events.some(event=>event.kind==='scan'),false);
-      if(refusedMode==='incomplete-enumeration')assert.strictEqual(events.length,0);
+      if(incomplete)assert.strictEqual(events.length,0);
+      if(refusedMode==='truncated-typed-enumeration')assert.strictEqual(result.proof.typedRowsEnumeration.complete,false);
       if(refusedMode==='camera-unresolved')assert.strictEqual(events.some(event=>event.kind==='convert'),false);
     }
   }finally{
@@ -272,8 +282,12 @@ test('native hit orchestrates integer-point conversion before first scan and ref
 
 function run(){
   assert(tests.length>0,'Await exact R8 helper/API and SOURCE READY before running');
-  for(const item of tests){item.fn();process.stdout.write('PASS '+item.name+'\n');}
-  process.stdout.write(JSON.stringify({passed:tests.length,
+  const requested=process.argv.slice(2);
+  assert.strictEqual(new Set(requested).size,requested.length,'Duplicate exact test-name filters are not allowed');
+  for(const name of requested)assert(tests.some(item=>item.name===name),'Unknown exact test-name filter: '+name);
+  const selected=requested.length?tests.filter(item=>requested.includes(item.name)):tests;
+  for(const item of selected){item.fn();process.stdout.write('PASS '+item.name+'\n');}
+  process.stdout.write(JSON.stringify({passed:selected.length,
     scope:'R8 structural mocks only; prospective native-hit prediction is not actual selection proof'})+'\n');
 }
 run();

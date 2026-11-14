@@ -161,10 +161,12 @@ class ActualTapBoundaryTests(unittest.TestCase):
             'bounds':{'left':100,'top':650,'right':200,'bottom':750},
             'visibleBounds':{'left':100,'top':650,'right':200,'bottom':750}}
         self.original={'timestampMs':self.wall*1000,'screen':{'scene':'LiveMusicSelect','width':720,'height':1280},
-                       'target':target,'catalog':{'liveMasterId':12074,'isPlayable':True}}
+                       'target':target,'catalog':{'id':'actual-typed-row','gameObjectId':'typed-go','voId':'typed-vo','active':True,'liveMasterId':12074,'isPlayable':True}}
         cell={'ordinal':0,'index':124,'positionIndex':0,'rectId':'typed-rect','liveMasterId':12074,
+              'rectGameObjectId':'typed-go','typedRowId':'actual-typed-row','typedVOId':'typed-vo','associationQualified':True,'isPlayable':True,
               'activeInHierarchy':True,'nativeBounds':{'min':{'x':-1,'y':-1,'z':90},'max':{'x':1,'y':1,'z':90}}}
         self.original['nativeMusicHit']={'qualified':True,'scope':'PROSPECTIVE_NATIVE_HIT_PREDICTION',
+            'typedRowsEnumeration':{'complete':True,'limit':512,'totalObjects':1,'activeObjects':1,'error':None},
             'intendedLiveMasterId':12074,'ownership':dict(viewId='view',modelId='model',inputProxyId='typed-row',
                 transitionId='transition',dragOwnerId='drag',dragRectId='drag-rect',raycasterId='raycaster',
                 eventCamera={'resolved':True,'isNull':True,'id':None}),
@@ -186,7 +188,7 @@ class ActualTapBoundaryTests(unittest.TestCase):
             'fresh_native_geometry':self.native_geometry,'rpc':lambda fn,**kwargs:fn(),
             'agent':SimpleNamespace(exports_sync=SimpleNamespace(pickmv=self.pick)),
             'time':SimpleNamespace(time=self.wall_time,monotonic=lambda:self.now),
-            'picked':self.original,'query':dict(QUERY),'index':27,'selected_song':None}
+            'picked':self.original,'query':dict(QUERY),'index':27,'selected_song':None,'music_refusal':{'latest':None}}
         exec(self.tap_code,self.env)
 
     def wall_time(self):return self.wall+self.now-100.

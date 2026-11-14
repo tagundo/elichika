@@ -295,6 +295,7 @@ def run_mv_focus(context):
     session=agent=remote=None;video=None;driver=MVDriver(evidence);catalog_audit=SuitCatalogAudit(evidence)
     sessions=[];scripts=[]
     stage='bootstrap';selected_song=None;music_scrolls=0;seen={};last_phase=None
+    music_refusal={'latest':None}
     progress_guard=MVProgressGuard(required_capacity=driver.required_capacity)
     availability_count=0
     selection_observation_count=0
@@ -367,6 +368,7 @@ def run_mv_focus(context):
                 from predeck_operator import proof
                 proof(evidence,proof_prefix+'-native-refusal.json',{'original_pick':picked,
                     'reason':native_blocked,'input_performed':False})
+                music_refusal['latest']={'reason':native_blocked,'proof_prefix':proof_prefix}
                 report.setdefault('mv_music_input_observations',[]).append({'proof_prefix':proof_prefix,
                     'reason':native_blocked,'input_performed':False})
                 context['save']();return False
@@ -399,6 +401,7 @@ def run_mv_focus(context):
                     'reason':stability['reason'],'music_stability':stability})
                 report.setdefault('mv_music_input_observations',[]).append({'proof_prefix':proof_prefix,
                     'reason':stability['reason'],'input_performed':False})
+                music_refusal['latest']={'reason':stability['reason'],'proof_prefix':proof_prefix}
                 context['save']();return False
         assert original['screen'].get('scene')==picked['screen'].get('scene'),'MV pick changed scene before input'
         validated_pick(picked,query or {'role':'semantic'})
@@ -429,6 +432,7 @@ def run_mv_focus(context):
             'input_returned_at':{'unix':time.time(),'monotonic':time.monotonic()},'scope':'Ordinary input returned; semantic progress unproved'})
         report['actions'].append({'source':'fresh-readonly-target-and-native-surface','reason':reason,
             'query':query,'path':target.get('path'),'center':[x,y],'snapshot_index':index})
+        if typed_music:music_refusal['latest']=None
         return True
 
     def scroll_fresh(node,screen,index,duration,typed_context,*,direction='forward',input_deadline=None,proof_prefix=None):
@@ -586,7 +590,9 @@ def run_mv_focus(context):
             song_plan=music_search_plan(tree,selected_song,music_scrolls)
             adjustment=(music_adjustment_blocker(((tree.get('features') or {}).get('mv') or {}).get('musicSelection'),selected_song)
                         if scene=='LiveMusicSelect' and selected_song is not None else None)
-            blocked=predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or adjustment or (song_plan or {}).get('blocked_reason') or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
+            native_refusal=('Last read-only native music refusal: %(reason)s; proof=%(proof_prefix)s'%music_refusal['latest']
+                            if scene=='LiveMusicSelect' and music_refusal['latest'] else None)
+            blocked=native_refusal or predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or adjustment or (song_plan or {}).get('blocked_reason') or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
                 'last_snapshot':relative,'blocked_reason':blocked,
                 'progress_guard':progress_guard.status()}
@@ -607,7 +613,10 @@ def run_mv_focus(context):
                 before_progress=progress_guard.last_progress
                 def observe_operator(current):
                     operator_relative='operator-capture-%04d-ui.json'%operator.sequence
-                    current_blocked=(predeck_song_blocker(current,selected_song) or music_selection_blocker(current,selected_song) or
+                    current_blocked=(
+                        ('Last read-only native music refusal: %(reason)s; proof=%(proof_prefix)s'%music_refusal['latest']
+                         if current.get('screen',{}).get('scene')=='LiveMusicSelect' and music_refusal['latest'] else None) or
+                        predeck_song_blocker(current,selected_song) or music_selection_blocker(current,selected_song) or
                         (music_adjustment_blocker(((current.get('features') or {}).get('mv') or {}).get('musicSelection'),selected_song)
                          if current.get('screen',{}).get('scene')=='LiveMusicSelect' and selected_song is not None else None) or blocked)
                     progress_guard.observe(current,stage=stage,phase=driver.phase,case=driver.case,selected_song=selected_song,
@@ -643,7 +652,7 @@ def run_mv_focus(context):
             if phase!=last_phase:
                 resources.capture('mv-'+driver.case.replace('_','-')+'-'+driver.phase.replace('_','-'),pid=pid);last_phase=phase
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
-                'last_snapshot':relative,'blocked_reason':predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or adjustment or (song_plan or {}).get('blocked_reason') or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
+                'last_snapshot':relative,'blocked_reason':native_refusal or predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or adjustment or (song_plan or {}).get('blocked_reason') or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
                 'progress_guard':progress_guard.status()}
             print(json.dumps({'event':'actual-mv-focus','scene':scene,'stage':stage,'phase':driver.phase,'case':driver.case}),flush=True)
             context['save']()

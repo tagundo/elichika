@@ -8,9 +8,11 @@ from native_music_selection import (native_music_hit_blocker,native_music_hit_st
 
 def modeled_pick():
     cell={'ordinal':0,'index':126,'positionIndex':3,'rectId':'rect','liveMasterId':12096,
+          'rectGameObjectId':'row-go','typedRowId':'typed-row','typedVOId':'typed-vo','associationQualified':True,'isPlayable':True,
           'activeInHierarchy':True,'nativeBounds':{'min':{'x':-1.,'y':-1.,'z':90.},'max':{'x':1.,'y':1.,'z':90.}}}
-    return {'target':{'id':'proxy','center':{'x':202,'y':640}},'catalog':{'liveMasterId':12096,'isPlayable':True},'nativeMusicHit':{
+    return {'target':{'id':'proxy','center':{'x':202,'y':640}},'catalog':{'id':'typed-row','gameObjectId':'row-go','voId':'typed-vo','active':True,'liveMasterId':12096,'isPlayable':True},'nativeMusicHit':{
         'qualified':True,'scope':'PROSPECTIVE_NATIVE_HIT_PREDICTION','intendedLiveMasterId':12096,
+        'typedRowsEnumeration':{'complete':True,'limit':512,'totalObjects':1,'activeObjects':1,'error':None},
         'ownership':dict(viewId='view',modelId='model',inputProxyId='proxy',transitionId='transition',
             dragOwnerId='drag',dragRectId='drag-rect',raycasterId='raycaster',
             eventCamera={'resolved':True,'isNull':True,'id':None,'error':None}),
@@ -42,7 +44,7 @@ class NativeMusicSelectionTests(unittest.TestCase):
 
     def test_inactive_first_containing_entry_stops_before_later_intended_cell(self):
         pick=modeled_pick();hit=pick['nativeMusicHit'];first=copy.deepcopy(hit['orderedCells'][0])
-        first.update(activeInHierarchy=False,index=125,liveMasterId=12073)
+        first.update(activeInHierarchy=False,index=125,liveMasterId=12073,typedRowId='other-row',rectGameObjectId='other-go',typedVOId='other-vo')
         intended=hit['orderedCells'][0];intended['ordinal']=1
         hit['intended']['ordinal']=1;hit['firstContaining']=copy.deepcopy(intended)
         hit['orderedCells']=[first,intended]
@@ -50,7 +52,7 @@ class NativeMusicSelectionTests(unittest.TestCase):
 
     def test_active_earlier_overlap_and_forged_reported_first_are_refused(self):
         pick=modeled_pick();hit=pick['nativeMusicHit'];first=copy.deepcopy(hit['orderedCells'][0])
-        first.update(index=125,liveMasterId=12073)
+        first.update(index=125,liveMasterId=12073,typedRowId='other-row',rectGameObjectId='other-go',typedVOId='other-vo')
         hit['orderedCells'][0]['ordinal']=1;hit['intended']['ordinal']=1
         hit['orderedCells'].insert(0,first)
         self.assertIn('FIRST containing cell differs',native_music_hit_blocker(pick,12096))
@@ -130,6 +132,8 @@ class ActualNativeHitBoundaryTests(unittest.TestCase):
         f.device.shell.assert_not_called()
         record=json.loads((f.root/'operator-auto-music-027-native-refusal.json').read_text())
         self.assertFalse(record['input_performed']);self.assertIn('inactive',record['reason'])
+        self.assertEqual(f.env['music_refusal']['latest']['reason'],record['reason'])
+        self.assertEqual(f.env['music_refusal']['latest']['proof_prefix'],'operator-auto-music-027')
 
     def test_post_native_wrong_first_model_cell_prevents_input_even_with_stable_graphic(self):
         f=self.fixture;hit=f.fresh['nativeMusicHit']

@@ -19,6 +19,14 @@ def native_music_hit_blocker(picked,requested):
     catalog=picked.get('catalog') or {}
     if catalog.get('liveMasterId')!=requested or catalog.get('isPlayable') is not True:
         return 'Native music current typed catalog VO differs from requested playable song'
+    if catalog.get('active') is not True or not all(type(catalog.get(key)) is str and catalog[key]
+        for key in ('id','gameObjectId','voId')):
+        return 'Native music current typed component/GameObject/VO identity is unavailable'
+    enumeration=hit.get('typedRowsEnumeration') or {}
+    if (enumeration.get('complete') is not True or enumeration.get('error') or
+        not all(type(enumeration.get(key)) is int for key in ('activeObjects','totalObjects','limit')) or
+        not 1<=enumeration['activeObjects']<=enumeration['totalObjects']<=enumeration['limit']<=512):
+        return 'Native music current typed-row enumeration is incomplete or unbounded'
     if hit.get('scope')!='PROSPECTIVE_NATIVE_HIT_PREDICTION':return 'Native music prospective witness scope is unavailable'
     if hit.get('intendedLiveMasterId')!=requested:return 'Native music intended VO differs from requested song'
     owners=hit.get('ownership') or {};camera=owners.get('eventCamera') or {}
@@ -46,12 +54,21 @@ def native_music_hit_blocker(picked,requested):
     if any(not all(_number((c.get('nativeBounds') or {}).get(side,{}).get(axis))
                        for side in ('min','max') for axis in ('x','y','z')) for c in cells):
         return 'Native music ordered cell bounds are unreadable; first-hit prediction is incomplete'
+    associated=[cell for cell in cells if cell.get('typedRowId')==catalog['id'] and
+                cell.get('rectGameObjectId')==catalog['gameObjectId'] and cell.get('typedVOId')==catalog['voId']]
+    if len(associated)!=1:return 'Native music intended typed-row/GameObject/VO association is absent or ambiguous'
+    if (associated[0].get('associationQualified') is not True or associated[0].get('isPlayable') is not True):
+        return 'Native music intended actual typed VO association is unqualified'
     first=next((cell for cell in cells if _contains(cell,point)),None)
     if first is None:return 'Native music world press point has no containing managed cell'
     if first.get('activeInHierarchy') is not True:return 'Native music FIRST containing cell is inactive; native fallback applies'
-    identity=('ordinal','index','positionIndex','rectId','liveMasterId')
+    identity=('ordinal','index','positionIndex','rectId','rectGameObjectId','typedRowId','typedVOId','liveMasterId')
     if any(first.get(key)!=intended.get(key) for key in identity) or first.get('liveMasterId')!=requested:
         return 'Native music FIRST containing cell differs from intended active VO'
+    if (any(intended.get(key)!=associated[0].get(key) for key in identity) or
+        intended.get('typedRowId')!=catalog['id'] or intended.get('rectGameObjectId')!=catalog['gameObjectId'] or
+        intended.get('typedVOId')!=catalog['voId']):
+        return 'Native music intended/native FIRST typed component or GameObject differs from current catalog'
     if any((hit.get('firstContaining') or {}).get(key)!=first.get(key) for key in identity):
         return 'Native music reported first hit differs from ordered native bounds'
     if type(first.get('index')) is not int or type(first.get('positionIndex')) is not int or not first.get('rectId'):
@@ -70,7 +87,7 @@ def native_music_hit_stability(original,fresh,requested):
     if a['ownership']!=b['ownership']:return 'Native music model/camera/drag ownership changed across native inspection'
     if a['dragPlane']!=b['dragPlane']:
         return 'Native music drag-handler plane geometry changed across native inspection'
-    identity=('ordinal','index','positionIndex','rectId','liveMasterId','activeInHierarchy')
+    identity=('ordinal','index','positionIndex','rectId','rectGameObjectId','typedRowId','typedVOId','liveMasterId','activeInHierarchy')
     if ([tuple(c.get(k) for k in identity) for c in a['orderedCells']]!=
         [tuple(c.get(k) for k in identity) for c in b['orderedCells']]):
         return 'Native music ordered cell/VO identities changed across native inspection'

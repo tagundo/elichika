@@ -3988,19 +3988,27 @@ function observeExistingMvExtras(screen,raycaster) {
 // Optional read-only MV music/tab observation; GL/JP field names verified.
 // Requires the helpers of mv_observer.fragment.js. No actions/callbacks/setters.
 function observeExistingMusicRowsAndMvTabs(screen,raycaster) {
-  var result={musicRows:[],musicSelection:[],deckTabGroups:[],errors:[]};
+  var result={musicRows:[],musicRowsEnumeration:{complete:false,limit:512,totalObjects:null,activeObjects:0,error:null},musicSelection:[],deckTabGroups:[],errors:[]};
   function collect(type,callback) {
+    var music=type==="LLAS.Scene.LiveMusicSelect.LiveMusicSelectScrollCell",limit=music?512:128;
     var klass=findClass(type,true);
-    if(!klass){result.errors.push({type:type,error:"Type absent"});return;}
-    try{var objects=allOfType(klass);for(var i=0;i<objects.length&&i<128;i++){
-      var object=objects.get(i);if(exists(object)&&active(object).active)callback(object);
-    }}catch(error){result.errors.push({type:type,error:String(error)});}
+    if(!klass){result.errors.push({type:type,error:"Type absent"});if(music)result.musicRowsEnumeration.error="Typed music cell metadata absent";return;}
+    try{var objects=allOfType(klass);if(music)result.musicRowsEnumeration.totalObjects=objects.length;
+      for(var i=0;i<objects.length&&i<limit;i++){
+        var object=objects.get(i);if(!exists(object))continue;
+        var currentActive=music?call(gameObject(object),"get_activeInHierarchy"):active(object).active;
+        if(music&&typeof currentActive!=="boolean")throw new Error("Typed music row active state unreadable");
+        if(currentActive){callback(object);if(music)result.musicRowsEnumeration.activeObjects++;}
+      }
+      if(music){result.musicRowsEnumeration.complete=objects.length<=limit;if(!result.musicRowsEnumeration.complete)result.musicRowsEnumeration.error="Typed music enumeration exceeds512";}
+    }catch(error){result.errors.push({type:type,error:String(error)});if(music){result.musicRowsEnumeration.complete=false;result.musicRowsEnumeration.error=String(error);}}
   }
   collect("LLAS.Scene.LiveMusicSelect.LiveMusicSelectScrollCell",function(object){
-    var vo=mvBacking(object,"CellVO"),info=mvExistingComponentInfo(object);
-    info.liveMasterId=mvNumber(mvBacking(vo,"LiveMasterId"));
-    info.isPlayable=mvBacking(vo,"IsPlayable");
-    info.voClass=vo?fullType(vo):null;
+    var info=mvExistingComponentInfo(object),vo=nativeMusicTypedVO(object);
+    info.componentType=fullType(object);
+    var expected=findClass("LLAS.Scene.LiveMusicSelect.LiveMusicSelectScrollCell",true);
+    info.typedClassVerified=!!expected&&(object.class.handle.equals(expected.handle)||object.class.isSubclassOf(expected,false));
+    info.liveMasterId=vo.liveMasterId;info.isPlayable=vo.isPlayable;info.voId=vo.voId;info.voClass=vo.voClass;info.voRead=vo.voRead;
     // This cell has no button field. Its existing GameObject/component path
     // and actual jacket/title graphics identify its real visible pointer area.
     // Use only the observer's current projected and raycast-tested hit bounds;
@@ -4079,19 +4087,85 @@ function nativeMusicFirstContaining(entries,point) {
 }
 function nativeMusicCellIdentity(entry) {
   if(!entry)return null;
-  var result={};["ordinal","index","positionIndex","rectId","cellId","liveMasterId","activeInHierarchy"].forEach(function(key){result[key]=entry[key];});return result;
+  var result={};["ordinal","index","positionIndex","rectId","rectGameObjectId","typedRowId","typedVOId","associationQualified","liveMasterId","isPlayable","activeInHierarchy"].forEach(function(key){result[key]=entry[key];});return result;
 }
 function nativeMusicScan(entries,intended,point) {
   if(entries.some(function(entry){return !entry||!nativeMusicReadableBounds(entry.nativeBounds);}))return {qualified:false,firstContaining:null,reason:"Native managed-cell geometry is incomplete; no skipped entry"};
   var first=nativeMusicFirstContaining(entries,point),result={qualified:false,firstContaining:nativeMusicCellIdentity(first)};
   if(!first)return Object.assign(result,{reason:"No native managed-cell bounds contain the prospective point"});
   if(first.activeInHierarchy!==true)return Object.assign(result,{reason:"FIRST native containing cell is inactive; no later-cell fallback"});
-  if(["ordinal","index","positionIndex","rectId","cellId","liveMasterId"].some(function(key){return first[key]!==intended[key];}))return Object.assign(result,{reason:"FIRST native containing cell differs from intended typed music cell"});
+  if(first.associationQualified!==true||!first.typedRowId||!first.typedVOId)return Object.assign(result,{reason:"FIRST native containing cell has no unique current typed-row VO association; no skipped cell"});
+  if(intended.associationQualified!==true||first.isPlayable!==true||intended.isPlayable!==true)return Object.assign(result,{reason:"Intended/FIRST typed-row VO association is unqualified or not playable"});
+  if(["ordinal","index","positionIndex","rectId","rectGameObjectId","typedRowId","typedVOId","liveMasterId"].some(function(key){return first[key]!==intended[key];}))return Object.assign(result,{reason:"FIRST native containing cell differs from intended typed music cell"});
   return Object.assign(result,{qualified:true,reason:"FIRST native containing cell is the intended active typed cell"});
 }
 function nativeMusicObject(object) {
   if(!exists(object))return null;
   return {id:String(instanceId(object)),type:fullType(object),path:hierarchy(transform(object))};
+}
+function nativeMusicReference(object,name) {
+  var result={resolved:false,isNull:null,value:null,error:null};
+  try {
+    if(!exists(object))throw new Error("Reference owner unavailable");
+    var value=object.field(name).value;
+    if(value&&value.handle&&value.handle.isNull())value=null;
+    result.resolved=true;result.isNull=!exists(value);result.value=result.isNull?null:value;
+  }catch(error){result.error=String(error);}
+  return result;
+}
+function nativeMusicOptionalInterface(entry) {
+  var reference=nativeMusicReference(entry,"scrollSelectCell");
+  var result={declaredType:"Jigbox.Components.IScrollSelectCell",resolved:reference.resolved,isNull:reference.isNull,
+    id:null,type:null,gameObjectId:null,path:null,error:reference.error,scope:"OPTIONAL_INTERFACE_ONLY_NOT_CELLVO"};
+  if(!reference.resolved||reference.isNull)return result;
+  var value=reference.value;
+  try{result.id=value.handle.toString();result.type=fullType(value);}catch(error){result.error=String(error);}
+  // A Unity component identity is optional diagnostic data. Never cast this
+  // interface to the typed music component or read CellVO through it.
+  try {
+    var getter=value.method("get_gameObject",0);
+    if(/^UnityEngine(?:\.|$)/.test(getter.class.namespace||"")) {
+      var go=getter.invoke();if(exists(go)){result.gameObjectId=String(instanceId(go));result.path=hierarchy(transform(go));}
+    }
+  }catch(_){}
+  return result;
+}
+function nativeMusicTypedVO(cell) {
+  var result={voId:null,voClass:null,liveMasterId:null,isPlayable:null,
+    voRead:{resolved:false,isNull:null,error:null}};
+  var reference=nativeMusicReference(cell,"<CellVO>k__BackingField");
+  result.voRead.isNull=reference.isNull;
+  if(!reference.resolved){result.voRead.error=reference.error;return result;}
+  if(reference.isNull){result.voRead.resolved=true;return result;}
+  try {
+    var vo=reference.value;result.voId=vo.handle.toString();result.voClass=fullType(vo);
+    var live=vo.field("<LiveMasterId>k__BackingField").value,playable=vo.field("<IsPlayable>k__BackingField").value;
+    result.voRead.rawLiveMasterId=typeof live==="number"||typeof live==="string"||typeof live==="boolean"?live:null;
+    result.voRead.rawIsPlayable=typeof playable==="boolean"||typeof playable==="number"?playable:null;
+    if(typeof live!=="number"||!Number.isInteger(live)||live<=0||typeof playable!=="boolean")throw new Error("Typed CellVO identity/playability field unreadable");
+    result.liveMasterId=live;result.isPlayable=playable;result.voRead.resolved=true;
+  }catch(error){result.voRead.error=String(error);}
+  return result;
+}
+// GL native contract8314dc92b56e4d1482149a14ab6245ee3ff97deb5dc546605d10bc8d04f67b34:
+// OnAdjustComplete gets the typed component from the selected root GameObject.
+// The optional IScrollSelectCell reference supplies no CellVO contract.
+function nativeMusicAssociateRows(rectGameObjectId,rows,complete) {
+  var matches=(Array.isArray(rows)?rows:[]).filter(function(row){return row&&typeof row==="object"&&row.gameObjectId===rectGameObjectId;});
+  var result={associationQualified:false,status:null,candidateCount:matches.length,candidates:matches.map(function(row){
+    return {id:row.id,gameObjectId:row.gameObjectId,componentType:row.componentType,typedClassVerified:row.typedClassVerified,
+      voId:row.voId,voClass:row.voClass,voRead:row.voRead,liveMasterId:row.liveMasterId,isPlayable:row.isPlayable,active:row.active};}),
+    typedRowId:null,typedVOId:null,liveMasterId:null,isPlayable:null,typedActive:null};
+  if(complete!==true||!Array.isArray(rows)){result.status="typed-row-enumeration-incomplete";return result;}
+  if(matches.length!==1){result.status=matches.length?"duplicate-exact-GameObject-association":"no-exact-GameObject-association";return result;}
+  var row=matches[0];result.typedRowId=row.id||null;result.typedVOId=row.voId||null;
+  result.liveMasterId=row.liveMasterId;result.isPlayable=row.isPlayable;result.typedActive=row.active;
+  var typed=row.componentType==="LLAS.Scene.LiveMusicSelect.LiveMusicSelectScrollCell"||row.typedClassVerified===true;
+  if(!typed||row.active!==true||!row.id||!row.voId||!row.voClass||!row.voRead||row.voRead.resolved!==true||row.voRead.isNull!==false||row.voRead.error||
+      typeof row.liveMasterId!=="number"||!Number.isInteger(row.liveMasterId)||row.liveMasterId<=0||typeof row.isPlayable!=="boolean") {
+    result.status="typed-component-or-CellVO-unqualified";return result;
+  }
+  result.associationQualified=true;result.status="unique-current-typed-component-exact-GameObject";return result;
 }
 function nativeMusicBlocker(controller) {
   var result={resolved:false,id:null,path:null,activeSelf:null,activeInHierarchy:null,error:null};
@@ -4165,7 +4239,7 @@ function nativeMusicViewport(view,screen,camera) {
   return {bounds:original,visibleBounds:clipped,visible:clipped.width>=1&&clipped.height>=1&&alpha>.001,
     alpha:alpha,groupsInteractable:groupsInteractable,blocksRaycasts:blocksRaycasts};
 }
-function observeNativeMusicSelection(screen,rows) {
+function observeNativeMusicSelection(screen,rows,rowEnumeration) {
   var result={proof:{schema:1,complete:false,reason:null,scope:"PROSPECTIVE_NATIVE_HIT_PREDICTION",owners:[]},owners:[]};
   if(screen.scene!=="LiveMusicSelect"){result.proof.reason="Native music selection is outside LiveMusicSelect";return result;}
   try {
@@ -4196,10 +4270,10 @@ function observeNativeMusicSelection(screen,rows) {
     var list=mvReadField(model,"managedCells");if(!exists(list))throw new Error("Native managedCells list unavailable");
     var type=fullType(list),items=mvReadField(list,"_items"),size=mvNumber(mvReadField(list,"_size"));
     if(!/^System\.Collections\.Generic\.List(?:`|<)/.test(type)||!items||typeof items.length!=="number")throw new Error("Native managedCells runtime list layout unproved");
-    var seen={},cellRefs={};
+    var seen={};
     var cells=nativeMusicBoundedCells(size,items.length,function(ordinal){
       var entry=items.get(ordinal);if(!exists(entry))throw new Error("Null native list entry");
-      var rect=mvBacking(entry,"RectTransform"),cell=mvReadField(entry,"scrollSelectCell");
+      var rect=mvBacking(entry,"RectTransform");
       if(!exists(rect))throw new Error("Native managed-cell RectTransform unavailable");
       if(!descendsFrom(gameObject(rect),view))throw new Error("Native cell is outside owned scroll");
       var geometry=nativeMusicRect(rect),rectId=geometry.rectId;
@@ -4208,20 +4282,20 @@ function observeNativeMusicSelection(screen,rows) {
       if(!Number.isInteger(index)||!Number.isInteger(positionIndex))throw new Error("Native cell index is unavailable");
       var go=gameObject(rect),activeSelf=call(go,"get_activeSelf"),activeInHierarchy=call(go,"get_activeInHierarchy");
       if(typeof activeSelf!=="boolean"||typeof activeInHierarchy!=="boolean")throw new Error("Native cell active state unavailable");
-      var vo=exists(cell)?mvBacking(cell,"CellVO"):null,liveId=mvNumber(mvBacking(vo,"LiveMasterId"));
-      var cellId=exists(cell)?String(instanceId(cell)):null;
-      if(activeInHierarchy && (!exists(cell)||!Number.isInteger(liveId)))throw new Error("Active native cell VO binding unavailable");
-      if(exists(cell) && !descendsFrom(gameObject(cell),view))throw new Error("Referenced native cell VO is outside the owned scroll view");
-      var value={ordinal:ordinal,index:index,positionIndex:positionIndex,rectId:rectId,cellId:cellId,liveMasterId:liveId,
-        rectGameObjectId:String(instanceId(go)),cellGameObjectId:exists(cell)?String(instanceId(gameObject(cell))):null,
-        bindingSource:"Exact managed entry RectTransform and scrollSelectCell references; no same-GameObject assumption",
-        isPlayable:mvBacking(vo,"IsPlayable"),activeSelf:activeSelf,activeInHierarchy:activeInHierarchy,
-        path:geometry.path,nativeBounds:geometry.nativeBounds,geometry:geometry,voClass:vo?fullType(vo):null};
-      if(exists(cell))cellRefs[cellId]={cell:cell,rect:rect};return value;
+      var rectGoId=String(instanceId(go)),optional=nativeMusicOptionalInterface(entry);
+      var association=nativeMusicAssociateRows(rectGoId,rows,rowEnumeration&&rowEnumeration.complete===true);
+      return {ordinal:ordinal,index:index,positionIndex:positionIndex,rectId:rectId,rectGameObjectId:rectGoId,
+        optionalInterface:optional,typedRowId:association.typedRowId,typedVOId:association.typedVOId,
+        associationQualified:association.associationQualified,association:association,
+        bindingSource:"Native selected-root GameObject equals current typed LiveMusicSelectScrollCell GameObject; no interface VO hop or path fallback",
+        liveMasterId:association.liveMasterId,isPlayable:association.isPlayable,activeSelf:activeSelf,activeInHierarchy:activeInHierarchy,
+        path:geometry.path,nativeBounds:geometry.nativeBounds,geometry:geometry};
     });
     cells.runtimeType=type;proof.managedCells=cells;result.proof.owners.push(proof);
+    proof.typedRowsEnumeration=rowEnumeration||{complete:false,error:"Typed row enumeration proof unavailable"};
     if(!cells.complete)throw new Error(cells.reason);
-    result.owners.push({view:view,model:model,proxy:proxy,transition:transition,geometry:current.geometry,proof:proof,cellRefs:cellRefs});
+    result.owners.push({view:view,model:model,proxy:proxy,transition:transition,geometry:current.geometry,proof:proof});
+    if(!rowEnumeration||rowEnumeration.complete!==true)throw new Error("Current typed music row enumeration is incomplete");
     result.proof.complete=true;
   }catch(error){result.proof.reason=String(error);}
   return result;
@@ -4249,6 +4323,7 @@ function nativeMusicWorldPoint(rect,camera,point,screen) {
 }
 function nativeMusicHit(screen,state,contexts,row,raycaster) {
   var result={qualified:false,reason:null,scope:"PROSPECTIVE_NATIVE_HIT_PREDICTION",intendedLiveMasterId:row.liveMasterId,cellsComplete:false,
+    typedRowsEnumeration:state.musicRowsEnumeration||{complete:false,error:"Typed row enumeration proof unavailable"},
     ownership:null,intended:null,firstContaining:null,worldPoint:null,screenPoint:null,orderedCells:[],listSignature:null};
   try {
     if(!state.nativeMusicSelection.complete||contexts.owners.length!==1)throw new Error(state.nativeMusicSelection.reason||"Native music ownership incomplete");
@@ -4258,10 +4333,10 @@ function nativeMusicHit(screen,state,contexts,row,raycaster) {
       transition:owner.proof.transition,controllerSelection:state.musicSelection};
     result.cellsComplete=owner.proof.managedCells.complete;result.orderedCells=entries;
     result.listSignature=JSON.stringify(entries.map(function(entry){return {identity:nativeMusicCellIdentity(entry),nativeBounds:entry.nativeBounds};}));
-    var intended=entries.filter(function(entry){return entry.cellId===row.id && entry.liveMasterId===row.liveMasterId;});
+    var intended=entries.filter(function(entry){return entry.associationQualified===true&&entry.typedRowId===row.id&&entry.rectGameObjectId===row.gameObjectId&&entry.typedVOId===row.voId&&entry.liveMasterId===row.liveMasterId;});
     if(intended.length!==1)throw new Error("Intended typed row has no unique native managed-cell binding");
     intended=intended[0];result.intended=nativeMusicCellIdentity(intended);
-    if(intended.activeInHierarchy!==true||intended.isPlayable!==true)throw new Error("Intended native cell is inactive or its VO is not playable");
+    if(row.active!==true||intended.activeInHierarchy!==true||intended.isPlayable!==true)throw new Error("Intended native cell is inactive or its VO is not playable");
     var viewport=owner.geometry.visibleBounds;
     function inside(point){return Number.isInteger(point.x)&&Number.isInteger(point.y)&&point.x>=Math.max(0,viewport.left)&&point.x<Math.min(screen.width,viewport.right)&&point.y>=Math.max(0,viewport.top)&&point.y<Math.min(screen.height,viewport.bottom);}
     var centers=[row.target&&row.target.center,{x:(viewport.left+viewport.right)/2,y:(viewport.top+viewport.bottom)/2}],resolved=null;
@@ -4475,8 +4550,8 @@ function observeExistingMvState(screen,nativeContext) {
   result.errors=result.errors.concat(extras.errors);
   result.standingMemberNum=extras.deckRoots.length===1?extras.deckRoots[0].standingMemberNum:null;
   result.liveMasterId=extras.deckRoots.length===1?extras.deckRoots[0].liveMasterId:null;
-  var music=observeExistingMusicRowsAndMvTabs(screen,raycaster);result.musicRows=music.musicRows;result.musicSelection=music.musicSelection;result.deckTabGroups=music.deckTabGroups;result.errors=result.errors.concat(music.errors);
-  var nativeMusic=observeNativeMusicSelection(screen,result.musicRows);result.nativeMusicSelection=nativeMusic.proof;
+  var music=observeExistingMusicRowsAndMvTabs(screen,raycaster);result.musicRows=music.musicRows;result.musicRowsEnumeration=music.musicRowsEnumeration;result.musicSelection=music.musicSelection;result.deckTabGroups=music.deckTabGroups;result.errors=result.errors.concat(music.errors);
+  var nativeMusic=observeNativeMusicSelection(screen,result.musicRows,result.musicRowsEnumeration);result.nativeMusicSelection=nativeMusic.proof;
   if(nativeContext)nativeContext.owners=nativeMusic.owners;
   result.liveMembers.forEach(function(member){
     var found=[];
