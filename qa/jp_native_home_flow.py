@@ -143,11 +143,14 @@ def pale_modal_candidate(raw):
 class NativeReferenceFlow:
     """Minimal callback-driven chooser→download→raw post-close capture adapter."""
     def __init__(self, *, capture, send, lifetime, clock, pause, report, save,
-            persist, log, overall_started, progress=lambda frame:{},prechooser_started=None):
+            persist, log, overall_started, progress=lambda frame:{},prechooser_started=None,
+            light_planner=None):
         self.capture=capture;self.send=send;self.lifetime=lifetime;self.clock=clock
         self.pause=pause;self.report=report;self.save=save;self.persist=persist
         self.log=log;self.started=overall_started;self.settings=None
         self.progress=progress
+        self.light=light if light_planner is None else light_planner
+        self.recollect_light=light_planner is not None
         self.settings_started=None;self.bulk=None;self.post_close_end=None
         self.prechooser_started=complete._time(clock() if prechooser_started is None else prechooser_started)
         self.prechooser_end=min(overall_started+2400,self.prechooser_started+180)
@@ -172,31 +175,67 @@ class NativeReferenceFlow:
         self.begin_settings()
         if frame is None:observed={}
         else:
-            evidence=light.observe(frame,state=state)
+            evidence=self.light.observe(frame,state=state)
             observed={'action':{'kind':action},'observations':{
                 'full_caption':{'bounds':evidence['rows']['bulk']['bounds']},
                 'light_caption':{'bounds':evidence['rows']['light']['bounds']},'selected_radio':state}}
         self.settings.observe(observed,self.clock())
 
     def light_plan(self, first, second, state):
-        return light.plan_pair(first,second,state=state,now=self.clock(),
+        return self.light.plan_pair(first,second,state=state,now=self.clock(),
             owned_identity=self.owned,current_identity=self.lifetime(),
             overall_started=self.started,settings_started=self.settings_started)
 
+    def collect_light_pair(self,state,first=None):
+        """Recollect read-only proof under the original ends; never retry input."""
+        pending=first
+        action='choose-light' if state=='bulk' else 'confirm-light'
+        reason='full-Light-choice' if state=='bulk' else 'actual-selected-Light-after-click'
+        while True:
+            if self.clock()>=self.phase_end():
+                raise StopCapture('Original JP Light settings/overall end reached while collecting '+state+' proof')
+            frames=(pending if pending is not None else self.capture(reason),
+                self.capture(reason+'-recheck'))
+            pending=None
+            try:
+                plan=self.light_plan(*frames,state)
+                self.settings_progress(frames[1],state=state,action=action)
+            except light.Refusal as error:
+                self.report.setdefault('current_Light_pair_refusals',[]).append({
+                    'state':state,'captures':[frame['id'] for frame in frames],
+                    'PNG_sha256':[frame.get('png_sha256') for frame in frames],
+                    'reason':str(error),'at':self.clock(),'original_phase_end':self.phase_end(),
+                    'read_only':True,'after_single_Light_input':state=='light',
+                    'input_will_not_be_retried':True})
+                self.save()
+                self.settings_progress(None,state=state,action=action)
+                self.pause(.2)
+                continue
+            return frames,plan
+
     def run(self, first):
         self.begin_settings();self.report['phase']='ordinary_Light_selection';self.save()
-        self.settings_progress(first,state='bulk',action='choose-light')
-        second=self.capture('full-Light-choice-recheck')
-        plan=self.light_plan(first,second,'bulk')
+        if self.recollect_light:
+            frames,plan=self.collect_light_pair('bulk',first)
+            first,second=frames
+        else:
+            self.settings_progress(first,state='bulk',action='choose-light')
+            second=self.capture('full-Light-choice-recheck')
+            plan=self.light_plan(first,second,'bulk')
+        # Exactly one send call. Any input-boundary or ambiguous send failure
+        # escapes; recollection above never repeats an attempted Light input.
         self.send(plan['kind'],plan['center'],(first,second),
             verifier=lambda:self.light_plan(first,second,'bulk'))
-        selected=[self.capture('actual-selected-Light-after-click'),
-            self.capture('actual-selected-Light-after-click-recheck')]
-        selected_plan=self.light_plan(*selected,'light')
-        self.settings_progress(selected[1],state='light',action='confirm-light')
+        if self.recollect_light:
+            selected,selected_plan=self.collect_light_pair('light')
+        else:
+            selected=[self.capture('actual-selected-Light-after-click'),
+                self.capture('actual-selected-Light-after-click-recheck')]
+            selected_plan=self.light_plan(*selected,'light')
+            self.settings_progress(selected[1],state='light',action='confirm-light')
         selected_evidence={'actual_capture_ids':[item['id'] for item in selected],
             'evidence':selected_plan,'actual_selected_reference_preexisted':False,
-            'scope':'Fresh actual post-click selected-Light and unchecked-Bulk state; compositional control template, no feature qualification'}
+            'scope':'Fresh actual post-click selected-Light and unchecked-Bulk proof from the active planner; no feature qualification'}
         self.persist('actual-selected-Light-state.json',selected_evidence)
         self.report['actual_selected_Light_state']=selected_evidence;self.save()
         # The original bulk start is fixed once, before this one ordinary OK.

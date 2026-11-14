@@ -30,6 +30,7 @@ from native_download_guard import NativeDeadlines
 from jp_native_home_flow import NativeReferenceFlow, NativeLog, pale_modal_candidate
 import jp_light_adapter as light
 import jp_chooser_scroll as chooser
+from jp_current_light import CurrentLightPlanner, recognizes_modal
 from jp_title_pulse import TitleCandidates
 
 TOOLS='932666aa03264225e2a6bb2a973482b47e22b050'
@@ -334,10 +335,11 @@ def main():
             send('settings-'+kind,point,(first,second),swipe_end=end)
         else:raise StopCapture('Bounded native settings steps exhausted')
         settings_end=None;report['phase']='Title_to_full_Light';save()
+        current_light=CurrentLightPlanner(args.evidence)
         flow=NativeReferenceFlow(capture=capture,send=send,lifetime=lifetime,
             clock=time.monotonic,pause=time.sleep,report=report,save=save,
             persist=lambda name,value:durable(args.evidence/name,value),log=log,overall_started=started,
-            progress=observe_progress,prechooser_started=title_started)
+            progress=observe_progress,prechooser_started=title_started,light_planner=current_light)
         title_sent=False;budget=chooser.ChooserScrollBudget()
         title_pairs=TitleCandidates(owned_identity=flow.owned,overall_started=started,title_started=title_started)
         while True:
@@ -353,15 +355,22 @@ def main():
                 blank=uniform_startup_frame(first['png_bytes'],first['native_xml'],first['surface'])
                 if blank is not None:
                     report.setdefault('startup_blank_observations',[]).append({'capture':first['id'],'color':blank,'input_performed':False});save();continue
-            try:full_light=light.observe(first,state='bulk')
-            except light.Refusal as mismatch:
-                full_light=None;full_refusal=str(mismatch)
+            full_light=None;geometry=None;known_modal=False
+            full_refusal='Current JP chooser modal anchors not recognized after this run Title input'
+            partial_refusal='No current clipped-chooser proof'
+            # Do not run the current-caption adapter or its OCR on Title or
+            # intro frames. Its fixed modal anchors identify known chooser UI.
+            if title_sent:
+                known_modal=recognizes_modal(first)
+                if known_modal:
+                    flow.begin_settings();flow.settings_progress(None,state='bulk',action='choose-light')
+                    try:full_light=current_light.observe(first,state='bulk')
+                    except light.Refusal as mismatch:full_refusal=str(mismatch)
             if full_light is not None:
-                if not title_sent:raise StopCapture('Full chooser appeared without this run ordinary Title input')
                 flow.run(first);break
-            try:geometry=chooser.observe(first)
-            except light.Refusal as mismatch:
-                geometry=None;partial_refusal=str(mismatch)
+            if known_modal:
+                try:geometry=chooser.observe(first)
+                except light.Refusal as mismatch:partial_refusal=str(mismatch)
             if geometry:
                 if not title_sent:raise StopCapture('Chooser appeared without this run ordinary Title input')
                 flow.begin_settings();flow.settings_progress(None,state='bulk',action='scroll-download')
@@ -373,6 +382,14 @@ def main():
                     return chooser.plan_pair(first,second,owned_identity=identity,current_identity=lifetime(),
                         now=time.monotonic(),overall_started=started,settings_started=flow.settings_started)
                 send(intent['kind'],intent['start'],(first,second),swipe_end=intent['end'],verifier=scroll_plan)
+                continue
+            if known_modal:
+                report.setdefault('current_Light_observation_refusals',[]).append({
+                    'captures':[first['id']],'PNG_sha256':first['png_sha256'],
+                    'full_row_reason':full_refusal,'partial_scroll_reason':partial_refusal,
+                    'at':time.monotonic(),'original_phase_end':fixed_end(),'read_only':True,
+                    'deadline_renewed':False})
+                save()
                 continue
             if should_stop_game_modal(title_sent,budget.attempts,first['png_bytes']):
                 raise StopCapture('Current JP full-Light mismatch; phase='+report['phase']+

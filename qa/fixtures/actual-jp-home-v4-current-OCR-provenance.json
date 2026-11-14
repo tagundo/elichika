@@ -1,0 +1,48 @@
+{
+  "run": 43570089853,
+  "head": "3236d2a769cdfcf91616737e31c9840fe2d4fa66",
+  "actual_raw_proof_sha256": "bb69a4642d99bc400482d33f6de548f1cd82827359f51974b4c6c3b7cffa174d",
+  "source_pngs": {
+    "0040": "d922a1d897af918254de4545bc15bbecae3815ea38bd26f7f12f8c7db8757dd2",
+    "0041": "ad86821cad57c3dafb1eeed10c275625223a7eaf8ff343c2ef1a2b4ef1a2b03b"
+  },
+  "original_OCR": {
+    "receipt_sha256": "ff80175da966e07f140ca94514289662e7cee5420995e88614faf0f94dc7df76",
+    "Bulk_crop": [
+      187,
+      601,
+      551,
+      695
+    ],
+    "Light_crop": [
+      187,
+      701,
+      551,
+      780
+    ]
+  },
+  "current_ROI_OCR": {
+    "receipt_sha256": "48b889e22604c30d11ff156bfce74a95e956eb9176ff35ceea31b513f3593066",
+    "Light_crop": [
+      187,
+      700,
+      551,
+      780
+    ],
+    "invocations": 4,
+    "actual_TSV_not_translated": true
+  },
+  "transform": {
+    "scale": 4,
+    "mode": "grayscale",
+    "resample": "NEAREST",
+    "psm": 6
+  },
+  "captions": {
+    "Light": "Exact JP 軽量ダウンロード prefix≥85.387527 +independent English [5858.95MB]≥79.950027 on same current line",
+    "Bulk": "Complete independent English [15416.53MB]≥84.391396; Japanese typo NOT treated as exact"
+  },
+  "state": "Actual Bulk selected/Light unselected only; future selected state must be observed fresh",
+  "synthetic_selected_fixtures": "Unit-only expected-style composition, not actual evidence",
+  "all11false": true
+}

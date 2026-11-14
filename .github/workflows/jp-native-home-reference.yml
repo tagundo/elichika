@@ -2,7 +2,7 @@ name: Original JP native bootstrap to raw post-Close references on exact C10
 
 on:
   push:
-    branches: [codex/android-client-qa-jp-native-home-20261114-v4]
+    branches: [codex/android-client-qa-jp-native-home-20261114-v5]
 
 permissions:
   # Same V19 scope required to GET unpublished private APK fixture; no writes.
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   capture:
-    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-jp-native-home-20261114-v4'
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-jp-native-home-20261114-v5'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 70
     env:
@@ -46,7 +46,7 @@ jobs:
           mkdir -p evidence
           task_cache=$(mktemp -d "$RUNNER_TEMP/jp-download-cache.XXXXXXXX")
           python3 -B -X "pycache_prefix=$task_cache" qa/download_fixtures.py --manifest qa/frozen-fixtures.json --region JP --destination "$RUNNER_TEMP/jp-client" --evidence evidence --skip-server-apk --skip-frida
-      - name: Prepare native Android and English OCR without observer dependencies
+      - name: Prepare native Android and pinned bilingual OCR without observer dependencies
         run: |
           set -euo pipefail
           test "$(uname -m)" = aarch64
@@ -76,7 +76,7 @@ jobs:
           adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/jp-webview-command-line" /data/local/tmp/webview-command-line
           adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
           adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
-      - name: Check all 88 focused native reference source cases without feature qualification
+      - name: Check all 100 focused native reference source cases without feature qualification
         run: |
           set -euo pipefail
           task_cache=$(mktemp -d "$RUNNER_TEMP/jp-test-cache.XXXXXXXX")
@@ -157,14 +157,14 @@ jobs:
               'genuine-rpc-evidence.log','genuine-rpc-evidence-index.json','elichika-client-session.log',
               'owned-game-stop-proof.json','owned-game-stop-processes.txt','owned-game-stop-failure-processes.txt',
               'owned-game-cleanup-context.json','owned-game-cleanup-failure.json','owned-go-cleanup-deadline.json'}
-          frame=re.compile(r'jp-native-[0-9]{4}(?:\.(?:png|xml|json)|-activity\.txt|-title-ocr\.json|-download-progress-ocr\.json)')
+          frame=re.compile(r'jp-native-[0-9]{4}(?:\.(?:png|xml|json)|-activity\.txt|-title-ocr\.json|-download-progress-ocr\.json|-(?:jpn_light|eng_light|eng_bulk)-ocr\.(?:png|tsv|json|stderr))')
           intent=re.compile(r'(?:input-intent-[0-9]{3}|chooser-scroll-reservation-[0-9]{2})\.json')
           entries=[]
           def export(source,relative):
               assert source.is_file() and not source.is_symlink()
               data=source.read_bytes();original=hashlib.sha256(data).hexdigest()
               assert len(data)<=64*1024**2
-              if source.suffix in ('.json','.jsonl','.xml','.txt','.log'):
+              if source.suffix in ('.json','.jsonl','.xml','.txt','.log','.tsv','.stderr'):
                   if password:data=data.replace(password,b'[redacted synthetic password]')
                   if source.suffix in ('.txt','.log'):
                       data=re.sub(rb'(?im)^.*admin[_ ]?password\s*[:=].*$',b'[redacted administrative credential line]',data)

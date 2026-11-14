@@ -1,0 +1,20 @@
+{
+  "scope": "Pinned existing tessdata_fast models used only for CURRENT native PNG OCR",
+  "minimum_used_token_confidence": 75,
+  "models": [
+    {
+      "file": "jpn.traineddata",
+      "sha256": "1f5de9236d2e85f5fdf4b3c500f2d4926f8d9449f28f5394472d9e8d83b91b4d",
+      "repository": "tesseract-ocr/tessdata_fast",
+      "commit": "87416418657359cb625c412a48b6e1d6d41c29bd"
+    },
+    {
+      "file": "eng.traineddata",
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+      "retained_original": "/usr/share/tesseract-ocr/5/tessdata/eng.traineddata"
+    }
+  ],
+  "original_pin_receipt": "/tmp/sifas-jp-native-flow-preparation-20261113/pinned-jpn-model-and-unchanged-GL-source.json",
+  "license": "Apache-2.0; adjacent LICENSE",
+  "best_models_used": false
+}
