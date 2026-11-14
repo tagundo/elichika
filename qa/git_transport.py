@@ -92,7 +92,7 @@ class DeadlineGitREST:
         require(not self.sealed and self.windows < 2, 'Operator transport is permanently closed')
         require(self.deadline is None or self.clock() >= self.deadline, 'Operator window cannot be renewed')
         require(type(end) in (int, float) and math.isfinite(end)
-                and self.clock() < end <= min(self.clock() + 90, self.end), 'Invalid predeclared operator end')
+                and self.clock() < end <= min(self.clock() + 180, self.end), 'Invalid predeclared operator end')
         self.deadline = end; self.windows += 1; self.calls = 0
 
     def close_window(self):

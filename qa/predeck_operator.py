@@ -58,7 +58,7 @@ class PredeckOperator:
             persist=lambda name,value:proof(self.evidence,name,value),archive=lambda name,raw:archive(self.evidence,name,raw),
             capture=self.capture,execute=self.execute)
         proof(self.evidence,'operator-binding.json',{'binding':self.binding,'overall_end':self.bridge.end,
-            'scope':'PREDECK_ONLY_NO_FEATURE_APPROVAL','trigger_seconds':15,'maximum_windows':2,'window_seconds':90})
+            'scope':'PREDECK_ONLY_NO_FEATURE_APPROVAL','trigger_seconds':15,'maximum_windows':2,'window_seconds':180})
 
     def remaining(self,maximum=20):
         if self.deadline is None or self.clock()>=min(self.deadline,self.bridge.end):raise Refusal('Operator end reached')
@@ -71,6 +71,21 @@ class PredeckOperator:
 
     def capture(self):
         self.remaining();self.sequence+=1;label='operator-capture-%04d'%self.sequence
+        started={'monotonic':self.clock(),'unix':time.time()};failure=None;completed=False
+        try:
+            current=self._capture(label);completed=True
+            return current
+        except BaseException as error:
+            failure=type(error).__name__;raise
+        finally:
+            ref=proof(self.evidence,label+'-timing.json',{'started_at':started,
+                'completed_at':{'monotonic':self.clock(),'unix':time.time()},
+                'completed':completed,'error_class':failure,'deadline':self.deadline,
+                'last_observed_snapshot_timestamp_ms':(self.last_tree or {}).get('timestampMs')})
+            if completed and not current.get('deck_validated'):self.last_proofs.append(ref)
+
+    def _capture(self,label):
+        self.remaining()
         tree=self.rpc(lambda:self.context['agent']().exports_sync.snapshot(
             {'maxNodes':1500,'raycastText':True,'featureRegion':'GL'}),timeout=self.remaining())
         self.last_tree=tree;scope=self.scope(tree)
@@ -143,8 +158,9 @@ class PredeckOperator:
             'visible_labels':labels,'surface_size':[width,height],'png':raw,'targets':targets}
 
     def execute(self,command,offered,*,deadline):
-        current=self.capture()
-        if current.get('deck_validated'):raise Refusal('Validated deck closes operator input')
+        # Bridge just captured and validated this exact entry. The input helper
+        # still performs native inspection and its final fresh semantic pick.
+        if self.closed or self.scope(self.last_tree)['deck_validated']:raise Refusal('Validated deck closes operator input')
         entry=self.targets.get((offered['id'],offered['path']))
         if not entry or any(entry['target'].get(k)!=offered.get(k) for k in ('kind','text','actions')):raise Refusal('Fresh offered semantics changed')
         self.remaining();self.sequence+=1;prefix='operator-input-%04d'%self.sequence;index=50000+self.sequence
@@ -161,7 +177,7 @@ class PredeckOperator:
                 selected_id=self.scope(self.last_tree)['selected_song_intent'] if node.get('name') in ('EnableMvBtn','MvBtnDownloadLabel') else None
                 picked=self.pick(pick,'operator-tap',index,selected_music_id=selected_id)
                 if picked is None:raise NoInputObserved('Fresh semantic pick refused; no input')
-                if picked['screen']['scene']!=current['scene'] or picked['target']['path']!=node['path'] or picked['target']['id']!=node['id']:raise Refusal('Fresh target identity changed')
+                if picked['screen']['scene']!=self.last_tree['screen']['scene'] or picked['target']['path']!=node['path'] or picked['target']['id']!=node['id']:raise Refusal('Fresh target identity changed')
                 returned=self.tap(picked,'operator-tap',index,semantic_query=pick,selected_music_id=selected_id,input_deadline=deadline,proof_prefix=prefix)
         else:
             direction='forward' if command['target']['action']=='scroll_forward' else 'backward'
@@ -179,13 +195,18 @@ class PredeckOperator:
 
     def wait(self,observe,stagnation_type):
         if self.closed or self.bridge.offers>=2:return False
-        end=min(self.clock()+90,self.bridge.end);reason='Predeck operator fixed window ended'
+        end=min(self.clock()+180,self.bridge.end);reason='Predeck operator fixed window ended'
         self.deadline=end;self.api.bind_deadline(end)
         self.context['absolute_phase_deadline'](end,reason)
         pending=None;offer=None
         try:
             offer=self.bridge.offer(deadline=end)
             while self.clock()<end:
+                # Inspect the inexpensive command ref before a full UI/native/
+                # PNG capture can consume the remainder of a fixed window.
+                if offer.commit not in self.bridge.consumed:
+                    try:self.bridge.poll_once(offer)
+                    except NoInputObserved:pass
                 self.capture()
                 if self.closed:return True
                 try:observe(self.last_tree)
@@ -195,10 +216,7 @@ class PredeckOperator:
                     # or the unchanged guard has not yet reached50seconds.
                     if observe.progressed is True:
                         self.bridge.close_offer_without_input(offer,'Observed semantic progress');return True
-                if offer.commit not in self.bridge.consumed:
-                    try:self.bridge.poll_once(offer)
-                    except NoInputObserved:pass
-                self.sleep(min(2,max(0,end-self.clock())))
+                self.sleep(min(4,max(0,end-self.clock())))
         except BaseException as error:
             if self.closed:return True
             if not (type(error).__name__=='NativeRunDeadline' and str(error)==reason and self.clock()>=end and end<self.bridge.end):raise

@@ -1,0 +1,21 @@
+{
+  "run": 43577464048,
+  "head": "7f08aa768054696dd0ef4726763876542f00473d",
+  "tree": "bfde5194f811de8e56a2386e29101d9a86248419",
+  "canonical_zip_sha256": "0ac5b54ce5e09489478243e986e4d3771f29ceaa5105e291916c3df64c69d7e2",
+  "fixtures": [
+    {
+      "fixture": "mv-ui-027.json",
+      "source": "/dev/shm/sifas-gl-predeck-r6-actual-20261114/selected/mv-ui-027.json",
+      "bytes": 302815,
+      "sha256": "a4c920087dc48a011dd57f55c8298822e9accc2542ad7d31eedcfb98e2036715"
+    },
+    {
+      "fixture": "mv-ui-031.json",
+      "source": "/dev/shm/sifas-gl-predeck-r6-actual-20261114/selected/mv-ui-031.json",
+      "bytes": 303017,
+      "sha256": "6ebbf5c0102f583139eca60d3b72b1d424509bbf335ecba91042b88ff53cca08"
+    }
+  ],
+  "interpretation": "Actual snapshots demonstrate changing projected row geometry; they do not prove the exact geometry at the previous input boundary. Tests model cross-native pick stability using these actual row values."
+}

@@ -147,7 +147,7 @@ class FixedWindowBridgeTests(unittest.TestCase):
         self.assertEqual(len(self.git.calls), before)
 
     def test_invalid_or_capture_expired_end_publishes_nothing(self):
-        for end in (99, 100, 191, float('nan')):
+        for end in (99, 100, 281, float('nan')):
             with self.subTest(end=end), self.assertRaisesRegex(Refusal, 'Invalid predeclared operator end'):
                 self.bridge.offer(deadline=end)
         self.assertEqual(self.capture_count, 0)
@@ -158,6 +158,21 @@ class FixedWindowBridgeTests(unittest.TestCase):
         self.assertEqual(self.git.calls, [])
         self.assertEqual(self.records, {})
         self.assertEqual(self.archives, {})
+        self.capture_advance = 0
+        offer = self.bridge.offer(deadline=330)  # Clock is150: full fixed180s.
+        self.clock.now = 151
+        self.assertEqual(self.bridge.poll_once(offer)['status'],'WAITING_NO_PROGRESS_OR_DEADLINE_RENEWAL')
+        observed=self.records['operator-offer-01-poll-001.json']
+        self.assertEqual(observed['observed_ref_sha'],offer.commit)
+        self.assertEqual(observed['offered_commit'],offer.commit)
+        self.assertEqual(observed['deadline'],330)
+        self.assertIsNone(observed['error_class'])
+        self.assertEqual(observed['request_started_at'],{'monotonic':151,'unix':10000})
+        self.assertEqual(observed['request_completed_at'],{'monotonic':151,'unix':10000})
+        self.bridge.polls=160;before=len(self.git.calls)
+        with self.assertRaisesRegex(Refusal,'Bounded operator poll observations exhausted'):
+            self.bridge.poll_once(offer)
+        self.assertEqual(len(self.git.calls),before)
 
     def test_two_windows_close_without_input_and_third_offer_is_refused(self):
         first = self.bridge.offer(deadline=150)

@@ -114,15 +114,29 @@ class OperatorTests(unittest.TestCase):
         self.assertFalse(any(target['id'] in ('title-124','unrecognized') for target in capture['targets']))
         self.assertEqual(capture['targets'][0]['actions'],['scroll_forward','scroll_backward'])
 
-    def test_execute_recaptures_full_binding_and_retains_final_native_xml(self):
+    def test_execute_uses_bridge_capture_without_duplicate_and_retains_final_native_xml(self):
+        self.tree['timestampMs']=123456
         target=self.offered_title()
-        result=self.operator.execute({'target':{'action':'tap'}},target,deadline=190.)
+        with patch.object(self.operator,'capture',wraps=self.operator.capture) as capture:
+            self.operator.capture()  # Bridge's fresh validated capture.
+            sequence=self.operator.sequence
+            result=self.operator.execute({'target':{'action':'tap'}},target,deadline=190.)
+        capture.assert_called_once()
+        self.assertEqual(self.operator.sequence,sequence+1)
         self.assertIs(result['input_returned'],True)
         self.assertEqual(self.calls,[('pickmv',{'role':'music','liveMasterId':12074})])
         self.intent.assert_called_once_with(12074)
         self.assertEqual(self.tap.call_args.kwargs['input_deadline'],190.)
         for ref in result['proof_refs']:
             self.assertEqual(hashlib.sha256((self.root/ref['path']).read_bytes()).hexdigest(),ref['sha256'])
+        timing=[ref for ref in result['proof_refs'] if ref['path'].endswith('-timing.json')]
+        self.assertEqual(len(timing),1)
+        recorded=json.loads((self.root/timing[0]['path']).read_text())
+        self.assertIs(recorded['completed'],True);self.assertIsNone(recorded['error_class'])
+        self.assertEqual(recorded['deadline'],190.)
+        self.assertEqual(recorded['last_observed_snapshot_timestamp_ms'],123456)
+        self.assertGreaterEqual(recorded['completed_at']['monotonic'],recorded['started_at']['monotonic'])
+        self.assertGreaterEqual(recorded['completed_at']['unix'],recorded['started_at']['unix'])
 
     def test_recycled_row_id_or_changed_caption_refuses_before_input(self):
         for change in ('song','caption'):
@@ -132,6 +146,7 @@ class OperatorTests(unittest.TestCase):
                 target=self.offered_title()
                 if change=='song':self.tree['features']['mv']['musicRows'][0]['liveMasterId']=12096
                 else:self.tree['nodes'][0]['text']='Changed full caption'
+                self.operator.capture()  # Bridge refreshes before execute.
                 with self.assertRaisesRegex(Refusal,'Fresh offered semantics changed'):
                     self.operator.execute({'target':{'action':'tap'}},target,deadline=190.)
         self.tap.assert_not_called();self.intent.assert_not_called()
@@ -173,11 +188,32 @@ class OperatorTests(unittest.TestCase):
         def observe(tree):raise Stagnant('Original semantic stagnation')
         observe.progressed=False
         with self.assertRaisesRegex(Stagnant,'Original semantic stagnation'):self.operator.wait(observe,Stagnant)
-        self.assertEqual(events,[('offer',190.,190.,[190.])])
-        self.assertEqual(self.operator.api.bound,[190.]);self.assertEqual(self.operator.api.closed,1)
+        self.assertEqual(events,[('offer',280.,280.,[280.])])
+        self.assertEqual(self.operator.api.bound,[280.]);self.assertEqual(self.operator.api.closed,1)
         self.assertIsNone(self.operator.deadline);bridge.close_offer_without_input.assert_not_called()
-        self.assertGreater(bridge.poll_once.call_count,0);self.assertEqual(self.clock(),190.)
-        self.context['absolute_phase_deadline'].assert_called_once_with(190.,'Predeck operator fixed window ended')
+        self.assertGreater(bridge.poll_once.call_count,0);self.assertEqual(self.clock(),280.)
+        self.context['absolute_phase_deadline'].assert_called_once_with(280.,'Predeck operator fixed window ended')
+
+    def test_wait_polls_before_expensive_capture_can_spend_fixed_window(self):
+        self.operator.deadline=None;events=[];offer=SimpleNamespace(commit='b'*40)
+        bridge=SimpleNamespace(offers=0,end=2400.,consumed=set(),
+            offer=Mock(side_effect=lambda **kwargs:(events.append(('offer',kwargs['deadline'])) or offer)),
+            poll_once=Mock(side_effect=lambda offered:events.append(('poll',self.clock()))),
+            close_offer_without_input=Mock())
+        self.operator.bridge=bridge
+        class NativeRunDeadline(BaseException):pass
+        class Stagnant(RuntimeError):pass
+        def capture():
+            events.append(('capture',self.clock()));self.clock.now=280.
+            raise NativeRunDeadline('Predeck operator fixed window ended')
+        self.operator.capture=Mock(side_effect=capture);observe=Mock()
+        with self.assertRaisesRegex(Stagnant,'No semantic predeck progress within the fixed operator window'):
+            self.operator.wait(observe,Stagnant)
+        self.assertEqual(events,[('offer',280.),('poll',100.),('capture',100.)])
+        bridge.poll_once.assert_called_once_with(offer);self.operator.capture.assert_called_once()
+        observe.assert_not_called();bridge.close_offer_without_input.assert_not_called()
+        self.assertEqual(self.operator.api.bound,[280.]);self.assertEqual(self.operator.api.closed,1)
+        self.assertIsNone(self.operator.deadline)
 
     def test_core_operator_hook_begins_at_fifteen_seconds_and_closes_for_cases(self):
         source=ast.parse((Path(__file__).parent/'native_mv_focus.py').read_text())

@@ -108,7 +108,7 @@ def publish_reviewed(api, *, inspection_directory, command_spec, authorization, 
     # Worker UTC is a non-authority I/O hint only. Tightening Root's local
     # window cannot extend the worker's independent monotonic input end.
     left = record['expires_unix'] - wall_clock()
-    require(0 < left <= 90, 'The inspected worker window expired')
+    require(0 < left <= 180, 'The inspected worker window expired')
     api.remaining()
     api.tighten_deadline(min(api.deadline, api.clock() + left))
     require(type(command_spec) is dict and set(command_spec) == {'id', 'path', 'action'}, 'Only a semantic command is accepted')
@@ -169,7 +169,7 @@ def main():
     require(args.binding_file and args.output and args.operator_end_unix and args.overall_end_unix, 'Missing predeclared actual binding/deadlines/output')
     wall, mono = time.time(), time.monotonic()
     overall_left = args.overall_end_unix - wall; operator_left = args.operator_end_unix - wall
-    require(0 < overall_left <= 2400 and 0 < operator_left <= 90, 'Expired or unbounded actual window hint')
+    require(0 < overall_left <= 2400 and 0 < operator_left <= 180, 'Expired or unbounded actual window hint')
     api = DeadlineGitREST(json.loads(read(args.binding_file)), overall_started=mono + overall_left - 2400,
                           token_provider=protected_gh_token, max_calls=40)
     api.bind_deadline(mono + min(operator_left, overall_left))

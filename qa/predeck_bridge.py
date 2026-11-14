@@ -123,7 +123,7 @@ class Offer:
 
 
 class Bridge:
-    """At most two fixed <=90s offers inside the original overall2400s end.
+    """At most two fixed <=180s offers inside the original overall2400s end.
 
     api(method, repository-relative-route, body) is an injected Git API adapter.
     persist(name, JSON-value) / archive(name, bytes) are exclusive durable writers.
@@ -148,6 +148,7 @@ class Bridge:
         self.branch = 'codex/qa-control/' + str(binding['run']) + '-' + binding['nonce']
         self.base = '/repos/' + REPO + '/git/'
         self.offers, self.closed, self.current, self.consumed = 0, False, None, set()
+        self.polls = 0
 
     def seal_validated_deck(self):
         self.closed = True
@@ -178,7 +179,7 @@ class Bridge:
     def offer(self,*,deadline):
         require(not self.closed and self.offers < 2 and self.clock() < self.end, 'Operator offer budget closed')
         require(type(deadline) in (int,float) and math.isfinite(deadline) and
-                self.clock()<deadline<=min(self.clock()+90,self.end),'Invalid predeclared operator end')
+                self.clock()<deadline<=min(self.clock()+180,self.end),'Invalid predeclared operator end')
         require(self.current is None or self.current.commit in self.consumed or self.clock() >= self.current.deadline,
                 'An unconsumed operator offer is still active')
         capture = self.capture()
@@ -226,7 +227,21 @@ class Bridge:
         require(offer is self.current and not self.closed, 'Unknown or closed operator offer')
         require(offer.commit not in self.consumed, 'Operator offer already spent')
         require(self.clock() < min(offer.deadline, self.end), 'Original operator/overall end reached')
-        head = oid(self._call('GET', 'ref/heads/' + self.branch)['object']['sha'])
+        require(self.polls < 160, 'Bounded operator poll observations exhausted')
+        self.polls += 1
+        started = {'monotonic': self.clock(), 'unix': self.wall_clock()}
+        head, failure = None, None
+        try:
+            head = oid(self._call('GET', 'ref/heads/' + self.branch)['object']['sha'])
+        except BaseException as error:
+            failure = type(error).__name__
+            raise
+        finally:
+            self.persist('operator-offer-%02d-poll-%03d.json' % (self.offers, self.polls),
+                         {'request_started_at': started,
+                          'request_completed_at': {'monotonic': self.clock(), 'unix': self.wall_clock()},
+                          'observed_ref_sha': head, 'error_class': failure,
+                          'offered_commit': offer.commit, 'deadline': offer.deadline})
         if head == offer.commit:
             return {'status': 'WAITING_NO_PROGRESS_OR_DEADLINE_RENEWAL'}
         commit = self._call('GET', 'commits/' + head)

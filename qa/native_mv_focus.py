@@ -21,6 +21,7 @@ from mv_driver import MVDriver, validated_pick, successful_live_start_count, dec
 from mv_catalog_audit import SuitCatalogAudit
 from unity_main_tid import select_unity_main_tid, proc_stat_starttime
 from predeck_availability import classified_semantic_refusal, music_selection_witness, music_selection_blocker
+from predeck_music_stability import music_target_stability
 
 MEMBER_SCENES={'CardList','CardDetail','CommunicationMemberSelect','CommunicationMemberDetail'}
 MEMBER_BACK_PATH='EntryPoint/Canvas/UnSafeArea/BackButtonSafeArea/BackButton'
@@ -353,11 +354,14 @@ def run_mv_focus(context):
 
     def tap_picked(picked,reason,index,query=None,*,semantic_query=None,selected_music_id=None,input_deadline=None,proof_prefix=None):
         if query is not None:validated_pick(picked,query)
+        typed_music=query is not None and query.get('role')=='music'
+        if typed_music and proof_prefix is None:proof_prefix='operator-auto-music-%03d'%index
         original=picked;target,screen=picked['target'],picked['screen']
         geometry=fresh_native_geometry(screen,index)
         # The native dump may take time; re-pick after it, retaining exact target.
         if query is not None:
-            picked=rpc(lambda:agent.exports_sync.pickmv(query),timeout=10);validated_pick(picked,query)
+            picked=rpc(lambda:agent.exports_sync.pickmv(query),timeout=10)
+            if not typed_music:validated_pick(picked,query)
         else:
             request=dict(semantic_query or {},id=target['id'],requireHitTest=True)
             selected_id=selected_music_id
@@ -365,6 +369,19 @@ def run_mv_focus(context):
             picked=semantic_pick(request,'post-native-'+reason,index,selected_music_id=selected_id)
             if picked is None:return False
             require_same_target(original,picked)
+        stability=music_target_stability(original,picked,query) if typed_music else None
+        if typed_music:
+            from predeck_operator import proof,native_xml_reference
+            xml=native_xml_reference(context)
+            proof(evidence,proof_prefix+'-fresh.json',{'original_pick':original,'fresh_pick':picked,'native_surface':geometry,
+                'native_xml':xml['path'],'native_xml_sha256':xml['sha256'],'owned_identity':{'pid':int(pid),'start_ticks':before_ticks},
+                'input_deadline':input_deadline,'input_performed':False,'music_stability':stability})
+            if not stability['stable']:
+                proof(evidence,proof_prefix+'-result.json',{'input_returned':False,'input_performed':False,
+                    'reason':stability['reason'],'music_stability':stability})
+                report.setdefault('mv_music_input_observations',[]).append({'proof_prefix':proof_prefix,
+                    'reason':stability['reason'],'input_performed':False})
+                context['save']();return False
         assert original['screen'].get('scene')==picked['screen'].get('scene'),'MV pick changed scene before input'
         validated_pick(picked,query or {'role':'semantic'})
         target,screen=picked['target'],picked['screen']
@@ -372,7 +389,7 @@ def run_mv_focus(context):
         hit=target.get('hit') or {};assert hit.get('available') and hit.get('hittable')
         assert target.get('active') and target.get('visible')
         x,y=semantics.center(target);assert 0<=x<screen['width'] and 0<=y<screen['height']
-        if proof_prefix:
+        if proof_prefix and not typed_music:
             from predeck_operator import proof,native_xml_reference
             xml=native_xml_reference(context)
             proof(evidence,proof_prefix+'-fresh.json',{'original_pick':original,'fresh_pick':picked,'native_surface':geometry,
@@ -382,13 +399,16 @@ def run_mv_focus(context):
         if input_deadline is not None:
             if time.monotonic()>=min(input_deadline,context['overall_deadline']):raise RuntimeError('Operator input end reached before tap')
             validated_pick(picked,query or {'role':'semantic'})
+        input_time={'unix':time.time(),'monotonic':time.monotonic()}
         try:
             options={} if input_deadline is None else {'timeout':min(5,input_deadline-time.monotonic())}
             device.shell('input','tap',str(x),str(y),**options)
         except BaseException as error:
-            if proof_prefix:proof(evidence,proof_prefix+'-result.json',{'input_returned':False,'error_class':type(error).__name__})
+            if proof_prefix:proof(evidence,proof_prefix+'-result.json',{'input_returned':False,'error_class':type(error).__name__,
+                'input_invoked_at':input_time,'input_may_have_occurred':True})
             raise
-        if proof_prefix:proof(evidence,proof_prefix+'-result.json',{'input_returned':True,'scope':'Ordinary input returned; semantic progress unproved'})
+        if proof_prefix:proof(evidence,proof_prefix+'-result.json',{'input_returned':True,'input_invoked_at':input_time,
+            'input_returned_at':{'unix':time.time(),'monotonic':time.monotonic()},'scope':'Ordinary input returned; semantic progress unproved'})
         report['actions'].append({'source':'fresh-readonly-target-and-native-surface','reason':reason,
             'query':query,'path':target.get('path'),'center':[x,y],'snapshot_index':index})
         return True
@@ -627,7 +647,8 @@ def run_mv_focus(context):
                     if plan['kind']=='music':
                         query=plan['query']
                         picked=rpc(lambda:agent.exports_sync.pickmv(query),timeout=10)
-                        tap_picked(picked,'select-official-twelve-standing-song',index,query);selected_song=query['liveMasterId'];continue
+                        if tap_picked(picked,'select-official-twelve-standing-song',index,query):selected_song=query['liveMasterId']
+                        continue
                     if plan['kind']=='scroll':
                         scroll_fresh(plan['target'],screen,index,600,'music')
                         music_scrolls+=1
