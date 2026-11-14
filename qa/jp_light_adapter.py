@@ -3,7 +3,9 @@
 No selected-Light original has been retained.  The selected-state recognizer
 therefore composes two actual radio specimens and the two actual row styles;
 it never labels a generated image as an actual selected-Light reference.
-Every glyph pixel is checked.  Any unobserved rendering difference refuses.
+Header and OK glyph pixels remain exact.  Cancel alone permits one RGB level
+per channel at the bounds those exact anchors derive; its current whole crop
+must itself occur exactly once in the frame.  Other rendering differences refuse.
 There is no device, OCR, observer, feature, or network API in this module.
 """
 from pathlib import Path
@@ -15,6 +17,7 @@ import jp_complete_matcher as exact
 Refusal = exact.Refusal
 SOURCE_SHA256 = '632772da704152eb0232f869106894cc7edc54797f1026ee0754529fc6746acb'
 SOURCE = Path(__file__).parent / 'fixtures' / 'jp-full-light-044.png'
+# Stable legacy kind; cancel_caption_comparison explicitly qualifies Cancel.
 EVIDENCE = 'current-exact-JP-044-glyph-geometry-and-observed-radio-style-composition'
 MODAL = (107, 450, 613, 829)
 CONTENT_VIEWPORT = (107, 488, 613, 780)
@@ -131,19 +134,33 @@ def capture_image(capture):
 
 def modal_context(image, source):
     """The fixed header/footer determine the modal, independently of its scroll."""
-    offsets=[];anchors=[]
-    for label, box in ANCHORS:
-        found = _unique(image, source.crop(box), label)
+    offsets=[];anchors={}
+    for label, box in (ANCHORS[0], ANCHORS[2]):
+        with source.crop(box) as specimen:
+            found = _unique(image, specimen, label)
         offsets.append((found[0] - box[0], found[1] - box[1]))
-        anchors.append({'role':label,'bounds':list(found)})
+        anchors[label]={'role':label,'bounds':list(found)}
     if any(offset != offsets[0] for offset in offsets):
         raise Refusal('JP Light fixed header/footer geometry disagrees')
     modal = _shift(MODAL, offsets[0])
     if not (0 <= modal[0] < modal[2] <= image.width
             and 0 <= modal[1] < modal[3] <= image.height):
         raise Refusal('JP Light modal is clipped')
+    label, box = ANCHORS[1]
+    bounds = _shift(box, offsets[0])
+    with image.crop(bounds) as current, source.crop(box) as specimen:
+        if any(abs(a-b)>1 for a,b in zip(current.tobytes(),specimen.tobytes())):
+            raise Refusal('JP Light Cancel caption differs by more than one RGB level')
+        if _unique(image,current,'current-cancel-caption') != bounds:
+            raise Refusal('JP Light current Cancel caption is outside its derived bounds')
+    anchors[label]={'role':label,'bounds':list(bounds)}
     return {'modal_offset':list(offsets[0]),'modal_bounds':list(modal),
-        'viewport_bounds':list(_shift(CONTENT_VIEWPORT,offsets[0])),'anchors':anchors}
+        'viewport_bounds':list(_shift(CONTENT_VIEWPORT,offsets[0])),
+        'anchors':[anchors[label] for label, _ in ANCHORS],
+        'cancel_caption_comparison':{
+            'source_max_RGB_channel_difference':1,
+            'bounds_derived_from_exact_header_and_OK':True,
+            'current_crop_globally_exact_unique':True}}
 
 
 def _within(box, viewport):
@@ -184,6 +201,7 @@ def observe(capture, state='bulk'):
     return {'evidence_kind': EVIDENCE, 'source_original_png_sha256': SOURCE_SHA256,
         'current_png_sha256': capture['png_sha256'], 'surface': list(surface),
         'modal_bounds':modal['modal_bounds'],'modal_offset':modal['modal_offset'],
+        'cancel_caption_comparison':modal['cancel_caption_comparison'],
         'content_offset':list(offset),'viewport_bounds':modal['viewport_bounds'],'selection':state,
         'bulk_checked': state == 'bulk', 'light_checked': state == 'light',
         'rows': {name: {'caption': row['caption'], 'bounds': list(_shift(row['box'], offset)),

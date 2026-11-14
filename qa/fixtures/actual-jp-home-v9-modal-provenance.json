@@ -1,0 +1,12 @@
+{
+  "scope": "Original V9 native modal references for source-only Cancel raster tests; no Home or feature qualification",
+  "source_root": "/dev/shm/sifas-jp-native-home-v9-actual-20261114/selected/runtime",
+  "files": {
+    "actual-jp-home-v9-0040.png": {"source": "jp-native-0040.png", "sha256": "5fa69b6286123ce04e6a080dc375e8e93e7ea38e5133a8d9975f932b5987abd8"},
+    "actual-jp-home-v9-0040.xml": {"source": "jp-native-0040.xml", "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22"},
+    "actual-jp-home-v9-0041.png": {"source": "jp-native-0041.png", "sha256": "2d1179d230af78c7078d32b5250bcedbb1297a59e4feded92cded757ecdaf4b6"},
+    "actual-jp-home-v9-0041.xml": {"source": "jp-native-0041.xml", "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22"}
+  },
+  "positive_PNG_XML_bytes_are_unchanged_originals": true,
+  "synthetic_negative_images_are_unit_only_and_never_saved_as_actual_references": true
+}
