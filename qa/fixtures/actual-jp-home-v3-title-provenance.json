@@ -1,0 +1,20 @@
+{
+  "scope": "Actual Title pulse regression inputs only; modeled later visible frames in tests are unit-only, never actual runtime evidence",
+  "repository": "tagundo/elichika",
+  "run_id": 43567062962,
+  "job_id": 132363098468,
+  "head": "6656724a8254ade4c62376e2c17b7662f101f2e2",
+  "tree": "b64d44d2093940abfb769d23613cbefa372c8b26",
+  "main_artifact": {"id": 14102542566, "bytes": 8866133, "sha256": "b33124d30c589e1d36cda98869cd967cdaf041691e5c3cd6df712a84c6650e2f"},
+  "raw_source_proof_sha256": "33544b53d1503ec5d6e4f1821d3eec8e6a9b1a38610dc86461773ba805004bda",
+  "owned_identity": {"pid": 1902, "start_ticks": "27669"},
+  "activity": "com.klab.lovelive.allstars.MainActivity",
+  "native_XML_sha256_both": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+  "frames": [
+    {"original_png": "runtime/jp-native-0033.png", "fixture_png": "actual-jp-home-v3-0033.png", "png_sha256": "6b88b97644ea6a4e573498a1a593ef78e80e07814979490955c9e8c4f3989324", "fixture_xml": "actual-jp-home-v3-0033.xml", "native_at": 363.369200573, "captured_at": 363.955609023, "activity_at": 364.03589706, "OCR_fixture": "actual-jp-home-v3-0033-title-ocr.json", "OCR_sha256": "ade7dbf2a6c62edd96b58b41bc96217f2c4f4deed31b7f3cecb3fe4a99094507", "recognized_caption": "TAP TO START", "bounds": [244,1208,476,1233], "confidence": 93.670982, "ROOT_visual_observation": "Same native Title with bright visible pulsing caption"},
+    {"original_png": "runtime/jp-native-0034.png", "fixture_png": "actual-jp-home-v3-0034.png", "png_sha256": "5b021c97ae471123a60fe866c4a386d7f09b08f7f18cc2d13006e261b115a820", "fixture_xml": "actual-jp-home-v3-0034.xml", "native_at": 367.029502117, "captured_at": 367.592355191, "activity_at": 367.670789798, "OCR_fixture": "actual-jp-home-v3-0034-title-ocr.json", "OCR_sha256": "76f1305457b87dd0566d4cf1909dd55cba47d6a8f82a5ca508398b9d518d258b", "recognized_caption": null, "ROOT_visual_observation": "Same native Title with caption pulsed very faint; not an error modal"}
+  ],
+  "no_ordinary_Title_input_in_V3": true,
+  "no_selected_Light_Close_or_Home_reference": true,
+  "all11_feature_flags_false": true
+}

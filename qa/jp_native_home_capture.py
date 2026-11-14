@@ -30,6 +30,7 @@ from native_download_guard import NativeDeadlines
 from jp_native_home_flow import NativeReferenceFlow, NativeLog, pale_modal_candidate
 import jp_light_adapter as light
 import jp_chooser_scroll as chooser
+from jp_title_pulse import TitleCandidates
 
 TOOLS='932666aa03264225e2a6bb2a973482b47e22b050'
 ASSETS='1b0154db2976ba345fb30f3516018bb04d408ce1'
@@ -338,10 +339,12 @@ def main():
             persist=lambda name,value:durable(args.evidence/name,value),log=log,overall_started=started,
             progress=observe_progress,prechooser_started=title_started)
         title_sent=False;budget=chooser.ChooserScrollBudget()
+        title_pairs=TitleCandidates(owned_identity=flow.owned,overall_started=started,title_started=title_started)
         while True:
             time.sleep(.2);first=capture('after-title' if title_sent else 'title-search')
             service=missing_services(first['nodes'])
             if service:
+                title_pairs.clear('known-native-services-input')
                 second=capture('exact-JP-services-dialog-recheck');other=missing_services(second['nodes'])
                 if not other or service!=other:raise StopCapture('Exact native services dialog changed')
                 send('exact-JP-native-services-OK',list(center(other)),(first,second));continue
@@ -380,14 +383,12 @@ def main():
             words,ocr=ocr_words(image,crop=(0,h*9//10,w,h),scale=4,mode='title',language='eng')
             title=title_caption(words)
             durable(args.evidence/(first['id']+'-title-ocr.json'),{'words':words,'raw_transform':ocr,'action':title})
-            if not title:continue
-            second=capture('English-Title-caption-recheck');other_image=image_of(second['png_bytes']);w,h=other_image.size
-            other_words,other_ocr=ocr_words(other_image,crop=(0,h*9//10,w,h),scale=4,mode='title',language='eng')
-            other=title_caption(other_words)
-            durable(args.evidence/(second['id']+'-title-ocr.json'),{'words':other_words,'raw_transform':other_ocr,'action':other})
-            if not other or has_large_pale_panel(second['png_bytes']) or any(abs(a-b)>3 for a,b in zip(title['bounds'],other['bounds'])):
-                raise StopCapture('Two fresh ordinary English Title captions did not agree')
-            box=other['bounds'];send('title-start',[(int(box[0])+int(box[2]))//2,(int(box[1])+int(box[3]))//2],(first,second));title_sent=True
+            report['last_Title_OCR']={'capture':first['id'],'raw':first['id']+'.png',
+                'words_file':first['id']+'-title-ocr.json','action':title}
+            pair=title_pairs.observe(first,words,now=time.monotonic())
+            report.setdefault('Title_pair_observations',[]).append(dict(title_pairs.last_observation));save()
+            if pair is None:continue
+            send('title-start',pair['point'],pair['frames']);title_sent=True
         check_log()
     except BaseException as error:
         report['failure_phase']=report['phase']
