@@ -24,8 +24,9 @@ from unity_main_tid import select_unity_main_tid, proc_stat_starttime
 MEMBER_SCENES={'CardList','CardDetail','CommunicationMemberSelect','CommunicationMemberDetail'}
 MEMBER_BACK_PATH='EntryPoint/Canvas/UnSafeArea/BackButtonSafeArea/BackButton'
 HOME_LIVE_PATH='EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Live/LiveButton'
+HOME_BASIC_LIVE_PATH='EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/LiveToolTip/Basic/BasicLiveButton'
 NAVIGATION_CONTROLS={'CardButton','CardListButton','CommunicationMemberDetailButton',
-    'CommunicationMemberSelectButton','LiveButton','BackButton','EnableMvBtn','MvBtnDownload',
+    'CommunicationMemberSelectButton','LiveButton','BasicLiveButton','BackButton','EnableMvBtn','MvBtnDownload',
     'CloseButton','ButtonClose'}
 
 
@@ -54,13 +55,31 @@ def navigation_stage(stage,scene):
     return stage
 
 
-def route_action(stage,scene):
+def route_action(stage,scene,*,tree=None):
     """Use only routes exposed by the actual Home and member captures."""
     if stage=='return-home' and scene in MEMBER_SCENES:
         return {'patterns':['^'+re.escape(MEMBER_BACK_PATH)+'$'],
                 'reason':'return-from-observed-members-to-home',
                 'blocked_reason':'Await actual Home after the current member Back control'}
     if stage=='mv' and scene=='Home':
+        if tree is not None:
+            if tree.get('screen',{}).get('scene')!=scene:raise ValueError('Current route snapshot changed scene')
+            candidates=actionable_nodes(tree)
+            # Normal is the observed Basic control in the actual Home flyout.
+            # Separate UI components collapse only for the same physical path.
+            for path,reason,blocked in [
+                (HOME_BASIC_LIVE_PATH,'open-observed-normal-live-flyout',
+                 'Await observed Normal/Basic Live transition to song selection'),
+                (HOME_LIVE_PATH,'open-live-from-observed-home',
+                 'Await the current hittable Home Live control and its observed transition')]:
+                patterns=['^'+re.escape(path)+'$']
+                target,_=semantics.semantic_match(candidates,patterns)
+                if target:return {'patterns':patterns,'reason':reason,'blocked_reason':blocked}
+                if any(n.get('path')==path for n in candidates):
+                    return {'patterns':[],'reason':'await-unambiguous-current-live-control',
+                            'blocked_reason':'Current Home Live route control is ambiguous: '+path}
+            return {'patterns':[],'reason':'await-observed-home-live-route',
+                    'blocked_reason':'No unique hittable observed Normal/Basic or Home Live control'}
         return {'patterns':['^'+re.escape(HOME_LIVE_PATH)+'$'],
                 'reason':'open-live-from-observed-home',
                 'blocked_reason':'Await the current hittable Home Live control and its observed transition'}
@@ -72,6 +91,48 @@ def actionable_nodes(tree):
             all(n.get(key) is True for key in ('active','visible','enabled')) and
             (n.get('hit') or {}).get('available') is True and
             (n.get('hit') or {}).get('hittable') is True]
+
+
+def predeck_song_blocker(tree,selected_song):
+    if tree.get('screen',{}).get('scene')!='LiveMvDeckSelect':return None
+    actual=((tree.get('features') or {}).get('mv') or {}).get('liveMasterId')
+    if not (type(actual) in (int,float) and actual>0 and actual%1==0):
+        return 'Await actual deck-root LiveMasterId before catalog/baseline'
+    if selected_song is None:return 'Await observed official-song selection before catalog/baseline'
+    if actual!=selected_song:
+        return 'Actual MV deck LiveMasterId %s differs from selected official song %s'%(actual,selected_song)
+    return None
+
+
+def cleanup_mv_observers(context,expected,sessions,rpc):
+    """Detach only after strict old-PID absence or fixed owned-container proof."""
+    from native_download_driver import stop_owned_download_game
+    report=context['report'];stopped=False
+    def failed(stage,error):
+        report.setdefault('mv_observer_cleanup_errors',[]).append(
+            {'stage':stage,'type':type(error).__name__,'message':str(error)[:600]})
+    try:
+        stop_owned_download_game(dict(context,stop_processes_file='mv-owned-stop-processes.txt'),expected)
+        stopped=True
+    except Exception as error:failed('strict-owned-native-stop',error)
+    if sessions and not stopped:
+        try:
+            cleanup=subprocess.run(['docker','stop','--time','5','original-client-qa'],capture_output=True,timeout=20)
+            if cleanup.returncode==0:
+                checked=subprocess.run(['docker','inspect','--format','{{.State.Running}}','original-client-qa'],
+                                       capture_output=True,text=True,timeout=5)
+                stopped=checked.returncode==0 and checked.stdout.strip()=='false'
+            if not stopped:failed('owned-container-stop',RuntimeError('Exact owned container stop was not positively proved'))
+        except Exception as error:failed('owned-container-stop',error)
+        report['owned_disposable_container_stop_fallback']=stopped
+    report['owned_game_stopped_before_observer_unload']=stopped
+    if stopped:
+        for owned_session in sessions:
+            try:rpc(lambda:owned_session.detach(),timeout=5)
+            except Exception:pass
+    if sessions and not stopped:
+        raise RuntimeError('Could not prove owned game/container stopped before observer cleanup; no runtime approval')
+    return stopped
 
 
 class MVNavigationStagnation(RuntimeError):
@@ -89,7 +150,8 @@ class MVProgressGuard:
         if self.navigation_complete:return
         layout=deck_layout(tree);capacity=standing_count(tree)
         if (tree.get('screen',{}).get('scene')=='LiveMvDeckSelect' and
-            capacity==self.required_capacity and layout is not None and len(layout)==capacity):
+            capacity==self.required_capacity and layout is not None and len(layout)==capacity and
+            predeck_song_blocker(tree,selected_song) is None):
             # This guard owns navigation/pre-custom-deck waits only. Genuine
             # recording, catalog and camera controls keep their existing gates.
             self.navigation_complete=True;return
@@ -329,8 +391,8 @@ def run_mv_focus(context):
             tree=rpc(lambda:agent.exports_sync.snapshot({'maxNodes':1500,'raycastText':True,'featureRegion':'GL'}))
             relative=f'mv-ui-{index:03d}.json';(evidence/relative).write_text(json.dumps(tree,ensure_ascii=False,indent=2)+'\n')
             screen=tree['screen'];scene=screen.get('scene')
-            route=route_action(stage,scene)
-            blocked=(route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
+            route=route_action(stage,scene,tree=tree)
+            blocked=predeck_song_blocker(tree,selected_song) or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
                 'last_snapshot':relative,'blocked_reason':blocked,
                 'progress_guard':progress_guard.status()}
@@ -369,7 +431,7 @@ def run_mv_focus(context):
             if phase!=last_phase:
                 resources.capture('mv-'+driver.case.replace('_','-')+'-'+driver.phase.replace('_','-'),pid=pid);last_phase=phase
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
-                'last_snapshot':relative,'blocked_reason':(route_action(stage,scene) or {}).get('blocked_reason') or driver.blocked_reason,
+                'last_snapshot':relative,'blocked_reason':predeck_song_blocker(tree,selected_song) or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
                 'progress_guard':progress_guard.status()}
             print(json.dumps({'event':'actual-mv-focus','scene':scene,'stage':stage,'phase':driver.phase,'case':driver.case}),flush=True)
             context['save']()
@@ -381,11 +443,11 @@ def run_mv_focus(context):
             elif stage=='members':
                 choose(tree,[r'^CommunicationMemberDetailButton$',r'^CommunicationMemberSelectButton$',r'^CardListButton$',r'^CardButton$',r'^Members?$',r'(?:Main|Bottom|Footer).*Member',r'スクールアイドル'],'open-members',index)
             elif stage=='return-home':
-                route=route_action(stage,scene)
+                route=route_action(stage,scene,tree=tree)
                 report['mv_focus_progress']['blocked_reason']=(route or {}).get('blocked_reason') or 'Await actual member Back control or actual Home; no guessed navigation'
                 if route:choose(tree,route['patterns'],route['reason'],index)
             elif stage=='mv':
-                route=route_action(stage,scene)
+                route=route_action(stage,scene,tree=tree)
                 if route:
                     report['mv_focus_progress']['blocked_reason']=route['blocked_reason']
                     choose(tree,route['patterns'],route['reason'],index)
@@ -407,6 +469,10 @@ def run_mv_focus(context):
                     if choose(tree,[r'^Music\s*Video$',r'^Watch\s*MV$',r'(?:Button|Btn).*MV(?:$|/)',r'^MV$',r'^Live\s*Shows?$',r'^Live$',r'(?:Main|Bottom|Footer).*Live',r'^Songs?$'],'open-music-video',index):continue
                 if scene=='LiveMusicSelect' and selected_song is not None:
                     if choose(tree,[r'^EnableMvBtn$',r'^MvBtnDownload$'],'open-selected-music-video-deck',index):continue
+                blocked=predeck_song_blocker(tree,selected_song)
+                if blocked:
+                    report['mv_focus_progress']['blocked_reason']=blocked
+                    time.sleep(.5);continue
                 if driver.phase=='exit' and scene=='LiveMvDeckSelect':
                     if deck_layout(tree) is None:
                         tabs=[t for g in ((tree.get('features') or {}).get('mv') or {}).get('deckTabGroups',[]) for t in g.get('tabs',[]) if t.get('deckType')==2 and (t.get('target') or {}).get('visible') and ((t.get('target') or {}).get('hit') or {}).get('hittable')]
@@ -491,28 +557,7 @@ def run_mv_focus(context):
     finally:
         # Pending/poisoned/live delegate unload is never attempted. Stop only
         # this exact owned game lifetime before detaching this QA observer.
-        stopped=False
         if video:
             try:device.shell('pkill','-2','screenrecord',timeout=10)
             except Exception:pass
-        try:
-            if context['lifetime']()=={'pid':int(pid),'start_ticks':before_ticks}:
-                device.shell('am','force-stop',context['package'],timeout=10)
-        except Exception:pass
-        try:
-            remaining=proc_stat_starttime(device.adb('exec-out','cat','/proc/'+pid+'/stat',raw=True,timeout=5).decode(),int(pid))
-            stopped=remaining!=before_ticks
-        except (OSError,subprocess.CalledProcessError):stopped=True
-        if sessions and not stopped:
-            # This name is the sole disposable container created by the same
-            # frozen workflow, never another user's Android environment.
-            cleanup=subprocess.run(['docker','stop','--time','5','original-client-qa'],capture_output=True,timeout=20)
-            stopped=cleanup.returncode==0
-            report['owned_disposable_container_stop_fallback']=stopped
-        report['owned_game_stopped_before_observer_unload']=stopped
-        if stopped:
-            for owned_session in sessions:
-                try:rpc(lambda:owned_session.detach(),timeout=5)
-                except Exception:pass
-        if sessions and not stopped:
-            raise RuntimeError('Could not prove owned game/container stopped before observer cleanup; no runtime approval')
+        cleanup_mv_observers(context,{'pid':int(pid),'start_ticks':before_ticks},sessions,rpc)

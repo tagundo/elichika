@@ -144,10 +144,10 @@ class SemanticProgressTests(ActualGLFixtureMixin,unittest.TestCase):
         guard=MVProgressGuard();tree=copy.deepcopy(self.trees['mv-ui-000'])
         self.observe(guard,tree,0,stage='mv')
         tree['screen']['scene']='LiveMvDeckSelect'
-        tree['features']['mv'].update({'standingMemberNum':12,'deckCells':[
+        tree['features']['mv'].update({'standingMemberNum':12,'liveMasterId':12074,'deckCells':[
             {'active':True,'voClass':'DeckMemberCustomVO','formationPosition':position,'memberId':1,'suitId':10}
             for position in range(1,13)]})
-        self.observe(guard,tree,40,stage='mv')
+        self.observe(guard,tree,40,stage='mv',selected_song=12074)
         self.assertTrue(guard.status()['navigation_complete'])
         tree['screen']['scene']='LiveMv'
         self.observe(guard,tree,500,stage='mv',phase='watch')

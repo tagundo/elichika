@@ -1,0 +1,17 @@
+{
+  "canonical_zip": "/dev/shm/sifas-gl-navigation-r3-actual-20261114/artifact.zip",
+  "canonical_zip_sha256": "7bfbe99d3695603023c42f1feb3b67c339355e134a7499686899f589458b778f",
+  "run_id": 43562804746,
+  "head_sha": "6b176f5257566317bac312ab7d6283fcb32305ee",
+  "tree_sha": "67ed56513f7a18a29a74cbb2c550bdf596045305",
+  "members": [
+    {
+      "name": "mv-ui-018.json",
+      "bytes": 211516,
+      "sha256": "1bc615852ba425ea432ede203a0fca079f5e09919b0091a5c8626db2414c8333",
+      "source": "Previously selected exact raw member, watcher sealed"
+    }
+  ],
+  "additional_zip_extraction_bytes": 0,
+  "scope": "Actual failed QA Home Live flyout; Basic/Normal semantic route evidence only, not a client feature PASS/FAIL"
+}
