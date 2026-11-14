@@ -16,6 +16,11 @@ CASES = ('native_load', 'fov_actual', 'portrait', 'landscape', 'auto', 'intro_ti
 MISSING = "スクスタ won't run without Google Play services, which are not supported by your device."
 CHOOSER_HEADER = (107, 450, 613, 488)
 CHOOSER_FOOTER = (107, 780, 613, 829)
+PORTRAIT_REFERENCES = (
+    ('actual-jp-v4-portrait-060.png','8d23552d7d97cc6ff8e8a21779e19cac75cbaad82eb182baf8f0b63a4b24c047'),
+    ('actual-jp-v4-portrait-061.png','f51511bd70eb75870d7c0656ce03a46e45aab9be2ac612f0fb7b96000f37dd2e'))
+PORTRAIT_HEADER = (107, 450, 612, 488)
+PORTRAIT_FOOTER = (107, 780, 612, 800)
 
 
 class StopCapture(RuntimeError):
@@ -168,6 +173,22 @@ def chooser_geometry(raw):
     original=image_of(reference)
     headers=_locations(image,original.crop(CHOOSER_HEADER))
     footers=_locations(image,original.crop(CHOOSER_FOOTER))
+    if len(headers)>1 or len(footers)>1:
+        return None  # An ambiguous original match cannot select a fallback.
+    variant='original-full-strips'
+    if len(headers)!=1 or len(footers)!=1:
+        templates=None
+        for name,expected in PORTRAIT_REFERENCES:
+            retained=(Path(__file__).parent/'fixtures'/name).read_bytes()
+            if digest(retained)!=expected:
+                raise StopCapture('Actual retained JP Portrait chooser reference changed')
+            current=image_of(retained)
+            pair=(current.crop(PORTRAIT_HEADER),current.crop(PORTRAIT_FOOTER))
+            if templates is None:templates=pair
+            elif any(a.tobytes()!=b.tobytes() for a,b in zip(templates,pair)):
+                raise StopCapture('Retained current Portrait interior strips are not stable')
+        headers=_locations(image,templates[0]);footers=_locations(image,templates[1])
+        variant='current-portrait-stable-interior-strips'
     if len(headers)!=1 or len(footers)!=1:
         return None
     head,foot=headers[0],footers[0]
@@ -193,6 +214,7 @@ def chooser_geometry(raw):
     if not (20<=distance<=48 and top+18<end_y<start_y<bottom):
         return None
     return {'source':'current-exact-JP-static-header-footer-and-blank-gutter-pixels',
+        'reference_variant':variant,
         'scope':'Diagnostic scroll geometry only; no caption/radio identity or download authorization',
         'modal_bounds':[head[0],head[1],foot[2],foot[3]],
         'content_bounds':[left,top,right,bottom], 'gutter':[gutter[0],gutter[-1]+1],

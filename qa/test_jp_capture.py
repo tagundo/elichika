@@ -307,6 +307,86 @@ class BootstrapClassificationTests(unittest.TestCase):
         self.assertEqual(guard.classify_static_requests(self.request(b'/_elichika/ready'))['bootstrap_database_GET_count'],0)
 
 
+class CurrentPortraitGeometryTests(unittest.TestCase):
+    CURRENT_IDENTITY={'pid':1894,'start_ticks':'38972'}
+
+    def originals(self):
+        return [(ROOT/'fixtures'/name).read_bytes() for name,expected in guard.PORTRAIT_REFERENCES]
+
+    def actual_pair(self):
+        result=[]
+        for raw,identifier,native_at,at in zip(self.originals(),('jp-short-060','jp-short-061'),
+                (566.092512067,569.409148683),(566.611964883,569.756049038)):
+            value=frame(identifier=identifier,at=at,native_at=native_at,raw=raw)
+            value['identity_before']=value['identity_after']=dict(self.CURRENT_IDENTITY)
+            result.append(value)
+        return result
+
+    def test_both_actual_originals_have_one_stable_current_gutter_and_small_scroll(self):
+        for raw,(name,expected) in zip(self.originals(),guard.PORTRAIT_REFERENCES):
+            self.assertEqual(guard.digest(raw),expected)
+            geometry=guard.chooser_geometry(raw)
+            self.assertEqual(geometry['reference_variant'],'current-portrait-stable-interior-strips')
+            self.assertEqual(geometry['content_bounds'],[107,500,612,768])
+            self.assertEqual(geometry['gutter'],[562,590])
+            self.assertEqual(geometry['start'],[575,750]);self.assertEqual(geometry['end'],[575,715])
+            self.assertTrue(20<=geometry['start'][1]-geometry['end'][1]<=48)
+            self.assertNotIn('confidence',geometry)
+
+    def test_actual_fresh_pair_reserves_only_scroll_and_retains_lifetime_and_XML_guards(self):
+        persisted=[]
+        options=dict(identity=self.CURRENT_IDENTITY,current_identity=self.CURRENT_IDENTITY,
+            now=570,persist=persisted.append)
+        intent=guard.ScrollBudget().reserve(*self.actual_pair(),**options)
+        self.assertEqual(intent['kind'],'diagnostic-chooser-upward-scroll')
+        self.assertEqual(len(persisted),1);self.assertNotIn('radio',intent)
+        for mode in ('old-native','changed-lifetime','wrong-native-package'):
+            frames=self.actual_pair();saved=[];changed=dict(options,persist=saved.append)
+            if mode=='old-native':frames[0]['native_at']=560
+            elif mode=='changed-lifetime':changed['current_identity']=dict(self.CURRENT_IDENTITY,start_ticks='38973')
+            else:
+                frames[1]['native_xml']=XML.replace(guard.PACKAGE.encode(),b'other.package')
+                frames[1]['native_sha256']=guard.digest(frames[1]['native_xml'])
+            with self.subTest(mode=mode),self.assertRaises(guard.StopCapture):
+                guard.ScrollBudget().reserve(*frames,**changed)
+            self.assertEqual(saved,[])
+
+    def test_measured_changing_edges_are_excluded_but_changed_interior_pixels_refuse(self):
+        first,second=map(guard.image_of,self.originals())
+        self.assertNotEqual(first.crop(guard.CHOOSER_FOOTER).tobytes(),second.crop(guard.CHOOSER_FOOTER).tobytes())
+        for box in (guard.PORTRAIT_HEADER,guard.PORTRAIT_FOOTER):
+            self.assertEqual(first.crop(box).tobytes(),second.crop(box).tobytes())
+            image=second.copy();image.putpixel((box[0]+1,box[1]+1),(0,0,0))
+            self.assertIsNone(guard.chooser_geometry(png(image)))
+
+    def test_duplicate_new_or_old_strips_and_misaligned_footer_refuse(self):
+        raw=self.originals()[1]
+        for box,point in ((guard.PORTRAIT_HEADER,(107,10)),(guard.PORTRAIT_FOOTER,(107,100))):
+            image=guard.image_of(raw);image.paste(image.crop(box),point)
+            self.assertIsNone(guard.chooser_geometry(png(image)))
+        image=guard.image_of(raw);image.paste(guard.image_of(PNG).crop(guard.CHOOSER_HEADER),(107,10))
+        self.assertIsNone(guard.chooser_geometry(png(image)))
+        image=guard.image_of(raw);footer=image.crop(guard.PORTRAIT_FOOTER)
+        image.paste((0,0,0),guard.PORTRAIT_FOOTER);image.paste(footer,(108,780))
+        self.assertIsNone(guard.chooser_geometry(png(image)))
+
+    def test_current_gutter_coverage_or_second_wide_gutter_refuses(self):
+        raw=self.originals()[1]
+        image=guard.image_of(raw);image.paste((0,0,0),(562,500,590,768))
+        self.assertIsNone(guard.chooser_geometry(png(image)))
+        image=guard.image_of(raw);image.paste((255,255,255),(548,500,556,768))
+        self.assertIsNone(guard.chooser_geometry(png(image)))
+
+    def test_each_new_original_is_hash_pinned_before_fallback_matching(self):
+        raw=self.originals()[1];read_bytes=Path.read_bytes
+        for name,expected in guard.PORTRAIT_REFERENCES:
+            def altered(path):
+                value=read_bytes(path)
+                return value+b'changed' if path.name==name else value
+            with self.subTest(name=name),mock.patch.object(Path,'read_bytes',altered),self.assertRaises(guard.StopCapture):
+                guard.chooser_geometry(raw)
+
+
 class FakeCleanupClock:
     def __init__(self):self.now=1000.0
     def __call__(self):return self.now
