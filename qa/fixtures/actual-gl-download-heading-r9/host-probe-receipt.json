@@ -1,0 +1,586 @@
+{
+  "scope": "ONE prespecified read-only heading transform on before015 and after023; no multi-crop/PSM/threshold tuning, source/gate edit or input",
+  "started_utc": "2026-11-14T12:43:48.206670+00:00",
+  "engine": {
+    "path": "/usr/bin/tesseract",
+    "sha256": "74b76a5b994adcc18be362bf64ed5118082b2401d5d9a35242e92fc4c62e2b4b",
+    "version": "tesseract 5.5.0\n leptonica-1.84.1\n  libgif 5.2.2 : libjpeg 6b (libjpeg-turbo 2.1.5) : libpng 1.6.48 : libtiff 4.7.0 : zlib 1.3.1 : libwebp 1.5.0 : libopenjp2 2.5.3\n Found AVX512BW\n Found AVX512F\n Found AVX512VNNI\n Found AVX2\n Found AVX\n Found FMA\n Found SSE4.1\n Found OpenMP 201511\n Found libarchive 3.7.4 zlib/1.3.1 liblzma/5.8.1 bz2lib/1.0.8 liblz4/1.10.0 libzstd/1.5.7\n Found libcurl/8.14.1 OpenSSL/3.5.7 zlib/1.3.1 brotli/1.1.0 zstd/1.5.7 libidn2/2.3.8 libpsl/0.21.2 libssh2/1.11.1 nghttp2/1.64.0 nghttp3/1.8.0 librtmp/2.3 OpenLDAP/2.6.10\n"
+  },
+  "model": {
+    "path": "/usr/share/tesseract-ocr/5/tessdata/eng.traineddata",
+    "bytes": 4113088,
+    "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "matches_R9_runtime_model": true,
+    "tsv_config_sha256": "59d079bb75d8b3d7c839a3564580cb559e362c93a9d70f234e421c0c3e767e04"
+  },
+  "runtime_engine_version": "tesseract 5.3.4\n leptonica-1.82.0\n  libgif 5.2.1 : libjpeg 8d (libjpeg-turbo 2.1.5) : libpng 1.6.43 : libtiff 4.5.1 : zlib 1.3 : libwebp 1.3.2 : libopenjp2 2.5.0\n Found NEON\n Found OpenMP 201511\n Found libarchive 3.7.2 zlib/1.3 liblzma/5.4.5 bz2lib/1.0.8 liblz4/1.9.4 libzstd/1.5.5\n Found libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (+libidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10\n",
+  "engine_equivalence": "Host5.5.0 x86 is different from actualCI5.3.4 ARM; this probe is not runtime equivalence or feature qualification.",
+  "rule": {
+    "Light_token": "Exactly one >=75 exact Light in current full-frame words",
+    "heading_bounds": "x0=Light.left-ceil(h/2), y0=Light.top-ceil(h/4), y1=Light.bottom+ceil(h/4); description excluded",
+    "right_boundary": "From current unique orange selected row: scan exact flat background RGB rightward starting one h beyond rightmost high-confidence Full-heading-line token; first RGB change is selected-card boundary. No alternate scan/crop.",
+    "padding": "white ceil(h/2) source pixels on all sides",
+    "scale": 4,
+    "resample": "BICUBIC",
+    "PSM": 7,
+    "language": "eng",
+    "minimum_confidence": 75,
+    "suffix": "Same current baseline numeric MB suffix, never auto-delete prefix alone"
+  },
+  "headroom_before_bytes": 657350656,
+  "protected_reserve_bytes": 201326592,
+  "python_AS_bytes": 83886080,
+  "tesseract_AS_bytes": 536870912,
+  "OMP_THREAD_LIMIT": "1",
+  "cases": [
+    {
+      "label": "before015",
+      "input": "/dev/shm/sifas-gl-typed-native-cell-r9-actual-20261114/capsule-extra/native-ocr-015.png",
+      "input_sha256": "d0783fd06937835a22bf86a433c9b39238454fbcad1cc58deb5d660f61f20796",
+      "metadata": "/dev/shm/sifas-gl-typed-native-cell-r9-actual-20261114/capsule-extra/native-ocr-015.json",
+      "metadata_sha256": "76aa01d404ea66194accae8f6af62123f9ecf31247588dbc028e68ed0470ef09",
+      "crop_box": [
+        185,
+        736,
+        561,
+        759
+      ],
+      "padding_source_pixels": 8,
+      "scale": 4,
+      "Light_token": {
+        "text": "Light",
+        "confidence": 95.770706,
+        "bounds": [
+          193.0,
+          740.0,
+          227.0,
+          755.0
+        ]
+      },
+      "Full_caption": {
+        "text": "Full Download",
+        "bounds": [
+          193.0,
+          642.0,
+          290.0,
+          653.0
+        ],
+        "confidence": 91.83078
+      },
+      "current_suffix_words": [
+        {
+          "text": "(10073.62",
+          "confidence": 92.441109,
+          "bounds": [
+            307.0,
+            741.0,
+            378.0,
+            753.0
+          ]
+        },
+        {
+          "text": "MB)",
+          "confidence": 96.764015,
+          "bounds": [
+            384.0,
+            741.0,
+            410.0,
+            754.0
+          ]
+        }
+      ],
+      "orange_marker": {
+        "bounds": [
+          168,
+          672,
+          184,
+          688
+        ],
+        "pixels": 117,
+        "center": [
+          176.0,
+          680.0
+        ]
+      },
+      "marker_search_region": [
+        133.0,
+        634.5,
+        190.0,
+        782.0
+      ],
+      "row_boundary_scan": {
+        "start": [
+          415,
+          680
+        ],
+        "background_RGB": [
+          255,
+          246,
+          227
+        ],
+        "first_change_x": 561
+      },
+      "transformed_image": "/dev/shm/sifas-gl-r9-light-heading-probe-20261114/before015-heading.png",
+      "transformed_sha256": "9c759ebc9f6988fb0b79e1999e750b47bbf2faa979a7d934b497382ca9f7c974",
+      "derivation": "QUALIFIED_FIXED_RULE",
+      "argv": [
+        "/usr/bin/tesseract",
+        "/dev/shm/sifas-gl-r9-light-heading-probe-20261114/before015-heading.png",
+        "stdout",
+        "--tessdata-dir",
+        "/usr/share/tesseract-ocr/5/tessdata",
+        "-l",
+        "eng",
+        "--psm",
+        "7",
+        "tsv"
+      ],
+      "exit": 0,
+      "tsv_sha256": "dd6265c6623ee106b8d9cbde23030182d72652f26ee7d49f0b022d26c611a6e6",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "max_child_RSS_so_far_KiB": 28912,
+      "every_token": [
+        {
+          "text": "Light",
+          "confidence": 96.922401,
+          "OCR_bounds": [
+            64.0,
+            48.0,
+            200.0,
+            108.0
+          ],
+          "bounds": [
+            193.0,
+            740.0,
+            227.0,
+            755.0
+          ]
+        },
+        {
+          "text": "Download",
+          "confidence": 92.819107,
+          "OCR_bounds": [
+            222.0,
+            48.0,
+            492.0,
+            96.0
+          ],
+          "bounds": [
+            232.5,
+            740.0,
+            300.0,
+            752.0
+          ]
+        },
+        {
+          "text": "(10073.62",
+          "confidence": 91.04438,
+          "OCR_bounds": [
+            519.0,
+            48.0,
+            804.0,
+            103.0
+          ],
+          "bounds": [
+            306.75,
+            740.0,
+            378.0,
+            753.75
+          ]
+        },
+        {
+          "text": "MB)",
+          "confidence": 96.879021,
+          "OCR_bounds": [
+            828.0,
+            48.0,
+            932.0,
+            103.0
+          ],
+          "bounds": [
+            384.0,
+            740.0,
+            410.0,
+            753.75
+          ]
+        }
+      ],
+      "regular_light_options": [
+        {
+          "text": "Light Download",
+          "bounds": [
+            193.0,
+            740.0,
+            300.0,
+            755.0
+          ],
+          "confidence": 91.04438,
+          "variant": "regular",
+          "suffix_words": [
+            {
+              "text": "(10073.62",
+              "confidence": 91.04438,
+              "OCR_bounds": [
+                519.0,
+                48.0,
+                804.0,
+                103.0
+              ],
+              "bounds": [
+                306.75,
+                740.0,
+                378.0,
+                753.75
+              ]
+            },
+            {
+              "text": "MB)",
+              "confidence": 96.879021,
+              "OCR_bounds": [
+                828.0,
+                48.0,
+                932.0,
+                103.0
+              ],
+              "bounds": [
+                384.0,
+                740.0,
+                410.0,
+                753.75
+              ]
+            }
+          ]
+        }
+      ],
+      "qualified_regular_light": {
+        "text": "Light Download",
+        "bounds": [
+          193.0,
+          740.0,
+          300.0,
+          755.0
+        ],
+        "confidence": 91.04438,
+        "variant": "regular",
+        "suffix_words": [
+          {
+            "text": "(10073.62",
+            "confidence": 91.04438,
+            "OCR_bounds": [
+              519.0,
+              48.0,
+              804.0,
+              103.0
+            ],
+            "bounds": [
+              306.75,
+              740.0,
+              378.0,
+              753.75
+            ]
+          },
+          {
+            "text": "MB)",
+            "confidence": 96.879021,
+            "OCR_bounds": [
+              828.0,
+              48.0,
+              932.0,
+              103.0
+            ],
+            "bounds": [
+              384.0,
+              740.0,
+              410.0,
+              753.75
+            ]
+          }
+        ]
+      },
+      "suffix_matches_same_frame": true,
+      "qualification_passed": true
+    },
+    {
+      "label": "after023",
+      "input": "/dev/shm/sifas-gl-typed-native-cell-r9-actual-20261114/selected/native-ocr-023.png",
+      "input_sha256": "78790b055db719960efb5a855aa34f1effa65d4ee66420ce27cf3f4bf8bf2132",
+      "metadata": "/dev/shm/sifas-gl-typed-native-cell-r9-actual-20261114/selected/native-ocr-023.json",
+      "metadata_sha256": "86335558816eb18b239bc1f8f1fe08f7cbde33337fdd669e4f9141ff92bfce87",
+      "crop_box": [
+        185,
+        718,
+        561,
+        741
+      ],
+      "padding_source_pixels": 8,
+      "scale": 4,
+      "Light_token": {
+        "text": "Light",
+        "confidence": 94.700806,
+        "bounds": [
+          193.0,
+          722.0,
+          227.0,
+          737.0
+        ]
+      },
+      "Full_caption": {
+        "text": "Full Download",
+        "bounds": [
+          193.0,
+          624.0,
+          290.0,
+          635.0
+        ],
+        "confidence": 92.43972
+      },
+      "current_suffix_words": [
+        {
+          "text": "(10073.62",
+          "confidence": 92.63488,
+          "bounds": [
+            307.0,
+            723.0,
+            378.0,
+            735.0
+          ]
+        },
+        {
+          "text": "MB)",
+          "confidence": 96.822754,
+          "bounds": [
+            384.0,
+            723.0,
+            410.0,
+            735.0
+          ]
+        }
+      ],
+      "orange_marker": {
+        "bounds": [
+          168,
+          655,
+          184,
+          671
+        ],
+        "pixels": 118,
+        "center": [
+          176.0,
+          663.0
+        ]
+      },
+      "marker_search_region": [
+        133.0,
+        616.5,
+        190.0,
+        782.0
+      ],
+      "row_boundary_scan": {
+        "start": [
+          415,
+          663
+        ],
+        "background_RGB": [
+          255,
+          246,
+          227
+        ],
+        "first_change_x": 561
+      },
+      "transformed_image": "/dev/shm/sifas-gl-r9-light-heading-probe-20261114/after023-heading.png",
+      "transformed_sha256": "b0e126757775c0754b5694428e2cae01ea9b918211bebd3d5039b1ba365a1739",
+      "derivation": "QUALIFIED_FIXED_RULE",
+      "argv": [
+        "/usr/bin/tesseract",
+        "/dev/shm/sifas-gl-r9-light-heading-probe-20261114/after023-heading.png",
+        "stdout",
+        "--tessdata-dir",
+        "/usr/share/tesseract-ocr/5/tessdata",
+        "-l",
+        "eng",
+        "--psm",
+        "7",
+        "tsv"
+      ],
+      "exit": 0,
+      "tsv_sha256": "5e64733e57018881a1b571e34959d9c250c21a5c2aa2fcb2282386b4c9ac0490",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "max_child_RSS_so_far_KiB": 28912,
+      "every_token": [
+        {
+          "text": "Light",
+          "confidence": 96.921448,
+          "OCR_bounds": [
+            64.0,
+            48.0,
+            200.0,
+            108.0
+          ],
+          "bounds": [
+            193.0,
+            722.0,
+            227.0,
+            737.0
+          ]
+        },
+        {
+          "text": "Download",
+          "confidence": 93.008209,
+          "OCR_bounds": [
+            222.0,
+            48.0,
+            492.0,
+            97.0
+          ],
+          "bounds": [
+            232.5,
+            722.0,
+            300.0,
+            734.25
+          ]
+        },
+        {
+          "text": "(10073.62",
+          "confidence": 91.347252,
+          "OCR_bounds": [
+            519.0,
+            49.0,
+            805.0,
+            103.0
+          ],
+          "bounds": [
+            306.75,
+            722.25,
+            378.25,
+            735.75
+          ]
+        },
+        {
+          "text": "MB)",
+          "confidence": 96.758606,
+          "OCR_bounds": [
+            828.0,
+            49.0,
+            932.0,
+            103.0
+          ],
+          "bounds": [
+            384.0,
+            722.25,
+            410.0,
+            735.75
+          ]
+        }
+      ],
+      "regular_light_options": [
+        {
+          "text": "Light Download",
+          "bounds": [
+            193.0,
+            722.0,
+            300.0,
+            737.0
+          ],
+          "confidence": 91.347252,
+          "variant": "regular",
+          "suffix_words": [
+            {
+              "text": "(10073.62",
+              "confidence": 91.347252,
+              "OCR_bounds": [
+                519.0,
+                49.0,
+                805.0,
+                103.0
+              ],
+              "bounds": [
+                306.75,
+                722.25,
+                378.25,
+                735.75
+              ]
+            },
+            {
+              "text": "MB)",
+              "confidence": 96.758606,
+              "OCR_bounds": [
+                828.0,
+                49.0,
+                932.0,
+                103.0
+              ],
+              "bounds": [
+                384.0,
+                722.25,
+                410.0,
+                735.75
+              ]
+            }
+          ]
+        }
+      ],
+      "qualified_regular_light": {
+        "text": "Light Download",
+        "bounds": [
+          193.0,
+          722.0,
+          300.0,
+          737.0
+        ],
+        "confidence": 91.347252,
+        "variant": "regular",
+        "suffix_words": [
+          {
+            "text": "(10073.62",
+            "confidence": 91.347252,
+            "OCR_bounds": [
+              519.0,
+              49.0,
+              805.0,
+              103.0
+            ],
+            "bounds": [
+              306.75,
+              722.25,
+              378.25,
+              735.75
+            ]
+          },
+          {
+            "text": "MB)",
+            "confidence": 96.758606,
+            "OCR_bounds": [
+              828.0,
+              49.0,
+              932.0,
+              103.0
+            ],
+            "bounds": [
+              384.0,
+              722.25,
+              410.0,
+              735.75
+            ]
+          }
+        ]
+      },
+      "suffix_matches_same_frame": true,
+      "qualification_passed": true
+    }
+  ],
+  "failures": [],
+  "discovery_failure": {
+    "non_OCR_metadata_search_exit": 2,
+    "reason": "A first rg metadata command included a nonexistent extra path; no OCR was executed and useful engine/model metadata was subsequently read directly."
+  },
+  "completed_utc": "2026-11-14T12:43:48.525369+00:00",
+  "OCR_invocations": 2,
+  "all_qualified": true,
+  "headroom_after_bytes": 653500416,
+  "python_peak_RSS_KiB": 29868,
+  "source_unchanged_sha256": "806bd51eaede77478fd46741e72464cd15ae9ddc18d1a6e18a279e69309e2b15",
+  "no_source_gate_or_run_changes": true,
+  "no_input": true,
+  "no_tuning_or_retry": true,
+  "fresh_cache_empty": true
+}

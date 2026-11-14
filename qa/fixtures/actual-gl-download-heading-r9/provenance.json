@@ -1,0 +1,52 @@
+{
+  "actual_run": 43593812264,
+  "head": "90961dbedca14a9779264816d38da4c6eec0806d",
+  "tree": "2dcbfc8d14a946bb5e519874ed5c38074c72c64e",
+  "canonical_artifact_sha256": "c091d75ccd1ad14d4867c05ef6482cbd27d80e67f384b810d0a6dbd50665610c",
+  "files": [
+    {
+      "path": "before015.png",
+      "source": "/dev/shm/sifas-gl-typed-native-cell-r9-actual-20261114/capsule-extra/native-ocr-015.png",
+      "bytes": 187581,
+      "sha256": "d0783fd06937835a22bf86a433c9b39238454fbcad1cc58deb5d660f61f20796"
+    },
+    {
+      "path": "before015.json",
+      "source": "/dev/shm/sifas-gl-typed-native-cell-r9-actual-20261114/capsule-extra/native-ocr-015.json",
+      "bytes": 17850,
+      "sha256": "76aa01d404ea66194accae8f6af62123f9ecf31247588dbc028e68ed0470ef09"
+    },
+    {
+      "path": "after023.png",
+      "source": "/dev/shm/sifas-gl-typed-native-cell-r9-actual-20261114/selected/native-ocr-023.png",
+      "bytes": 200950,
+      "sha256": "78790b055db719960efb5a855aa34f1effa65d4ee66420ce27cf3f4bf8bf2132"
+    },
+    {
+      "path": "after023.json",
+      "source": "/dev/shm/sifas-gl-typed-native-cell-r9-actual-20261114/selected/native-ocr-023.json",
+      "bytes": 20498,
+      "sha256": "86335558816eb18b239bc1f8f1fe08f7cbde33337fdd669e4f9141ff92bfce87"
+    },
+    {
+      "path": "before015-host-probe.tsv",
+      "source": "/dev/shm/sifas-gl-r9-light-heading-probe-20261114/before015.tsv",
+      "bytes": 371,
+      "sha256": "dd6265c6623ee106b8d9cbde23030182d72652f26ee7d49f0b022d26c611a6e6"
+    },
+    {
+      "path": "after023-host-probe.tsv",
+      "source": "/dev/shm/sifas-gl-r9-light-heading-probe-20261114/after023.tsv",
+      "bytes": 371,
+      "sha256": "5e64733e57018881a1b571e34959d9c250c21a5c2aa2fcb2282386b4c9ac0490"
+    },
+    {
+      "path": "host-probe-receipt.json",
+      "source": "/dev/shm/sifas-gl-r9-light-heading-probe-20261114/probe-receipt.json",
+      "bytes": 15472,
+      "sha256": "364d8b7d21cef31a2444a1d31f3a3c772718e9530e6ed1b2f668b330499976c6"
+    }
+  ],
+  "host_probe_receipt_sha256": "364d8b7d21cef31a2444a1d31f3a3c772718e9530e6ed1b2f668b330499976c6",
+  "scope": "Original R9 screenshots/metadata plus ONE host5.5.0 prescribed OCR probe. ActualR9CIengine was5.3.4ARM; host TSVs are parser regression data, not CIengine equivalence or runtime qualification. No original fixture changed."
+}

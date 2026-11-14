@@ -1,0 +1,772 @@
+{
+  "screenshot_sha256": "78790b055db719960efb5a855aa34f1effa65d4ee66420ce27cf3f4bf8bf2132",
+  "native_tree": "native-ocr-023-capture-046.xml",
+  "surface": {
+    "left": 0,
+    "top": 0,
+    "right": 720,
+    "bottom": 1280
+  },
+  "words": [
+    {
+      "text": "Data",
+      "confidence": 96.87735,
+      "bounds": [
+        258.0,
+        460.0,
+        296.0,
+        474.0
+      ]
+    },
+    {
+      "text": "ad",
+      "confidence": 90.314293,
+      "bounds": [
+        368.0,
+        459.0,
+        388.0,
+        474.0
+      ]
+    },
+    {
+      "text": "Settings",
+      "confidence": 94.027557,
+      "bounds": [
+        396.0,
+        460.0,
+        463.0,
+        477.0
+      ]
+    },
+    {
+      "text": "Please",
+      "confidence": 96.367409,
+      "bounds": [
+        231.0,
+        491.0,
+        274.0,
+        502.0
+      ]
+    },
+    {
+      "text": "adjust",
+      "confidence": 94.417465,
+      "bounds": [
+        280.0,
+        491.0,
+        321.0,
+        506.0
+      ]
+    },
+    {
+      "text": "data",
+      "confidence": 96.984055,
+      "bounds": [
+        326.0,
+        491.0,
+        356.0,
+        502.0
+      ]
+    },
+    {
+      "text": "download",
+      "confidence": 96.897324,
+      "bounds": [
+        361.0,
+        491.0,
+        428.0,
+        502.0
+      ]
+    },
+    {
+      "text": "settings.",
+      "confidence": 91.923042,
+      "bounds": [
+        434.0,
+        491.0,
+        490.0,
+        505.0
+      ]
+    },
+    {
+      "text": "Free",
+      "confidence": 93.740623,
+      "bounds": [
+        267.0,
+        511.0,
+        297.0,
+        522.0
+      ]
+    },
+    {
+      "text": "spa",
+      "confidence": 96.843582,
+      "bounds": [
+        303.0,
+        514.0,
+        325.0,
+        525.0
+      ]
+    },
+    {
+      "text": "101670.39",
+      "confidence": 93.084831,
+      "bounds": [
+        352.0,
+        511.0,
+        426.0,
+        522.0
+      ]
+    },
+    {
+      "text": "MB",
+      "confidence": 96.526268,
+      "bounds": [
+        432.0,
+        511.0,
+        453.0,
+        522.0
+      ]
+    },
+    {
+      "text": "Download",
+      "confidence": 95.624924,
+      "bounds": [
+        147.0,
+        546.0,
+        198.0,
+        554.0
+      ]
+    },
+    {
+      "text": "speed",
+      "confidence": 92.675743,
+      "bounds": [
+        202.0,
+        545.0,
+        231.0,
+        556.0
+      ]
+    },
+    {
+      "text": "vary",
+      "confidence": 96.780571,
+      "bounds": [
+        260.0,
+        548.0,
+        280.0,
+        555.0
+      ]
+    },
+    {
+      "text": "by",
+      "confidence": 93.305725,
+      "bounds": [
+        286.0,
+        546.0,
+        296.0,
+        555.0
+      ]
+    },
+    {
+      "text": "Wi",
+      "confidence": 90.914948,
+      "bounds": [
+        147.0,
+        561.0,
+        156.0,
+        569.0
+      ]
+    },
+    {
+      "text": "while",
+      "confidence": 92.107712,
+      "bounds": [
+        237.0,
+        560.0,
+        264.0,
+        569.0
+      ]
+    },
+    {
+      "text": "\u2018You",
+      "confidence": 79.598793,
+      "bounds": [
+        146.0,
+        575.0,
+        166.0,
+        583.0
+      ]
+    },
+    {
+      "text": "can",
+      "confidence": 96.834015,
+      "bounds": [
+        171.0,
+        577.0,
+        188.0,
+        583.0
+      ]
+    },
+    {
+      "text": "change",
+      "confidence": 93.004639,
+      "bounds": [
+        192.0,
+        575.0,
+        228.0,
+        585.0
+      ]
+    },
+    {
+      "text": "fro",
+      "confidence": 96.321358,
+      "bounds": [
+        275.0,
+        575.0,
+        285.0,
+        583.0
+      ]
+    },
+    {
+      "text": "the",
+      "confidence": 95.91848,
+      "bounds": [
+        303.0,
+        575.0,
+        317.0,
+        583.0
+      ]
+    },
+    {
+      "text": "title",
+      "confidence": 95.91848,
+      "bounds": [
+        322.0,
+        575.0,
+        340.0,
+        583.0
+      ]
+    },
+    {
+      "text": "menu",
+      "confidence": 96.176453,
+      "bounds": [
+        344.0,
+        577.0,
+        371.0,
+        583.0
+      ]
+    },
+    {
+      "text": "or",
+      "confidence": 94.396484,
+      "bounds": [
+        376.0,
+        577.0,
+        384.0,
+        583.0
+      ]
+    },
+    {
+      "text": "system",
+      "confidence": 96.599754,
+      "bounds": [
+        390.0,
+        576.0,
+        425.0,
+        584.0
+      ]
+    },
+    {
+      "text": "settings",
+      "confidence": 96.516167,
+      "bounds": [
+        429.0,
+        576.0,
+        467.0,
+        585.0
+      ]
+    },
+    {
+      "text": "Full",
+      "confidence": 96.882942,
+      "bounds": [
+        193.0,
+        624.0,
+        217.0,
+        635.0
+      ]
+    },
+    {
+      "text": "Download",
+      "confidence": 92.43972,
+      "bounds": [
+        223.0,
+        624.0,
+        290.0,
+        635.0
+      ]
+    },
+    {
+      "text": "(21819.24",
+      "confidence": 92.43972,
+      "bounds": [
+        297.0,
+        624.0,
+        369.0,
+        636.0
+      ]
+    },
+    {
+      "text": "MB)",
+      "confidence": 93.91964,
+      "bounds": [
+        374.0,
+        624.0,
+        400.0,
+        637.0
+      ]
+    },
+    {
+      "text": "nload",
+      "confidence": 77.545441,
+      "bounds": [
+        220.0,
+        647.0,
+        244.0,
+        655.0
+      ]
+    },
+    {
+      "text": "all",
+      "confidence": 96.800003,
+      "bounds": [
+        248.0,
+        647.0,
+        258.0,
+        655.0
+      ]
+    },
+    {
+      "text": "data",
+      "confidence": 96.861053,
+      "bounds": [
+        262.0,
+        647.0,
+        284.0,
+        655.0
+      ]
+    },
+    {
+      "text": "at",
+      "confidence": 96.953964,
+      "bounds": [
+        287.0,
+        648.0,
+        297.0,
+        655.0
+      ]
+    },
+    {
+      "text": "once.",
+      "confidence": 96.595306,
+      "bounds": [
+        300.0,
+        649.0,
+        327.0,
+        655.0
+      ]
+    },
+    {
+      "text": "The",
+      "confidence": 92.468483,
+      "bounds": [
+        331.0,
+        647.0,
+        350.0,
+        655.0
+      ]
+    },
+    {
+      "text": "download",
+      "confidence": 92.468483,
+      "bounds": [
+        354.0,
+        647.0,
+        404.0,
+        655.0
+      ]
+    },
+    {
+      "text": "a",
+      "confidence": 96.722542,
+      "bounds": [
+        453.0,
+        649.0,
+        459.0,
+        655.0
+      ]
+    },
+    {
+      "text": "time,",
+      "confidence": 96.728424,
+      "bounds": [
+        492.0,
+        648.0,
+        516.0,
+        656.0
+      ]
+    },
+    {
+      "text": "but",
+      "confidence": 86.448723,
+      "bounds": [
+        520.0,
+        647.0,
+        536.0,
+        655.0
+      ]
+    },
+    {
+      "text": "make",
+      "confidence": 93.142967,
+      "bounds": [
+        213.0,
+        661.0,
+        240.0,
+        670.0
+      ]
+    },
+    {
+      "text": "gameplay",
+      "confidence": 95.930695,
+      "bounds": [
+        244.0,
+        661.0,
+        290.0,
+        672.0
+      ]
+    },
+    {
+      "text": "smooth,",
+      "confidence": 75.639664,
+      "bounds": [
+        296.0,
+        661.0,
+        336.0,
+        670.0
+      ]
+    },
+    {
+      "text": "Light",
+      "confidence": 94.700806,
+      "bounds": [
+        193.0,
+        722.0,
+        227.0,
+        737.0
+      ]
+    },
+    {
+      "text": "(10073.62",
+      "confidence": 92.63488,
+      "bounds": [
+        307.0,
+        723.0,
+        378.0,
+        735.0
+      ]
+    },
+    {
+      "text": "MB)",
+      "confidence": 96.822754,
+      "bounds": [
+        384.0,
+        723.0,
+        410.0,
+        735.0
+      ]
+    },
+    {
+      "text": "Download",
+      "confidence": 96.7687,
+      "bounds": [
+        193.0,
+        746.0,
+        243.0,
+        755.0
+      ]
+    },
+    {
+      "text": "data",
+      "confidence": 96.913986,
+      "bounds": [
+        248.0,
+        746.0,
+        269.0,
+        755.0
+      ]
+    },
+    {
+      "text": "you",
+      "confidence": 93.34549,
+      "bounds": [
+        273.0,
+        749.0,
+        291.0,
+        755.0
+      ]
+    },
+    {
+      "text": "need",
+      "confidence": 87.22789,
+      "bounds": [
+        295.0,
+        746.0,
+        319.0,
+        754.0
+      ]
+    },
+    {
+      "text": "when",
+      "confidence": 96.897812,
+      "bounds": [
+        323.0,
+        746.0,
+        350.0,
+        754.0
+      ]
+    },
+    {
+      "text": "yo",
+      "confidence": 93.021736,
+      "bounds": [
+        354.0,
+        749.0,
+        363.0,
+        754.0
+      ]
+    },
+    {
+      "text": "it.",
+      "confidence": 94.934677,
+      "bounds": [
+        405.0,
+        747.0,
+        411.0,
+        755.0
+      ]
+    },
+    {
+      "text": "The",
+      "confidence": 89.811386,
+      "bounds": [
+        417.0,
+        746.0,
+        436.0,
+        754.0
+      ]
+    },
+    {
+      "text": "initial",
+      "confidence": 89.811386,
+      "bounds": [
+        441.0,
+        746.0,
+        466.0,
+        755.0
+      ]
+    },
+    {
+      "text": "download",
+      "confidence": 83.289696,
+      "bounds": [
+        470.0,
+        746.0,
+        520.0,
+        754.0
+      ]
+    },
+    {
+      "text": "is",
+      "confidence": 83.289696,
+      "bounds": [
+        524.0,
+        746.0,
+        531.0,
+        754.0
+      ]
+    },
+    {
+      "text": "new",
+      "confidence": 96.878479,
+      "bounds": [
+        245.0,
+        763.0,
+        265.0,
+        769.0
+      ]
+    },
+    {
+      "text": "Live",
+      "confidence": 96.545097,
+      "bounds": [
+        270.0,
+        761.0,
+        291.0,
+        769.0
+      ]
+    },
+    {
+      "text": "Shows",
+      "confidence": 96.737,
+      "bounds": [
+        295.0,
+        760.0,
+        328.0,
+        769.0
+      ]
+    },
+    {
+      "text": "and",
+      "confidence": 96.603836,
+      "bounds": [
+        332.0,
+        760.0,
+        350.0,
+        769.0
+      ]
+    },
+    {
+      "text": "st",
+      "confidence": 89.875984,
+      "bounds": [
+        355.0,
+        762.0,
+        363.0,
+        769.0
+      ]
+    },
+    {
+      "text": "chapters",
+      "confidence": 90.304237,
+      "bounds": [
+        384.0,
+        760.0,
+        427.0,
+        771.0
+      ]
+    },
+    {
+      "text": "will",
+      "confidence": 95.860115,
+      "bounds": [
+        431.0,
+        760.0,
+        447.0,
+        769.0
+      ]
+    },
+    {
+      "text": "have",
+      "confidence": 96.607178,
+      "bounds": [
+        452.0,
+        760.0,
+        475.0,
+        769.0
+      ]
+    },
+    {
+      "text": "to",
+      "confidence": 96.699577,
+      "bounds": [
+        479.0,
+        762.0,
+        489.0,
+        769.0
+      ]
+    },
+    {
+      "text": "be",
+      "confidence": 93.529701,
+      "bounds": [
+        493.0,
+        760.0,
+        504.0,
+        769.0
+      ]
+    },
+    {
+      "text": "Cancel",
+      "confidence": 93.832771,
+      "bounds": [
+        210.0,
+        800.0,
+        251.0,
+        810.0
+      ]
+    }
+  ],
+  "title_words": [],
+  "title_fallback_words": [],
+  "button_words": [
+    {
+      "text": "OK",
+      "confidence": 96.891487,
+      "bounds": [
+        480.0,
+        800.0,
+        499.0,
+        810.1666666666666
+      ]
+    }
+  ],
+  "language_buttons": [],
+  "action": {
+    "kind": "download-settings-observed"
+  },
+  "ocr_transforms": [
+    {
+      "crop": [
+        0,
+        0,
+        720,
+        1280
+      ],
+      "scale": 1,
+      "mode": "normal",
+      "psm": 11,
+      "language": "eng",
+      "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t720\t1280\t-1\t\n2\t1\t1\t0\t0\t0\t258\t460\t93\t14\t-1\t\n3\t1\t1\t1\t0\t0\t258\t460\t93\t14\t-1\t\n4\t1\t1\t1\t1\t0\t258\t460\t93\t14\t-1\t\n5\t1\t1\t1\t1\t1\t258\t460\t38\t14\t96.877350\tData\n5\t1\t1\t1\t1\t2\t303\t460\t48\t14\t44.302513\tDown!\n2\t1\t2\t0\t0\t0\t368\t459\t95\t18\t-1\t\n3\t1\t2\t1\t0\t0\t368\t459\t95\t18\t-1\t\n4\t1\t2\t1\t1\t0\t368\t459\t95\t18\t-1\t\n5\t1\t2\t1\t1\t1\t368\t459\t20\t15\t90.314293\tad\n5\t1\t2\t1\t1\t2\t396\t460\t67\t17\t94.027557\tSettings\n2\t1\t3\t0\t0\t0\t231\t491\t259\t15\t-1\t\n3\t1\t3\t1\t0\t0\t231\t491\t259\t15\t-1\t\n4\t1\t3\t1\t1\t0\t231\t491\t259\t15\t-1\t\n5\t1\t3\t1\t1\t1\t231\t491\t43\t11\t96.367409\tPlease\n5\t1\t3\t1\t1\t2\t280\t491\t41\t15\t94.417465\tadjust\n5\t1\t3\t1\t1\t3\t326\t491\t30\t11\t96.984055\tdata\n5\t1\t3\t1\t1\t4\t361\t491\t67\t11\t96.897324\tdownload\n5\t1\t3\t1\t1\t5\t434\t491\t56\t14\t91.923042\tsettings.\n2\t1\t4\t0\t0\t0\t267\t511\t58\t14\t-1\t\n3\t1\t4\t1\t0\t0\t267\t511\t58\t14\t-1\t\n4\t1\t4\t1\t1\t0\t267\t511\t58\t14\t-1\t\n5\t1\t4\t1\t1\t1\t267\t511\t30\t11\t93.740623\tFree\n5\t1\t4\t1\t1\t2\t303\t514\t22\t11\t96.843582\tspa\n2\t1\t5\t0\t0\t0\t352\t511\t101\t11\t-1\t\n3\t1\t5\t1\t0\t0\t352\t511\t101\t11\t-1\t\n4\t1\t5\t1\t1\t0\t352\t511\t101\t11\t-1\t\n5\t1\t5\t1\t1\t1\t352\t511\t74\t11\t93.084831\t101670.39\n5\t1\t5\t1\t1\t2\t432\t511\t21\t11\t96.526268\tMB\n2\t1\t6\t0\t0\t0\t147\t545\t84\t11\t-1\t\n3\t1\t6\t1\t0\t0\t147\t545\t84\t11\t-1\t\n4\t1\t6\t1\t1\t0\t147\t545\t84\t11\t-1\t\n5\t1\t6\t1\t1\t1\t147\t546\t51\t8\t95.624924\tDownload\n5\t1\t6\t1\t1\t2\t202\t545\t29\t11\t92.675743\tspeed\n2\t1\t7\t0\t0\t0\t245\t546\t105\t9\t-1\t\n3\t1\t7\t1\t0\t0\t245\t546\t105\t9\t-1\t\n4\t1\t7\t1\t1\t0\t245\t546\t105\t9\t-1\t\n5\t1\t7\t1\t1\t1\t245\t548\t10\t7\t18.018341\tay\n5\t1\t7\t1\t1\t2\t260\t548\t20\t7\t96.780571\tvary\n5\t1\t7\t1\t1\t3\t286\t546\t10\t9\t93.305725\tby\n5\t1\t7\t1\t1\t4\t301\t547\t49\t7\t41.993210\tconnectio\n2\t1\t8\t0\t0\t0\t367\t546\t23\t10\t-1\t\n3\t1\t8\t1\t0\t0\t367\t546\t23\t10\t-1\t\n4\t1\t8\t1\t1\t0\t367\t546\t23\t10\t-1\t\n5\t1\t8\t1\t1\t1\t367\t546\t23\t10\t73.748207\tpeed.\n2\t1\t9\t0\t0\t0\t147\t561\t9\t8\t-1\t\n3\t1\t9\t1\t0\t0\t147\t561\t9\t8\t-1\t\n4\t1\t9\t1\t1\t0\t147\t561\t9\t8\t-1\t\n5\t1\t9\t1\t1\t1\t147\t561\t9\t8\t90.914948\tWi\n2\t1\t10\t0\t0\t0\t172\t560\t154\t9\t-1\t\n3\t1\t10\t1\t0\t0\t172\t560\t154\t9\t-1\t\n4\t1\t10\t1\t1\t0\t172\t560\t154\t9\t-1\t\n5\t1\t10\t1\t1\t1\t172\t563\t1\t6\t69.744888\ti\n5\t1\t10\t1\t1\t2\t178\t561\t55\t8\t69.744888\tconnection\n5\t1\t10\t1\t1\t3\t237\t560\t27\t9\t92.107712\twhile\n5\t1\t10\t1\t1\t4\t268\t560\t58\t9\t24.248775\tdownloading\n2\t1\t11\t0\t0\t0\t352\t560\t68\t9\t-1\t\n3\t1\t11\t1\t0\t0\t352\t560\t68\t9\t-1\t\n4\t1\t11\t1\t1\t0\t352\t560\t68\t9\t-1\t\n5\t1\t11\t1\t1\t1\t352\t560\t68\t9\t0.000000\t-ecommended.\n2\t1\t12\t0\t0\t0\t146\t575\t139\t10\t-1\t\n3\t1\t12\t1\t0\t0\t146\t575\t139\t10\t-1\t\n4\t1\t12\t1\t1\t0\t146\t575\t139\t10\t-1\t\n5\t1\t12\t1\t1\t1\t146\t575\t20\t8\t79.598793\t\u2018You\n5\t1\t12\t1\t1\t2\t171\t577\t17\t6\t96.834015\tcan\n5\t1\t12\t1\t1\t3\t192\t575\t36\t10\t93.004639\tchange\n5\t1\t12\t1\t1\t4\t232\t576\t38\t9\t65.562897\tsettings\n5\t1\t12\t1\t1\t5\t275\t575\t10\t8\t96.321358\tfro\n2\t1\t13\t0\t0\t0\t303\t575\t189\t10\t-1\t\n3\t1\t13\t1\t0\t0\t303\t575\t189\t10\t-1\t\n4\t1\t13\t1\t1\t0\t303\t575\t189\t10\t-1\t\n5\t1\t13\t1\t1\t1\t303\t575\t14\t8\t95.918480\tthe\n5\t1\t13\t1\t1\t2\t322\t575\t18\t8\t95.918480\ttitle\n5\t1\t13\t1\t1\t3\t344\t577\t27\t6\t96.176453\tmenu\n5\t1\t13\t1\t1\t4\t376\t577\t8\t6\t94.396484\tor\n5\t1\t13\t1\t1\t5\t390\t576\t35\t8\t96.599754\tsystem\n5\t1\t13\t1\t1\t6\t429\t576\t38\t9\t96.516167\tsettings\n5\t1\t13\t1\t1\t7\t472\t575\t20\t8\t69.570145\tlater.\n2\t1\t14\t0\t0\t0\t193\t624\t207\t13\t-1\t\n3\t1\t14\t1\t0\t0\t193\t624\t207\t13\t-1\t\n4\t1\t14\t1\t1\t0\t193\t624\t207\t13\t-1\t\n5\t1\t14\t1\t1\t1\t193\t624\t24\t11\t96.882942\tFull\n5\t1\t14\t1\t1\t2\t223\t624\t67\t11\t92.439720\tDownload\n5\t1\t14\t1\t1\t3\t297\t624\t72\t12\t92.439720\t(21819.24\n5\t1\t14\t1\t1\t4\t374\t624\t26\t13\t93.919640\tMB)\n2\t1\t15\t0\t0\t0\t193\t647\t13\t8\t-1\t\n3\t1\t15\t1\t0\t0\t193\t647\t13\t8\t-1\t\n4\t1\t15\t1\t1\t0\t193\t647\t13\t8\t-1\t\n5\t1\t15\t1\t1\t1\t193\t647\t13\t8\t73.973923\tDos\n2\t1\t16\t0\t0\t0\t220\t647\t316\t9\t-1\t\n3\t1\t16\t1\t0\t0\t220\t647\t316\t9\t-1\t\n4\t1\t16\t1\t1\t0\t220\t647\t316\t9\t-1\t\n5\t1\t16\t1\t1\t1\t220\t647\t24\t8\t77.545441\tnload\n5\t1\t16\t1\t1\t2\t248\t647\t10\t8\t96.800003\tall\n5\t1\t16\t1\t1\t3\t262\t647\t22\t8\t96.861053\tdata\n5\t1\t16\t1\t1\t4\t287\t648\t10\t7\t96.953964\tat\n5\t1\t16\t1\t1\t5\t300\t649\t27\t6\t96.595306\tonce.\n5\t1\t16\t1\t1\t6\t331\t647\t19\t8\t92.468483\tThe\n5\t1\t16\t1\t1\t7\t354\t647\t50\t8\t92.468483\tdownload\n5\t1\t16\t1\t1\t8\t408\t647\t16\t8\t73.476250\twill\n5\t1\t16\t1\t1\t9\t428\t647\t21\t8\t73.476250\ttake\n5\t1\t16\t1\t1\t10\t453\t649\t6\t6\t96.722542\ta\n5\t1\t16\t1\t1\t11\t463\t647\t12\t8\t43.961060\tlot\n5\t1\t16\t1\t1\t12\t479\t647\t9\t8\t43.961060\tof\n5\t1\t16\t1\t1\t13\t492\t648\t24\t8\t96.728424\ttime,\n5\t1\t16\t1\t1\t14\t520\t647\t16\t8\t86.448723\tbut\n2\t1\t17\t0\t0\t0\t192\t661\t144\t11\t-1\t\n3\t1\t17\t1\t0\t0\t192\t661\t144\t11\t-1\t\n4\t1\t17\t1\t1\t0\t192\t661\t144\t11\t-1\t\n5\t1\t17\t1\t1\t1\t192\t661\t17\t9\t64.915154\t\u2018will\n5\t1\t17\t1\t1\t2\t213\t661\t27\t9\t93.142967\tmake\n5\t1\t17\t1\t1\t3\t244\t661\t46\t11\t95.930695\tgameplay\n5\t1\t17\t1\t1\t4\t296\t661\t40\t9\t75.639664\tsmooth,\n2\t1\t18\t0\t0\t0\t193\t722\t34\t15\t-1\t\n3\t1\t18\t1\t0\t0\t193\t722\t34\t15\t-1\t\n4\t1\t18\t1\t1\t0\t193\t722\t34\t15\t-1\t\n5\t1\t18\t1\t1\t1\t193\t722\t34\t15\t94.700806\tLight\n2\t1\t19\t0\t0\t0\t261\t722\t149\t13\t-1\t\n3\t1\t19\t1\t0\t0\t261\t722\t149\t13\t-1\t\n4\t1\t19\t1\t1\t0\t261\t722\t149\t13\t-1\t\n5\t1\t19\t1\t1\t1\t261\t722\t39\t12\t31.908503\tynload\n5\t1\t19\t1\t1\t2\t307\t723\t71\t12\t92.634880\t(10073.62\n5\t1\t19\t1\t1\t3\t384\t723\t26\t12\t96.822754\tMB)\n2\t1\t20\t0\t0\t0\t193\t746\t170\t9\t-1\t\n3\t1\t20\t1\t0\t0\t193\t746\t170\t9\t-1\t\n4\t1\t20\t1\t1\t0\t193\t746\t170\t9\t-1\t\n5\t1\t20\t1\t1\t1\t193\t746\t50\t9\t96.768700\tDownload\n5\t1\t20\t1\t1\t2\t248\t746\t21\t9\t96.913986\tdata\n5\t1\t20\t1\t1\t3\t273\t749\t18\t6\t93.345490\tyou\n5\t1\t20\t1\t1\t4\t295\t746\t24\t8\t87.227890\tneed\n5\t1\t20\t1\t1\t5\t323\t746\t27\t8\t96.897812\twhen\n5\t1\t20\t1\t1\t6\t354\t749\t9\t5\t93.021736\tyo\n2\t1\t21\t0\t0\t0\t377\t746\t154\t9\t-1\t\n3\t1\t21\t1\t0\t0\t377\t746\t154\t9\t-1\t\n4\t1\t21\t1\t1\t0\t377\t746\t154\t9\t-1\t\n5\t1\t21\t1\t1\t1\t377\t746\t24\t8\t59.767326\treed\n5\t1\t21\t1\t1\t2\t405\t747\t6\t8\t94.934677\tit.\n5\t1\t21\t1\t1\t3\t417\t746\t19\t8\t89.811386\tThe\n5\t1\t21\t1\t1\t4\t441\t746\t25\t9\t89.811386\tinitial\n5\t1\t21\t1\t1\t5\t470\t746\t50\t8\t83.289696\tdownload\n5\t1\t21\t1\t1\t6\t524\t746\t7\t8\t83.289696\tis\n2\t1\t22\t0\t0\t0\t193\t760\t170\t10\t-1\t\n3\t1\t22\t1\t0\t0\t193\t760\t170\t10\t-1\t\n4\t1\t22\t1\t1\t0\t193\t760\t170\t10\t-1\t\n5\t1\t22\t1\t1\t1\t193\t760\t28\t10\t68.347931\tsmall,\n5\t1\t22\t1\t1\t2\t225\t761\t16\t8\t68.347931\tbut\n5\t1\t22\t1\t1\t3\t245\t763\t20\t6\t96.878479\tnew\n5\t1\t22\t1\t1\t4\t270\t761\t21\t8\t96.545097\tLive\n5\t1\t22\t1\t1\t5\t295\t760\t33\t9\t96.737000\tShows\n5\t1\t22\t1\t1\t6\t332\t760\t18\t9\t96.603836\tand\n5\t1\t22\t1\t1\t7\t355\t762\t8\t7\t89.875984\tst\n2\t1\t23\t0\t0\t0\t384\t760\t120\t11\t-1\t\n3\t1\t23\t1\t0\t0\t384\t760\t120\t11\t-1\t\n4\t1\t23\t1\t1\t0\t384\t760\t120\t11\t-1\t\n5\t1\t23\t1\t1\t1\t384\t760\t43\t11\t90.304237\tchapters\n5\t1\t23\t1\t1\t2\t431\t760\t16\t9\t95.860115\twill\n5\t1\t23\t1\t1\t3\t452\t760\t23\t9\t96.607178\thave\n5\t1\t23\t1\t1\t4\t479\t762\t10\t7\t96.699577\tto\n5\t1\t23\t1\t1\t5\t493\t760\t11\t9\t93.529701\tbe\n2\t1\t24\t0\t0\t0\t236\t775\t18\t5\t-1\t\n3\t1\t24\t1\t0\t0\t236\t775\t18\t5\t-1\t\n4\t1\t24\t1\t1\t0\t236\t775\t18\t5\t-1\t\n5\t1\t24\t1\t1\t1\t236\t775\t18\t5\t42.565598\tvin\n2\t1\t25\t0\t0\t0\t210\t800\t41\t10\t-1\t\n3\t1\t25\t1\t0\t0\t210\t800\t41\t10\t-1\t\n4\t1\t25\t1\t1\t0\t210\t800\t41\t10\t-1\t\n5\t1\t25\t1\t1\t1\t210\t800\t41\t10\t93.832771\tCancel\n"
+    },
+    {
+      "crop": [
+        0,
+        1152,
+        720,
+        1280
+      ],
+      "scale": 4,
+      "mode": "title",
+      "psm": 11,
+      "language": "eng",
+      "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t2880\t512\t-1\t\n"
+    },
+    {
+      "crop": [
+        443,
+        783,
+        536,
+        826
+      ],
+      "scale": 6,
+      "mode": "pink",
+      "psm": 7,
+      "language": "eng",
+      "tsv": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t558\t258\t-1\t\n2\t1\t1\t0\t0\t0\t222\t102\t114\t61\t-1\t\n3\t1\t1\t1\t0\t0\t222\t102\t114\t61\t-1\t\n4\t1\t1\t1\t1\t0\t222\t102\t114\t61\t-1\t\n5\t1\t1\t1\t1\t1\t222\t102\t114\t61\t96.891487\tOK\n"
+    }
+  ],
+  "capture_elapsed": 195.964
+}

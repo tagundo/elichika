@@ -10,6 +10,7 @@ from PIL import Image
 from feature_client_smoke import game_request_counts
 from native_download_flow import analyze
 from native_ocr_control import ocr_words
+from native_download_heading_ocr import read_heading
 from native_download_guard import SettingsProgress, SuccessfulAssetStarts, BulkDownloadProgress
 from native_download_errors import exact_error, fail_for_error, NativeDownloadError, FixedEnds, OptionalOneNativeRetry
 
@@ -310,6 +311,11 @@ def reach_settled_home(context,*,stop_at_download_start=False):
                     metadata=settings_row_metadata(image,metadata)
                     observed=analyze(image,metadata,phase)
                     observed['observations']['settings_caption_ocr_transforms']=metadata.get('settings_caption_ocr_transforms',[])
+                elif phase=='settings' and observed['state']=='blocked-settings-caption-context':
+                    metadata,heading=read_heading(image,metadata,evidence=args.evidence,
+                        label=label,source_png=args.evidence/(label+'.png'))
+                    observed=analyze(image,metadata,phase)
+                    observed['observations']['download_heading_ocr']=heading
         if phase=='home_wait' and not error:observed['observations']['home_ocr_transforms']=metadata['home_ocr_transforms']
         elif phase=='download_wait' and not error:
             observed['observations']['download_progress_ocr_transform']=metadata['download_progress_ocr_transform']
