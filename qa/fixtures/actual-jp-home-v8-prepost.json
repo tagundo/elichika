@@ -1,0 +1,292 @@
+{
+  "actual_run": 43582585527,
+  "actual_head": "ea5d2a49465fcbfff2b7b699d6b019d08ef58763",
+  "authority": {
+    "status": "LABEL_IDENTITY_APPROVED_NO_INPUT",
+    "binding": {
+      "activity": "com.klab.lovelive.allstars.MainActivity",
+      "attempt": 1,
+      "head": "ea5d2a49465fcbfff2b7b699d6b019d08ef58763",
+      "identity": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "nonce": "16d59afe1ec2e1dd584d563fea826403",
+      "run": 43582585527
+    },
+    "state_commit": "e2a8f0ffafa03e463842f31fe39d789c79aa085d",
+    "state_sha256": "8ae95373569d668e270b4fe5337a952a8f18dbb39a66c0414c5ad0f4d256e2f0",
+    "command_commit": "89689c7fc6ba16035bfe749470dcf1f0cbaa7cfa",
+    "command_blob": "c35e4f83f70e3e455508eb4f7c7edd6974e0ae97",
+    "command_sha256": "5e0124eab4154db23d14ac13cea1232dab8fe0cb251703c811ce8f272801f826",
+    "approved_capture": {
+      "activity_at": 1082.665495513,
+      "activity_sha256": "b9ac6e669d5a53a966ce53fd0fe001960dafbffa5769595ffc7717a6b478d0ae",
+      "capture_id": "jp-native-0040",
+      "captured_at": 1082.63468614,
+      "identity": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "labels": {
+        "bulk": {
+          "background": "pale",
+          "background_bounds": [
+            160,
+            580,
+            559,
+            664
+          ],
+          "caption_crop": [
+            192,
+            583,
+            405,
+            598
+          ],
+          "caption_r_sha256": "f3fce19a60b14fceb969e61a6ea55067ecacd5bf46641ebaf65874ab51e36b58",
+          "radio_bounds": [
+            168.0,
+            615.0,
+            184.0,
+            631.0
+          ]
+        },
+        "light": {
+          "background": "white",
+          "background_bounds": [
+            160,
+            679,
+            559,
+            763
+          ],
+          "caption_crop": [
+            192,
+            682,
+            396,
+            698
+          ],
+          "caption_r_sha256": "ea0fc483470d9ac9a7f6c40c905275b9e4f7719612f04128a34c1735030fc37d",
+          "radio_bounds": [
+            168.0,
+            714.0,
+            184.0,
+            730.0
+          ]
+        }
+      },
+      "logical_phase": "NativeDownloadChooser",
+      "modal_identity": {
+        "anchors": [
+          {
+            "bounds": [
+              144,
+              455,
+              576,
+              481
+            ],
+            "role": "header"
+          },
+          {
+            "bounds": [
+              197,
+              797,
+              265,
+              814
+            ],
+            "role": "cancel-caption"
+          },
+          {
+            "bounds": [
+              478,
+              797,
+              501,
+              814
+            ],
+            "role": "ok-caption"
+          }
+        ],
+        "modal_bounds": [
+          107,
+          450,
+          613,
+          829
+        ],
+        "modal_offset": [
+          0,
+          0
+        ],
+        "viewport_bounds": [
+          107,
+          488,
+          613,
+          780
+        ]
+      },
+      "native_activity": "com.klab.lovelive.allstars.MainActivity",
+      "native_at": 1082.302315634,
+      "native_xml_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "png_sha256": "a7c5d29d6aceadc1efd35aa17c4f8e47044a42c06291f9fdfef794afa0ccd665",
+      "surface_size": [
+        720,
+        1280
+      ],
+      "targets": [
+        {
+          "actions": [
+            "approve-regular-light-label"
+          ],
+          "bounds": [
+            192,
+            682,
+            396,
+            698
+          ],
+          "center": [
+            294,
+            690
+          ],
+          "id": "regular-light-label",
+          "kind": "native-label-identity",
+          "path": "native/NativeDownloadChooser/regularLight"
+        }
+      ]
+    },
+    "force_fresh_native_pair_required": true
+  },
+  "frames": {
+    "jp-native-0041": {
+      "id": "jp-native-0041",
+      "reason": "after-title",
+      "png_sha256": "90ced8c945e6b108958b0ca9d346a44e0f9e2105dae59f845c339648d07f5a54",
+      "native_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "native_at": 1127.379708297,
+      "captured_at": 1127.805716583,
+      "identity_before": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "identity_after": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "frame": [
+        720,
+        1280
+      ],
+      "surface": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280
+      },
+      "activity": "com.klab.lovelive.allstars.MainActivity",
+      "activity_at": 1127.901328508,
+      "activity_sha256": "b33bd6e02b32eadc62ca2a34d0d7d0a1e309425c40f8fe587afd8af73995ce1a"
+    },
+    "jp-native-0042": {
+      "id": "jp-native-0042",
+      "reason": "full-Light-choice-recheck",
+      "png_sha256": "8e047a1434ee8afc763f4b6fe75b1c9138f055a7abdd3c2f7386668229bd86bd",
+      "native_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "native_at": 1130.426126039,
+      "captured_at": 1130.943812949,
+      "identity_before": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "identity_after": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "frame": [
+        720,
+        1280
+      ],
+      "surface": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280
+      },
+      "activity": "com.klab.lovelive.allstars.MainActivity",
+      "activity_at": 1131.00775344,
+      "activity_sha256": "1deac0c69d9f6c70d66da50bd0d96b7a4bead8ced145911b9fa19e235ab2c1b7"
+    },
+    "jp-native-0043": {
+      "id": "jp-native-0043",
+      "reason": "actual-selected-Light-after-click",
+      "png_sha256": "bd40d0325cde892a2562629b5b2f2fd12f309babebcd55412d8868edf2c7a9e4",
+      "native_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "native_at": 1134.804458905,
+      "captured_at": 1135.130786977,
+      "identity_before": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "identity_after": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "frame": [
+        720,
+        1280
+      ],
+      "surface": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280
+      },
+      "activity": "com.klab.lovelive.allstars.MainActivity",
+      "activity_at": 1135.187141009,
+      "activity_sha256": "fe4e49466d7bca5d1099347a9f41760e4a01d55ba03d0d6d8170eace6f2e26c9"
+    },
+    "jp-native-0044": {
+      "id": "jp-native-0044",
+      "reason": "actual-selected-Light-after-click-recheck",
+      "png_sha256": "9041edb71d591af1e6508d5710a21afe7475ed85b137e2a2c7404d16eebbcc5f",
+      "native_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "native_at": 1137.523866053,
+      "captured_at": 1137.885590299,
+      "identity_before": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "identity_after": {
+        "pid": 1887,
+        "start_ticks": "96521"
+      },
+      "frame": [
+        720,
+        1280
+      ],
+      "surface": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280
+      },
+      "activity": "com.klab.lovelive.allstars.MainActivity",
+      "activity_at": 1137.932103287,
+      "activity_sha256": "8ebfef4bb65e12d3105f655e459abdc82a7f12607ddaa76fda405763633ed49b"
+    }
+  },
+  "overall_started": 946.109275704,
+  "settings_started": 1070.797029196,
+  "sourceproof_sha256": "5fba70975504834ef81dde67b60c95ba660e8e0cd4c43d9af9e209f492a076ae",
+  "measurement_sha256": "a94a617e7d5a84eff015d65e702cfbe7680aed4776e3d3beab81d853a326e2a9",
+  "expected_files": {
+    "actual-jp-home-v8-0041.png": "90ced8c945e6b108958b0ca9d346a44e0f9e2105dae59f845c339648d07f5a54",
+    "actual-jp-home-v8-0041.xml": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+    "actual-jp-home-v8-0042.png": "8e047a1434ee8afc763f4b6fe75b1c9138f055a7abdd3c2f7386668229bd86bd",
+    "actual-jp-home-v8-0042.xml": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+    "actual-jp-home-v8-0043.png": "bd40d0325cde892a2562629b5b2f2fd12f309babebcd55412d8868edf2c7a9e4",
+    "actual-jp-home-v8-0043.xml": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+    "actual-jp-home-v8-0044.png": "9041edb71d591af1e6508d5710a21afe7475ed85b137e2a2c7404d16eebbcc5f",
+    "actual-jp-home-v8-0044.xml": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+    "actual-jp-home-v8-Root-offer.png": "a7c5d29d6aceadc1efd35aa17c4f8e47044a42c06291f9fdfef794afa0ccd665"
+  },
+  "Root_personally_viewed_actual0043_Light_selected": true,
+  "scope": "Offline actual pre/post regression only; tests replay approved data with controlled validation clocks, no new Root approval/native input/feature qualification",
+  "genuine_actual_Light_returned_at": 1132.611337054
+}

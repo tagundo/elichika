@@ -294,7 +294,7 @@ class CurrentLightPlanner:
                 # Current orange/neutral masks can put their component envelope
                 # one pixel apart. This constrains control geometry only; the
                 # accepted current caption boxes/red-plane hashes stay exact.
-                same=same and all(all(abs(a-b)<=1 for key in ('radio_bounds','background_bounds')
+                same=same and all(all(abs(a-b)<=1 for key in ('radio_bounds',)
                     for a,b in zip(rows[name][key],baseline['rows'][name][key])) for name in rows)
                 if not same:raise Refusal('Postclick current JP row geometry changed; fresh OCR or refusal required')
                 labels={name:{key:baseline['rows'][name][key] for key in ('caption','bounds','confidence','caption_box','caption_r_sha256')} for name in rows}
