@@ -344,6 +344,7 @@ function observeExistingMusicRowsAndMvTabs(screen,raycaster) {
       info[key]={liveMasterId:mvNumber(mvBacking(vo,"LiveMasterId")),
         isPlayable:mvBacking(vo,"IsPlayable"),voClass:vo?fullType(vo):null};
     });
+    info.noteInputBlocker=nativeMusicBlocker(object);
     result.musicSelection.push(info);
   });
   collect("LLAS.Components.UI.LiveMvDeckTabGroup",function(object){
@@ -364,6 +365,264 @@ function observeExistingMusicRowsAndMvTabs(screen,raycaster) {
     result.deckTabGroups.push(info);
   });
   return result;
+}
+
+// R8 QA-only prospective native hit model. These helpers never dispatch an
+// event, invoke game selection methods, or mutate an existing game object.
+function nativeMusicBounds(position,size,lossyScale,pivot) {
+  function number(value) { if(typeof value!=="number" || !Number.isFinite(value))throw new Error("Unreadable native music geometry");return Math.fround(value); }
+  var x=number(position.x),y=number(position.y),z=number(position.z);
+  var width=Math.fround(number(size.x)*number(lossyScale.x)),height=Math.fround(number(size.y)*number(lossyScale.y));
+  var px=number(pivot.x),py=number(pivot.y);
+  return {min:{x:Math.fround(x-Math.fround(width*px)),y:Math.fround(y-Math.fround(height*py)),z:z},
+    max:{x:Math.fround(x+Math.fround(width*Math.fround(1-px))),y:Math.fround(y+Math.fround(height*Math.fround(1-py))),z:z}};
+}
+function nativeMusicReadableBounds(bounds) {
+  return !!bounds && ["min","max"].every(function(side){return bounds[side] && ["x","y","z"].every(function(axis){return typeof bounds[side][axis]==="number" && Number.isFinite(bounds[side][axis]);});});
+}
+function nativeMusicContains(bounds,point) {
+  return nativeMusicReadableBounds(bounds) && ["x","y","z"].every(function(axis){
+    return typeof point[axis]==="number" && Number.isFinite(point[axis]) && Math.fround(point[axis])>=bounds.min[axis] && Math.fround(point[axis])<=bounds.max[axis];
+  });
+}
+function nativeMusicBoundedCells(size,capacity,readEntry) {
+  var result={complete:false,reason:null,limit:512,size:size,capacity:capacity,entries:[]};
+  if(!Number.isInteger(size)||size<1||size>512||!Number.isInteger(capacity)||capacity<size){result.reason="Native managed-cell storage is incomplete or exceeds512";return result;}
+  for(var i=0;i<size;i++) {
+    var entry;
+    try{entry=readEntry(i);}catch(error){result.reason="Unreadable native managed-cell entry at ordinal"+i+": "+String(error);return result;}
+    if(!entry || !nativeMusicReadableBounds(entry.nativeBounds)){result.reason="Unreadable native bounds at ordinal"+i;return result;}
+    result.entries.push(entry);
+  }
+  result.complete=true;return result;
+}
+function nativeMusicFirstContaining(entries,point) {
+  for(var i=0;i<entries.length;i++)if(nativeMusicContains(entries[i].nativeBounds,point))return entries[i];
+  return null;
+}
+function nativeMusicCellIdentity(entry) {
+  if(!entry)return null;
+  var result={};["ordinal","index","positionIndex","rectId","cellId","liveMasterId","activeInHierarchy"].forEach(function(key){result[key]=entry[key];});return result;
+}
+function nativeMusicScan(entries,intended,point) {
+  if(entries.some(function(entry){return !entry||!nativeMusicReadableBounds(entry.nativeBounds);}))return {qualified:false,firstContaining:null,reason:"Native managed-cell geometry is incomplete; no skipped entry"};
+  var first=nativeMusicFirstContaining(entries,point),result={qualified:false,firstContaining:nativeMusicCellIdentity(first)};
+  if(!first)return Object.assign(result,{reason:"No native managed-cell bounds contain the prospective point"});
+  if(first.activeInHierarchy!==true)return Object.assign(result,{reason:"FIRST native containing cell is inactive; no later-cell fallback"});
+  if(["ordinal","index","positionIndex","rectId","cellId","liveMasterId"].some(function(key){return first[key]!==intended[key];}))return Object.assign(result,{reason:"FIRST native containing cell differs from intended typed music cell"});
+  return Object.assign(result,{qualified:true,reason:"FIRST native containing cell is the intended active typed cell"});
+}
+function nativeMusicObject(object) {
+  if(!exists(object))return null;
+  return {id:String(instanceId(object)),type:fullType(object),path:hierarchy(transform(object))};
+}
+function nativeMusicBlocker(controller) {
+  var result={resolved:false,id:null,path:null,activeSelf:null,activeInHierarchy:null,error:null};
+  try {
+    var blocker=mvReadField(controller,"noteInputBlocker");
+    if(!exists(blocker)){result.error="Controller noteInputBlocker unavailable";return result;}
+    result.id=String(instanceId(blocker));result.path=hierarchy(transform(blocker));
+    result.activeSelf=call(blocker,"get_activeSelf");result.activeInHierarchy=call(blocker,"get_activeInHierarchy");
+    result.resolved=typeof result.activeSelf==="boolean" && typeof result.activeInHierarchy==="boolean";
+    if(!result.resolved)result.error="Controller noteInputBlocker active state unreadable";
+  }catch(error){result.error=String(error);}
+  return result;
+}
+function nativeMusicEventCamera(module) {
+  var result={proof:{resolved:false,isNull:null,id:null,path:null,error:null},camera:null};
+  try {
+    if(!exists(module))throw new Error("Current first raycast module unavailable");
+    var getter=module.method("get_eventCamera",0);
+    if(!/^UnityEngine(?:\.|$)/.test(getter.class.namespace||""))throw new Error("Non-Unity eventCamera getter is not invoked");
+    var camera=getter.invoke();result.proof.resolved=true;result.proof.isNull=!exists(camera);
+    result.camera=exists(camera)?camera:nullObject();
+    if(exists(camera)){result.proof.id=String(instanceId(camera));result.proof.path=hierarchy(transform(camera));}
+  }catch(error){result.proof.error=String(error);}
+  return result;
+}
+function nativeMusicVector(value,axes) {
+  var result={};axes.forEach(function(axis){var number=field(value,axis);if(!Number.isFinite(number))throw new Error("Non-finite native geometry");result[axis]=Math.fround(number);});return result;
+}
+function nativeMusicRect(rect) {
+  var tr=transform(rect),position=nativeMusicVector(call(tr,"get_position"),["x","y","z"]);
+  var scale=nativeMusicVector(call(tr,"get_lossyScale"),["x","y","z"]),pivot=nativeMusicVector(call(rect,"get_pivot"),["x","y"]);
+  var local=call(rect,"get_rect"),size=nativeMusicVector(call(local,"get_size"),["x","y"]);
+  var rotation=nativeMusicVector(call(tr,"get_rotation"),["x","y","z","w"]);
+  return {rectId:String(instanceId(rect)),path:hierarchy(tr),position:position,lossyScale:scale,pivot:pivot,size:size,rotation:rotation,
+    nativeBounds:nativeMusicBounds(position,size,scale,pivot)};
+}
+function nativeMusicStateVector(object,name) {
+  try{var value=mvReadField(object,name);return value?nativeMusicVector(value,["x","y"]):null;}catch(_){return null;}
+}
+function nativeMusicCanvasCamera(view) {
+  var tr=transform(view),count=0;
+  while(exists(tr)&&count++<48) {
+    var canvas=component(gameObject(tr),runtime.canvas);
+    if(exists(canvas)) {
+      if(Number(call(canvas,"get_renderMode"))===0)return nullObject();
+      var camera=call(canvas,"get_worldCamera");
+      if(!exists(camera))throw new Error("Native viewport Canvas camera unresolved; no Camera.main fallback");
+      return camera;
+    }
+    tr=maybe(tr,"get_parent",null);
+  }
+  throw new Error("Native viewport Canvas unavailable");
+}
+function nativeMusicViewport(view,screen,camera) {
+  var tr=transform(view),original=rawRect(tr,{camera:camera},screen);
+  var clipped=intersect(original,{left:0,top:0,right:screen.width,bottom:screen.height});
+  var parent=tr,count=0,alpha=1,groupsInteractable=true,blocksRaycasts=true,ignore=false;
+  while(exists(parent)&&count++<48) {
+    var go=gameObject(parent),group=component(go,runtime.canvasGroup);
+    if(!ignore&&exists(group)&&maybe(group,"get_enabled",true)) {
+      alpha*=Number(call(group,"get_alpha"));groupsInteractable=groupsInteractable&&call(group,"get_interactable")!==false;
+      blocksRaycasts=blocksRaycasts&&call(group,"get_blocksRaycasts")!==false;ignore=!!call(group,"get_ignoreParentGroups");
+    }
+    if(parent!==tr) {
+      var mask=component(go,runtime.rectMask)||component(go,runtime.mask);
+      if(exists(mask)&&maybe(mask,"get_isActiveAndEnabled",true))clipped=intersect(clipped,rawRect(parent,{camera:camera},screen));
+    }
+    parent=maybe(parent,"get_parent",null);
+  }
+  clipped.width=Math.max(0,clipped.right-clipped.left);clipped.height=Math.max(0,clipped.bottom-clipped.top);
+  return {bounds:original,visibleBounds:clipped,visible:clipped.width>=1&&clipped.height>=1&&alpha>.001,
+    alpha:alpha,groupsInteractable:groupsInteractable,blocksRaycasts:blocksRaycasts};
+}
+function observeNativeMusicSelection(screen,rows) {
+  var result={proof:{schema:1,complete:false,reason:null,scope:"PROSPECTIVE_NATIVE_HIT_PREDICTION",owners:[]},owners:[]};
+  if(screen.scene!=="LiveMusicSelect"){result.proof.reason="Native music selection is outside LiveMusicSelect";return result;}
+  try {
+    var klass=findClass("LLAS.Components.UI.ProductMusicScrollView",true);
+    if(!klass)throw new Error("ProductMusicScrollView metadata unavailable");
+    var objects=allOfType(klass),candidates=[];
+    if(objects.length>32)throw new Error("Native scroll ownership enumeration exceeds32");
+    for(var i=0;i<objects.length && i<32;i++) {
+      var view=objects.get(i);if(!exists(view)||!active(view).active)continue;
+      var geometry=nativeMusicViewport(view,screen,nativeMusicCanvasCamera(view));if(!geometry.visible)continue;
+      candidates.push({view:view,geometry:geometry});
+    }
+    if(candidates.length!==1)throw new Error("Native music scroll ownership is absent or ambiguous");
+    var current=candidates[0],view=current.view,model=mvReadField(view,"model"),proxy=mvReadField(view,"inputProxy"),transition=mvReadField(view,"transition");
+    if(!exists(model)||!exists(proxy)||!exists(transition))throw new Error("Owned native model/inputProxy/transition reference unavailable");
+    if(!descendsFrom(gameObject(proxy),view))throw new Error("Input proxy is outside the owned music scroll view");
+    var proxyView=mvReadField(proxy,"ScrollSelectView");
+    if(!exists(proxyView)||String(instanceId(proxyView))!==String(instanceId(view)))throw new Error("Input proxy reverse ScrollSelectView ownership differs");
+    var ownership={viewId:String(instanceId(view)),modelId:String(instanceId(model)),inputProxyId:String(instanceId(proxy)),
+      inputProxyGameObjectId:String(instanceId(gameObject(proxy))),transitionId:String(instanceId(transition)),inputProxyViewId:String(instanceId(proxyView))};
+    var proof={ownership:ownership,view:nativeMusicObject(view),model:nativeMusicObject(model),inputProxy:nativeMusicObject(proxy),transition:nativeMusicObject(transition),
+      viewport:current.geometry.visibleBounds,modelState:{selectedCellIndex:mvNumber(mvBacking(model,"SelectedCellIndex")),
+        moveToCellIndex:mvNumber(mvBacking(model,"MoveToCellIndex")),scrollPosition:nativeMusicStateVector(model,"<ScrollPosition>k__BackingField"),
+        selectedCellPositionDelta:nativeMusicStateVector(model,"selectedCellPositionDelta"),cachedScrollSelectCell:nativeMusicObject(mvReadField(model,"cachedScrollSelectCell"))},
+      storedProxyState:{scope:"STORED_STATE_NOT_CURRENT_INPUT_EVENT",pressPosition:null,movedOutOfTolerance:mvReadField(proxy,"movedOutOfTolerance"),
+        pressedPointerId:mvReadField(proxy,"PressedPointerId"),prevPressedPointerId:mvReadField(proxy,"PrevPressedPointerId"),isDragging:mvBacking(proxy,"IsDragging")}};
+    try{var press=mvReadField(proxy,"pressPosition");proof.storedProxyState.pressPosition=press?nativeMusicVector(press,["x","y","z"]):null;}catch(_){}
+    var list=mvReadField(model,"managedCells");if(!exists(list))throw new Error("Native managedCells list unavailable");
+    var type=fullType(list),items=mvReadField(list,"_items"),size=mvNumber(mvReadField(list,"_size"));
+    if(!/^System\.Collections\.Generic\.List(?:`|<)/.test(type)||!items||typeof items.length!=="number")throw new Error("Native managedCells runtime list layout unproved");
+    var seen={},cellRefs={};
+    var cells=nativeMusicBoundedCells(size,items.length,function(ordinal){
+      var entry=items.get(ordinal);if(!exists(entry))throw new Error("Null native list entry");
+      var rect=mvBacking(entry,"RectTransform"),cell=mvReadField(entry,"scrollSelectCell");
+      if(!exists(rect))throw new Error("Native managed-cell RectTransform unavailable");
+      if(!descendsFrom(gameObject(rect),view))throw new Error("Native cell is outside owned scroll");
+      var geometry=nativeMusicRect(rect),rectId=geometry.rectId;
+      if(seen[rectId])throw new Error("Duplicate native managed-cell RectTransform");seen[rectId]=true;
+      var index=mvNumber(mvBacking(entry,"Index")),positionIndex=mvNumber(mvBacking(entry,"PositionIndex"));
+      if(!Number.isInteger(index)||!Number.isInteger(positionIndex))throw new Error("Native cell index is unavailable");
+      var go=gameObject(rect),activeSelf=call(go,"get_activeSelf"),activeInHierarchy=call(go,"get_activeInHierarchy");
+      if(typeof activeSelf!=="boolean"||typeof activeInHierarchy!=="boolean")throw new Error("Native cell active state unavailable");
+      var vo=exists(cell)?mvBacking(cell,"CellVO"):null,liveId=mvNumber(mvBacking(vo,"LiveMasterId"));
+      var cellId=exists(cell)?String(instanceId(cell)):null;
+      if(activeInHierarchy && (!exists(cell)||!Number.isInteger(liveId)))throw new Error("Active native cell VO binding unavailable");
+      if(exists(cell) && !descendsFrom(gameObject(cell),view))throw new Error("Referenced native cell VO is outside the owned scroll view");
+      var value={ordinal:ordinal,index:index,positionIndex:positionIndex,rectId:rectId,cellId:cellId,liveMasterId:liveId,
+        rectGameObjectId:String(instanceId(go)),cellGameObjectId:exists(cell)?String(instanceId(gameObject(cell))):null,
+        bindingSource:"Exact managed entry RectTransform and scrollSelectCell references; no same-GameObject assumption",
+        isPlayable:mvBacking(vo,"IsPlayable"),activeSelf:activeSelf,activeInHierarchy:activeInHierarchy,
+        path:geometry.path,nativeBounds:geometry.nativeBounds,geometry:geometry,voClass:vo?fullType(vo):null};
+      if(exists(cell))cellRefs[cellId]={cell:cell,rect:rect};return value;
+    });
+    cells.runtimeType=type;proof.managedCells=cells;result.proof.owners.push(proof);
+    if(!cells.complete)throw new Error(cells.reason);
+    result.owners.push({view:view,model:model,proxy:proxy,transition:transition,geometry:current.geometry,proof:proof,cellRefs:cellRefs});
+    result.proof.complete=true;
+  }catch(error){result.proof.reason=String(error);}
+  return result;
+}
+function nativeMusicRaycast(screen,point,raycaster,owner) {
+  if(typeof raycaster.inspect!=="function")return {qualified:false,reason:"Current native raycast inspection unavailable",proof:{available:false}};
+  var query=raycaster.inspect(point),proof=query.proof;
+  if(!proof.available || !query.hit || !query.module)return {qualified:false,reason:"Current first graphic/raycaster unavailable",proof:proof};
+  var camera=nativeMusicEventCamera(query.module);proof.eventCamera=camera.proof;
+  if(!camera.proof.resolved)return {qualified:false,reason:"Current event camera could not be resolved",proof:proof};
+  var execute=findClass("UnityEngine.EventSystems.ExecuteEvents",true),handler=findClass("UnityEngine.EventSystems.IDragHandler",true);
+  if(!execute||!handler)return {qualified:false,reason:"Current Unity drag-handler metadata unavailable",proof:proof};
+  var drag=execute.method("GetEventHandler",1).inflate(handler).invoke(query.hit);
+  if(!exists(drag)||String(instanceId(drag))!==String(instanceId(gameObject(owner.proxy))))return {qualified:false,reason:"Current first graphic drag owner is not the owned inputProxy",proof:proof};
+  var rect=component(drag,runtime.rectTransform);if(!exists(rect))return {qualified:false,reason:"Owned drag-handler RectTransform plane unavailable",proof:proof};
+  proof.dragOwner=nativeMusicObject(drag);proof.dragRect=nativeMusicRect(rect);
+  return {qualified:true,proof:proof,camera:camera.camera,cameraProof:camera.proof,drag:drag,rect:rect,module:query.module};
+}
+function nativeMusicWorldPoint(rect,camera,point,screen) {
+  var storage=Memory.alloc(runtime.vector3.valueTypeSize),value=new Il2Cpp.ValueType(storage,runtime.vector3.type);
+  ["x","y","z"].forEach(function(axis){value.field(axis).value=0;});
+  var unityPoint=vector(runtime.vector2,point.x,screen.height-point.y);
+  var converted=runtime.rectUtility.method("ScreenPointToWorldPointInRectangle",4).invoke(rect,unityPoint,camera,new Il2Cpp.Reference(storage,runtime.vector3.type));
+  return {converted:converted===true,point:nativeMusicVector(value,["x","y","z"]),unityScreenPoint:{x:point.x,y:screen.height-point.y},scope:"OBSERVER_OWNED_OUT_STORAGE"};
+}
+function nativeMusicHit(screen,state,contexts,row,raycaster) {
+  var result={qualified:false,reason:null,scope:"PROSPECTIVE_NATIVE_HIT_PREDICTION",intendedLiveMasterId:row.liveMasterId,cellsComplete:false,
+    ownership:null,intended:null,firstContaining:null,worldPoint:null,screenPoint:null,orderedCells:[],listSignature:null};
+  try {
+    if(!state.nativeMusicSelection.complete||contexts.owners.length!==1)throw new Error(state.nativeMusicSelection.reason||"Native music ownership incomplete");
+    var owner=contexts.owners[0],entries=owner.proof.managedCells.entries;
+    result.nativeStateBefore={scope:"READ_ONLY_STORED_STATE_NOT_CURRENT_INPUT_EVENT",frame:screen.frame,
+      modelState:owner.proof.modelState,storedProxyState:owner.proof.storedProxyState,
+      transition:owner.proof.transition,controllerSelection:state.musicSelection};
+    result.cellsComplete=owner.proof.managedCells.complete;result.orderedCells=entries;
+    result.listSignature=JSON.stringify(entries.map(function(entry){return {identity:nativeMusicCellIdentity(entry),nativeBounds:entry.nativeBounds};}));
+    var intended=entries.filter(function(entry){return entry.cellId===row.id && entry.liveMasterId===row.liveMasterId;});
+    if(intended.length!==1)throw new Error("Intended typed row has no unique native managed-cell binding");
+    intended=intended[0];result.intended=nativeMusicCellIdentity(intended);
+    if(intended.activeInHierarchy!==true||intended.isPlayable!==true)throw new Error("Intended native cell is inactive or its VO is not playable");
+    var viewport=owner.geometry.visibleBounds;
+    function inside(point){return Number.isInteger(point.x)&&Number.isInteger(point.y)&&point.x>=Math.max(0,viewport.left)&&point.x<Math.min(screen.width,viewport.right)&&point.y>=Math.max(0,viewport.top)&&point.y<Math.min(screen.height,viewport.bottom);}
+    var centers=[row.target&&row.target.center,{x:(viewport.left+viewport.right)/2,y:(viewport.top+viewport.bottom)/2}],resolved=null;
+    result.seedRaycasts=[];
+    for(var i=0;i<centers.length;i++)if(centers[i]) {
+      var seed={x:Math.round(centers[i].x),y:Math.round(centers[i].y)};if(!inside(seed))continue;
+      var candidate=nativeMusicRaycast(screen,seed,raycaster,owner);result.seedRaycasts.push({screenPoint:seed,qualified:candidate.qualified,reason:candidate.reason||null,proof:candidate.proof});
+      if(candidate.qualified){resolved=candidate;break;}
+    }
+    if(!resolved)throw new Error("No current owned inputProxy event-camera/drag-plane witness");
+    var inputGeometry=nativeMusicViewport(owner.view,screen,resolved.camera);viewport=inputGeometry.visibleBounds;
+    if(!inputGeometry.visible||!inputGeometry.groupsInteractable||!inputGeometry.blocksRaycasts)throw new Error("Current native input viewport is not actionable");
+    result.viewport=viewport;
+    var bounds=intended.nativeBounds;
+    if(!(bounds.min.x<bounds.max.x && bounds.min.y<bounds.max.y && bounds.min.z===bounds.max.z))throw new Error("Intended signed native bounds are empty or inverted");
+    var world=Memory.alloc(runtime.vector3.valueTypeSize),center=new Il2Cpp.ValueType(world,runtime.vector3.type);
+    ["x","y","z"].forEach(function(axis){center.field(axis).value=Math.fround(Math.fround(bounds.min[axis]+bounds.max[axis])*.5);});
+    var projected=runtime.rectUtility.method("WorldToScreenPoint",2).invoke(resolved.camera,center);
+    var point={x:Math.round(field(projected,"x")),y:Math.round(screen.height-field(projected,"y"))};result.screenPoint=point;
+    if(!inside(point))throw new Error("Derived integer native point is outside the current visible viewport");
+    var final=nativeMusicRaycast(screen,point,raycaster,owner);result.firstGraphic=final.proof;
+    if(!final.qualified)throw new Error(final.reason);
+    if(JSON.stringify(final.cameraProof)!==JSON.stringify(resolved.cameraProof)||String(instanceId(final.rect))!==String(instanceId(resolved.rect))||String(instanceId(final.module))!==String(instanceId(resolved.module)))throw new Error("Derived point changed current raycaster/event-camera/drag-plane ownership");
+    result.ownership=Object.assign({},owner.proof.ownership,{dragOwnerId:String(instanceId(final.drag)),dragRectId:String(instanceId(final.rect)),
+      raycasterId:String(instanceId(final.module)),eventCamera:final.cameraProof});
+    result.dragPlane=final.proof.dragRect;
+    var converted=nativeMusicWorldPoint(final.rect,final.camera,point,screen);result.conversion=converted;result.worldPoint=converted.point;
+    if(!converted.converted)throw new Error("Pure Unity point conversion returned false; zero/fallback is diagnostic only");
+    var scan=nativeMusicScan(entries,intended,converted.point);result.firstContaining=scan.firstContaining;
+    if(!scan.qualified)throw new Error(scan.reason);
+    if(converted.point.x===bounds.min.x||converted.point.x===bounds.max.x||converted.point.y===bounds.min.y||converted.point.y===bounds.max.y)throw new Error("Derived point is on a precision-sensitive native XY boundary");
+    var activity=active(owner.proxy),target={id:String(instanceId(owner.proxy)),name:text(maybe(owner.proxy,"get_name",null)),path:hierarchy(transform(owner.proxy)),
+      active:activity.active,enabled:activity.enabled,visible:activity.active&&activity.enabled&&inputGeometry.visible,
+      bounds:viewport,visibleBounds:viewport,center:point,groupsInteractable:inputGeometry.groupsInteractable,blocksRaycasts:inputGeometry.blocksRaycasts};
+    if(!target.active||!target.enabled||!target.visible)throw new Error("Current owned inputProxy is unavailable");
+    target.hit={available:true,hittable:true,hits:final.proof.hits,firstName:final.proof.firstName,firstPath:final.proof.firstPath};
+    result.qualified=true;result.reason=scan.reason;return {proof:result,target:target};
+  }catch(error){result.reason=String(error);return {proof:result,target:row.target};}
 }
 
 /* QA-ONLY, field-only complete suit catalog observation. Never executes an
@@ -485,7 +744,7 @@ function observeExistingSuitCatalogs() {
   return result;
 }
 
-function observeExistingMvState(screen) {
+function observeExistingMvState(screen,nativeContext) {
   screen = screen || metadata();
   var raycaster = makeRaycaster(screen);
   var result = { deckCells: [], pickerCells: [], liveMembers: [], errors: [] };
@@ -540,6 +799,8 @@ function observeExistingMvState(screen) {
   result.standingMemberNum=extras.deckRoots.length===1?extras.deckRoots[0].standingMemberNum:null;
   result.liveMasterId=extras.deckRoots.length===1?extras.deckRoots[0].liveMasterId:null;
   var music=observeExistingMusicRowsAndMvTabs(screen,raycaster);result.musicRows=music.musicRows;result.musicSelection=music.musicSelection;result.deckTabGroups=music.deckTabGroups;result.errors=result.errors.concat(music.errors);
+  var nativeMusic=observeNativeMusicSelection(screen,result.musicRows);result.nativeMusicSelection=nativeMusic.proof;
+  if(nativeContext)nativeContext.owners=nativeMusic.owners;
   result.liveMembers.forEach(function(member){
     var found=[];
     extras.directorAssets.forEach(function(director){director.members.forEach(function(asset){
@@ -560,7 +821,7 @@ function mvUiTarget(object,screen,raycaster) {
   return target;
 }
 function pickExistingMvTarget(query) {
-  query = query || {}; var screen = metadata(), state = observeExistingMvState(screen), matches = [];
+  query = query || {}; var screen = metadata(),nativeContext={owners:[]},state = observeExistingMvState(screen,nativeContext), matches = [];
   if (query.role === "member" || query.role === "suit") {
     state.deckCells.forEach(function(cell) {
       if (cell.formationPosition === Number(query.formationPosition) && /DeckMemberCustomVO$/.test(cell.voClass || "")) {
@@ -580,10 +841,12 @@ function pickExistingMvTarget(query) {
   } else if(query.role === "customTab") {
     state.deckTabGroups.forEach(function(group){group.tabs.forEach(function(tab){if(tab.deckType===2 && tab.target)matches.push({target:tab.target,cell:tab});});});
   } else throw new Error("Unknown read-only MV picker role");
-  matches = matches.filter(function(entry) {var t=entry.target;return t.active && t.enabled && t.visible && t.groupsInteractable && t.blocksRaycasts && t.hit && t.hit.available && t.hit.hittable;});
+  if(query.role!=="music")matches = matches.filter(function(entry) {var t=entry.target;return t.active && t.enabled && t.visible && t.groupsInteractable && t.blocksRaycasts && t.hit && t.hit.available && t.hit.hittable;});
   if (matches.length !== 1) throw new Error(JSON.stringify({error:"MV target absent, obscured or ambiguous",query:query,matches:matches.length,state:state,screen:screen}));
-  return {timestampMs:Date.now(),screen:screen,target:matches[0].target,catalog:matches[0].cell,
-    input:{method:"adb shell input tap",x:matches[0].target.center.x,y:matches[0].target.center.y},
+  var musicHit=query.role==="music"?nativeMusicHit(screen,state,nativeContext,matches[0].cell,makeRaycaster(screen)):null;
+  var target=musicHit?musicHit.target:matches[0].target;
+  return {timestampMs:Date.now(),screen:screen,target:target,catalog:matches[0].cell,nativeMusicHit:musicHit?musicHit.proof:null,
+    input:{method:"adb shell input tap",x:target.center.x,y:target.center.y},
     coordinateSource:"Existing MV model identity and live RectTransform/raycast geometry; no selection method invoked"};
 }
 
@@ -746,6 +1009,18 @@ function splashFadeRGBA(splash) {
         if (!exists(hit)) return { available: true, hittable: false, hits: count };
         return { available: true, hittable: descendsFrom(hit, target), hits: count,
           firstName: text(maybe(hit, "get_name", null)), firstPath: hierarchy(transform(hit)) };
+      }, inspect: function (point) {
+        call(data,"set_position",[vector(runtime.vector2,point.x,screen.height-point.y)]);
+        call(system,"RaycastAll",[data,results]);
+        var count=Number(call(results,"get_Count")),proof={available:true,hits:count,screenPoint:{x:point.x,y:point.y},
+          unityScreenPoint:{x:point.x,y:screen.height-point.y},scope:"SYNTHETIC_READ_ONLY_RAYCAST_QUERY_NOT_ACTUAL_INPUT"};
+        if(!count)return {proof:proof,hit:null,module:null};
+        var first=call(results,"get_Item",[0]),hit=maybe(first,"get_gameObject",null),module=mvReadField(first,"module");
+        proof.firstId=exists(hit)?String(instanceId(hit)):null;proof.firstName=exists(hit)?text(maybe(hit,"get_name",null)):null;
+        proof.firstPath=exists(hit)?hierarchy(transform(hit)):null;proof.raycaster=nativeMusicObject(module);
+        ["distance","depth","sortingLayer","sortingOrder","index"].forEach(function(key){proof[key]=mvNumber(mvReadField(first,key));});
+        ["worldPosition","worldNormal"].forEach(function(key){try{var value=mvReadField(first,key);proof[key]=value?nativeMusicVector(value,["x","y","z"]):null;}catch(_){proof[key]=null;}});
+        return {proof:proof,hit:hit,module:module};
       } };
     } catch (error) { return { available: false, error: String(error), test: function () { return { available: false, hittable: null, error: String(error) }; } }; }
   }

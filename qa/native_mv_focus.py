@@ -22,6 +22,8 @@ from mv_catalog_audit import SuitCatalogAudit
 from unity_main_tid import select_unity_main_tid, proc_stat_starttime
 from predeck_availability import classified_semantic_refusal, music_selection_witness, music_selection_blocker
 from predeck_music_stability import music_target_stability
+from native_music_selection import (native_music_hit_blocker,native_music_hit_stability,
+    music_adjustment_blocker,download_song_target,DOWNLOAD_SONG_PATH)
 
 MEMBER_SCENES={'CardList','CardDetail','CommunicationMemberSelect','CommunicationMemberDetail'}
 MEMBER_BACK_PATH='EntryPoint/Canvas/UnSafeArea/BackButtonSafeArea/BackButton'
@@ -223,7 +225,10 @@ class MVProgressGuard:
         state={'stage':stage,'scene':tree.get('screen',{}).get('scene'),
                'phase':phase,'case':case,'selected_song':selected_song,
                'liveMasterId':mv.get('liveMasterId'),'standingMemberNum':mv.get('standingMemberNum'),
-               'observed_music_selection':[(row.get('currentSelectedCellVO'),row.get('decidedCellVO')) for row in mv.get('musicSelection',[])],
+               'observed_music_selection':[(row.get('currentSelectedCellVO'),row.get('decidedCellVO'),
+                   (row.get('noteInputBlocker') or {}).get('activeInHierarchy')
+                    if (row.get('noteInputBlocker') or {}).get('resolved') is True else None)
+                    for row in mv.get('musicSelection',[])],
                'deck':deck_layout(tree),
                'controls':sorted({n.get('path') or n.get('name') or '' for n in actionable_nodes(tree)
                                   if n.get('name') in NAVIGATION_CONTROLS} |
@@ -320,12 +325,13 @@ def run_mv_focus(context):
         if selected_music_id is not None:
             witness=music_selection_witness(picked.get('musicSelection'),selected_music_id)
             report['mv_song_selection']=witness
-            if not witness['current_selected_matches_requested']:
+            adjustment=music_adjustment_blocker(picked.get('musicSelection'),selected_music_id)
+            if not witness['current_selected_matches_requested'] or adjustment:
                 selection_observation_count+=1
                 if selection_observation_count>64:raise RuntimeError('Bounded predeck selection observations exhausted')
                 relative='predeck-selection-witness-%03d.json'%selection_observation_count
                 with (evidence/relative).open('x') as output:
-                    json.dump({'query':query,'pick':picked,'witness':witness,'input_performed':False},output,ensure_ascii=False,indent=2);output.write('\n')
+                    json.dump({'query':query,'pick':picked,'witness':witness,'adjustment_blocker':adjustment,'input_performed':False},output,ensure_ascii=False,indent=2);output.write('\n')
                 report.setdefault('predeck_selection_observations',[]).append({'path':relative,
                     'sha256':hashlib.sha256((evidence/relative).read_bytes()).hexdigest(),'input_performed':False})
                 context['save']();return None
@@ -353,9 +359,18 @@ def run_mv_focus(context):
         return semantics.unity_surface_bounds(nodes,screen)
 
     def tap_picked(picked,reason,index,query=None,*,semantic_query=None,selected_music_id=None,input_deadline=None,proof_prefix=None):
-        if query is not None:validated_pick(picked,query)
         typed_music=query is not None and query.get('role')=='music'
         if typed_music and proof_prefix is None:proof_prefix='operator-auto-music-%03d'%index
+        if typed_music:
+            native_blocked=native_music_hit_blocker(picked,query['liveMasterId'])
+            if native_blocked:
+                from predeck_operator import proof
+                proof(evidence,proof_prefix+'-native-refusal.json',{'original_pick':picked,
+                    'reason':native_blocked,'input_performed':False})
+                report.setdefault('mv_music_input_observations',[]).append({'proof_prefix':proof_prefix,
+                    'reason':native_blocked,'input_performed':False})
+                context['save']();return False
+        if query is not None:validated_pick(picked,query)
         original=picked;target,screen=picked['target'],picked['screen']
         geometry=fresh_native_geometry(screen,index)
         # The native dump may take time; re-pick after it, retaining exact target.
@@ -370,6 +385,9 @@ def run_mv_focus(context):
             if picked is None:return False
             require_same_target(original,picked)
         stability=music_target_stability(original,picked,query) if typed_music else None
+        if typed_music:
+            native_blocked=native_music_hit_stability(original,picked,query['liveMasterId'])
+            if native_blocked:stability.update(stable=False,reason=native_blocked)
         if typed_music:
             from predeck_operator import proof,native_xml_reference
             xml=native_xml_reference(context)
@@ -566,7 +584,9 @@ def run_mv_focus(context):
             report['mv_song_selection']=music_selection_witness(((tree.get('features') or {}).get('mv') or {}).get('musicSelection'),selected_song)
             route=route_action(stage,scene,tree=tree)
             song_plan=music_search_plan(tree,selected_song,music_scrolls)
-            blocked=predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or (song_plan or {}).get('blocked_reason') or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
+            adjustment=(music_adjustment_blocker(((tree.get('features') or {}).get('mv') or {}).get('musicSelection'),selected_song)
+                        if scene=='LiveMusicSelect' and selected_song is not None else None)
+            blocked=predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or adjustment or (song_plan or {}).get('blocked_reason') or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
                 'last_snapshot':relative,'blocked_reason':blocked,
                 'progress_guard':progress_guard.status()}
@@ -587,8 +607,11 @@ def run_mv_focus(context):
                 before_progress=progress_guard.last_progress
                 def observe_operator(current):
                     operator_relative='operator-capture-%04d-ui.json'%operator.sequence
+                    current_blocked=(predeck_song_blocker(current,selected_song) or music_selection_blocker(current,selected_song) or
+                        (music_adjustment_blocker(((current.get('features') or {}).get('mv') or {}).get('musicSelection'),selected_song)
+                         if current.get('screen',{}).get('scene')=='LiveMusicSelect' and selected_song is not None else None) or blocked)
                     progress_guard.observe(current,stage=stage,phase=driver.phase,case=driver.case,selected_song=selected_song,
-                        snapshot=operator_relative,blocked_reason=blocked,last_action=report['actions'][-1] if report['actions'] else None)
+                        snapshot=operator_relative,blocked_reason=current_blocked,last_action=report['actions'][-1] if report['actions'] else None)
                     observe_operator.progressed=progress_guard.last_progress>before_progress
                 observe_operator.progressed=False
                 if operator.wait(observe_operator,MVNavigationStagnation):continue
@@ -620,7 +643,7 @@ def run_mv_focus(context):
             if phase!=last_phase:
                 resources.capture('mv-'+driver.case.replace('_','-')+'-'+driver.phase.replace('_','-'),pid=pid);last_phase=phase
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
-                'last_snapshot':relative,'blocked_reason':predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or (song_plan or {}).get('blocked_reason') or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
+                'last_snapshot':relative,'blocked_reason':predeck_song_blocker(tree,selected_song) or music_selection_blocker(tree,selected_song) or adjustment or (song_plan or {}).get('blocked_reason') or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
                 'progress_guard':progress_guard.status()}
             print(json.dumps({'event':'actual-mv-focus','scene':scene,'stage':stage,'phase':driver.phase,'case':driver.case}),flush=True)
             context['save']()
@@ -656,9 +679,22 @@ def run_mv_focus(context):
                 if scene not in ('LiveMusicSelect','LiveMvDeckSelect','LiveMv','LiveMvCore'):
                     if choose(tree,[r'^Music\s*Video$',r'^Watch\s*MV$',r'(?:Button|Btn).*MV(?:$|/)',r'^MV$',r'^Live\s*Shows?$',r'^Live$',r'(?:Main|Bottom|Footer).*Live',r'^Songs?$'],'open-music-video',index):continue
                 if scene=='LiveMusicSelect' and selected_song is not None:
-                    selection_blocked=music_selection_blocker(tree,selected_song)
+                    selection_blocked=music_selection_blocker(tree,selected_song) or music_adjustment_blocker(
+                        ((tree.get('features') or {}).get('mv') or {}).get('musicSelection'),selected_song)
                     if selection_blocked:
                         report['mv_focus_progress']['blocked_reason']=selection_blocked
+                        time.sleep(.5);continue
+                    song_download=download_song_target(tree,selected_song)
+                    if song_download:
+                        key=('download-actual-selected-song-assets',song_download['path'])
+                        if time.monotonic()-seen.get(key,0)<4:time.sleep(.5);continue
+                        text_query={'kind':'text','id':song_download['id'],'path':DOWNLOAD_SONG_PATH,
+                                    'text':'Download Song','requireHitTest':True}
+                        picked=semantic_pick(text_query,'download-actual-selected-song-assets',index,selected_music_id=selected_song)
+                        if picked is not None:
+                            require_same_target({'screen':tree['screen'],'target':song_download},picked)
+                            if tap_picked(picked,'download-actual-selected-song-assets',index,semantic_query=text_query,
+                                          selected_music_id=selected_song):seen[key]=time.monotonic()
                         time.sleep(.5);continue
                     if choose(tree,[r'^EnableMvBtn$',r'^MvBtnDownload$'],'open-selected-music-video-deck',index):continue
                     target=mv_download_text_target(tree,selected_song)

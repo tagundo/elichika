@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import Mock,patch
 
 from predeck_music_stability import music_target_stability
+from native_music_selection import native_music_hit_blocker,native_music_hit_stability
 from mv_driver import validated_pick
 import feature_client_smoke as semantics
 
@@ -161,6 +162,17 @@ class ActualTapBoundaryTests(unittest.TestCase):
             'visibleBounds':{'left':100,'top':650,'right':200,'bottom':750}}
         self.original={'timestampMs':self.wall*1000,'screen':{'scene':'LiveMusicSelect','width':720,'height':1280},
                        'target':target,'catalog':{'liveMasterId':12074,'isPlayable':True}}
+        cell={'ordinal':0,'index':124,'positionIndex':0,'rectId':'typed-rect','liveMasterId':12074,
+              'activeInHierarchy':True,'nativeBounds':{'min':{'x':-1,'y':-1,'z':90},'max':{'x':1,'y':1,'z':90}}}
+        self.original['nativeMusicHit']={'qualified':True,'scope':'PROSPECTIVE_NATIVE_HIT_PREDICTION',
+            'intendedLiveMasterId':12074,'ownership':dict(viewId='view',modelId='model',inputProxyId='typed-row',
+                transitionId='transition',dragOwnerId='drag',dragRectId='drag-rect',raycasterId='raycaster',
+                eventCamera={'resolved':True,'isNull':True,'id':None}),
+            'orderedCells':[cell],'cellsComplete':True,'listSignature':'modeled-native-bounds',
+            'dragPlane':{'rectId':'drag-rect','position':{'x':0,'y':0,'z':90},'rotation':{'x':0,'y':0,'z':0,'w':1},
+                'pivot':{'x':.5,'y':.5},'size':{'x':20,'y':20},'lossyScale':{'x':1,'y':1,'z':1}},
+            'intended':copy.deepcopy(cell),'firstContaining':copy.deepcopy(cell),
+            'worldPoint':{'x':0,'y':0,'z':90},'screenPoint':copy.deepcopy(target['center'])}
         self.fresh=copy.deepcopy(self.original)
         self.native=SimpleNamespace(last_path=None)
         self.report={'actions':[]};self.identity={'pid':123,'start_ticks':'456'}
@@ -168,6 +180,7 @@ class ActualTapBoundaryTests(unittest.TestCase):
             'lifetime':lambda:dict(self.identity),'save':Mock(),'overall_deadline':2400.}
         self.device=SimpleNamespace(shell=Mock(side_effect=self.input))
         self.env={'validated_pick':validated_pick,'music_target_stability':music_target_stability,
+            'native_music_hit_blocker':native_music_hit_blocker,'native_music_hit_stability':native_music_hit_stability,
             'semantics':semantics,'context':self.context,'evidence':self.root,'report':self.report,
             'pid':'123','before_ticks':'456','device':self.device,
             'fresh_native_geometry':self.native_geometry,'rpc':lambda fn,**kwargs:fn(),
@@ -197,6 +210,7 @@ class ActualTapBoundaryTests(unittest.TestCase):
 
     def test_moving_row_retains_both_picks_and_refuses_input_and_intent(self):
         self.fresh['target']['center']['x']+=3
+        self.fresh['nativeMusicHit']['screenPoint']['x']+=3
         self.intent()
         self.assertEqual(self.events,['native','pick']);self.device.shell.assert_not_called()
         self.assertIsNone(self.env['selected_song']);self.assertEqual(self.report['actions'],[])

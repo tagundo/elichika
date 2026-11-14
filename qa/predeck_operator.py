@@ -11,6 +11,7 @@ import time
 import feature_client_smoke as semantics
 from git_transport import DeadlineGitREST
 from predeck_bridge import Bridge,Refusal
+from native_music_selection import DOWNLOAD_SONG_PATH,music_adjustment_blocker
 
 
 class NoInputObserved(Refusal):
@@ -122,6 +123,12 @@ class PredeckOperator:
             if node.get('kind') not in ('button','toggle','text') or not all(node.get(k) is True for k in
                 ('active','visible','enabled','groupsInteractable','blocksRaycasts')):continue
             if not (node.get('hit') or {}).get('available') or not (node.get('hit') or {}).get('hittable'):continue
+            if (node.get('path') or '').startswith(DOWNLOAD_SONG_PATH.rsplit('/',1)[0]):
+                # The text is one exact observed action. Same-path component
+                # duplicates and an uncleared adjustment blocker are not routes.
+                if node.get('path')!=DOWNLOAD_SONG_PATH or node.get('text')!='Download Song':continue
+                requested=scope['selected_song_intent']
+                if requested is None or music_adjustment_blocker(mv.get('musicSelection'),requested):continue
             caption=node.get('text') or node.get('label') or '';query=None
             owners=[row for path,row in catalog if path and (node.get('path')==path or (node.get('path') or '').startswith(path+'/'))]
             if not owners and any((node.get('path') or '').startswith(path+'/') for path in scroll_paths):continue
@@ -174,7 +181,11 @@ class PredeckOperator:
                 pick={'kind':node['kind'],'id':node['id'],'path':node['path'],'requireHitTest':True}
                 caption=node.get('text') or node.get('label') or ''
                 if caption:pick['text']=caption
-                selected_id=self.scope(self.last_tree)['selected_song_intent'] if node.get('name') in ('EnableMvBtn','MvBtnDownloadLabel') else None
+                selected_id=self.scope(self.last_tree)['selected_song_intent'] if (
+                    node.get('name') in ('EnableMvBtn','MvBtnDownloadLabel') or node.get('path')==DOWNLOAD_SONG_PATH) else None
+                if node.get('path')==DOWNLOAD_SONG_PATH and (selected_id is None or music_adjustment_blocker(
+                    ((self.last_tree.get('features') or {}).get('mv') or {}).get('musicSelection'),selected_id)):
+                    raise NoInputObserved('Current requested music adjustment is not complete; no Download Song input')
                 picked=self.pick(pick,'operator-tap',index,selected_music_id=selected_id)
                 if picked is None:raise NoInputObserved('Fresh semantic pick refused; no input')
                 if picked['screen']['scene']!=self.last_tree['screen']['scene'] or picked['target']['path']!=node['path'] or picked['target']['id']!=node['id']:raise Refusal('Fresh target identity changed')
