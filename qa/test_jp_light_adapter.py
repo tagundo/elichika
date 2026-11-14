@@ -51,6 +51,13 @@ def synthetic_style_transfer():
     return image
 
 
+def synthetic_content_translation(image,dy):
+    """Unit-only scroll composition; never an original runtime reference."""
+    image=image.copy();box=(145,507,562,770);content=image.crop(box)
+    image.paste((255,255,255),box);image.paste(content,(box[0],box[1]+dy))
+    return image
+
+
 class LightAdapterTest(unittest.TestCase):
     def plan(self, a=None, b=None, state='bulk', **overrides):
         args = dict(state=state, now=12.0, owned_identity=IDENTITY,
@@ -119,6 +126,40 @@ class LightAdapterTest(unittest.TestCase):
             self.plan(a, b)
         with self.assertRaises(light.Refusal):
             self.plan(frame(), frame())
+
+    def test_unit_only_content_translation_moves_radio_while_modal_OK_stays_fixed(self):
+        image=synthetic_content_translation(light._source(),-10)
+        a,b=frame(image),frame(image,'second',11.0,11.5)
+        plan=self.plan(a,b)
+        self.assertEqual(plan['center'],[176,715])
+        self.assertEqual(plan['evidence'][0]['modal_offset'],[0,0])
+        self.assertEqual(plan['evidence'][0]['content_offset'],[0,-10])
+        selected=synthetic_content_translation(synthetic_style_transfer(),-10)
+        plan=self.plan(frame(selected),frame(selected,'second',11.0,11.5),state='light')
+        self.assertEqual(plan['center'],[490,804])
+        self.assertEqual(plan['evidence'][0]['content_offset'],[0,-10])
+
+    def test_unit_only_notice_and_option_rows_cannot_have_independent_offsets(self):
+        for box in (light.NOTICE,light.ROWS['bulk']['text']):
+            with self.subTest(box=box):
+                image=light._source();piece=image.crop(box)
+                image.paste((255,255,255),box);image.paste(piece,(box[0],box[1]-3))
+                with self.assertRaises(light.Refusal):light.observe(frame(image))
+        image=light._source();box=(145,507,562,770);piece=image.crop(box)
+        image.paste((255,255,255),box);image.paste(piece,(box[0]+3,box[1]))
+        with self.assertRaisesRegex(light.Refusal,'content scroll geometry'):
+            light.observe(frame(image))
+
+    def test_unit_only_full_Light_row_past_footer_refuses_even_inside_frame(self):
+        image=synthetic_content_translation(light._source(),15)
+        with self.assertRaisesRegex(light.Refusal,'viewport/footer'):
+            light.observe(frame(image))
+
+    def test_actual_partial_038_039_never_authorize_full_Light_input(self):
+        for suffix in ('038','039'):
+            raw=(light.SOURCE.parent/('actual-jp-home-v1-'+suffix+'.png')).read_bytes()
+            capture=frame();capture.update(png_bytes=raw,png_sha256=exact.digest(raw))
+            with self.subTest(actual=suffix),self.assertRaises(light.Refusal):light.observe(capture)
 
 
 if __name__ == '__main__':

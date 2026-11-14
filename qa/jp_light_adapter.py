@@ -17,12 +17,13 @@ SOURCE_SHA256 = '632772da704152eb0232f869106894cc7edc54797f1026ee0754529fc6746ac
 SOURCE = Path(__file__).parent / 'fixtures' / 'jp-full-light-044.png'
 EVIDENCE = 'current-exact-JP-044-glyph-geometry-and-observed-radio-style-composition'
 MODAL = (107, 450, 613, 829)
+CONTENT_VIEWPORT = (107, 488, 613, 780)
 ANCHORS = (
     ('header', (144, 455, 576, 481)),
-    ('full-notice', (145, 507, 525, 548)),
     ('cancel-caption', (197, 797, 265, 814)),
     ('ok-caption', (478, 797, 501, 814)),
 )
+NOTICE = (145, 507, 525, 548)
 ROWS = {
     'bulk': {'box': (158, 580, 562, 671),
              'text': (190, 586, 544, 650),
@@ -113,15 +114,8 @@ def _rows(image, source, offset, state):
             raise Refusal('JP Light checked/unchecked radio is outside its full row')
 
 
-def observe(capture, state='bulk'):
-    """Recompute current proof from PNG/XML bytes; supplied matches are unused.
-
-    `bulk` requires the actual044 selected-Bulk/unselected-Light state before
-    one Light input. `light` requires fresh observed checked-Light AND
-    unchecked-Bulk pixels before ordinary OK. A click result is never proof.
-    """
-    if state not in ('bulk', 'light'):
-        raise Refusal('Unknown JP Light selection state')
+def capture_image(capture):
+    """Check only current original bytes/window; accept no supplied pixel hits."""
     if type(capture) is not dict or not REQUIRED.issubset(capture):
         raise Refusal('JP Light raw capture fields absent')
     if not isinstance(capture['id'], str) or re.fullmatch(r'[A-Za-z0-9_-]{1,96}', capture['id']) is None:
@@ -132,11 +126,44 @@ def observe(capture, state='bulk'):
     if type(native) is not bytes or exact.digest(native) != capture['native_sha256']:
         raise Refusal('JP Light native XML raw digest mismatch')
     surface = exact._native_window(native)
-    image, source = exact._png(raw), _source()
-    offsets = []
+    return exact._png(raw), _source(), surface
+
+
+def modal_context(image, source):
+    """The fixed header/footer determine the modal, independently of its scroll."""
+    offsets=[];anchors=[]
     for label, box in ANCHORS:
         found = _unique(image, source.crop(box), label)
         offsets.append((found[0] - box[0], found[1] - box[1]))
+        anchors.append({'role':label,'bounds':list(found)})
+    if any(offset != offsets[0] for offset in offsets):
+        raise Refusal('JP Light fixed header/footer geometry disagrees')
+    modal = _shift(MODAL, offsets[0])
+    if not (0 <= modal[0] < modal[2] <= image.width
+            and 0 <= modal[1] < modal[3] <= image.height):
+        raise Refusal('JP Light modal is clipped')
+    return {'modal_offset':list(offsets[0]),'modal_bounds':list(modal),
+        'viewport_bounds':list(_shift(CONTENT_VIEWPORT,offsets[0])),'anchors':anchors}
+
+
+def _within(box, viewport):
+    return (viewport[0] <= box[0] < box[2] <= viewport[2]
+        and viewport[1] <= box[1] < box[3] <= viewport[3])
+
+
+def observe(capture, state='bulk'):
+    """Require complete current content under one independent scroll offset.
+
+    `bulk` requires the original044 state before Light. `light` requires actual
+    fresh checked-Light AND unchecked-Bulk pixels before OK; a click is no proof.
+    The radio follows content, while OK follows the independently fixed modal.
+    """
+    if state not in ('bulk', 'light'):
+        raise Refusal('Unknown JP Light selection state')
+    image, source, surface = capture_image(capture)
+    modal = modal_context(image,source)
+    notice = _unique(image,source.crop(NOTICE),'full-notice')
+    offsets=[(notice[0]-NOTICE[0],notice[1]-NOTICE[1])]
     # The entire title plus all description lines are globally unique under
     # the exact red-plane comparison. No character or caption is omitted.
     for name, row in ROWS.items():
@@ -144,18 +171,20 @@ def observe(capture, state='bulk'):
         found = _unique(image.getchannel('R').convert('RGB'),
             source.crop(box).getchannel('R').convert('RGB'), name + '-full-caption-description')
         offsets.append((found[0] - box[0], found[1] - box[1]))
-    if any(offset != offsets[0] for offset in offsets):
-        raise Refusal('JP Light header/notice/footer/full-row geometry disagrees')
+    if (any(offset != offsets[0] for offset in offsets)
+            or offsets[0][0] != modal['modal_offset'][0]):
+        raise Refusal('JP Light notice/full-row content scroll geometry disagrees')
     offset = offsets[0]
-    modal = _shift(MODAL, offset)
-    if not (0 <= modal[0] < modal[2] <= image.width
-            and 0 <= modal[1] < modal[3] <= image.height):
-        raise Refusal('JP Light modal or full Light row is clipped')
+    if (not _within(notice,modal['viewport_bounds']) or any(
+            not _within(_shift(row['box'],offset),modal['viewport_bounds'])
+            for row in ROWS.values())):
+        raise Refusal('JP Light full notice or option row is clipped by the content viewport/footer')
     _rows(image, source, offset, state)
-    target = _shift(ROWS['light']['radio'] if state == 'bulk' else OK, offset)
+    target = _shift(ROWS['light']['radio'],offset) if state=='bulk' else _shift(OK,modal['modal_offset'])
     return {'evidence_kind': EVIDENCE, 'source_original_png_sha256': SOURCE_SHA256,
         'current_png_sha256': capture['png_sha256'], 'surface': list(surface),
-        'modal_bounds': list(modal), 'selection': state,
+        'modal_bounds':modal['modal_bounds'],'modal_offset':modal['modal_offset'],
+        'content_offset':list(offset),'viewport_bounds':modal['viewport_bounds'],'selection':state,
         'bulk_checked': state == 'bulk', 'light_checked': state == 'light',
         'rows': {name: {'caption': row['caption'], 'bounds': list(_shift(row['box'], offset)),
                         'radio_bounds': list(_shift(row['radio'], offset))}
@@ -184,7 +213,8 @@ def plan_pair(first, second, *, state, now, owned_identity, current_identity,
     if not (first['id'] != second['id']
             and first['captured_at'] < second['native_at'] <= second['captured_at']):
         raise Refusal('JP Light independent ordered captures required')
-    compare = ('surface', 'modal_bounds', 'selection', 'bulk_checked', 'light_checked', 'rows', 'target_bounds')
+    compare = ('surface', 'modal_bounds', 'modal_offset', 'content_offset', 'viewport_bounds',
+        'selection', 'bulk_checked', 'light_checked', 'rows', 'target_bounds')
     if any(evidence[0][key] != evidence[1][key] for key in compare):
         raise Refusal('JP Light independent current state captures disagree')
     bounds = evidence[1]['target_bounds']

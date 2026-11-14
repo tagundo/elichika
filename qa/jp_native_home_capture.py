@@ -19,8 +19,8 @@ from host_go_fixture import HostGoFixture, file_sha256
 from native_capture_support import (center, parse_native_nodes, native_profile_plan,
     ocr_words, title_caption)
 from jp_capture_guard import (PACKAGE, CASES, StopCapture, digest, image_of,
-    native_surface, missing_services, chooser_geometry, has_large_pale_panel,
-    fresh_pair, ScrollBudget, require_JP_settings, uniform_startup_frame)
+    native_surface, missing_services, has_large_pale_panel,
+    fresh_pair, require_JP_settings, uniform_startup_frame)
 from jp_short_capture import (SOURCE, APK, SIGNER, UNITY, MARKER, WallBound,
     durable, pidof, public_frame, validate_binding, confirm_requested_settings,
     stop_owned_game, stop_owned_go, bounded_host_device)
@@ -28,6 +28,7 @@ from failure_checkpoint import checkpoint_failure
 from native_download_guard import NativeDeadlines
 from jp_native_home_flow import NativeReferenceFlow, NativeLog, pale_modal_candidate
 import jp_light_adapter as light
+import jp_chooser_scroll as chooser
 
 TOOLS='932666aa03264225e2a6bb2a973482b47e22b050'
 ASSETS='1b0154db2976ba345fb30f3516018bb04d408ce1'
@@ -71,6 +72,14 @@ def resumed_activity(raw):
     if not normalized or len(set(normalized))!=1:return None
     package,name=normalized[0]
     return name if package==PACKAGE else None
+
+
+def require_planned_input(proof,kind,point,swipe_end=None):
+    """The diagnostic swipe requires both endpoints from the current planner."""
+    if proof['kind']!=kind or proof['center']!=point:
+        raise StopCapture('Current native planned action changed')
+    if kind=='diagnostic-chooser-upward-scroll' and proof.get('end')!=swipe_end:
+        raise StopCapture('Current diagnostic chooser swipe endpoint changed')
 
 
 def main():
@@ -188,10 +197,10 @@ def main():
             if target is not None and (len(target)!=2 or any(type(value) is not int for value in target)
                     or not (0<target[0]<width-1 and 0<target[1]<height-1)):
                 raise StopCapture('Input coordinates leave current integer pixel bounds')
-        if kind in ('choose-light','confirm-light','close-download') and verifier is None:
+        if kind in ('choose-light','confirm-light','close-download','diagnostic-chooser-upward-scroll') and verifier is None:
             raise StopCapture('Grounded current native pixel planner is mandatory')
         proof=verifier() if verifier else None
-        if proof and (proof['kind']!=kind or proof['center']!=point):raise StopCapture('Current native planned action changed')
+        if proof:require_planned_input(proof,kind,point,swipe_end)
         intent={'kind':kind,'center':point,'captures':[frame['id'] for frame in frames],
             'identity':current,'swipe_end':swipe_end,'phase':report['phase'],'proof':proof,
             'original_phase_end':fixed_end(),'at':time.monotonic()}
@@ -201,7 +210,7 @@ def main():
         fresh_pair(*frames,identity=current,now=time.monotonic(),require_surface=unity)
         if verifier:
             final=verifier()
-            if final['kind']!=kind or final['center']!=point:raise StopCapture('Native proof changed at input boundary')
+            require_planned_input(final,kind,point,swipe_end)
         if lifetime()!=current:raise StopCapture('Owned lifetime changed at final input boundary')
         bound()
         if kind=='confirm-light':
@@ -322,7 +331,7 @@ def main():
             clock=time.monotonic,pause=time.sleep,report=report,save=save,
             persist=lambda name,value:durable(args.evidence/name,value),log=log,overall_started=started,
             progress=observe_progress,prechooser_started=title_started)
-        title_sent=False;budget=ScrollBudget()
+        title_sent=False;budget=chooser.ChooserScrollBudget()
         while True:
             time.sleep(.2);first=capture('after-title' if title_sent else 'title-search')
             service=missing_services(first['nodes'])
@@ -336,21 +345,30 @@ def main():
                 if blank is not None:
                     report.setdefault('startup_blank_observations',[]).append({'capture':first['id'],'color':blank,'input_performed':False});save();continue
             try:full_light=light.observe(first,state='bulk')
-            except light.Refusal:full_light=None
+            except light.Refusal as mismatch:
+                full_light=None;full_refusal=str(mismatch)
             if full_light is not None:
                 if not title_sent:raise StopCapture('Full chooser appeared without this run ordinary Title input')
                 flow.run(first);break
-            geometry=chooser_geometry(first['png_bytes'])
+            try:geometry=chooser.observe(first)
+            except light.Refusal as mismatch:
+                geometry=None;partial_refusal=str(mismatch)
             if geometry:
                 if not title_sent:raise StopCapture('Chooser appeared without this run ordinary Title input')
                 flow.begin_settings();flow.settings_progress(None,state='bulk',action='scroll-download')
                 second=capture('chooser-before-bounded-current-gutter-scroll')
-                intent=budget.reserve(first,second,identity=lifetime(),current_identity=lifetime(),now=time.monotonic(),
+                intent=budget.reserve(first,second,owned_identity=lifetime(),current_identity=lifetime(),now=time.monotonic(),
+                    overall_started=started,settings_started=flow.settings_started,
                     persist=lambda value:durable(args.evidence/f'chooser-scroll-reservation-{budget.attempts:02d}.json',value))
-                send(intent['kind'],intent['start'],(first,second),swipe_end=intent['end'])
+                def scroll_plan():
+                    return chooser.plan_pair(first,second,owned_identity=identity,current_identity=lifetime(),
+                        now=time.monotonic(),overall_started=started,settings_started=flow.settings_started)
+                send(intent['kind'],intent['start'],(first,second),swipe_end=intent['end'],verifier=scroll_plan)
                 continue
-            if has_large_pale_panel(first['png_bytes']) or pale_modal_candidate(first['png_bytes']):
-                raise StopCapture('Unknown or changed chooser/modal captured; no grounded selection')
+            if budget.attempts or has_large_pale_panel(first['png_bytes']) or pale_modal_candidate(first['png_bytes']):
+                raise StopCapture('Current JP full-Light mismatch; phase='+report['phase']+
+                    '; raw='+first['id']+'.png; full-row='+full_refusal+
+                    '; partial-scroll='+partial_refusal+'; no grounded selection')
             if title_sent:continue
             image=image_of(first['png_bytes']);w,h=image.size
             words,ocr=ocr_words(image,crop=(0,h*9//10,w,h),scale=4,mode='title',language='eng')

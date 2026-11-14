@@ -31,7 +31,8 @@ def main():
     original=sources()
     for path in root.glob('*.py'):compile(ast.parse(path.read_text()),str(path),'exec')
     suite=unittest.TestSuite(unittest.defaultTestLoader.discover(str(root),pattern=pattern)
-        for pattern in ('test_jp_complete_matcher.py','test_jp_light_adapter.py','test_jp_native_home_flow.py'))
+        for pattern in ('test_jp_complete_matcher.py','test_jp_light_adapter.py',
+            'test_jp_native_home_flow.py','test_jp_chooser_scroll.py','test_jp_native_home_v2.py'))
     started=time.monotonic();result=unittest.TextTestRunner(verbosity=2).run(suite)
     assert sources()==original and not list(cache.iterdir())
     after=memory_snapshot();require_headroom(after,allowance=0)
