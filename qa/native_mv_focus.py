@@ -25,6 +25,8 @@ MEMBER_SCENES={'CardList','CardDetail','CommunicationMemberSelect','Communicatio
 MEMBER_BACK_PATH='EntryPoint/Canvas/UnSafeArea/BackButtonSafeArea/BackButton'
 HOME_LIVE_PATH='EntryPoint/Canvas/UnSafeArea/GlobalMenu/GlobalMenuSafeArea/BottomBaseSize/RightBottomButtons/Live/LiveButton'
 HOME_BASIC_LIVE_PATH='EntryPoint/Canvas/UnSafeArea/ToolTip/ToolTipSafeArea/BottomBaseSize/LiveToolTip/Basic/BasicLiveButton'
+MV_DOWNLOAD_LABEL_PATH='EntryPoint/Canvas/SafeArea/RightArea/Info/ButtonContainer/MvBtnDownload/MvBtnDownloadLabel'
+OFFICIAL_TWELVE_STANDING_SONGS=(12074,12096,12097,12121,12128)
 NAVIGATION_CONTROLS={'CardButton','CardListButton','CommunicationMemberDetailButton',
     'CommunicationMemberSelectButton','LiveButton','BasicLiveButton','BackButton','EnableMvBtn','MvBtnDownload',
     'CloseButton','ButtonClose'}
@@ -45,6 +47,63 @@ def fresh_scroll_target(original,scene,tree):
     if len(candidates)!=1:raise ValueError('Fresh ScrollRect identity/axis is unavailable or ambiguous')
     stamp=tree.get('timestampMs');assert isinstance(stamp,(int,float)) and 0<=time.time()*1000-stamp<=1500,'Fresh ScrollRect snapshot expired'
     return candidates[0]
+
+
+def typed_scroll_target(tree,context):
+    fields={'music':'musicRows','mv_member_picker':'pickerCells','mv_suit_picker':'suitPickerCells'}
+    if context not in fields:raise ValueError('Unknown typed ScrollRect context: '+str(context))
+    cells=((tree.get('features') or {}).get('mv') or {}).get(fields[context],[])
+    paths={target['path'] for cell in cells for target in [cell.get('target') or {}]
+           if (context=='music' or cell.get('active') is True) and
+           target.get('active') is True and target.get('visible') is True and
+           isinstance(target.get('path'),str) and target['path']}
+    if not paths:raise ValueError('No current visible typed '+fields[context]+' target paths')
+    candidates=[]
+    for node in tree.get('nodes',[]):
+        path=node.get('path');axis=node.get('scroll') or {}
+        unique_axis=((axis.get('vertical') is True and axis.get('horizontal') is False) or
+                     (axis.get('horizontal') is True and axis.get('vertical') is False))
+        if (node.get('kind')=='scroll' and node.get('active') is True and node.get('visible') is True and
+            isinstance(path,str) and path and unique_axis and any(p.startswith(path.rstrip('/')+'/') for p in paths)):
+            candidates.append(node)
+    if len(candidates)!=1:raise ValueError('Typed '+fields[context]+' needs one current ancestor ScrollRect; observed='+str(len(candidates)))
+    selected=candidates[0]
+    if not all(path.startswith(selected['path'].rstrip('/')+'/') for path in paths):
+        raise ValueError('Current typed '+fields[context]+' targets span multiple scroll containers')
+    return selected
+
+
+def fresh_typed_scroll_target(original,scene,tree,context):
+    selected=fresh_scroll_target(original,scene,tree)
+    current=typed_scroll_target(tree,context)
+    if current.get('id')!=selected.get('id') or current.get('path')!=selected.get('path'):
+        raise ValueError('Fresh typed targets changed their ancestor ScrollRect')
+    return selected
+
+
+def music_search_plan(tree,selected_song,scroll_count):
+    if tree.get('screen',{}).get('scene')!='LiveMusicSelect' or selected_song is not None:return None
+    rows=[r for r in ((tree.get('features') or {}).get('mv') or {}).get('musicRows',[]) if
+          r.get('liveMasterId') in OFFICIAL_TWELVE_STANDING_SONGS and r.get('isPlayable') is True and
+          (r.get('target') or {}).get('visible') is True and ((r.get('target') or {}).get('hit') or {}).get('hittable') is True]
+    if rows:
+        row=sorted(rows,key=lambda r:(r['liveMasterId']!=12074,r['liveMasterId']))[0]
+        return {'kind':'music','query':{'role':'music','liveMasterId':row['liveMasterId']},
+                'blocked_reason':'Await actual selected official twelve-standing song transition'}
+    if scroll_count>=32:
+        return {'kind':'wait','blocked_reason':'Official twelve-standing song search exhausted the bounded32-scroll budget'}
+    try:target=typed_scroll_target(tree,'music')
+    except ValueError as error:return {'kind':'wait','blocked_reason':'Official song search blocked: '+str(error)}
+    return {'kind':'scroll','target':target,'blocked_reason':'Searching official twelve-standing song through current typed music rows; scroll %s/32'%(scroll_count+1)}
+
+
+def mv_download_text_target(tree,selected_song):
+    if tree.get('screen',{}).get('scene')!='LiveMusicSelect' or selected_song not in OFFICIAL_TWELVE_STANDING_SONGS:return None
+    targets=[node for node in tree.get('nodes',[]) if node.get('kind')=='text' and
+             node.get('path')==MV_DOWNLOAD_LABEL_PATH and node.get('text')=='Download' and
+             all(node.get(key) is True for key in ('active','visible','enabled')) and
+             (node.get('hit') or {}).get('available') is True and (node.get('hit') or {}).get('hittable') is True]
+    return semantics.semantic_match(targets,['^'+re.escape(MV_DOWNLOAD_LABEL_PATH)+'$'])[0]
 
 
 def navigation_stage(stage,scene):
@@ -156,6 +215,7 @@ class MVProgressGuard:
             # recording, catalog and camera controls keep their existing gates.
             self.navigation_complete=True;return
         mv=(tree.get('features') or {}).get('mv') or {}
+        download=mv_download_text_target(tree,selected_song)
         # Content matters; frame/time, animation transforms, coordinates,
         # instance IDs and repeated attempted gestures do not.
         state={'stage':stage,'scene':tree.get('screen',{}).get('scene'),
@@ -163,7 +223,8 @@ class MVProgressGuard:
                'liveMasterId':mv.get('liveMasterId'),'standingMemberNum':mv.get('standingMemberNum'),
                'deck':deck_layout(tree),
                'controls':sorted({n.get('path') or n.get('name') or '' for n in actionable_nodes(tree)
-                                  if n.get('name') in NAVIGATION_CONTROLS}),
+                                  if n.get('name') in NAVIGATION_CONTROLS} |
+                                 ({download['path']} if download else set())),
                'music':sorted({str(r.get('liveMasterId')) for r in mv.get('musicRows',[]) if r.get('isPlayable') is True and
                               (r.get('target') or {}).get('visible') is True}),
                'members':sorted({str(c.get('memberId')) for c in mv.get('pickerCells',[]) if c.get('active') is True}),
@@ -252,7 +313,7 @@ def run_mv_focus(context):
         nodes=context['native'](f'mv-native-{index:03d}')
         return semantics.unity_surface_bounds(nodes,screen)
 
-    def tap_picked(picked,reason,index,query=None):
+    def tap_picked(picked,reason,index,query=None,*,semantic_query=None):
         if query is not None:validated_pick(picked,query)
         original=picked;target,screen=picked['target'],picked['screen']
         geometry=fresh_native_geometry(screen,index)
@@ -260,7 +321,8 @@ def run_mv_focus(context):
         if query is not None:
             picked=rpc(lambda:agent.exports_sync.pickmv(query),timeout=10);validated_pick(picked,query)
         else:
-            picked=rpc(lambda:agent.exports_sync.pick({'id':target['id'],'requireHitTest':True}),timeout=10)
+            request=dict(semantic_query or {},id=target['id'],requireHitTest=True)
+            picked=rpc(lambda:agent.exports_sync.pick(request),timeout=10)
             require_same_target(original,picked)
         assert original['screen'].get('scene')==picked['screen'].get('scene'),'MV pick changed scene before input'
         validated_pick(picked,query or {'role':'semantic'})
@@ -274,11 +336,11 @@ def run_mv_focus(context):
         report['actions'].append({'source':'fresh-readonly-target-and-native-surface','reason':reason,
             'query':query,'path':target.get('path'),'center':[x,y],'snapshot_index':index})
 
-    def scroll_fresh(node,screen,index,duration):
+    def scroll_fresh(node,screen,index,duration,typed_context):
         surface=fresh_native_geometry(screen,index)
         fresh=rpc(lambda:agent.exports_sync.snapshot({'maxNodes':1500,'raycastText':True,'featureRegion':'GL'}))
         (evidence/f'mv-ui-{index:03d}-fresh-scroll.json').write_text(json.dumps(fresh,indent=2)+'\n')
-        selected=fresh_scroll_target(node,screen.get('scene'),fresh)
+        selected=fresh_typed_scroll_target(node,screen.get('scene'),fresh,typed_context)
         assert fresh['screen']['width']==surface['right'] and fresh['screen']['height']==surface['bottom']
         b=selected.get('visibleBounds') or selected['bounds'];assert surface['left']<=b['left']<b['right']<=surface['right'] and surface['top']<=b['top']<b['bottom']<=surface['bottom']
         x=int((b['left']+b['right'])/2);y=int((b['top']+b['bottom'])/2)
@@ -392,7 +454,8 @@ def run_mv_focus(context):
             relative=f'mv-ui-{index:03d}.json';(evidence/relative).write_text(json.dumps(tree,ensure_ascii=False,indent=2)+'\n')
             screen=tree['screen'];scene=screen.get('scene')
             route=route_action(stage,scene,tree=tree)
-            blocked=predeck_song_blocker(tree,selected_song) or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
+            song_plan=music_search_plan(tree,selected_song,music_scrolls)
+            blocked=predeck_song_blocker(tree,selected_song) or (song_plan or {}).get('blocked_reason') or (route or {}).get('blocked_reason') or driver.blocked_reason or 'Await observed QA route transition'
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
                 'last_snapshot':relative,'blocked_reason':blocked,
                 'progress_guard':progress_guard.status()}
@@ -431,7 +494,7 @@ def run_mv_focus(context):
             if phase!=last_phase:
                 resources.capture('mv-'+driver.case.replace('_','-')+'-'+driver.phase.replace('_','-'),pid=pid);last_phase=phase
             report['mv_focus_progress']={'stage':stage,'scene':scene,'phase':driver.phase,'case':driver.case,
-                'last_snapshot':relative,'blocked_reason':predeck_song_blocker(tree,selected_song) or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
+                'last_snapshot':relative,'blocked_reason':predeck_song_blocker(tree,selected_song) or (song_plan or {}).get('blocked_reason') or (route_action(stage,scene,tree=tree) or {}).get('blocked_reason') or driver.blocked_reason,
                 'progress_guard':progress_guard.status()}
             print(json.dumps({'event':'actual-mv-focus','scene':scene,'stage':stage,'phase':driver.phase,'case':driver.case}),flush=True)
             context['save']()
@@ -453,22 +516,30 @@ def run_mv_focus(context):
                     choose(tree,route['patterns'],route['reason'],index)
                     time.sleep(.5);continue
                 if scene=='LiveMusicSelect' and selected_song is None:
-                    rows=[r for r in ((tree.get('features') or {}).get('mv') or {}).get('musicRows',[]) if r.get('liveMasterId') in (12074,12096,12097,12121,12128) and r.get('isPlayable') is True and (r.get('target') or {}).get('visible') and ((r.get('target') or {}).get('hit') or {}).get('hittable')]
-                    if rows:
-                        row=sorted(rows,key=lambda r:(r['liveMasterId']!=12074,r['liveMasterId']))[0]
-                        query={'role':'music','liveMasterId':row['liveMasterId']}
+                    plan=music_search_plan(tree,selected_song,music_scrolls)
+                    report['mv_focus_progress']['blocked_reason']=plan['blocked_reason']
+                    if plan['kind']=='music':
+                        query=plan['query']
                         picked=rpc(lambda:agent.exports_sync.pickmv(query),timeout=10)
-                        tap_picked(picked,'select-official-twelve-standing-song',index,query);selected_song=row['liveMasterId'];continue
-                    scrolls=[n for n in tree.get('nodes',[]) if n.get('kind')=='scroll' and n.get('active') and n.get('visible') and 'LiveMusicSelect' in (n.get('path') or '') and n.get('scroll',{}).get('vertical')!=n.get('scroll',{}).get('horizontal')]
-                    if len(scrolls)==1 and music_scrolls<32:
-                        scroll_fresh(scrolls[0],screen,index,600)
+                        tap_picked(picked,'select-official-twelve-standing-song',index,query);selected_song=query['liveMasterId'];continue
+                    if plan['kind']=='scroll':
+                        scroll_fresh(plan['target'],screen,index,600,'music')
                         music_scrolls+=1
-                    else:report['mv_focus_progress']['blocked_reason']='No unique current song ScrollRect or bounded twelve-slot search exhausted'
                     time.sleep(1);continue
                 if scene not in ('LiveMusicSelect','LiveMvDeckSelect','LiveMv','LiveMvCore'):
                     if choose(tree,[r'^Music\s*Video$',r'^Watch\s*MV$',r'(?:Button|Btn).*MV(?:$|/)',r'^MV$',r'^Live\s*Shows?$',r'^Live$',r'(?:Main|Bottom|Footer).*Live',r'^Songs?$'],'open-music-video',index):continue
                 if scene=='LiveMusicSelect' and selected_song is not None:
                     if choose(tree,[r'^EnableMvBtn$',r'^MvBtnDownload$'],'open-selected-music-video-deck',index):continue
+                    target=mv_download_text_target(tree,selected_song)
+                    if target:
+                        key=('download-selected-music-video-assets',target['path'],'exact Download text')
+                        if time.monotonic()-seen.get(key,0)<4:time.sleep(.3);continue
+                        text_query={'kind':'text','id':target['id'],'path':MV_DOWNLOAD_LABEL_PATH,
+                                    'text':'Download','requireHitTest':True}
+                        picked=rpc(lambda:agent.exports_sync.pick(text_query),timeout=10)
+                        require_same_target({'screen':tree['screen'],'target':target},picked)
+                        tap_picked(picked,'download-selected-music-video-assets',index,semantic_query=text_query)
+                        seen[key]=time.monotonic();continue
                 blocked=predeck_song_blocker(tree,selected_song)
                 if blocked:
                     report['mv_focus_progress']['blocked_reason']=blocked
@@ -536,11 +607,9 @@ def run_mv_focus(context):
                     elif kind=='key':
                         assert action['key']=='KEYCODE_BACK';device.shell('input','keyevent','KEYCODE_BACK')
                     elif kind=='scroll':
-                        pattern=r'LiveMv.*(?:Member|Select)|Categorized' if action['context']=='mv_member_picker' else r'SuitChangePopup'
-                        scrolls=[n for n in tree.get('nodes',[]) if n.get('kind')=='scroll' and n.get('active') and n.get('visible') and re.search(pattern,n.get('path') or '',re.I)]
-                        unique={json.dumps(n.get('visibleBounds') or n['bounds'],sort_keys=True):n for n in scrolls}
-                        if len(unique)==1:
-                            scroll_fresh(next(iter(unique.values())),screen,index,500)
+                        try:target=typed_scroll_target(tree,action['context'])
+                        except ValueError as error:report['mv_focus_progress']['blocked_reason']='Picker scroll blocked: '+str(error)
+                        else:scroll_fresh(target,screen,index,500,action['context'])
                     elif kind=='video_start':
                         assert video is None;case=action['case'];assert re.fullmatch('mv_[a-z_]+',case)
                         path='/sdcard/'+case+'.mp4'

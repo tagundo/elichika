@@ -1,0 +1,18 @@
+{
+  "canonical_zip": "/dev/shm/sifas-gl-basic-live-r4-actual-20261114/artifact.zip",
+  "canonical_zip_sha256": "7b2a4d941c60bc6e2524b2267b19fd314ca826e81ed46f713a703cdd84f78299",
+  "capsule_sha256": "a6ad66c56fa031807fb2f8a8fe33d4fce2594bd9450e08892cf3df72ce79e9d7",
+  "run_id": 43566048437,
+  "head_sha": "0734680afea96eef59f03859beb42c5069fd2542",
+  "tree_sha": "ae6ded9147f3b128a0fd589a0e566ad83c231cc2",
+  "members": [
+    {
+      "name": "mv-ui-017.json",
+      "bytes": 304842,
+      "sha256": "ba93cf4c5fde68c21f4db01312225b8145f3ddce4588d5202ac7b5d59fcdc717",
+      "source": "Previously selected exact raw member, watcher sealed"
+    }
+  ],
+  "additional_zip_extraction_bytes": 0,
+  "scope": "Actual LiveMusicSelect typed-row/scroll ancestry and exact MV Download text evidence only; no client feature PASS/FAIL"
+}
