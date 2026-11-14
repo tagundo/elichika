@@ -1,0 +1,17 @@
+{
+  "run": 43578456331,
+  "head": "152a077ef7926c0383574ba4715d03e0f3dad4e2",
+  "main_archive_sha256": "adb70a9f0cd4319b561773203c7a2b69ba8c43ba549f4c376f1aff9dd93f2d29",
+  "raw_proof_sha256": "b26ce68703471b42f5d13f32f6cd3326cd90961962291814f5588e33d1b386d9",
+  "PNG": {
+    "file": "actual-jp-home-v6-0050.png",
+    "sha256": "27be5053605bb12731efac454f81ce34285400db40b68ebc604f5531c88f002d"
+  },
+  "XML": {
+    "file": "actual-jp-home-v6-0050.xml",
+    "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22"
+  },
+  "Root_view": "Known DownloadSettings anchors; selected upper Bulk row; visible regularLight caption; lower grayradio clipped; white rightgutter and vertical scrollbar",
+  "scope": "Actual navigation-regression fixture only; no stored text/glyph template, label identity, selectedLight or Home authority",
+  "all11false": true
+}

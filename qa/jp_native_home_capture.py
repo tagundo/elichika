@@ -30,7 +30,7 @@ from failure_checkpoint import checkpoint_failure
 from native_download_guard import NativeDeadlines
 from jp_native_home_flow import NativeReferenceFlow, NativeLog, pale_modal_candidate
 import jp_light_adapter as light
-import jp_chooser_scroll as chooser
+import jp_geometric_scroll as chooser
 from jp_current_light import CurrentLightPlanner, recognizes_modal
 from jp_title_pulse import TitleCandidates
 from git_transport import DeadlineGitREST
