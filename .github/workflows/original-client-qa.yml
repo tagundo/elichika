@@ -2,7 +2,7 @@ name: Validate genuine GL full MV on exact C10 after native-only initial downloa
 
 on:
   push:
-    branches: [codex/android-client-qa-full-gl-20261113-v20]
+    branches: [codex/android-client-qa-full-gl-20261113-v21]
   workflow_dispatch:
     inputs:
       max_seconds:
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   client:
-    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-full-gl-20261113-v20'
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-full-gl-20261113-v21'
     strategy:
       fail-fast: false
       matrix:

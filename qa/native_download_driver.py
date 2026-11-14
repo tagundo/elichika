@@ -2,6 +2,7 @@
 import json
 import hashlib
 import os
+import math
 from pathlib import Path
 import time
 
@@ -11,6 +12,32 @@ from native_download_flow import analyze
 from native_ocr_control import ocr_words
 from native_download_guard import SettingsProgress, SuccessfulAssetStarts, BulkDownloadProgress
 from native_download_errors import exact_error, fail_for_error, NativeDownloadError, FixedEnds, OptionalOneNativeRetry
+
+
+def settings_row_metadata(image,metadata):
+    """Re-read only current measured Light caption rows; preserve exact grammar."""
+    from native_download_flow import _usable,_phrase_matches
+    width,height=image.size
+    if metadata.get('surface')!={'left':0,'top':0,'right':width,'bottom':height}:return metadata
+    captions=_phrase_matches(_usable(metadata.get('words') or [],width,height),'Light','Download')
+    if not 1<=len(captions)<=2:return metadata
+    if len(captions)==2 and min(row['bounds'][3] for row in captions)>max(row['bounds'][1] for row in captions):return metadata
+    words=list(metadata['words']);transforms=[]
+    for caption in captions:
+        box=caption['bounds'];h=box[3]-box[1]
+        crop=(max(0,math.floor(box[0]-h*.5)),max(0,math.floor(box[1]-h*.2)),
+              width,min(height,math.ceil(box[3]+h*.2)))
+        row,transform=ocr_words(image,crop=crop,scale=6,psm=7)
+        actual=_phrase_matches(_usable(row,width,height),'Light','Download')
+        same=len(actual)==1 and all(abs(a-b)<=3 for a,b in zip(actual[0]['bounds'],box))
+        transform.update({'source_png_sha256':metadata.get('screenshot_sha256'),
+            'measured_caption_bounds':box,'same_current_caption_geometry':same,
+            'scope':'Same original PNG, current measured row; exact numeric/Auto-delete grammar is unchanged.'})
+        transforms.append(transform)
+        if same:
+            words=[word for word in words if not (word['bounds'][0]>=crop[0] and
+                crop[1]<=(word['bounds'][1]+word['bounds'][3])/2<crop[3])]+row
+    return {**metadata,'words':words,'settings_caption_ocr_transforms':transforms}
 
 
 def durable_record(path,payload):
@@ -279,6 +306,10 @@ def reach_settled_home(context,*,stop_at_download_start=False):
                 if phase=='home_wait':metadata=home_metadata(image,metadata)
                 elif phase=='download_wait':metadata=download_metadata(image,metadata)
                 observed=analyze(image,metadata,phase)
+                if phase=='settings' and observed['state']=='blocked-settings-regular-light-identity':
+                    metadata=settings_row_metadata(image,metadata)
+                    observed=analyze(image,metadata,phase)
+                    observed['observations']['settings_caption_ocr_transforms']=metadata.get('settings_caption_ocr_transforms',[])
         if phase=='home_wait' and not error:observed['observations']['home_ocr_transforms']=metadata['home_ocr_transforms']
         elif phase=='download_wait' and not error:
             observed['observations']['download_progress_ocr_transform']=metadata['download_progress_ocr_transform']
