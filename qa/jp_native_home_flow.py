@@ -107,14 +107,15 @@ class NativeLog:
 
 
 def complete_frame(frame):
-    """Translate only V5 raw-capture field names into the unchanged strict gate."""
+    """Translate only V5 raw-capture field names into the pinned native gate."""
     return {key:frame[key] for key in ('id','png_bytes','png_sha256','native_xml',
         'captured_at','identity_before','identity_after')} | {
         'native_xml_sha256':frame['native_sha256'],'native_captured_at':frame['native_at']}
 
 
 def complete_observation(frame, phase='download_wait'):
-    try:return complete.observe(complete_frame(frame),phase,templates=complete.load_references())
+    try:return complete.observe(complete_frame(frame),phase,templates=complete.load_references(),
+        complete_interior=True)
     except complete.Refusal as error:
         if str(error)=='Whole modal absent, altered, clipped, colliding, or ambiguous':return None
         raise
@@ -262,7 +263,7 @@ class NativeReferenceFlow:
                 def close_plan():
                     return complete.plan_pair(complete_frame(frame),complete_frame(other),
                         phase='download_wait',now=self.clock(),owned_identity=self.owned,
-                        current_identity=self.lifetime(),fixed_starts=fixed)
+                        current_identity=self.lifetime(),fixed_starts=fixed,complete_interior=True)
                 close=close_plan()
                 self.send(close['kind'],close['center'],(frame,other),verifier=close_plan)
                 self.report['native_Complete_close_evidence']=close

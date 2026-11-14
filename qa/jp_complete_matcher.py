@@ -1,10 +1,14 @@
 """INERT JP exact-pixel caption evidence; no OCR substitution or device API.
 
 The two reviewed, retained actual JP PNGs are the only reference source.
-Matching is exact RGB at the original resolution, with a global uniqueness
-search and whole-modal equality. Template evidence never has OCR confidence.
+Default matching is exact RGB with global uniqueness and whole-modal equality.
+The explicit native-reference Complete mode derives geometry from the exact,
+globally unique entire Close button. Only its animated outer two-pixel ring is
+excluded; all remaining pixels are exact except header/message caption boxes,
+where every RGB channel may differ by at most one level. No OCR is used.
 The chooser reference has a clipped regular-Light radio: observation only.
-This source has no integration with GL, CI, Android, or feature approval.
+This pure module provides no device API or feature approval; native-reference
+callers must retain the current Activity, lifetime and fresh-pair input guards.
 """
 from __future__ import annotations
 
@@ -22,6 +26,7 @@ PACKAGE = 'com.klab.lovelive.allstars'
 FRAME = (720, 1280)
 SURFACE = (0, 0, *FRAME)
 EVIDENCE = 'exact-RGB-whole-modal-retained-actual-JP-template'
+COMPLETE_INTERIOR_EVIDENCE = 'exact-Close-button-JP-Complete-interior-ring2-caption-RGB-delta1'
 ROOT = Path(__file__).parent / 'fixtures'
 NATIVE_WINDOW_SHA256 = '0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22'
 
@@ -184,7 +189,34 @@ def _time(value):
     return value
 
 
-def observe(capture, phase, *, templates):
+def _complete_interior_hits(image, templates):
+    """Use one exact whole Close button; never align or shift caption pixels."""
+    candidates=[item for item in templates if item.identifier=='jp-download-complete'
+        and item.phase=='download_wait' and item.source_sha256==REFERENCES[1]['sha256']]
+    if len(candidates)!=1:
+        raise Refusal('Pinned Complete reference absent or ambiguous')
+    template=candidates[0]
+    with Image.frombytes('RGB',template.size,template.pixels) as reference:
+        with reference.crop(template.target) as button:
+            anchor=Template('jp-complete-entire-Close-button','download_wait',
+                template.source_sha256,(0,0,*button.size),button.size,button.tobytes(),(),None)
+        locations=_locations(image,anchor)
+        if len(locations)!=1:return []
+        found=locations[0];left=found[0]-template.target[0];top=found[1]-template.target[1]
+        box=(left,top,left+template.size[0],top+template.size[1])
+        if not (0<=box[0]<box[2]<=image.width and 0<=box[1]<box[3]<=image.height):
+            raise Refusal('Current Complete modal is clipped')
+        captions=[bounds for role,text,bounds in template.captions if role in ('header','full-message')]
+        for y in range(2,template.size[1]-2):
+            for x in range(2,template.size[0]-2):
+                allowed=1 if any(a<=x<c and b<=y<d for a,b,c,d in captions) else 0
+                actual=image.getpixel((left+x,top+y));original=reference.getpixel((x,y))
+                if any(abs(a-b)>allowed for a,b in zip(actual,original)):
+                    raise Refusal('Current Complete interior differs from exact pixels or caption RGB limit1')
+        return [(template,box)]
+
+
+def observe(capture, phase, *, templates, complete_interior=False):
     """Recompute evidence from raw PNG and current XML; accept no external hits."""
     allowed = {'id', 'png_bytes', 'png_sha256', 'native_xml', 'native_xml_sha256',
         'captured_at', 'native_captured_at', 'identity_before', 'identity_after'}
@@ -194,6 +226,8 @@ def observe(capture, phase, *, templates):
         raise Refusal('Invalid fresh capture ID')
     if phase not in ('settings', 'download_wait', 'home_wait'):
         raise Refusal('Unknown native phase')
+    if type(complete_interior) is not bool or (complete_interior and phase!='download_wait'):
+        raise Refusal('Complete interior gate requires explicit download_wait phase')
     raw, native = capture['png_bytes'], capture['native_xml']
     if type(raw) is not bytes or digest(raw) != capture['png_sha256']:
         raise Refusal('Current PNG digest mismatch')
@@ -201,7 +235,10 @@ def observe(capture, phase, *, templates):
         raise Refusal('Current native XML digest mismatch')
     surface = _native_window(native)
     image = _png(raw)
-    hits = [(template, box) for template in templates for box in _locations(image, template)]
+    try:
+        hits = (_complete_interior_hits(image,templates) if complete_interior else
+            [(template, box) for template in templates for box in _locations(image, template)])
+    finally:image.close()
     if len(hits) != 1:
         raise Refusal('Whole modal absent, altered, clipped, colliding, or ambiguous')
     template, box = hits[0]
@@ -209,15 +246,25 @@ def observe(capture, phase, *, templates):
         raise Refusal('Whole modal belongs to a different native phase')
     offset = box[:2]
     translate = lambda bounds: [value + offset[index % 2] for index, value in enumerate(bounds)]
-    return {'evidence_kind': EVIDENCE, 'template_id': template.identifier,
+    kind=COMPLETE_INTERIOR_EVIDENCE if complete_interior else EVIDENCE
+    result={'evidence_kind': kind, 'template_id': template.identifier,
         'reference_original_png_sha256': template.source_sha256,
         'current_png_sha256': capture['png_sha256'], 'modal_bounds': list(box),
         'surface': list(surface), 'phase': phase,
         'captions': [{'role': role, 'transcription': text, 'bounds': translate(bounds),
-            'evidence_kind': EVIDENCE} for role, text, bounds in template.captions],
+            'evidence_kind': kind} for role, text, bounds in template.captions],
         'target_bounds': translate(template.target) if template.target else None,
         'scope': 'Pixel-template evidence only; no OCR confidence or feature qualification',
         'settings_regular_light_actionable': False}
+    if complete_interior:
+        result['comparison_rule']={
+            'outer_ring_excluded_pixels':2,'interior_bounds':[box[0]+2,box[1]+2,box[2]-2,box[3]-2],
+            'interior_default_RGB_channel_max_difference':0,'caption_RGB_channel_max_difference':1,
+            'caption_regions':[{'role':role,'bounds':translate(bounds)}
+                for role,text,bounds in template.captions if role in ('header','full-message')],
+            'entire_Close_button_globally_exact_unique':True}
+        result['scope']='Current native Complete Close evidence only; explicit ring/caption comparison, no OCR confidence or Home/Bootstrap/MV qualification'
+    return result
 
 
 def _within_fixed_ends(starts, now):
@@ -228,7 +275,8 @@ def _within_fixed_ends(starts, now):
         raise Refusal('Original1800second bulk or2400second overall bound reached')
 
 
-def plan_pair(first, second, *, phase, now, owned_identity, current_identity, fixed_starts):
+def plan_pair(first, second, *, phase, now, owned_identity, current_identity, fixed_starts,
+              complete_interior=False):
     """Mandatory final gate: BOTH independent captures and current lifetime.
 
     Load pinned references afresh and recompute both raw image matches here.
@@ -240,7 +288,8 @@ def plan_pair(first, second, *, phase, now, owned_identity, current_identity, fi
     if _identity(current_identity) != owned:
         raise Refusal('Owned game lifetime changed before input')
     templates = load_references()
-    evidence = [observe(frame, phase, templates=templates) for frame in (first, second)]
+    evidence = [observe(frame, phase, templates=templates,complete_interior=complete_interior)
+        for frame in (first, second)]
     for frame in (first, second):
         before, after = _identity(frame['identity_before']), _identity(frame['identity_after'])
         captured, native = _time(frame['captured_at']), _time(frame['native_captured_at'])
@@ -259,7 +308,7 @@ def plan_pair(first, second, *, phase, now, owned_identity, current_identity, fi
     bounds = evidence[1]['target_bounds']
     return {'kind': 'close-download', 'caption': 'とじる', 'bounds': bounds,
         'center': [(bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2],
-        'evidence_kind': EVIDENCE, 'captures': [first['id'], second['id']],
+        'evidence_kind': evidence[1]['evidence_kind'], 'captures': [first['id'], second['id']],
         'owned_identity': dict(owned), 'checked_at': now, 'evidence': evidence,
         'fixed_starts': dict(fixed_starts),
         'original_bulk_end': fixed_starts['bulk_started'] + 1800,

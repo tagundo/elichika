@@ -1,0 +1,13 @@
+{
+  "scope": "Original V10 Complete-modal fixtures for source-only interior comparison tests; no Home or feature qualification",
+  "source_root": "/dev/shm/sifas-jp-native-home-v10-actual-20261114/selected/runtime",
+  "files": {
+    "actual-jp-home-v10-0154.png": {"source": "jp-native-0154.png", "sha256": "d2cd17acf049499a27e373d659566f6bf88e06d2809c7e561b1b6a11948d8731"},
+    "actual-jp-home-v10-0154.xml": {"source": "jp-native-0154.xml", "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22"},
+    "actual-jp-home-v10-0155.png": {"source": "jp-native-0155.png", "sha256": "2e26598909a027ce1e85d7262d8c7879e2499b1badf26dc46b67c85b00212ae7"},
+    "actual-jp-home-v10-0155.xml": {"source": "jp-native-0155.xml", "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22"}
+  },
+  "positive_PNG_XML_bytes_are_unchanged_originals": true,
+  "synthetic_negative_images_are_unit_only_and_not_retained_as_actual_references": true,
+  "freshness_and_lifetime_metadata_in_tests_are_controlled_unit_values": true
+}
