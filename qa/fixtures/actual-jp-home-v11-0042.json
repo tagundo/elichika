@@ -1,0 +1,29 @@
+{
+  "id": "jp-native-0042",
+  "reason": "chooser-before-bounded-current-gutter-scroll",
+  "png_sha256": "7003f8a8aa9cea64e3ef46cdc45058d50d4e91890edde243be4952d3b9d550d2",
+  "native_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+  "native_at": 434.009781226,
+  "captured_at": 434.393146999,
+  "identity_before": {
+    "pid": 1915,
+    "start_ticks": "30680"
+  },
+  "identity_after": {
+    "pid": 1915,
+    "start_ticks": "30680"
+  },
+  "frame": [
+    720,
+    1280
+  ],
+  "surface": {
+    "left": 0,
+    "top": 0,
+    "right": 720,
+    "bottom": 1280
+  },
+  "activity": "com.klab.lovelive.allstars.MainActivity",
+  "activity_at": 434.482151271,
+  "activity_sha256": "3e8732366e5d62e90e515cd4c15572ee561bf27bc676c5416f715fba0042e134"
+}

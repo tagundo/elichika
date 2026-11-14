@@ -1,0 +1,29 @@
+{
+  "id": "jp-native-0041",
+  "reason": "after-title",
+  "png_sha256": "18edc914d6d8bc2c26433d477b54939b33f4750dc6ebf19a2fc6f1f6b0b8ad63",
+  "native_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+  "native_at": 430.164055804,
+  "captured_at": 430.521053852,
+  "identity_before": {
+    "pid": 1915,
+    "start_ticks": "30680"
+  },
+  "identity_after": {
+    "pid": 1915,
+    "start_ticks": "30680"
+  },
+  "frame": [
+    720,
+    1280
+  ],
+  "surface": {
+    "left": 0,
+    "top": 0,
+    "right": 720,
+    "bottom": 1280
+  },
+  "activity": "com.klab.lovelive.allstars.MainActivity",
+  "activity_at": 430.564769874,
+  "activity_sha256": "3d37986f0df230891e419deeb8fb6d14ba2e2a12690191eae11dc584752149ec"
+}

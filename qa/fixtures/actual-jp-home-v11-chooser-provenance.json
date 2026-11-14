@@ -1,0 +1,231 @@
+{
+  "scope": "Original V11 current chooser routing fixtures; readiness data only, no label/input/Home/feature authority",
+  "source_archive": {
+    "path": "/dev/shm/sifas-jp-native-home-v11-actual-20261114/artifact.zip",
+    "sha256": "d30c49c11c6d296c48eaf86e971d21c30f8c5d68326f71b72ea26d9b609ef754"
+  },
+  "overall_started": 287.552620613,
+  "settings_started": 413.789955024,
+  "expected_files": {
+    "actual-jp-home-v11-0037.png": {
+      "sha256": "2847993e02de745fb96e92cb3aea0f12c1e95298e34011fc39b2dd76f6022e60",
+      "source_member": "runtime/jp-native-0037.png",
+      "source_sha256": "2847993e02de745fb96e92cb3aea0f12c1e95298e34011fc39b2dd76f6022e60",
+      "bytes": 189884
+    },
+    "actual-jp-home-v11-0037.xml": {
+      "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "source_member": "runtime/jp-native-0037.xml",
+      "source_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "bytes": 2106
+    },
+    "actual-jp-home-v11-0037.json": {
+      "sha256": "75fb43db3a95a3de1e7bf5d84420ab920aff60c82b99551712a4970b737c148d",
+      "source_member": "runtime/jp-native-0037.json",
+      "source_sha256": "75fb43db3a95a3de1e7bf5d84420ab920aff60c82b99551712a4970b737c148d",
+      "bytes": 732
+    },
+    "actual-jp-home-v11-0038.png": {
+      "sha256": "9d14afc0d1ecb4455830d51acff4d43d2be82b6e4b5f135e90b857ec73a9b7b9",
+      "source_member": "runtime/jp-native-0038.png",
+      "source_sha256": "9d14afc0d1ecb4455830d51acff4d43d2be82b6e4b5f135e90b857ec73a9b7b9",
+      "bytes": 195723
+    },
+    "actual-jp-home-v11-0038.xml": {
+      "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "source_member": "runtime/jp-native-0038.xml",
+      "source_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "bytes": 2106
+    },
+    "actual-jp-home-v11-0038.json": {
+      "sha256": "8d16c5f61f193022f36d786c46d40b8bf9f820d7266a91faade4430e3630c852",
+      "source_member": "runtime/jp-native-0038.json",
+      "source_sha256": "8d16c5f61f193022f36d786c46d40b8bf9f820d7266a91faade4430e3630c852",
+      "bytes": 764
+    },
+    "actual-jp-home-v11-0039.png": {
+      "sha256": "73259a29ebcdae968f0d96989dd6ad30830905e511d52ae2ec08c84e226825d1",
+      "source_member": "runtime/jp-native-0039.png",
+      "source_sha256": "73259a29ebcdae968f0d96989dd6ad30830905e511d52ae2ec08c84e226825d1",
+      "bytes": 193142
+    },
+    "actual-jp-home-v11-0039.xml": {
+      "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "source_member": "runtime/jp-native-0039.xml",
+      "source_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "bytes": 2106
+    },
+    "actual-jp-home-v11-0039.json": {
+      "sha256": "6cdee5a16ac69e3e827e2ac161fc3309fb979b1cca82d53063ffa464d5f8c9ae",
+      "source_member": "runtime/jp-native-0039.json",
+      "source_sha256": "6cdee5a16ac69e3e827e2ac161fc3309fb979b1cca82d53063ffa464d5f8c9ae",
+      "bytes": 732
+    },
+    "actual-jp-home-v11-0040.png": {
+      "sha256": "229755434846f73c3307519312cafb86da3fb2c9ae83b8af586bc83cb8534bc2",
+      "source_member": "runtime/jp-native-0040.png",
+      "source_sha256": "229755434846f73c3307519312cafb86da3fb2c9ae83b8af586bc83cb8534bc2",
+      "bytes": 201616
+    },
+    "actual-jp-home-v11-0040.xml": {
+      "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "source_member": "runtime/jp-native-0040.xml",
+      "source_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "bytes": 2106
+    },
+    "actual-jp-home-v11-0040.json": {
+      "sha256": "9359a4f370a8c6fefd07570e8d355ceba9177d895e574e3283886a04dc450990",
+      "source_member": "runtime/jp-native-0040.json",
+      "source_sha256": "9359a4f370a8c6fefd07570e8d355ceba9177d895e574e3283886a04dc450990",
+      "bytes": 765
+    },
+    "actual-jp-home-v11-0041.png": {
+      "sha256": "18edc914d6d8bc2c26433d477b54939b33f4750dc6ebf19a2fc6f1f6b0b8ad63",
+      "source_member": "runtime/jp-native-0041.png",
+      "source_sha256": "18edc914d6d8bc2c26433d477b54939b33f4750dc6ebf19a2fc6f1f6b0b8ad63",
+      "bytes": 193477
+    },
+    "actual-jp-home-v11-0041.xml": {
+      "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "source_member": "runtime/jp-native-0041.xml",
+      "source_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "bytes": 2106
+    },
+    "actual-jp-home-v11-0041.json": {
+      "sha256": "bd02ebb1a2252e46779e96e33e19d1efd68def02a173d4253105d52705361d1f",
+      "source_member": "runtime/jp-native-0041.json",
+      "source_sha256": "bd02ebb1a2252e46779e96e33e19d1efd68def02a173d4253105d52705361d1f",
+      "bytes": 732
+    },
+    "actual-jp-home-v11-0042.png": {
+      "sha256": "7003f8a8aa9cea64e3ef46cdc45058d50d4e91890edde243be4952d3b9d550d2",
+      "source_member": "runtime/jp-native-0042.png",
+      "source_sha256": "7003f8a8aa9cea64e3ef46cdc45058d50d4e91890edde243be4952d3b9d550d2",
+      "bytes": 198518
+    },
+    "actual-jp-home-v11-0042.xml": {
+      "sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "source_member": "runtime/jp-native-0042.xml",
+      "source_sha256": "0db787384c9aa3dfb953d722357210e12e49e7acfb15cffbe7ec5ab5a00dde22",
+      "bytes": 2106
+    },
+    "actual-jp-home-v11-0042.json": {
+      "sha256": "1329a15cdcd94831fc0ae7307d7ce0d38a28c15f11e613f3c07ca8254c5c4cde",
+      "source_member": "runtime/jp-native-0042.json",
+      "source_sha256": "1329a15cdcd94831fc0ae7307d7ce0d38a28c15f11e613f3c07ca8254c5c4cde",
+      "bytes": 765
+    },
+    "actual-jp-home-v11-0039-jpn_light-ocr.json": {
+      "sha256": "bd2b4feaefb0c9851b0c95975ff40d98793d59ab94b279c129e7a405c0f71193",
+      "source_member": "runtime/jp-native-0039-jpn_light-ocr.json",
+      "source_sha256": "bd2b4feaefb0c9851b0c95975ff40d98793d59ab94b279c129e7a405c0f71193",
+      "bytes": 546
+    },
+    "actual-jp-home-v11-0039-jpn_light-ocr.tsv": {
+      "sha256": "8b71dbdafe0ac4c5e6895798facbf1df19b6fffee04472bfddd5a84dff076c28",
+      "source_member": "runtime/jp-native-0039-jpn_light-ocr.tsv",
+      "source_sha256": "8b71dbdafe0ac4c5e6895798facbf1df19b6fffee04472bfddd5a84dff076c28",
+      "bytes": 3067
+    },
+    "actual-jp-home-v11-0039-jpn_light-ocr.png": {
+      "sha256": "7d857b65d5c6677527cdd3325b52ba4674e2780093ab2a5c228b28245c6f3041",
+      "source_member": "runtime/jp-native-0039-jpn_light-ocr.png",
+      "source_sha256": "7d857b65d5c6677527cdd3325b52ba4674e2780093ab2a5c228b28245c6f3041",
+      "bytes": 12599
+    },
+    "actual-jp-home-v11-0039-eng_light-ocr.json": {
+      "sha256": "b9e372b47bdc4ba119fd2efe0b1b41ea1b50cc014475f87a2916bd6879256654",
+      "source_member": "runtime/jp-native-0039-eng_light-ocr.json",
+      "source_sha256": "b9e372b47bdc4ba119fd2efe0b1b41ea1b50cc014475f87a2916bd6879256654",
+      "bytes": 546
+    },
+    "actual-jp-home-v11-0039-eng_light-ocr.tsv": {
+      "sha256": "f1bd97934168b6dc8152cc7bbf41956290fa7e2c197e19f1433ec35d54b102a1",
+      "source_member": "runtime/jp-native-0039-eng_light-ocr.tsv",
+      "source_sha256": "f1bd97934168b6dc8152cc7bbf41956290fa7e2c197e19f1433ec35d54b102a1",
+      "bytes": 1110
+    },
+    "actual-jp-home-v11-0039-eng_light-ocr.png": {
+      "sha256": "7d857b65d5c6677527cdd3325b52ba4674e2780093ab2a5c228b28245c6f3041",
+      "source_member": "runtime/jp-native-0039-eng_light-ocr.png",
+      "source_sha256": "7d857b65d5c6677527cdd3325b52ba4674e2780093ab2a5c228b28245c6f3041",
+      "bytes": 12599
+    },
+    "actual-jp-home-v11-0039-eng_bulk-ocr.json": {
+      "sha256": "8c317e375358a9eefd6d74619e61decd0a06062437851ae6a6f09b67220be215",
+      "source_member": "runtime/jp-native-0039-eng_bulk-ocr.json",
+      "source_sha256": "8c317e375358a9eefd6d74619e61decd0a06062437851ae6a6f09b67220be215",
+      "bytes": 546
+    },
+    "actual-jp-home-v11-0039-eng_bulk-ocr.tsv": {
+      "sha256": "907f073191644963138d804ee566a38432be3f5e9da7a01fb2fe0951e82282ca",
+      "source_member": "runtime/jp-native-0039-eng_bulk-ocr.tsv",
+      "source_sha256": "907f073191644963138d804ee566a38432be3f5e9da7a01fb2fe0951e82282ca",
+      "bytes": 715
+    },
+    "actual-jp-home-v11-0039-eng_bulk-ocr.png": {
+      "sha256": "77b0de0b43d27a51a03617732ca6067e480199f6d0dd06b4ef953c4bb08f1ce8",
+      "source_member": "runtime/jp-native-0039-eng_bulk-ocr.png",
+      "source_sha256": "77b0de0b43d27a51a03617732ca6067e480199f6d0dd06b4ef953c4bb08f1ce8",
+      "bytes": 11957
+    },
+    "actual-jp-home-v11-0041-jpn_light-ocr.json": {
+      "sha256": "601a32959bc79804109b2886c4c0204dbcbec31a35f7e04df57be3ea0fb937df",
+      "source_member": "runtime/jp-native-0041-jpn_light-ocr.json",
+      "source_sha256": "601a32959bc79804109b2886c4c0204dbcbec31a35f7e04df57be3ea0fb937df",
+      "bytes": 546
+    },
+    "actual-jp-home-v11-0041-jpn_light-ocr.tsv": {
+      "sha256": "0fa4e50edc502a02366b17435ed660c8f434a62caa363f84c9e969d256c2fc6f",
+      "source_member": "runtime/jp-native-0041-jpn_light-ocr.tsv",
+      "source_sha256": "0fa4e50edc502a02366b17435ed660c8f434a62caa363f84c9e969d256c2fc6f",
+      "bytes": 3043
+    },
+    "actual-jp-home-v11-0041-jpn_light-ocr.png": {
+      "sha256": "91a0cd862b32ccd6901bc756a3eda61e38ec360f09d81ecff88dfcfe266ba42c",
+      "source_member": "runtime/jp-native-0041-jpn_light-ocr.png",
+      "source_sha256": "91a0cd862b32ccd6901bc756a3eda61e38ec360f09d81ecff88dfcfe266ba42c",
+      "bytes": 12668
+    },
+    "actual-jp-home-v11-0041-eng_light-ocr.json": {
+      "sha256": "ccc68dd7638544420261a43ecc37b2e906e86e4de8bfe51a70acc3a39c280eac",
+      "source_member": "runtime/jp-native-0041-eng_light-ocr.json",
+      "source_sha256": "ccc68dd7638544420261a43ecc37b2e906e86e4de8bfe51a70acc3a39c280eac",
+      "bytes": 546
+    },
+    "actual-jp-home-v11-0041-eng_light-ocr.tsv": {
+      "sha256": "03a33a33f9a07da7517d99169a2811b8d384ac45fc84d480fea6890266f6ce77",
+      "source_member": "runtime/jp-native-0041-eng_light-ocr.tsv",
+      "source_sha256": "03a33a33f9a07da7517d99169a2811b8d384ac45fc84d480fea6890266f6ce77",
+      "bytes": 1037
+    },
+    "actual-jp-home-v11-0041-eng_light-ocr.png": {
+      "sha256": "91a0cd862b32ccd6901bc756a3eda61e38ec360f09d81ecff88dfcfe266ba42c",
+      "source_member": "runtime/jp-native-0041-eng_light-ocr.png",
+      "source_sha256": "91a0cd862b32ccd6901bc756a3eda61e38ec360f09d81ecff88dfcfe266ba42c",
+      "bytes": 12668
+    },
+    "actual-jp-home-v11-0041-eng_bulk-ocr.json": {
+      "sha256": "fdda5fef659e45f3e12ab8d450ccf7c30613d8ec65647fef18dab4e274e3e888",
+      "source_member": "runtime/jp-native-0041-eng_bulk-ocr.json",
+      "source_sha256": "fdda5fef659e45f3e12ab8d450ccf7c30613d8ec65647fef18dab4e274e3e888",
+      "bytes": 546
+    },
+    "actual-jp-home-v11-0041-eng_bulk-ocr.tsv": {
+      "sha256": "e5d435aae58e59c11121add8ce38302b4de5be97ef239e40e690904a1adc17e0",
+      "source_member": "runtime/jp-native-0041-eng_bulk-ocr.tsv",
+      "source_sha256": "e5d435aae58e59c11121add8ce38302b4de5be97ef239e40e690904a1adc17e0",
+      "bytes": 790
+    },
+    "actual-jp-home-v11-0041-eng_bulk-ocr.png": {
+      "sha256": "af54164e3678491b32af35f8f46d2209ec960c4ca0d0b3c429f6abc26487bdb5",
+      "source_member": "runtime/jp-native-0041-eng_bulk-ocr.png",
+      "source_sha256": "af54164e3678491b32af35f8f46d2209ec960c4ca0d0b3c429f6abc26487bdb5",
+      "bytes": 11820
+    }
+  },
+  "original_raw_fixture_count": 18,
+  "original_retained_OCR_fixture_count": 18,
+  "source_PNGs_XML_JSON_TSV_transforms_and_prepared_PNGs_unchanged": true,
+  "no_Tesseract_or_new_OCR_for_fixture_preparation": true
+}

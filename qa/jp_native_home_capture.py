@@ -88,6 +88,26 @@ def require_planned_input(proof,kind,point,swipe_end=None):
         raise StopCapture('Current diagnostic chooser swipe endpoint changed')
 
 
+def chooser_readonly_route(frame,planner,*,now,owned_identity):
+    """Classify current control readiness; never authorize a label or input."""
+    owned=light.exact._identity(owned_identity);now=light.exact._time(now)
+    if (frame.get('activity')!=ACTIVITY or light.exact._identity(frame['identity_before'])!=owned
+            or light.exact._identity(frame['identity_after'])!=owned):
+        raise light.Refusal('Current chooser readiness Activity/lifetime differs')
+    times=[light.exact._time(frame[key]) for key in ('native_at','captured_at','activity_at')]
+    if times!=sorted(times) or any(not 0<=now-value<=8 for value in times):
+        raise light.Refusal('Current chooser readiness capture is stale')
+    result={'label_identity_authorized':False,'input_authorized':False,
+        'visual_refusal':None,'partial_refusal':None}
+    try:candidate=planner.visual_candidate(frame,now=now,owned_identity=owned)
+    except light.Refusal as error:result['visual_refusal']=str(error)
+    else:return result|{'kind':'full-controls-visible','candidate':candidate}
+    try:geometry=chooser.observe(frame)
+    except light.Refusal as error:
+        return result|{'kind':'read-only-wait','partial_refusal':str(error)}
+    return result|{'kind':'partial-viewport','geometry':geometry}
+
+
 def should_stop_game_modal(title_sent,scroll_attempts,raw):
     """Intro frames grant no input; unknown-game-modal stops begin after Title."""
     return title_sent and (scroll_attempts or has_large_pale_panel(raw) or pale_modal_candidate(raw))
@@ -415,8 +435,24 @@ def main():
             if full_light is not None:
                 flow.run(first);break
             if known_modal:
-                try:geometry=chooser.observe(first)
-                except light.Refusal as mismatch:partial_refusal=str(mismatch)
+                try:route=chooser_readonly_route(first,current_light,now=time.monotonic(),owned_identity=lifetime())
+                except light.Refusal as mismatch:
+                    route={'kind':'read-only-wait','visual_refusal':str(mismatch),
+                        'partial_refusal':'Current native proof refused; no navigation'}
+                partial_refusal=route['partial_refusal'] or (
+                    'Full controls visible; no additional diagnostic scroll'
+                    if route['kind']=='full-controls-visible' else 'Current partial viewport proof accepted')
+                report.setdefault('current_chooser_readiness',[]).append({
+                    'capture':first['id'],'PNG_sha256':first['png_sha256'],'kind':route['kind'],
+                    'OCR_or_full_row_refusal':full_refusal,'visual_refusal':route['visual_refusal'],
+                    'partial_scroll_refusal':route['partial_refusal'],'input_authorized':False,
+                    'label_identity_authorized':False,'original_phase_end':fixed_end(),
+                    'deadline_renewed':False});save()
+                if route['kind']=='full-controls-visible':
+                    if args.root_visual_light_approval and not visual_attempted:
+                        root_visual_label_approval(current_light)
+                        continue  # Recollect after Root DATA; never reuse aged frames.
+                elif route['kind']=='partial-viewport':geometry=route['geometry']
             if geometry:
                 if not title_sent:raise StopCapture('Chooser appeared without this run ordinary Title input')
                 flow.begin_settings();flow.settings_progress(None,state='bulk',action='scroll-download')
@@ -430,12 +466,6 @@ def main():
                 send(intent['kind'],intent['start'],(first,second),swipe_end=intent['end'],verifier=scroll_plan)
                 continue
             if known_modal:
-                if args.root_visual_light_approval and not visual_attempted:
-                    try:current_light.visual_candidate(first,now=time.monotonic(),owned_identity=lifetime())
-                    except light.Refusal:pass  # Clipped/unknown controls grant no offer.
-                    else:
-                        root_visual_label_approval(current_light)
-                        continue  # Never use frames that aged while Root reviewed.
                 report.setdefault('current_Light_observation_refusals',[]).append({
                     'captures':[first['id']],'PNG_sha256':first['png_sha256'],
                     'full_row_reason':full_refusal,'partial_scroll_reason':partial_refusal,

@@ -1,0 +1,19 @@
+{
+  "capture": "jp-native-0039",
+  "source_png_sha256": "73259a29ebcdae968f0d96989dd6ad30830905e511d52ae2ec08c84e226825d1",
+  "crop": [
+    187,
+    692,
+    551,
+    780
+  ],
+  "scale": 4,
+  "mode": "grayscale",
+  "resample": "NEAREST",
+  "psm": 6,
+  "language": "eng",
+  "model_sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+  "input_sha256": "7d857b65d5c6677527cdd3325b52ba4674e2780093ab2a5c228b28245c6f3041",
+  "TSV_sha256": "f1bd97934168b6dc8152cc7bbf41956290fa7e2c197e19f1433ec35d54b102a1",
+  "exit_code": 0
+}

@@ -39,11 +39,12 @@ def observe(capture):
         if (not 70<=row[3]-row[1]<=110 or not light._within(row,view)
                 or not row[1]<selected['center'][1]<row[3] or row[3]+16>=view[3]):
             raise Refusal('Navigation requires the complete selected upper row with lower content visible')
-        # The next CURRENT outlined row continues through the footer cut. These
-        # two rails prove clipping without naming, OCRing or targeting its label.
+        # Only the FIRST continuous next-row outline may reach the footer.
+        # A later third-row tail must never extend a closed second row.
         edge_left,edge_right=row[0]-1,row[2]
         lower=[y for y in range(row[3]+3,view[3])
             if min(pixels[edge_left,y])<245 and min(pixels[edge_right,y])<245]
+        runs=_runs(lower);lower=runs[0] if runs else []
         if (len(lower)<12 or lower[-1]<view[3]-2
                 or sum(y in lower for y in range(view[3]-12,view[3]))<10):
             raise Refusal('Navigation current lower row does not visibly continue through the viewport footer')
