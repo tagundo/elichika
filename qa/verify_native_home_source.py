@@ -34,7 +34,7 @@ def main():
         for pattern in ('test_jp_complete_matcher.py','test_jp_light_adapter.py',
             'test_jp_native_home_flow.py','test_jp_chooser_scroll.py','test_jp_native_home_v2.py',
             'test_jp_native_home_v3_phase.py','test_jp_native_home_cleanup.py','test_jp_title_pulse.py',
-            'test_jp_current_light.py'))
+            'test_jp_current_light.py','test_jp_native_label_approval.py','test_jp_visual_label_integration.py'))
     started=time.monotonic();result=unittest.TextTestRunner(verbosity=2).run(suite)
     assert sources()==original and not list(cache.iterdir())
     after=memory_snapshot();require_headroom(after,allowance=0)

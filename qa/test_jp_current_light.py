@@ -172,5 +172,11 @@ class CurrentLightTests(unittest.TestCase):
             with self.assertRaises(current.Refusal):self.planner.observe(frame(image=altered))
         self.mock.assert_not_called()
 
+    def test_plaintext_and_wrong_TSV_header_refuse_with_specific_schema_reason(self):
+        for raw in ('軽量ダウンロード [5858.95 MB]\n','read_params_file: Can\'t open tsv\n',
+                'text\tconf\n軽量ダウンロード\t99\n'):
+            with self.subTest(raw=raw),self.assertRaisesRegex(current.Refusal,'required TSV header/schema'):
+                current.parse_tsv(raw,CROPS['light'])
+
 
 if __name__=='__main__':unittest.main()

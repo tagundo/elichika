@@ -27,7 +27,7 @@ MODEL_PINS = {'jpn':'1f5de9236d2e85f5fdf4b3c500f2d4926f8d9449f28f5394472d9e8d83b
     'eng':'7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2'}
 LIGHT = '軽量ダウンロード'
 SIZES = {'light':'[5858.95MB]', 'bulk':'[15416.53MB]'}
-EVIDENCE = 'current-bilingual-JP-Light-caption-and-complete-two-radio-state'
+EVIDENCE = 'current-JP-Light-label-identity-and-complete-two-radio-state'
 
 
 def _sha(path):
@@ -45,6 +45,10 @@ def _box(words):
 
 def parse_tsv(raw, crop):
     """Preserve all tokens, including low-confidence/preceding Extra text."""
+    columns=['level','page_num','block_num','par_num','line_num','word_num',
+        'left','top','width','height','conf','text']
+    if not isinstance(raw,str) or raw.splitlines()[:1]!=['\t'.join(columns)]:
+        raise Refusal('Current JP OCR did not emit the required TSV header/schema; plaintext/configuration output refused')
     words=[]
     for row in csv.DictReader(io.StringIO(raw),delimiter='\t'):
         text=(row.get('text') or '').strip()
@@ -121,6 +125,31 @@ def _red_hash(image,box):
     with image.crop(box) as crop, crop.getchannel('R') as red:return exact.digest(red.tobytes())
 
 
+def _current_caption_box(image,crop,radio_center):
+    """First current dark-glyph line above its radio; no stored title raster.
+
+    Neutral dark glyph rows form separate line bands. Saturated control edges
+    and full-width horizontal borders cannot form a caption. One pixel of
+    padding retains antialias edges while staying clear of the row border.
+    """
+    pixels=image.load();bands=[];width=crop[2]-crop[0]
+    for y in range(crop[1],min(crop[3],math.floor(radio_center[1]))):
+        xs=[]
+        for x in range(crop[0],crop[2]):
+            r,g,b=pixels[x,y]
+            if r<=160 and abs(r-g)<=12 and max(r,g,b)-min(r,g,b)<=30:xs.append(x)
+        if len(xs)<2 or len(xs)>=width*.75:continue
+        if not bands or y-bands[-1]['bottom']>2:bands.append({'top':y,'bottom':y,'left':min(xs),'right':max(xs)})
+        else:
+            band=bands[-1];band['bottom']=y;band['left']=min(band['left'],min(xs));band['right']=max(band['right'],max(xs))
+    lines=[band for band in bands if band['bottom']-band['top']>=4
+        and band['right']-band['left']>=3*(band['bottom']-band['top'])]
+    if not lines:raise Refusal('Current native first caption glyph line is absent or clipped')
+    first=lines[0]
+    return [max(crop[0],first['left']-1),max(crop[1],first['top']-1),
+        min(crop[2],first['right']+2),min(crop[3],first['bottom']+2)]
+
+
 def _geometry(image,modal):
     viewport=modal['viewport_bounds']
     try:controls=radio.observe(image,viewport,(modal['modal_bounds'][2]-modal['modal_bounds'][0])*.028)
@@ -169,7 +198,60 @@ class CurrentLightPlanner:
             'eng':Path(eng_model or ROOT/'fixtures/ocr-models/eng.traineddata')}
         if any(_sha(path)!=MODEL_PINS[language] for language,path in self.models.items()):
             raise Refusal('Current JP OCR model digest differs from the pinned actual measurement')
-        self._cache=OrderedDict();self._baseline=None
+        self._cache=OrderedDict();self._baseline=None;self._visual=None;self._visual_approved_at=None
+
+    def visual_candidate(self,capture,*,now,owned_identity):
+        """Offer current label pixels, not an asserted OCR label or input plan."""
+        owned=exact._identity(owned_identity);now=exact._time(now)
+        if (capture.get('activity')!=ACTIVITY or exact._identity(capture['identity_before'])!=owned
+                or exact._identity(capture['identity_after'])!=owned):raise Refusal('Native label offer lifetime/Activity differs')
+        times=[exact._time(capture[k]) for k in ('native_at','captured_at','activity_at')]
+        if times!=sorted(times) or any(not 0<=now-v<=8 for v in times):raise Refusal('Native label offer raw capture is stale')
+        image,source,surface=legacy.capture_image(capture)
+        try:
+            modal=legacy.modal_context(image,source);selected,rows,crops=_geometry(image,modal)
+            if selected!='bulk':raise Refusal('Root label offer requires actual selected Bulk and unselected Light')
+            labels={}
+            for name,row in rows.items():
+                crop=_current_caption_box(image,crops[name],row['radio_center'])
+                labels[name]={'caption_crop':crop,'caption_r_sha256':_red_hash(image,crop),
+                    'radio_bounds':row['radio_bounds'],'background_bounds':row['background_bounds'],'background':row['background']}
+            target=labels['light']['caption_crop']
+            metadata={'logical_phase':'NativeDownloadChooser','capture_id':capture['id'],'identity':dict(owned),
+                'native_activity':capture['activity'],'surface_size':[image.width,image.height],
+                'png_sha256':capture['png_sha256'],'native_xml_sha256':capture['native_sha256'],
+                'activity_sha256':capture['activity_sha256'],'native_at':capture['native_at'],
+                'captured_at':capture['captured_at'],'activity_at':capture['activity_at'],
+                'modal_identity':{key:modal[key] for key in ('modal_bounds','modal_offset','viewport_bounds','anchors')},
+                'labels':labels,'targets':[{'id':'regular-light-label','path':'native/NativeDownloadChooser/regularLight',
+                    'kind':'native-label-identity','actions':['approve-regular-light-label'],'bounds':target,
+                    'center':[int((target[0]+target[2])/2),int((target[1]+target[3])/2)]}]}
+            return {'capture':metadata,'png_bytes':capture['png_bytes']}
+        finally:image.close();source.close()
+
+    def accept_visual_approval(self,candidate,authorization,*,now):
+        if (self._visual is not None or authorization.get('status')!='LABEL_IDENTITY_APPROVED_NO_INPUT'
+                or authorization.get('approved_capture')!=candidate['capture']
+                or authorization.get('force_fresh_native_pair_required') is not True):
+            raise Refusal('Current native label approval data differs or was already consumed')
+        self._visual=json.dumps(authorization,sort_keys=True);self._visual_approved_at=exact._time(now)
+
+    def _visual_labels(self,image,modal,rows,crops):
+        approval=json.loads(self._visual);offered=approval['approved_capture']
+        if any(modal[key]!=value for key,value in offered['modal_identity'].items()):
+            raise Refusal('Current native modal differs from the Root-seen offered PNG')
+        labels={}
+        for name,row in rows.items():
+            expected=offered['labels'][name];crop=_current_caption_box(image,crops[name],row['radio_center'])
+            if (crop!=expected['caption_crop'] or row['radio_bounds']!=expected['radio_bounds']
+                    or row['background_bounds']!=expected['background_bounds'] or row['background']!=expected['background']
+                    or _red_hash(image,crop)!=expected['caption_r_sha256']):
+                raise Refusal('Current native label pixels/geometry differ from the exact Root-seen offered PNG')
+            labels[name]={'caption':LIGHT+SIZES['light'] if name=='light' else 'Other current native option; unchanged pixels',
+                'bounds':crop,'confidence':None,'caption_box':crop,'caption_r_sha256':expected['caption_r_sha256'],
+                'label_authority':'ROOT_CURRENT_PNG_VISUAL',
+                'approval_command_sha256':approval['command_sha256']}
+        return labels
 
     def _ocr(self,capture,image,crops):
         result={}
@@ -178,7 +260,7 @@ class CurrentLightPlanner:
             prepared=stem.with_suffix('.png')
             with image.crop(box) as crop,crop.convert('L') as gray,gray.resize((gray.width*4,gray.height*4),Image.Resampling.NEAREST) as scaled:
                 scaled.save(prepared)
-            argv=['tesseract',str(prepared),'stdout','--tessdata-dir',str(self.models[language].parent),'-l',language,'--psm','6','tsv']
+            argv=['tesseract',str(prepared),'stdout','--tessdata-dir',str(self.models[language].parent),'-l',language,'--psm','6','-c','tessedit_create_tsv=1']
             try:run=subprocess.run(argv,capture_output=True,timeout=3,
                 env=dict(os.environ,OMP_THREAD_LIMIT='1',OMP_NUM_THREADS='1'))
             except subprocess.TimeoutExpired as error:raise Refusal('Current '+key+' OCR exceeded its bounded call') from error
@@ -202,7 +284,9 @@ class CurrentLightPlanner:
             # Always derive current state/geometry first. Supplied OCR/hit fields
             # in a capture are never consulted by this runtime factory.
             key=capture['png_sha256']
-            if key in self._cache:labels=json.loads(self._cache[key])
+            if state=='bulk' and self._visual is not None:
+                labels=self._visual_labels(image,modal,rows,crops);self._cache[key]=json.dumps(labels,sort_keys=True)
+            elif key in self._cache:labels=json.loads(self._cache[key])
             elif state=='light':
                 if self._baseline is None:raise Refusal('Selected-Light has no accepted current pre-input caption pair')
                 baseline=json.loads(self._baseline)
@@ -242,7 +326,7 @@ class CurrentLightPlanner:
             return {'evidence_kind':EVIDENCE,'current_png_sha256':key,'surface':list(surface),**modal,
                 'selection':state,'bulk_checked':state=='bulk','light_checked':state=='light','rows':rows,
                 'target_bounds':target,'selected_light_actual_reference_exists':False,
-                'label_proof':'current-bilingual-OCR' if state=='bulk' else 'accepted-current-caption-red-plane-unchanged',
+                'label_proof':('Root-current-PNG-label-identity' if self._visual is not None else 'current-bilingual-OCR') if state=='bulk' else 'accepted-current-caption-red-plane-unchanged',
                 'scope':'Native reference only; no Home or feature qualification'}
         finally:image.close();source.close()
 
@@ -257,6 +341,8 @@ class CurrentLightPlanner:
             native,captured,activity=(exact._time(frame[key]) for key in ('native_at','captured_at','activity_at'))
             if not native<=captured<=activity or any(not 0<=now-value<=8 for value in (native,captured,activity)):
                 raise Refusal('Current JP native/PNG/Activity pair is not fresh within8seconds')
+            if state=='bulk' and self._visual_approved_at is not None and native<=self._visual_approved_at:
+                raise Refusal('Root label approval requires newly recollected native captures after approval')
         if first['id']==second['id'] or not first['activity_at']<second['native_at']:
             raise Refusal('Independent ordered current JP captures required')
         evidence=[self.observe(frame,state) for frame in (first,second)]

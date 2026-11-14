@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import signal
 import subprocess
 import sys
@@ -32,6 +33,8 @@ import jp_light_adapter as light
 import jp_chooser_scroll as chooser
 from jp_current_light import CurrentLightPlanner, recognizes_modal
 from jp_title_pulse import TitleCandidates
+from git_transport import DeadlineGitREST
+from jp_native_label_approval import ApprovalPoll
 
 TOOLS='932666aa03264225e2a6bb2a973482b47e22b050'
 ASSETS='1b0154db2976ba345fb30f3516018bb04d408ce1'
@@ -95,6 +98,8 @@ def main():
     for name in ('client-apk','server-source','host-server-root','host-server-receipt','evidence'):
         parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--serial',default='127.0.0.1:5555')
+    parser.add_argument('--root-visual-light-approval',action='store_true',
+        help='One bounded current-PNG Root label approval; default off; never case PASS')
     args=parser.parse_args()
     started=time.monotonic();overall_end=started+2400
     args.evidence.mkdir(parents=True,exist_ok=False)
@@ -112,7 +117,7 @@ def main():
         'separate_cleanup_reserve_seconds':120,'actions':[],'captures':[],
         'external_owned_Android_container_cleanup_required':True}
     device=None;host=None;identity=None;launch_attempted=False;flow=None;index=0
-    log=None;diagnostic_end=None;settings_end=None;last_progress_at=None;title_started=None
+    log=None;diagnostic_end=None;settings_end=None;last_progress_at=None;title_started=None;visual_attempted=False
     deadlines=NativeDeadlines(started,2400,WallBound)
     previous=signal.signal(signal.SIGALRM,deadlines.handle)
 
@@ -256,6 +261,43 @@ def main():
         durable(args.evidence/(frame['id']+'-download-progress-ocr.json'),evidence)
         bound();return evidence
 
+    def root_visual_label_approval(planner):
+        """Authorization data only; the ordinary flow later recollects and taps."""
+        nonlocal visual_attempted
+        if visual_attempted:raise StopCapture('The single Root native label approval offer was already spent')
+        visual_attempted=True;bound()
+        if os.environ.get('GITHUB_REPOSITORY')!='tagundo/elichika':raise StopCapture('Native label approval requires this exact owned repository')
+        binding={'run':int(os.environ['GITHUB_RUN_ID']),'head':os.environ['GITHUB_SHA'],
+            'attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'nonce':secrets.token_hex(16),
+            'identity':dict(flow.owned),'activity':ACTIVITY}
+        # Bind before the NEW offered capture and before token/network I/O.
+        end=min(time.monotonic()+90,flow.phase_end(),flow.settings.absolute_deadline,started+2400)
+        api=DeadlineGitREST(binding,overall_started=started,token_provider=lambda seconds:os.environ.get('GITHUB_TOKEN',''),
+            audit=lambda event:report.setdefault('native_label_transport_audit',[]).append(event))
+        api.bind_deadline(end)
+        def archive(name,raw):
+            path=args.evidence/name
+            with path.open('xb') as sink:sink.write(raw);sink.flush();os.fsync(sink.fileno())
+            descriptor=os.open(str(path.parent),os.O_RDONLY|os.O_DIRECTORY)
+            try:os.fsync(descriptor)
+            finally:os.close(descriptor)
+        poll=ApprovalPoll(binding,api=api,persist=lambda name,value:durable(args.evidence/name,value),
+            archive=archive,clock=time.monotonic,wall_clock=time.time)
+        try:
+            offered=capture('Root-current-native-label-identity-offer')
+            candidate=planner.visual_candidate(offered,now=time.monotonic(),owned_identity=lifetime())
+            poll.publish(candidate,deadline=end,settings_end=flow.settings.absolute_deadline,overall_end=started+2400)
+            report['native_label_approval_offer']={'binding':binding,'deadline':end,
+                'offered_capture':offered['id'],'scope':'Label identity DATA only; no input or feature qualification'};save()
+            while True:
+                bound();authorization=poll.poll_once()
+                if authorization is not None:
+                    planner.accept_visual_approval(candidate,authorization,now=time.monotonic())
+                    report['native_label_identity_approval']=authorization;save()
+                    return  # Caller MUST continue to a newly captured native pair.
+                time.sleep(api.remaining(1))
+        finally:api.seal()
+
     try:
         save();bound()
         fixtures=json.loads((root/'frozen-fixtures.json').read_text())
@@ -384,6 +426,12 @@ def main():
                 send(intent['kind'],intent['start'],(first,second),swipe_end=intent['end'],verifier=scroll_plan)
                 continue
             if known_modal:
+                if args.root_visual_light_approval and not visual_attempted:
+                    try:current_light.visual_candidate(first,now=time.monotonic(),owned_identity=lifetime())
+                    except light.Refusal:pass  # Clipped/unknown controls grant no offer.
+                    else:
+                        root_visual_label_approval(current_light)
+                        continue  # Never use frames that aged while Root reviewed.
                 report.setdefault('current_Light_observation_refusals',[]).append({
                     'captures':[first['id']],'PNG_sha256':first['png_sha256'],
                     'full_row_reason':full_refusal,'partial_scroll_reason':partial_refusal,
