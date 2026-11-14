@@ -5,8 +5,9 @@ from PIL import Image
 PROFILE='gl-portrait-left-navigation-v19-reference'
 MIN_CONFIDENCE=75
 RECIPES=(('navigation',(32,1213,206,1270),6,11,'neutral-dark'),
-         ('school',(46,1246,85,1258),8,7,'normal'))
-ANCHORS={'Shop':'navigation','School':'school','Idols':'navigation','Exchange':'navigation'}
+         ('school',(46,1246,85,1258),8,7,'normal'),
+         ('shop',(149,1211,197,1234),6,7,'normal'))
+ANCHORS={'Shop':'shop','School':'school','Idols':'navigation','Exchange':'navigation'}
 
 
 def crop_box(reference,width,height):
@@ -56,9 +57,9 @@ def recognize(metadata,width,height):
         data.get('surface')!=surface or metadata.get('surface')!=surface or
         data.get('source_png_sha256')!=metadata.get('screenshot_sha256')):return observation
     regions=data.get('regions')
-    if not isinstance(regions,list) or len(regions)!=2:return observation
+    if not isinstance(regions,list) or len(regions)!=len(RECIPES):return observation
     by_id={region.get('id'):region for region in regions if isinstance(region,dict)}
-    if len(by_id)!=2:return observation
+    if len(by_id)!=len(RECIPES):return observation
     for name,reference,scale,psm,mode in RECIPES:
         region=by_id.get(name);box=crop_box(reference,width,height)
         if not region:return observation
