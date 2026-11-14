@@ -75,8 +75,54 @@ def missing_services(nodes):
     return button if message['bounds']['bottom']<=button['bounds']['top'] else None
 
 
+JP_BOOTSTRAP_PREFIX=b'/static/0661f3216ff4fb1f/'
+JP_BOOTSTRAP_DATABASES=frozenset(JP_BOOTSTRAP_PREFIX+name for name in (
+    b'masterdata_a_ja',b'masterdata.db',b'asset_a_ja.db',
+    b'dictionary_ja_k.db',b'dictionary_ja_m.db',b'dictionary_ja_inline_image.db',
+    b'dictionary_ja_v.db',b'dictionary_ja_dummy.db',b'dictionary_ja_petag.db',
+    b'dictionary_ja_android.db',b'dictionary_ja_s.db'))
+
+
+def classify_static_requests(raw):
+    """Exact observed JP bootstrap traffic only; never content authorization."""
+    if type(raw) is not bytes or len(raw)>4*1024**2:
+        raise StopCapture('Static request log exceeds bounded raw bytes')
+    counts={};forbidden=0;first=None
+    for raw_line in raw.splitlines(keepends=True):
+        line=raw_line.rstrip(b'\r\n')
+        if not raw_line.endswith(b'\n'):
+            forbidden+=1
+            if first is None:first={'request':line[:512].decode('ascii','backslashreplace'),
+                'request_truncated':len(line)>512,'reason':'UNTERMINATED_LOG_RECORD_TARGET_UNPROVEN'}
+            continue
+        if not line.startswith(b'[GIN]'):continue
+        fields=line.split(b'|');target=fields[-1].strip();match=None
+        valid=(len(fields)==5
+            and re.fullmatch(rb'\[GIN\] \d{4}/\d{2}/\d{2} - \d{2}:\d{2}:\d{2}\s*',fields[0])
+            and re.fullmatch(rb'\s*[1-5]\d{2}\s*',fields[1])
+            and re.fullmatch(rb'\s*\d+(?:\.\d+)?(?:ns|\xc2\xb5s|ms|s)\s*',fields[2])
+            and re.fullmatch(rb'\s*127\.0\.0\.1\s*',fields[3]))
+        if valid:match=re.fullmatch(rb'([A-Z]+)[ \t]+"([^"\s]+)"',target)
+        if match:
+            path=match[2]
+            recognizable=(re.search(rb'/static(?:[/ ?"\t]|$)',path,re.I) is not None
+                or b'%' in path or b'\\' in path or any(value<32 for value in path))
+            if not recognizable:continue
+            if match[1]==b'GET' and path in JP_BOOTSTRAP_DATABASES:
+                name=path.decode('ascii');counts[name]=counts.get(name,0)+1
+                continue
+        forbidden+=1
+        if first is None:
+            first={'request':target[:512].decode('ascii','backslashreplace'),
+                'request_truncated':len(target)>512,
+                'reason':'NON_BOOTSTRAP_OR_UNSUPPORTED_STATIC_REQUEST' if match else 'MALFORMED_GIN_REQUEST_TARGET_UNPROVEN'}
+    return {'bootstrap_database_GET_counts':dict(sorted(counts.items())),
+        'bootstrap_database_GET_count':sum(counts.values()),
+        'forbidden_static_request_count':forbidden,'first_forbidden_static_request':first}
+
+
 def asset_get_seen(raw):
-    return bool(re.search(rb'^\[GIN\].*\|\s*GET\s+"/static/',raw,re.M))
+    return classify_static_requests(raw)['forbidden_static_request_count']>0
 
 
 def require_JP_settings(nodes):

@@ -165,10 +165,10 @@ class BindingAndNativeTests(unittest.TestCase):
         with self.assertRaises(guard.StopCapture):guard.require_JP_settings(nodes)
 
     def test_no_asset_GET_including_failed_requests(self):
-        self.assertTrue(guard.asset_get_seen(b'[GIN] 2026 | 200 | 1ms | GET "/static/asset"\n'))
-        self.assertTrue(guard.asset_get_seen(b'[GIN] 2026 | 404 | 1ms | GET "/static/asset"\n'))
-        self.assertFalse(guard.asset_get_seen(b'[GIN] 2026 | 200 | POST "/login/login"\n'))
-        self.assertFalse(guard.asset_get_seen(b'[GIN] 2026 | 200 | GET "/staticology/test"\n'))
+        self.assertTrue(guard.asset_get_seen(b'[GIN] 2026/11/14 - 02:07:14 | 200 | 1ms | 127.0.0.1 | GET "/static/asset"\n'))
+        self.assertTrue(guard.asset_get_seen(b'[GIN] 2026/11/14 - 02:07:14 | 404 | 1ms | 127.0.0.1 | GET "/static/asset"\n'))
+        self.assertFalse(guard.asset_get_seen(b'[GIN] 2026/11/14 - 02:07:14 | 200 | 1ms | 127.0.0.1 | POST "/login/login"\n'))
+        self.assertFalse(guard.asset_get_seen(b'[GIN] 2026/11/14 - 02:07:14 | 200 | 1ms | 127.0.0.1 | GET "/staticology/test"\n'))
 
     def test_actual_JP_title_grounds_English_caption_not_coordinates(self):
         original=json.loads((ROOT/'fixtures/actual-jp-title-caption.json').read_text())
@@ -236,6 +236,75 @@ class UniformStartupTests(unittest.TestCase):
 
     def test_transparent_uniform_frame_is_rejected(self):
         with self.assertRaises(guard.StopCapture):self.classify(Image.new('RGBA',(720,1280),(255,255,255,0)))
+
+
+class BootstrapClassificationTests(unittest.TestCase):
+    def request(self,target,*,method=b'GET',status=b'200'):
+        return b'[GIN] 2026/11/14 - 02:07:14 | '+status+b' | 1ms | 127.0.0.1 | '+method+b' "'+target+b'"\n'
+
+    def test_actual_complete_V3_Go_log_replays_exact_eleven_bootstrap_database_GETs(self):
+        raw=(ROOT/'fixtures/actual-jp-v3-bootstrap.log').read_bytes()
+        self.assertEqual(guard.digest(raw),'b932db5d6954ecbed7b943f3fcc679e1aebfdf7930dd3c8292342a8d968afa29')
+        observed=guard.classify_static_requests(raw)
+        self.assertEqual(set(observed['bootstrap_database_GET_counts']),{path.decode() for path in guard.JP_BOOTSTRAP_DATABASES})
+        self.assertEqual(set(observed['bootstrap_database_GET_counts'].values()),{1})
+        self.assertEqual(observed['bootstrap_database_GET_count'],11)
+        self.assertEqual(observed['forbidden_static_request_count'],0)
+        self.assertFalse(guard.asset_get_seen(raw))
+
+    def test_repeated_bootstrap_counts_are_requests_and_not_success_or_feature_claims(self):
+        path=guard.JP_BOOTSTRAP_PREFIX+b'masterdata.db'
+        observed=guard.classify_static_requests(self.request(path)+self.request(path,status=b'404'))
+        self.assertEqual(observed['bootstrap_database_GET_counts'],{path.decode():2})
+        self.assertEqual(observed['bootstrap_database_GET_count'],2)
+        self.assertEqual(observed['forbidden_static_request_count'],0)
+        self.assertNotIn('pass',str(observed).lower())
+
+    def test_bundle_wrong_prefix_locale_and_name_variants_remain_forbidden(self):
+        base=guard.JP_BOOTSTRAP_PREFIX
+        for target in (base+b'costume.bundle',base+b'pack/123',
+                b'/static/0661f3216ff4fb1e/masterdata.db',b'/static/80b97a46d527609a/masterdata.db',
+                base+b'dictionary_en_k.db',base+b'masterdata_a_en',base+b'masterdata_i_ja',
+                base+b'masterdata.db.extra',base+b'prefix-masterdata.db',base+b'masterdata.db/extra'):
+            with self.subTest(target=target):
+                observed=guard.classify_static_requests(self.request(target))
+                self.assertEqual(observed['bootstrap_database_GET_count'],0)
+                self.assertEqual(observed['forbidden_static_request_count'],1)
+
+    def test_query_fragment_traversal_encoding_backslash_and_control_are_never_allowlisted(self):
+        base=guard.JP_BOOTSTRAP_PREFIX
+        for target in (base+b'masterdata.db?x=1',base+b'masterdata.db#x',
+                base+b'../masterdata.db',base+b'%2e%2e/masterdata.db',base+b'%6dasterdata.db',
+                b'/%73tatic/0661f3216ff4fb1f/masterdata.db',b'//static/0661f3216ff4fb1f/masterdata.db',
+                b'/STATIC/0661f3216ff4fb1f/masterdata.db',base+b'masterdata.db\\x',base+b'masterdata.db\x00'):
+            with self.subTest(target=target):self.assertTrue(guard.asset_get_seen(self.request(target)))
+
+    def test_malformed_partial_extra_targets_and_static_methods_refuse(self):
+        valid=self.request(guard.JP_BOOTSTRAP_PREFIX+b'masterdata.db')
+        for raw in (b'[GIN',valid.rstrip(b'\n'),valid.replace(b'"',b''),valid.replace(b'GET ',b'GET'),
+                valid.split(b'GET ',1)[0]+b'GET "/stati',valid.split(b'GET ',1)[0]+b'GET ',
+                b'[GIN] 2026/11/14 - 02:07:14 | 200 |',
+                valid.rstrip(b'\n')+b' "'+guard.JP_BOOTSTRAP_PREFIX+b'asset_a_ja.db"\n',
+                valid.replace(b'| 127.0.0.1 ',b''),valid.replace(b'200',b'not-status'),
+                valid.replace(b'1ms',b'not-duration'),valid.replace(b'1ms',b'1\x00ms'),
+                valid.replace(b'127.0.0.1',b'GET "/static/unknown"'),
+                valid.replace(b'GET',b'POST'),valid.replace(b'GET',b'HEAD'),valid.replace(b'GET',b'get'),
+                valid.replace(b'GET "',b'GET "/static/unknown" "'),
+                valid.replace(b'[GIN] 2026/11/14 - 02:07:14',b'[GIN] "/static/unknown"')):
+            with self.subTest(raw=raw):
+                observed=guard.classify_static_requests(raw)
+                self.assertEqual(observed['bootstrap_database_GET_count'],0)
+                self.assertEqual(observed['forbidden_static_request_count'],1)
+
+    def test_mixed_traffic_retains_bootstrap_counts_but_unknown_static_stops(self):
+        path=guard.JP_BOOTSTRAP_PREFIX+b'masterdata.db'
+        raw=self.request(path)+self.request(guard.JP_BOOTSTRAP_PREFIX+b'costume.bundle')+self.request(path)
+        observed=guard.classify_static_requests(raw)
+        self.assertEqual(observed['bootstrap_database_GET_counts'],{path.decode():2})
+        self.assertEqual(observed['forbidden_static_request_count'],1)
+        self.assertTrue(guard.asset_get_seen(raw))
+        self.assertEqual(guard.classify_static_requests(self.request(b'/staticology/test'))['forbidden_static_request_count'],0)
+        self.assertEqual(guard.classify_static_requests(self.request(b'/_elichika/ready'))['bootstrap_database_GET_count'],0)
 
 
 class FakeCleanupClock:

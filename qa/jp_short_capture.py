@@ -17,7 +17,7 @@ from native_capture_support import (center, parse_native_nodes, native_profile_p
     slider_caption_value, control_fully_visible, ocr_words, title_caption)
 from jp_capture_guard import (PACKAGE, CASES, StopCapture, digest, image_of, native_surface,
     missing_services, chooser_geometry, has_large_pale_panel, fresh_pair, ScrollBudget)
-from jp_capture_guard import asset_get_seen, require_JP_settings, uniform_startup_frame
+from jp_capture_guard import classify_static_requests, require_JP_settings, uniform_startup_frame
 
 SOURCE='51727bae11df587bb49bb0a0fd69a270018c380b'
 APK='c9d6555acd71605ae4b4aa083021932ec398b9b83d312c14c8f385c98a0e816f'
@@ -285,8 +285,10 @@ def main():
             if host.log_path.stat().st_size>4*1024**2:
                 raise StopCapture('Short owned Go log exceeded4MiB bound')
             raw=host.log_path.read_bytes()
-            if asset_get_seen(raw):
-                raise StopCapture('Unexpected game asset GET observed; stop capture before any further input')
+            observed=classify_static_requests(raw)
+            report['static_request_observations']=observed
+            if observed['forbidden_static_request_count']:
+                raise StopCapture('Unexpected non-bootstrap or malformed static request observed; stop before any further input')
     def capture(reason):
         nonlocal index
         bound();no_assets();index+=1;label=f'jp-short-{index:03d}'
@@ -442,7 +444,7 @@ def main():
             if host.process is not None and (host.process.poll() is None or (host._thread is not None and host._thread.is_alive())):
                 raise StopCapture('Complete final asset log unavailable while Go process/writer remains')
             no_assets()
-            report['no_game_asset_GET_in_complete_stopped_owned_log']=True
+            report['no_nonbootstrap_static_request_in_complete_stopped_owned_log']=True
             host.finalize_log_evidence()
         except StopCapture as error:
             if report['status']!='SHORT_CAPTURE_ONLY_CLEANUP_FAILED':report['status']='SHORT_CAPTURE_ONLY_STOPPED'

@@ -1,0 +1,172 @@
+2026/11/14 02:05:29 ServerAddress :  127.0.0.1:8080
+2026/11/14 02:05:29 CdnServer :  https://llsifas.imsofucking.gay/static/
+2026/11/14 02:05:29 CdnPartialFileCapability :  nothing
+2026/11/14 02:05:29 CdnCache :  true
+2026/11/14 02:05:29 CdnCacheDir :  /home/runner/work/_temp/jp-host-go-fixture/cdn-cache
+2026/11/14 02:05:29 ArchiveConnections :  8
+[redacted administrative credential line]2026/11/14 02:05:29 TapBondGain :  20
+2026/11/14 02:05:29 AutoJudgeType :  30
+2026/11/14 02:05:29 Tutorial :  false
+2026/11/14 02:05:29 LoginBonusSecond :  14400
+2026/11/14 02:05:29 TimeZone :  
+2026/11/14 02:05:29 DefaultContentAmount :  1073741823
+2026/11/14 02:05:29 MissionMultiplier :  1
+2026/11/14 02:05:29 ResourceConfigType :  free
+2026/11/14 02:05:29 EventAutoSchedulerPeriod :  disabled
+2026/11/14 02:05:29 MaintenanceUrl :  http://127.0.0.1:8080/webui/admin/
+2026/11/14 02:05:29 LocalTrustLoopback :  false
+2026/11/14 02:05:29 WebUILanguage :  en
+2026/11/14 02:05:29 Locales :  ja,en
+2026/11/14 02:05:35 assets/db/gl/masterdata_a_en
+2026/11/14 02:05:35 assets/db/gl/masterdata_a_ko
+2026/11/14 02:05:35 assets/db/gl/masterdata_a_zh
+2026/11/14 02:05:35 assets/db/gl/masterdata_i_en
+2026/11/14 02:05:35 assets/db/gl/masterdata_i_ko
+2026/11/14 02:05:35 assets/db/gl/masterdata_i_zh
+2026/11/14 02:05:35 Performing integrity check for version:  80b97a46d527609a
+2026/11/14 02:05:35 Preparing 34 client database files with 4 worker(s)
+2026/11/14 02:05:36 assets/db/jp/masterdata_a_ja
+2026/11/14 02:05:36 assets/db/jp/masterdata_i_ja
+2026/11/14 02:05:36 Performing integrity check for version:  0661f3216ff4fb1f
+2026/11/14 02:05:36 Preparing 12 client database files with 4 worker(s)
+2026/11/14 02:05:36 gl master version: 80b97a46d527609a
+2026/11/14 02:05:36 jp master version: 0661f3216ff4fb1f
+2026/11/14 02:05:36 Loading game-data locales (config 'locales'):  ja, en
+2026/11/14 02:05:36 Loading Metapack
+2026/11/14 02:05:36 trying to load event active:  {0 0 0 0 0 0}
+2026/11/14 02:05:36 Loading Emblem
+2026/11/14 02:05:36 trying to load event active:  {0 0 0 0 0 0}
+2026/11/14 02:05:36 Loading Emblem
+2026/11/14 02:05:36 Loading LiveMemberMapping
+2026/11/14 02:05:36 Loaded 6942 new metapack
+2026/11/14 02:05:36 Loading Pack
+2026/11/14 02:05:36 Loading LiveMemberMapping
+2026/11/14 02:05:36 Loading StoryMainChapter
+2026/11/14 02:05:36 Loading StoryMainChapter
+2026/11/14 02:05:36 Loading MemberLoveLevel
+2026/11/14 02:05:36 Loading LessonMenu
+2026/11/14 02:05:36 Loading MemberLoveLevel
+2026/11/14 02:05:36 Loading Live
+2026/11/14 02:05:36 Loading LessonMenu
+2026/11/14 02:05:36 Loading Live
+2026/11/14 02:05:36 Loading MemberGroup
+2026/11/14 02:05:36 Loading Member
+2026/11/14 02:05:36 Loading MemberGroup
+2026/11/14 02:05:36 Loading Member
+2026/11/14 02:05:36 Loading TrainingCellItemSet
+2026/11/14 02:05:36 Loading TrainingCellItemSet
+2026/11/14 02:05:36 Loading TrainingTreeDesign
+2026/11/14 02:05:36 Loading TrainingMapping
+2026/11/14 02:05:36 Loading TrainingTreeDesign
+2026/11/14 02:05:36 Loading TrainingMapping
+2026/11/14 02:05:37 Loading TrainingTree
+2026/11/14 02:05:37 Loading TrainingTree
+2026/11/14 02:05:37 Loading Card
+2026/11/14 02:05:37 Loading Card
+2026/11/14 02:05:37 Loading CardLevel
+2026/11/14 02:05:37 Loading MemberLovePanel
+2026/11/14 02:05:37 Loading CardLevel
+2026/11/14 02:05:37 Loading MemberLovePanel
+2026/11/14 02:05:37 Loading MemberLovePanelCell
+2026/11/14 02:05:37 Loading MemberLovePanelCell
+2026/11/14 02:05:38 Loaded 215774 new pack
+2026/11/14 02:05:38 Loading Metapack
+2026/11/14 02:05:38 Loaded 0 new metapack
+2026/11/14 02:05:38 Loading Pack
+2026/11/14 02:05:38 Loading LiveDropContentGroup
+2026/11/14 02:05:38 Loading LiveDropContentGroup
+2026/11/14 02:05:40 Loaded 8096 new pack
+2026/11/14 02:05:40 Loading Metapack
+2026/11/14 02:05:40 Loaded 0 new metapack
+2026/11/14 02:05:40 Loading Pack
+2026/11/14 02:05:40 Loading LiveDropGroup
+2026/11/14 02:05:41 Loading LiveDropGroup
+2026/11/14 02:05:41 Loading LiveDifficulty
+2026/11/14 02:05:41 Loading LiveDifficulty
+2026/11/14 02:05:41 Loading Suit
+2026/11/14 02:05:41 Loading MemberLoginBonusBirthday
+2026/11/14 02:05:41 Loading Mission
+2026/11/14 02:05:41 Loading Suit
+2026/11/14 02:05:41 Loading MemberLoginBonusBirthday
+2026/11/14 02:05:41 Loading Mission
+2026/11/14 02:05:42 Loading Trade
+2026/11/14 02:05:42 Loaded 0 new pack
+2026/11/14 02:05:42 Loading Metapack
+2026/11/14 02:05:42 Loading Trade
+2026/11/14 02:05:42 Loaded 0 new metapack
+2026/11/14 02:05:42 Loading Pack
+2026/11/14 02:05:42 Loading EventMining
+2026/11/14 02:05:42 Loading CustomBackground
+2026/11/14 02:05:42 Loading LoginBonus
+2026/11/14 02:05:42 Loading EventMarathon
+2026/11/14 02:05:42 Loading EventMining
+2026/11/14 02:05:42 Loading Tower
+2026/11/14 02:05:42 Loading MemberGuildPeriod
+2026/11/14 02:05:42 Loading UserRank
+2026/11/14 02:05:42 Loading LiveDaily
+2026/11/14 02:05:42 Loading Lesson
+2026/11/14 02:05:42 Loading CustomBackground
+2026/11/14 02:05:42 Loading LoginBonus
+2026/11/14 02:05:42 Loading EventMarathon
+2026/11/14 02:05:42 Loading DailyTheater
+2026/11/14 02:05:42 Loading Tower
+2026/11/14 02:05:42 Loading MemberGuildPointClearReward
+2026/11/14 02:05:42 Loading LiveParty
+2026/11/14 02:05:42 Loading BeginnerChallengeCell
+2026/11/14 02:05:42 Loading BeginnerChallenge
+2026/11/14 02:05:42 Loading MemberGuildCheerReward
+2026/11/14 02:05:42 Loading ContentType
+2026/11/14 02:05:42 Loading Content
+2026/11/14 02:05:42 Loading MemberGuildPeriod
+2026/11/14 02:05:42 Loading UserRank
+2026/11/14 02:05:42 Loading LiveDaily
+2026/11/14 02:05:42 Loading Lesson
+2026/11/14 02:05:42 Loading MemberGuildConstant
+2026/11/14 02:05:42 Loading ConstantInt
+2026/11/14 02:05:42 Loading NaviVoice
+2026/11/14 02:05:42 Loading DailyTheater
+2026/11/14 02:05:42 Loading MemberGuildChallengeLive
+2026/11/14 02:05:42 Loading NgWord
+2026/11/14 02:05:42 Loading StoryEventHistory
+2026/11/14 02:05:42 Loading StoryMember
+2026/11/14 02:05:42 Loading ActivityPointRecoveryPrice
+2026/11/14 02:05:42 Loading MemberGuildRankingReward
+2026/11/14 02:05:42 Loading MemberGuildPointClearReward
+2026/11/14 02:05:42 Loading LiveParty
+2026/11/14 02:05:42 Loading BeginnerChallengeCell
+2026/11/14 02:05:42 Loading BeginnerChallenge
+2026/11/14 02:05:42 Loading MemberGuildCheerReward
+2026/11/14 02:05:43 Loading ContentType
+2026/11/14 02:05:43 Loading Content
+2026/11/14 02:05:43 Loading MemberGuildConstant
+2026/11/14 02:05:43 Loading ConstantInt
+2026/11/14 02:05:43 Loading NaviVoice
+2026/11/14 02:05:43 Loading MemberGuildChallengeLive
+2026/11/14 02:05:43 Loading NgWord
+2026/11/14 02:05:43 Loading StoryEventHistory
+2026/11/14 02:05:43 Loading StoryMember
+2026/11/14 02:05:43 Loading ActivityPointRecoveryPrice
+2026/11/14 02:05:43 Loading MemberGuildRankingReward
+2026/11/14 02:05:43 Loaded 0 new pack
+2026/11/14 02:05:43 Finished loading databases in:  6.783530923s
+2026/11/14 02:05:43 Locale zh not loaded; serving en data as fallback
+2026/11/14 02:05:43 Locale ko not loaded; serving en data as fallback
+2026/11/14 02:05:43 Creating new table: u_voltage_ranking
+2026/11/14 02:05:43 Creating new table: u_new_badge
+2026/11/14 02:05:43 server address:  127.0.0.1:8080
+2026/11/14 02:05:43 WebUI address:  127.0.0.1:8080/webui/...
+[GIN] 2026/11/14 - 02:05:43 | 200 |      61.028µs |       127.0.0.1 | GET      "/_elichika/ready"
+2026/11/14 02:07:12 Accepting:  /login/startup?[redacted-query]
+2026/11/14 02:07:12 Event auto scheduler disabled
+[GIN] 2026/11/14 - 02:07:14 | 200 |  1.645062799s |       127.0.0.1 | POST     "/login/startup?[redacted-query]"
+[GIN] 2026/11/14 - 02:07:14 | 200 |    8.927754ms |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/masterdata_a_ja"
+[GIN] 2026/11/14 - 02:07:14 | 200 |     910.419µs |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/dictionary_ja_k.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |     326.346µs |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/dictionary_ja_m.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |      82.698µs |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/dictionary_ja_inline_image.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |      82.658µs |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/dictionary_ja_v.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |     135.591µs |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/dictionary_ja_dummy.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |     102.977µs |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/dictionary_ja_petag.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |     135.519µs |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/dictionary_ja_android.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |   67.472834ms |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/masterdata.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |     201.314µs |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/dictionary_ja_s.db"
+[GIN] 2026/11/14 - 02:07:14 | 200 |  150.241732ms |       127.0.0.1 | GET      "/static/0661f3216ff4fb1f/asset_a_ja.db"
