@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import unittest
+from unittest import mock
 
 from PIL import Image
 import jp_capture_guard as guard
@@ -209,6 +210,271 @@ class BindingAndNativeTests(unittest.TestCase):
         self.assertEqual(confirmed,dict(min=2.0,max=2.0,orientation='portrait',intro=True))
         nodes[0]['text']='MinAspect = 1.00000'
         with self.assertRaises(guard.StopCapture):driver.confirm_requested_settings(nodes,state,{})
+
+
+class UniformStartupTests(unittest.TestCase):
+    def classify(self,image,native=XML,surface=None):
+        return guard.uniform_startup_frame(png(image),native,surface or dict(left=0,top=0,right=720,bottom=1280))
+
+    def test_only_exact_opaque_black_and_white_are_startup_wait_candidates(self):
+        for mode in ('RGB','RGBA'):
+            for value,name in ((0,'black'),(255,'white')):
+                color=(value,value,value) if mode=='RGB' else (value,value,value,255)
+                with self.subTest(mode=mode,value=value):self.assertEqual(self.classify(Image.new(mode,(720,1280),color)),name)
+
+    def test_near_blank_changed_pixel_and_actual_nonuniform_modal_are_not_blank(self):
+        for value in (1,254):self.assertIsNone(self.classify(Image.new('RGB',(720,1280),(value,)*3)))
+        image=Image.new('RGB',(720,1280),'white');image.putpixel((100,100),(0,0,0))
+        self.assertIsNone(self.classify(image))
+        self.assertIsNone(guard.uniform_startup_frame(PNG,XML,dict(left=0,top=0,right=720,bottom=1280)))
+
+    def test_uniform_pixels_do_not_bypass_native_package_focus_or_geometry(self):
+        image=Image.new('RGB',(720,1280),'white')
+        for native in (XML.replace(guard.PACKAGE.encode(),b'other.package'),XML.replace(b'Game view',b'Other view')):
+            with self.assertRaises(guard.StopCapture):self.classify(image,native)
+        with self.assertRaises(guard.StopCapture):self.classify(image,surface=dict(left=0,top=0,right=719,bottom=1280))
+
+    def test_transparent_uniform_frame_is_rejected(self):
+        with self.assertRaises(guard.StopCapture):self.classify(Image.new('RGBA',(720,1280),(255,255,255,0)))
+
+
+class FakeCleanupClock:
+    def __init__(self):self.now=1000.0
+    def __call__(self):return self.now
+    def pause(self,seconds):self.now+=seconds
+
+
+class FakeCleanupDevice:
+    def __init__(self,states,ticks=None,*,replacement='',query_error=False,malformed=False,late_query=None):
+        self.states=list(states);self.ticks=list(ticks or [IDENTITY['start_ticks']]);self.present=False
+        self.replacement=replacement;self.query_error=query_error;self.malformed=malformed
+        self.force_calls=[];self.timeouts=[];self.late_query=late_query
+    def shell(self,*args,**kwargs):
+        self.timeouts.append((args,kwargs['timeout']))
+        if args==('ps','-A'):
+            self.present=self.states.pop(0) if len(self.states)>1 else self.states[0]
+            if self.malformed:return 'bad process listing'
+            return 'USER PID NAME\nroot 1 init\n'+('u0 1234 game\n' if self.present else '')
+        if args==('pidof','-s',guard.PACKAGE):
+            if not self.present and self.late_query:self.late_query()
+            if not self.present and self.query_error:
+                raise subprocess.CalledProcessError(1,args,output=b'',stderr=b'device offline')
+            return str(IDENTITY['pid']) if self.present else self.replacement
+        if args==('am','force-stop',guard.PACKAGE):self.force_calls.append(args);return ''
+        raise AssertionError('Unexpected Android command: '+repr(args))
+    def adb(self,*args,**kwargs):
+        self.timeouts.append((args,kwargs['timeout']))
+        assert args==('exec-out','cat','/proc/1234/stat') and kwargs['raw']
+        ticks=self.ticks.pop(0) if len(self.ticks)>1 else self.ticks[0]
+        if ticks is None:raise subprocess.CalledProcessError(1,args,output=b'',stderr=b'No such file')
+        return ('1234 (game) '+' '.join(['S']+['0']*18+[ticks]+['0']*3)).encode()
+
+
+class BoundedCleanupTests(unittest.TestCase):
+    def run_cleanup(self,device,*,fails=False,cleanup_deadline=None,clock=None):
+        import tempfile
+        clock=clock or FakeCleanupClock()
+        with tempfile.TemporaryDirectory(prefix='owned-jp-cleanup-test-') as temporary:
+            evidence=Path(temporary)
+            options=dict(launch_attempted=True,clock=clock,pause=clock.pause,cleanup_deadline=cleanup_deadline)
+            if fails:
+                with self.assertRaises((guard.StopCapture,subprocess.CalledProcessError)):driver.stop_owned_game(device,IDENTITY,evidence,**options)
+                context=json.loads((evidence/'owned-game-cleanup-failure.json').read_text())
+                self.assertTrue((evidence/'owned-game-stop-failure-processes.txt').is_file())
+                self.assertFalse((evidence/'owned-game-stop-proof.json').exists())
+            else:
+                proof=driver.stop_owned_game(device,IDENTITY,evidence,**options)
+                self.assertEqual(proof['status'],'OWNED_GAME_LIFETIME_ABSENT')
+                context=json.loads((evidence/'owned-game-cleanup-context.json').read_text())
+                self.assertTrue((evidence/'owned-game-stop-processes.txt').is_file())
+            self.assertLessEqual(len(device.force_calls),1)
+            for args,value in device.timeouts:self.assertTrue(0<value<=(2 if args[:2]==('am','force-stop') else 1))
+            return context,clock
+
+    def test_async_same_lifetime_then_absent_succeeds_after_one_force_stop(self):
+        device=FakeCleanupDevice([True,True,False]);context,clock=self.run_cleanup(device)
+        self.assertEqual(len(device.force_calls),1)
+        self.assertEqual(context['force_stop_attempts'],1)
+        self.assertFalse(context['observations'][-1]['expected_PID_present'])
+        self.assertLess(clock.now-1000,5)
+
+    def test_already_absent_issues_no_force_stop(self):
+        device=FakeCleanupDevice([False]);self.run_cleanup(device)
+        self.assertEqual(device.force_calls,[])
+
+    def test_persistently_alive_stops_at_fixed_five_seconds_and_keeps_PS_stat(self):
+        device=FakeCleanupDevice([True]);context,clock=self.run_cleanup(device,fails=True)
+        self.assertEqual(len(device.force_calls),1);self.assertLessEqual(clock.now-1000,5)
+        self.assertIn('within5seconds',context['failure'])
+        self.assertEqual(context['last_stat']['state'],'S')
+        self.assertIn('1234 (game)',context['last_stat']['raw'])
+
+    def test_reused_identity_before_force_stop_is_not_signalled(self):
+        device=FakeCleanupDevice([True],ticks=['987655']);context,_=self.run_cleanup(device,fails=True)
+        self.assertEqual(device.force_calls,[]);self.assertIn('changed owned game lifetime',context['failure'])
+
+    def test_reused_identity_after_force_stop_gets_no_second_signal(self):
+        device=FakeCleanupDevice([True],ticks=[IDENTITY['start_ticks'],IDENTITY['start_ticks'],'987655']);context,_=self.run_cleanup(device,fails=True)
+        self.assertEqual(len(device.force_calls),1);self.assertIn('reused',context['failure'])
+        self.assertEqual(context['observations'][-1]['identity']['start_ticks'],'987655')
+
+    def test_missing_stat_is_not_absence_until_a_fresh_PS_proves_it(self):
+        device=FakeCleanupDevice([True,True,False],ticks=[IDENTITY['start_ticks'],IDENTITY['start_ticks'],None]);context,_=self.run_cleanup(device)
+        self.assertEqual(len(device.force_calls),1)
+        self.assertEqual(context['observations'][0]['stat_read_error'],'CalledProcessError')
+
+    def test_reuse_at_final_same_PID_boundary_is_not_signalled(self):
+        device=FakeCleanupDevice([True],ticks=[IDENTITY['start_ticks'],'987655'])
+        context,_=self.run_cleanup(device,fails=True)
+        self.assertEqual(device.force_calls,[])
+        self.assertIn('force-stop boundary',context['failure'])
+
+    def test_changed_package_after_original_absence_is_not_signalled(self):
+        device=FakeCleanupDevice([True,False],replacement='4321');context,_=self.run_cleanup(device,fails=True)
+        self.assertEqual(len(device.force_calls),1);self.assertIn('changed JP lifetime',context['failure'])
+
+    def test_malformed_PS_and_pidof_transport_failure_are_not_absence(self):
+        device=FakeCleanupDevice([True],malformed=True);self.run_cleanup(device,fails=True)
+        self.assertEqual(device.force_calls,[])
+        device=FakeCleanupDevice([True,False],query_error=True);self.run_cleanup(device,fails=True)
+        self.assertEqual(len(device.force_calls),1)
+
+    def test_remaining_cleanup_budget_can_shorten_but_not_extend_poll(self):
+        context,clock=self.run_cleanup(FakeCleanupDevice([True]),fails=True,cleanup_deadline=1020)
+        self.assertEqual(context['poll_deadline'],1002)
+        self.assertLessEqual(clock.now,1002)
+
+    def test_late_absence_reply_cannot_pass_after_fixed_deadline(self):
+        clock=FakeCleanupClock()
+        device=FakeCleanupDevice([True,False],late_query=lambda:setattr(clock,'now',1006))
+        context,_=self.run_cleanup(device,fails=True,clock=clock)
+        self.assertEqual(len(device.force_calls),1);self.assertIn('within5seconds',context['failure'])
+
+
+class GoCleanupDeadlineTests(unittest.TestCase):
+    def test_startup_internal_stop_cannot_issue_reverse_after_control_deadline(self):
+        import host_go_fixture as frozen
+        clock=FakeCleanupClock();device=mock.Mock();control_end=1270
+        def remaining():
+            if clock.now>=control_end:raise driver.WallBound('Original control deadline')
+            return control_end-clock.now
+        driver.bounded_host_device(device,remaining).adb('reverse','tcp:8080','tcp:8080')
+        device.adb.assert_called_once_with('reverse','tcp:8080','tcp:8080',timeout=90)
+        device.reset_mock()
+        def expire(*args):
+            clock.now=control_end
+            raise driver.WallBound('Startup interrupted')
+        def wait(*,timeout):
+            clock.pause(timeout)
+            if timeout==12:raise subprocess.TimeoutExpired('tracked-child',12)
+        host=frozen.HostGoFixture.__new__(frozen.HostGoFixture)
+        host.process=None;host.binary=Path('/not-executed');host.root=Path('/not-read')
+        host.binding={'binary_sha256':'hash'};host.receipt={'config_sha256':'hash'}
+        host.port=8080;host.credentials=None;host._stopped=False
+        process=mock.Mock();process.poll.return_value=None;process.wait.side_effect=wait
+        thread=mock.Mock();thread.join.side_effect=lambda *,timeout:clock.pause(timeout)
+        with mock.patch.object(frozen,'file_sha256',return_value='hash'), \
+                mock.patch.object(frozen.socket,'socket'), \
+                mock.patch.object(frozen.subprocess,'Popen',return_value=process), \
+                mock.patch.object(frozen.threading,'Thread',return_value=thread), \
+                mock.patch.object(frozen.time,'monotonic',side_effect=clock), \
+                mock.patch.object(frozen,'ready_response',side_effect=expire):
+            with self.assertRaises(driver.WallBound):
+                host.start(driver.bounded_host_device(device,remaining),timeout=45)
+        self.assertTrue(host._stopped)
+        process.terminate.assert_called_once();process.kill.assert_called_once()
+        self.assertEqual([call.kwargs['timeout'] for call in process.wait.call_args_list],[12,3])
+        self.assertLessEqual(clock.now,1300)
+        device.adb.assert_not_called()
+
+    def run_stop(self,action,*,deadline=1030,fails=False):
+        import tempfile
+        clock=FakeCleanupClock();device=mock.Mock();host=mock.Mock();host.process=None
+        host.stop.side_effect=lambda bounded:action(bounded,clock,device)
+        with tempfile.TemporaryDirectory(prefix='owned-jp-go-deadline-test-') as temporary:
+            evidence=Path(temporary)
+            with mock.patch.object(driver.signal,'signal',return_value='previous') as handler, \
+                    mock.patch.object(driver.signal,'setitimer') as timer:
+                if fails:
+                    with self.assertRaises(driver.WallBound):
+                        driver.stop_owned_go(host,device,evidence,cleanup_deadline=deadline,clock=clock)
+                else:
+                    self.assertEqual(driver.stop_owned_go(host,device,evidence,cleanup_deadline=deadline,clock=clock),'TRACKED_CHILD_STOPPED')
+                context=json.loads((evidence/'owned-go-cleanup-deadline.json').read_text())
+                self.assertEqual(handler.call_args_list[-1],mock.call(driver.signal.SIGALRM,'previous'))
+                self.assertEqual(timer.call_args_list[-1],mock.call(driver.signal.ITIMER_REAL,0))
+                return context,timer,device
+
+    def test_default_reverse_timeout_is_limited_by_remaining_eighteen_seconds(self):
+        def action(bounded,clock,device):
+            clock.now+=15
+            bounded.adb('reverse','--remove','tcp:8080')
+        context,timer,device=self.run_stop(action)
+        self.assertEqual(timer.call_args_list[0],mock.call(driver.signal.ITIMER_REAL,18))
+        self.assertEqual(device.adb.call_args,mock.call('reverse','--remove','tcp:8080',timeout=3))
+        self.assertEqual(context['status'],'TRACKED_CHILD_STOPPED')
+
+    def test_overall_cleanup_deadline_shortens_go_budget(self):
+        context,timer,_=self.run_stop(lambda bounded,clock,device:None,deadline=1004)
+        self.assertEqual(context['deadline'],1004)
+        self.assertEqual(timer.call_args_list[0],mock.call(driver.signal.ITIMER_REAL,4))
+
+    def test_alarm_during_wait_cannot_escape_through_finally_reverse(self):
+        def action(bounded,clock,device):
+            try:
+                clock.now+=18
+                raise driver.WallBound('Original wait deadline')
+            finally:
+                try:bounded.adb('reverse','--remove','tcp:8080')
+                except Exception:pass  # Same narrow catch as frozen HostGoFixture.
+        context,_,device=self.run_stop(action,fails=True)
+        device.adb.assert_not_called()
+        self.assertIn('Fixed owned Go cleanup deadline',context['failure'])
+        self.assertEqual(context['interrupted_helper_failure'],'WallBound: Original wait deadline')
+
+    def test_late_reverse_response_and_expired_initial_budget_refuse(self):
+        def action(bounded,clock,device):
+            device.adb.side_effect=lambda *args,**kwargs:setattr(clock,'now',1019)
+            bounded.adb('reverse','--remove','tcp:8080')
+        context,_,_=self.run_stop(action,fails=True)
+        self.assertIn('WallBound',context['failure'])
+        context,timer,device=self.run_stop(lambda bounded,clock,device:self.fail('Expired budget called stop'),deadline=1000,fails=True)
+        self.assertEqual(timer.call_args_list,[mock.call(driver.signal.ITIMER_REAL,0)])
+        device.adb.assert_not_called()
+
+    def test_actual_alarm_interrupts_wait_and_finally_reverse_without_renewal(self):
+        import tempfile
+        import time
+        device=mock.Mock();host=mock.Mock();previous=driver.signal.getsignal(driver.signal.SIGALRM)
+        self.assertEqual(driver.signal.getitimer(driver.signal.ITIMER_REAL),(0,0))
+        def action(bounded):
+            try:time.sleep(.1)
+            finally:
+                try:bounded.adb('reverse','--remove','tcp:8080')
+                except Exception:pass
+        host.stop.side_effect=action
+        with tempfile.TemporaryDirectory(prefix='owned-jp-go-alarm-test-') as temporary:
+            evidence=Path(temporary);started=time.monotonic()
+            with self.assertRaises(driver.WallBound):
+                driver.stop_owned_go(host,device,evidence,cleanup_deadline=started+.02)
+            self.assertLess(time.monotonic()-started,.3)
+            self.assertIs(driver.signal.getsignal(driver.signal.SIGALRM),previous)
+            self.assertEqual(driver.signal.getitimer(driver.signal.ITIMER_REAL),(0,0))
+            device.adb.assert_not_called()
+            context=json.loads((evidence/'owned-go-cleanup-deadline.json').read_text())
+            self.assertIn('WallBound',context['interrupted_helper_failure'])
+
+    def test_previously_interrupted_internal_stop_cannot_be_reported_clean(self):
+        import tempfile
+        host=mock.Mock();host.process=object();host.stop.return_value=None
+        with tempfile.TemporaryDirectory(prefix='owned-jp-go-proof-test-') as temporary:
+            evidence=Path(temporary)
+            with self.assertRaisesRegex(guard.StopCapture,'did not prove a clean owned-child stop'):
+                driver.stop_owned_go(host,mock.Mock(),evidence,cleanup_deadline=driver.time.monotonic()+1)
+            context=json.loads((evidence/'owned-go-cleanup-deadline.json').read_text())
+            self.assertNotIn('status',context)
+            self.assertIn('StopCapture',context['failure'])
+            host.stop.assert_called_once()
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

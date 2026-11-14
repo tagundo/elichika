@@ -17,7 +17,7 @@ from native_capture_support import (center, parse_native_nodes, native_profile_p
     slider_caption_value, control_fully_visible, ocr_words, title_caption)
 from jp_capture_guard import (PACKAGE, CASES, StopCapture, digest, image_of, native_surface,
     missing_services, chooser_geometry, has_large_pale_panel, fresh_pair, ScrollBudget)
-from jp_capture_guard import asset_get_seen, require_JP_settings
+from jp_capture_guard import asset_get_seen, require_JP_settings, uniform_startup_frame
 
 SOURCE='51727bae11df587bb49bb0a0fd69a270018c380b'
 APK='c9d6555acd71605ae4b4aa083021932ec398b9b83d312c14c8f385c98a0e816f'
@@ -43,10 +43,10 @@ def durable(path, value):
     finally:os.close(directory)
 
 
-def pidof(device):
-    try:return device.shell('pidof','-s',PACKAGE,timeout=3)
+def pidof(device,*,timeout=3):
+    try:return device.shell('pidof','-s',PACKAGE,timeout=timeout)
     except subprocess.CalledProcessError as error:
-        if error.returncode==1 and not (error.stdout or b'').strip():return ''
+        if error.returncode==1 and not (error.stdout or b'').strip() and not (error.stderr or b'').strip():return ''
         raise
 
 
@@ -82,31 +82,144 @@ def confirm_requested_settings(nodes, state, confirmed):
             confirmed[role]='portrait' if role=='orientation' else True
 
 
-def stop_owned_game(device, identity, evidence, *, launch_attempted):
-    if identity is None:
-        if not launch_attempted:return {'status':'NOT_LAUNCHED_BY_THIS_RUN'}
-        if pidof(device):raise StopCapture('Unknown post-launch game lifetime remains; owned container cleanup required')
-        proof={'status':'NO_JP_PID_AFTER_LAUNCH_ATTEMPT','original_identity_unavailable':True}
-        durable(evidence/'owned-game-stop-proof.json',proof)
-        return proof
-    raw=device.shell('ps','-A',timeout=3)
-    lines=raw.splitlines();columns=lines[0].split();column=columns.index('PID')
-    present=any(len(line.split())>column and line.split()[column]==str(identity['pid']) for line in lines[1:])
-    if present:
-        stat=device.adb('exec-out','cat','/proc/'+str(identity['pid'])+'/stat',raw=True,timeout=3).decode()
-        if stat.split('(',1)[0].strip()!=str(identity['pid']) or stat.rsplit(')',1)[1].split()[19]!=identity['start_ticks']:
-            raise StopCapture('Refuse cleanup of changed owned game lifetime')
-        device.shell('am','force-stop',PACKAGE,timeout=5)
-        raw=device.shell('ps','-A',timeout=3)
-        lines=raw.splitlines();column=lines[0].split().index('PID')
-        if any(len(line.split())>column and line.split()[column]==str(identity['pid']) for line in lines[1:]):
-            raise StopCapture('Owned game PID remains after force-stop')
-    (evidence/'owned-game-stop-processes.txt').write_text(raw+'\n')
-    if pidof(device):raise StopCapture('A changed JP lifetime remains; owned container cleanup required')
-    proof={'status':'OWNED_GAME_LIFETIME_ABSENT','identity':identity,
-        'processes_sha256':digest((raw+'\n').encode())}
-    durable(evidence/'owned-game-stop-proof.json',proof)
-    return proof
+def stop_owned_game(device, identity, evidence, *, launch_attempted,clock=time.monotonic,pause=time.sleep,cleanup_deadline=None):
+    """One validated force-stop; fixed <=5second read-only absence poll afterward.
+
+    Initial ps/stat/pidof calls are each <=1second; force-stop <=2seconds,
+    followed by <=5seconds polling. Existing tracked-Go cleanup retains its
+    remaining share of the original30second cleanup reserve.
+    """
+    started=clock();last_ps=None;success=False
+    game_end=min(started+10,cleanup_deadline-18 if cleanup_deadline is not None else started+10)
+    context={'identity':identity,'package':PACKAGE,'started_at':started,
+        'force_stop_attempts':0,'poll_limit_seconds':5,'game_cleanup_deadline':game_end,'observations':[]}
+    def timeout(maximum):
+        left=game_end-clock()
+        if left<=0:raise StopCapture('Game cleanup reserve exhausted before absence proof')
+        return min(maximum,left)
+    def processes(timeout):
+        nonlocal last_ps
+        last_ps=device.shell('ps','-A',timeout=timeout)
+        lines=last_ps.splitlines()
+        if not lines or lines[0].split().count('PID')!=1:raise StopCapture('Malformed cleanup process-list header')
+        column=lines[0].split().index('PID');rows=[line.split() for line in lines[1:] if line.strip()]
+        if not rows or any(len(row)<=column or not row[column].isdigit() or int(row[column])<=0 for row in rows):
+            raise StopCapture('Malformed cleanup process-list PID rows')
+        return identity is not None and any(row[column]==str(identity['pid']) for row in rows)
+    def process_identity(timeout):
+        try:raw=device.adb('exec-out','cat','/proc/'+str(identity['pid'])+'/stat',raw=True,timeout=timeout).decode()
+        except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+            context['last_stat_read_error']={'class':type(error).__name__,'detail':str(error)[:512],'at':clock()}
+            raise
+        context['last_stat']={'raw':raw[:4096],'bytes':len(raw),'truncated':len(raw)>4096,'sha256':digest(raw.encode()),'at':clock()}
+        try:
+            fields=raw.rsplit(')',1)[1].split();context['last_stat']['state']=fields[0]
+            observed={'pid':int(raw.split('(',1)[0].strip()),'start_ticks':fields[19]}
+            if not observed['start_ticks'].isdigit():raise ValueError('Invalid startticks')
+        except (ValueError,IndexError):raise StopCapture('Malformed cleanup process lifetime') from None
+        return observed
+    try:
+        if identity is None:
+            if not launch_attempted:
+                context['status']='NOT_LAUNCHED_BY_THIS_RUN';success=True;return {'status':context['status']}
+            if pidof(device,timeout=timeout(1)):
+                processes(timeout(1))
+                raise StopCapture('Unknown post-launch game lifetime remains; owned container cleanup required')
+            timeout(1)
+            proof={'status':'NO_JP_PID_AFTER_LAUNCH_ATTEMPT','original_identity_unavailable':True}
+            durable(evidence/'owned-game-stop-proof.json',proof);context['status']=proof['status'];success=True;return proof
+        if processes(timeout(1)):
+            observed=process_identity(timeout(1));context['before_signal_identity']=observed
+            if observed!=identity:raise StopCapture('Refuse cleanup of changed owned game lifetime')
+            current=pidof(device,timeout=timeout(1));context['before_signal_package_pid']=current
+            if current!=str(identity['pid']):raise StopCapture('Owned package lifetime changed before force-stop')
+            observed=process_identity(timeout(1));context['at_signal_identity']=observed
+            if observed!=identity:raise StopCapture('Owned game lifetime changed at force-stop boundary')
+            context['force_stop_attempts']=1
+            try:
+                device.shell('am','force-stop',PACKAGE,timeout=timeout(2));context['force_stop_returned']=True
+            except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+                context['force_stop_returned']=False;context['force_stop_error']=type(error).__name__
+            deadline=min(clock()+5,game_end);context['poll_deadline']=deadline
+            def remaining():
+                value=deadline-clock()
+                if value<=0:raise StopCapture('Owned game lifetime absence was not proved within5seconds after force-stop')
+                return min(1,value)
+            while True:
+                present=processes(remaining());sample={'at':clock(),'expected_PID_present':present}
+                context['observations'].append(sample)
+                if not present:
+                    current=pidof(device,timeout=remaining());sample['package_pid']=current
+                    if current:raise StopCapture('A changed JP lifetime remains; owned container cleanup required')
+                    remaining()
+                    break
+                try:
+                    observed=process_identity(remaining());sample['identity']=observed
+                    if observed!=identity:raise StopCapture('Owned PID was reused during cleanup; replacement left untouched')
+                except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+                    sample['stat_read_error']=type(error).__name__  # Not an absence proof; re-read fresh PS.
+                pause(min(.1,remaining()))
+        elif pidof(device,timeout=timeout(1)):
+            raise StopCapture('A changed JP lifetime remains; owned container cleanup required')
+        timeout(1)
+        proof={'status':'OWNED_GAME_LIFETIME_ABSENT','identity':identity,
+            'force_stop_attempts':context['force_stop_attempts'],'processes_sha256':digest((last_ps+'\n').encode())}
+        durable(evidence/'owned-game-stop-proof.json',proof);context['status']=proof['status'];success=True;return proof
+    except BaseException as error:
+        context['failure']=type(error).__name__+': '+str(error)
+        raise
+    finally:
+        context['finished_at']=clock();context['elapsed_seconds']=clock()-started
+        psname='owned-game-stop-processes.txt' if success else 'owned-game-stop-failure-processes.txt'
+        contextname='owned-game-cleanup-context.json' if success else 'owned-game-cleanup-failure.json'
+        context['processes_file']=psname
+        (evidence/psname).write_text(last_ps+'\n' if last_ps is not None else 'No process-list result returned; see cleanup context.\n')
+        durable(evidence/contextname,context)
+
+
+def bounded_host_device(device,remaining):
+    """Carry the caller's fixed deadline through helper-internal cleanup too."""
+    class BoundedDevice:
+        def adb(self,*args,**kwargs):
+            kwargs['timeout']=min(kwargs.get('timeout',90),remaining())
+            result=device.adb(*args,**kwargs)
+            remaining()
+            return result
+    return BoundedDevice()
+
+
+def stop_owned_go(host,device,evidence,*,cleanup_deadline,clock=time.monotonic):
+    """Bound the unchanged tracked-child helper, including its finally reverse."""
+    started=clock();deadline=min(cleanup_deadline,started+18)
+    context={'started_at':started,'deadline':deadline,'limit_seconds':18}
+    def expired_cleanup(signum=None,frame=None):
+        # BaseException passes through the frozen helper's reverse `except Exception`.
+        interrupted=sys.exception()
+        if interrupted is not None:
+            context.setdefault('interrupted_helper_failure',type(interrupted).__name__+': '+str(interrupted))
+        raise WallBound('Fixed owned Go cleanup deadline reached')
+    def remaining():
+        left=deadline-clock()
+        if left<=0:expired_cleanup()
+        return left
+    previous=signal.signal(signal.SIGALRM,expired_cleanup)
+    try:
+        signal.setitimer(signal.ITIMER_REAL,remaining())
+        host.stop(bounded_host_device(device,remaining))
+        remaining()
+        if host.process is not None:
+            proof_path=evidence/'host-go-stop-proof.json'
+            if not proof_path.is_file() or not json.loads(proof_path.read_text()).get('clean_stop'):
+                raise StopCapture('Tracked Go helper did not prove a clean owned-child stop')
+        context['status']='TRACKED_CHILD_STOPPED'
+        return context['status']
+    except BaseException as error:
+        context['failure']=type(error).__name__+': '+str(error)
+        raise
+    finally:
+        signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,previous)
+        context['finished_at']=clock();context['elapsed_seconds']=clock()-started
+        durable(evidence/'owned-go-cleanup-deadline.json',context)
 
 
 def main():
@@ -219,7 +332,11 @@ def main():
         if device.shell('getprop','ro.product.cpu.abi',timeout=3)!='arm64-v8a':raise StopCapture('ARM64 device required')
         if re.search(r'frida[-_](?:agent|gadget|server)',device.shell('ps','-A',timeout=3),re.I):raise StopCapture('Unexpected observer process')
         if pidof(device):raise StopCapture('JP process already running before owned install')
-        host.start(device,timeout=45)
+        def host_control_remaining():
+            remaining=overall_end-time.monotonic()
+            if remaining<=0:raise WallBound('Fixed270second host fixture control deadline reached')
+            return remaining
+        host.start(bounded_host_device(device,host_control_remaining),timeout=45)
         device.adb('install','-r',str(args.client_apk),timeout=60)
         installed=device.shell('pm','path',PACKAGE,timeout=3).splitlines()
         if len(installed)!=1 or device.shell('sha256sum',installed[0].removeprefix('package:'),timeout=10).split()[0]!=APK:
@@ -264,6 +381,12 @@ def main():
                 if not other or service!=other:raise StopCapture('Exact native services dialog changed')
                 send('exact-JP-native-services-OK',list(center(other)),(first,second));continue
             if not first['surface']:raise StopCapture('Unknown native window captured; no input')
+            if not title_sent:
+                blank=uniform_startup_frame(first['png_bytes'],first['native_xml'],first['surface'])
+                if blank is not None:
+                    report.setdefault('startup_blank_observations',[]).append({'capture':first['id'],'color':blank,
+                        'surface':first['surface'],'input_performed':False,'deadline_renewed':False})
+                    save();continue
             geometry=chooser_geometry(first['png_bytes'])
             if geometry:
                 if not title_sent:raise StopCapture('Chooser appeared without this run ordinary Title input; captured only')
@@ -304,14 +427,15 @@ def main():
         report['traceback']=traceback.format_exc()
     finally:
         signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,previous)
+        cleanup_end=min(started+300,time.monotonic()+30)
         if identity is None and launch_attempted:
             try:lifetime()
             except BaseException as error:report['post_launch_identity_cleanup_note']=type(error).__name__
-        try:report['owned_game_cleanup']=stop_owned_game(device,identity,args.evidence,launch_attempted=launch_attempted)
+        try:report['owned_game_cleanup']=stop_owned_game(device,identity,args.evidence,launch_attempted=launch_attempted,cleanup_deadline=cleanup_end)
         except BaseException as error:
             report['owned_game_cleanup_error']=type(error).__name__+': '+str(error);report['status']='SHORT_CAPTURE_ONLY_CLEANUP_FAILED'
         try:
-            host.stop(device);report['owned_Go_cleanup']='TRACKED_CHILD_STOPPED'
+            report['owned_Go_cleanup']=stop_owned_go(host,device,args.evidence,cleanup_deadline=cleanup_end)
         except BaseException as error:
             report['owned_Go_cleanup_error']=type(error).__name__+': '+str(error);report['status']='SHORT_CAPTURE_ONLY_CLEANUP_FAILED'
         try:

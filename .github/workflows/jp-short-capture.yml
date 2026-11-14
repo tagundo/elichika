@@ -2,7 +2,7 @@ name: Short JP native reference capture only on exact C10
 
 on:
   push:
-    branches: [codex/android-client-qa-jp-short-capture-20261113-v2]
+    branches: [codex/android-client-qa-jp-short-capture-20261113-v3]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   capture:
-    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-jp-short-capture-20261113-v2'
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/android-client-qa-jp-short-capture-20261113-v3'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     env:

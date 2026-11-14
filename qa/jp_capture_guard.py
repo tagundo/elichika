@@ -160,6 +160,17 @@ def has_large_pale_panel(raw):
     return sum(min(pixel)>=235 for pixel in pixels)/len(pixels)>.80
 
 
+def uniform_startup_frame(raw,native_xml,surface):
+    """NO-input startup observation only, requiring a current full JP Game view."""
+    image=image_of(raw)
+    if native_surface(native_xml,image.size)!=surface:
+        raise StopCapture('Uniform startup frame lacks the current full native Surface')
+    extrema=image.getextrema()
+    if extrema==((0,0),(0,0),(0,0)):return 'black'
+    if extrema==((255,255),(255,255),(255,255)):return 'white'
+    return None
+
+
 def fresh_pair(first, second, *, identity, now, require_surface=True):
     if type(now) not in (int,float) or not math.isfinite(now):
         raise StopCapture('Invalid monotonic clock')
