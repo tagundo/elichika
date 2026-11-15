@@ -25,6 +25,11 @@ BASELINES = {
 IOS_MAIN_SHA = {'GL_Local':'071607a0b7e4d4e080af68ce9ce7c84cf279bf8e73e70ec9dc8cf1f3be1cd4dd',
  'GL':'071607a0b7e4d4e080af68ce9ce7c84cf279bf8e73e70ec9dc8cf1f3be1cd4dd',
  'JP':'32177423acdecfa39fce1c7ed9d4f18d6ad57ed980b39d5967229a5c56221e6a'}
+IOS_TRUSTED_ARCHIVE_SHA256 = frozenset(row[2] for key, row in BASELINES.items() if key.startswith('ios/'))
+IOS_FRAMEWORK_LINKS = {
+    'Payload/' + app + '.app/Frameworks/CydiaSubstrate.framework/Libraries/SubstrateInjection.dylib': b'SubstrateBootstrap.dylib'
+    for app in ('global', 'allstars')
+}
 
 
 def require(condition, message):
@@ -70,15 +75,33 @@ def fetch(url, target, size, expected):
     return target
 
 
-def inventory(archive):
+def ios_framework_link_target(archive, row, members):
+    """Only the immutable V5 framework link is allowed; never extracted."""
+    expected = IOS_FRAMEWORK_LINKS.get(row.filename)
+    require(expected is not None and row.create_system == 3 and row.file_size == len(expected), 'Unapproved iOS framework symlink')
+    with archive.open(row) as source:
+        payload = source.read(len(expected) + 1)
+    require(payload == expected, 'iOS framework symlink target differs from reviewed literal')
+    target = pathlib.PurePosixPath(payload.decode('ascii'))
+    require(not target.is_absolute() and '..' not in target.parts and '\\' not in str(target) and '\x00' not in str(target), 'Unsafe iOS framework symlink target')
+    resolved = (pathlib.PurePosixPath(row.filename).parent / target).as_posix()
+    target_row = members.get(resolved)
+    require(target_row is not None and stat.S_ISREG(target_row.external_attr >> 16) and not target_row.is_dir() and not target_row.flag_bits & 1, 'iOS framework symlink must target an existing regular framework member')
+    return resolved
+
+
+def inventory(archive, *, allow_ios_framework_links=False):
     rows = archive.infolist(); names = [x.filename for x in rows]
     require(len(rows) < 10000 and len(names) == len(set(names)), 'Duplicate/excessive ZIP members')
     require(sum(x.file_size for x in rows) <= 1024 * CHUNK, 'Excessive expanded ZIP')
+    members = {row.filename: row for row in rows}
     for row in rows:
         name = row.filename; path = pathlib.PurePosixPath(name)
         require(name and not path.is_absolute() and '..' not in path.parts and '\\' not in name and '\x00' not in name, 'Unsafe ZIP path')
-        mode = row.external_attr >> 16
-        require(not stat.S_ISLNK(mode) and not row.flag_bits & 1, 'Symlink/encrypted ZIP member')
+        require(not row.flag_bits & 1, 'Encrypted ZIP member')
+        if stat.S_ISLNK(row.external_attr >> 16):
+            require(allow_ios_framework_links, 'Symlink ZIP member outside a trusted iOS baseline')
+            ios_framework_link_target(archive, row, members)
     return rows
 
 
@@ -86,14 +109,24 @@ def apk_signature(name):
     return bool(re.fullmatch(r'META-INF/(?:MANIFEST\.MF|[^/]+\.(?:SF|RSA|DSA|EC))', name, re.I))
 
 
-def package(source, destination, replacements, *, android):
+def package(source, destination, replacements, *, android, trusted_ios_baseline_sha256=None):
     """Repack without extraction; prove every retained payload/metadata unchanged."""
     require(not destination.exists() and source.resolve() != destination.resolve(), 'Fresh distinct output required')
     require(replacements, 'Explicit replacement set required')
     before_sha = sha(source)
+    allow_ios_links = False
+    if trusted_ios_baseline_sha256 is not None:
+        require(not android and trusted_ios_baseline_sha256 in IOS_TRUSTED_ARCHIVE_SHA256 and before_sha == trusted_ios_baseline_sha256, 'Trusted released iOS baseline SHA256 required for framework links')
+        allow_ios_links = True
     retained, proof = [], []
     with zipfile.ZipFile(source) as old:
-        rows = inventory(old)
+        rows = inventory(old, allow_ios_framework_links=allow_ios_links)
+        members = {row.filename: row for row in rows}
+        protected = set()
+        for row in rows:
+            if stat.S_ISLNK(row.external_attr >> 16):
+                protected.update((row.filename, ios_framework_link_target(old, row, members)))
+        require(not protected.intersection(replacements), 'Replacing an iOS framework link or its target is forbidden')
         require(set(replacements) <= {x.filename for x in rows}, 'Replacement target absent')
         require(not android or set(replacements) == {'AndroidManifest.xml','classes.dex'}, 'Android replacement scope must be manifest+DEX only')
         if not android:
@@ -107,7 +140,7 @@ def package(source, destination, replacements, *, android):
                     shutil.copyfileobj(incoming,outgoing,CHUNK)
     attrs = ('filename','date_time','compress_type','comment','extra','create_system','external_attr','internal_attr','volume')
     with zipfile.ZipFile(source) as old, zipfile.ZipFile(destination) as new:
-        rows = inventory(new)
+        rows = inventory(new, allow_ios_framework_links=allow_ios_links)
         require(len(rows) == len(retained) and new.comment == old.comment, 'ZIP member count/comment changed')
         for a,b in zip(retained,rows):
             require(all(getattr(a,k) == getattr(b,k) for k in attrs), 'ZIP metadata/order changed: ' + a.filename)
@@ -179,7 +212,7 @@ def build_all(build, work, sdk):
             require(not any(x.filename.startswith(prefix+'_CodeSignature/') or x.filename==prefix+'embedded.mobileprovision' for x in z.infolist()),'Unexpected resource seal/provision in PlayCover baseline')
             plist.write_bytes(update_ios_info_plist(z.read(prefix+'Info.plist'),build))
         dest=out/output_filename('ios',variant,build)
-        proof=package(baseline,dest,{prefix+'Info.plist':plist,prefix+'Frameworks/SIFASFeatures.dylib':helper},android=False)
+        proof=package(baseline,dest,{prefix+'Info.plist':plist,prefix+'Frameworks/SIFASFeatures.dylib':helper},android=False,trusted_ios_baseline_sha256=digest)
         require(next(p['sha256'] for p in proof if p['name']==prefix+app)==IOS_MAIN_SHA[variant],'V5 native hook executable changed')
         report={'status':'ADHOC_PLAYCOVER_CANDIDATE_NOT_RUNTIME_TESTED','variant':variant,'platform':'ios','build':build.canonical,'source':{'url':BASE_URL+name,'bytes':size,'sha256':digest},'output':{'name':dest.name,'bytes':dest.stat().st_size,'sha256':sha(dest)},'members':proof,'V5_executable_byte_identical':True,'material_backend':'same five units; preserved V5 core/backend/bindings/log source pins','signing':'ld64.lld helper ad-hoc; unchanged ad-hoc executable; no Apple provisioning','runtime':'NOT_TESTED'}
         (out/(dest.name+'.proof.json')).write_text(json.dumps(report,sort_keys=True)+'\n');results.append(report['output'])

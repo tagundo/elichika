@@ -1,0 +1,13 @@
+{
+  "actual_build": "NOT_YET",
+  "actual_v2_fix_tests": "18package+14metadata PASS byagent; text-only v3 usage addition",
+  "changes_from_v2": [
+    "android/FovMod.java localized hint explicitly names FOV and two-second hold",
+    "README.md adds user controls in Korean English Japanese and iOS hide/reopen"
+  ],
+  "parent_v2_lock_sha256": "88a180cb17e06e7121e7536c37cf06acfe10db5197772de80787770fc8f34690",
+  "schema": 1,
+  "source_directory": "/tmp/sifas-date-client-pipeline-v3-source-20261115",
+  "source_lock_sha256": "3811620e7e47ec854fc9976dc5f0899191e0f9c06d0a39527561bfcf4c373b15",
+  "status": "ROOT_REVIEWED_SOURCE_WITH_EXPLICIT_FOV_USAGE"
+}

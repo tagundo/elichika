@@ -1,12 +1,12 @@
 {
   "files": {
     "README.md": {
-      "bytes": 5631,
-      "sha256": "3d4e5c5a4dea081a7d77ffe568ba48a604f8c589e0eaa1480225924fec51ebd8"
+      "bytes": 6230,
+      "sha256": "19a0b17c822b290212fae26f927b44423be56b79174fcf27ad9f3dfcf8792127"
     },
     "android/FovMod.java": {
-      "bytes": 21287,
-      "sha256": "d2281465bda586f2987b90d7a813e18438235501df578a24638a3bd16a6ea69e"
+      "bytes": 21316,
+      "sha256": "6a8fae4717d0389cf8bc60004cc97c4f10f65d95b335988c3f0aae1b265da484"
     },
     "android/GestureStateTest.java": {
       "bytes": 4470,
@@ -29,12 +29,12 @@
       "sha256": "5d86105397dc6887fd40d692744755469e331aba029e4d2c860376af66b605d2"
     },
     "client_pipeline.py": {
-      "bytes": 14054,
-      "sha256": "739622183ce6137f371bdaaaffe08ff29d5c49254d46c7410a68a4523130e419"
+      "bytes": 16502,
+      "sha256": "f1d81d1cc26b977e95e0108e7c651026c76b63e84bb176d3cffd41d007de1984"
     },
     "date-client-candidates.workflow.yml.template": {
-      "bytes": 3210,
-      "sha256": "eb8d1399e645c8ae64ec1b91c4f7804a0aa1497bf2593d4a498fe2f9f62581bb"
+      "bytes": 3310,
+      "sha256": "79bdd53d090bbfadc02d4282e4a2d933b8a033abb762e9451b78a6acca270cb7"
     },
     "ios/src/AppleABI.h": {
       "bytes": 8862,
@@ -145,8 +145,8 @@
       "sha256": "27b75fec83829d98de1a46dc2ddbcf1a4e4449189dcfff41c19ceebf322f31fe"
     },
     "test_client_pipeline.py": {
-      "bytes": 6221,
-      "sha256": "b5042415faa4336614611a1436d0fdf187b64499db5ba459e290f0db84799450"
+      "bytes": 12209,
+      "sha256": "824e2576eb869990cd690d5e985b072a0101ec7b0b3d47de2e943c593d1b1beb"
     }
   },
   "kind": "source-only-date-client-build-input-lock",

@@ -91,3 +91,10 @@ Limitations before activation: real hosted SDK package/jar availability and all
 five candidate builds have not run; the whole runner recipe has no runtime
 result. The source kit intentionally fails if baseline, dependency, source,
 archive path/scope, payload identity or explicit SDK assumptions differ.
+
+## Client controls
+
+- Android: in game, hold the top-right corner for 2 seconds to open FOV settings. Saving returns to the current game.
+- 한국어: 게임 화면 오른쪽 위를 2초간 길게 누르면 FOV 설정창을 열 수 있습니다. 저장하면 진행 중인 게임 화면으로 돌아갑니다.
+- 日本語: ゲーム画面の右上を2秒間長押しするとFOV設定を開けます。保存すると元のゲーム画面に戻ります。
+- PlayCover/iOS: Settings is visible initially. You can hide its button from the menu; hold the top-right corner for 2 seconds to reopen it.

@@ -142,12 +142,12 @@ public final class FovMod {
 
     public static String getMenuHint(Context context) {
         String lang = preferences(context).getString("lang", Locale.getDefault().getLanguage());
-        if (lang.startsWith("ko")) return "게임 화면 오른쪽 위를 2초 동안 누르면 설정이 열립니다. 저장하면 기존 게임 화면으로 돌아갑니다.";
-        if (lang.startsWith("ja")) return "ゲーム画面の右上を2秒間長押しすると設定が開きます。保存すると元のゲーム画面に戻ります。";
+        if (lang.startsWith("ko")) return "게임 화면 오른쪽 위를 2초간 길게 누르면 FOV 설정창을 열 수 있습니다. 저장하면 기존 게임 화면으로 돌아갑니다.";
+        if (lang.startsWith("ja")) return "ゲーム画面の右上を2秒間長押しするとFOV設定を開けます。保存すると元のゲーム画面に戻ります。";
         if (lang.startsWith("zh")) return lang.contains("Hant") || lang.contains("TW")
-            ? "在遊戲中長按右上角 2 秒即可開啟設定。儲存後返回目前的遊戲。"
-            : "在游戏中长按右上角 2 秒即可打开设置。保存后返回当前游戏。";
-        return "In game, hold the top-right corner for 2 seconds to open these settings. Save returns to the current game.";
+            ? "在遊戲中長按右上角 2 秒即可開啟 FOV 設定。儲存後返回目前的遊戲。"
+            : "在游戏中长按右上角 2 秒即可打开 FOV 设置。保存后返回当前游戏。";
+        return "In game, hold the top-right corner for 2 seconds to open FOV settings. Save returns to the current game.";
     }
 
     /** Android-independent state machine; ordinary touches remain unconsumed. */
