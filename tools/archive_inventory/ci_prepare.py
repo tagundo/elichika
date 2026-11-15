@@ -116,6 +116,8 @@ def main():
                    "target_manifest_sha256": config["target_manifest_sha256"],
                    "supplement_proof_sha256": config["supplement_proof_sha256"],
                    "requested_total": 42830}
+        receipt.update(upload_mode="ONE_OWNED_STAGED_OBJECT_DIAGNOSTIC", max_new_files=1,
+                       index_publication_authorized=False)
         (combined / "prepared-inputs-receipt.json").write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
         print(json.dumps(receipt, sort_keys=True))
     elif args.command == "work":
@@ -124,7 +126,7 @@ def main():
         started = int((temp / "elichika-upload-budget-start").read_text())
         # Finite subprocess ends before the job limit, preserving durable receipts.
         elapsed = max(0, int(time.time()) - started)
-        seconds = min(320 * 60, 330 * 60 - elapsed)
+        seconds = min(5 * 60, 8 * 60 - elapsed)
         check(seconds >= 60, "No safe upload time remains in this attempt")
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             output.write("seconds=" + str(seconds) + "\n")

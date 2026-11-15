@@ -115,7 +115,8 @@ class SourceTests(unittest.TestCase):
 
 def seed_config():
     identity = copy.deepcopy(p.JOURNAL_SEED_IDENTITY)
-    config = {"journal_seed": copy.deepcopy(p.JOURNAL_SEED), "activate_upload": True, "requested_total": 42830}
+    config = {"journal_seed": copy.deepcopy(p.JOURNAL_SEED), "activate_upload": True, "requested_total": 42830,
+              "diagnostic": copy.deepcopy(p.DIAGNOSTIC_SCOPE)}
     for config_key, identity_key in (
         ("account", "account"), ("session_nonce", "session"),
         ("inventory_sha256", "inventory_sha256"),
@@ -186,7 +187,7 @@ class SeedResumeTests(unittest.TestCase):
 
     def test_seed_config_pins_cannot_be_replaced_with_another_matching_run(self):
         for key, value in (("run_id", 99), ("source_commit", "b" * 40),
-                           ("artifact_id", 99), ("prior_attempts", 0), ("prior_attempts", 2),
+                           ("artifact_id", 99), ("prior_attempts", 0), ("prior_attempts", 1),
                            ("rawfilehashes", {"journal.json": "0" * 64, "journal.events.jsonl": "0" * 64})):
             with self.subTest(key=key):
                 config = copy.deepcopy(self.config)
@@ -207,17 +208,19 @@ class SeedResumeTests(unittest.TestCase):
         with self.assertRaises(p.Stop):
             p.resume_identity(self.config, self.current, str(self.seed["run_id"]), 1, self.fetch)
 
-    def test_seeded_current_run_has_only_four_new_attempts(self):
-        previous = {**self.current, "status": "completed", "conclusion": "failure", "run_attempt": 3}
-        paths = []
-        def fetch(path):
-            paths.append(path)
-            return previous
-        self.assertEqual(p.resume_identity(self.config, self.current, "", 4, fetch),
-                         ("123", "elichika-individual-upload-journal-attempt-3", "same_run"))
-        self.assertEqual(paths, ["/repos/tagundo/elichika/actions/runs/123/attempts/3"])
-        with self.assertRaises(p.Stop):
-            p.resume_identity(self.config, self.current, "", 5, fetch)
+    def test_diagnostic_allows_exactly_one_attempt_without_api_retry(self):
+        for attempt in (0, 2, 3, 4, 5, 6):
+            with self.subTest(attempt=attempt), self.assertRaises(p.Stop):
+                p.resume_identity(self.config, self.current, "", attempt,
+                                  lambda _: self.fail("No API call on disallowed attempt"))
+
+    def test_diagnostic_scope_cannot_select_another_file_or_full_upload(self):
+        for key, value in (("name", "other"), ("max_new_files", 2), ("workers", 4),
+                           ("max_attempts", 2), ("index_publication", True)):
+            config = copy.deepcopy(self.config)
+            config["diagnostic"][key] = value
+            with self.subTest(key=key), self.assertRaises(p.Stop):
+                p.resume_identity(config, self.current, "", 1, self.fetch)
 
 
 class SeedWorkTests(unittest.TestCase):

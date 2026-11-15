@@ -1,4 +1,4 @@
-name: Upload complete individual game assets
+name: Diagnose one owned pending game asset PUT
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   upload:
     runs-on: ubuntu-24.04
-    timeout-minutes: 345
+    timeout-minutes: 10
     steps:
       - name: Start finite attempt budget
         run: |
@@ -42,7 +42,7 @@ jobs:
       - name: Run synthetic transfer, merge and workflow safety tests
         timeout-minutes: 5
         working-directory: tools/archive_inventory
-        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler test_reaggregate_target test_ci_preflight
+        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler test_reaggregate_target test_ci_preflight test_diagnostic_put
       - name: Download unchanged original TAR proofs
         uses: actions/download-artifact@v4
         timeout-minutes: 10
@@ -95,9 +95,9 @@ jobs:
         run: |
           python3 -B ci_prepare.py work
           python3 -B ci_prepare.py budget
-      - name: Upload complete originals with ephemeral protected credentials
+      - name: Diagnose exactly one reviewed STAGED object with protected credentials
         if: steps.pins.outputs.activate_upload == 'true'
-        timeout-minutes: 325
+        timeout-minutes: 6
         env:
           ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
           ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
@@ -134,7 +134,8 @@ jobs:
             --supplemental-metadata-sha256 0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5 \
             --supplemental-proof "$RUNNER_TEMP/elichika-supplement-inputs/supplement-proof.json" \
             --supplemental-proof-sha256 "$(python3 -c 'import json; print(json.load(open("activation.json"))["supplement_proof_sha256"])')" \
-            --requested-total 42830 --workers 4 --stage-budget 100663296 \
+            --requested-total 42830 --workers 1 --stage-budget 100663296 \
+            --max-new-files 1 --diagnostic-name 00jst0 \
             --work "$RUNNER_TEMP/elichika-ia-upload-work" \
             --auth-file "$RUNNER_TEMP/elichika-ia-upload-auth/auth.json"
       - name: Preserve only safe durable journal and public publication receipt
@@ -147,5 +148,6 @@ jobs:
             ${{ runner.temp }}/elichika-ia-upload-work/journal.json
             ${{ runner.temp }}/elichika-ia-upload-work/journal.events.jsonl
             ${{ runner.temp }}/elichika-ia-upload-work/publication.json
+            ${{ runner.temp }}/elichika-ia-upload-work/diagnostic.json
           if-no-files-found: warn
           retention-days: 30

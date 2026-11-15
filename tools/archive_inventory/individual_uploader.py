@@ -31,6 +31,8 @@ import urllib.parse
 import urllib.request
 import uuid
 
+from ia_s3_errors import S3_CODES, response_summary
+
 CHUNK = 1024 * 1024
 SOURCE_ITEM = "llsifas-elichika-static-data"
 SUPPLEMENT_ITEM = "love-live-all-stars"
@@ -42,6 +44,9 @@ DISK_RESERVE = 64 * 1024 * 1024
 OWNER_VISIBILITY_SECONDS = 900
 OWNER_POLL_MAX_SECONDS = 30
 OWNER_POLL_ATTEMPTS = 32
+DIAGNOSTIC_OBJECT = {"name": "00jst0", "bucket": 8, "size": 9688,
+                     "md5": "59d3c0f357b61893c19d46c119b76de2",
+                     "sha256": "97455d0c890c0f9a3f6540d1d5236ad2a7287b40e0d3b0d8b37a3b65b208c137"}
 NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
 IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9._-]{4,79}\Z")
 HEX = {n: re.compile(r"[0-9a-f]{%d}\Z" % n) for n in (32, 40, 64)}
@@ -794,6 +799,9 @@ class S3:
     def last_failure_category(self):
         return getattr(self.diagnostics, "last_failure", "UNSPECIFIED_TRANSIENT")
 
+    def last_response_summary(self):
+        return dict(getattr(self.diagnostics, "last_response", response_summary(None, b"")))
+
     def put(self, item, key, path, size, sha256, md5, headers, progress):
         require(IDENTIFIER.fullmatch(item) and item not in (SOURCE_ITEM, SUPPLEMENT_ITEM) and not key.startswith("/") and all(p not in ("", ".", "..") for p in key.split("/")), "Invalid upload destination")
         started = time.monotonic()
@@ -805,6 +813,7 @@ class S3:
         connection, reusable = None, False
         started = time.monotonic()
         self.diagnostics.last_failure = "UNSPECIFIED_TRANSIENT"
+        self.diagnostics.last_response = response_summary(None, b"")
         try:
             connection = self.connection()
             require(file_identity(os.fstat(fd)) == identity, "Stage replaced before upload")
@@ -838,6 +847,9 @@ class S3:
             body = response.read(65537)
             require(len(body) <= 65536 and not response.read(1), "S3 response exceeds bounded complete body")
             require(length is None or len(body) == int(length), "S3 response body is truncated")
+            self.diagnostics.last_response = response_summary(status, body)
+            if not 200 <= status < 300:
+                print(json.dumps({"s3_response": self.diagnostics.last_response}, sort_keys=True), flush=True)
             if status in (429, 500, 502, 503, 504):
                 return False, retry
             require(200 <= status < 300, f"S3 PUT rejected with HTTP {status}; redirects are forbidden")
@@ -1044,6 +1056,7 @@ class Publisher:
 
     def put_retry(self, item, key, path, size, sha256, md5, headers):
         last_failure = "UNSPECIFIED_TRANSIENT"
+        diagnostic_mode = getattr(getattr(self, "args", None), "max_new_files", 0) == 1
         for attempt in range(5):
             if attempt:
                 files = self.files(item)
@@ -1051,8 +1064,22 @@ class Publisher:
                     require(remote_equal(files[key], size, md5), "Existing remote object differs; never overwrite")
                     return False  # accepted through public reconciliation, not a new observed PUT ACK
             ok, delay = self.s3.put(item, key, path, size, sha256, md5, headers, self.progress)
+            diagnostic = getattr(self.s3, "last_response_summary", lambda: response_summary(None, b""))()
+            # Only our allowlisted parser output is emitted. Messages, bodies,
+            # request URLs and authentication never enter diagnostic output.
+            safe = {"http_status": diagnostic.get("http_status"), "xml_code": diagnostic.get("xml_code", "UNKNOWN"),
+                    "spam_refusal": diagnostic.get("spam_refusal") is True}
+            safe = response_summary(safe["http_status"], b"") | {
+                "xml_code": safe["xml_code"] if isinstance(safe["xml_code"], str) and safe["xml_code"] in S3_CODES else "UNKNOWN",
+                "spam_refusal": safe["spam_refusal"]}
+            if diagnostic_mode or not ok:
+                print(json.dumps({"s3_response": safe}, sort_keys=True), flush=True)
             if ok:
                 return True
+            require(not diagnostic_mode,
+                    "Diagnostic PUT did not acknowledge; no retry or index publication was attempted")
+            require(safe["http_status"] != 503 and not safe["spam_refusal"],
+                    "S3 refusal/503 requires reviewed category-specific policy; no blind retry")
             last_failure = getattr(self.s3, "last_failure_category", lambda: "UNSPECIFIED_TRANSIENT")()
             allowed_categories = {"UNSPECIFIED_TRANSIENT", "TIMEOUT", "TLS_ERROR", "REMOTE_DISCONNECTED", "CONNECTION_RESET", "BROKEN_PIPE", "HTTP_PROTOCOL_ERROR", "NETWORK_IO_ERROR"}
             if last_failure not in allowed_categories and not (isinstance(last_failure, str) and re.fullmatch(r"HTTP [1-5][0-9]{2}", last_failure)):
@@ -1062,6 +1089,38 @@ class Publisher:
                 time.sleep(max(delay, min(60, 2 ** attempt)))
                 self.progress.observe("s3_retry_wait", time.monotonic() - started)
         raise Failure(f"Bounded S3 PUT retries exhausted; last failure: {last_failure}; public metadata will be checked before resume")
+
+    def diagnostic_one(self, name):
+        """Exactly one known STAGED object, never an index or filtered target."""
+        require(self.args.workers == 1 and getattr(self.args, "max_new_files", 0) == 1,
+                "Diagnostic mode requires one worker and an explicit one-file cap")
+        require(name in self.inputs.objects and len(self.inputs.objects) == 42830,
+                "Diagnostic name must belong to the unchanged complete target")
+        obj = self.inputs.objects[name]
+        require(name == DIAGNOSTIC_OBJECT["name"] and obj["size"] == DIAGNOSTIC_OBJECT["size"] and
+                obj["sha256"] == DIAGNOSTIC_OBJECT["sha256"] and bucket_for(name) == DIAGNOSTIC_OBJECT["bucket"],
+                "Diagnostic object differs from the one statically reviewed source object")
+        item = self.prefix + f"-b{bucket_for(name):02d}"
+        old = self.journal.value["objects"].get(name)
+        require(old is not None and old.get("status") == "STAGED" and old.get("size") == obj["size"] and
+                old.get("sha256") == obj["sha256"] and old.get("item") == item and old.get("path") == obj["path"] and
+                old.get("md5") == DIAGNOSTIC_OBJECT["md5"],
+                "Diagnostic mode requires this exact owned STAGED journal object")
+        require(not self.journal.value["index_objects"], "Diagnostic mode refuses a published index journal")
+        existing = self.files(item)
+        require(existing is None or obj["path"] not in existing,
+                "Diagnostic destination already appears publicly; no PUT is authorized")
+        total = sum(o["size"] for n, o in self.inputs.objects.items() if bucket_for(n) == bucket_for(name))
+        self.one(name, obj, item, existing, self.headers(item, total), defer_invisible_ack=True)
+        require(self.journal.value["objects"][name].get("status") == "PUT_ACKNOWLEDGED",
+                "Diagnostic completed without a new verified PUT acknowledgement")
+        receipt = {"schema": 1, "mode": "ONE_OWNED_STAGED_OBJECT", "status": "PUT_ACKNOWLEDGED_ONLY",
+                   "name": name, "new_files": 1, "target_objects": len(self.inputs.objects),
+                   "inventory_sha256": self.inputs.inventory_sha, "index_published": False,
+                   "verification": "Original staged SHA256, IA Content-MD5 and successful matching ETag; global metadata verification remains pending"}
+        atomic_json(self.work.path / "diagnostic.json", receipt)
+        self.journal.status("DIAGNOSTIC_ONLY_INDEX_UNPUBLISHED")
+        return receipt
 
     def one(self, name, obj, item, existing, headers, *, defer_invisible_ack=False):
         with self.budget.hold(obj["size"]):
@@ -1437,6 +1496,8 @@ def parser():
     root.add_argument("--auth-file")
     root.add_argument("--work")
     root.add_argument("--workers", type=int, default=1, choices=(1, 2, 3, 4))
+    root.add_argument("--max-new-files", type=int, default=0, choices=(0, 1), help="1 permits one reviewed owned STAGED object only and never publishes an index")
+    root.add_argument("--diagnostic-name", help="Required exact owned STAGED object for --max-new-files1")
     root.add_argument("--stage-budget", type=int, default=DEFAULT_BUDGET)
     root.add_argument("--collection", default="opensource_media", choices=("opensource_media",))
     root.add_argument("--requested-total", type=int, default=42830, help="User-requested target total; names still require an authoritative target manifest")
@@ -1452,6 +1513,9 @@ def parser():
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
+        require((args.max_new_files == 0 and args.diagnostic_name is None) or
+                (args.command == "upload" and args.max_new_files == 1 and args.workers == 1 and args.diagnostic_name is not None),
+                "One-file diagnostic requires upload, workers1, max-new-files1 and an exact diagnostic name")
         inputs = Inputs(args)
         if args.command == "plan":
             prefix = args.prefix or "elichika-assets-20261115-" + inputs.inventory_sha[:8] + "-SESSION"
@@ -1470,10 +1534,14 @@ def main(argv=None):
             publisher.journal.status("STAGING")
             receipt = work.path / "publication.json"
             if receipt.exists():
+                require(not args.max_new_files, "Diagnostic mode refuses an existing publication receipt")
                 info = receipt.lstat()
                 require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid(), "Existing local publication receipt is unsafe")
                 receipt.unlink()
             publisher.progress.start()
+            if args.max_new_files == 1:
+                publisher.diagnostic_one(args.diagnostic_name)
+                return 0
             publisher.data()
             publisher.publish_index()
             return 0

@@ -11,19 +11,21 @@ import urllib.request
 
 
 JOURNAL_SEED = {
-    "run_id": 43690574180,
-    "source_commit": "0de159c078c57f540c38a41bfb1fb90d9209a71e",
+    "run_id": 43695514757,
+    "source_commit": "7afc12a27b38dee60b926546b3f716afd75bc00d",
     "run_attempt": 1,
-    "artifact_id": 14152079681,
+    "artifact_id": 14153389501,
     "name": "elichika-individual-upload-journal-attempt-1",
-    "artifact_bytes": 32687,
-    "digest": "sha256:d4b736477408c6b899c1890ab35ee19d9115c72237a479daa0f53bd5697a8f95",
+    "artifact_bytes": 33346,
+    "digest": "sha256:8d5c7a092103540a1a39d0fbe05e683429216ed03d474f2d110e511dc8a5cd01",
     "rawfilehashes": {
         "journal.json": "76fc8a69c26b5830014401e54605b2e50ed22d458dd55301668609b3f61c7629",
-        "journal.events.jsonl": "99f589c73973dc8bd671811d83bf1a7e9c03fb5cf4416a34f0e1ae8a2d398c95",
+        "journal.events.jsonl": "08b271a1fe47f23236c4a0a501db04a89ec3b57bb05a9ead687746dd0483ffa6",
     },
-    "prior_attempts": 1,
+    "prior_attempts": 2,
 }
+DIAGNOSTIC_SCOPE = {"name": "00jst0", "max_new_files": 1, "workers": 1,
+                    "max_attempts": 1, "index_publication": False}
 JOURNAL_SEED_IDENTITY = {
     "account": "tagundo", "allow_partial": False,
     "catalog_sha256": "0aa7c4b4cbc70f71298c47fb378b5a2d19d25a71f39907a37d14d45d5bded0ee",
@@ -55,8 +57,10 @@ def validate_seed(config):
     check(isinstance(seed, dict) and seed == JOURNAL_SEED,
           "Journal seed differs from the one statically reviewed prior run")
     check(type(seed["prior_attempts"]) is int and type(seed["run_attempt"]) is int and
-          seed["prior_attempts"] == seed["run_attempt"] == 1,
-          "Only one reviewed prior attempt may seed this run")
+          seed["prior_attempts"] == 2 and seed["run_attempt"] == 1,
+          "Only the fixed V3 plus V4 attempt history may seed this diagnostic")
+    check(config.get("diagnostic") == DIAGNOSTIC_SCOPE,
+          "Only one statically reviewed diagnostic object and attempt are authorized")
     identity = JOURNAL_SEED_IDENTITY
     check(config.get("activate_upload") is True and config.get("account") == identity["account"] and
           config.get("session_nonce") == identity["session"] and
@@ -97,6 +101,8 @@ def load_config(base):
         check(isinstance(config.get("inventory_sha256"), str) and
               re.fullmatch(r"[0-9a-f]{64}", config["inventory_sha256"]) is not None,
               "Activation is missing the reviewed complete inventory SHA256")
+        check(config.get("diagnostic") == DIAGNOSTIC_SCOPE and "journal_seed" in config,
+              "This activation authorizes only the fixed one-file diagnostic")
     else:
         check(config.get("inventory_sha256") is None, "Read-only plan must not pretend to pin an unreviewed inventory")
     if "journal_seed" in config:
@@ -115,6 +121,8 @@ def resume_identity(config, current, requested, attempt, fetch=api):
     check(not requested, "Cross-run journal continuation is disabled; re-run the same failed job")
     seed = validate_seed(config) if "journal_seed" in config else None
     prior_attempts = seed["prior_attempts"] if seed else 0
+    if seed:
+        check(attempt == 1, "The controlled diagnostic permits exactly one run attempt; no automatic rerun")
     check(type(attempt) is int and 1 <= attempt and prior_attempts + attempt <= 5,
           "At most five total bounded attempts, including the reviewed seed, are allowed")
     run_id = os.environ["GITHUB_RUN_ID"]
