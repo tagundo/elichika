@@ -1,0 +1,59 @@
+{
+  "activated": false,
+  "directory": "/tmp/date-client-artifact-split-20261115",
+  "files": {
+    "README.md": {
+      "bytes": 2817,
+      "sha256": "33adbf79417625f3bdd3cbc3e6bc5713893f5b798d62292e07f912b97ab06ad5"
+    },
+    "date-client-artifact-export.yml": {
+      "bytes": 4533,
+      "sha256": "373bb09a3e5a054dfd13dbce5b6be2e1b9a4b144b6a6c5a2490759f1f92eb3ef"
+    },
+    "export-recipe.json": {
+      "bytes": 1676,
+      "sha256": "6056aa349df1510f4f9b147babb794275b41771e135ea4698a7f6156d58331bf"
+    },
+    "split_candidates.py": {
+      "bytes": 5788,
+      "sha256": "263c1965b1e2824bb9d964ee7523b9fe4058126b4c97f65b1ced7f494071aaea"
+    },
+    "test_split_candidates.py": {
+      "bytes": 7329,
+      "sha256": "54fa7411efd3ac0ea339da6a9b21d7ebee9bf360ddf993068639b26ccd162576"
+    },
+    "tests.log": {
+      "bytes": 1511,
+      "sha256": "8825f7e79a8463ac6be8a571031e40e1e3781bf446bfafc82c029209e3ff8c34"
+    }
+  },
+  "independent_review": "PASS: exactsourceZIP/run/artifactpins; SUMS+proof+receipt identities; unchangedstreamedcandidatebytes; safe boundedmetadata; finitejob; success-gatedexports; no blocking issue",
+  "remaining": "Root review frozen source hashes, create own remote source branch, activate hosted export; no main/default or release writes needed",
+  "schema": 1,
+  "source_artifact_bytes": 344090806,
+  "source_artifact_id": 14151027288,
+  "source_artifact_sha256": "4c5f938730532fe51ac9b1d215684299e7f4d8ecb07ca94fc02f202d694075a5",
+  "source_commit": "cb40d8337e4d986cd2918c9bb595348996c4898c",
+  "source_run_id": 43686835093,
+  "status": "SOURCE_ONLY_READY_FOR_ROOT_ACTIVATION",
+  "tests": {
+    "actual_payload_downloads": 0,
+    "builds": 0,
+    "credentials_read": false,
+    "methods": 11,
+    "remote_or_account_actions": 0,
+    "result": "PASS",
+    "signing": 0
+  },
+  "workflow": {
+    "branch": "codex/sifas-date-artifact-export-20261115",
+    "candidate_artifacts": 5,
+    "candidate_compression_level": 0,
+    "download_timeout_minutes": 8,
+    "install_path": ".github/workflows/date-client-artifact-export.yml",
+    "job_minutes": 20,
+    "metadata_artifacts": 1,
+    "metadata_compression_level": 9,
+    "source_path": "ci/date_client_artifact_split"
+  }
+}

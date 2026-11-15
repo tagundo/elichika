@@ -1,0 +1,16 @@
+test_refuses_overwrite_and_output_path_conflicts (test_split_candidates.SplitTests.test_refuses_overwrite_and_output_path_conflicts) ... ok
+test_rejects_corrupt_payload_even_when_outer_zip_repinned (test_split_candidates.SplitTests.test_rejects_corrupt_payload_even_when_outer_zip_repinned) ... ok
+test_rejects_duplicate_zip_member (test_split_candidates.SplitTests.test_rejects_duplicate_zip_member) ... ok
+test_rejects_encrypted_and_symlink_outer_entry (test_split_candidates.SplitTests.test_rejects_encrypted_and_symlink_outer_entry) ... ok
+test_rejects_outer_digest_and_size_mismatch (test_split_candidates.SplitTests.test_rejects_outer_digest_and_size_mismatch) ... ok
+test_rejects_path_member (test_split_candidates.SplitTests.test_rejects_path_member) ... ok
+test_rejects_proof_native_or_receipt_conflict (test_split_candidates.SplitTests.test_rejects_proof_native_or_receipt_conflict) ... ok
+test_rejects_sum_duplicate_and_conflict (test_split_candidates.SplitTests.test_rejects_sum_duplicate_and_conflict) ... ok
+test_rejects_wrong_build_source_lock (test_split_candidates.SplitTests.test_rejects_wrong_build_source_lock) ... ok
+test_rejects_wrong_run_source_or_status (test_split_candidates.SplitTests.test_rejects_wrong_run_source_or_status) ... ok
+test_streamed_payloads_and_original_metadata_preserved (test_split_candidates.SplitTests.test_streamed_payloads_and_original_metadata_preserved) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.013s
+
+OK

@@ -1,0 +1,52 @@
+{
+  "build": "2026.11.15.1",
+  "candidates": [
+    {
+      "artifact": "dateclient-2026.11.15.1-android-gl-unsigned",
+      "directory": "android-gl",
+      "name": "LLAS_GL_FOVMOD_2026.11.15.1-unsigned.apk",
+      "platform": "android",
+      "variant": "GL"
+    },
+    {
+      "artifact": "dateclient-2026.11.15.1-android-jp-unsigned",
+      "directory": "android-jp",
+      "name": "LLAS_JP_FOVMOD_2026.11.15.1-unsigned.apk",
+      "platform": "android",
+      "variant": "JP"
+    },
+    {
+      "artifact": "dateclient-2026.11.15.1-ios-gl-local-adhoc",
+      "directory": "ios-gl-local",
+      "name": "SIFAS_GL_Local_3.12.0_PlayCover_2026.11.15.1_candidate.ipa",
+      "platform": "ios",
+      "variant": "GL_Local"
+    },
+    {
+      "artifact": "dateclient-2026.11.15.1-ios-gl-adhoc",
+      "directory": "ios-gl",
+      "name": "SIFAS_GL_3.12.0_PlayCover_2026.11.15.1_candidate.ipa",
+      "platform": "ios",
+      "variant": "GL"
+    },
+    {
+      "artifact": "dateclient-2026.11.15.1-ios-jp-adhoc",
+      "directory": "ios-jp",
+      "name": "SIFAS_JP_3.12.0_PlayCover_2026.11.15.1_candidate.ipa",
+      "platform": "ios",
+      "variant": "JP"
+    }
+  ],
+  "metadata_artifact": "dateclient-2026.11.15.1-proof-metadata",
+  "repository": "tagundo/elichika",
+  "schema": 1,
+  "source_artifact": {
+    "bytes": 344090806,
+    "id": 14151027288,
+    "name": "sifas-date-candidates-2026.11.15.1",
+    "sha256": "4c5f938730532fe51ac9b1d215684299e7f4d8ecb07ca94fc02f202d694075a5"
+  },
+  "source_commit": "cb40d8337e4d986cd2918c9bb595348996c4898c",
+  "source_lock_sha256": "3811620e7e47ec854fc9976dc5f0899191e0f9c06d0a39527561bfcf4c373b15",
+  "source_run_id": 43686835093
+}
