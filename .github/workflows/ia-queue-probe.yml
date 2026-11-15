@@ -1,0 +1,37 @@
+name: Read-only owned Archive queue diagnostic
+on:
+  push:
+    branches: [codex/ia-queue-diagnostic-20261115]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: elichika-readonly-queue-diagnostic
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/ia_queue_probe
+      - name: Test response redaction and GET-only bounds with tiny mocks
+        working-directory: tools/ia_queue_probe
+        run: python3 -B -m unittest -v test_ia_queue_probe
+      - name: Read only the authorized account and three owned bucket limits
+        working-directory: tools/ia_queue_probe
+        env:
+          ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+        run: >-
+          timeout --signal=TERM --kill-after=5s 60s python3 -B ia_queue_probe.py
+          --output "$RUNNER_TEMP/ia-queue-sanitized.json"
+      - name: Preserve only sanitized availability numbers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ia-queue-sanitized-status
+          path: ${{ runner.temp }}/ia-queue-sanitized.json
+          if-no-files-found: warn
+          retention-days: 14
