@@ -60,7 +60,9 @@ class CrunchLibraryTests(unittest.TestCase):
                     self.assertEqual(hashlib.sha256(pixels.raw).hexdigest(), level["rgba_unflipped_sha256"])
         corrupt = bytearray(raw)
         corrupt[-1] ^= 0xff
+        pixels = ctypes.create_string_buffer(1024)
         self.assertNotEqual(decode_texture(bytes(corrupt), len(corrupt), 16, 16, 0, pixels, len(pixels), error, len(error)), 0)
+        self.assertIn(b"checksum", error.value)
 
 
 if __name__ == "__main__":

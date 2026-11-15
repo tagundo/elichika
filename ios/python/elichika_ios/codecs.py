@@ -29,6 +29,9 @@ def install(frameworks):
     decode._android_image = image
     decode.thumbnail = thumbnail
     cri_audio_decode.decode_cue = decode_cue
+    import unity_costumemod_packer as packer
+    packer.extract_body_texture_with_unitypy = body_texture
+    packer._decode_texture_via_subprocess = body_texture
     # Texture encoding uses UnityPy's real astc_encoder/etcpak extensions.
     # No CLI ASTC fallback is entered when that complete closure is present.
     return {"hca": str(hca.name), "adx": "elichika-adx", "texture65": str(crunch.name), "astc": "astc_encoder", "processes": False}
@@ -114,13 +117,16 @@ def image(texture, deadline):
 
 
 def thumbnail(bundle_path, timeout=180):
+    return body_texture(bundle_path, timeout=timeout)[1] or None
+
+
+def body_texture(bundle_path, log=None, timeout=180):
     from webtools.core import decode
     deadline = time.monotonic() + max(0, float(timeout))
     if not _decode_slot.acquire(timeout=max(0, float(timeout))):
         raise TimeoutError("Another texture is still decoding")
     try:
         import unity_costumemod_packer as packer
-        _, png = packer._extract_body_texture_core(bundle_path, image_decoder=lambda texture: image(texture, deadline))
-        return png or None
+        return packer._extract_body_texture_core(bundle_path, log=log, image_decoder=lambda texture: image(texture, deadline))
     finally:
         _decode_slot.release()

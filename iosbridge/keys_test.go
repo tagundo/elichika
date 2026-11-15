@@ -50,6 +50,14 @@ func TestKeysRejectWritablePairAndBundledClientMismatches(t *testing.T) {
 	if err := validateKeys(options); err != nil {
 		t.Fatal(err)
 	}
+	pkcs1 := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(first)})
+	if err := os.WriteFile(filepath.Join(root, "privatekey.pem"), pkcs1, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateKeys(options); err == nil || !strings.Contains(err.Error(), "PKCS#8") {
+		t.Fatalf("PKCS#1 accepted by PKCS#8 game handler gate: %v", err)
+	}
+	writeTestKeys(t, root, first)
 	writeTestKeys(t, seed, second)
 	if err := validateKeys(options); err == nil || !strings.Contains(err.Error(), "bundled client key") {
 		t.Fatalf("expected seed mismatch, got %v", err)

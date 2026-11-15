@@ -3,6 +3,7 @@
 package iosbridge
 
 import (
+	"elichika/config"
 	"encoding/json"
 	"errors"
 	"io"
@@ -155,6 +156,7 @@ func TestStopDuringInitializationNeverPublishesReady(t *testing.T) {
 	c.start(startOptions(t, t.TempDir()))
 	<-entered
 	c.stop()
+	c.stop() // Public stop generations do not invalidate the one cleanup worker.
 	if state := c.status(); state.State != "stopping" || state.Ready {
 		t.Fatalf("%+v", state)
 	}
@@ -162,6 +164,46 @@ func TestStopDuringInitializationNeverPublishesReady(t *testing.T) {
 	state := waitState(t, c, "stopped")
 	if state.Endpoint != nil || closes.Load() != 1 {
 		t.Fatalf("%+v; closes=%d", state, closes.Load())
+	}
+}
+
+func TestStaleWorkersCannotStartOrCloseANewerGeneration(t *testing.T) {
+	var starts, closes atomic.Int32
+	c := newController(func(Options, func(string)) (http.Handler, func() error, error) {
+		starts.Add(1)
+		return http.NotFoundHandler(), func() error { closes.Add(1); return nil }, nil
+	})
+	c.start(startOptions(t, t.TempDir()))
+	ready := waitState(t, c, "ready")
+	c.mu.Lock()
+	staleEpoch := c.epoch - 1
+	c.mu.Unlock()
+	// These are previously queued workers finally acquiring the operation
+	// mutex after a newer launch. Neither may initialize or close that launch.
+	c.launch(Options{DataRoot: "/stale-operation"}, staleEpoch)
+	c.stopWorker(staleEpoch)
+	current := c.status()
+	if !current.Ready || current.URL != ready.URL || current.Generation != ready.Generation || starts.Load() != 1 || closes.Load() != 0 {
+		t.Fatalf("stale worker changed newer service: %+v starts=%d closes=%d", current, starts.Load(), closes.Load())
+	}
+	c.stop()
+	waitState(t, c, "stopped")
+}
+
+func TestManagementPOSTUsesExactTrustedOrigin(t *testing.T) {
+	previous := config.RootPath
+	defer func() { config.RootPath = previous }()
+	directory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.RootPath = filepath.Dir(directory) + string(os.PathSeparator)
+	response, err := managementRequest(Command{Method: http.MethodPost, Path: "/webui/admin/unknown-route", Body: json.RawMessage(`{}`)}, strings.Repeat("a", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Status == http.StatusForbidden {
+		t.Fatal("trusted in-process POST rejected its Origin")
 	}
 }
 

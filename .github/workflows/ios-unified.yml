@@ -51,12 +51,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ios-evidence" "$RUNNER_TEMP/ios-candidate"
-          python3 -B -m unittest discover -s ios/ci -p 'test_*.py' -v
-          python3 -B -m unittest discover -s ios/python/tests -p 'test_*.py' -v
-          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/HostCoreTests.cpp -o "$RUNNER_TEMP/elichika-host-policy-tests"
-          "$RUNNER_TEMP/elichika-host-policy-tests"
-          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/RSAPublicKeyTests.cpp -o "$RUNNER_TEMP/elichika-rsa-key-tests"
-          "$RUNNER_TEMP/elichika-rsa-key-tests"
+          python3 -B -m unittest discover -s ios/ci -p 'test_*.py' -v \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/packaging-tests.txt"
+          PYTHONPATH="$GITHUB_WORKSPACE/ios/python" python3 -B -m unittest discover -s ios/python/tests -p 'test_*.py' -v \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/python-host-tests.txt"
+          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/HostCoreTests.cpp -o "$RUNNER_TEMP/elichika-host-policy-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-host-policy-compile.txt"
+          "$RUNNER_TEMP/elichika-host-policy-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-host-policy-tests.txt"
+          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/RSAPublicKeyTests.cpp -o "$RUNNER_TEMP/elichika-rsa-key-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-rsa-key-compile.txt"
+          "$RUNNER_TEMP/elichika-rsa-key-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-rsa-key-tests.txt"
 
       - name: Test actual in-process Go lifecycle, initialization, keys and timezones
         run: |

@@ -54,6 +54,7 @@ type controller struct {
 	server    *http.Server
 	cleanup   func() error
 	prepare   prepareFunc
+	epoch     uint64 // private operation ownership; repeated Stop only bumps public generation
 }
 
 func newController(prepare prepareFunc) *controller {
@@ -96,9 +97,11 @@ func (c *controller) start(input string) State {
 	}
 	generation := c.state.Generation + 1
 	c.options = options
+	c.epoch++
+	epoch := c.epoch
 	c.state = State{Schema: 1, State: "starting", Phase: "starting", Generation: generation, DataRoot: options.DataRoot,
 		ReadyToken: options.ReadyToken, WebToken: options.WebToken, LocalWebUIToken: options.WebToken}
-	go c.launch()
+	go c.launch(options, epoch)
 	return c.state
 }
 
@@ -108,33 +111,32 @@ func (c *controller) progress(detail string) {
 	c.mu.Unlock()
 }
 
-func (c *controller) launch() {
+func (c *controller) launch(options Options, epoch uint64) {
 	c.operation.Lock()
 	defer c.operation.Unlock()
 	c.mu.Lock()
-	options := c.options
-	stopping := c.state.State == "stopping"
+	current := c.epoch == epoch && c.state.State == "starting"
 	c.mu.Unlock()
-	if stopping {
-		c.finishStopped(nil)
+	if !current {
 		return
 	}
 	handler, cleanup, err := c.prepare(options, c.progress)
 	c.cleanup = cleanup
-	if err != nil {
-		c.finishFailed("INITIALIZATION_FAILED", err)
+	c.mu.Lock()
+	current = c.epoch == epoch && c.state.State == "starting"
+	c.mu.Unlock()
+	// A queued Stop owns cleanup and publication of stopped. Never publish
+	// stopped while that worker is still waiting to close this operation.
+	if !current {
 		return
 	}
-	c.mu.Lock()
-	stopping = c.state.State == "stopping"
-	c.mu.Unlock()
-	if stopping {
-		c.finishStopped(c.closePrepared())
+	if err != nil {
+		c.finishFailed(epoch, "INITIALIZATION_FAILED", err)
 		return
 	}
 	listener, err := net.Listen("tcp", options.ListenAddress)
 	if err != nil {
-		c.finishFailed("LISTEN_FAILED", err)
+		c.finishFailed(epoch, "LISTEN_FAILED", err)
 		return
 	}
 	mux := http.NewServeMux()
@@ -157,13 +159,12 @@ func (c *controller) launch() {
 	if err := probe(endpoint, options.ReadyToken); err != nil {
 		_ = server.Close()
 		c.server = nil
-		c.finishFailed("READINESS_FAILED", err)
+		c.finishFailed(epoch, "READINESS_FAILED", err)
 		return
 	}
 	c.mu.Lock()
-	if c.state.State == "stopping" {
+	if c.epoch != epoch || c.state.State != "starting" {
 		c.mu.Unlock()
-		c.finishStopped(c.closePrepared())
 		return
 	}
 	c.state.State, c.state.Phase, c.state.Detail = "ready", "running", "serving real game routes"
@@ -173,8 +174,11 @@ func (c *controller) launch() {
 		if err := <-serveError; err != nil && !errors.Is(err, http.ErrServerClosed) {
 			c.operation.Lock()
 			defer c.operation.Unlock()
-			if c.server == server {
-				c.finishFailed("HTTP_SERVER_FAILED", err)
+			c.mu.Lock()
+			current := c.epoch == epoch
+			c.mu.Unlock()
+			if c.server == server && current {
+				c.finishFailed(epoch, "HTTP_SERVER_FAILED", err)
 			}
 		}
 	}()
@@ -212,13 +216,23 @@ func (c *controller) stop() State {
 	if c.state.State == "stopping" {
 		return c.state
 	}
+	c.epoch++
+	epoch := c.epoch
 	c.state.State, c.state.Phase, c.state.Ready = "stopping", "stopping", false
-	go func() {
-		c.operation.Lock()
-		defer c.operation.Unlock()
-		c.finishStopped(c.closePrepared())
-	}()
+	go c.stopWorker(epoch)
 	return c.state
+}
+
+func (c *controller) stopWorker(epoch uint64) {
+	c.operation.Lock()
+	defer c.operation.Unlock()
+	c.mu.Lock()
+	current := c.epoch == epoch && c.state.State == "stopping"
+	c.mu.Unlock()
+	if !current {
+		return
+	}
+	c.finishStopped(c.closePrepared())
 }
 
 func (c *controller) closePrepared() error {
@@ -251,10 +265,13 @@ func (c *controller) finishStopped(err error) {
 	}
 }
 
-func (c *controller) finishFailed(code string, err error) {
+func (c *controller) finishFailed(epoch uint64, code string, err error) {
 	closeError := c.closePrepared()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.epoch != epoch {
+		return
+	}
 	c.state.State, c.state.Phase, c.state.Ready = "error", "error", false
 	c.state.Endpoint, c.state.URL = nil, ""
 	c.state = failed(c.state, code, errors.Join(err, closeError))

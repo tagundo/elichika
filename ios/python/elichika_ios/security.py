@@ -2,6 +2,7 @@
 import hmac
 import ipaddress
 from http.cookies import SimpleCookie
+from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 
@@ -10,6 +11,19 @@ def authenticated_handler(base, token, language="en"):
         raise ValueError("A random session token of at least 32 characters is required")
 
     class AuthenticatedHandler(base):
+        def _serve_file(self, fpath, content_type=None):
+            # Append only the iOS integration seam; retain every shared viewer
+            # module and its original diagnostics, settings and editing logic.
+            if Path(fpath).name == "platform.js" and Path(fpath).is_file():
+                adapter = Path(__file__).parent / "web/ios-platform.js"
+                return self._send_bytes(Path(fpath).read_bytes() + b"\n" + adapter.read_bytes(),
+                                        "application/javascript; charset=utf-8")
+            if Path(fpath).name == "index.html" and Path(fpath).is_file():
+                guide = Path(__file__).parent / "web/ios-guidance.js"
+                body = Path(fpath).read_bytes().replace(b"</body>", b"<script>" + guide.read_bytes() + b"</script></body>", 1)
+                return self._send_bytes(body, "text/html; charset=utf-8")
+            return super()._serve_file(fpath, content_type)
+
         def _lang(self):
             return parse_qs(urlsplit(self.path).query).get("lang", [language])[0]
 

@@ -179,9 +179,11 @@ static void ELHidePanel(void) {
     }
     if ([action isEqual:@"import"]) {
         NSArray *types=[request[@"types"] isKindOfClass:NSArray.class] ? request[@"types"] : @[@"public.data"];
+        BOOL multiple=[request[@"multiple"] boolValue];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
-            NSError *error; NSString *path=ElichikaHostImportDocument(types,&error);
-            dispatch_async(dispatch_get_main_queue(),^{ [self reply:identifier result:path error:error.localizedDescription]; });
+            NSError *error; NSArray *paths=ElichikaHostImportDocuments(types,multiple,&error);
+            id result=multiple ? paths : paths.firstObject;
+            dispatch_async(dispatch_get_main_queue(),^{ [self reply:identifier result:result error:error.localizedDescription]; });
         }); return;
     }
     if ([action isEqual:@"export"] && [request[@"path"] isKindOfClass:NSString.class]) {
@@ -463,39 +465,50 @@ __attribute__((constructor)) static void ElichikaInstallHost(void) {
 @property(nonatomic,strong) dispatch_semaphore_t finished;
 @property(nonatomic,strong) NSError *error;
 @property(nonatomic,copy) NSString *path;
+@property(nonatomic,copy) NSArray<NSString *> *paths;
 @property(nonatomic,assign) BOOL exporting;
+@property(nonatomic,assign) BOOL multiple;
+@property(nonatomic,assign) BOOL copying;
 @property(nonatomic,assign) BOOL completed;
 - (void)finish;
 @end
 static ELDocumentTransaction *ELPendingDocument;
 @implementation ELDocumentTransaction
 - (void)finish { if (_completed) return; _completed=YES; dispatch_semaphore_signal(_finished); if (ELPendingDocument==self) ELPendingDocument=nil; }
-- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller { (void)controller; _error=[NSError errorWithDomain:@"ElichikaDocument" code:2 userInfo:@{NSLocalizedDescriptionKey:@"Document selection cancelled."}]; [self finish]; }
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller { (void)controller; if (_copying) return; _error=[NSError errorWithDomain:@"ElichikaDocument" code:2 userInfo:@{NSLocalizedDescriptionKey:@"Document selection cancelled."}]; [self finish]; }
 - (void)presentationControllerDidDismiss:(UIPresentationController *)controller { (void)controller; [self documentPickerWasCancelled:nil]; }
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     (void)controller;
     if (_exporting) { [self finish]; return; }
-    NSURL *source=urls.firstObject; if (!source) { [self documentPickerWasCancelled:controller]; return; }
-    BOOL access=[source startAccessingSecurityScopedResource];
+    if (!urls.count) { [self documentPickerWasCancelled:controller]; return; }
+    if (urls.count>128 || (!_multiple && urls.count!=1)) {
+        _error=[NSError errorWithDomain:@"ElichikaDocument" code:6 userInfo:@{NSLocalizedDescriptionKey:@"Choose at most 128 files per import."}]; [self finish]; return;
+    }
+    _copying=YES;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
         NSString *root=[ELConfiguration[@"imports_root"] stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
-        __block NSError *error=nil; __block NSString *destination=nil;
-        NSFileCoordinator *coordinator=[[NSFileCoordinator alloc] initWithFilePresenter:nil];
-        [coordinator coordinateReadingItemAtURL:source options:0 error:&error byAccessor:^(NSURL *readURL) {
-            destination=[root stringByAppendingPathComponent:readURL.lastPathComponent];
-            if ([NSFileManager.defaultManager createDirectoryAtPath:root withIntermediateDirectories:YES attributes:nil error:&error])
-                [NSFileManager.defaultManager copyItemAtURL:readURL toURL:[NSURL fileURLWithPath:destination] error:&error];
-        }];
-        if (access) [source stopAccessingSecurityScopedResource];
+        __block NSError *error=nil; NSMutableArray *paths=[NSMutableArray new];
+        for (NSUInteger i=0;i<urls.count && !error;++i) {
+            NSURL *source=urls[i]; BOOL access=[source startAccessingSecurityScopedResource];
+            NSString *folder=[root stringByAppendingPathComponent:[NSString stringWithFormat:@"%lu",(unsigned long)i]];
+            NSFileCoordinator *coordinator=[[NSFileCoordinator alloc] initWithFilePresenter:nil];
+            [coordinator coordinateReadingItemAtURL:source options:0 error:&error byAccessor:^(NSURL *readURL) {
+                NSString *destination=[folder stringByAppendingPathComponent:readURL.lastPathComponent];
+                if ([NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:&error] &&
+                    [NSFileManager.defaultManager copyItemAtURL:readURL toURL:[NSURL fileURLWithPath:destination] error:&error]) [paths addObject:destination];
+            }];
+            if (access) [source stopAccessingSecurityScopedResource];
+        }
+        if (error) [NSFileManager.defaultManager removeItemAtPath:root error:NULL];
         dispatch_async(dispatch_get_main_queue(),^{
-            if (error) self.error=error; else self.path=destination;
+            if (error) self.error=error; else { self.paths=paths; self.path=paths.firstObject; }
             [self finish];
         });
     });
 }
 @end
-static ELDocumentTransaction *ELPick(NSArray *types, NSString *exportPath) {
-    ELDocumentTransaction *transaction=[ELDocumentTransaction new]; transaction.finished=dispatch_semaphore_create(0); transaction.exporting=exportPath!=nil;
+static ELDocumentTransaction *ELPick(NSArray *types, NSString *exportPath, BOOL multiple) {
+    ELDocumentTransaction *transaction=[ELDocumentTransaction new]; transaction.finished=dispatch_semaphore_create(0); transaction.exporting=exportPath!=nil; transaction.multiple=multiple;
     dispatch_async(dispatch_get_main_queue(),^{
         UIViewController *presenter=ElichikaHostPresenter();
         if (ELPendingDocument || !presenter || presenter.presentedViewController) {
@@ -504,20 +517,27 @@ static ELDocumentTransaction *ELPick(NSArray *types, NSString *exportPath) {
         ELPendingDocument=transaction;
         UIDocumentPickerViewController *picker;
         if (exportPath) picker=[[UIDocumentPickerViewController alloc] initWithURLs:@[[NSURL fileURLWithPath:exportPath]] inMode:UIDocumentPickerModeExportToService];
-        else picker=[[UIDocumentPickerViewController alloc] initWithDocumentTypes:types.count ? types : @[@"public.data"] inMode:UIDocumentPickerModeImport];
-        picker.delegate=transaction; picker.allowsMultipleSelection=NO; picker.presentationController.delegate=transaction;
+        else {
+            BOOL folder=[types containsObject:@"public.folder"];
+            picker=[[UIDocumentPickerViewController alloc] initWithDocumentTypes:types.count ? types : @[@"public.data"]
+                inMode:folder ? UIDocumentPickerModeOpen : UIDocumentPickerModeImport];
+        }
+        picker.delegate=transaction; picker.allowsMultipleSelection=multiple && !exportPath; picker.presentationController.delegate=transaction;
         [presenter presentViewController:picker animated:YES completion:nil];
     });
     dispatch_semaphore_wait(transaction.finished,DISPATCH_TIME_FOREVER); return transaction;
 }
 NSString *ElichikaHostImportDocument(NSArray<NSString *> *types,NSError **error) {
+    return ElichikaHostImportDocuments(types,NO,error).firstObject;
+}
+NSArray<NSString *> *ElichikaHostImportDocuments(NSArray<NSString *> *types,BOOL multiple,NSError **error) {
     if (NSThread.isMainThread) { if (error) *error=[NSError errorWithDomain:@"ElichikaDocument" code:3 userInfo:@{NSLocalizedDescriptionKey:@"Document selection must run off the UI thread."}]; return nil; }
     if (types.count>32) { if (error) *error=[NSError errorWithDomain:@"ElichikaDocument" code:4 userInfo:@{NSLocalizedDescriptionKey:@"Too many document types."}]; return nil; }
     for (id type in types) if (![type isKindOfClass:NSString.class] || [type length]>128 ||
         [type rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location!=NSNotFound) {
         if (error) *error=[NSError errorWithDomain:@"ElichikaDocument" code:4 userInfo:@{NSLocalizedDescriptionKey:@"Invalid document type."}]; return nil;
     }
-    ELDocumentTransaction *transaction=ELPick(types,nil); if (error) *error=transaction.error; return transaction.path;
+    ELDocumentTransaction *transaction=ELPick(types,nil,multiple); if (error) *error=transaction.error; return transaction.paths;
 }
 BOOL ElichikaHostExportDocument(NSString *path,NSError **error) {
     if ([path rangeOfCharacterFromSet:[NSCharacterSet characterSetWithRange:NSMakeRange(0,1)]].location!=NSNotFound) {
@@ -532,5 +552,5 @@ BOOL ElichikaHostExportDocument(NSString *path,NSError **error) {
     if (NSThread.isMainThread || !allowed || ![NSFileManager.defaultManager fileExistsAtPath:resolved]) {
         if (error) *error=[NSError errorWithDomain:@"ElichikaDocument" code:5 userInfo:@{NSLocalizedDescriptionKey:@"Choose an existing file in app storage."}]; return NO;
     }
-    ELDocumentTransaction *transaction=ELPick(nil,resolved); if (error) *error=transaction.error; return !transaction.error;
+    ELDocumentTransaction *transaction=ELPick(nil,resolved,NO); if (error) *error=transaction.error; return !transaction.error;
 }

@@ -79,6 +79,7 @@ func (c *controller) command(input string) State {
 		return failed(c.state, "NOT_INITIALIZED", errors.New("start with prepared data_root before maintenance"))
 	}
 	c.state.Generation++
+	c.epoch++
 	c.state.Error, c.state.Ready, c.state.Endpoint, c.state.URL = nil, false, nil, ""
 	c.state.Phase, c.state.Detail = "maintenance", command.Command
 	c.state.Job = &Job{ID: c.state.Generation, Command: command.Command, State: "running"}
@@ -250,6 +251,9 @@ func managementRequest(command Command, token string) (managementResponse, error
 	}
 	request.RemoteAddr = "127.0.0.1:1"
 	request.Header.Set("X-Elichika-Local-Access", token)
+	if command.Method == http.MethodPost {
+		request.Header.Set("Origin", "http://127.0.0.1:8080")
+	}
 	if contentType != "" {
 		request.Header.Set("Content-Type", contentType)
 	}

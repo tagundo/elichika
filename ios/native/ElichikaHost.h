@@ -7,6 +7,7 @@ FOUNDATION_EXPORT __attribute__((visibility("default"))) NSString *ElichikaHostD
 FOUNDATION_EXPORT NSDictionary *ElichikaHostConfiguration(void);
 FOUNDATION_EXPORT UIViewController * _Nullable ElichikaHostPresenter(void);
 FOUNDATION_EXPORT NSString * _Nullable ElichikaHostImportDocument(NSArray<NSString *> *types, NSError **error);
+FOUNDATION_EXPORT NSArray<NSString *> * _Nullable ElichikaHostImportDocuments(NSArray<NSString *> *types, BOOL multiple, NSError **error);
 FOUNDATION_EXPORT BOOL ElichikaHostExportDocument(NSString *path, NSError **error);
 #if ELICHIKA_SIMULATOR_PROBE
 FOUNDATION_EXPORT BOOL ElichikaHostInstallForProbe(Class gameClass);

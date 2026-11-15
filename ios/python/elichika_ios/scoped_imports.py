@@ -168,7 +168,21 @@ class ScopedImports(importlib.abc.MetaPathFinder):
 
         import pathlib
         import subprocess
+        import urllib
+        import urllib.request
+        def urlopen(url, *args, **kwargs):
+            address = getattr(url, "full_url", url)
+            if isinstance(address, str) and address.startswith("https:") and kwargs.get("context") is None:
+                # CPython's private OpenSSL has no system default CA directory
+                # on iOS. Keep streaming/progress/cancellation in the existing
+                # Python downloaders with our bundled explicit trust roots.
+                import certifi
+                import ssl
+                kwargs["context"] = ssl.create_default_context(cafile=certifi.where())
+            return urllib.request.urlopen(url, *args, **kwargs)
+        local_request = _module(urllib.request, urlopen=urlopen)
         return {"os": _module(os, **os_overrides), "os.path": local_path,
+                "urllib": _module(urllib, request=local_request), "urllib.request": local_request,
                 "pathlib": _module(pathlib, Path=RuntimePath, PosixPath=RuntimePath),
                 "io": _module(io, open=self.wrap(io.open)),
                 "sqlite3": _module(sqlite3, connect=connect),

@@ -49,12 +49,10 @@ func validateKeys(options Options) error {
 	if block == nil {
 		return fmt.Errorf("writable game private key PEM is invalid")
 	}
-	var key any
-	if block.Type == "RSA PRIVATE KEY" {
-		key, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-	} else {
-		key, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+	if block.Type != "PRIVATE KEY" {
+		return fmt.Errorf("writable game private key must use PKCS#8 PRIVATE KEY PEM, as required by the game OAEP handler")
 	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return fmt.Errorf("writable game private key DER is invalid")
 	}
