@@ -1,10 +1,15 @@
 {
   "activated": false,
-  "directory": "/tmp/date-client-artifact-split-20261115",
+  "changed_source_files": [
+    "split_candidates.py",
+    "test_split_candidates.py",
+    "README.md"
+  ],
+  "directory": "/tmp/date-client-artifact-split-v2-20261115",
   "files": {
     "README.md": {
-      "bytes": 2817,
-      "sha256": "33adbf79417625f3bdd3cbc3e6bc5713893f5b798d62292e07f912b97ab06ad5"
+      "bytes": 2977,
+      "sha256": "8c680591b8678599c1ddcb87c53d229ac5cec1b84fe0c64de9eb5c8ac9aef3df"
     },
     "date-client-artifact-export.yml": {
       "bytes": 4533,
@@ -15,36 +20,45 @@
       "sha256": "6056aa349df1510f4f9b147babb794275b41771e135ea4698a7f6156d58331bf"
     },
     "split_candidates.py": {
-      "bytes": 5788,
-      "sha256": "263c1965b1e2824bb9d964ee7523b9fe4058126b4c97f65b1ced7f494071aaea"
+      "bytes": 6172,
+      "sha256": "b71de82ecef392c655a6e317e4d6a52d4d892b3659aa54d085ca7a0675fb3885"
     },
     "test_split_candidates.py": {
-      "bytes": 7329,
-      "sha256": "54fa7411efd3ac0ea339da6a9b21d7ebee9bf360ddf993068639b26ccd162576"
+      "bytes": 9698,
+      "sha256": "e58a5034e2a437b01c01334c702e3faa156cc7bde9b89abf264d0e5d895c6100"
     },
     "tests.log": {
-      "bytes": 1511,
-      "sha256": "8825f7e79a8463ac6be8a571031e40e1e3781bf446bfafc82c029209e3ff8c34"
+      "bytes": 2620,
+      "sha256": "594bc69a341ee01d2524444c70d9c4a2949821597896ac32350e8b3a3eed83a2"
     }
   },
-  "independent_review": "PASS: exactsourceZIP/run/artifactpins; SUMS+proof+receipt identities; unchangedstreamedcandidatebytes; safe boundedmetadata; finitejob; success-gatedexports; no blocking issue",
-  "remaining": "Root review frozen source hashes, create own remote source branch, activate hosted export; no main/default or release writes needed",
+  "independent_review": "PASS: only explicit8MiBmetadata cap/byte diagnostics changed; inputpre-readMAX-16KiB/finalMAX guards; unchangedwholeZIP/hash/path/SUMS/proof/receipt/candidate logic; sourceproofbytesretained",
+  "metadata_before_read_limit_bytes": 8372224,
+  "metadata_limit_bytes": 8388608,
+  "parent_v1_packet_sha256": "820f155235989541156c5f26e49ce3a18d892f2145e4aeaa982f3fa32c2bb594",
+  "recipe_and_workflow_byte_identical_to_v1": true,
+  "remaining": "Root apply script/test/README/new packet to owned export branch and rerun export once; recipe/workflow unchanged; investigate actual count if8MiB bound fails rather than raising it again",
   "schema": 1,
   "source_artifact_bytes": 344090806,
   "source_artifact_id": 14151027288,
   "source_artifact_sha256": "4c5f938730532fe51ac9b1d215684299e7f4d8ecb07ca94fc02f202d694075a5",
   "source_commit": "cb40d8337e4d986cd2918c9bb595348996c4898c",
   "source_run_id": 43686835093,
-  "status": "SOURCE_ONLY_READY_FOR_ROOT_ACTIVATION",
+  "status": "SOURCE_ONLY_V2_METADATA_CAP_READY",
   "tests": {
     "actual_payload_downloads": 0,
     "builds": 0,
     "credentials_read": false,
-    "methods": 11,
+    "methods": 14,
     "remote_or_account_actions": 0,
     "result": "PASS",
     "signing": 0
   },
+  "upstream_actual_export_failure_reported_by_Root": {
+    "reason": "Combined original proof metadata exceeded the old one-MiB cap; actual source ZIP/provenance/digest had passed. Actual metadata byte count was not printed by v1. No candidates modified/rebuilt.",
+    "run_id": 43688488734
+  },
+  "v1_preserved": true,
   "workflow": {
     "branch": "codex/sifas-date-artifact-export-20261115",
     "candidate_artifacts": 5,

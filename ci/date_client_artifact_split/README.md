@@ -25,7 +25,7 @@ Every candidate must match its proof output, build receipt and checksum, includi
 the already-recorded native preservation flags. Candidate payloads are streamed
 unchanged into five output directories. All original proof/receipt/checksum bytes
 are retained in metadata, together with source provenance and an export manifest;
-the complete metadata directory is bounded to one MiB.
+the complete metadata directory is bounded to eight MiB.
 
 Five uncompressed Actions artifacts hold the individual candidates, reducing
 redundant compression work. One separately compressed metadata artifact is small
@@ -36,11 +36,11 @@ the existing protected stable signer for Android before validation and release.
 All six upload steps require successful validation; failed copies are never
 published by this workflow.
 
-Validation performed here: 11 tiny synthetic ZIP tests and independent source/
+Validation performed here: 14 tiny synthetic ZIP tests and independent source/
 workflow review passed. Tests cover unchanged payload/metadata copies, outer
 size/hash mismatch, wrong run/commit/status, malformed paths, duplicate ZIP or
 checksum names, conflicting proofs/checksums, corrupt payloads, wrong source
-locks, encrypted/link entries and output overwrite/path conflicts. No real
+locks, encrypted/link entries and output overwrite/path conflicts. A fixture above the old one-MiB bound passes byte-for-byte; reduced test-only limits verify both pre-read and final-report rejection with actual byte counts. No real
 candidate payload was downloaded or processed here.
 
 ```sh

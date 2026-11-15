@@ -1,4 +1,5 @@
 import copy,hashlib,json,pathlib,struct,tempfile,unittest,zipfile
+from unittest import mock
 import split_candidates as s
 RECIPE=json.loads(pathlib.Path(__file__).with_name('export-recipe.json').read_bytes())
 
@@ -26,7 +27,7 @@ class SplitTests(unittest.TestCase):
         for row in records:self.assertEqual((out/row['directory']/row['name']).read_bytes(),b[row['name']])
         for name,body in b.items():
             if name not in {v['name'] for v in r['candidates']}:self.assertEqual((out/'metadata'/name).read_bytes(),body)
-        self.assertLess(sum(f.stat().st_size for f in (out/'metadata').iterdir()),s.CHUNK)
+        self.assertLess(sum(f.stat().st_size for f in (out/'metadata').iterdir()),s.MAX_METADATA)
     def test_rejects_outer_digest_and_size_mismatch(self):
         r,p,b=self.fixture();r['source_artifact']['sha256']='0'*64
         with self.assertRaisesRegex(ValueError,'SHA256'):s.split(p,self.root/'bad',r,self.provenance(r))
@@ -94,5 +95,32 @@ class SplitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Fresh'):s.split(p,out,r,self.provenance(r))
         self.assertEqual((out/'keep').read_bytes(),b'keep');r['candidates'][0]['directory']='../outside'
         with self.assertRaisesRegex(ValueError,'output names'):s.split(p,self.root/'bad',r,self.provenance(r))
+
+    def test_preserves_metadata_above_old_one_mib_limit(self):
+        def change(objects):
+            name=RECIPE['candidates'][0]['name']+'.proof.json';proof=json.loads(objects[name]);proof['notes']='p'*(s.CHUNK+1);objects[name]=json.dumps(proof).encode()
+        recipe,path,objects=self.fixture(change);output=self.root/'large-proof-export'
+        s.split(path,output,recipe,self.provenance(recipe))
+        size=sum(p.stat().st_size for p in (output/'metadata').iterdir());self.assertGreater(size,s.CHUNK);self.assertLessEqual(size,s.MAX_METADATA)
+        for name,body in objects.items():
+            if name not in {row['name'] for row in recipe['candidates']}:self.assertEqual((output/'metadata'/name).read_bytes(),body)
+    def test_rejects_metadata_over_explicit_budget_before_body_reads(self):
+        recipe,path,objects=self.fixture();metadata_bytes=sum(len(body) for name,body in objects.items() if name not in {row['name'] for row in recipe['candidates']})
+        with mock.patch.object(s,'MAX_METADATA',16384+metadata_bytes-1):
+            with self.assertRaisesRegex(ValueError,rf'Metadata input {metadata_bytes} bytes exceeds allowed {metadata_bytes-1} bytes'):
+                s.split(path,self.root/'over-limit',recipe,self.provenance(recipe))
+        self.assertFalse((self.root/'over-limit').exists())
+    def test_final_metadata_budget_still_checked_with_actual_size(self):
+        recipe,path,objects=self.fixture()
+        original_dumps=s.json.dumps
+        def large_report(value,*args,**kwargs):
+            # Only make the generated export manifest big; original proofs stay exact.
+            if isinstance(value,dict) and value.get('status')=='UNCHANGED_CANDIDATES_VERIFIED_NOT_SIGNED_OR_RELEASED':
+                return original_dumps({**value,'extra':'x'*25000},*args,**kwargs)
+            return original_dumps(value,*args,**kwargs)
+        metadata_bytes=sum(len(body) for name,body in objects.items() if name not in {row['name'] for row in recipe['candidates']})
+        with mock.patch.object(s,'MAX_METADATA',metadata_bytes+16384),mock.patch.object(s.json,'dumps',side_effect=large_report):
+            with self.assertRaisesRegex(ValueError,r'Final metadata [0-9]+ bytes exceeds budget [0-9]+ bytes'):
+                s.split(path,self.root/'final-over-limit',recipe,self.provenance(recipe))
 
 if __name__=='__main__':unittest.main()

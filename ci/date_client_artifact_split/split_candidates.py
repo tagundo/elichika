@@ -2,6 +2,7 @@
 """Verify one pinned candidate ZIP and split unchanged bytes; no network/signing."""
 import argparse, hashlib, json, pathlib, re, stat, zipfile
 CHUNK = 1024 * 1024
+MAX_METADATA = 8 * CHUNK
 
 
 def require(ok, message):
@@ -21,7 +22,9 @@ def split(source, output, recipe, provenance):
         rows = archive.infolist(); names = [r.filename for r in rows]
         require(len(rows) == 12 and len(set(names)) == 12 and set(names) == set(expected) | metadata_names, 'Unexpected/duplicate/path-containing artifact entries')
         require(sum(r.file_size for r in rows) <= 1024 * CHUNK and all(not r.flag_bits & 1 and not stat.S_ISLNK(r.external_attr >> 16) and not r.is_dir() for r in rows), 'Oversized/encrypted/link/directory artifact entry')
-        require(sum(archive.getinfo(n).file_size for n in metadata_names) <= CHUNK-16384, 'Metadata exceeds one-MiB export budget')
+        metadata_bytes = sum(archive.getinfo(n).file_size for n in metadata_names)
+        print(json.dumps({'input_metadata_bytes':metadata_bytes,'metadata_budget_bytes':MAX_METADATA}), flush=True)
+        require(metadata_bytes <= MAX_METADATA-16384, f'Metadata input {metadata_bytes} bytes exceeds allowed {MAX_METADATA-16384} bytes (total budget {MAX_METADATA})')
         metadata = {n:archive.read(n) for n in metadata_names}
         sums = {}
         for line in metadata['SHA256SUMS'].decode('ascii').splitlines():
@@ -45,7 +48,8 @@ def split(source, output, recipe, provenance):
             records.append({**row, 'bytes':count, 'sha256':digest.hexdigest()})
     metadata['source-provenance.json'] = (json.dumps(provenance,sort_keys=True,indent=2)+'\n').encode()
     metadata['export-manifest.json'] = (json.dumps({'schema':1,'build':recipe['build'],'status':'UNCHANGED_CANDIDATES_VERIFIED_NOT_SIGNED_OR_RELEASED','source_artifact':pin,'candidates':records},sort_keys=True,indent=2)+'\n').encode()
-    require(sum(map(len, metadata.values())) <= CHUNK, 'Final metadata exceeds one MiB')
+    metadata_bytes = sum(map(len, metadata.values()))
+    require(metadata_bytes <= MAX_METADATA, f'Final metadata {metadata_bytes} bytes exceeds budget {MAX_METADATA} bytes')
     directory = output/'metadata'; directory.mkdir()
     for name, content in metadata.items(): (directory/name).write_bytes(content)
     return records
@@ -54,6 +58,6 @@ def split(source, output, recipe, provenance):
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('source',type=pathlib.Path);p.add_argument('output',type=pathlib.Path);p.add_argument('--recipe',type=pathlib.Path,default=pathlib.Path(__file__).with_name('export-recipe.json'));p.add_argument('--provenance',type=pathlib.Path,required=True);a=p.parse_args()
     records=split(a.source,a.output,json.loads(a.recipe.read_bytes()),json.loads(a.provenance.read_bytes()))
-    print(json.dumps({'verified_candidates':len(records),'metadata_bytes':sum(p.stat().st_size for p in (a.output/'metadata').iterdir()),'rebuilt_or_signed':False}))
+    print(json.dumps({'verified_candidates':len(records),'metadata_bytes':sum(p.stat().st_size for p in (a.output/'metadata').iterdir()),'metadata_limit_bytes':MAX_METADATA,'rebuilt_or_signed':False}))
 
 if __name__=='__main__': main()
