@@ -27,6 +27,21 @@ _native = None
 _scope = None
 _cancel = threading.Event()
 _bootstrap_thread = None
+_PROBE_STAGES = frozenset({"payload_prepare", "go_start", "tool_dependencies", "tls", "tools",
+                           "dependencies", "registries", "texture_codecs", "model_glb",
+                           "go_stop", "config_read", "go_restart", "python_complete"})
+
+
+def _probe_stage(stage):
+    """Emit only through the compile-flagged Simulator diagnostic bridge."""
+    if _state.get("simulator_probe_only") is not True or _state.get("core_only"):
+        return
+    if stage not in _PROBE_STAGES:
+        raise ValueError("Unknown Simulator diagnostic stage")
+    callback = getattr(_native, "probe_stage", None)
+    if callback is None:
+        raise RuntimeError("The Simulator diagnostic bridge is unavailable")
+    callback(stage)
 
 
 def _error_message(value):
@@ -128,6 +143,7 @@ def _start(config):
             if time.monotonic() >= deadline:
                 raise TimeoutError("The previous server operation is still draining. Retry after it finishes.")
             _cancel.wait(0.05)
+        _probe_stage("payload_prepare")
         root = _prepare_data(config)
         if _cancel.is_set():
             raise InterruptedError("Setup cancelled")
@@ -138,6 +154,7 @@ def _start(config):
                       "listen_address": config.get("listen_address", "127.0.0.1:8080"),
                       "region": config.get("region", "gl"), "language": config.get("language", "en"),
                       "ready_token": config["ready_token"], "local_webui_token": token, "web_token": token}
+        _probe_stage("go_start")
         start_result = _native.go_start(json.dumps(go_options))
         if isinstance(start_result, str):
             start_result = json.loads(start_result)
@@ -162,6 +179,7 @@ def _start(config):
             _event("core_ready", ready=True, core_only=True)
             return
         _event("loading_tools", core_only=False)
+        _probe_stage("tool_dependencies")
         from elichika_ios.dependencies import probe
         dependencies = probe()
         if not dependencies["ready"]:
@@ -296,6 +314,8 @@ def probe():
     safe_runtime["server"] = {key: runtime.get("server", {})[key] for key in
                               ("phase", "ready", "state", "endpoint", "error") if key in runtime.get("server", {})}
     result = {"schema": 1, "tls_probe": False, "tls_error": "", "runtime": safe_runtime}
+    _probe_stage("tls")
+    tls_began = time.monotonic()
     try:
         native = _native or importlib.import_module("_elichika_ios")
         response = native.https_request("https://www.python.org/", "HEAD", "{}", b"", 4096, 20)
@@ -303,8 +323,13 @@ def probe():
         result["tls_probe"] = response["status"] == 200
     except Exception as error:
         result["tls_error"] = "%s: %s" % (type(error).__name__, error)
+    result["timings_seconds"] = {"tls": round(time.monotonic() - tls_began, 6)}
+    _probe_stage("tools")
+    _probe_stage("dependencies")
+    dependencies_began = time.monotonic()
     from elichika_ios.dependencies import probe as dependency_probe
     result["dependencies"] = dependency_probe()
+    result["timings_seconds"]["dependencies"] = round(time.monotonic() - dependencies_began, 6)
     if not runtime.get("core_only"):
         with _server_lock:
             services = [(name, server.server_port) for name, server in zip(("admin", "tools"), _servers)]
@@ -313,11 +338,12 @@ def probe():
             result["tools_probe"] = {"ready": False, "error": "The tool runtime is not initialized"}
         else:
             from elichika_ios.probes import run as run_tools_probe
-            result["tools_probe"] = run_tools_probe(services, session, _scope.library_root)
+            result["tools_probe"] = run_tools_probe(services, session, _scope.library_root, progress=_probe_stage)
             if result["tools_probe"]["ready"] and runtime.get("simulator_probe_only"):
                 from elichika_ios.probes import lifecycle as run_lifecycle_probe
-                result["tools_probe"]["lifecycle"] = run_lifecycle_probe(_native)
+                result["tools_probe"]["lifecycle"] = run_lifecycle_probe(_native, progress=_probe_stage)
                 result["tools_probe"]["ready"] = result["tools_probe"]["lifecycle"]["ready"]
     result["ready"] = bool(result["tls_probe"] and runtime.get("ready") and runtime.get("server", {}).get("ready")
                            and (runtime.get("core_only") or result["dependencies"].get("ready") and result.get("tools_probe", {}).get("ready")))
+    _probe_stage("python_complete")
     return json.dumps(result)

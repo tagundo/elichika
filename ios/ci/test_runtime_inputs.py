@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from fetch_runtime_inputs import compiler_inputs_match, extract
 from package_ipa import validate_runtime
 from run_simulator import validate_reply
+from probe_watchdog import STAGE_SECONDS
 
 
 def digest(raw):
@@ -90,6 +91,9 @@ class RuntimeInputTests(unittest.TestCase):
             reply[name] = True
         lifecycle = dict.fromkeys(('ready', 'stopped', 'read_only_command_succeeded', 'restarted'), True)
         reply['runtime_probe'] = {'ready': True, 'tools_probe': {'ready': True, 'lifecycle': lifecycle}}
+        reply['probe_timing'] = {'absolute_budget_seconds': 600, 'final_stage': 'complete',
+            'elapsed_seconds': 11, 'events': [{'stage': stage, 'detail': '', 'elapsed_seconds': i}
+                                            for i, stage in enumerate(STAGE_SECONDS)]}
         reply['web_storage_probe'] = {'ready': True, 'actual_management_webview': True, 'persistent_store': True, 'launch_number': 2,
             'admin': {'ready': True, 'origin_port': 8772, 'seeded': False, 'persisted': True},
             'tools': {'ready': True, 'origin_port': 8770, 'seeded': False, 'persisted': True}}
@@ -115,6 +119,18 @@ class RuntimeInputTests(unittest.TestCase):
                 validate_reply(overwritten, False, launch_number=2)
         with self.assertRaises(ValueError):
             validate_reply(reply, False, launch_number=1)
+        for case in ('missing_stage', 'backwards_clock', 'negative_clock', 'over_cap'):
+            failed = copy.deepcopy(reply)
+            if case == 'missing_stage':
+                del failed['probe_timing']['events'][5]
+            elif case == 'backwards_clock':
+                failed['probe_timing']['events'][5]['elapsed_seconds'] = 0
+            elif case == 'negative_clock':
+                failed['probe_timing']['events'][0]['elapsed_seconds'] = -.1
+            else:
+                failed['probe_timing']['elapsed_seconds'] = 600
+            with self.subTest(timing=case), self.assertRaises(ValueError):
+                validate_reply(failed, False, launch_number=2)
 
 
 if __name__ == '__main__':

@@ -65,8 +65,12 @@ def main():
                 routes.append({"module": module.__name__, "tools": len(result["tools"]), "http_status": response.status})
                 connection.close()
             from elichika_ios.probes import run
-            tools_probe = run([(name, server.server_port) for name, (server, _) in zip(("admin", "tools"), servers)], token, library)
+            probe_stages = []
+            tools_probe = run([(name, server.server_port) for name, (server, _) in zip(("admin", "tools"), servers)], token, library,
+                              progress=probe_stages.append)
             assert tools_probe["ready"], tools_probe
+            assert probe_stages == ["registries", "texture_codecs", "model_glb"], probe_stages
+            assert set(tools_probe["timings_seconds"]) == set(probe_stages)
         finally:
             for server, thread in servers:
                 server.shutdown()

@@ -12,5 +12,7 @@ FOUNDATION_EXPORT BOOL ElichikaHostExportDocument(NSString *path, NSError **erro
 #if ELICHIKA_SIMULATOR_PROBE
 FOUNDATION_EXPORT BOOL ElichikaHostInstallForProbe(Class gameClass);
 FOUNDATION_EXPORT void ElichikaHostProbeWebStorage(NSUInteger launchNumber, void (^completion)(NSDictionary *result));
+FOUNDATION_EXPORT void ElichikaHostSetProbeStageHandler(void (^handler)(NSString *stage, NSTimeInterval entered));
+FOUNDATION_EXPORT void ElichikaHostProbeStage(NSString *stage);
 #endif
 NS_ASSUME_NONNULL_END

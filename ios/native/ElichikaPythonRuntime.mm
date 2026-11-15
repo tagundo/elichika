@@ -109,12 +109,24 @@ static PyObject *ELPostEvent(PyObject *self, PyObject *argument) {
     ElichikaHostReportEvent([[NSString alloc] initWithBytes:raw length:(NSUInteger)size encoding:NSUTF8StringEncoding]);
     Py_RETURN_NONE;
 }
+#if ELICHIKA_SIMULATOR_PROBE
+static PyObject *ELProbeStage(PyObject *self,PyObject *argument) {
+    (void)self; Py_ssize_t size=0; const char *raw=PyUnicode_AsUTF8AndSize(argument,&size);
+    if (!raw) return NULL;
+    if (!size || size>64 || memchr(raw,0,(size_t)size)) { PyErr_SetString(PyExc_ValueError,"Invalid probe stage."); return NULL; }
+    ElichikaHostProbeStage([[NSString alloc] initWithBytes:raw length:(NSUInteger)size encoding:NSUTF8StringEncoding]);
+    Py_RETURN_NONE;
+}
+#endif
 static PyMethodDef ELMethods[] = {
     {"go_start", ELGoStart, METH_O, "Start the real Go backend asynchronously; return status JSON."},
     {"go_status", ELGoStatus, METH_NOARGS, "Read real Go readiness JSON."},
     {"go_stop", ELGoStop, METH_NOARGS, "Drain the embedded Go backend; return status JSON."},
     {"go_command", ELGoCommand, METH_O, "Execute an embedded server management command; return JSON."},
     {"report_event", ELPostEvent, METH_O, "Publish bounded startup progress to native UI."},
+#if ELICHIKA_SIMULATOR_PROBE
+    {"probe_stage", ELProbeStage, METH_O, "Test-only bounded stage progress; absent from device runtime."},
+#endif
     {"https_request", (PyCFunction)(void (*)(void))ElichikaHTTPSRequest, METH_VARARGS|METH_KEYWORDS, "OS-trusted bounded HTTPS request."},
     {"https_download", (PyCFunction)(void (*)(void))ElichikaHTTPSDownload, METH_VARARGS|METH_KEYWORDS, "Stream OS-trusted HTTPS into app-private storage."},
     {"pick_document", ElichikaPickDocument, METH_VARARGS, "Import a user-selected document into app storage."},

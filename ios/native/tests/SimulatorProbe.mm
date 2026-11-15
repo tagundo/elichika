@@ -4,6 +4,7 @@
 #import <UIKit/UIKit.h>
 #import "../ElichikaHost.h"
 #import "../ElichikaPythonRuntime.h"
+#include "../ProbeBudget.hpp"
 
 static NSUInteger ELFakeGameStarts;
 @interface ELProbeGame : NSObject
@@ -12,12 +13,20 @@ static NSUInteger ELFakeGameStarts;
 @implementation ELProbeGame
 - (void)startUnity:(UIApplication *)application { (void)application; ++ELFakeGameStarts; }
 @end
-@interface ELProbeDelegate : UIResponder <UIApplicationDelegate>
+@interface ELProbeDelegate : UIResponder <UIApplicationDelegate> {
+    elichika::ProbeBudget _budget;
+}
 @property(nonatomic,strong) UIWindow *window;
 @property(nonatomic,strong) ELProbeGame *game;
 @property(nonatomic,strong) NSTimer *timer;
 @property(nonatomic,assign) BOOL finishing;
 @property(nonatomic,assign) NSTimeInterval began;
+@property(nonatomic,assign) NSTimeInterval lastHeartbeat;
+@property(nonatomic,assign) NSUInteger launchNumber;
+@property(nonatomic,assign) BOOL completed;
+@property(nonatomic,copy) NSString *detail;
+@property(nonatomic,strong) NSMutableArray *timingEvents;
+- (void)advanceStage:(NSString *)name entered:(NSTimeInterval)entered;
 @end
 @implementation ELProbeDelegate
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
@@ -25,14 +34,76 @@ static NSUInteger ELFakeGameStarts;
     _window=[[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     UIViewController *controller=[UIViewController new]; controller.view.backgroundColor=UIColor.systemBackgroundColor;
     _window.rootViewController=controller; [_window makeKeyAndVisible];
-    self.began=NSDate.timeIntervalSinceReferenceDate;
+    self.began=NSProcessInfo.processInfo.systemUptime;
+    _budget=elichika::ProbeBudget(self.began,[NSProcessInfo.processInfo.arguments containsObject:@"--elichika-core-probe"]);
+    self.detail=@""; self.timingEvents=[NSMutableArray new];
+    for (NSString *argument in NSProcessInfo.processInfo.arguments) {
+        if ([argument isEqual:@"--elichika-probe-launch=1"]) self.launchNumber=1;
+        if ([argument isEqual:@"--elichika-probe-launch=2"]) self.launchNumber=2;
+    }
+    __weak ELProbeDelegate *weakSelf=self;
+    ElichikaHostSetProbeStageHandler(^(NSString *stage,NSTimeInterval entered) {
+        ELProbeDelegate *strong=weakSelf;
+        // Worker completion is recorded only when its returned result reaches
+        // the callback below; an error path cannot skip successful stages.
+        if (strong && !strong.completed && ![stage isEqual:@"python_complete"]) [strong advanceStage:stage entered:entered];
+    });
+    [self recordTimingAt:self.began]; [self progress:@"running"];
+    if (!self.launchNumber) {
+        [self write:[@{@"schema":@1,@"phase":@"error",@"probe_pass":@NO,@"error":@"The cold-launch index is missing."} mutableCopy]];
+        return YES;
+    }
     self.game=[ELProbeGame new];
     ElichikaHostInstallForProbe(ELProbeGame.class);
     [self.game startUnity:application]; // actual host must hold this call
     self.timer=[NSTimer scheduledTimerWithTimeInterval:0.5 target:self selector:@selector(observe) userInfo:nil repeats:YES];
     return YES;
 }
+- (void)recordTimingAt:(NSTimeInterval)entered {
+    [self.timingEvents addObject:@{@"stage":[NSString stringWithUTF8String:_budget.stage().name],@"detail":self.detail ?: @"",
+        @"elapsed_seconds":@(entered-_budget.start())}];
+}
+- (void)progress:(NSString *)status {
+    const double now=NSProcessInfo.processInfo.systemUptime;
+    NSDictionary *value=@{@"schema":@1,@"probe_kind":@"native-simulator-progress",@"launch_number":@(self.launchNumber),
+        @"sequence":@(_budget.sequence()),@"stage":[NSString stringWithUTF8String:_budget.stage().name],@"detail":self.detail ?: @"",
+        @"status":status,@"elapsed_seconds":@(now-_budget.start()),@"stage_elapsed_seconds":@(now-_budget.entered()),
+        @"stage_budget_seconds":@(_budget.stage().seconds),@"start_uptime_seconds":@(_budget.start()),
+        @"stage_enter_uptime_seconds":@(_budget.entered()),@"sample_uptime_seconds":@(now)};
+    NSString *path=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"elichika-simulator-progress.json"];
+    NSData *data=[NSJSONSerialization dataWithJSONObject:value options:0 error:NULL];
+    if (!data || data.length>8192 || ![data writeToFile:path options:NSDataWritingAtomic error:NULL])
+        NSLog(@"ELICHIKA_SIMULATOR_PROGRESS_WRITE_FAILED");
+    self.lastHeartbeat=now;
+}
+- (void)advanceStage:(NSString *)name {
+    [self advanceStage:name entered:NSProcessInfo.processInfo.systemUptime];
+}
+- (void)advanceStage:(NSString *)name entered:(NSTimeInterval)entered {
+    if (self.completed) return;
+    const int previous=_budget.index(); NSString *previousDetail=self.detail;
+    if (!_budget.advanceAt(name.UTF8String,entered,NSProcessInfo.processInfo.systemUptime)) {
+        NSMutableDictionary *failure=[[NSJSONSerialization JSONObjectWithData:[ElichikaHostDiagnosticsJSON() dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingMutableContainers error:NULL] mutableCopy];
+        failure[@"probe_pass"]=@NO; failure[@"phase"]=@"error"; failure[@"error"]=@"Probe stage order or fixed deadline was violated.";
+        [self write:failure]; return;
+    }
+    NSString *canonical=[NSString stringWithUTF8String:_budget.stage().name];
+    self.detail=[name isEqual:canonical] ? @"" : name;
+    if (previous!=_budget.index() || ![previousDetail isEqual:self.detail]) [self recordTimingAt:entered];
+    [self progress:@"running"];
+}
 - (void)write:(NSMutableDictionary *)result {
+    if (self.completed) return;
+    self.completed=YES; [self.timer invalidate];
+    if ([result[@"probe_pass"] boolValue]) {
+        if (!_budget.advance("complete",NSProcessInfo.processInfo.systemUptime)) {
+            result[@"probe_pass"]=@NO; result[@"phase"]=@"error"; result[@"error"]=@"Probe deadline expired before its final receipt.";
+        } else { self.detail=@""; [self recordTimingAt:_budget.entered()]; }
+    }
+    // Publish the final stage before receipt serialization or filesystem I/O.
+    // The independent runner enforces this fixed five-second stage even if the
+    // main thread stalls, and cannot accept a JSON file until complete/complete.
+    [self progress:[result[@"probe_pass"] boolValue] ? @"running" : @"failed"];
     result[@"fake_game_start_count"]=@(ELFakeGameStarts);
     result[@"probe_kind"]=@"native-simulator-real-backend-fake-game";
     NSDictionary *configuration=ElichikaHostConfiguration();
@@ -54,22 +125,41 @@ static NSUInteger ELFakeGameStarts;
         result[@"probe_pass"]=@NO; result[@"phase"]=@"error";
         if (![result[@"error"] length]) result[@"error"]=@"The actual native storage configuration failed its Documents contract.";
     }
+    result[@"probe_timing"]=@{@"elapsed_seconds":@(NSProcessInfo.processInfo.systemUptime-_budget.start()),
+        @"absolute_budget_seconds":@600,@"final_stage":[NSString stringWithUTF8String:_budget.stage().name],@"events":self.timingEvents};
     NSString *path=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"elichika-simulator-probe.json"];
     NSData *data=[NSJSONSerialization dataWithJSONObject:result options:NSJSONWritingPrettyPrinted error:NULL];
-    [data writeToFile:path atomically:YES];
+    BOOL written=data && [data writeToFile:path options:NSDataWritingAtomic error:NULL];
+    if ([result[@"probe_pass"] boolValue] && (!written || _budget.expired(NSProcessInfo.processInfo.systemUptime))) {
+        result[@"probe_pass"]=@NO; result[@"phase"]=@"error";
+        result[@"error"]=written ? @"Probe deadline expired while writing its final receipt." : @"Could not write the final probe receipt.";
+        data=[NSJSONSerialization dataWithJSONObject:result options:NSJSONWritingPrettyPrinted error:NULL];
+        [data writeToFile:path options:NSDataWritingAtomic error:NULL];
+    }
+    _budget.seal();
+    [self progress:[result[@"probe_pass"] boolValue] ? @"complete" : @"failed"];
     NSLog(@"ELICHIKA_SIMULATOR_PROBE_JSON %@",[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]);
     [self.timer invalidate];
 }
 - (void)observe {
+    if (self.completed) return;
+    const double now=NSProcessInfo.processInfo.systemUptime;
+    if (_budget.expired(now)) {
+        NSMutableDictionary *failure=[[NSJSONSerialization JSONObjectWithData:[ElichikaHostDiagnosticsJSON() dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingMutableContainers error:NULL] mutableCopy];
+        failure[@"probe_pass"]=@NO; failure[@"phase"]=@"error";
+        failure[@"error"]=[NSString stringWithFormat:@"Probe deadline exceeded in %@.",[NSString stringWithUTF8String:_budget.stage().name]];
+        [self write:failure]; return;
+    }
+    if (now-self.lastHeartbeat>=2) [self progress:@"running"];
     if (self.finishing) return;
     NSMutableDictionary *status=[[NSJSONSerialization JSONObjectWithData:[ElichikaHostDiagnosticsJSON() dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingMutableContainers error:NULL] mutableCopy];
-    if ([status[@"phase"] isEqual:@"error"] || NSDate.timeIntervalSinceReferenceDate-self.began>240) {
+    if ([status[@"phase"] isEqual:@"error"]) {
         self.finishing=YES; status[@"probe_pass"]=@NO;
-        if (![status[@"phase"] isEqual:@"error"]) { status[@"phase"]=@"error"; status[@"error"]=@"Real backend readiness timed out."; }
         [self write:status]; return;
     }
     if (![status[@"phase"] isEqual:@"running"] || ELFakeGameStarts!=1) return;
     self.finishing=YES;
+    [self advanceStage:@"native_health"]; if (self.completed) return;
     NSMutableURLRequest *request=[NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"http://127.0.0.1:8080/__elichika/health"]];
     [request setValue:[@"Bearer " stringByAppendingString:ElichikaHostConfiguration()[@"ready_token"]] forHTTPHeaderField:@"Authorization"];
     request.timeoutInterval=15;
@@ -77,13 +167,16 @@ static NSUInteger ELFakeGameStarts;
         NSDictionary *health=data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
         BOOL valid=!error && [(NSHTTPURLResponse *)response statusCode]==200 && [health[@"ready"] boolValue];
         dispatch_async(dispatch_get_main_queue(),^{
+            if (self.completed) return;
             status[@"authenticated_go_health"]=@(valid);
             if (!valid) {
                 status[@"probe_pass"]=@NO; status[@"phase"]=@"error";
                 status[@"error"]=error.localizedDescription ?: @"Authenticated Go health failed.";
                 [self write:status]; return;
             }
+            [self advanceStage:@"tls"]; if (self.completed) return;
             ElichikaPythonCall(@"probe",^(NSDictionary *probe) {
+                if (self.completed) return;
                 BOOL tls=[probe[@"tls_probe"] boolValue];
                 NSDictionary *dependencies=[probe[@"dependencies"] isKindOfClass:NSDictionary.class] ? probe[@"dependencies"] : @{};
                 NSDictionary *runtime=[probe[@"runtime"] isKindOfClass:NSDictionary.class] ? probe[@"runtime"] : @{};
@@ -98,16 +191,13 @@ static NSUInteger ELFakeGameStarts;
                     status[@"phase"]=@"error"; status[@"error"]=@"The real Python/TLS runtime probe failed.";
                     [self write:status]; return;
                 }
+                [self advanceStage:@"python_complete"]; if (self.completed) return;
                 if ([status[@"core_only"] boolValue]) {
                     status[@"web_storage_probe"]=@{@"ready":@NO,@"actual_management_webview":@NO,@"skipped_core_only":@YES};
                     [self write:status]; return;
                 }
-                NSUInteger launchNumber=0;
-                for (NSString *argument in NSProcessInfo.processInfo.arguments) {
-                    if ([argument isEqual:@"--elichika-probe-launch=1"]) launchNumber=1;
-                    if ([argument isEqual:@"--elichika-probe-launch=2"]) launchNumber=2;
-                }
-                ElichikaHostProbeWebStorage(launchNumber,^(NSDictionary *storage) {
+                ElichikaHostProbeWebStorage(self.launchNumber,^(NSDictionary *storage) {
+                    if (self.completed) return;
                     status[@"web_storage_probe"]=storage;
                     if (![storage[@"ready"] boolValue]) {
                         status[@"probe_pass"]=@NO; status[@"phase"]=@"error";

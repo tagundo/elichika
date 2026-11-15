@@ -7,6 +7,7 @@ claims that the actual arm64 SIFAS game ran in Simulator or on a device.
 from __future__ import annotations
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import socket
@@ -17,6 +18,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import inventory, require, run, write_json
+from probe_watchdog import DETAILS, STAGE_SECONDS, ProbeWatchdog, read_progress
 
 BUNDLE = 'org.elichika.simulator-probe'
 PORTS = (8080, 8770, 8772)
@@ -46,6 +48,27 @@ def validate_reply(value, core_only, *, launch_number=None):
     require(value.get('phase') == 'running' and value.get('fake_game_start_count') == 1,
             'Readiness did not start the captured test game exactly once')
     require(value.get('core_only') is core_only, 'Probe readiness scope differs from selected runtime')
+    timing = value.get('probe_timing', {})
+    elapsed = timing.get('elapsed_seconds')
+    events = timing.get('events', [])
+    require(timing.get('absolute_budget_seconds') == 600 and timing.get('final_stage') == 'complete'
+            and type(elapsed) in (int, float) and math.isfinite(elapsed) and 0 <= elapsed < 600
+            and isinstance(events, list) and 1 <= len(events) <= 64,
+            'Native probe deadline/history evidence is incomplete')
+    stages, previous_elapsed = [], 0
+    for event in events:
+        require(isinstance(event, dict) and set(event) == {'stage', 'detail', 'elapsed_seconds'},
+                'Native probe timing event contract differs')
+        stage, at = event['stage'], event['elapsed_seconds']
+        require(stage in STAGE_SECONDS and event['detail'] in {'', stage, *DETAILS.get(stage, set())}
+                and type(at) in (int, float) and math.isfinite(at) and previous_elapsed <= at <= elapsed,
+                'Native probe timing stage/clock evidence differs')
+        if not stages or stages[-1] != stage:
+            stages.append(stage)
+        previous_elapsed = at
+    expected_stages = (['native_start', 'native_health', 'tls', 'python_complete', 'complete']
+                       if core_only else list(STAGE_SECONDS))
+    require(stages == expected_stages, 'Native probe did not complete its exact ordered stage history')
     if not core_only:
         runtime = value.get('runtime_probe', {})
         tools = runtime.get('tools_probe', {})
@@ -93,6 +116,31 @@ def choose_runtime_and_types():
     return runtime, chosen
 
 
+def retain_failure(evidence, label, identifier, process, watchdog, error, reply_file):
+    """Capture small owned-probe diagnostics before termination/sandbox deletion."""
+    diagnostics = {'schema': 1, 'status': 'FAIL_SIMULATOR_PROBE',
+                   'error_type': type(error).__name__, 'error': str(error)[:512],
+                   'process_exit_code': process.poll(),
+                   'owned_loopback_ports_listening': {str(port): port_open(port) for port in PORTS},
+                   'watchdog': watchdog.snapshot(time.monotonic()),
+                   'all_final_readiness_gates_still_required': True}
+    try:
+        shot = subprocess.run(['xcrun', 'simctl', 'io', identifier, 'screenshot', evidence / (label + '-failure.png')],
+                              check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        diagnostics['failure_screenshot_captured'] = shot.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        diagnostics['failure_screenshot_captured'] = False
+    # The screenshot gives an in-flight atomic native write a chance to finish.
+    # A native error receipt is preserved, never converted into readiness.
+    if reply_file.is_file() and not reply_file.is_symlink() and reply_file.stat().st_size <= 1024*1024:
+        try:
+            write_json(evidence / (label + '-native-failure.json'), json.loads(reply_file.read_text()))
+            diagnostics['native_failure_receipt_retained'] = True
+        except (ValueError, OSError):
+            diagnostics['native_failure_receipt_retained'] = False
+    write_json(evidence / (label + '-failure.json'), diagnostics)
+
+
 def execute(app, evidence, *, core_only):
     app, evidence = Path(app).resolve(), Path(evidence).resolve()
     evidence.mkdir(parents=True, exist_ok=True)
@@ -122,39 +170,67 @@ def execute(app, evidence, *, core_only):
             for launch_number in (1, 2):
                 reply_file = sandbox / 'Documents/elichika-simulator-probe.json'
                 reply_file.unlink(missing_ok=True)
-                log = evidence / (model['name'].replace('/', '-') + '-launch-' + str(launch_number) + '.txt')
+                progress_file = sandbox / 'Documents/elichika-simulator-progress.json'
+                progress_file.unlink(missing_ok=True)
+                label = model['name'].replace('/', '-') + '-launch-' + str(launch_number)
+                log = evidence / (label + '.txt')
                 with log.open('w') as output:
                     command = ['xcrun', 'simctl', 'launch', '--console-pty', '--terminate-running-process', identifier, BUNDLE]
                     command.append('--elichika-probe-launch=' + str(launch_number))
                     if core_only:
                         command.append('--elichika-core-probe')
+                    began = time.monotonic()
                     process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT, text=True)
+                    watchdog = ProbeWatchdog(launch_number, began)
                     try:
-                        deadline = time.monotonic()+260
-                        while not reply_file.is_file() and time.monotonic() < deadline:
+                        while True:
+                            now = time.monotonic()
+                            watchdog.check(now)
+                            if progress_file.exists():
+                                watchdog.observe(read_progress(progress_file), now)
+                            watchdog.check(now)
+                            if reply_file.is_file() and watchdog.can_read_receipt(now):
+                                break
                             require(process.poll() is None, 'Probe process exited before its real-backend readiness receipt')
                             time.sleep(.5)
-                        require(reply_file.is_file(), 'Probe timed out before real-backend readiness')
+                        write_json(evidence / (label + '-progress.json'), watchdog.snapshot(time.monotonic()))
                         require(reply_file.stat().st_size <= 1024*1024, 'Probe receipt exceeds bound')
                         raw_reply = json.loads(reply_file.read_text())
                         write_json(evidence / (model['name'].replace('/', '-') + '-launch-' + str(launch_number) + '-native.json'), raw_reply)
                         reply = validate_reply(raw_reply, core_only, launch_number=launch_number)
                         require(port_open(8080), 'Probe health claimed ready without an actual game listener')
-                        from probe_protocol import probe as probe_protocol
-                        protocol = probe_protocol('http://127.0.0.1:8080',
-                            sandbox / 'Library/Application Support/Elichika/data',
-                            evidence / ('encrypted-protocol-' + str(len(results)+1) + '.json'))
+                        protocol_file = evidence / ('encrypted-protocol-' + str(len(results)+1) + '.json')
+                        # The existing CLI invokes the same real protocol API.
+                        # Its child has the remaining absolute launch budget,
+                        # including all requests and committed-state checks.
+                        subprocess.run([sys.executable, '-B', Path(__file__).with_name('probe_protocol.py'),
+                            '--endpoint', 'http://127.0.0.1:8080', '--data-root',
+                            sandbox / 'Library/Application Support/Elichika/data', '--output', protocol_file],
+                            check=True, stdout=output, stderr=subprocess.STDOUT,
+                            timeout=watchdog.remaining(time.monotonic()))
+                        require(protocol_file.is_file() and protocol_file.stat().st_size <= 1024*1024,
+                                'Bounded actual encrypted protocol evidence is missing')
+                        protocol = json.loads(protocol_file.read_text())
                         require(protocol['passed'] is True, 'Actual encrypted SIFAS protocol/persistence gate failed')
+                        watchdog.remaining(time.monotonic())
                         require(inventory(installed) == before, 'Runtime wrote inside the signed application bundle')
+                        watchdog.remaining(time.monotonic())
                         # Probe-owned JSON contains no per-launch auth tokens or
                         # private user database; preserve only bounded evidence.
                         row = {'model': model['name'], 'runtime': runtime['version'],
                                'launch_number': launch_number, 'same_sandbox_relaunch': launch_number == 2,
                                'signed_bundle_unchanged': True, 'data_outside_bundle': True,
-                               'encrypted_protocol': protocol, 'reply': reply}
+                               'encrypted_protocol': protocol, 'reply': reply,
+                               'probe_progress': watchdog.snapshot(time.monotonic())}
                         results.append(row)
                         write_json(evidence / ('probe-' + str(len(results)) + '.json'), row)
-                        run(['xcrun', 'simctl', 'io', identifier, 'screenshot', evidence / ('probe-' + str(len(results)) + '.png')])
+                        subprocess.run(['xcrun', 'simctl', 'io', identifier, 'screenshot', evidence / ('probe-' + str(len(results)) + '.png')],
+                                       check=True, timeout=min(15, watchdog.remaining(time.monotonic())))
+                        watchdog.remaining(time.monotonic())
+                    except Exception as error:
+                        output.flush()
+                        retain_failure(evidence, label, identifier, process, watchdog, error, reply_file)
+                        raise
                     finally:
                         subprocess.run(['xcrun', 'simctl', 'terminate', identifier, BUNDLE], check=False,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

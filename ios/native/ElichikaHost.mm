@@ -25,6 +25,9 @@ static NSString *ELHookError, *ELProgress;
 static NSString *ELClientRegion;
 static BOOL ELRoutingPrepared;
 static BOOL ELExperimentalArchivePending;
+#if ELICHIKA_SIMULATOR_PROBE
+static void (^ELProbeStageHandler)(NSString *stage,NSTimeInterval entered);
+#endif
 static NSTimer *ELPollTimer;
 static UIWindow *ELPanelWindow;
 static UIButton *ELMenuButton;
@@ -87,7 +90,7 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 @property(nonatomic,strong) UISegmentedControl *sections;
 @property(nonatomic,strong) WKWebView *web;
 @property(nonatomic,strong) UIButton *retry;
-@property(nonatomic,strong) UIButton *buttonVisibility;
+@property(nonatomic,strong) UIBarButtonItem *buttonVisibility;
 @property(nonatomic,strong) UILabel *candidateLabel;
 #if ELICHIKA_SIMULATOR_PROBE
 @property(nonatomic,copy) void (^storageProbeReply)(NSDictionary *reply);
@@ -131,34 +134,40 @@ static void ELHidePanel(void) {
     [_retry addTarget:self action:@selector(retrySetup) forControlEvents:UIControlEventTouchUpInside];
     _sections=[[UISegmentedControl alloc] initWithItems:@[@"Accounts",@"Server",@"Tools"]];
     [_sections addTarget:self action:@selector(openSection) forControlEvents:UIControlEventValueChanged];
-    _buttonVisibility=[UIButton buttonWithType:UIButtonTypeSystem];
-    [_buttonVisibility addTarget:self action:@selector(toggleServerButton) forControlEvents:UIControlEventTouchUpInside];
+    _buttonVisibility=[[UIBarButtonItem alloc] initWithTitle:@"" style:UIBarButtonItemStylePlain target:self action:@selector(toggleServerButton)];
+    self.navigationItem.leftBarButtonItem=_buttonVisibility;
+    _buttonVisibility.accessibilityHint=ELButtonText(@"The choice is saved. Hold the upper-left corner for 2 seconds to reopen this panel.",
+        @"선택은 저장됩니다. 왼쪽 위 모서리를 2초간 길게 누르면 이 패널을 다시 열 수 있습니다.",
+        @"設定は保存されます。左上隅を2秒間長押しすると、このパネルを再び開けます。");
     UILabel *guidance=[UILabel new]; guidance.numberOfLines=0;
     guidance.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption2]; guidance.textColor=UIColor.secondaryLabelColor;
-    guidance.text=ELButtonText(@"Hide the button for MVs. Hold the upper-left corner for 2 seconds to reopen this panel. The choice is saved.",
-        @"MV 화면을 가리지 않도록 버튼을 숨깁니다. 왼쪽 위 모서리를 2초간 길게 누르면 이 패널을 다시 열 수 있습니다. 선택은 저장됩니다.",
-        @"MVを見やすくするためにボタンを隠します。左上隅を2秒間長押しすると、このパネルを再び開けます。設定は保存されます。");
+    guidance.text=ELButtonText(@"Hide for MV. Hold upper-left 2s to reopen.",
+        @"MV 중 숨기기 · 왼쪽 위 2초 길게 눌러 다시 열기",
+        @"MV中は非表示に。左上を2秒長押しで再表示。");
     _candidateLabel=[UILabel new]; _candidateLabel.numberOfLines=0;
     _candidateLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption2]; _candidateLabel.textColor=UIColor.systemOrangeColor;
-    _candidateLabel.text=ELButtonText(@"Experimental: Archive publication and device testing are pending. Put existing packs in Files → Elichika → packs.",
-        @"실험 빌드: Archive 게시와 기기 검증이 대기 중입니다. 기존 팩은 파일 → Elichika → packs에 넣으세요.",
-        @"実験版: Archiveの公開と実機検証は未完了です。既存のパックは「ファイル」→ Elichika → packsに配置してください。");
+    _candidateLabel.text=ELButtonText(@"Experimental · Archive pending · Device untested\nFiles: Elichika/packs",
+        @"실험 빌드 · Archive 게시 대기 · 실기기 미검증\n파일: Elichika/packs",
+        @"実験版 · Archive公開待ち · 実機未検証\nファイル: Elichika/packs");
     WKWebViewConfiguration *configuration=[WKWebViewConfiguration new];
     configuration.websiteDataStore=WKWebsiteDataStore.defaultDataStore;
     [configuration.userContentController addScriptMessageHandler:self name:@"elichika"];
     NSString *script=@"(()=>{const p=new Map();let n=0;window.ElichikaIOS=Object.freeze({request:(action,options={})=>new Promise((resolve,reject)=>{const id=String(++n);p.set(id,{resolve,reject});window.webkit.messageHandlers.elichika.postMessage({id,action,...options});})});window.addEventListener('elichika-native-result',e=>{const x=e.detail,j=p.get(x.id);if(j){p.delete(x.id);x.error?j.reject(Error(x.error)):j.resolve(x.result)}})})();";
     [configuration.userContentController addUserScript:[[WKUserScript alloc] initWithSource:script injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
     _web=[[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration]; _web.navigationDelegate=self;
-    UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[_statusLabel,_candidateLabel,_spinner,_retry,_buttonVisibility,guidance,_sections]];
-    head.axis=UILayoutConstraintAxisVertical; head.spacing=8;
+    UIStackView *statusRow=[[UIStackView alloc] initWithArrangedSubviews:@[_spinner,_statusLabel]];
+    statusRow.axis=UILayoutConstraintAxisHorizontal; statusRow.alignment=UIStackViewAlignmentCenter; statusRow.spacing=8;
+    [_spinner setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[statusRow,_candidateLabel,_retry,guidance,_sections]];
+    head.axis=UILayoutConstraintAxisVertical; head.spacing=6;
     head.translatesAutoresizingMaskIntoConstraints=NO; _web.translatesAutoresizingMaskIntoConstraints=NO;
     [self.view addSubview:head]; [self.view addSubview:_web];
     UILayoutGuide *safe=self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [head.topAnchor constraintEqualToAnchor:safe.topAnchor constant:12],
+        [head.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
         [head.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
         [head.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],
-        [_web.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:12],
+        [_web.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:8],
         [_web.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [_web.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [_web.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor]]];
@@ -185,15 +194,19 @@ static void ELHidePanel(void) {
 - (void)refresh {
     if (!self.isViewLoaded) return;
     _candidateLabel.hidden=!ELExperimentalArchivePending;
-    [_buttonVisibility setTitle:ELButtonPolicy().visible()
+    _buttonVisibility.title=ELButtonPolicy().visible()
+        ? ELButtonText(@"Hide button",@"버튼 숨기기",@"ボタンを隠す")
+        : ELButtonText(@"Show button",@"버튼 표시",@"ボタンを表示");
+    _buttonVisibility.accessibilityLabel=ELButtonPolicy().visible()
         ? ELButtonText(@"Hide server button",@"서버 버튼 숨기기",@"サーバーボタンを隠す")
-        : ELButtonText(@"Show server button",@"서버 버튼 표시",@"サーバーボタンを表示") forState:UIControlStateNormal];
+        : ELButtonText(@"Show server button",@"서버 버튼 표시",@"サーバーボタンを表示");
     NSString *error=ELHookError ?: [NSString stringWithUTF8String:ELCore().error().c_str()];
+    _statusLabel.numberOfLines=ELCore().ready() && !error.length ? 1 : 0;
     if (error.length) _statusLabel.text=[NSString stringWithFormat:@"Setup could not finish.\n%@",error];
     else if (ELCore().ready()) _statusLabel.text=[ELConfiguration[@"core_only"] boolValue]
-        ? @"Core server probe ready. Tools are excluded from this test."
-        : (ELExperimentalArchivePending ? @"Local server and tools are ready. Archive publication is still pending."
-           : @"Server and tools are ready. Closing this panel keeps them running.");
+        ? @"Core server probe ready"
+        : (ELExperimentalArchivePending ? ELButtonText(@"Local ready",@"로컬 서버 준비됨",@"ローカル準備完了")
+           : ELButtonText(@"Ready",@"준비됨",@"準備完了"));
     else _statusLabel.text=ELProgress ?: @"Preparing your local server and tools…";
     BOOL busy=!ELCore().ready() && !error.length;
     if (busy) [_spinner startAnimating]; else [_spinner stopAnimating];
@@ -660,6 +673,14 @@ static void ELObserve(void) {
 }
 #if ELICHIKA_SIMULATOR_PROBE
 BOOL ElichikaHostInstallForProbe(Class controller) { BOOL good=ELInstall(controller); ELObserve(); return good; }
+void ElichikaHostSetProbeStageHandler(void (^handler)(NSString *stage,NSTimeInterval entered)) { ELProbeStageHandler=[handler copy]; }
+void ElichikaHostProbeStage(NSString *stage) {
+    const NSTimeInterval entered=NSProcessInfo.processInfo.systemUptime;
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(),^{ if (ELProbeStageHandler) ELProbeStageHandler(stage,entered); }); return;
+    }
+    if (ELProbeStageHandler) ELProbeStageHandler(stage,entered);
+}
 void ElichikaHostProbeWebStorage(NSUInteger launchNumber,void (^completion)(NSDictionary *)) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(),^{ ElichikaHostProbeWebStorage(launchNumber,completion); }); return; }
     if (launchNumber!=1 && launchNumber!=2) {
@@ -671,7 +692,9 @@ void ElichikaHostProbeWebStorage(NSUInteger launchNumber,void (^completion)(NSDi
     if (!actual || !persistent) {
         completion(@{@"ready":@NO,@"actual_management_webview":@(actual),@"launch_number":@(launchNumber),@"error":@"The actual management WebView is not persistent."}); return;
     }
+    ElichikaHostProbeStage(@"web_admin");
     [ELPanel probeStorageService:@"admin" port:8772 launch:launchNumber completion:^(NSDictionary *admin) {
+        ElichikaHostProbeStage(@"web_tools");
         [ELPanel probeStorageService:@"tools" port:8770 launch:launchNumber completion:^(NSDictionary *tools) {
             completion(@{@"ready":@([admin[@"ready"] boolValue] && [tools[@"ready"] boolValue]),
                 @"actual_management_webview":@(actual),@"persistent_store":@(persistent),@"launch_number":@(launchNumber),

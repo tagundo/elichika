@@ -44,6 +44,20 @@ producer run failed later during app startup; its payload retention and upload
 must have succeeded. This does not supply any runtime or IPA gate result.
 Production `full-candidate` keeps its fresh producer and publication guard.
 
+The separate Simulator probe records bounded, atomic stage progress as
+diagnostics. Its host watchdog allows 60 seconds for first progress, fixed
+budgets for startup, health, TLS, tools, each real lifecycle operation and each
+WebView origin, and an absolute 600-second launch cap. Heartbeats and detail
+labels cannot reset a stage entrance; late transitions cannot revive an expired
+budget. Actual Source 10 iPad logs completed initial database loading at
+17:58:02 UTC, read-only configuration initialization at 17:58:28 and restart at
+17:58:52, before the former single 260-second deadline at 17:59:02. The new
+budgets preserve all three initializations and the final WebView checks.
+Progress never authorizes success; all four cold-launch receipts and real
+protocol, persistence, source and bundle gates remain mandatory. Failures retain
+the last validated progress, native error receipt and screenshot before the
+owned sandbox is deleted.
+
 `full-candidate` requires the complete wheel/codec closure, runs full Simulator
 gates, obtains the exact existing GL Local game through the locked successful
 GitHub artifact export, and packages the actual monolithic SIFAS app. It refuses

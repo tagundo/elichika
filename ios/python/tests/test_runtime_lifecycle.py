@@ -10,6 +10,30 @@ import elichika_ios_runtime as runtime
 
 
 class RetryTests(unittest.TestCase):
+    def test_stage_callback_is_absent_for_device_and_core_runtime(self):
+        stages = []
+        native = types.SimpleNamespace(probe_stage=stages.append)
+        for simulator, core in ((False, False), (False, True), (True, True)):
+            with self.subTest(simulator=simulator, core=core), patch.object(runtime, "_native", native), \
+                 patch.object(runtime, "_state", {"simulator_probe_only": simulator, "core_only": core}):
+                runtime._probe_stage("tls")
+        self.assertEqual(stages, [])
+        with patch.object(runtime, "_native", native), \
+             patch.object(runtime, "_state", {"simulator_probe_only": True, "core_only": False}):
+            runtime._probe_stage("tls")
+            with self.assertRaisesRegex(ValueError, "Unknown Simulator diagnostic stage"):
+                runtime._probe_stage("not-an-allowed-stage")
+        self.assertEqual(stages, ["tls"])
+
+    def test_failed_probe_does_not_emit_later_success_stages(self):
+        from elichika_ios.probes import run
+        stages = []
+        result = run([], "a" * 64, Path("/unused-library"), progress=stages.append)
+        self.assertFalse(result["ready"])
+        self.assertEqual(stages, ["registries"])
+        self.assertEqual(set(result["timings_seconds"]), {"registries"})
+        self.assertIn("unavailable", result["error"])
+
     def test_simulator_maintenance_sequence_redacts_config_result(self):
         from elichika_ios.probes import lifecycle
         native = types.SimpleNamespace(state={"state": "ready", "ready": True, "generation": 1}, commands=[])
@@ -33,12 +57,40 @@ class RetryTests(unittest.TestCase):
                    "adminui.serverctl": types.SimpleNamespace(_controller=types.SimpleNamespace(options={"web_token": "private-token"})),
                    "adminui.jobs": types.SimpleNamespace(MANAGER=types.SimpleNamespace(_active=0))}
         modules["adminui"].__path__ = []
+        stages = []
         with patch.dict(sys.modules, modules):
-            result = lifecycle(native)
+            result = lifecycle(native, progress=stages.append)
         self.assertTrue(result["ready"], result)
         self.assertEqual(native.commands, ["stop", "config_read", "start"])
         self.assertEqual(result["generation_after"], 4)
+        self.assertEqual(stages, ["go_stop", "config_read", "go_restart"])
+        self.assertEqual(set(result["timings_seconds"]), set(stages))
         self.assertNotIn("private", json.dumps(result))
+
+    def test_failed_maintenance_does_not_report_restart_or_completion(self):
+        from elichika_ios.probes import lifecycle
+        state = {"state": "ready", "ready": True}
+        stages, calls = [], []
+        native = types.SimpleNamespace(go_status=lambda: json.dumps(state))
+        def stop():
+            calls.append("stop")
+            state.update(state="stopped", ready=False)
+            return json.dumps(state)
+        def command(raw):
+            calls.append(json.loads(raw)["command"])
+            return json.dumps({**state, "error": {"code": "READ_FAILED", "message": "Probe read failed"}})
+        native.go_stop, native.go_command = stop, command
+        modules = {"adminui": types.ModuleType("adminui"),
+                   "adminui.serverctl": types.SimpleNamespace(_controller=types.SimpleNamespace(options={})),
+                   "adminui.jobs": types.SimpleNamespace(MANAGER=types.SimpleNamespace(_active=0))}
+        modules["adminui"].__path__ = []
+        with patch.dict(sys.modules, modules):
+            result = lifecycle(native, progress=stages.append)
+        self.assertFalse(result["ready"])
+        self.assertEqual(stages, ["go_stop", "config_read"])
+        self.assertEqual(calls, ["stop", "config_read"])
+        self.assertNotIn("restarted", result)
+        self.assertIn("READ_FAILED", result["error"])
 
     def test_rejected_native_start_fails_without_waiting_for_unchanged_status(self):
         with tempfile.TemporaryDirectory() as directory:

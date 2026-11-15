@@ -128,9 +128,12 @@ class OfficialPayloadTests(unittest.TestCase):
         with patch.dict(os.environ, {'GITHUB_SHA': 'consumer'}), \
              patch('fetch_official_payload.source_identity', return_value={'source_sha': 'consumer'}), \
              patch('fetch_official_payload.run', side_effect=[
-                 'original-tree\n', subprocess.CalledProcessError(1, ['git', 'merge-base', '--is-ancestor'])]):
+                 'original-tree\n', subprocess.CalledProcessError(1, ['git', 'merge-base', '--is-ancestor'])]) as command:
             with self.assertRaises(subprocess.CalledProcessError):
                 verify_consumer_source(ROOT, {'producer_source': original})
+            self.assertEqual(command.call_count, 2)
+            self.assertEqual(command.call_args.args[0], ['git', '-C', ROOT.resolve(), 'merge-base',
+                                                       '--is-ancestor', 'original', 'consumer'])
 
     def test_reviewed_later_run_failure_never_substitutes_for_successful_retention(self):
         lock = {'run_id': 1, 'workflow_id': 2, 'run_attempt': 1, 'job_id': 3,

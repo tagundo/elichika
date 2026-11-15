@@ -9,6 +9,26 @@ import tempfile
 import time
 
 
+class _Timings:
+    """Observe serial probe phases without changing their operation deadlines."""
+    def __init__(self, progress):
+        self.progress = progress
+        self.current = None
+        self.began = 0
+        self.values = {}
+
+    def enter(self, name):
+        self.finish()
+        self.current, self.began = name, time.monotonic()
+        if self.progress is not None:
+            self.progress(name)
+
+    def finish(self):
+        if self.current is not None:
+            self.values[self.current] = round(time.monotonic() - self.began, 6)
+            self.current = None
+
+
 def request(port, path, token=None, payload=None):
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=90)
     headers = {"Authorization": "Bearer " + token} if token else {}
@@ -27,9 +47,11 @@ def request(port, path, token=None, payload=None):
         connection.close()
 
 
-def run(services, token, library):
+def run(services, token, library, *, progress=None):
     result = {"ready": False, "stage": "registries", "registries": [], "model": {}, "codecs": {}, "error": ""}
+    timings = _Timings(progress)
     try:
+        timings.enter("registries")
         if len(services) != 2 or not token:
             raise RuntimeError("The two authenticated tool listeners are unavailable")
         for name, port in services:
@@ -42,6 +64,7 @@ def run(services, token, library):
                 raise RuntimeError(name + " tool registry is incomplete")
             result["registries"].append({"service": name, "http_status": status, "unauthenticated_status": denied, "tool_count": len(tools)})
         result["stage"] = "native_texture_codecs"
+        timings.enter("texture_codecs")
         from PIL import Image
         from UnityPy.enums import TextureFormat
         from UnityPy.export import Texture2DConverter as converter
@@ -58,6 +81,7 @@ def run(services, token, library):
                 decoded.close()
         image.close()
         result["stage"] = "model_http_glb"
+        timings.enter("model_glb")
         resources = Path(__file__).parent / "resources"
         identity = json.loads((resources / "probe-fixture.json").read_text())
         original = resources / identity["fixture"]
@@ -84,12 +108,16 @@ def run(services, token, library):
     except Exception as error:
         message = "%s: %s" % (type(error).__name__, error)
         result["error"] = message.replace(token, "[redacted]").replace(str(library), "[library]")[:2048] if token else message[:2048]
+    finally:
+        timings.finish()
+        result["timings_seconds"] = timings.values
     return result
 
 
-def lifecycle(native):
+def lifecycle(native, *, progress=None):
     """Called only for the native compile-flagged Simulator validation host."""
     result = {"ready": False, "operation": "stop-config_read-start", "error": ""}
+    timings = _Timings(progress)
     def value(reply):
         return json.loads(reply) if isinstance(reply, str) else reply
     def checked(reply):
@@ -117,9 +145,11 @@ def lifecycle(native):
         if not before.get("ready"):
             raise RuntimeError("The real embedded server was not ready before maintenance")
         result["generation_before"] = before.get("generation")
+        timings.enter("go_stop")
         checked(native.go_stop())
         stopped = wait(lambda current: current.get("state") == "stopped")
         result["stopped"] = stopped.get("state") == "stopped" and not stopped.get("ready")
+        timings.enter("config_read")
         command = checked(native.go_command(json.dumps({"command": "config_read"})))
         job_id = (command.get("job") or {}).get("id")
         completed = wait(lambda current: (current.get("job") or {}).get("id") == job_id
@@ -129,9 +159,13 @@ def lifecycle(native):
             raise RuntimeError("The real config_read maintenance command failed")
         # Do not return the command's config/result: it may contain user secrets.
         result["read_only_command_succeeded"] = True
+        timings.enter("go_restart")
         checked(native.go_start(json.dumps(_controller.options)))
         restarted = wait(lambda current: bool(current.get("ready")))
         result.update(ready=True, restarted=bool(restarted.get("ready")), generation_after=restarted.get("generation"))
     except Exception as error:
         result["error"] = "%s: %s" % (type(error).__name__, error)
+    finally:
+        timings.finish()
+        result["timings_seconds"] = timings.values
     return result

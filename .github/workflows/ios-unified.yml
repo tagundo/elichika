@@ -73,6 +73,10 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-candidate-policy-compile.txt"
           "$RUNNER_TEMP/elichika-candidate-policy-tests" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-candidate-policy-tests.txt"
+          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/ProbeBudgetTests.cpp -o "$RUNNER_TEMP/elichika-probe-budget-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-probe-budget-compile.txt"
+          "$RUNNER_TEMP/elichika-probe-budget-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-probe-budget-tests.txt"
 
       - name: Test actual in-process Go lifecycle, initialization, keys and timezones
         if: ${{ inputs.mode != 'runtime-inputs' }}
