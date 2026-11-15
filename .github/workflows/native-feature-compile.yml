@@ -33,7 +33,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
-          fetch-depth: 1
+          fetch-depth: 0  # Keep the official historic SQL baseline audit available.
           persist-credentials: false
 
       - name: Set up Go compiler for the actual in-process backend
