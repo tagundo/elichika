@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+import ci_preflight
+
 
 def check(condition, message):
     if not condition:
@@ -23,6 +25,52 @@ def digest(path):
 def invoke(args, wanted):
     result = subprocess.run([sys.executable, "-B", *map(str, args)], timeout=180)
     check(result.returncode == wanted, "Preparation subprocess returned an unexpected status")
+
+
+def prepare_work(config, temp, resume_run_id, resume_kind):
+    work = temp / "elichika-ia-upload-work"
+    previous = temp / "elichika-resume-inputs"
+    copies = []
+    if "journal_seed" in config:
+        ci_preflight.validate_seed(config)
+        check(bool(resume_run_id), "Pinned seed activation must restore its verified journal")
+    if resume_run_id:
+        check(resume_kind in ("pinned_seed", "same_run"), "Unknown journal resume kind")
+        names = ("journal.json", "journal.events.jsonl", "publication.json")
+        if resume_kind == "pinned_seed":
+            seed = ci_preflight.validate_seed(config)
+            check(str(resume_run_id) == str(seed["run_id"]), "Downloaded seed run differs")
+            names = ("journal.json", "journal.events.jsonl")
+        else:
+            check(str(resume_run_id) == os.environ.get("GITHUB_RUN_ID"),
+                  "Same-run continuation cannot restore a foreign run")
+        for name in names:
+            source = previous / name
+            if not source.exists() and name == "publication.json":
+                continue
+            check(source.is_file() and not source.is_symlink() and source.stat().st_size <= 128 * 1024 ** 2,
+                  "Resume journal file is absent or unsafe")
+            if resume_kind == "pinned_seed":
+                check(digest(source) == seed["rawfilehashes"][name], "Reviewed seed raw file SHA256 differs: " + name)
+            copies.append((name, source))
+        if resume_kind == "pinned_seed":
+            check(json.loads((previous / "journal.json").read_bytes()).get("identity") == ci_preflight.JOURNAL_SEED_IDENTITY,
+                  "Reviewed seed journal ownership identity differs")
+    else:
+        check(resume_kind in ("", "fresh"), "Resume kind requires a verified run")
+    # Validate every reviewed source first, then copy immutable bytes. The core
+    # Journal class still compares its complete identity before account writes.
+    work.mkdir(mode=0o700)
+    work.chmod(0o700)
+    for name, source in copies:
+        with source.open("rb") as incoming, (work / name).open("xb") as outgoing:
+            while block := incoming.read(1024 * 1024):
+                outgoing.write(block)
+        (work / name).chmod(0o600)
+        if resume_kind == "pinned_seed":
+            check(digest(work / name) == seed["rawfilehashes"][name],
+                  "Reviewed seed changed while being copied")
+    return work
 
 
 def main():
@@ -71,20 +119,7 @@ def main():
         (combined / "prepared-inputs-receipt.json").write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
         print(json.dumps(receipt, sort_keys=True))
     elif args.command == "work":
-        work = temp / "elichika-ia-upload-work"
-        work.mkdir(mode=0o700)
-        previous = temp / "elichika-resume-inputs"
-        if os.environ.get("RESUME_RUN_ID"):
-            for name in ("journal.json", "journal.events.jsonl", "publication.json"):
-                source = previous / name
-                if not source.exists() and name == "publication.json":
-                    continue
-                check(source.is_file() and not source.is_symlink() and source.stat().st_size <= 128 * 1024 ** 2,
-                      "Resume journal file is absent or unsafe")
-                with source.open("rb") as incoming, (work / name).open("xb") as outgoing:
-                    while block := incoming.read(1024 * 1024):
-                        outgoing.write(block)
-                (work / name).chmod(0o600)
+        prepare_work(config, temp, os.environ.get("RESUME_RUN_ID", ""), os.environ.get("RESUME_KIND", ""))
     else:
         started = int((temp / "elichika-upload-budget-start").read_text())
         # Finite subprocess ends before the job limit, preserving durable receipts.

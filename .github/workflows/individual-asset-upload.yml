@@ -42,7 +42,7 @@ jobs:
       - name: Run synthetic transfer, merge and workflow safety tests
         timeout-minutes: 5
         working-directory: tools/archive_inventory
-        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_reaggregate_target test_ci_preflight
+        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler test_reaggregate_target test_ci_preflight
       - name: Download unchanged original TAR proofs
         uses: actions/download-artifact@v4
         timeout-minutes: 10
@@ -90,6 +90,7 @@ jobs:
         timeout-minutes: 2
         env:
           RESUME_RUN_ID: ${{ steps.pins.outputs.resume_run_id }}
+          RESUME_KIND: ${{ steps.pins.outputs.resume_kind }}
         working-directory: tools/archive_inventory
         run: |
           python3 -B ci_prepare.py work
@@ -133,7 +134,7 @@ jobs:
             --supplemental-metadata-sha256 0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5 \
             --supplemental-proof "$RUNNER_TEMP/elichika-supplement-inputs/supplement-proof.json" \
             --supplemental-proof-sha256 "$(python3 -c 'import json; print(json.load(open("activation.json"))["supplement_proof_sha256"])')" \
-            --requested-total 42830 --workers 2 --stage-budget 100663296 \
+            --requested-total 42830 --workers 4 --stage-budget 100663296 \
             --work "$RUNNER_TEMP/elichika-ia-upload-work" \
             --auth-file "$RUNNER_TEMP/elichika-ia-upload-auth/auth.json"
       - name: Preserve only safe durable journal and public publication receipt

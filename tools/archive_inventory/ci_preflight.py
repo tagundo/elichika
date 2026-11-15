@@ -10,6 +10,36 @@ import urllib.error
 import urllib.request
 
 
+JOURNAL_SEED = {
+    "run_id": 43690574180,
+    "source_commit": "0de159c078c57f540c38a41bfb1fb90d9209a71e",
+    "run_attempt": 1,
+    "artifact_id": 14152079681,
+    "name": "elichika-individual-upload-journal-attempt-1",
+    "artifact_bytes": 32687,
+    "digest": "sha256:d4b736477408c6b899c1890ab35ee19d9115c72237a479daa0f53bd5697a8f95",
+    "rawfilehashes": {
+        "journal.json": "76fc8a69c26b5830014401e54605b2e50ed22d458dd55301668609b3f61c7629",
+        "journal.events.jsonl": "99f589c73973dc8bd671811d83bf1a7e9c03fb5cf4416a34f0e1ae8a2d398c95",
+    },
+    "prior_attempts": 1,
+}
+JOURNAL_SEED_IDENTITY = {
+    "account": "tagundo", "allow_partial": False,
+    "catalog_sha256": "0aa7c4b4cbc70f71298c47fb378b5a2d19d25a71f39907a37d14d45d5bded0ee",
+    "collection": "opensource_media",
+    "effective_catalog_sha256": "e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c",
+    "inventory_sha256": "e316340dfda6078d0c8b7ab28951ab48f588608f8d1834a1de6580d5cc68c755",
+    "metadata_sha256": "7cb43889efd923a1b8df7b4d2b8873813aba66207070e3860084508db5d92318",
+    "prefix": "elichika-assets-20261115-e316340d-fa6f6031",
+    "requested_total": 42830,
+    "session": "fa6f6031e8e339617ab58709d81f0e4f",
+    "supplemental_metadata_sha256": "0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5",
+    "supplemental_proof_sha256": "e2eb04baff335e112939d65b2e371af7219821caa2c14188e50e496802d3dfa0",
+    "target_manifest_sha256": "e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c",
+}
+
+
 class Stop(Exception):
     pass
 
@@ -17,6 +47,26 @@ class Stop(Exception):
 def check(condition, message):
     if not condition:
         raise Stop(message)
+
+
+def validate_seed(config):
+    """This exact independently reviewed failed run is the only cross-run seed."""
+    seed = config.get("journal_seed")
+    check(isinstance(seed, dict) and seed == JOURNAL_SEED,
+          "Journal seed differs from the one statically reviewed prior run")
+    check(type(seed["prior_attempts"]) is int and type(seed["run_attempt"]) is int and
+          seed["prior_attempts"] == seed["run_attempt"] == 1,
+          "Only one reviewed prior attempt may seed this run")
+    identity = JOURNAL_SEED_IDENTITY
+    check(config.get("activate_upload") is True and config.get("account") == identity["account"] and
+          config.get("session_nonce") == identity["session"] and
+          config.get("inventory_sha256") == identity["inventory_sha256"] and
+          config.get("target_manifest_sha256") == identity["target_manifest_sha256"] and
+          config.get("supplement_metadata_sha256") == identity["supplemental_metadata_sha256"] and
+          config.get("supplement_proof_sha256") == identity["supplemental_proof_sha256"] and
+          config.get("requested_total") == identity["requested_total"],
+          "Journal seed belongs to another account, session, inventory or proof scope")
+    return seed
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -49,6 +99,8 @@ def load_config(base):
               "Activation is missing the reviewed complete inventory SHA256")
     else:
         check(config.get("inventory_sha256") is None, "Read-only plan must not pretend to pin an unreviewed inventory")
+    if "journal_seed" in config:
+        validate_seed(config)
     for name, expected in config["source_sha256"].items():
         check(Path(name).name == name and re.fullmatch(r"[0-9a-f]{64}", expected),
               "Invalid reviewed source pin")
@@ -60,8 +112,11 @@ def load_config(base):
 
 
 def resume_identity(config, current, requested, attempt, fetch=api):
-    check(1 <= attempt <= 5, "At most five bounded attempts are allowed for this upload run")
     check(not requested, "Cross-run journal continuation is disabled; re-run the same failed job")
+    seed = validate_seed(config) if "journal_seed" in config else None
+    prior_attempts = seed["prior_attempts"] if seed else 0
+    check(type(attempt) is int and 1 <= attempt and prior_attempts + attempt <= 5,
+          "At most five total bounded attempts, including the reviewed seed, are allowed")
     run_id = os.environ["GITHUB_RUN_ID"]
     check(current["head_sha"] == os.environ["GITHUB_SHA"], "Current workflow source differs")
     if attempt > 1:
@@ -69,8 +124,24 @@ def resume_identity(config, current, requested, attempt, fetch=api):
         check(previous["status"] == "completed" and previous["head_sha"] == current["head_sha"] and
               previous["workflow_id"] == current["workflow_id"] and previous["path"] == current["path"] and
               previous["run_attempt"] == attempt - 1, "Previous attempt provenance differs")
-        return run_id, f"elichika-individual-upload-journal-attempt-{attempt - 1}"
-    return "", ""
+        return run_id, f"elichika-individual-upload-journal-attempt-{attempt - 1}", "same_run"
+    if seed:
+        check(str(seed["run_id"]) != run_id, "Pinned seed must precede the new run")
+        previous = fetch(f"/repos/tagundo/elichika/actions/runs/{seed['run_id']}/attempts/1")
+        check(previous.get("id") == seed["run_id"] and previous.get("status") == "completed" and
+              previous.get("conclusion") == "failure" and previous.get("head_sha") == seed["source_commit"] and
+              previous.get("run_attempt") == seed["run_attempt"] and
+              previous.get("workflow_id") == current["workflow_id"] and previous.get("path") == current["path"],
+              "Pinned seed run is not the reviewed failed attempt of this workflow")
+        artifact = fetch(f"/repos/tagundo/elichika/actions/artifacts/{seed['artifact_id']}")
+        binding = artifact.get("workflow_run", {})
+        check(artifact.get("id") == seed["artifact_id"] and artifact.get("name") == seed["name"] and
+              artifact.get("size_in_bytes") == seed["artifact_bytes"] and artifact.get("digest") == seed["digest"] and
+              artifact.get("expired") is False and binding.get("id") == seed["run_id"] and
+              binding.get("head_sha") == seed["source_commit"],
+              "Pinned seed artifact metadata or source binding differs")
+        return str(seed["run_id"]), seed["name"], "pinned_seed"
+    return "", "", "fresh"
 
 
 def verify_provenance(config):
@@ -96,14 +167,16 @@ def verify_provenance(config):
     current = api("/repos/tagundo/elichika/actions/runs/" + os.environ["GITHUB_RUN_ID"])
     requested_resume = os.environ.get("RESUME_RUN_ID", "")
     if config.get("activate_upload", True):
-        resume_run, resume_name = resume_identity(
+        resume_run, resume_name, resume_kind = resume_identity(
             config, current, requested_resume, int(os.environ["GITHUB_RUN_ATTEMPT"]))
     else:
         check(not requested_resume, "Read-only plan cannot restore an upload journal")
         check(current["head_sha"] == os.environ["GITHUB_SHA"], "Current workflow source differs")
-        resume_run, resume_name = "", ""
+        check("journal_seed" not in config, "Read-only plan cannot select a journal seed")
+        resume_run, resume_name, resume_kind = "", "", "fresh"
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write("resume_run_id=" + resume_run + "\nresume_artifact_name=" + resume_name + "\n")
+        output.write("resume_kind=" + resume_kind + "\n")
         output.write("activate_upload=" + str(config.get("activate_upload", True)).lower() + "\n")
     print(json.dumps({"source_inventory_provenance": "PASS", "resume": bool(resume_run),
                       "requested_total": 42830}, sort_keys=True))

@@ -13,6 +13,20 @@
     "132713428960": "inventory (2)",
     "132713428999": "inventory (1)"
   },
+  "journal_seed": {
+    "artifact_bytes": 32687,
+    "artifact_id": 14152079681,
+    "digest": "sha256:d4b736477408c6b899c1890ab35ee19d9115c72237a479daa0f53bd5697a8f95",
+    "name": "elichika-individual-upload-journal-attempt-1",
+    "prior_attempts": 1,
+    "rawfilehashes": {
+      "journal.events.jsonl": "99f589c73973dc8bd671811d83bf1a7e9c03fb5cf4416a34f0e1ae8a2d398c95",
+      "journal.json": "76fc8a69c26b5830014401e54605b2e50ed22d458dd55301668609b3f61c7629"
+    },
+    "run_attempt": 1,
+    "run_id": 43690574180,
+    "source_commit": "0de159c078c57f540c38a41bfb1fb90d9209a71e"
+  },
   "metadata_protocol_review": {
     "official_client_commit": "dac4a6833d3cebac3cc41075092fa083fba838c5",
     "ownership_keys": "Numbered IAS3meta00 with alphanumeric fields; never adopt unmarked existing items",
@@ -47,20 +61,27 @@
     "source_commit": "97bec7f6e8f940234d7ae8078b287600a18d9ade",
     "zip_sha256": "7cd32e8a2a5b27e5899b28905fa7718393fcfff7c36fbecdb224e23173fcf573"
   },
+  "scheduler_review": {
+    "data_inventory_changed": false,
+    "method": "Fair round-robin64items; four global workers; FIFO96MiB staging; finalall-MD5gate unchanged",
+    "original_source_proofs_changed": false,
+    "prior_journal_seed": "ExactendedmarkedV3rawfiles+source/run/artifactpins only; totalfiveattempts"
+  },
   "schema": 1,
   "session_nonce": "fa6f6031e8e339617ab58709d81f0e4f",
   "source_sha256": {
     "archive-metadata.json": "7cb43889efd923a1b8df7b4d2b8873813aba66207070e3860084508db5d92318",
     "authoritative-target.json.gz": "4c4eb47503009b188c196c501a03a279c77b4c5a3dc6deae81db5a79b81b778b",
-    "ci_preflight.py": "597912744470c82d4d7a96d66bf3cbdbfd92929e3b6b1a913208557cdbafe4c8",
-    "ci_prepare.py": "3f497b18e1b2d3d1b9c63f44ee7563dfd872ebd9be9bdf3659994c3f6cddfb4c",
+    "ci_preflight.py": "90ab2edfc94c31ad811b954db7bf1754b651473ed58571cd26cb8fa6e6cc7ab7",
+    "ci_prepare.py": "26575a3e4f72b8ced6b8ae504a814853d99e91ed2cf14cc2510b8b864d90e707",
     "expected-catalog.json.gz": "0a06f3cd4707e2ec5b1019fc60fbfabd38fbca698b8b857798fd28b82b38df96",
-    "individual_uploader.py": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98",
+    "individual_uploader.py": "813f9518e981af5499274b7d0f27bdc8da97c6a7f9cab94ccc53ed2dd91d46d4",
     "merge_supplement.py": "9ddd44d666805e95955d0b8704941bb04a6efc44f09cbfa92b86bb65972116bf",
     "reaggregate_target.py": "0c92132895792c1edc1e8d75a578b0cb526b3572a654af072285f8b4723b7c8f",
     "supplemental-metadata.json.gz": "25f6aa8c01162d009e72097eee592abc2edfca4f06d64674d342809f945e2776",
-    "test_ci_preflight.py": "0ea06871a6475e2900829f182e471cebd5548715e1071e5b4925d7c2cda460ec",
-    "test_individual_uploader.py": "d4181c99a2aeae66504f227e5bfa4215745dc75db7a7da6fcddac6b8a9baa23f",
+    "test_ci_preflight.py": "b6422189b4aae51bf1272978162152f1052d25a9588a3e049e94ab31ffe9b476",
+    "test_fair_scheduler.py": "614b3b23e67f262fcb9df871438d8b89c651c044ad463b21193e9b0064acfde6",
+    "test_individual_uploader.py": "9235d0dca9391b04a5dec665ab43d9ac79cadd4d2055df42335a155506037b2f",
     "test_merge_supplement.py": "8652802726e269b6afe50bcf5ef3018b16c568537d015068229e973b0f38d5a3",
     "test_reaggregate_target.py": "f101e9ce92eedb4930d30dadedbcb4530282ee8e4eed116cffd06b01eb4c0141"
   },

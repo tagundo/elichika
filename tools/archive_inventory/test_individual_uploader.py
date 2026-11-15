@@ -50,6 +50,14 @@ class FakeHTTP:
 
 class NoProgress:
     def add(self, kind, count): pass
+    def observe(self, phase, seconds): pass
+    def acknowledge(self, size): pass
+    def resume(self, size, deferred=False): pass
+    def reconcile(self, size): pass
+    def emit(self, *args, **kwargs): pass
+    def http_status(self, *args, **kwargs): pass
+    def transport_failure(self, *args, **kwargs): pass
+    def tasks(self, *args, **kwargs): pass
 
 
 class Connection:
@@ -477,6 +485,7 @@ class UploaderTests(unittest.TestCase):
         publisher.prefix, publisher.session, publisher.auth = 'fixture-assets', FAKE_AUTH['session_nonce'], FAKE_AUTH
         publisher.inputs = types.SimpleNamespace(objects={'fixture': self.obj}, inventory_sha='b' * 64)
         publisher.args = types.SimpleNamespace(workers=1)
+        publisher.progress = NoProgress()
         item = publisher.prefix + f'-b{u.bucket_for("fixture"):02d}'
         publisher.journal = types.SimpleNamespace(value={'objects': {'fixture': {
             'size': len(DATA), 'sha256': SHA, 'md5': MD5, 'item': item, 'path': 'packs/fixture',
@@ -507,6 +516,7 @@ class UploaderTests(unittest.TestCase):
 
     def publisher_stub(self):
         publisher = u.Publisher.__new__(u.Publisher)
+        publisher.progress = self.progress
         publisher.budget = u.ByteBudget(1024, 1)
         publisher.journal = types.SimpleNamespace(value={'objects': {'fixture': {'size': len(DATA), 'sha256': SHA, 'md5': MD5,
                                                                                'item': 'fixture-assets-b00', 'path': 'packs/fixture'}}})
@@ -573,7 +583,7 @@ class UploaderTests(unittest.TestCase):
                 publisher = u.Publisher.__new__(u.Publisher)
                 publisher.journal = types.SimpleNamespace(value={'index_objects': {path: dict(record)}}, record=mock.Mock())
                 publisher.public = FakeHTTP(Response(body, 200, {'Content-Length': str(len(DATA))}))
-                publisher.progress = types.SimpleNamespace(emit=lambda: None)
+                publisher.progress = NoProgress()
                 if success:
                     publisher.verify_index_sha256('fixture-assets-index', path)
                     self.assertEqual(publisher.journal.record.call_args.args[1]['status'], 'REMOTE_SHA256_VERIFIED')
@@ -605,7 +615,7 @@ class UploaderTests(unittest.TestCase):
         data_record = {'size': len(DATA), 'sha256': SHA, 'md5': MD5, 'item': 'fixture-assets-b00',
                        'path': 'packs/fixture', 'status': 'REMOTE_METADATA_VERIFIED'}
         publisher.journal.record('fixture', data_record)
-        publisher.progress = types.SimpleNamespace(emit=lambda *args: None, add=lambda *args: None)
+        publisher.progress = NoProgress()
         publisher.counted = set()
         uploaded, order = {}, []
         publisher.files = lambda item: ({key: {'name': key, 'size': len(body), 'md5': hashlib.md5(body).hexdigest()}

@@ -1,15 +1,15 @@
 {
-  "schema": 3,
+  "schema": 4,
   "status": "READY_FOR_ROOT_REVIEW",
   "source_only": true,
   "activated": false,
-  "directory": "/tmp/asset-individual-uploader-20261115/v3",
+  "directory": "/tmp/asset-individual-uploader-20261115/v4",
   "preserved_frozen_v1_directory": "/tmp/asset-individual-uploader-20261115",
   "files": [
     {
       "name": "individual_uploader.py",
-      "bytes": 76156,
-      "sha256": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98"
+      "bytes": 88725,
+      "sha256": "813f9518e981af5499274b7d0f27bdc8da97c6a7f9cab94ccc53ed2dd91d46d4"
     },
     {
       "name": "merge_supplement.py",
@@ -18,8 +18,8 @@
     },
     {
       "name": "test_individual_uploader.py",
-      "bytes": 74577,
-      "sha256": "d4181c99a2aeae66504f227e5bfa4215745dc75db7a7da6fcddac6b8a9baa23f"
+      "bytes": 74932,
+      "sha256": "9235d0dca9391b04a5dec665ab43d9ac79cadd4d2055df42335a155506037b2f"
     },
     {
       "name": "test_merge_supplement.py",
@@ -27,9 +27,14 @@
       "sha256": "8652802726e269b6afe50bcf5ef3018b16c568537d015068229e973b0f38d5a3"
     },
     {
+      "name": "test_fair_scheduler.py",
+      "bytes": 27509,
+      "sha256": "614b3b23e67f262fcb9df871438d8b89c651c044ad463b21193e9b0064acfde6"
+    },
+    {
       "name": "README.md",
-      "bytes": 9766,
-      "sha256": "0809f55c2eaa51ccb8e30c52fc0bba2888a88f57419064c5f7f7b7938d57cbd9"
+      "bytes": 13582,
+      "sha256": "5bfc9c56161376aaf3a5ece256289938108e575b25881224e893d19449a1b025"
     },
     {
       "name": "METADATA_HEADER_AUDIT.json",
@@ -38,19 +43,20 @@
     },
     {
       "name": "tests.log",
-      "bytes": 10289,
-      "sha256": "3c226f1a5172b2d9e21fe11546b9401c6cf7a72dbd183ffb9b4825629155c15e"
+      "bytes": 13013,
+      "sha256": "539c2c6223bdf707238b74465d796dc6f5092afd748593257729c661aa25a60e"
     }
   ],
   "tests": {
-    "passed": 57,
+    "passed": 72,
     "uploader_tests": 52,
     "merge_tests": 5,
-    "command": "python3 -B -m unittest -v test_individual_uploader test_merge_supplement",
+    "command": "python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler",
     "actual_credentials_read": false,
     "real_network_requests": 0,
     "real_payload_bytes_downloaded": 0,
-    "account_writes": 0
+    "account_writes": 0,
+    "scheduler_tests": 15
   },
   "target": {
     "files": 42830,
@@ -118,22 +124,23 @@
     "source_items identifiesbothpublicArchiveitems",
     "supplementalmetadata/proofhash/provenance published"
   ],
-  "workflow": "No v2 legacytemplate; Rootprepares reviewed fixedsource workflowwithallinput/provenance pins, authafterstrictplan,2workers,320minchunks,atmost5attempts, safejournalcontinuation.",
-  "actual_combined_plan": "ROOT ALREADY VERIFIED COMPLETE SOURCE; v3 IS METADATA ONLY AND DOES NOT REWRITE INVENTORY",
+  "workflow": "Root separately prepares fixedsource workflow with oneexplicitverifiedstaticV3seed, unchangedsession/prefix/inventory, max4newattempts, strictmerge/plan before auth; sourceworker did not edit/activate/cancel workflow.",
+  "actual_combined_plan": "ROOT ALREADY VERIFIED EXACT e316 INVENTORY; V4 DOES NOT ALTER INPUT/PROOF OR MERGE FORMAT",
   "limits": {
     "workers_default": 1,
-    "workers_maximum": 2,
-    "s3_connections_maximum": 2,
+    "workers_maximum": 4,
+    "s3_connections_maximum": 4,
     "stage_budget_bytes": 100663296,
     "maximum_object_bytes": 141834336,
     "data_items": 64,
-    "index_items": 1
+    "index_items": 1,
+    "active_futures_maximum": 4
   },
   "remaining_root_steps": [
-    "Install/review exact v3 source hash and update fixed workflow config source pin",
-    "Choose fresh session nonce/prefix and work journal; never resume the unmarked v2 bucket",
-    "Run unchanged complete-source strict plan before auth",
-    "Activate bounded upload and confirm new alphanumeric ownership markers after first PUT"
+    "Review/install exactV4source+test hashes andRootstaticseedpreflightkit",
+    "Verify oldrun/source/artifactZIP/rawjournal/event pins before restoring owned seed",
+    "Keep exactfullsession/account/prefixfa6f6031/proofpins; run unchanged strictsourceplan",
+    "Runatmost4globalworkers;inspect ACK/source/S3/metadata metrics andsafe503/timeout diagnostics; preservejournal onboundedcontinuation"
   ],
   "preserved_frozen_v2_directory": "/tmp/asset-individual-uploader-20261115/v2",
   "metadata_fix": {
@@ -145,16 +152,78 @@
       "elichikaaccount"
     ],
     "old_unmarked_item_policy": "ABANDON; NEVER ADOPT, OVERWRITE, OR DELETE",
-    "new_session_prefix_and_journal_required": true,
+    "new_session_prefix_and_journal_required": false,
     "inventory_and_payload_logic_unchanged": true,
     "both_source_item_put_denylist_unchanged": true,
     "stage_hash_and_complete_target_gates_unchanged": true,
-    "independent_review": "PASS; exact source SHA matches review",
-    "uploader_sha256": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98"
+    "independent_review": "V3 protocol unchanged byte-for-byte; V4 independent source review passed",
+    "v3_protocol_reference_uploader_sha256": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98",
+    "fresh_session_required_for_unmarked_v2_only": true,
+    "v4_marked_v3_resume_requires_explicit_static_seed": true
   },
   "development_public_references": [
     "https://github.com/jjjake/internetarchive/blob/dac4a6833d3cebac3cc41075092fa083fba838c5/internetarchive/iarequest.py#L138-L148",
     "https://archive.org/developers/ias3.html#how-this-is-different-from-normal-s3"
   ],
-  "actual_v3_upload": "NOT_RUN_BY_WORKER"
+  "actual_v3_upload": "NOT_RUN_BY_WORKER",
+  "preserved_frozen_v3_directory": "/tmp/asset-individual-uploader-20261115/v3",
+  "complete_inventory_sha256": "e316340dfda6078d0c8b7ab28951ab48f588608f8d1834a1de6580d5cc68c755",
+  "v4_changes": {
+    "fairness": "All64 nonempty bucket first-actions finish before any second object; one active task per bucket; global pool/futures<=configured1..4",
+    "ownership": "Fresh check immediately before each bucket first action, then one-shot bounded ownership-only polls before second object; all new alnum v3 marker checks unchanged",
+    "verification": "All dataPUT visits across64 items finish before fullper-bucketremoteMD5+size verification, which still finishes beforeanyprofile/catalog publication",
+    "resume": "OldownedACK absentfromlisting is deferredwithoutPUT/demotion; exactremoteMD5matchesareskipped; allcheckedgloballybeforeindex",
+    "budget": "FIFO stagingadmission preventsoversize starvation;96MiBunchangedoroneexclusive object<=141834336",
+    "diagnostics": "NewdurableobservedACK, ownedresume,deferredACK, publicreconciliationcounts/bytes; source_open/read/hash_write,inclusivesource_stage,local_verify,S3,metadata,retrywait cumulativeworker-seconds; safeHTTPstatuscounts/503 andallowlistedlastfailurecategories",
+    "cleanup": "Pendingfuturescancelledonobservedfailure; poolwaitsforinflightjobs; S3connectionsclosebeforeindexandonhandledfailure",
+    "unchanged": "Inputs,load_target,load_supplement,Journal class andJournal identityliteral,verify_stage,all3v3ownership/headerfunctions,andmergegenerator are unchanged"
+  },
+  "independent_v4_review": {
+    "result": "PASS; no blockers",
+    "reviewed_source_sha256": "813f9518e981af5499274b7d0f27bdc8da97c6a7f9cab94ccc53ed2dd91d46d4",
+    "agent": "v4_scheduler_review",
+    "notes_resolved": [
+      "Separate source open/read/hash-write phase measurements",
+      "Separate publicreconciliationdata counters",
+      "Alternating dueownershipchecks withreadyPUTs",
+      "FIFOlargeobjectadmission andexceptioncleanup",
+      "V4README limits andtimingsemantics"
+    ]
+  },
+  "static_seed_contract": {
+    "workflow_owned_by_root": true,
+    "only_this_previous_run": 43690574180,
+    "previous_source_commit": "0de159c078c57f540c38a41bfb1fb90d9209a71e",
+    "artifact_id": 14152079681,
+    "artifact_zip_sha256": "d4b736477408c6b899c1890ab35ee19d9115c72237a479daa0f53bd5697a8f95",
+    "journal_json_sha256": "76fc8a69c26b5830014401e54605b2e50ed22d458dd55301668609b3f61c7629",
+    "journal_events_sha256": "99f589c73973dc8bd671811d83bf1a7e9c03fb5cf4416a34f0e1ae8a2d398c95",
+    "same_prefix": "elichika-assets-20261115-e316340d-fa6f6031",
+    "identity_literal_unchanged": true,
+    "copy_files": [
+      "journal.json",
+      "journal.events.jsonl"
+    ],
+    "copy_mode": "ownedprivate700workdirectory;files600;exactfullnonce/account/sourceinventory/target/proofpins unchanged",
+    "arbitrary_cross_run_lookup": false,
+    "remaining_new_attempts_maximum": 4,
+    "total_including_previous_v3_attempt_maximum": 5,
+    "old_unmarked_v2_item_adopted": false
+  },
+  "actual_v4_upload": "NOT_RUN_BY_WORKER",
+  "progress_semantics": {
+    "acknowledged_files_bytes": "Newdata2xx+matchingETagfollowedbydurablejournalACKonly;notseedobjectsorindexPUTs",
+    "reconciled_files_bytes": "CurrentPUTacklostbutownedjournal+publicmetadataMD5/sizeaccepted",
+    "resumed_identical_files_bytes": "Ownedseed/journalobjectalreadyvisiblewithmatchingMD5/size;noPUT",
+    "deferred_ack_files_bytes": "OwnedpastACKnotyetlisted;noPUT/demotion;fullfinalmetadatarequired",
+    "put_bytes": "Transportbytesincludingretries",
+    "phase_worker_seconds": "Cumulativetimeoverlappingbetweenworkers;source_stageinclusiveandchildrenmustnotbesummedwithit",
+    "source_open": "Open/TLS/redirect/responseheaders",
+    "source_read": "ResponsebodyreadcallsincludingEOF",
+    "source_hash_write": "Digestupdatesandbufferedwrites",
+    "local_verify": "BoundedstagedfilerereadbeforePUT",
+    "s3": "PUTconnect/send/hash/responseoperation",
+    "metadata": "Publicmetadataoperationincludingboundedretries",
+    "s3_retry_wait": "BackoffbetweenfailedPUTattempts"
+  }
 }

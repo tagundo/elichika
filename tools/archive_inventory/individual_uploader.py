@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import contextlib
+from collections import deque
 import datetime
 import email.utils
 import fcntl
@@ -21,6 +22,7 @@ from pathlib import Path
 import re
 import shutil
 import stat
+import ssl
 import sys
 import threading
 import time
@@ -37,6 +39,9 @@ BUCKETS = 64
 MAX_OBJECT = 141_834_336
 DEFAULT_BUDGET = 96 * 1024 * 1024
 DISK_RESERVE = 64 * 1024 * 1024
+OWNER_VISIBILITY_SECONDS = 900
+OWNER_POLL_MAX_SECONDS = 30
+OWNER_POLL_ATTEMPTS = 32
 NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
 IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9._-]{4,79}\Z")
 HEX = {n: re.compile(r"[0-9a-f]{%d}\Z" % n) for n in (32, 40, 64)}
@@ -434,6 +439,13 @@ class Progress:
     def __init__(self):
         self.started = self.last = time.monotonic()
         self.staged_bytes = self.put_bytes = self.verified_bytes = self.verified_files = 0
+        self.acknowledged_files = self.acknowledged_bytes = 0
+        self.reconciled_files = self.reconciled_bytes = 0
+        self.resumed_identical_files = self.resumed_identical_bytes = 0
+        self.deferred_ack_files = self.deferred_ack_bytes = 0
+        self.phase_worker_seconds, self.phase_calls = {}, {}
+        self.http_status_counts, self.transport_failure_counts = {}, {}
+        self.inflight_tasks = self.max_inflight_tasks = 0
         self.lock = threading.Lock()
         self.stop_event, self.heartbeat = threading.Event(), None
 
@@ -454,11 +466,65 @@ class Progress:
             setattr(self, kind, getattr(self, kind) + count)
             self.emit_locked(False)
 
+    def observe(self, phase, seconds):
+        with self.lock:
+            self.phase_worker_seconds[phase] = self.phase_worker_seconds.get(phase, 0) + seconds
+            self.phase_calls[phase] = self.phase_calls.get(phase, 0) + 1
+            self.emit_locked(False)
+
+    def acknowledge(self, size):
+        with self.lock:
+            self.acknowledged_files += 1
+            self.acknowledged_bytes += size
+            self.emit_locked(False)
+
+    def reconcile(self, size):
+        with self.lock:
+            self.reconciled_files += 1
+            self.reconciled_bytes += size
+            self.emit_locked(False)
+
+    def resume(self, size, deferred=False):
+        with self.lock:
+            if deferred:
+                self.deferred_ack_files += 1
+                self.deferred_ack_bytes += size
+            else:
+                self.resumed_identical_files += 1
+                self.resumed_identical_bytes += size
+            self.emit_locked(False)
+
+    def http_status(self, phase, status):
+        with self.lock:
+            table = self.http_status_counts.setdefault(phase, {})
+            key = str(status)
+            table[key] = table.get(key, 0) + 1
+            self.emit_locked(False)
+
+    def transport_failure(self, phase, category):
+        with self.lock:
+            table = self.transport_failure_counts.setdefault(phase, {})
+            table[category] = table.get(category, 0) + 1
+            self.emit_locked(False)
+
+    def tasks(self, count):
+        with self.lock:
+            self.inflight_tasks = count
+            self.max_inflight_tasks = max(self.max_inflight_tasks, count)
+            self.emit_locked(False)
+
     def emit_locked(self, force):
         now = time.monotonic()
         if force or now - self.last >= 30:
             print(json.dumps({"progress": True, "elapsed_seconds": round(now - self.started), "staged_bytes": self.staged_bytes,
-                              "put_bytes": self.put_bytes, "verified_files": self.verified_files, "verified_bytes": self.verified_bytes}), flush=True)
+                              "put_bytes": self.put_bytes, "verified_files": self.verified_files, "verified_bytes": self.verified_bytes,
+                              "acknowledged_files": self.acknowledged_files, "acknowledged_bytes": self.acknowledged_bytes,
+                              "reconciled_files": self.reconciled_files, "reconciled_bytes": self.reconciled_bytes,
+                              "resumed_identical_files": self.resumed_identical_files, "resumed_identical_bytes": self.resumed_identical_bytes,
+                              "deferred_ack_files": self.deferred_ack_files, "deferred_ack_bytes": self.deferred_ack_bytes,
+                              "phase_worker_seconds": {k: round(v, 3) for k, v in self.phase_worker_seconds.items()}, "phase_calls": self.phase_calls,
+                              "http_status_counts": self.http_status_counts, "transport_failure_counts": self.transport_failure_counts,
+                              "inflight_tasks": self.inflight_tasks, "max_inflight_tasks": self.max_inflight_tasks}), flush=True)
             self.last = now
 
     def emit(self, force=False):
@@ -469,17 +535,31 @@ class Progress:
 class ByteBudget:
     """Oversize objects take the entire staging lane and run exclusively."""
     def __init__(self, limit, workers):
-        require(0 < limit <= DEFAULT_BUDGET and workers in (1, 2), "Use one/two workers and at most 96 MiB staging budget")
+        require(0 < limit <= DEFAULT_BUDGET and type(workers) is int and 1 <= workers <= 4, "Use one to four workers and at most 96 MiB staging budget")
         self.limit, self.workers, self.bytes, self.active = limit, workers, 0, 0
         self.condition = threading.Condition()
+        self.waiters = deque()
 
     @contextlib.contextmanager
     def hold(self, size):
+        require(type(size) is int and 0 <= size <= MAX_OBJECT, "Staging byte request exceeds the proven object bound")
+        token = object()
         with self.condition:
-            while self.active and (size > self.limit or self.bytes > self.limit or self.bytes + size > self.limit or self.active >= self.workers):
-                self.condition.wait(1)
-            self.active += 1
-            self.bytes += size
+            self.waiters.append(token)
+            try:
+                # FIFO admission prevents later small objects from continually
+                # refilling the lane ahead of an exclusive oversized waiter.
+                while self.waiters[0] is not token or (self.active and (size > self.limit or self.bytes > self.limit or self.bytes + size > self.limit or self.active >= self.workers)):
+                    self.condition.wait(1)
+                self.waiters.popleft()
+                self.active += 1
+                self.bytes += size
+                self.condition.notify_all()
+            except BaseException:
+                if token in self.waiters:
+                    self.waiters.remove(token)
+                self.condition.notify_all()
+                raise
         try:
             yield
         finally:
@@ -517,6 +597,22 @@ class Work:
             path.unlink()
 
 
+def timed_source_open(source_http, url, headers, progress):
+    started = time.monotonic()
+    try:
+        return source_http.open(url, headers)
+    finally:
+        progress.observe("source_open", time.monotonic() - started)
+
+
+def timed_source_read(response, bound, progress):
+    started = time.monotonic()
+    try:
+        return response.read(bound)
+    finally:
+        progress.observe("source_read", time.monotonic() - started)
+
+
 def stage_object(source_http, work, name, obj, pin, progress, attempts=5):
     """Fetch only exact original payload bytes; never fetch/extract a whole TAR."""
     if obj.get("source", {}).get("kind") == "ia_individual":
@@ -531,7 +627,8 @@ def stage_object(source_http, work, name, obj, pin, progress, attempts=5):
             with output:
                 if size:
                     headers = {"Range": f"bytes={offset}-{offset + size - 1}"}
-                    with source_http.open(f"https://archive.org/download/{SOURCE_ITEM}/{pin['name']}", headers) as response:
+                    with timed_source_open(source_http, f"https://archive.org/download/{SOURCE_ITEM}/{pin['name']}", headers, progress) as response:
+                        progress.http_status("source", response.status)
                         require(response.status == 206, f"Source did not honor exact Range (HTTP {response.status})")
                         require(response.headers.get("Content-Range") == f"bytes {offset}-{offset + size - 1}/{pin['size']}", "Source Range/part total mismatch")
                         require(response.headers.get("Content-Encoding", "identity").lower() == "identity", "Encoded source payload is forbidden")
@@ -540,13 +637,17 @@ def stage_object(source_http, work, name, obj, pin, progress, attempts=5):
                         deadline = time.monotonic() + 1800
                         while True:
                             require(time.monotonic() < deadline, "Source object deadline exceeded")
-                            block = response.read(min(CHUNK, size - written + 1))
+                            block = timed_source_read(response, min(CHUNK, size - written + 1), progress)
                             if not block:
                                 break
                             require(written + len(block) <= size, "Source payload exceeds object bound")
-                            output.write(block)
-                            sha.update(block)
-                            md5.update(block)
+                            started = time.monotonic()
+                            try:
+                                output.write(block)
+                                sha.update(block)
+                                md5.update(block)
+                            finally:
+                                progress.observe("source_hash_write", time.monotonic() - started)
                             written += len(block)
                             progress.add("staged_bytes", len(block))
                 require(written == size and sha.hexdigest() == obj["sha256"], "Staged original size/SHA256 mismatch")
@@ -554,6 +655,7 @@ def stage_object(source_http, work, name, obj, pin, progress, attempts=5):
                 os.fsync(output.fileno())
             return path, md5.hexdigest()
         except urllib.error.HTTPError as error:
+            progress.http_status("source", error.code)
             if error.code not in (429, 500, 502, 503, 504):
                 path.unlink(missing_ok=True)
                 raise Failure(f"Source HTTP request failed with HTTP {error.code}") from None
@@ -582,7 +684,8 @@ def stage_individual(source_http, work, name, obj, pin, progress, attempts=5):
         try:
             hashes = {key: hashlib.new(key) for key in ("sha256", "md5", "sha1")}
             written = 0
-            with output, source_http.open(f"https://archive.org/download/{SUPPLEMENT_ITEM}/{name}") as response:
+            with output, timed_source_open(source_http, f"https://archive.org/download/{SUPPLEMENT_ITEM}/{name}", None, progress) as response:
+                progress.http_status("source", response.status)
                 require(response.status == 200, f"Supplemental direct source requires complete HTTP 200 (got {response.status})")
                 require(response.headers.get("Content-Encoding", "identity").lower() == "identity", "Encoded supplemental payload is forbidden")
                 length = response.headers.get("Content-Length")
@@ -590,13 +693,17 @@ def stage_individual(source_http, work, name, obj, pin, progress, attempts=5):
                 deadline = time.monotonic() + 1800
                 while True:
                     require(time.monotonic() < deadline, "Supplemental object download deadline exceeded")
-                    block = response.read(min(CHUNK, size - written + 1))
+                    block = timed_source_read(response, min(CHUNK, size - written + 1), progress)
                     if not block:
                         break
                     require(written + len(block) <= size, "Supplemental payload exceeds object byte bound")
-                    output.write(block)
-                    for digest in hashes.values():
-                        digest.update(block)
+                    started = time.monotonic()
+                    try:
+                        output.write(block)
+                        for digest in hashes.values():
+                            digest.update(block)
+                    finally:
+                        progress.observe("source_hash_write", time.monotonic() - started)
                     written += len(block)
                     progress.add("staged_bytes", len(block))
                 require(written == size and hashes["sha256"].hexdigest() == obj["sha256"] and
@@ -605,6 +712,7 @@ def stage_individual(source_http, work, name, obj, pin, progress, attempts=5):
                 os.fsync(output.fileno())
             return path, hashes["md5"].hexdigest()
         except urllib.error.HTTPError as error:
+            progress.http_status("source", error.code)
             if error.code not in (429, 500, 502, 503, 504):
                 path.unlink(missing_ok=True)
                 raise Failure(f"Supplemental source HTTP request failed with HTTP {error.code}") from None
@@ -646,16 +754,18 @@ def verify_stage(path, size, sha256, md5):
 
 class S3:
     """Authenticated connection never redirects and never shares a public session."""
-    def __init__(self, auth, connection_factory=None):
+    def __init__(self, auth, connection_factory=None, *, max_connections=2):
+        require(type(max_connections) is int and 1 <= max_connections <= 4, "S3 connection limit must be one to four")
         self.authorization = "LOW " + auth["access"] + ":" + auth["secret"]
         self.connection_factory = connection_factory or (lambda: http.client.HTTPSConnection(S3_HOST, timeout=60))
         self.connections, self.connection_lock = {}, threading.Lock()
+        self.max_connections, self.diagnostics = max_connections, threading.local()
 
     def connection(self):
         owner = threading.get_ident()
         with self.connection_lock:
             if owner not in self.connections:
-                require(len(self.connections) < 2, "S3 connection count exceeds two workers")
+                require(len(self.connections) < self.max_connections, "S3 connection count exceeds configured workers")
                 self.connections[owner] = self.connection_factory()
             return self.connections[owner]
 
@@ -681,11 +791,20 @@ class S3:
             with contextlib.suppress(OSError):
                 connection.close()
 
+    def last_failure_category(self):
+        return getattr(self.diagnostics, "last_failure", "UNSPECIFIED_TRANSIENT")
+
     def put(self, item, key, path, size, sha256, md5, headers, progress):
         require(IDENTIFIER.fullmatch(item) and item not in (SOURCE_ITEM, SUPPLEMENT_ITEM) and not key.startswith("/") and all(p not in ("", ".", "..") for p in key.split("/")), "Invalid upload destination")
-        identity = verify_stage(path, size, sha256, md5)
+        started = time.monotonic()
+        try:
+            identity = verify_stage(path, size, sha256, md5)
+        finally:
+            progress.observe("local_verify", time.monotonic() - started)
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
         connection, reusable = None, False
+        started = time.monotonic()
+        self.diagnostics.last_failure = "UNSPECIFIED_TRANSIENT"
         try:
             connection = self.connection()
             require(file_identity(os.fstat(fd)) == identity, "Stage replaced before upload")
@@ -709,6 +828,9 @@ class S3:
             require(sent == size and sha.hexdigest() == sha256 and checksum.hexdigest() == md5 and file_identity(os.fstat(fd)) == identity, "Stage changed during upload")
             response = connection.getresponse()
             status = response.status
+            progress.http_status("s3", status)
+            if not 200 <= status < 300:
+                self.diagnostics.last_failure = f"HTTP {status}"
             retry = retry_after(response.getheader("Retry-After"))
             etag = (response.getheader("ETag") or "").strip('"').lower()
             length = response.getheader("Content-Length")
@@ -722,12 +844,29 @@ class S3:
             require(HEX[32].fullmatch(etag) and etag == md5, "S3 PUT ETag/MD5 mismatch")
             reusable = not getattr(response, "will_close", False)
             return True, 0
-        except (OSError, http.client.HTTPException):
+        except (OSError, http.client.HTTPException) as error:
+            if isinstance(error, TimeoutError):
+                category = "TIMEOUT"
+            elif isinstance(error, ssl.SSLError):
+                category = "TLS_ERROR"
+            elif isinstance(error, http.client.RemoteDisconnected):
+                category = "REMOTE_DISCONNECTED"
+            elif isinstance(error, ConnectionResetError):
+                category = "CONNECTION_RESET"
+            elif isinstance(error, BrokenPipeError):
+                category = "BROKEN_PIPE"
+            elif isinstance(error, http.client.HTTPException):
+                category = "HTTP_PROTOCOL_ERROR"
+            else:
+                category = "NETWORK_IO_ERROR"
+            self.diagnostics.last_failure = category
+            progress.transport_failure("s3", category)
             return False, 0
         finally:
             os.close(fd)
             if connection is not None and not reusable:
                 self.discard(connection)
+            progress.observe("s3", time.monotonic() - started)
 
 
 def scalar(value):
@@ -847,7 +986,7 @@ class Publisher:
         self.prefix = args.prefix or ("elichika-assets-20261115-" + inputs.inventory_sha[:8] + "-" + auth["session_nonce"][:8])
         require(IDENTIFIER.fullmatch(self.prefix) and len(self.prefix) <= 70 and self.prefix != SOURCE_ITEM, "Invalid new item prefix")
         self.session = auth["session_nonce"]
-        self.public, self.s3 = public or PublicHTTP(), s3 or S3(auth)
+        self.public, self.s3 = public or PublicHTTP(), s3 or S3(auth, max_connections=args.workers)
         self.progress, self.budget = Progress(), ByteBudget(args.stage_budget, args.workers)
         self.journal = Journal(work, {"inventory_sha256": inputs.inventory_sha, "catalog_sha256": inputs.catalog_sha,
                                     "effective_catalog_sha256": inputs.effective_catalog_sha,
@@ -870,16 +1009,23 @@ class Publisher:
         with self.source_lock:
             if time.monotonic() - self.source_last < 900:
                 return
-            current = self.public.metadata(SOURCE_ITEM)
+            current = self.metadata(SOURCE_ITEM)
             require(current is not None and part_pins(current) == self.inputs.pins, "Public source item identity changed from pinned source")
             if self.inputs.supplement:
-                current_supplement = self.public.metadata(SUPPLEMENT_ITEM)
+                current_supplement = self.metadata(SUPPLEMENT_ITEM)
                 require(current_supplement is not None and supplemental_pins(current_supplement, self.inputs.supplement["pins"]) == self.inputs.supplement["pins"],
                         "Public supplemental source identity changed from pinned metadata")
             self.source_last = time.monotonic()
 
+    def metadata(self, item):
+        started = time.monotonic()
+        try:
+            return self.public.metadata(item)
+        finally:
+            self.progress.observe("metadata", time.monotonic() - started)
+
     def files(self, item):
-        remote = self.public.metadata(item)
+        remote = self.metadata(item)
         return None if remote is None else owned_metadata(remote, item, self.session, self.inputs.inventory_sha, self.auth["account"])
 
     def headers(self, item, size_hint):
@@ -897,20 +1043,27 @@ class Publisher:
         return {"x-archive-auto-make-bucket": "1", "x-archive-size-hint": str(size_hint), **ias3_metadata_headers(metadata)}
 
     def put_retry(self, item, key, path, size, sha256, md5, headers):
+        last_failure = "UNSPECIFIED_TRANSIENT"
         for attempt in range(5):
             if attempt:
                 files = self.files(item)
                 if files is not None and key in files:
                     require(remote_equal(files[key], size, md5), "Existing remote object differs; never overwrite")
-                    return
+                    return False  # accepted through public reconciliation, not a new observed PUT ACK
             ok, delay = self.s3.put(item, key, path, size, sha256, md5, headers, self.progress)
             if ok:
-                return
+                return True
+            last_failure = getattr(self.s3, "last_failure_category", lambda: "UNSPECIFIED_TRANSIENT")()
+            allowed_categories = {"UNSPECIFIED_TRANSIENT", "TIMEOUT", "TLS_ERROR", "REMOTE_DISCONNECTED", "CONNECTION_RESET", "BROKEN_PIPE", "HTTP_PROTOCOL_ERROR", "NETWORK_IO_ERROR"}
+            if last_failure not in allowed_categories and not (isinstance(last_failure, str) and re.fullmatch(r"HTTP [1-5][0-9]{2}", last_failure)):
+                last_failure = "UNSPECIFIED_TRANSIENT"
             if attempt + 1 < 5:
+                started = time.monotonic()
                 time.sleep(max(delay, min(60, 2 ** attempt)))
-        raise Failure("Bounded S3 PUT retries exhausted; resume will check public metadata before any retry")
+                self.progress.observe("s3_retry_wait", time.monotonic() - started)
+        raise Failure(f"Bounded S3 PUT retries exhausted; last failure: {last_failure}; public metadata will be checked before resume")
 
-    def one(self, name, obj, item, existing, headers):
+    def one(self, name, obj, item, existing, headers, *, defer_invisible_ack=False):
         with self.budget.hold(obj["size"]):
             old = self.journal.value["objects"].get(name)
             if old:
@@ -921,22 +1074,34 @@ class Publisher:
             if old and old.get("status") in ("PUT_ACKNOWLEDGED", "REMOTE_METADATA_VERIFIED") and (existing is None or obj["path"] not in existing):
                 # A delayed public listing must not turn an acknowledged write
                 # into another PUT. Wait for metadata or stop for later resume.
+                if defer_invisible_ack:
+                    self.progress.resume(obj["size"], deferred=True)
+                    return
                 self.verify_batch(item, [name])
                 return
             if existing is not None and obj["path"] in existing and old:
                 require(old["size"] == obj["size"] and old["sha256"] == obj["sha256"] and remote_equal(existing[obj["path"]], obj["size"], old["md5"]), "Existing remote object differs; never overwrite")
+                self.progress.resume(obj["size"])
                 return
             self.check_source()
             pin = obj["source"] if obj["source"].get("kind") == "ia_individual" else self.inputs.pins[obj["source"]["part"]]
-            path, md5 = stage_object(self.public, self.work, name, obj, pin, self.progress)
+            started = time.monotonic()
+            try:
+                path, md5 = stage_object(self.public, self.work, name, obj, pin, self.progress)
+            finally:
+                self.progress.observe("source_stage", time.monotonic() - started)
             try:
                 record = {"size": obj["size"], "sha256": obj["sha256"], "md5": md5, "item": item, "path": obj["path"], "status": "STAGED"}
                 self.journal.record(name, record)
                 if existing is not None and obj["path"] in existing:
                     require(remote_equal(existing[obj["path"]], obj["size"], md5), "Existing remote object differs; never overwrite")
                     return
-                self.put_retry(item, obj["path"], path, obj["size"], obj["sha256"], md5, headers)
+                acknowledged = self.put_retry(item, obj["path"], path, obj["size"], obj["sha256"], md5, headers)
                 self.journal.record(name, {**record, "status": "PUT_ACKNOWLEDGED"})
+                if acknowledged:
+                    self.progress.acknowledge(obj["size"])
+                else:
+                    self.progress.reconcile(obj["size"])
             finally:
                 path.unlink(missing_ok=True)
 
@@ -969,48 +1134,119 @@ class Publisher:
         raise Failure("Public metadata verification timed out; index remains unpublished")
 
     def data(self):
+        """Fair first wave, ownership-only gates, then bounded cross-item PUTs.
+
+        Metadata ingestion serializes within an IA item. No worker waits for
+        first-object MD5 ingestion before other bucket contexts can progress.
+        Every final data-object size/MD5 check still precedes index publication.
+        """
         self.check_source()
         self.preflight()
-        for bucket in range(BUCKETS):
-            names = sorted(n for n in self.inputs.objects if bucket_for(n) == bucket)
-            if not names:
-                continue
-            item = self.prefix + f"-b{bucket:02d}"
-            existing = self.files(item)  # ownership barrier before any object write
-            headers = self.headers(item, sum(self.inputs.objects[n]["size"] for n in names))
-            # Establish a brand-new item's marker with a single first PUT before parallel work.
-            if existing is None:
-                first = names[0]
-                self.one(first, self.inputs.objects[first], item, None, headers)
-                if self.args.workers == 2:
-                    self.s3.close_current()
-                self.verify_batch(item, [first])
-                existing = self.files(item)
-                require(existing is not None, "New item metadata is not visible")
-                remaining = names[1:]
-            else:
-                remaining = names
-            # At most two live futures; no 43k-task executor queue.
-            if self.args.workers == 1:
-                for name in remaining:
-                    self.one(name, self.inputs.objects[name], item, existing, headers)
-            else:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                    active = set()
-                    for name in remaining:
-                        active.add(executor.submit(self.one, name, self.inputs.objects[name], item, existing, headers))
-                        if len(active) == 2:
-                            done, active = concurrent.futures.wait(active, return_when=concurrent.futures.FIRST_COMPLETED)
-                            for future in done:
-                                future.result()
-                    for future in active:
-                        future.result()
-            self.verify_batch(item, names)
-            self.progress.emit(True)
-            if self.args.workers == 2:
-                # The executor's worker threads end here. Close their idle
-                # connections before the next bucket's main-thread first PUT.
-                self.s3.close()
+        grouped = [[] for _ in range(BUCKETS)]
+        for name in self.inputs.objects:
+            grouped[bucket_for(name)].append(name)
+        contexts = []
+        for bucket, names in enumerate(grouped):
+            if names:
+                names.sort()
+                item = self.prefix + f"-b{bucket:02d}"
+                contexts.append({"item": item, "names": names, "index": 0, "existing": None,
+                                 "headers": self.headers(item, sum(self.inputs.objects[n]["size"] for n in names)),
+                                 "owner_attempts": 0, "owner_due": 0, "owner_deadline": 0})
+        first = deque(contexts)
+        ready, waiting, active = deque(), {}, {}
+        first_completed = 0
+        prefer_owner = True
+
+        def prepare(context):
+            # Refresh ownership immediately before this bucket's first action;
+            # the all-item preflight observation may be several minutes old.
+            existing = self.files(context["item"])
+            name = context["names"][0]
+            self.one(name, self.inputs.objects[name], context["item"], existing, context["headers"], defer_invisible_ack=True)
+            return existing
+
+        def put_next(context):
+            name = context["names"][context["index"]]
+            self.one(name, self.inputs.objects[name], context["item"], context["existing"], context["headers"], defer_invisible_ack=True)
+
+        def poll_owner(context):
+            # Exactly one public check; backoff occurs in the coordinator, not
+            # while one of the four worker slots is occupied by a sleep.
+            return self.files(context["item"])
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.workers) as executor:
+                while first or ready or waiting or active:
+                    # Drain every already-completed result before submitting a
+                    # new wave. Any observed failure stops all new scheduling.
+                    done = [future for future in active if future.done()]
+                    try:
+                        results = [(future, future.result()) for future in done]
+                    except BaseException:
+                        for future in active:
+                            future.cancel()
+                        raise
+                    for future, result in results:
+                        kind, context = active.pop(future)
+                        if kind == "first":
+                            first_completed += 1
+                            context["index"] = 1
+                            context["existing"] = result
+                            if result is None:
+                                now = time.monotonic()
+                                context["owner_due"], context["owner_deadline"] = now, now + OWNER_VISIBILITY_SECONDS
+                                waiting[context["item"]] = context
+                            elif context["index"] < len(context["names"]):
+                                ready.append(context)
+                        elif kind == "owner":
+                            if result is None:
+                                context["owner_attempts"] += 1
+                                require(context["owner_attempts"] < OWNER_POLL_ATTEMPTS and time.monotonic() < context["owner_deadline"],
+                                        "New item ownership markers did not become visible within the bounded wait")
+                                context["owner_due"] = time.monotonic() + min(OWNER_POLL_MAX_SECONDS, 2 ** min(context["owner_attempts"] - 1, 5))
+                                waiting[context["item"]] = context
+                            else:
+                                context["existing"] = result
+                                if context["index"] < len(context["names"]):
+                                    ready.append(context)
+                        else:
+                            context["index"] += 1
+                            if context["index"] < len(context["names"]):
+                                ready.append(context)
+                    self.progress.tasks(len(active))
+
+                    while len(active) < self.args.workers:
+                        if first:
+                            context, kind, function = first.popleft(), "first", prepare
+                        else:
+                            due = next((context for context in waiting.values() if context["owner_due"] <= time.monotonic()), None)
+                            can_put = first_completed == len(contexts) and bool(ready)
+                            if due is not None and (not can_put or prefer_owner):
+                                context, kind, function = due, "owner", poll_owner
+                                del waiting[context["item"]]
+                                prefer_owner = False
+                            elif can_put:
+                                context, kind, function = ready.popleft(), "put", put_next
+                                prefer_owner = True
+                            else:
+                                break
+                        active[executor.submit(function, context)] = (kind, context)
+                        self.progress.tasks(len(active))
+                    if active:
+                        concurrent.futures.wait(active, timeout=1, return_when=concurrent.futures.FIRST_COMPLETED)
+                    elif waiting:
+                        pause = min(context["owner_due"] for context in waiting.values()) - time.monotonic()
+                        time.sleep(min(1, max(0.01, pause)))
+            require(all(context["index"] == len(context["names"]) for context in contexts), "Fair scheduler did not visit every data object")
+            # All owned/resumed/new PUTs across every bucket have finished.
+            # Ingestion may continue independently on the sixty-four items.
+            for context in contexts:
+                self.verify_batch(context["item"], context["names"])
+                self.progress.emit(True)
+        finally:
+            self.progress.tasks(0)
+            self.s3.close()
 
     def public_record(self, name):
         record = self.journal.value["objects"][name]
@@ -1200,7 +1436,7 @@ def parser():
     root.add_argument("--prefix")
     root.add_argument("--auth-file")
     root.add_argument("--work")
-    root.add_argument("--workers", type=int, default=1)
+    root.add_argument("--workers", type=int, default=1, choices=(1, 2, 3, 4))
     root.add_argument("--stage-budget", type=int, default=DEFAULT_BUDGET)
     root.add_argument("--collection", default="opensource_media", choices=("opensource_media",))
     root.add_argument("--requested-total", type=int, default=42830, help="User-requested target total; names still require an authoritative target manifest")
