@@ -1,12 +1,12 @@
 {
   "account": "tagundo",
-  "activate_upload": false,
+  "activate_upload": true,
   "baseline_audit_sha256": "bcee508ab60e82ce62e27b1cfd69f9e987721bfe45f5d1b926a528a370e205be",
   "baseline_inventory_sha256": "24875b44310c51a855f8536c55a092ee05f0c5555e18446e9655f2218abc198f",
   "inventory_run_attempt": 1,
   "inventory_run_conclusion": "failure",
   "inventory_run_id": 43681672170,
-  "inventory_sha256": null,
+  "inventory_sha256": "e316340dfda6078d0c8b7ab28951ab48f588608f8d1834a1de6580d5cc68c755",
   "inventory_source_commit": "1aca2a1cf05fc3716e25414e4f1d19585204b21d",
   "inventory_successful_workers": {
     "132713428806": "inventory (0)",
@@ -33,8 +33,14 @@
     "packs_JP.tar.006.json": "8a79856aee3b3aba9b99641d92dd4ac827e2e9b4b35974f29c2aeca59ad35b9f",
     "packs_JP.tar.007.json": "20b765cd372476beddf258b87ebaaa37a856ef7ea7c28b259b015b280c05144c"
   },
-  "read_only_plan_note": "Alloriginal18proofs and VERIFIED8033sourceproof byte-verified locally; initialCI derivesstrictcompleteplan withoutIAsecretaccess.",
+  "read_only_plan_note": "Rootverifiedsuccessfulstrictplanrun43688695214/artifact14151790915/fullZIPhash; complete42830/33321064961/zeroissues; actualuploads authorized.",
   "requested_total": 42830,
+  "reviewed_complete_plan": {
+    "artifact_id": 14151790915,
+    "run_id": 43688695214,
+    "source_commit": "97bec7f6e8f940234d7ae8078b287600a18d9ade",
+    "zip_sha256": "7cd32e8a2a5b27e5899b28905fa7718393fcfff7c36fbecdb224e23173fcf573"
+  },
   "schema": 1,
   "session_nonce": "2c7c09fd146863c17845c12261a6c328",
   "source_sha256": {
