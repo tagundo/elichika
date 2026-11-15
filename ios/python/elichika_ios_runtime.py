@@ -76,7 +76,10 @@ def _bind_managers(root, modules):
     from webtools import jobs as tool_jobs
     for manager in (tool_jobs.MANAGER, *(module.MANAGER for module in modules)):
         with manager._lock:
-            if manager._active or any(not job.is_done for job in manager._jobs.values()):
+            # The original webtools manager has no _active counter. Its queued
+            # and running jobs are represented by unfinished Job objects; the
+            # guarded admin manager additionally counts its cleanup interval.
+            if getattr(manager, "_active", 0) or any(not job.is_done for job in manager._jobs.values()):
                 raise RuntimeError("Cannot replace a running tool job manager")
     jobs.MANAGER.bind_runtime_root(root)
     tool_jobs.MANAGER = jobs.MANAGER

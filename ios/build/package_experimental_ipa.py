@@ -87,7 +87,7 @@ def simulator_gates(path, source):
 
 
 def package_experimental(source, runtime, native, payload, output, work, report, *, simulator_report,
-                         lock, version=None, repo=ROOT):
+                         lock, version=None, repo=ROOT, payload_consumption=None):
     source, runtime, native, payload, output, work = map(Path, (source, runtime, native, payload, output, work))
     capability = require_pending_archive(repo)
     require('EXPERIMENTAL-ARCHIVE_PENDING-UNTESTED_DEVICE' in output.name,
@@ -96,6 +96,12 @@ def package_experimental(source, runtime, native, payload, output, work, report,
     require(not work.exists() and not work.resolve().is_relative_to(Path(repo).resolve()),
             'Fresh isolated QA packaging directory outside the checkout required')
     identity = source_identity(repo)
+    if payload_consumption is not None:
+        require(payload_consumption['status'] == 'VERIFIED_EXACT_ORIGINAL_OFFICIAL_PAYLOAD_REUSE_NOT_AN_IPA'
+                and payload_consumption['consumer_source'] == identity
+                and payload_consumption['producer_identity_reassigned'] is False
+                and payload_consumption['original_inventory_and_packaged_manifest_verified'] is True,
+                'QA payload consumption must identify the original producer and current consumer')
     sim_proof = simulator_gates(simulator_report, identity)
     runtime_report = experimental_runtime(runtime, capability)
     capability['runtime'] = {key: runtime_report[key] for key in
@@ -133,6 +139,7 @@ def package_experimental(source, runtime, native, payload, output, work, report,
         require(not (resources / name).exists(), 'QA payload destination overlaps runtime input')
         shutil.copytree(payload / name, resources / name)
     shutil.copy2(payload / 'payload_revision.json', resources / 'payload_revision.json')
+    shutil.copy2(payload / 'shared-payload-build.json', resources / 'official-payload-build.json')
     original = plistlib.loads((app / 'Info.plist').read_bytes())
     require(original['CFBundleIdentifier'] == lock['game']['bundle_id'] and original['UIDeviceFamily'] == [1, 2]
             and original['CFBundleShortVersionString'] == lock['game']['preserve_game_short_version'],
@@ -143,6 +150,8 @@ def package_experimental(source, runtime, native, payload, output, work, report,
     provenance = {'schema': 1, 'channel': CHANNEL, 'status': STATUS, 'source': identity, 'version': versions,
                   'game_input': lock, 'Python_runtime_receipt': runtime_report, 'experimental_capability': capability,
                   'full_tools_simulator_evidence': sim_proof, 'native_framework_sha256': sha256(native / 'ElichikaHost'),
+                  'official_payload_original_producer': json.loads((payload / 'shared-payload-build.json').read_text()),
+                  'official_payload_consumption': payload_consumption,
                   'server_runs_in_process': True, 'simulator_probe_included': False,
                   'production_release': False, 'archive_publication_guard_passed': False,
                   'physical_iPhone_iPad_gameplay_tested': False, 'SideStore_user_resigning_required': True}

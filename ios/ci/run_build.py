@@ -41,6 +41,8 @@ def main():
     parser.add_argument('--version')
     parser.add_argument('--built-inputs', type=Path,
                         help='Full producer root containing device/simulator built-lock.json and codecs/')
+    parser.add_argument('--reuse-official-payload', action='store_true',
+                        help='Use only the exact reviewed retained Source 9 data; platform-only consumer changes required')
     args = parser.parse_args()
     require(platform.system() == 'Darwin' and platform.machine() == 'arm64', 'Native ARM64 macOS/Xcode runner required')
     repo, work, evidence = args.repo.resolve(), args.work.resolve(), args.evidence.resolve()
@@ -107,9 +109,21 @@ def main():
                    'runtime_executed': False, 'IPA_produced': False, 'toolset_complete': False,
                    'simulated_game_used_in_device_target': False})
         return
-    payload = work / 'shared-payload'
-    run([sys.executable, '-B', repo / 'ios/build/build_payload.py', '--repo', repo, '--output', payload,
-         '--evidence', evidence / 'payload'], cwd=repo)
+    if args.reuse_official_payload:
+        require(tools_probe or experimental, 'Retained payload reuse is restricted to the reviewed test/QA modes')
+        from fetch_official_payload import fetch
+        retained = work / 'original-official-payload'
+        environment['official_payload_consumption'] = fetch(repo, retained,
+            evidence / 'reused-official-payload.json',
+            json.loads((repo / 'ios/build/official-payload.lock.json').read_text()))
+        payload = retained / 'shared-payload'
+        # Preserve the old proof under its own name; never present it as a new
+        # payload/payload-build.json or trigger retention as a current producer.
+        shutil.copy2(retained / 'original-payload-build.json', evidence / 'original-source9-payload-build.json')
+    else:
+        payload = work / 'shared-payload'
+        run([sys.executable, '-B', repo / 'ios/build/build_payload.py', '--repo', repo, '--output', payload,
+             '--evidence', evidence / 'payload'], cwd=repo)
     prepare_probe(probe, runtimes['simulator'], payload, evidence, full=full_tools, probe_only=tools_probe or experimental)
     run([sys.executable, '-B', repo / 'ios/ci/run_simulator.py', '--app', probe,
          '--evidence', evidence / 'simulator', *([] if full_tools else ['--core-only'])], cwd=repo)
@@ -139,7 +153,8 @@ def main():
         receipt = package_experimental(source, runtimes['device'], native, payload, output, work / 'ipa-stage',
                       evidence / 'IPA-build.json', simulator_report=simulator_report,
                       lock=json.loads((repo / 'ios/build/inputs.lock.json').read_text()),
-                      version=versions['canonical'], repo=repo)
+                      version=versions['canonical'], repo=repo,
+                      payload_consumption=environment.get('official_payload_consumption'))
     else:
         output = args.delivery / ('Elichika-SIFAS-GL-' + versions['canonical'] + '-UNTESTED-iPhone-iPad.ipa')
         receipt = package(source, runtimes['device'], native, payload, output, work / 'ipa-stage',

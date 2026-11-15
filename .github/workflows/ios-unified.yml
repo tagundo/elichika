@@ -122,10 +122,15 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+          set --
+          if [ "$BUILD_MODE" = experimental-candidate ] || [ "$BUILD_MODE" = tools-runtime ]; then
+            set -- --reuse-official-payload
+          fi
           python3 -B ios/ci/run_build.py --mode "$BUILD_MODE" --repo . \
             --work "$RUNNER_TEMP/ios-build" --evidence "$RUNNER_TEMP/ios-evidence" \
             --delivery "$RUNNER_TEMP/ios-candidate" --version "$REQUESTED_VERSION" \
             --built-inputs "$RUNNER_TEMP/ios-built-inputs" \
+            "$@" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/build.log"
 
       - name: Require portable and Go tests to have passed

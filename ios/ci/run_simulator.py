@@ -136,7 +136,9 @@ def execute(app, evidence, *, core_only):
                             time.sleep(.5)
                         require(reply_file.is_file(), 'Probe timed out before real-backend readiness')
                         require(reply_file.stat().st_size <= 1024*1024, 'Probe receipt exceeds bound')
-                        reply = validate_reply(json.loads(reply_file.read_text()), core_only, launch_number=launch_number)
+                        raw_reply = json.loads(reply_file.read_text())
+                        write_json(evidence / (model['name'].replace('/', '-') + '-launch-' + str(launch_number) + '-native.json'), raw_reply)
+                        reply = validate_reply(raw_reply, core_only, launch_number=launch_number)
                         require(port_open(8080), 'Probe health claimed ready without an actual game listener')
                         from probe_protocol import probe as probe_protocol
                         protocol = probe_protocol('http://127.0.0.1:8080',

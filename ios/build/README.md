@@ -33,6 +33,17 @@ be placed directly in Files/Finder. The pending individual-file publication is
 not advertised as available. A Simulator runtime cannot enter this device IPA,
 and an experimental runtime cannot pass the production packaging entry point.
 
+The test/QA workflow can reuse only the exact retained official payload pinned
+in `official-payload.lock.json`. Its Source 9 data producer remains identified
+separately from the current platform consumer. Reuse requires that producer to
+be an ancestor, a clean committed checkout and submodules, and no committed
+changes outside `ios/` and `.github/`; the original iOS payload builder and
+shared helper also must be unchanged. The complete retained ZIP, original
+proof, each file and the packaged data manifest are verified. The reviewed
+producer run failed later during app startup; its payload retention and upload
+must have succeeded. This does not supply any runtime or IPA gate result.
+Production `full-candidate` keeps its fresh producer and publication guard.
+
 `full-candidate` requires the complete wheel/codec closure, runs full Simulator
 gates, obtains the exact existing GL Local game through the locked successful
 GitHub artifact export, and packages the actual monolithic SIFAS app. It refuses

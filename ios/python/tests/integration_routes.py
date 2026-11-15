@@ -39,6 +39,8 @@ def main():
         sys.path[:0] = [str(repo), str(repo / "modtools")]
         from adminui import server as admin
         from webtools import server as tools
+        from elichika_ios_runtime import _bind_managers
+        _bind_managers(root, [admin, tools])
         codec_report = install(args.codec_frameworks)
         from webtools.core import model_viewer
         fixture = library / "extracted/viewer_textured_triangle.unity"
