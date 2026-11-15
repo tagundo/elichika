@@ -318,10 +318,13 @@ def _retire_selections(root, packs, models):
     import llas_asset_extractor as extractor
     retired = []
     folders = {root / ".viewer-cache/models", root / ".viewer-cache/game-models",
+               Path(library_path("cache")) / "viewer/game-models",
                Path(library_path("extracted")) / "game-models",
+               Path(extractor.COPIED_PACKS_DIR).parent / "cache/viewer/game-models",
                Path(extractor.COPIED_PACKS_DIR).parent / "extracted/game-models"}
+    folders.update(folder / "transplant-bodies" for folder in tuple(folders))
     for folder in folders:
-        if not folder.is_dir() or folder.is_symlink():
+        if not folder.is_dir() or folder.is_symlink() or folder.resolve() != folder.absolute():
             continue
         for path in folder.glob(".selection-*.json"):
             try:

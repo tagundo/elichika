@@ -42,7 +42,7 @@ def command(arguments, timeout=8):
 
 
 def official_import_started(evidence):
-    root = evidence / 'native-app-data/sukusta/extracted/game-models'
+    root = evidence / 'native-app-data/sukusta/cache/viewer/game-models'
     return any(root.glob('gl-400022007-*'))
 
 

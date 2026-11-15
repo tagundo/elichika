@@ -17,7 +17,6 @@ import (
 
 	"os"
 	"runtime"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,14 +33,16 @@ func checkCli() bool {
 		user_training_tree.FixUsersTrainingTrees()
 	}
 	if os.Args[1] == "download_packs" {
-		// download every pack the CDN serves that isn't cached yet (skips what you already have).
-		workers := 8
-		if len(os.Args) > 2 {
-			if n, err := strconv.Atoi(os.Args[2]); err == nil && n > 0 {
-				workers = n
+		options, err := asset.ParseDownloadOptions(os.Args[2:])
+		if err != nil {
+			log.Println("download_packs:", err)
+		} else if options.Scoped {
+			if err := asset.DownloadMissing(options.Workers, options.Selection); err != nil {
+				log.Println("download_packs:", err)
 			}
+		} else {
+			asset.DownloadAllMissing(options.Workers)
 		}
-		asset.DownloadAllMissing(workers)
 	}
 	if os.Args[1] == "download_archive" {
 		// bulk-download every game file from archive.org (does NOT use the game CDN),

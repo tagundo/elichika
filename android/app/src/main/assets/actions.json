@@ -1,22 +1,36 @@
 {
-  "_comment": "Declarative mirror of the elichika_utility.sh menu. label_id names a string resource (localized); label is the fallback. group names a string resource used as a caption before the group's buttons. type=binary runs libelichika.so with args (server stopped first); type=url opens a browser; type=import_zip opens the file picker; type=settings/about/guide open dialogs.",
+  "_comment": "Declarative console actions. Native handlers collect download scopes and dispatch CLI or managed Python work while preserving the stop-server lifecycle.",
   "actions": [
     {
       "id": "download_archive",
       "label_id": "act_download_archive",
-      "label": "Download all game files (archive.org)",
+      "label": "Download game files (archive.org)",
       "group": "grp_downloads",
       "type": "binary",
-      "args": ["download_archive", "both"],
+      "args": [
+        "download_archive_profile",
+        "gl",
+        "android",
+        "all"
+      ],
       "stop_server": true
     },
     {
       "id": "download_packs",
       "label_id": "act_download_packs",
-      "label": "Download missing (game CDN)",
+      "label": "Download missing…",
       "group": "grp_downloads",
       "type": "binary",
-      "args": ["download_packs", "4"],
+      "args": [
+        "download_packs",
+        "4",
+        "--region",
+        "gl",
+        "--platform",
+        "android",
+        "--language",
+        "all"
+      ],
       "stop_server": true
     },
     {
@@ -25,7 +39,10 @@
       "label": "CDN cache on/off",
       "group": "grp_downloads",
       "type": "binary",
-      "args": ["cdn_cache", "toggle"],
+      "args": [
+        "cdn_cache",
+        "toggle"
+      ],
       "stop_server": true
     },
     {
@@ -70,7 +87,9 @@
       "label_id": "act_rebuild_assets",
       "label": "Rebuild master data",
       "type": "binary",
-      "args": ["rebuild_assets"],
+      "args": [
+        "rebuild_assets"
+      ],
       "stop_server": true,
       "advanced": true
     },
@@ -79,7 +98,9 @@
       "label_id": "act_fix_training",
       "label": "Fix training trees",
       "type": "binary",
-      "args": ["fix_training_trees"],
+      "args": [
+        "fix_training_trees"
+      ],
       "stop_server": true,
       "advanced": true
     },

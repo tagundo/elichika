@@ -10,6 +10,7 @@ import (
 	"elichika/config"
 	"elichika/log"
 
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,28 +19,33 @@ import (
 // DownloadAllMissing downloads, with `workers` parallel downloads, every whole pack/metapack file the
 // game needs that isn't already cached, from the CDN. Re-running it only fetches what's still missing.
 func DownloadAllMissing(workers int) {
+	if err := downloadMissingFiles(workers, assetdata.AllWholeFiles()); err != nil {
+		log.Println("download_packs:", err)
+	}
+}
+
+// DownloadMissing downloads only the selected profiles, including common files
+// and whole metapacks. Invalid or unloaded profiles fail before any CDN request.
+func DownloadMissing(workers int, selection assetdata.DownloadSelection) error {
+	names, err := assetdata.SelectWholeFiles(selection)
+	if err != nil {
+		return err
+	}
+	log.Printf("download_packs: selected %d whole files (%s); all loaded profiles contain %d whole files\n",
+		len(names), selection, assetdata.ProfileWholeFileCount())
+	return downloadMissingFiles(workers, names)
+}
+
+func downloadMissingFiles(workers int, names map[string]struct{}) error {
 	host := *config.Conf.CdnServer
 	if host == "" || host == "elichika" || host == "elichika_tls" {
-		log.Println("download_packs: cdn_server must be a real CDN url (not 'elichika'); aborting")
-		return
+		return fmt.Errorf("cdn_server must be a real CDN url (not 'elichika'); aborting")
 	}
 	if _, err := sourceCDNURL(host, "source-check", nil); err != nil {
-		log.Println("download_packs:", err)
-		return
+		return err
 	}
 	if workers < 1 {
 		workers = 1
-	}
-
-	// whole files the game serves: every metapack, plus every pack that isn't part of a metapack.
-	names := map[string]struct{}{}
-	for name := range assetdata.Metapack {
-		names[name] = struct{}{}
-	}
-	for _, pack := range assetdata.Pack {
-		if pack.MetapackName == nil {
-			names[pack.PackName] = struct{}{}
-		}
 	}
 
 	todo := make([]string, 0, len(names))
@@ -52,7 +58,7 @@ func DownloadAllMissing(workers int) {
 	log.Printf("download_packs: %d missing of %d; downloading %d at a time\n", total, len(names), workers)
 	if total == 0 {
 		log.Println("download_packs: nothing to do - everything is already cached")
-		return
+		return nil
 	}
 
 	var done, failed, bytesTotal int64
@@ -111,4 +117,8 @@ func DownloadAllMissing(workers int) {
 	repWg.Wait()
 	log.Printf("download_packs: finished - %d downloaded, %d failed, %.1f MB total\n",
 		total-int(failed), failed, float64(atomic.LoadInt64(&bytesTotal))/1e6)
+	if failed != 0 {
+		return fmt.Errorf("%d of %d downloads failed", failed, total)
+	}
+	return nil
 }

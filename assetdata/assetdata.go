@@ -74,3 +74,18 @@ func Init(locale string, assetdata *xorm.Engine) {
 	loadMetapack(locale, session)
 	loadPack(locale, assetdata)
 }
+
+// InitProfile retains whole-file membership while the source catalog is loaded.
+// Init remains available for legacy callers without a known source profile.
+func InitProfile(profile AssetProfile, engine *xorm.Engine) error {
+	mask, err := profile.mask()
+	if err != nil {
+		return err
+	}
+	session := engine.NewSession()
+	defer session.Close()
+	loadMetapack(string(profile.Language), session, mask)
+	loadPack(string(profile.Language), engine, mask)
+	loadedProfiles |= mask
+	return nil
+}

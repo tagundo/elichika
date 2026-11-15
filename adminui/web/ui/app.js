@@ -1,6 +1,7 @@
 "use strict";
 
 const state = { tools: [], currentTool: null, es: null, jobId: null, lang: null, languages: [], deleteReview: null, formGeneration: 0, running: false, thumbnailRenderController: null };
+const addonFileControls = new Set();
 const $ = (s) => document.querySelector(s);
 // Only presentation is queued. SSE parsing, progress and job decisions remain
 // synchronous, and no raw line is summarized, retimed, deduplicated or dropped.
@@ -118,6 +119,7 @@ function selectTool(id) {
 }
 
 function renderForm() {
+  cancelAddonFileImports();
   invalidateInstallerThumbnail();
   state.formGeneration += 1;
   state.deleteReview = null;
@@ -247,6 +249,7 @@ function renderField(field) {
       wrap.appendChild(el("div", { id: id + "_choices", class: "multi-choices removal-choices", role: "group", "aria-label": field.label }));
       wrap.appendChild(el("div", { id: id + "_count", class: "help", "aria-live": "polite", text: T(removalText("Selected costumes: ", "Selected clones: ")) + "0" }));
     } else wrap.appendChild(el("div", { class: "dyn-row" }, [sel, refresh]));
+    if (field.name === "addon" && field.file_add) renderAddonFilePicker(wrap, field, sel, refresh);
   } else {
     wrap.appendChild(el("label", { for: id, text: field.label }));
     const input = el("input", { type: "text", id, value: field.default !== undefined ? String(field.default) : "" });
@@ -288,6 +291,8 @@ async function loadOptions(field) {
   if (isRemovalTool(toolId)) invalidateRemovalReview();
   const request = String((Number(sel.dataset.optionsRequest) || 0) + 1);
   sel.dataset.optionsRequest = request;
+  sel.dataset.optionsLoading = "true";
+  syncAddonFileControls();
   const isCurrent = () => sel.isConnected && sel.dataset.optionsRequest === request &&
     state.currentTool && state.currentTool.id === toolId;
   const params = collectParams();
@@ -314,7 +319,134 @@ async function loadOptions(field) {
     if (!isCurrent()) return;
     sel.innerHTML = "<option value=''>(error: " + e + ")</option>";
     if (isRemovalTool(toolId)) renderRemovalChoices(sel);
+  } finally {
+    if (isCurrent()) { delete sel.dataset.optionsLoading; syncAddonFileControls(); }
   }
+}
+
+// Reuse Asset Editing's compact Add files/removable-list interaction. The
+// original folder dropdown remains unchanged until an explicit native choice.
+function cancelAddonFileImports() {
+  for (const control of addonFileControls) if (control.controller) control.controller.abort();
+  addonFileControls.clear();
+}
+function addonImportsPending() {
+  return Array.from(addonFileControls).some(control => control.wrap.isConnected && control.pending);
+}
+function syncAddonFileControls() {
+  for (const control of addonFileControls) control.sync();
+  document.querySelectorAll("#tool-form .run-btn, #delete-confirm").forEach(button => {
+    button.disabled = state.running || addonImportsPending();
+  });
+}
+function renderAddonFilePicker(wrap, field, select, refresh) {
+  const owner = state.currentTool.id, language = state.lang, spec = field.file_add;
+  const extensions = spec.extensions || [], maximum = spec.max_files || 128;
+  const control = { wrap, select, active: false, files: [], pending: false, controller: null };
+  const picker = el("input", { type: "file", multiple: "multiple", hidden: "hidden",
+    accept: extensions.map(value => "." + value).join(","), "data-addon-file-input": field.name });
+  const list = el("ul", { class: "multi-list addon-file-list", hidden: "hidden" });
+  const hint = el("div", { class: "help", role: "status", "aria-live": "polite", hidden: "hidden" });
+  const add = el("button", { type: "button", text: T("Add files"), "data-addon-files-add": field.name,
+    onclick: () => { if (!add.disabled && isCurrent()) picker.click(); } });
+  const reset = el("button", { type: "button", text: T("Use existing selection"), hidden: "hidden",
+    onclick: () => {
+      if (!isCurrent() || control.pending || state.running) return;
+      control.active = false; control.files = []; control.error = "";
+      hint.textContent = T("Using the existing selection shown above."); hint.hidden = false;
+      render(); changed();
+    } });
+  const isCurrent = () => wrap.isConnected && state.currentTool && state.currentTool.id === owner && state.lang === language;
+  const changed = () => select.dispatchEvent(new Event("change", { bubbles: true }));
+  function render() {
+    list.replaceChildren(); list.hidden = !control.active; reset.hidden = !control.active;
+    if (control.active) {
+      hint.hidden = false;
+      hint.textContent = control.error || (control.pending ? T("Adding files…") : control.files.length
+        ? T("Using only the {count} added files.").replace("{count}", String(control.files.length))
+        : T("Choose files or use the existing selection."));
+      if (!control.files.length) list.appendChild(el("li", { class: "muted", text: T("No files selected.") }));
+      for (const [index, item] of control.files.entries()) {
+        const remove = el("button", { type: "button", class: "multi-rm", text: "✕",
+          "aria-label": T("Remove") + " " + item.label, title: item.value,
+          onclick: () => {
+            if (!isCurrent() || control.pending || state.running) return;
+            const focused = document.activeElement === remove;
+            control.files = control.files.filter(value => value.value !== item.value); control.error = "";
+            render(); changed();
+            if (focused && isCurrent()) {
+              const buttons = list.querySelectorAll(".multi-rm"), next = buttons[Math.min(index, buttons.length - 1)] || add;
+              try { next.focus({ preventScroll: true }); } catch (_) { next.focus(); }
+            }
+          } });
+        list.appendChild(el("li", {}, [el("span", { text: item.label, title: item.value }), remove]));
+      }
+    }
+    syncAddonFileControls();
+  }
+  control.sync = () => {
+    const busy = state.running || control.pending;
+    select.disabled = busy || control.active;
+    refresh.disabled = busy || control.active;
+    add.disabled = busy || select.dataset.optionsLoading === "true";
+    reset.disabled = busy;
+    list.querySelectorAll(".multi-rm").forEach(button => { button.disabled = busy; });
+  };
+  control.params = () => control.active ? control.files.map(item => item.value) : null;
+  picker.addEventListener("change", async () => {
+    const files = Array.from(picker.files || []); picker.value = "";
+    if (!files.length || !isCurrent() || control.pending || state.running) return;
+    // Manual files replace the default input. They never merge with a scanned
+    // folder/default choice, including when an upload fails or the list empties.
+    control.active = true; control.pending = true; control.error = "";
+    const controller = new AbortController(); control.controller = controller;
+    render(); changed();
+    try {
+      if (control.files.length + files.length > maximum) throw new Error(T("Choose up to 128 files at once."));
+      for (const file of files) {
+        if (!extensions.some(extension => file.name.toLowerCase().endsWith("." + extension))) {
+          throw new Error(T("Choose files supported by this installer."));
+        }
+        if (!(file.size > 0 && file.size <= spec.max_bytes)) throw new Error(T("Each file must be nonempty and at most 512 MiB."));
+      }
+      const total = files.reduce((sum, file) => sum + file.size, 0) + control.files.reduce((sum, file) => sum + file.size, 0);
+      if (total > spec.max_total_bytes) throw new Error(T("Added files must total at most 8 GiB."));
+      const batchResponse = await fetch(withLang("/api/addon-files/" + owner + "/batch"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: files.map(file => ({ name: file.name, size: file.size })) }), signal: controller.signal,
+      });
+      const batch = await batchResponse.json();
+      if (!isCurrent()) return;
+      if (!batchResponse.ok || batch.error) throw new Error(T(batch.error || "The files could not be added."));
+      if (!/^[0-9a-f]{32}$/.test(batch.token || "")) throw new Error(T("The file selection response is invalid."));
+      const imported = [];
+      for (const [index, file] of files.entries()) {
+        const response = await fetch(withLang("/api/addon-files/" + owner + "?name=" + encodeURIComponent(file.name) +
+          "&batch=" + encodeURIComponent(batch.token) + "&index=" + index), {
+          method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file, signal: controller.signal,
+        });
+        const result = await response.json();
+        if (!isCurrent()) return;
+        if (!response.ok || result.error) throw new Error(T(result.error || "The files could not be added."));
+        const item = result.file;
+        if (!item || typeof item.value !== "string" || !item.value || /[\/\\\x00-\x1f\x7f]/.test(item.value) ||
+            item.value === "." || item.value === ".." || typeof item.label !== "string") throw new Error(T("The file selection response is invalid."));
+        imported.push({ value: item.value, label: item.label, size: file.size });
+      }
+      if (!isCurrent()) return;
+      const seen = new Set(control.files.map(item => item.value));
+      for (const item of imported) if (!seen.has(item.value)) { seen.add(item.value); control.files.push(item); }
+    } catch (error) {
+      if (isCurrent()) control.error = error.name === "AbortError" ? T("Adding files was cancelled.") : T(String(error.message || error));
+    } finally {
+      control.pending = false;
+      if (control.controller === controller) control.controller = null;
+      if (isCurrent()) { render(); changed(); }
+    }
+  });
+  addonFileControls.add(control);
+  wrap.appendChild(picker); wrap.appendChild(el("div", { class: "addon-file-actions" }, [add, reset]));
+  wrap.appendChild(hint); wrap.appendChild(list); render();
 }
 
 function renderRemovalChoices(sel) {
@@ -397,7 +529,7 @@ function setRemovalPhase(message, kind = "") {
 
 function setRunning(running) {
   state.running = running;
-  document.querySelectorAll("#tool-form .run-btn, #delete-confirm").forEach((button) => { button.disabled = running; });
+  syncAddonFileControls();
   window.dispatchEvent(new CustomEvent("elichika-admin-running-changed"));
 }
 
@@ -419,6 +551,11 @@ function collectParams() {
     else if (inp.multiple) params[inp.dataset.name] = Array.from(inp.selectedOptions).map((o) => o.value);
     else params[inp.dataset.name] = inp.value;
   });
+  for (const control of addonFileControls) {
+    if (!control.wrap.isConnected) continue;
+    const selected = control.params();
+    if (selected !== null) params[control.select.dataset.name] = selected;
+  }
   return params;
 }
 
@@ -486,7 +623,7 @@ async function prepareCostumeInstallationThumbnails(tool, params, context) {
 }
 
 async function runTool(overrides = null) {
-  if (state.running || !state.currentTool) return;
+  if (state.running || addonImportsPending() || !state.currentTool) return;
   const tool = state.currentTool;
   const params = Object.assign(collectParams(), overrides || {});
   if (isRemovalTool(tool.id)) {

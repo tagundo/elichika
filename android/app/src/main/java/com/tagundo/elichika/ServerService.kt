@@ -13,6 +13,8 @@ import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.Environment
+import org.json.JSONObject
 import java.io.File
 import java.util.ArrayDeque
 import java.util.concurrent.CountDownLatch
@@ -34,6 +36,7 @@ class ServerService : Service() {
     @Volatile private var operation = 0L
     private var installing = false
     private var maintenance = false
+    @Volatile private var archiveLease: ArchiveWorkerFence.Lease? = null
     private var stopAfterMaintenance = false
     private var stopping = false
     private var initializing = true
@@ -76,6 +79,12 @@ class ServerService : Service() {
         Thread({
             try {
                 check(ManagementServer.awaitSuspended(managementLease)) { "Management WebUI did not stop. Server preparation was left unchanged." }
+                // A destroyed service may still own cancelling Python transfers.
+                // Keep both management leases suspended, but wait off main before
+                // payload preparation or any queued game/tool command can proceed.
+                if (archiveWorkers.isBusy()) Bus.log(getString(R.string.log_archive_draining))
+                archiveWorkers.awaitIdle()
+                if (destroyed || current !== this) return@Thread
                 val prepared = AssetInstaller.install(appContext, ::preparationChanged) { Bus.log(it) }
                 if (destroyed) return@Thread
                 // Cold Chaquopy initialization also belongs off the UI thread.
@@ -149,10 +158,14 @@ class ServerService : Service() {
             return START_NOT_STICKY
         }
         if (initializing) {
+            if (archiveWorkers.isBusy() && intent?.action != ACTION_STOP) {
+                Bus.log(getString(R.string.log_archive_draining))
+            }
             when (intent?.action) {
                 ACTION_STOP, null -> {
                     cancellation++
                     pendingCommands.clear()
+                    cancelArchiveDownload()
                     stopWhenReady = true
                     Bus.setRunning(false)
                 }
@@ -176,6 +189,10 @@ class ServerService : Service() {
     }
 
     private fun dispatchCommand(intent: Intent) {
+        if (archiveWorkers.isBusy() && intent.action in listOf(ACTION_START, ACTION_RUN, ACTION_RESET_SERVER, ACTION_PREPARE_INSTALL)) {
+            Bus.log(getString(if (archiveWorkers.isCancelling()) R.string.log_archive_draining else R.string.log_install_busy))
+            return
+        }
         if ((installing || maintenance) && intent.action in listOf(ACTION_START, ACTION_RUN, ACTION_RESET_SERVER)) {
             Bus.log(getString(R.string.log_install_busy))
             Bus.setRunning(Bus.serverRunning)
@@ -196,7 +213,7 @@ class ServerService : Service() {
                         // running until a nested stop is requested.
                         pauseReservedInstall()
                     }
-                    maintenance -> { stopAfterMaintenance = true; server.stop() }
+                    maintenance -> { stopAfterMaintenance = true; cancelArchiveDownload(); server.stop() }
                     else -> stopServer(stopSelfToo = true)
                 }
             }
@@ -217,6 +234,7 @@ class ServerService : Service() {
     }
 
     private fun startServer(): Boolean {
+        check(!archiveWorkers.isBusy()) { getString(if (archiveWorkers.isCancelling()) R.string.log_archive_draining else R.string.log_install_busy) }
         check(isReady) { "Server files are still being prepared" }
         if (server.isAlive()) return true
         val token = ++operation
@@ -349,6 +367,7 @@ class ServerService : Service() {
     // on the Python job thread. The hold blocks other windows from opening DBs.
     internal fun reserveForInstall() {
         check(current === this) { "The server service changed; retry installation" }
+        check(!archiveWorkers.isBusy()) { getString(if (archiveWorkers.isCancelling()) R.string.log_archive_draining else R.string.log_install_busy) }
         check(isReady) { "Server files are still being prepared" }
         check(!installing && !maintenance) { getString(R.string.log_install_busy) }
         installing = true
@@ -391,6 +410,7 @@ class ServerService : Service() {
     /** Run a one-shot CLI verb; optionally stop the server first to avoid DB locks. */
     private fun runAction(args: List<String>, stopFirst: Boolean) {
         if (args.isEmpty()) return
+        if (args.first() == "download_archive_profile") { runArchiveDownload(args); return }
         maintenance = true
         stopAfterMaintenance = false
         val token = ++operation
@@ -417,6 +437,91 @@ class ServerService : Service() {
                 if (!started) finishService()
             }
         }.start()
+    }
+
+    /** Cancellation keeps the shared ownership and its visible progress until reaped. */
+    private fun cancelArchiveDownload() {
+        if (archiveWorkers.cancelActive()) {
+            val progress = Bus.archiveDownloadProgress ?: ArchiveDownloadProgress.preparing()
+            Bus.setArchiveDownloadProgress(progress.copy(cancelling = true))
+        }
+    }
+
+    /** Public archive downloads keep the same foreground maintenance ownership as CLI actions. */
+    private fun runArchiveDownload(args: List<String>) {
+        if (args.size != 4) {
+            Bus.log(getString(R.string.archive_download_invalid_scope))
+            if (!Bus.serverRunning) finishService()
+            return
+        }
+        val lease = archiveWorkers.tryAcquire()
+        if (lease == null) {
+            Bus.log(getString(R.string.log_archive_draining))
+            return
+        }
+        archiveLease = lease
+        maintenance = true
+        stopAfterMaintenance = false
+        val token = ++operation
+        val cancelled = lease.cancellation
+        try {
+            cancelAutoStop()
+            acquireWakeLock()
+            Bus.setArchiveDownloadProgress(ArchiveDownloadProgress.preparing())
+            startForeground(NOTIF_ID, buildNotification())
+            val previous = server.stop()
+            Bus.setRunning(false)
+            Thread({
+                try {
+                    check(ServerProcess.awaitStopped(previous)) { "The game server did not stop; no archive files were changed." }
+                    if (cancelled.get() || destroyed) return@Thread
+                    Bus.log(getString(R.string.archive_download_start, args[1], args[2], args[3]))
+                    val config = assets.open("archive-hosted-catalog.json").bufferedReader().use { it.readText() }
+                    @Suppress("DEPRECATION")
+                    val library = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "sukusta")
+                    val observer = ArchiveDownloadCallbacks(
+                        { packet ->
+                            val progress = ArchiveDownloadProgress.parse(packet)
+                            main.post {
+                                if (token == operation && !destroyed && !cancelled.get() && archiveWorkers.owns(lease)) {
+                                    Bus.setArchiveDownloadProgress(progress)
+                                }
+                            }
+                        },
+                        { cancelled.get() || destroyed })
+                    val raw = EmbeddedPython.instance(this).getModule("archive_profile_download_bridge")
+                        .callAttr("run_android", workDir.absolutePath, library.absolutePath, config,
+                            args[1], args[2], args[3], observer).toString()
+                    val result = JSONObject(raw)
+                    when (result.optString("status")) {
+                        "done" -> Bus.log(getString(R.string.archive_download_done))
+                        "cancelled" -> Bus.log(getString(R.string.archive_download_cancelled))
+                        else -> Bus.log(getString(R.string.archive_download_failed, result.optString("error", "Unknown archive failure")))
+                    }
+                } catch (error: Throwable) {
+                    Bus.log(getString(R.string.archive_download_failed, error.message ?: error.javaClass.simpleName))
+                } finally {
+                    // The Python call returns only after its pool has reaped all
+                    // transfers. No cancellation/destroy path may release this.
+                    archiveWorkers.complete(lease)
+                    main.post {
+                        // A delayed old callback cannot clear a newer lease's UI.
+                        if (archiveWorkers.mayClearProgress(lease)) Bus.setArchiveDownloadProgress(null)
+                        if (token == operation && !destroyed && archiveLease === lease) {
+                            archiveLease = null
+                            finishService()
+                        }
+                    }
+                }
+            }, "elichika-archive-download").start()
+        } catch (error: Throwable) {
+            // No worker was started: release the otherwise stranded reservation.
+            archiveWorkers.complete(lease)
+            if (archiveWorkers.mayClearProgress(lease)) Bus.setArchiveDownloadProgress(null)
+            archiveLease = null
+            Bus.log(getString(R.string.archive_download_failed, error.message ?: error.javaClass.simpleName))
+            finishService()
+        }
     }
 
     /**
@@ -510,7 +615,11 @@ class ServerService : Service() {
         val preparing = phase == AssetInstaller.PreparationPhase.PREPARING ||
             phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA
         val dataProgress = Bus.payloadProgress.takeIf { phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA }
+        val archive = Bus.archiveDownloadProgress
         val text = when {
+            archive?.cancelling == true -> getString(R.string.archive_download_cancelling)
+            archive != null && archive.totalFiles == 0 -> getString(R.string.archive_download_preparing)
+            archive != null -> getString(R.string.archive_download_progress, archive.percent, archive.completedFiles, archive.totalFiles)
             dataProgress != null -> getString(R.string.progress_work_detail, dataProgress.percent,
                 PayloadProgress.stageLabel(this, dataProgress.stage), dataProgress.completed, dataProgress.total)
             phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA -> getString(R.string.status_updating_game_data)
@@ -527,7 +636,8 @@ class ServerService : Service() {
             installing -> R.string.notif_installing
             else -> R.string.notif_running
         }
-        if (dataProgress != null) b.setProgress(100, dataProgress.percent, false)
+        if (archive != null) b.setProgress(100, archive.percent, archive.cancelling || archive.totalFiles == 0)
+        else if (dataProgress != null) b.setProgress(100, dataProgress.percent, false)
         else if (initializing || preparing || (Bus.serverRunning && !Bus.serverReady)) b.setProgress(0, 0, true)
         return b.setContentTitle(getString(title))
             .setContentText(text)
@@ -542,6 +652,13 @@ class ServerService : Service() {
 
     override fun onDestroy() {
         destroyed = true
+        val archiveWorker = archiveLease
+        // Mark only this service's lease. It may already have completed while
+        // a newer service acquired a new lease; never cancel that newer owner.
+        if (archiveWorker != null && archiveWorkers.cancel(archiveWorker)) {
+            val progress = Bus.archiveDownloadProgress ?: ArchiveDownloadProgress.preparing()
+            Bus.setArchiveDownloadProgress(progress.copy(cancelling = true))
+        }
         Bus.removeListener(this)
         isReady = false
         pendingCommands.clear()
@@ -558,6 +675,7 @@ class ServerService : Service() {
         super.onDestroy()
         Thread({
             preparationFinished.await()
+            if (archiveWorker != null) archiveWorkers.awaitFinished(archiveWorker)
             if (ServerProcess.awaitStopped(previous) && ManagementServer.awaitSuspended(managementLease)) {
                 ManagementServer.releaseService(managementLease)
             } else {
@@ -570,6 +688,8 @@ class ServerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        // Process lifetime, including forced Service destruction/recreation.
+        private val archiveWorkers = ArchiveWorkerFence()
         @Volatile internal var current: ServerService? = null
             private set
         /** No capability is published through Bus, logs, readiness, or an Intent. */

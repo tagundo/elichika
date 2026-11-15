@@ -15,13 +15,15 @@ type MetapackType struct {
 	Category     int    `xorm:"'category'"`
 }
 
-func loadMetapack(locale string, session *xorm.Session) {
+func loadMetapack(locale string, session *xorm.Session, profiles ...profileMask) {
+	mask := firstProfileMask(profiles)
 	log.Println("Loading Metapack")
 	metapacks := map[string]*MetapackType{}
 	err := session.Table("metapack").Find(&metapacks)
 	utils.CheckErr(err)
 	cnt := 0
 	for name, metapack := range metapacks {
+		recordWholeFile(name, mask)
 		previous, exist := Metapack[name]
 		if !exist {
 			cnt++

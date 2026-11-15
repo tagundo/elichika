@@ -33,6 +33,8 @@ CODE_DIR = Path(__file__).resolve().parent
 if str(CODE_DIR) not in sys.path:
     sys.path.insert(0, str(CODE_DIR))
 
+from archive_profile_download import Cancelled
+from archive_profile_download_bridge import run_from_config, resolve_packs, console_progress_record, byte_label
 from elichika_macos_lifecycle import ServerController
 from elichika_macos_memory import fresh_macos_memory_env
 from elichika_macos_payload import atomic_json, ensure_config, install_payload, install_tool_data
@@ -40,7 +42,6 @@ from elichika_macos_payload import atomic_json, ensure_config, install_payload, 
 MAX_BODY = 64 * 1024
 COOKIE_NAME = "elichika_desktop_session"
 CONSOLE_COMMANDS = {
-    "download_packs": ("download_packs", "4"),
     "cdn_cache_toggle": ("cdn_cache", "toggle"),
     "rebuild_assets": ("rebuild_assets",),
     "fix_training_trees": ("fix_training_trees",),
@@ -239,6 +240,21 @@ def secure_ui_handler(base, runtime):
                 # their own limits. Admit their existing bounded envelopes so
                 # native editing supports the same images as the shared UI.
                 texture_limits = {
+                    # The add-on handler streams raw File bodies in 64 KiB chunks
+                    # before JSON dispatch. Keep this allowance exact-route only;
+                    # host, origin, session and transfer-encoding gates still apply.
+                    "/api/addon-files/install_costume": 512 * 1024 * 1024,
+                    "/api/addon-files/install_live": 512 * 1024 * 1024,
+                    "/api/addon-files/install_card": 512 * 1024 * 1024,
+                    "/api/addon-files/install_tower": 512 * 1024 * 1024,
+                    "/api/addon-files/install_camera": 512 * 1024 * 1024,
+                    "/api/addon-files/install_db": 512 * 1024 * 1024,
+                    "/api/addon-files/install_costume/batch": 64 * 1024,
+                    "/api/addon-files/install_live/batch": 64 * 1024,
+                    "/api/addon-files/install_card/batch": 64 * 1024,
+                    "/api/addon-files/install_tower/batch": 64 * 1024,
+                    "/api/addon-files/install_camera/batch": 64 * 1024,
+                    "/api/addon-files/install_db/batch": 64 * 1024,
                     "/api/texture/editor/decode": 12 * 1024 * 1024,
                     "/api/viewer/texture/decode": 12 * 1024 * 1024,
                     "/api/texture/editor/save": 12 * 1024 * 1024,
@@ -542,21 +558,27 @@ class Runtime:
         return {"cache_enabled": enabled, "job": job}
 
     def run_console(self, value):
-        if set(value) - {"action", "region", "confirmation", "reset_confirmation"}:
+        if set(value) - {"action", "region", "platform", "language", "confirmation", "reset_confirmation"}:
             raise RuntimeErrorResponse("Unexpected Console request fields.")
         action = value.get("action")
-        if not isinstance(action, str) or action not in (*CONSOLE_COMMANDS, "download_archive"):
+        if not isinstance(action, str) or action not in (*CONSOLE_COMMANDS, "download_archive", "download_packs"):
             raise RuntimeErrorResponse("Unknown Console action.")
         if value.get("confirmation") != "STOP_SERVER":
             raise RuntimeErrorResponse("Confirm that this action stops the game server.")
-        region = value.get("region")
-        if action == "download_archive":
+        region, platform, language = value.get("region"), value.get("platform"), value.get("language")
+        if action in ("download_archive", "download_packs"):
             if not isinstance(region, str) or region not in ("gl", "jp", "both"):
-                raise RuntimeErrorResponse("Choose GL, JP, or both archive regions.")
-            arguments = ("download_archive", region)
+                raise RuntimeErrorResponse("Choose GL, JP, or both regions.")
+            if not isinstance(platform, str) or platform not in ("android", "ios", "both"):
+                raise RuntimeErrorResponse("Choose Android, iOS, or both game platforms.")
+            allowed_languages = {"gl": ("all", "en", "ko", "zh"), "jp": ("all", "ja"), "both": ("all",)}
+            if not isinstance(language, str) or language not in allowed_languages[region]:
+                raise RuntimeErrorResponse("Choose a game language valid for the selected region; both regions require all languages.")
+            arguments = (("download_archive_profile", region, platform, language) if action == "download_archive" else
+                         ("download_packs", "4", "--region", region, "--platform", platform, "--language", language))
         else:
-            if "region" in value:
-                raise RuntimeErrorResponse("This action does not accept an archive region.")
+            if any(field in value for field in ("region", "platform", "language")):
+                raise RuntimeErrorResponse("This action does not accept a download scope.")
             arguments = CONSOLE_COMMANDS[action]
         if action == "reset_server":
             if value.get("reset_confirmation") != "RESET_SERVER_AND_ACCOUNTS":
@@ -572,6 +594,7 @@ class Runtime:
             self._console_cancel = threading.Event()
             self._console_job = {
                 "id": secrets.token_hex(8), "action": action, "region": region,
+                "platform": platform, "language": language,
                 "status": "queued", "running": True, "exit_code": None,
                 "cancellable": True,
                 "message": "Waiting for the game server to stop…", "error": None,
@@ -618,6 +641,26 @@ class Runtime:
                     return
                 from costume_management import assert_safe_to_start
                 assert_safe_to_start(self.data)
+                if action == "download_archive":
+                    with self._lock:
+                        self._console_job.update(status="running", message="Preparing selected archive files…")
+                    self.logs.write("[console] Archive scope: " + " / ".join(arguments[1:]))
+                    def report_archive(packet):
+                        record = console_progress_record(packet)
+                        with self._lock:
+                            self._console_job["progress"] = record
+                            self._console_job["message"] = (
+                                "Reading the selected archive file list…" if packet["stage"] in ("catalog", "profile") else
+                                f"{packet['completed_files']} / {packet['total_files']} files · "
+                                f"{byte_label(packet['completed_bytes'])} / {byte_label(packet['total_bytes'])}")
+                    result = run_from_config(self.resources / "python-app/archive-hosted-catalog.json",
+                                             resolve_packs(self.data, self.sukusta),
+                                             arguments[1], arguments[2], arguments[3],
+                                             progress=report_archive, cancelled=cancelled.is_set)
+                    self.logs.write(f"[console] Archive complete: {result['total_files']} verified files; "
+                                    f"{result['downloaded_files']} downloaded, {result['reused_files']} reused.")
+                    code = 0
+                    return
                 if not self.binary.is_file() or not os.access(self.binary, os.X_OK):
                     raise RuntimeError("Bundled server executable is unavailable.")
                 cache_before = self.console_state()["cache_enabled"]
@@ -680,6 +723,9 @@ class Runtime:
                     raise RuntimeError(f"Console action exited with code {code}. Check the console.")
                 if action == "cdn_cache_toggle" and not cancelled.is_set() and self.console_state()["cache_enabled"] != (not cache_before):
                     raise RuntimeError("CDN cache change was not saved to config.json. Check the console.")
+        except Cancelled:
+            cancelled.set()
+            code = 130
         except Exception as failure:
             error = self.logs.redact(failure)
             self.logs.write("[console] " + error)

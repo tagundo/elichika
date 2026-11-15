@@ -36,8 +36,8 @@
     <string name="restart_hint">Applied. Restart the server to update the web UIs.</string>
     <string name="about_body">elichika is a private server for SIFAS (Love Live! School Idol Festival All Stars). This app runs the server, its WebUI, and the dev/modding tools on your phone — point the game at 127.0.0.1:8080.\n\nServer + dev tools by the elichika project (forks of YumeMichi / arina999999997 / tatara_hisoka). Modding tools: SIFAS-MODDING-HELPING-TOOLS.</string>
 
-    <string name="act_download_archive">Download all game files (archive.org)</string>
-    <string name="act_download_packs">Download missing (game CDN)</string>
+    <string name="act_download_archive">Download game files (archive.org)</string>
+    <string name="act_download_packs">Download missing…</string>
     <string name="act_cdn_cache">CDN cache on/off</string>
     <string name="act_import_addon">Import addon zip</string>
     <string name="act_rebuild_assets">Rebuild master data</string>
@@ -74,11 +74,11 @@
     <string name="confirm_title">Please confirm</string>
     <string name="confirm_continue">Continue</string>
     <string name="cancel">Cancel</string>
-    <string name="confirm_download_archive">This downloads the full game data set (several GB) from archive.org. Wi-Fi is strongly recommended. Pick a region:</string>
+    <string name="confirm_download_archive">Use archive.org for the selected original game files and required shared files. Existing files are checked by SHA256: matching files are reused, and missing or different files are downloaded and repaired. The selected count and size appear during preparation. Wi-Fi is recommended.</string>
     <string name="region_gl">GL (Global — EN / KO / ZH)</string>
     <string name="region_jp">JP (Japan)</string>
     <string name="region_both">Both (GL + JP)</string>
-    <string name="confirm_download_packs">This downloads missing game packs from the CDN (size varies, can be large). Wi-Fi is recommended.</string>
+    <string name="confirm_download_packs">Use the configured original CDN to download missing files for the selected region, game platform and game language, including required shared files. Selected and missing counts appear in the console after scanning. Wi-Fi is recommended.</string>
     <string name="confirm_stops_server">The running server will be stopped first.</string>
     <string name="reset_server_title">Reset server</string>
     <string name="reset_server_msg">This restores the ORIGINAL (vanilla) game data and removes EVERY installed or cloned mod costume / live / card. It ALSO resets ALL accounts back to a new-account state.\n\nLogins are kept, so the game client keeps working — it will just see a fresh server.\n\nKept: settings (config), downloaded game packs, and your files in Download/sukusta (mod zips, extracted/modded bundles, backups).\n\nThis CANNOT be undone. If you might want your data back, make a DB backup (Server content tab) and export your account (Account tab) first.</string>
@@ -88,7 +88,7 @@
     <!-- first-run guide -->
     <string name="act_guide">Guide ❓</string>
     <string name="guide_title">Getting started</string>
-    <string name="guide_body">1. Grant storage permission (for the shared Download/sukusta folder).\n2. Tap “Start server”.\n3. Point the game app at 127.0.0.1:8080 (see the LL-hax guide).\n4. (Optional) Pre-download game files — “Download all game files” (full set, archive.org) or “Download missing” (CDN). Recommended, not required.\n\nCDN cache: when on, missing packs download on demand while you play and are saved to packs/, so pre-downloading is optional. If you rely on it to fill packs/, keep elichika in the foreground (not the game) while it downloads so they finish.\n\nTabs: “Server” / “Account” = server web UI · “Server content” = dev tools · “Asset editing” = modding tools.\n\nFolders (Download/sukusta): extracted = decrypted models (edit input) · modded = edited bundles (edit output) · suit / live / card / livetimeline = add-on drop folders · sql = DB patches · packs = game pack cache · backup = DB backups · logs = elichika.log.\n\nInstalled mods are provided by Elichika automatically, with CDN cache on or off. When cache is off, missing original files use the source CDN without saving new local copies; downloaded files are kept. Keep the original game CDN address. Server settings and user management are available while the game server is stopped.</string>
+    <string name="guide_body">1. Grant storage permission (for the shared Download/sukusta folder).\n2. Tap “Start server”.\n3. Point the game app at 127.0.0.1:8080 (see the LL-hax guide).\n4. (Optional) Use “Download game files” (archive.org) or “Download missing”. For missing files, choose CDN (default) or archive.org, then the region, game platform and language you need. Required shared files are included.\n\nAndroid game: In game, hold the top-right corner for 2 seconds to open FOV settings. iOS / PlayCover: Settings is shown initially. After hiding its button, hold the top-right corner for 2 seconds to reopen the menu.\n\nCDN cache: when on, missing packs download on demand while you play and are saved to packs/, so pre-downloading is optional. If you rely on it to fill packs/, keep elichika in the foreground (not the game) while it downloads so they finish.\n\nTabs: “Server” / “Account” = server web UI · “Server content” = dev tools · “Asset editing” = modding tools.\n\nFolders (Download/sukusta): extracted = decrypted models (edit input) · modded = edited bundles (edit output) · suit / live / card / livetimeline = add-on drop folders · sql = DB patches · packs = game pack cache · backup = DB backups · logs = elichika.log.\n\nInstalled mods are provided by Elichika automatically, with CDN cache on or off. When cache is off, missing original files use the source CDN without saving new local copies; downloaded files are kept. Keep the original game CDN address. Server settings and user management are available while the game server is stopped.</string>
 
     <!-- console controls -->
     <string name="btn_share_log">Share log</string>
@@ -164,4 +164,22 @@
     <string name="notif_preparing">elichika: preparing server</string>
     <string name="management_preparing">Preparing server settings and user management…</string>
     <string name="management_prepare_failed">Could not prepare management tools.</string>
+    <string name="download_region">Region</string>
+    <string name="download_platform">Game platform</string>
+    <string name="download_platform_both">Both (Android + iOS)</string>
+    <string name="download_game_language">Game language</string>
+    <string name="download_language_all">All game languages</string>
+    <string name="download_scope_selection">Selected: %1$s · %2$s · %3$s</string>
+    <string name="download_scope_note">Only files belonging to this selection are checked. Counts for the selected files and missing downloads appear in the log. Game language is independent of app language.</string>
+    <string name="archive_download_progress">%1$d%% · %2$d / %3$d files</string>
+    <string name="archive_download_bytes">%1$s / %2$s</string>
+    <string name="archive_download_invalid_scope">Choose a region, game platform and game language for the archive download.</string>
+    <string name="archive_download_start">[archive] Preparing %1$s / %2$s / %3$s…</string>
+    <string name="archive_download_done">[archive] Complete. Selected files have been verified; the server remains stopped.</string>
+    <string name="archive_download_cancelled">[archive] Cancelled. Verified files are kept for the next download.</string>
+    <string name="archive_download_failed">[archive] %1$s</string>
+    <string name="archive_download_preparing">Reading the selected archive file list…</string>
+    <string name="download_source">Download source</string>
+    <string name="archive_download_cancelling">Canceling archive download… Waiting for current transfers to finish.</string>
+    <string name="log_archive_draining">[archive] A previous download is canceling. Waiting for its workers to finish before continuing.</string>
 </resources>

@@ -20,7 +20,8 @@ type PackType struct {
 	Category       int           `xorm:"'category'"`
 }
 
-func loadPack(locale string, engine *xorm.Engine) {
+func loadPack(locale string, engine *xorm.Engine, profiles ...profileMask) {
+	mask := firstProfileMask(profiles)
 	log.Println("Loading Pack")
 	// Use a forward SQL cursor rather than xorm.Iterate: Iterate rebuilds its
 	// reflection/column schema for every row. These are the same six columns and
@@ -37,6 +38,13 @@ func loadPack(locale string, engine *xorm.Engine) {
 		if _, exists := Metapack[packName.String]; exists {
 			log.Panic(fmt.Sprint("same name used for both a pack and a metapack: ", packName.String,
 				"\nLocale: ", locale, ", previous locale: ", NameToLocale[packName.String]))
+		}
+		// Record this row before duplicate skipping: the first global mapping
+		// may belong to another profile or use a different metapack boundary.
+		if !metapackName.Valid {
+			recordWholeFile(packName.String, mask)
+		} else {
+			recordWholeFile(metapackName.String, mask)
 		}
 		previous, exists := Pack[packName.String]
 		if exists && previous.FileSize == int(fileSize.Int64) {

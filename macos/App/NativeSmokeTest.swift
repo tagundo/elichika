@@ -757,7 +757,7 @@ final class NativeSmokeTest {
         let library = URL(fileURLWithPath: model.libraryDirectory, isDirectory: true).standardizedFileURL
         try require(paths.count == 1, "The official workload must use one original Eli body input.")
         let source = URL(fileURLWithPath: paths[0]).standardizedFileURL
-        try require(source.path.hasPrefix(library.path + "/extracted/game-models/") && source.lastPathComponent == "ch0002_suit400022007_primary.unity",
+        try require(source.path.hasPrefix(library.path + "/cache/viewer/game-models/") && source.lastPathComponent == "ch0002_suit400022007_primary.unity",
                     "The official Eli body must come from this smoke test's own normal game import.")
         let body = try Data(contentsOf: source)
         let bodyHash = SHA256.hash(data: body).map { String(format: "%02x", $0) }.joined()
@@ -769,7 +769,7 @@ final class NativeSmokeTest {
               let inputBytes = pcmFormat["encodedBytes"] as? Int else {
             throw NativeError.invalidResponse
         }
-        let audioDirectory = library.appendingPathComponent("extracted/game-motions/audio", isDirectory: true)
+        let audioDirectory = library.appendingPathComponent("cache/viewer/game-motions/audio", isDirectory: true)
         var matches: [[String: Any]] = []
         for file in try FileManager.default.contentsOfDirectory(at: audioDirectory, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) where file.pathExtension == "wav" {
             let values = try file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])

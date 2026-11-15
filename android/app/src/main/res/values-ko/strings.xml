@@ -35,8 +35,8 @@
     <string name="restart_hint">적용됨. 웹 UI에 반영하려면 서버를 다시 시작하세요.</string>
     <string name="about_body">elichika는 SIFAS(러브라이브! 스쿨아이돌페스티벌 ALL STARS)용 사설 서버입니다. 이 앱은 서버·WebUI·개발/모딩 도구를 폰에서 구동합니다 — 게임을 127.0.0.1:8080 으로 연결하세요.\n\n서버·개발 도구: elichika 프로젝트(YumeMichi / arina999999997 / tatara_hisoka 포크). 모딩 도구: SIFAS-MODDING-HELPING-TOOLS.</string>
 
-    <string name="act_download_archive">전체 게임파일 다운로드 (archive.org)</string>
-    <string name="act_download_packs">누락분만 받기 (게임 CDN)</string>
+    <string name="act_download_archive">게임 파일 받기 (archive.org)</string>
+    <string name="act_download_packs">누락분 받기…</string>
     <string name="act_cdn_cache">CDN 캐시 켜기/끄기</string>
     <string name="act_import_addon">애드온 zip 가져오기</string>
     <string name="act_rebuild_assets">마스터 데이터 재빌드</string>
@@ -73,11 +73,11 @@
     <string name="confirm_title">확인</string>
     <string name="confirm_continue">계속</string>
     <string name="cancel">취소</string>
-    <string name="confirm_download_archive">archive.org 에서 전체 게임 데이터(수 GB)를 받습니다. Wi-Fi 사용을 강력히 권장합니다. 지역을 선택하세요:</string>
+    <string name="confirm_download_archive">선택한 원본 게임 파일과 필요한 공용 파일을 archive.org에서 받습니다. 기존 파일은 SHA256으로 확인해 일치하면 재사용하고, 없거나 내용이 다르면 내려받아 복구합니다. 준비 중 선택된 파일 수와 용량이 표시됩니다. Wi-Fi를 권장합니다.</string>
     <string name="region_gl">GL (글로벌 — EN / KO / ZH)</string>
     <string name="region_jp">JP (일본)</string>
     <string name="region_both">둘 다 (GL + JP)</string>
-    <string name="confirm_download_packs">게임 CDN에서 누락된 팩을 받습니다(크기 가변, 클 수 있음). Wi-Fi 사용을 권장합니다.</string>
+    <string name="confirm_download_packs">설정된 원본 CDN에서 선택한 지역·게임 플랫폼·게임 언어에 필요한 누락 파일과 공용 파일을 받습니다. 검사 후 선택 범위와 누락 파일 수가 콘솔에 표시됩니다. Wi-Fi를 권장합니다.</string>
     <string name="confirm_stops_server">실행 중인 서버가 먼저 중지됩니다.</string>
     <string name="reset_server_title">서버 초기화</string>
     <string name="reset_server_msg">원본(바닐라) 게임 데이터를 복원하여 설치·클론된 모든 모드 의상 / 라이브 / 카드를 제거합니다. 또한 모든 계정을 새 계정 상태로 초기화합니다.\n\n로그인 정보는 유지되므로 게임 클라이언트는 계속 접속됩니다 — 서버만 초기 상태로 돌아갑니다.\n\n유지되는 것: 설정(config), 다운로드한 게임 팩, Download/sukusta 안의 파일(모드 zip, 추출/수정 번들, 백업).\n\n되돌릴 수 없습니다. 데이터가 필요할 수 있다면 먼저 DB 백업(서버 콘텐츠 탭)과 계정 내보내기(유저 관리 탭)를 해두세요.</string>
@@ -87,7 +87,7 @@
     <!-- first-run guide -->
     <string name="act_guide">가이드 ❓</string>
     <string name="guide_title">시작하기</string>
-    <string name="guide_body">1. 저장소 권한을 허용하세요(공유 Download/sukusta 폴더용).\n2. “서버 시작”을 누르세요.\n3. 게임 앱을 127.0.0.1:8080 으로 연결하세요(LL-hax 가이드 참고).\n4. (선택) 게임 파일 미리 받기 — “전체 게임파일 다운로드”(archive.org 전체) 또는 “누락분만 받기”(CDN). 권장이지 필수는 아닙니다.\n\nCDN 캐시: 켜져 있으면 없는 팩을 플레이 중 필요할 때 자동으로 받아 packs/ 에 저장하므로 미리 받지 않아도 됩니다. 이 방식으로 packs/ 를 채울 때는 게임 화면보다 elichika를 앞(포그라운드)에 띄워 두어야 다운로드가 끊기지 않고 끝납니다.\n\n탭: “서버 설정” / “유저 관리” = 서버 웹 UI · “서버 콘텐츠” = 개발 도구 · “에셋 편집” = 모딩 도구.\n\n폴더 (Download/sukusta): extracted = 복호화된 모델(편집 입력) · modded = 편집된 번들(편집 출력) · suit / live / card / livetimeline = 애드온 드롭 폴더 · sql = DB 패치 · packs = 게임 팩 캐시 · backup = DB 백업 · logs = elichika.log.\n\n설치한 모드 파일은 CDN 캐시 설정과 관계없이 Elichika에서 자동으로 제공합니다. 캐시를 끄면 없는 원본 파일은 기존 CDN에서 받고 새로 저장하지 않으며, 이미 받은 파일은 유지됩니다. 원본 게임 CDN 주소는 유지하세요. 서버 설정과 유저 관리는 게임 서버를 켜지 않아도 사용할 수 있습니다.</string>
+    <string name="guide_body">1. 저장소 권한을 허용하세요(공유 Download/sukusta 폴더용).\n2. “서버 시작”을 누르세요.\n3. 게임 앱을 127.0.0.1:8080 으로 연결하세요(LL-hax 가이드 참고).\n4. (선택) “게임 파일 받기”(archive.org) 또는 “누락분 받기”를 사용하세요. 누락분은 CDN(기본)과 archive.org 중에서 고르고 필요한 지역·게임 플랫폼·게임 언어를 선택합니다. 필요한 공용 파일도 함께 받습니다.\n\nAndroid 게임: 게임 화면 오른쪽 위를 2초간 길게 누르면 FOV 설정창을 열 수 있습니다. iOS / PlayCover: 처음에는 Settings 버튼이 표시됩니다. 버튼을 숨긴 뒤에도 오른쪽 위를 2초간 길게 누르면 설정 메뉴를 다시 열 수 있습니다.\n\nCDN 캐시: 켜져 있으면 없는 팩을 플레이 중 필요할 때 자동으로 받아 packs/ 에 저장하므로 미리 받지 않아도 됩니다. 이 방식으로 packs/ 를 채울 때는 게임 화면보다 elichika를 앞(포그라운드)에 띄워 두어야 다운로드가 끊기지 않고 끝납니다.\n\n탭: “서버 설정” / “유저 관리” = 서버 웹 UI · “서버 콘텐츠” = 개발 도구 · “에셋 편집” = 모딩 도구.\n\n폴더 (Download/sukusta): extracted = 복호화된 모델(편집 입력) · modded = 편집된 번들(편집 출력) · suit / live / card / livetimeline = 애드온 드롭 폴더 · sql = DB 패치 · packs = 게임 팩 캐시 · backup = DB 백업 · logs = elichika.log.\n\n설치한 모드 파일은 CDN 캐시 설정과 관계없이 Elichika에서 자동으로 제공합니다. 캐시를 끄면 없는 원본 파일은 기존 CDN에서 받고 새로 저장하지 않으며, 이미 받은 파일은 유지됩니다. 원본 게임 CDN 주소는 유지하세요. 서버 설정과 유저 관리는 게임 서버를 켜지 않아도 사용할 수 있습니다.</string>
 
     <!-- console controls -->
     <string name="btn_share_log">기록 공유</string>
@@ -163,4 +163,22 @@
     <string name="notif_preparing">elichika 서버 준비 중</string>
     <string name="management_preparing">서버 설정과 유저 관리 도구를 준비하고 있습니다…</string>
     <string name="management_prepare_failed">관리 도구를 준비하지 못했습니다.</string>
+    <string name="download_region">지역</string>
+    <string name="download_platform">게임 플랫폼</string>
+    <string name="download_platform_both">둘 다 (Android + iOS)</string>
+    <string name="download_game_language">게임 언어</string>
+    <string name="download_language_all">모든 게임 언어</string>
+    <string name="download_scope_selection">선택 범위: %1$s · %2$s · %3$s</string>
+    <string name="download_scope_note">선택한 범위에 속한 파일만 확인합니다. 선택한 파일 수와 누락된 다운로드 수는 로그에 표시됩니다. 게임 언어는 앱 언어와 별개입니다.</string>
+    <string name="archive_download_progress">%1$d%% · 파일 %2$d / %3$d개</string>
+    <string name="archive_download_bytes">%1$s / %2$s</string>
+    <string name="archive_download_invalid_scope">받을 게임 자료의 지역·플랫폼·게임 언어를 선택하세요.</string>
+    <string name="archive_download_start">[archive] %1$s / %2$s / %3$s 자료 준비 중…</string>
+    <string name="archive_download_done">[archive] 선택한 파일을 모두 검증했습니다. 서버는 중지 상태를 유지합니다.</string>
+    <string name="archive_download_cancelled">[archive] 취소했습니다. 검증된 파일은 다음 다운로드 때 재사용합니다.</string>
+    <string name="archive_download_failed">[archive] %1$s</string>
+    <string name="archive_download_preparing">선택한 게임 파일 목록을 확인하는 중…</string>
+    <string name="download_source">다운로드 출처</string>
+    <string name="archive_download_cancelling">다운로드를 취소하는 중입니다. 진행 중인 전송이 끝날 때까지 기다려 주세요.</string>
+    <string name="log_archive_draining">[archive] 이전 다운로드를 취소하는 중입니다. 전송 작업이 모두 끝난 뒤 계속합니다.</string>
 </resources>

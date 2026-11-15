@@ -69,7 +69,20 @@ final class AppModel: ObservableObject {
     @Published private(set) var submittingConsoleAction = false
     @Published private(set) var cancellingConsoleAction = false
     @Published var consolePresentation: ConsolePresentation?
-    @Published var consoleRegion: ConsoleRegion = .gl
+    @Published var consoleRegion: ConsoleRegion = .gl {
+        didSet {
+            if !ConsoleGameLanguage.choices(region: consoleRegion).contains(consoleGameLanguage) {
+                consoleGameLanguage = ConsoleGameLanguage.choices(region: consoleRegion)[0]
+            }
+        }
+    }
+    @Published var consolePlatform: ConsolePlatform = .ios
+    @Published var consoleDownloadSource: ConsoleDownloadSource = .cdn {
+        didSet {
+            if consoleDownloadSource != oldValue { consoleActionError = nil }
+        }
+    }
+    @Published var consoleGameLanguage: ConsoleGameLanguage = .all
     @Published private(set) var consoleResetFinal = false
     @Published private(set) var consoleActionError: String?
     @Published private(set) var resetSubmissionUncertain = false
@@ -374,13 +387,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func runConsoleAction(_ action: ConsoleAction, region: ConsoleRegion? = nil) async throws {
+    func runConsoleAction(_ action: ConsoleAction, region: ConsoleRegion? = nil,
+                          platform: ConsolePlatform? = nil, gameLanguage: ConsoleGameLanguage? = nil) async throws {
         guard canRunConsoleAction else {
             throw NativeError.service(text("Wait for the current operation to finish.", "현재 작업이 끝날 때까지 기다리세요.", "現在の処理が終わるまでお待ちください。"))
         }
         submittingConsoleAction = true
         defer { submittingConsoleAction = false }
-        let body = action.requestBody(region: region)
+        let body = action.requestBody(region: region, platform: platform, gameLanguage: gameLanguage)
         // A lost POST response may still mean the irreversible reset started.
         // Retain that uncertainty until a successful shutdown gates admission.
         if action == .resetServer {
@@ -406,6 +420,9 @@ final class AppModel: ObservableObject {
     func presentConsole(_ presentation: ConsolePresentation) {
         guard presentation.action == nil || canRunConsoleAction else { return }
         consoleRegion = ConsoleRegion.defaultRegion(language: language)
+        consolePlatform = .ios
+        consoleDownloadSource = .cdn
+        consoleGameLanguage = consoleRegion == .jp ? .ja : .all
         consoleResetFinal = false
         consoleActionError = nil
         consolePresentation = presentation
@@ -423,7 +440,10 @@ final class AppModel: ObservableObject {
         guard let action = consolePresentation?.action, canRunConsoleAction else { return false }
         if action == .resetServer && !consoleResetFinal { consoleResetFinal = true; return false }
         do {
-            try await runConsoleAction(action, region: action == .downloadArchive ? consoleRegion : nil)
+            try await runConsoleAction(action.resolvedDownloadAction(source: consoleDownloadSource),
+                region: action == .downloadArchive || action == .downloadPacks ? consoleRegion : nil,
+                platform: action == .downloadArchive || action == .downloadPacks ? consolePlatform : nil,
+                gameLanguage: action == .downloadArchive || action == .downloadPacks ? consoleGameLanguage : nil)
             dismissConsolePresentation()
             return true
         } catch {

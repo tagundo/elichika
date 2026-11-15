@@ -19,10 +19,13 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -45,6 +48,7 @@ import kotlin.math.ceil
  * logic lives here, so new features show up after a rebuild without touching this file.
  */
 class MainActivity : AppCompatActivity() {
+    private var archiveProgressWasActive = false
 
     private lateinit var content: FrameLayout
     private lateinit var statusText: TextView
@@ -95,6 +99,13 @@ class MainActivity : AppCompatActivity() {
     private val pickAddon = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importAddon(uri)
     }
+    private val toolFileChooser = ToolFileChooser()
+    private val pickToolFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        toolFileChooser.deliver(uris)
+    }
+    private val pickToolFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        toolFileChooser.deliver(listOfNotNull(uri))
+    }
 
     // the CDN-cache toggle button, relabelled to show the current on/off state.
     private var cdnButton: Button? = null
@@ -119,6 +130,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        toolFileChooser.restoreAwaitingResult(savedInstanceState?.getBoolean("tool_file_picker_pending") == true)
         Lang.applyToApp(this)
         setContentView(R.layout.activity_main)
 
@@ -331,6 +343,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("tool_file_picker_pending", toolFileChooser.awaitingResult())
         outState.putInt("current_tab", currentTab)
         outState.putString("current_tab_id", tabs[currentTab].id)
         outState.putBoolean("log_expanded", logExpanded)
@@ -345,6 +358,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        toolFileChooser.cancel()
         if (isFinishing) ManagementServer.releaseUi(this)
         headerDisposed = true
         cancelLogRefresh()
@@ -365,7 +379,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onToggle() {
-        if (Bus.serverRunning || Bus.serverStarting) stopServerUi() else startServerUi()
+        if (Bus.archiveDownloadProgress != null || Bus.serverRunning || Bus.serverStarting) stopServerUi() else startServerUi()
     }
 
     private fun startServerUi() {
@@ -385,9 +399,16 @@ class MainActivity : AppCompatActivity() {
         val phase = Bus.preparationPhase
         val preparing = phase == AssetInstaller.PreparationPhase.PREPARING ||
             phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA
-        toggle.setText(if (running || Bus.serverStarting) R.string.stop_server else R.string.start_server)
+        val archive = Bus.archiveDownloadProgress
+        toggle.setText(if (archive != null) R.string.cancel else if (running || Bus.serverStarting) R.string.stop_server else R.string.start_server)
         val dataProgress = Bus.payloadProgress.takeIf { phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA }
         statusText.text = when {
+            archive?.cancelling == true -> getString(R.string.archive_download_cancelling)
+            archive != null && archive.totalFiles == 0 -> getString(R.string.archive_download_preparing)
+            archive != null -> getString(R.string.archive_download_progress, archive.percent, archive.completedFiles, archive.totalFiles) + "\n" +
+                getString(R.string.archive_download_bytes,
+                    android.text.format.Formatter.formatShortFileSize(this, archive.completedBytes),
+                    android.text.format.Formatter.formatShortFileSize(this, archive.totalBytes))
             dataProgress != null -> getString(R.string.status_data_update_percent, dataProgress.percent)
             phase == AssetInstaller.PreparationPhase.UPDATING_GAME_DATA -> getString(R.string.status_updating_game_data)
             phase == AssetInstaller.PreparationPhase.PREPARING -> getString(R.string.status_preparing)
@@ -398,12 +419,19 @@ class MainActivity : AppCompatActivity() {
             Bus.serverStarting -> getString(R.string.status_starting)
             else -> getString(R.string.status_stopped)
         }
-        statusText.contentDescription = dataProgress?.let {
+        statusText.contentDescription = if (archive?.cancelling == true) getString(R.string.archive_download_cancelling) else archive?.let { getString(R.string.archive_download_bytes,
+            android.text.format.Formatter.formatShortFileSize(this, it.completedBytes),
+            android.text.format.Formatter.formatShortFileSize(this, it.totalBytes)) + " · " + it.current } ?: dataProgress?.let {
             getString(R.string.progress_work_detail, it.percent, PayloadProgress.stageLabel(this, it.stage), it.completed, it.total)
         } ?: statusText.text
-        preparationProgress.visibility = if (preparing || (running && !Bus.serverReady) ||
+        preparationProgress.visibility = if (archive != null || preparing || (running && !Bus.serverReady) ||
             (Bus.serverStarting && phase != AssetInstaller.PreparationPhase.FAILED)) View.VISIBLE else View.GONE
         scheduleHeaderReflow()
+        // Frequent byte/count updates only change the native header. Keep an
+        // open management/editor WebView from being reapplied four times a second.
+        val archiveOnlyUpdate = archive != null && archiveProgressWasActive
+        archiveProgressWasActive = archive != null
+        if (archiveOnlyUpdate) return
         // If a web tab is showing the offline overlay and the server just came up,
         // swap the overlay for the (now reachable) page.
         if (tabs[currentTab].managementPage) {
@@ -847,6 +875,9 @@ class MainActivity : AppCompatActivity() {
                 )
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                webChromeClient = toolFileChooser.client { types, multiple ->
+                    if (multiple) pickToolFiles.launch(types) else pickToolFile.launch(types)
+                }
                 // Follow the system light/dark theme. With the WebUIs declaring
                 // `color-scheme: light dark`, the WebView uses their own light/dark
                 // styles per the system setting instead of force-darkening.
@@ -870,6 +901,7 @@ class MainActivity : AppCompatActivity() {
 
                     override fun onPageStarted(view: WebView?, u: String?, favicon: android.graphics.Bitmap?) {
                         if (view != null) {
+                            toolFileChooser.cancelFor(view)
                             viewerFullscreen.onPageStarted(view)
                             assetNavigation.onPageStarted(view)
                         }
@@ -998,21 +1030,12 @@ class MainActivity : AppCompatActivity() {
      *  server) before launching; run others straight away. */
     private fun confirmAndRunBinary(a: JSONObject) {
         val id = a.optString("id")
-        // The full archive download lets you pick a region (GL / JP / Both).
+        // Both archive and CDN actions use the same explicit game-content scope.
         if (id == "download_archive") { confirmDownloadArchive(a); return }
+        if (id == "download_packs") { confirmDownloadMissing(a); return }
         val stops = a.optBoolean("stop_server", true)
-        val isBigDownload = id == "download_packs"
-        if (!isBigDownload && !(stops && Bus.serverRunning)) { runBinary(a); return }
-        val msg = buildString {
-            when (id) {
-                "download_archive" -> append(getString(R.string.confirm_download_archive))
-                "download_packs" -> append(getString(R.string.confirm_download_packs))
-            }
-            if (stops && Bus.serverRunning) {
-                if (isNotEmpty()) append("\n\n")
-                append(getString(R.string.confirm_stops_server))
-            }
-        }
+        if (!(stops && Bus.serverRunning)) { runBinary(a); return }
+        val msg = getString(R.string.confirm_stops_server)
         AlertDialog.Builder(this)
             .setTitle(R.string.confirm_title)
             .setMessage(msg)
@@ -1050,24 +1073,100 @@ class MainActivity : AppCompatActivity() {
         ServerService.runAction(this, args, a.optBoolean("stop_server", true))
     }
 
-    /** Full archive download: pick a region, then run download_archive with it. */
-    private fun confirmDownloadArchive(a: JSONObject) {
-        val labels = arrayOf(
-            getString(R.string.region_gl),
-            getString(R.string.region_jp),
-            getString(R.string.region_both),
-        )
-        val regions = arrayOf("gl", "jp", "both")
+    /** Choose the missing-file source and game scope in a single dialog. */
+    private fun confirmDownloadMissing(a: JSONObject) = confirmDownloadScope(a, archive = false)
+
+    private fun confirmDownloadScope(a: JSONObject, archive: Boolean) {
+        val regionValues = arrayOf("gl", "jp", "both")
+        val regionLabels = arrayOf(getString(R.string.region_gl), getString(R.string.region_jp), getString(R.string.region_both))
+        val platformValues = arrayOf("android", "ios", "both")
+        val platformLabels = arrayOf("Android", "iOS / PlayCover", getString(R.string.download_platform_both))
+        val glLanguageValues = arrayOf("all", "en", "ko", "zh")
+        val glLanguageLabels = arrayOf(getString(R.string.download_language_all), "English (EN)", "한국어 (KO)", "繁體中文 (ZH)")
+        val padding = (20 * resources.displayMetrics.density).toInt()
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, 0, padding, 0)
+        }
+        fun paragraph(text: String) = TextView(this).apply {
+            this.text = text
+            setPadding(0, padding / 2, 0, padding / 4)
+        }.also { form.addView(it) }
+        fun selector(labelId: Int, labels: Array<String>): Spinner {
+            val label = paragraph(getString(labelId))
+            return Spinner(this).apply {
+                id = View.generateViewId()
+                label.labelFor = id
+                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, labels).apply {
+                    setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                }
+                form.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+        }
+        val source = if (archive) null else selector(R.string.download_source,
+            arrayOf("CDN", "archive.org")).apply { setSelection(0) } // Keep CDN as the default.
+        fun useArchiveSource() = archive || source?.selectedItemPosition == 1
+        val sourceDescription = paragraph(getString(if (archive) R.string.confirm_download_archive else R.string.confirm_download_packs))
+        val region = selector(R.string.download_region, regionLabels)
+        val platform = selector(R.string.download_platform, platformLabels)
+        val language = selector(R.string.download_game_language, glLanguageLabels)
+        val selection = paragraph("")
+        paragraph(getString(R.string.download_scope_note))
+        if (a.optBoolean("stop_server", true) && Bus.serverRunning) {
+            paragraph(getString(R.string.confirm_stops_server))
+        }
+        var languageValues = glLanguageValues
+        fun updateSummary() {
+            sourceDescription.setText(if (useArchiveSource()) R.string.confirm_download_archive else R.string.confirm_download_packs)
+            selection.text = getString(R.string.download_scope_selection,
+                region.selectedItem.toString(), platform.selectedItem.toString(), language.selectedItem.toString()) +
+                " · " + if (useArchiveSource()) "archive.org" else "CDN"
+        }
+        val summaryListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = updateSummary()
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        source?.onItemSelectedListener = summaryListener
+        platform.onItemSelectedListener = summaryListener
+        language.onItemSelectedListener = summaryListener
+        region.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val labels = when (regionValues[position]) {
+                    "jp" -> { languageValues = arrayOf("ja"); arrayOf("日本語 (JA)") }
+                    "both" -> { languageValues = arrayOf("all"); arrayOf(getString(R.string.download_language_all)) }
+                    else -> { languageValues = glLanguageValues; glLanguageLabels }
+                }
+                language.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, labels).apply {
+                    setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                }
+                language.isEnabled = regionValues[position] == "gl"
+                language.setSelection(0)
+                updateSummary()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        // The app language chooses the initial region, never the game language.
+        region.setSelection(if (Lang.effective(this) == "ja") 1 else 0)
+        platform.setSelection(0) // This app runs on Android; other targets remain selectable.
+        val scroll = NestedScrollView(this).apply { addView(form) }
         AlertDialog.Builder(this)
-            .setTitle(R.string.confirm_download_archive) // Wi-Fi recommendation
-            .setItems(labels) { _, which ->
-                ServerService.runAction(
-                    this, listOf("download_archive", regions[which]),
-                    a.optBoolean("stop_server", true))
+            .setTitle(if (archive) R.string.act_download_archive else R.string.act_download_packs)
+            .setView(scroll)
+            .setPositiveButton(R.string.confirm_continue) { _, _ ->
+                val regionValue = regionValues[region.selectedItemPosition]
+                val platformValue = platformValues[platform.selectedItemPosition]
+                val languageValue = languageValues[language.selectedItemPosition]
+                val args = if (useArchiveSource()) listOf("download_archive_profile", regionValue, platformValue, languageValue)
+                    else listOf("download_packs", "4", "--region", regionValue,
+                        "--platform", platformValue, "--language", languageValue)
+                ServerService.runAction(this, args, a.optBoolean("stop_server", true))
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
+
+    /** Archive uses verified individual objects, with the same scope as CDN. */
+    private fun confirmDownloadArchive(a: JSONObject) = confirmDownloadScope(a, archive = true)
 
     private fun loadActions(): List<JSONObject> {
         return try {

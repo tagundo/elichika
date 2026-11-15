@@ -493,3 +493,24 @@ _INSTALL_THUMBNAIL_STRINGS = {
 for _source, _values in _INSTALL_THUMBNAIL_STRINGS.items():
     for _lang, _text in zip(("ko", "ja"), _values):
         _TABLES[_lang][_source] = _text
+
+_ADDON_FILE_STRINGS = {
+    "Add files": ["파일 추가", "ファイル追加"],
+    "Remove": ["제거", "削除"],
+    "No files selected.": ["선택한 파일이 없습니다.", "ファイルが選択されていません。"],
+    "Use existing selection": ["기존 선택 사용", "元の選択を使用"],
+    "Using the existing selection shown above.": ["위에 표시된 기존 선택을 사용합니다.", "上に表示されている元の選択を使用します。"],
+    "Using only the {count} added files.": ["선택한 {count}개 파일만 사용합니다.", "選択した{count}件のファイルのみ使用します。"],
+    "Choose files or use the existing selection.": ["파일을 추가하거나 기존 선택을 사용하세요.", "ファイルを追加するか、元の選択を使用してください。"],
+    "Adding files…": ["파일을 추가하는 중…", "ファイルを追加中…"],
+    "Adding files was cancelled.": ["파일 추가를 취소했습니다.", "ファイル追加をキャンセルしました。"],
+    "Choose up to 128 files at once.": ["한 번에 최대 128개 파일을 선택하세요.", "一度に最大128件のファイルを選択してください。"],
+    "Choose files supported by this installer.": ["이 설치 도구에서 지원하는 파일을 선택하세요.", "このインストーラーで対応しているファイルを選択してください。"],
+    "Each file must be nonempty and at most 512 MiB.": ["각 파일은 비어 있지 않은 512 MiB 이하 파일이어야 합니다.", "各ファイルは空ではない512 MiB以下のファイルにしてください。"],
+    "Added files must total at most 8 GiB.": ["추가한 파일의 전체 크기는 8 GiB 이하여야 합니다.", "追加したファイルの合計サイズは8 GiB以下にしてください。"],
+    "The files could not be added.": ["파일을 추가하지 못했습니다.", "ファイルを追加できませんでした。"],
+    "The file selection response is invalid.": ["파일 선택 응답이 올바르지 않습니다.", "ファイル選択の応答が正しくありません。"],
+}
+for _source, _values in _ADDON_FILE_STRINGS.items():
+    for _lang, _text in zip(("ko", "ja"), _values):
+        _TABLES[_lang][_source] = _text

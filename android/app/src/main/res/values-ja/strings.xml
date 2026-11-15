@@ -35,8 +35,8 @@
     <string name="restart_hint">適用しました。Web UI に反映するにはサーバーを再起動してください。</string>
     <string name="about_body">elichika は SIFAS（ラブライブ！スクールアイドルフェスティバル ALL STARS）用の私設サーバーです。このアプリはサーバー・WebUI・開発/MODツールを端末上で動かします — ゲームを 127.0.0.1:8080 に接続してください。\n\nサーバー・開発ツール: elichika プロジェクト（YumeMichi / arina999999997 / tatara_hisoka フォーク）。MODツール: SIFAS-MODDING-HELPING-TOOLS。</string>
 
-    <string name="act_download_archive">全ゲームファイルをダウンロード (archive.org)</string>
-    <string name="act_download_packs">不足分のみ取得 (ゲームCDN)</string>
+    <string name="act_download_archive">ゲームファイル取得 (archive.org)</string>
+    <string name="act_download_packs">不足分を取得…</string>
     <string name="act_cdn_cache">CDNキャッシュ オン/オフ</string>
     <string name="act_import_addon">アドオンzipを取り込む</string>
     <string name="act_rebuild_assets">マスターデータ再構築</string>
@@ -73,11 +73,11 @@
     <string name="confirm_title">確認</string>
     <string name="confirm_continue">続行</string>
     <string name="cancel">キャンセル</string>
-    <string name="confirm_download_archive">archive.org から全ゲームデータ（数GB）をダウンロードします。Wi-Fi の使用を強く推奨します。地域を選択してください:</string>
+    <string name="confirm_download_archive">選択した元ゲームファイルと必要な共通ファイルをarchive.orgから取得します。既存ファイルをSHA256で確認し、一致すれば再利用、不足または内容が異なるファイルは取得して修復します。準備中にファイル数と容量を表示します。Wi-Fiを推奨します。</string>
     <string name="region_gl">GL (グローバル — EN / KO / ZH)</string>
     <string name="region_jp">JP (日本)</string>
     <string name="region_both">両方 (GL + JP)</string>
-    <string name="confirm_download_packs">ゲームCDNから不足パックをダウンロードします（サイズは可変、大きい場合あり）。Wi-Fi を推奨します。</string>
+    <string name="confirm_download_packs">設定済みの元CDNから、選択した地域・ゲームプラットフォーム・ゲーム言語に必要な不足ファイルと共通ファイルを取得します。走査後、選択範囲と不足ファイル数をコンソールに表示します。Wi-Fiを推奨します。</string>
     <string name="confirm_stops_server">実行中のサーバーが先に停止されます。</string>
     <string name="reset_server_title">サーバー初期化</string>
     <string name="reset_server_msg">オリジナル（バニラ）のゲームデータを復元し、インストール・クローンされたすべてのMOD衣装／ライブ／カードを削除します。さらに、すべてのアカウントを新規アカウント状態にリセットします。\n\nログイン情報は保持されるため、ゲームクライアントはそのまま接続できます — サーバーだけが初期状態に戻ります。\n\n保持されるもの：設定（config）、ダウンロード済みゲームパック、Download/sukusta 内のファイル（MOD zip、抽出・編集済みバンドル、バックアップ）。\n\n元に戻せません。データが必要になる可能性があるなら、先に DB バックアップ（サーバーコンテンツタブ）とアカウントのエクスポート（アカウントタブ）を行ってください。</string>
@@ -87,7 +87,7 @@
     <!-- first-run guide -->
     <string name="act_guide">ガイド ❓</string>
     <string name="guide_title">はじめに</string>
-    <string name="guide_body">1. ストレージ権限を許可してください（共有 Download/sukusta フォルダ用）。\n2. 「サーバー開始」をタップ。\n3. ゲームアプリを 127.0.0.1:8080 に接続（LL-hax ガイド参照）。\n4. （任意）ゲームファイルを事前ダウンロード —「全ゲームファイルをダウンロード」（archive.org 全体）または「不足分のみ取得」（CDN）。推奨ですが必須ではありません。\n\nCDNキャッシュ: オンのとき、不足パックはプレイ中に必要に応じてダウンロードされ packs/ に保存されるので、事前ダウンロードは任意です。これで packs/ を埋める場合は、ゲーム画面よりも elichika を前面（フォアグラウンド）にしておくと、ダウンロードが途切れず完了します。\n\nタブ: 「サーバー設定」/「アカウント」= サーバーWeb UI ・「サーバーコンテンツ」= 開発ツール ・「アセット編集」= MODツール。\n\nフォルダ (Download/sukusta): extracted = 復号済みモデル（編集の入力） ・ modded = 編集済みバンドル（編集の出力） ・ suit / live / card / livetimeline = アドオンのドロップ先 ・ sql = DBパッチ ・ packs = ゲームパックのキャッシュ ・ backup = DBバックアップ ・ logs = elichika.log。\n\nインストールしたMODはCDNキャッシュのオン・オフに関係なくElichikaが自動配信します。キャッシュをオフにすると不足する元ファイルは元のCDNから取得し、新しく保存しません。取得済みファイルは保持します。元のゲームCDNアドレスを維持してください。ゲームサーバーを停止したまま設定とユーザー管理を利用できます。</string>
+    <string name="guide_body">1. ストレージ権限を許可してください（共有 Download/sukusta フォルダ用）。\n2. 「サーバー開始」をタップ。\n3. ゲームアプリを 127.0.0.1:8080 に接続（LL-hax ガイド参照）。\n4. （任意）「ゲームファイル取得」（archive.org）または「不足分を取得」を使います。不足分はCDN（初期値）またはarchive.orgを選び、必要な地域・ゲームプラットフォーム・ゲーム言語を指定してください。必要な共通ファイルも含まれます。\n\nAndroidゲーム：ゲーム画面の右上を2秒間長押しするとFOV設定を開けます。iOS / PlayCover：最初はSettingsボタンが表示されます。ボタンを非表示にした後も、右上を2秒間長押しするとメニューを再び開けます。\n\nCDNキャッシュ: オンのとき、不足パックはプレイ中に必要に応じてダウンロードされ packs/ に保存されるので、事前ダウンロードは任意です。これで packs/ を埋める場合は、ゲーム画面よりも elichika を前面（フォアグラウンド）にしておくと、ダウンロードが途切れず完了します。\n\nタブ: 「サーバー設定」/「アカウント」= サーバーWeb UI ・「サーバーコンテンツ」= 開発ツール ・「アセット編集」= MODツール。\n\nフォルダ (Download/sukusta): extracted = 復号済みモデル（編集の入力） ・ modded = 編集済みバンドル（編集の出力） ・ suit / live / card / livetimeline = アドオンのドロップ先 ・ sql = DBパッチ ・ packs = ゲームパックのキャッシュ ・ backup = DBバックアップ ・ logs = elichika.log。\n\nインストールしたMODはCDNキャッシュのオン・オフに関係なくElichikaが自動配信します。キャッシュをオフにすると不足する元ファイルは元のCDNから取得し、新しく保存しません。取得済みファイルは保持します。元のゲームCDNアドレスを維持してください。ゲームサーバーを停止したまま設定とユーザー管理を利用できます。</string>
 
     <!-- console controls -->
     <string name="btn_share_log">ログを共有</string>
@@ -161,4 +161,22 @@
     <string name="notif_preparing">elichika サーバーを準備中</string>
     <string name="management_preparing">サーバー設定とユーザー管理を準備しています…</string>
     <string name="management_prepare_failed">管理ツールを準備できませんでした。</string>
+    <string name="download_region">地域</string>
+    <string name="download_platform">ゲームのプラットフォーム</string>
+    <string name="download_platform_both">両方（Android + iOS）</string>
+    <string name="download_game_language">ゲーム言語</string>
+    <string name="download_language_all">すべてのゲーム言語</string>
+    <string name="download_scope_selection">選択範囲: %1$s · %2$s · %3$s</string>
+    <string name="download_scope_note">選択範囲に属するファイルのみ確認します。選択したファイル数と不足分の取得数はログに表示されます。ゲーム言語とアプリの言語は別です。</string>
+    <string name="archive_download_progress">%1$d%% · ファイル %2$d / %3$d</string>
+    <string name="archive_download_bytes">%1$s / %2$s</string>
+    <string name="archive_download_invalid_scope">取得する地域・ゲームプラットフォーム・ゲーム言語を選択してください。</string>
+    <string name="archive_download_start">[archive] %1$s / %2$s / %3$s の準備中…</string>
+    <string name="archive_download_done">[archive] 選択ファイルの検証が完了しました。サーバーは停止したままです。</string>
+    <string name="archive_download_cancelled">[archive] キャンセルしました。検証済みファイルは次回再利用します。</string>
+    <string name="archive_download_failed">[archive] %1$s</string>
+    <string name="archive_download_preparing">選択したゲームファイル一覧を確認中…</string>
+    <string name="download_source">ダウンロード元</string>
+    <string name="archive_download_cancelling">ダウンロードをキャンセル中です。実行中の転送が終了するまでお待ちください。</string>
+    <string name="log_archive_draining">[archive] 前のダウンロードをキャンセル中です。転送処理がすべて終了してから続行します。</string>
 </resources>

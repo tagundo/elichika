@@ -1272,7 +1272,7 @@ def check_native_pcm_game_report(app, output, report, required):
     library = output / "native-app-data/sukusta"
     body = observed.get("official_body", {})
     body_path = Path(body.get("path", "")).resolve()
-    require(body_path.is_relative_to((library / "extracted/game-models").resolve())
+    require(body_path.is_relative_to((library / "cache/viewer/game-models").resolve())
             and body_path.name == "ch0002_suit400022007_primary.unity" and body.get("preserved") is True
             and body.get("bytes") == 1034160
             and body.get("sha256") == sha256(body_path) == "cbfae69d2f37e5b8b2240f905e59289580ce73836fca3f46c421e9bc5da5404c",
@@ -1286,7 +1286,7 @@ def check_native_pcm_game_report(app, output, report, required):
             and 103 < pcm.get("duration", 0) < 104 and 0 < pcm.get("encodedBytes", 0) <= 32 * 1024 * 1024,
             "Record the same-job original encoded stereo PCM identity; do not substitute the host decoder hash")
     cached = observed.get("same_job_cached_pcm", [])
-    require(cached and all(Path(item["path"]).resolve().is_relative_to((library / "extracted/game-motions/audio").resolve())
+    require(cached and all(Path(item["path"]).resolve().is_relative_to((library / "cache/viewer/game-motions/audio").resolve())
                 and item["sha256"] == digest == sha256(Path(item["path"]))
                 and item["bytes"] == pcm["encodedBytes"] == Path(item["path"]).stat().st_size for item in cached),
             "The observed original response must match this same native job's actual cached WAV bytes")

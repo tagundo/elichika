@@ -59,6 +59,20 @@ main { padding: 14px; display: grid; grid-template-columns: 220px minmax(0, 1fr)
 .field select[multiple] option { padding: 3px 4px; font-size: 13px; }
 .dyn-row button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
   border-radius: 8px; padding: 0 14px; cursor: pointer; font-size: 16px; }
+/* Same compact Add files and removable filename list as Asset Editing. */
+.addon-file-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.addon-file-actions button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel2); color: var(--text); cursor: pointer; }
+.addon-file-actions button:disabled, .multi-rm:disabled { opacity: .55; cursor: wait; }
+.addon-file-list { min-width: 0; list-style: none; margin: 6px 0 0; padding: 0; }
+.addon-file-list li { display: flex; align-items: center; justify-content: space-between;
+  min-width: 0; gap: 8px; padding: 4px 8px; border: 1px solid var(--line);
+  border-radius: 6px; margin-top: 4px; font-size: .9em; }
+.addon-file-list li > span { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addon-file-list li.muted { opacity: .6; border-style: dashed; justify-content: center; }
+.multi-rm { flex: 0 0 auto; min-width: 34px; min-height: 34px; border: 0; background: transparent;
+  color: var(--text); cursor: pointer; font-size: 1em; line-height: 1; padding: 2px 6px; }
+.multi-rm:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .field.checkbox label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .field.checkbox input { width: 18px; height: 18px; }
 .multi-choices { max-height: 240px; overflow-y: auto; border: 1px solid var(--line);

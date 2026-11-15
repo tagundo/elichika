@@ -47,10 +47,16 @@ def copy_python_sources(repo, destination):
     # The app's managed installation and path helpers always come from parent.
     for name in ("payload_db_upgrade.py", "database_maintenance.py", "payload_file_hash.py",
                  "payload_revision.py", "payload_upgrade_progress.py", "sukusta_paths.py", "costume_management.py",
+                 "archive_profile_download.py", "archive_profile_download_bridge.py",
                  "costume_installer_defaults.py", "costume_scene_installer.py", "costume_face_installer.py", "costume_scene_clones.py", "costume_scene_sources.py",
                  "costume_cdn_catalog.py", "costume_cdn_restore.py",
                  "sifas_asset_crypto.py"):
         shutil.copy2(repo / name, destination / name)
+    # This immutable public index is shared with Android; never copy a user's config.
+    sys.path.insert(0, str(repo))
+    from archive_profile_download_bridge import load_source_config
+    load_source_config(repo / "archive-hosted-catalog.json")
+    shutil.copy2(repo / "archive-hosted-catalog.json", destination / "archive-hosted-catalog.json")
     runtime = repo / "macos/runtime"
     require((runtime / "elichika_macos.py").is_file(), "The desktop runtime entry point is missing")
     for source in sorted(runtime.glob("*.py")):

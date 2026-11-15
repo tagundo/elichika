@@ -355,7 +355,45 @@ final class RuntimeContractTests: XCTestCase {
         }
         XCTAssertEqual(Set(ConsoleRegion.allCases.map(\.rawValue)), ["gl", "jp", "both"])
         XCTAssertEqual(ConsoleAction.downloadArchive.requestBody(region: .both)["region"], "both")
-        XCTAssertNil(ConsoleAction.downloadPacks.requestBody(region: .jp)["region"])
+        XCTAssertEqual(ConsoleAction.downloadPacks.requestBody(region: .jp, platform: .android, gameLanguage: .ja),
+            ["action": "download_packs", "confirmation": "STOP_SERVER", "region": "jp", "platform": "android", "language": "ja"])
+        XCTAssertEqual(ConsoleAction.downloadPacks.requestBody(),
+            ["action": "download_packs", "confirmation": "STOP_SERVER", "region": "gl", "platform": "ios", "language": "all"])
+        XCTAssertEqual(ConsoleGameLanguage.choices(region: .gl), [.all, .en, .ko, .zh])
+        XCTAssertEqual(ConsoleGameLanguage.choices(region: .jp), [.ja])
+        XCTAssertEqual(ConsoleGameLanguage.choices(region: .both), [.all])
+        let archive = ConsoleAction.downloadArchive.requestBody(region: .gl, platform: .android, gameLanguage: .en)
+        XCTAssertEqual(archive["platform"], "android")
+        XCTAssertEqual(archive["language"], "en")
+    }
+
+    @MainActor
+    func testDownloadScopeDefaultsAndRegionTransitionsKeepValidLanguages() {
+        let model = AppModel(arguments: ["test"])
+        // Readiness/admission is covered by the sheet smoke tests. Region changes
+        // still normalize choices without resetting unrelated server settings.
+        model.consoleRegion = .gl
+        model.consoleGameLanguage = .ko
+        model.consoleRegion = .jp
+        XCTAssertEqual(model.consoleGameLanguage, .ja)
+        model.consoleRegion = .both
+        XCTAssertEqual(model.consoleGameLanguage, .all)
+        model.consoleRegion = .gl
+        XCTAssertEqual(model.consoleGameLanguage, .all)
+        XCTAssertEqual(model.consolePlatform, .ios)
+        XCTAssertEqual(model.consoleDownloadSource, .cdn)
+    }
+
+    func testMissingDownloadSourceKeepsCDNDefaultAndResolvesExistingArchiveAction() {
+        XCTAssertEqual(ConsoleDownloadSource.allCases, [.cdn, .archive])
+        XCTAssertEqual(ConsoleAction.downloadPacks.resolvedDownloadAction(source: .cdn), .downloadPacks)
+        XCTAssertEqual(ConsoleAction.downloadPacks.resolvedDownloadAction(source: .archive), .downloadArchive)
+        XCTAssertEqual(ConsoleAction.downloadArchive.resolvedDownloadAction(source: .cdn), .downloadArchive)
+        XCTAssertEqual(ConsoleAction.rebuildAssets.resolvedDownloadAction(source: .archive), .rebuildAssets)
+        let request = ConsoleAction.downloadPacks.resolvedDownloadAction(source: .archive)
+            .requestBody(region: .gl, platform: .android, gameLanguage: .ko)
+        XCTAssertEqual(request, ["action":"download_archive", "confirmation":"STOP_SERVER", "region":"gl", "platform":"android", "language":"ko"])
+        XCTAssertNil(request["source"])
     }
 
     func testConsoleActionsUseFixedNamesAndExplicitResetConfirmation() throws {
@@ -389,6 +427,14 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertEqual(state.job?.action, .downloadArchive)
         XCTAssertEqual(state.job?.region, .gl)
         XCTAssertEqual(state.job?.progress?.fraction, 0.5)
+        var scopedJob = job
+        scopedJob["action"] = "download_packs"
+        scopedJob["platform"] = "android"
+        scopedJob["language"] = "en"
+        let scopedData = try JSONSerialization.data(withJSONObject: ["job": scopedJob])
+        let scopedState = try JSONDecoder().decode(ConsoleState.self, from: scopedData)
+        XCTAssertEqual(scopedState.job?.platform, .android)
+        XCTAssertEqual(scopedState.job?.language, .en)
         let invalidProgress = try JSONSerialization.data(withJSONObject: ["completed": 11, "total": 10])
         XCTAssertNil(try JSONDecoder().decode(ConsoleState.Job.Progress.self, from: invalidProgress).fraction)
         var invalidJob = job

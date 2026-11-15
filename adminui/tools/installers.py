@@ -24,6 +24,7 @@ import importlib
 import os
 import shutil
 import sys
+import unicodedata
 
 from adminui.serverctl import installation_server, stop_server
 from adminui.tools.common import capture_stdout, ensure_repo_on_path
@@ -67,6 +68,7 @@ def _candidate_dirs(key):
 
 def _locate(key, name):
     """First existing path of `name` across this installer's candidate folders."""
+    _checked_addon_name(name)
     for d in _candidate_dirs(key):
         p = os.path.join(d, name)
         if os.path.isfile(p):
@@ -164,14 +166,21 @@ def _force_cli_mode():
     return restore
 
 
+def _checked_addon_name(name):
+    if (not isinstance(name, str) or not name or name in (".", "..") or
+            name != os.path.basename(name) or "\\" in name or
+            any(unicodedata.category(char).startswith("C") for char in name)):
+        raise ValueError("Choose add-on filenames from the installer list, without filesystem paths.")
+    return name
+
+
 def _addon_list(raw):
     """Normalise the 'addon' param into a list of filenames. Accepts a single
     filename (single-select installers) or a list (multi-select ones)."""
-    if isinstance(raw, (list, tuple)):
-        return [str(c).strip() for c in raw if str(c).strip()]
-    if raw and str(raw).strip():
-        return [str(raw).strip()]
-    return []
+    values = raw if isinstance(raw, (list, tuple)) else ([] if raw is None or raw == "" else [raw])
+    if len(values) > 128 or any(not isinstance(value, str) for value in values):
+        raise ValueError("Choose up to 128 add-on filenames from the installer list.")
+    return list(dict.fromkeys(_checked_addon_name(value.strip()) for value in values if value.strip()))
 
 
 def _file_sha256(path):

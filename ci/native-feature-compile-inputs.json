@@ -1,0 +1,313 @@
+{
+  "schema": 1,
+  "scope": "native_compile_only",
+  "source_base_app_commit": "02f659d707997e03218be231e8a675fb0358a6c8",
+  "source_overlay": "Final reviewed parent post-cache56source overrides; whole exact C11 checkout supplied by root GitData commit, not sparse after directory",
+  "gitlinks": {
+    "modtools": "b92bb0fdf3fed5b5d20c69fd2b7efbda15c84408",
+    "assets": "1b0154db2976ba345fb30f3516018bb04d408ce1"
+  },
+  "files": [
+    {
+      "path": ".github/workflows/android.yml",
+      "sha256": "e875017900d3e348aabfd81ca2c7b1d62de8a96b5863b792ab1d5c8a391bb1a8",
+      "bytes": 29142
+    },
+    {
+      "path": "android/app/build.gradle.kts",
+      "sha256": "c7493920e7209a33e994164bdba6f4db9ddcc49943e4e8049112bcac0a0ceb5b",
+      "bytes": 14986
+    },
+    {
+      "path": "android/app/src/main/AndroidManifest.xml",
+      "sha256": "48fef80227cc3fe317f4854a598616ad6d1853258a1f6cf9b5c5fe3b72826ed6",
+      "bytes": 2440
+    },
+    {
+      "path": "android/app/src/main/assets/actions.json",
+      "sha256": "8ac896e125299e63f13bb573ee670c3232dc00fa631883f6d00fc1009f2564e0",
+      "bytes": 2736
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/AndroidServerController.kt",
+      "sha256": "1204ad9d31abe65ed7b3e7264e91abf00a43cb1b527d54cdb6383d52faebb3c9",
+      "bytes": 5933
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ArchiveDownloadCallbacks.kt",
+      "sha256": "1bc0d5fe8b16ec0491e17aab6af6e83e2711051aefe15764f93428a74d60a484",
+      "bytes": 1284
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ArchiveWorkerFence.java",
+      "sha256": "42692c2086668582c04086305b88a428455dd04bd7448000de7cdbc03e67a6e0",
+      "bytes": 2167
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/AssetInstaller.kt",
+      "sha256": "ec6380e3f9ed77c0d0c7c7d512abd614d8625aa9ee02e5e9acd8269c4a9611f9",
+      "bytes": 7614
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/AssetNavigationBridge.kt",
+      "sha256": "d9ad66edaa9a8326a88a6145fe63e238bf2fd9c41fb1ebe5bc26c75beb19a98b",
+      "bytes": 5552
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/Bus.kt",
+      "sha256": "02af8f29f83b2251e6b9967592ce0a753e63f0ec3daeb7d8fe8a6db105bb7626",
+      "bytes": 15034
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ConsoleActionGrid.kt",
+      "sha256": "fdb4cb12ad0e729c30dd6b0b281e169ba2b7b76d074d01e5ec6e055f87aabc8e",
+      "bytes": 3910
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/EmbeddedPython.kt",
+      "sha256": "fbb042d5a2f4021704abef24653a13d7569b35a223aed0ed8f616a5e3bf6ee45",
+      "bytes": 1212
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/Lang.kt",
+      "sha256": "cfde8dddb05b4ef56d4fa74ca19d3d632e0d977d0fd4c647ca8e4695f8e6329f",
+      "bytes": 2039
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/MainActivity.kt",
+      "sha256": "6c04594fae36ba9386557866b9a31d4895a3c60e38a795bbad43cb2678e8d389",
+      "bytes": 61374
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ManagementServer.kt",
+      "sha256": "96394f7605f9890d03ce966bf8ca2e917e2cf540b8d16ad3422f64836bb4d28c",
+      "bytes": 12851
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/PayloadFileHasher.kt",
+      "sha256": "f5c73ff702be688bcc201954e38ec25096a1222a9b6af7260ca5fa73d061acb3",
+      "bytes": 1121
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/PayloadFiles.kt",
+      "sha256": "7b7cb07a049be895d762d8f403d7c4c9f219e3a1e896c4690450409290d4ef62",
+      "bytes": 4356
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/PayloadPreparation.kt",
+      "sha256": "fe55cd0bc64f6e5cd229cd9065f80a3c423a3302b2b19743d5ee3489ca491496",
+      "bytes": 4626
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/PayloadProgress.kt",
+      "sha256": "d82a1f5ae4a52e55e56203233aa485b30fef4ec8ddbcd6a2a9bd6d1b11c4ed1f",
+      "bytes": 3809
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/PayloadUpgrade.kt",
+      "sha256": "3819da24c1a34af72ba4368339a0fffbecfdaddf48f46e5e4484643202e578c4",
+      "bytes": 4858
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/PyServers.kt",
+      "sha256": "5865e6f8f11dae27323e0be4ec5e0f61b943b3879f6dba374a5f928781a124e1",
+      "bytes": 4163
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ServerConfig.kt",
+      "sha256": "6ae693d83e275072b7d02d3b241c37c2ab330ea0ca3b2c836df37f395f49ea71",
+      "bytes": 3510
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ServerProcess.kt",
+      "sha256": "5c9daf8c354a2a5eb98082e493f1c94701344b2bf55c781d578b07b170077260",
+      "bytes": 9913
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ServerReadiness.kt",
+      "sha256": "448fe7a81869a29f41626c0a9d0aad0d48ba631473f08c91c063e5c9186d70be",
+      "bytes": 4094
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ServerService.kt",
+      "sha256": "1ba6dbd5fb7714deb9fd8093d16121cbc245c8801b91995509ef5132074b273c",
+      "bytes": 32976
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ServerSettings.kt",
+      "sha256": "0317f568fde39073e8db14aaf962ac3b43f26bd4366d691bb8082cd6b764844c",
+      "bytes": 729
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ToolFileChooser.kt",
+      "sha256": "4e07dbe4f5480c52a58180ae87262d4ea994217e66278a78c6c0f7e101eec826",
+      "bytes": 3531
+    },
+    {
+      "path": "android/app/src/main/java/com/tagundo/elichika/ViewerFullscreen.kt",
+      "sha256": "febf7a2f882db7defe71d6b20690ac55fc564ef03367ff9d9ef1b8aef03f59e6",
+      "bytes": 10203
+    },
+    {
+      "path": "android/app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "sha256": "5df3112437de991f9e9da35f682051221639cd9b28678a1f5e35e7cf8d988ba7",
+      "bytes": 586
+    },
+    {
+      "path": "android/app/src/main/res/drawable/ic_notification.xml",
+      "sha256": "69400b94b2a9372df146468d86d0ea66ccecaa5bf8a881ea0bf25135def0dc14",
+      "bytes": 387
+    },
+    {
+      "path": "android/app/src/main/res/layout/activity_main.xml",
+      "sha256": "24e4197d53b1a98d248e3d968dcfdaf7751659b9c868607e9dcb50ed9f4f6fee",
+      "bytes": 2403
+    },
+    {
+      "path": "android/app/src/main/res/layout/panel_console.xml",
+      "sha256": "20a7a25f617e57f472bb88dd8492230a0f548add7f1e52cf6b33fa383a490725",
+      "bytes": 4766
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "sha256": "32715ff646f6b9fef7c321138e4a14556c4a1f98a87b06070b56f41643dad718",
+      "bytes": 270
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "sha256": "32715ff646f6b9fef7c321138e4a14556c4a1f98a87b06070b56f41643dad718",
+      "bytes": 270
+    },
+    {
+      "path": "android/app/src/main/res/values-ja/strings.xml",
+      "sha256": "0fd84f9352de763db99e1fdb11ae6a4c575be54ef49d06a463532287516f0361",
+      "bytes": 19005
+    },
+    {
+      "path": "android/app/src/main/res/values-ko/strings.xml",
+      "sha256": "a2186dd90a77ca6ed7800e1ea7376a385d8681b62c65c97e97f7b3fa80676dc6",
+      "bytes": 17629
+    },
+    {
+      "path": "android/app/src/main/res/values/colors.xml",
+      "sha256": "b94a43f6618406fa797036528bd567db25c433373eb27a9627fb11ec5893c2e1",
+      "bytes": 231
+    },
+    {
+      "path": "android/app/src/main/res/values/dimens.xml",
+      "sha256": "f0a582ce1606f72fcbe407b5febac72d72183bc2cd4dc6c5466523d5b2e9e59b",
+      "bytes": 201
+    },
+    {
+      "path": "android/app/src/main/res/values/strings.xml",
+      "sha256": "dd4a0d371d11dd60774a55f5c8b3c1b516df42ac64d77e0000dd2ed79c29d1e9",
+      "bytes": 16032
+    },
+    {
+      "path": "android/app/src/main/res/values/themes.xml",
+      "sha256": "df55d8a565de5ab7d53457a504ab7482e3c78a11542ec54f30ef5d69cffe0200",
+      "bytes": 387
+    },
+    {
+      "path": "android/app/src/main/res/xml/network_security_config.xml",
+      "sha256": "c9b55fde6f782277875170eb621ad67551e6f81be7ebecd111df7b2e120fa6ad",
+      "bytes": 449
+    },
+    {
+      "path": "android/build.gradle.kts",
+      "sha256": "2184699a4eb2d58539a0c6545e13045d7904f436bcf01079bad2d5b57c17b9a0",
+      "bytes": 508
+    },
+    {
+      "path": "android/ci/prepare_gradle.py",
+      "sha256": "b7f9e221128101601ad28c09ec903e58febd560aadfe905960a712cfe5ee3742",
+      "bytes": 9029
+    },
+    {
+      "path": "android/gradle.properties",
+      "sha256": "5ff4359bb22b9436ec644207f9240f4e47b9a733fe03ba402c77944a05283574",
+      "bytes": 136
+    },
+    {
+      "path": "android/gradle/wrapper/gradle-wrapper.jar",
+      "sha256": "7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172",
+      "bytes": 43764
+    },
+    {
+      "path": "android/gradle/wrapper/gradle-wrapper.properties",
+      "sha256": "40ad196c886842d44adb88e1c64445c55720cf0855fa0c5585f35449e7fc2385",
+      "bytes": 337
+    },
+    {
+      "path": "android/gradlew",
+      "sha256": "b187b4c52e749f5760afdd6fadc31b2a98ad35fb249bf0dff03b72650f320409",
+      "bytes": 8733
+    },
+    {
+      "path": "android/settings.gradle.kts",
+      "sha256": "600a0f64d201886b3087cbb347ca6eb68fa7bb313219228c599b0ca9a0dac9ee",
+      "bytes": 788
+    },
+    {
+      "path": "archive-hosted-catalog.json",
+      "sha256": "594a87c306f0d6ccb12b9cbcd2c505045cb17f6bb8cdcc063f956580aae289a9",
+      "bytes": 217
+    },
+    {
+      "path": "macos/App/AppModel.swift",
+      "sha256": "ed317ca8517e3857397eb9639fffa57de705168797ba567eb3199f8a40f94edb",
+      "bytes": 44737
+    },
+    {
+      "path": "macos/App/ElichikaApp.swift",
+      "sha256": "c04131aa6efa0be0ff19ca9a62ce47026f954ff9298afd861c4b1e081933f0a3",
+      "bytes": 55198
+    },
+    {
+      "path": "macos/App/NativeSmokeTest.swift",
+      "sha256": "f1c3183701c2d74c2dcc43bf796a978c3f1ea99eb5b783b23d62b5089c97fba6",
+      "bytes": 147707
+    },
+    {
+      "path": "macos/App/RuntimeContract.swift",
+      "sha256": "b40b0d19e30c32cde1ef2231ba5cf5b134a6982159849eae9a5b318192f7ffc4",
+      "bytes": 22608
+    },
+    {
+      "path": "macos/App/WebPanel.swift",
+      "sha256": "5d40b350d9f1a4a96d1ced632f6fabe45f7499ce7fa507f8d56b5d985e1928a9",
+      "bytes": 25190
+    },
+    {
+      "path": "macos/Package.swift",
+      "sha256": "8afd109c8a40e131f2793efe51a68086762f28ca76300d1e94b38d9a79372e41",
+      "bytes": 384
+    },
+    {
+      "path": "macos/Tests/ConsolePerformanceTests.swift",
+      "sha256": "22d9807d5cfd5a71d69dfd591c6a9f2dc43345ad99cb351bc920d3f4b8d3e142",
+      "bytes": 5175
+    },
+    {
+      "path": "macos/Tests/ConsoleWrappedScrollTests.swift",
+      "sha256": "c79dc308d2c44ce7e840a14fc49df9620e4baec576e7b7a2970881069e32b9f0",
+      "bytes": 14762
+    },
+    {
+      "path": "macos/Tests/RuntimeContractTests.swift",
+      "sha256": "bdd27eeca4322b32353a16331303bf8ce337b148b5cad8f651fb1b1acd6b10d9",
+      "bytes": 46024
+    },
+    {
+      "path": "macos/build/build_app.py",
+      "sha256": "6e834e1eecb08ae3f552f6c090df8e60e01e72a2985de5d7561af278593073e1",
+      "bytes": 16448
+    }
+  ],
+  "noncompile_exclusions": [
+    ":app:buildHcaDecoder",
+    ":app:buildTexture65Decoder",
+    ":app:generateDebugPythonProxies"
+  ],
+  "scope_note": "Compile real Android source/resources/real Chaquopy Java API and full unchanged SwiftPackage; no Python/native payload, no packaging, no Archive source validation bypass."
+}

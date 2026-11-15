@@ -11,6 +11,7 @@ import (
 	"elichika/utils"
 
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -52,15 +53,22 @@ func (locale *Locale) LoadGamedata(syncChannel chan struct{}) {
 }
 
 func (locale *Locale) LoadAsset() {
+	// Use the actual source directory, never the first owner of a shared pack
+	// or aliases installed for unloaded game-data locales.
+	region := assetdata.Region(filepath.Base(filepath.Clean(locale.Path)))
 	AssetdataEngine := GetEngine(fmt.Sprintf("%s/asset_a_%s.db", locale.Path, locale.Language))
 	AssetdataEngine.SetMaxOpenConns(50)
 	AssetdataEngine.SetMaxIdleConns(10)
-	assetdata.Init(locale.Language, AssetdataEngine)
+	utils.CheckErr(assetdata.InitProfile(assetdata.AssetProfile{
+		Region: region, Platform: assetdata.PlatformAndroid, Language: assetdata.Language(locale.Language),
+	}, AssetdataEngine))
 
 	AssetdataEngine = GetEngine(fmt.Sprintf("%s/asset_i_%s.db", locale.Path, locale.Language))
 	AssetdataEngine.SetMaxOpenConns(50)
 	AssetdataEngine.SetMaxIdleConns(10)
-	assetdata.Init(locale.Language, AssetdataEngine)
+	utils.CheckErr(assetdata.InitProfile(assetdata.AssetProfile{
+		Region: region, Platform: assetdata.PlatformIOS, Language: assetdata.Language(locale.Language),
+	}, AssetdataEngine))
 }
 
 var (

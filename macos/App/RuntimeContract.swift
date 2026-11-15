@@ -160,6 +160,8 @@ struct ConsoleState: Decodable, Equatable {
         let id: String
         let action: ConsoleAction
         let region: ConsoleRegion?
+        let platform: ConsolePlatform?
+        let language: ConsoleGameLanguage?
         let status: String
         let running: Bool
         let cancellable: Bool
@@ -198,6 +200,45 @@ enum ConsoleRegion: String, CaseIterable, Identifiable, Decodable {
     }
 }
 
+enum ConsolePlatform: String, CaseIterable, Identifiable, Decodable {
+    case android, ios, both
+    var id: String { rawValue }
+    func title(_ language: String) -> String {
+        switch self {
+        case .android: return "Android"
+        case .ios: return "iOS / PlayCover"
+        case .both: return NativeText.value("Both platforms", "두 플랫폼", "両プラットフォーム", language: language)
+        }
+    }
+}
+
+enum ConsoleGameLanguage: String, CaseIterable, Identifiable, Decodable {
+    case all, en, ko, zh, ja
+    var id: String { rawValue }
+    static func choices(region: ConsoleRegion) -> [Self] {
+        switch region {
+        case .gl: return [.all, .en, .ko, .zh]
+        case .jp: return [.ja]
+        case .both: return [.all]
+        }
+    }
+    func title(_ language: String) -> String {
+        switch self {
+        case .all: return NativeText.value("All game languages", "모든 게임 언어", "すべてのゲーム言語", language: language)
+        case .en: return "English (EN)"
+        case .ko: return "한국어 (KO)"
+        case .zh: return "中文 (ZH)"
+        case .ja: return "日本語 (JA)"
+        }
+    }
+}
+
+enum ConsoleDownloadSource: String, CaseIterable, Identifiable {
+    case cdn, archive
+    var id: String { rawValue }
+    var title: String { self == .cdn ? "CDN" : "archive.org" }
+}
+
 enum ConsoleAction: String, Decodable, Identifiable {
     case downloadArchive = "download_archive"
     case downloadPacks = "download_packs"
@@ -209,8 +250,8 @@ enum ConsoleAction: String, Decodable, Identifiable {
     func title(_ language: String) -> String {
         let values: (String, String, String)
         switch self {
-        case .downloadArchive: values = ("Download all (archive.org)…", "전체 받기 (archive.org)…", "全ファイル取得 (archive.org)…")
-        case .downloadPacks: values = ("Download missing (CDN)…", "누락분 받기 (CDN)…", "不足分を取得 (CDN)…")
+        case .downloadArchive: values = ("Download game files (archive.org)…", "게임 파일 받기 (archive.org)…", "ゲームファイル取得 (archive.org)…")
+        case .downloadPacks: values = ("Download missing…", "누락분 받기…", "不足分を取得…")
         case .cdnCacheToggle: values = ("CDN cache", "CDN 캐시", "CDNキャッシュ")
         case .rebuildAssets: values = ("Rebuild master data…", "마스터 데이터 재빌드…", "マスターデータ再構築…")
         case .fixTrainingTrees: values = ("Fix training trees…", "트레이닝 트리 복구…", "トレーニングツリー修復…")
@@ -219,9 +260,18 @@ enum ConsoleAction: String, Decodable, Identifiable {
         return NativeText.value(values.0, values.1, values.2, language: language)
     }
 
-    func requestBody(region: ConsoleRegion? = nil) -> [String: String] {
+    func resolvedDownloadAction(source: ConsoleDownloadSource) -> ConsoleAction {
+        self == .downloadPacks && source == .archive ? .downloadArchive : self
+    }
+
+    func requestBody(region: ConsoleRegion? = nil, platform: ConsolePlatform? = nil,
+                     gameLanguage: ConsoleGameLanguage? = nil) -> [String: String] {
         var body = ["action": rawValue, "confirmation": "STOP_SERVER"]
-        if self == .downloadArchive, let region { body["region"] = region.rawValue }
+        if self == .downloadArchive || self == .downloadPacks {
+            body["region"] = (region ?? .gl).rawValue
+            body["platform"] = (platform ?? .ios).rawValue
+            body["language"] = (gameLanguage ?? .all).rawValue
+        }
         if self == .resetServer { body["reset_confirmation"] = "RESET_SERVER_AND_ACCOUNTS" }
         return body
     }

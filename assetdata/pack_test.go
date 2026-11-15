@@ -14,8 +14,13 @@ import (
 func resetPackFixture(t testing.TB) {
 	t.Helper()
 	oldPack, oldMetapack, oldLocale := Pack, Metapack, NameToLocale
+	oldProfiles, oldWholeFiles := loadedProfiles, wholeFileProfiles
+	loadedProfiles, wholeFileProfiles = 0, map[string]profileMask{}
 	Pack, Metapack, NameToLocale = map[string]*PackType{}, map[string]*MetapackType{}, map[string]string{}
-	t.Cleanup(func() { Pack, Metapack, NameToLocale = oldPack, oldMetapack, oldLocale })
+	t.Cleanup(func() {
+		Pack, Metapack, NameToLocale = oldPack, oldMetapack, oldLocale
+		loadedProfiles, wholeFileProfiles = oldProfiles, oldWholeFiles
+	})
 }
 
 func packEngine(t testing.TB, path string) *xorm.Engine {

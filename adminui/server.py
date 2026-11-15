@@ -99,6 +99,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         path = urlsplit(self.path).path
         try:
+            if path.startswith("/api/addon-files/"):
+                return self._api_addon_file(path[len("/api/addon-files/"):])
             if path == "/api/costume-thumbnail/plan":
                 return self._api_costume_thumbnail("plan")
             if path in ("/api/viewer/thumbnail/model", "/api/viewer/thumbnail/render"):
@@ -118,6 +120,15 @@ class Handler(BaseHTTPRequestHandler):
         if content_type is None:
             content_type = mimetypes.guess_type(str(fpath))[0] or "application/octet-stream"
         self._send_bytes(fpath.read_bytes(), content_type)
+
+    def _api_addon_file(self, tool_id):
+        from adminui.addon_files import UploadError, receive_batch, receive_upload
+        try:
+            if tool_id.endswith("/batch"):
+                return self._send_json(receive_batch(self, tool_id[:-len("/batch")]))
+            return self._send_json(receive_upload(self, tool_id))
+        except UploadError as error:
+            return self._send_json({"error": str(error)}, status=error.status)
 
     def _serve_static(self, rel):
         import posixpath

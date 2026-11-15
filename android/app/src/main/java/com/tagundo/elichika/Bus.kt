@@ -104,6 +104,13 @@ object Bus {
     @Volatile var preparationPhase = AssetInstaller.PreparationPhase.IDLE
         private set
 
+    @Volatile internal var archiveDownloadProgress: ArchiveDownloadProgress? = null
+        private set
+    internal fun setArchiveDownloadProgress(progress: ArchiveDownloadProgress?) {
+        archiveDownloadProgress = progress
+        main.post { listeners.values.toList().forEach { it.state(serverRunning) } }
+    }
+
     @Volatile internal var payloadProgress: PayloadProgress.State? = null
         private set
     private var progressDispatch: Runnable? = null

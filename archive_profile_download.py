@@ -1,0 +1,471 @@
+#!/usr/bin/env python3
+"""Public, pinned archive.org asset downloads; no login, unpacking, or DB edits.
+
+Call download() only inside the application's existing server/tool operation
+barrier. The publication URL and digest must come from the reviewed release.
+The UI callback uses its own download progress, not DB-upgrade stage weights.
+"""
+from __future__ import annotations
+
+import concurrent.futures
+from dataclasses import dataclass
+import hashlib
+from http.client import HTTPException
+import json
+import os
+from pathlib import Path
+import re
+import sqlite3
+import stat
+import tempfile
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+CHUNK = 128 * 1024
+MAX_CATALOG = 256 * 1024
+MAX_PROFILE = 64 * 1024 * 1024
+MAX_OBJECT = 141834336
+TOTAL_OBJECTS = 42830
+PROFILES = tuple(f"gl/{p}/{lang}" for p in ("android", "ios") for lang in ("en", "ko", "zh")) + ("jp/android/ja", "jp/ios/ja")
+NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
+ITEM = re.compile(r"[a-z0-9][a-z0-9_.-]{2,99}\Z")
+HEX64 = re.compile(r"[a-f0-9]{64}\Z")
+HEX32 = re.compile(r"[a-f0-9]{32}\Z")
+
+
+class DownloadError(Exception):
+    """Human-readable failure without remote response bodies or credentials."""
+
+
+class Cancelled(Exception):
+    """The caller requested cancellation; completed verified files are retained."""
+
+
+def require(value, message):
+    if not value:
+        raise DownloadError(message)
+
+
+def whole(value, maximum=None):
+    return type(value) is int and value >= 0 and (maximum is None or value <= maximum)
+
+
+def digest(value, pattern=HEX64):
+    return isinstance(value, str) and bool(pattern.fullmatch(value))
+
+
+def archive_url(item, path):
+    require(isinstance(item, str) and ITEM.fullmatch(item), "Invalid archive item identifier.")
+    require(isinstance(path, str) and all(NAME.fullmatch(p) for p in path.split("/")), "Invalid archive object path.")
+    return "https://archive.org/download/" + item + "/" + path
+
+
+def check_public_url(url):
+    require(isinstance(url, str) and len(url) < 1024, "Invalid archive download URL.")
+    parsed = urllib.parse.urlsplit(url)
+    require(parsed.scheme == "https" and parsed.netloc == "archive.org" and not parsed.query and not parsed.fragment,
+            "Downloads must use a public HTTPS archive.org URL.")
+    parts = parsed.path.split("/")
+    require(len(parts) >= 4 and parts[0] == "" and parts[1] == "download", "Invalid archive download URL path.")
+    require(url == archive_url(parts[2], "/".join(parts[3:])), "Noncanonical archive download URL.")
+    return url
+
+
+class ArchiveRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlsplit(newurl)
+        host = parsed.hostname or ""
+        require(parsed.scheme == "https" and (host == "archive.org" or host.endswith(".archive.org")) and
+                parsed.port in (None, 443) and parsed.username is None and parsed.password is None,
+                "archive.org redirected outside its public HTTPS hosts.")
+        return super().redirect_request(request, fp, code, msg, headers, newurl)
+
+
+class PublicHTTP:
+    def __init__(self):
+        self.opener = urllib.request.build_opener(ArchiveRedirects())
+
+    def open(self, url):
+        check_public_url(url)
+        request = urllib.request.Request(url, headers={"Accept-Encoding": "identity", "User-Agent": "Elichika-asset-download/1"})
+        return self.opener.open(request, timeout=20)
+
+
+@dataclass(frozen=True)
+class Source:
+    catalog_url: str
+    catalog_sha256: str
+    target_manifest_sha256: str
+
+    def validate(self):
+        check_public_url(self.catalog_url)
+        require(self.catalog_url.endswith("/catalog.json"), "Archive source is not a catalog.json publication.")
+        require(digest(self.catalog_sha256) and digest(self.target_manifest_sha256), "Archive publication SHA256 pins are missing or invalid.")
+
+
+def select_profiles(region="gl", platform="android", language="all"):
+    require(region in ("gl", "jp", "both"), "Choose GL, JP, or both regions.")
+    require(platform in ("android", "ios", "both"), "Choose Android, iOS, or both platforms.")
+    allowed = {"gl": ("all", "en", "ko", "zh"), "jp": ("all", "ja"), "both": ("all",)}
+    require(language in allowed[region], "Choose a language valid for the selected region; both regions require all languages.")
+    return tuple(p for p in PROFILES if (region == "both" or p.startswith(region + "/")) and
+                 (platform == "both" or p.split("/")[1] == platform) and (language == "all" or p.endswith("/" + language)))
+
+
+class Progress:
+    def __init__(self, callback, cancelled):
+        self.callback, self.cancelled = callback, cancelled
+        self.abort = threading.Event()
+        self.lock, self.last = threading.Lock(), 0.0
+        self.callback_lock, self.sequence, self.delivered = threading.RLock(), 0, 0
+        self.value = {"stage": "catalog", "completed_files": 0, "total_files": 0, "completed_bytes": 0,
+                      "total_bytes": 0, "transferred_bytes": 0, "reused_files": 0, "downloaded_files": 0, "current": ""}
+
+    def check(self):
+        if self.abort.is_set() or self.cancelled():
+            raise Cancelled()
+
+    def update(self, force=False, add=None, **changes):
+        self.check()
+        packet = None
+        with self.lock:
+            self.value.update(changes)
+            for name, amount in (add or {}).items():
+                self.value[name] += amount
+            now = time.monotonic()
+            if force or now - self.last >= .25:
+                self.last = now
+                self.sequence += 1
+                packet = dict(self.value)
+                packet["sequence"] = self.sequence
+                total = packet["total_bytes"]
+                packet["percent"] = 100 if packet["stage"] == "complete" else (min(100, packet["completed_bytes"] * 100 // total) if total else 0)
+        if packet is not None and self.callback:
+            with self.callback_lock:
+                if packet["sequence"] <= self.delivered:
+                    return
+                self.delivered = packet["sequence"]
+                try:
+                    self.callback(packet)
+                except Exception:
+                    # UI observers do not own the verified filesystem transaction.
+                    pass
+
+    def wait(self, seconds):
+        until = time.monotonic() + seconds
+        while time.monotonic() < until:
+            self.check()
+            time.sleep(min(.1, max(0, until - time.monotonic())))
+
+
+def fetch(http, url, output, maximum, progress, *, size=None, sha256=None, md5=None, label="catalog", attempts=4):
+    """Write only validated complete responses; retries reset the private temp."""
+    check_public_url(url)
+    for attempt in range(attempts):
+        progress.check()
+        pause = min(8, 2 ** attempt)
+        try:
+            with http.open(url) as response:
+                status = response.status
+                require(status == 200, f"{label}: expected a complete HTTP 200 response, received {status}.")
+                require(response.headers.get("Content-Encoding", "identity").lower() == "identity", f"{label}: server returned encoded content.")
+                length = response.headers.get("Content-Length")
+                require(length is None or (length.isdigit() and int(length) <= maximum), f"{label}: response length exceeds its limit.")
+                if size is not None:
+                    require(length is None or int(length) == size, f"{label}: response length differs from the published size.")
+                sha, checksum, count = hashlib.sha256(), hashlib.md5(), 0
+                try:
+                    output.seek(0)
+                    output.truncate()
+                except OSError as error:
+                    raise DownloadError(f"{label}: temporary file reset failed ({error.strerror or type(error).__name__}).") from None
+                deadline = time.monotonic() + 1800
+                while True:
+                    progress.check()
+                    require(time.monotonic() < deadline, f"{label}: complete transfer exceeded 30 minutes.")
+                    block = response.read(min(CHUNK, maximum - count + 1))
+                    if not block:
+                        break
+                    count += len(block)
+                    require(count <= maximum, f"{label}: response exceeds its published byte limit.")
+                    try:
+                        output.write(block)
+                    except OSError as error:
+                        raise DownloadError(f"{label}: temporary asset write failed ({error.strerror or type(error).__name__}).") from None
+                    sha.update(block)
+                    checksum.update(block)
+                    progress.update(add={"transferred_bytes": len(block)}, current=label)
+                require(size is None or count == size, f"{label}: received {count} bytes; expected {size}.")
+                require(sha256 is None or sha.hexdigest() == sha256, f"{label}: SHA256 verification failed.")
+                require(md5 is None or checksum.hexdigest() == md5, f"{label}: MD5 verification failed.")
+                try:
+                    output.flush()
+                    os.fsync(output.fileno())
+                except OSError as error:
+                    raise DownloadError(f"{label}: temporary asset save failed ({error.strerror or type(error).__name__}).") from None
+                return count
+        except urllib.error.HTTPError as error:
+            if error.code not in (429, 500, 502, 503, 504):
+                raise DownloadError(f"{label}: archive.org returned HTTP {error.code}.") from None
+            retry = error.headers.get("Retry-After", "")
+            if retry.isdigit():
+                pause = min(60, max(pause, int(retry)))
+        except (OSError, urllib.error.URLError, TimeoutError, HTTPException) as error:
+            if attempt + 1 == attempts:
+                reason = getattr(error, "reason", error)
+                detail = getattr(reason, "strerror", None) or str(reason) or type(reason).__name__
+                detail = " ".join(detail.split())[:180]
+                raise DownloadError(f"{label}: archive.org download failed after {attempts} attempts ({type(error).__name__}: {detail}).") from None
+        if attempt + 1 == attempts:
+            raise DownloadError(f"{label}: archive.org remained unavailable after {attempts} attempts.")
+        progress.wait(pause)
+
+
+def load_catalog(path, source):
+    with open(path, "r", encoding="utf-8") as f:
+        value = json.load(f)
+    require(isinstance(value, dict) and type(value.get("schema")) is int and value["schema"] == 1 and value.get("document_type") == "catalog", "Unsupported archive catalog schema.")
+    require(value.get("status") == value.get("target_status") == "COMPLETE" and value.get("scope") == "authoritative_target", "Archive publication is incomplete or not authoritative.")
+    require(value.get("requested_total") == value.get("expected_objects") == value.get("available_objects") == TOTAL_OBJECTS,
+            "Archive catalog does not cover all 42,830 required files.")
+    require(value.get("target_manifest_sha256") == source.target_manifest_sha256, "Archive target differs from the reviewed release target.")
+    require(all(type(value.get(k)) is int and value[k] == 0 for k in ("missing_objects", "conflicting_objects", "unavailable_objects")), "Archive catalog reports missing or conflicting files.")
+    require(digest(value.get("inventory_sha256")), "Archive inventory SHA256 is invalid.")
+    require(whole(value.get("declared_bytes")) and value.get("declared_bytes") == value.get("verified_bytes") and value["declared_bytes"] > 0,
+            "Archive catalog byte coverage is inconsistent.")
+    descriptors = value.get("profile_manifests")
+    require(isinstance(descriptors, list) and len(descriptors) == len(PROFILES), "Archive catalog must contain exactly eight profile manifests.")
+    by_profile = {}
+    for row in descriptors:
+        require(isinstance(row, dict) and row.get("profile") in PROFILES and row["profile"] not in by_profile, "Duplicate or unknown archive profile.")
+        profile = row["profile"]
+        require(row.get("status") == row.get("target_status") == "COMPLETE" and row.get("scope") == "authoritative_target", f"{profile}: profile is incomplete.")
+        require(all(whole(row.get(k), TOTAL_OBJECTS) for k in ("expected_objects", "available_objects")) and row["expected_objects"] == row["available_objects"] and
+                all(whole(row.get(k)) for k in ("declared_bytes", "verified_bytes")) and row["declared_bytes"] == row["verified_bytes"], f"{profile}: profile counts or byte totals are inconsistent.")
+        require(whole(row.get("bytes"), MAX_PROFILE) and row["bytes"] > 0 and digest(row.get("sha256")) and digest(row.get("md5"), HEX32), f"{profile}: manifest size or digests are invalid.")
+        check_public_url(row.get("url"))
+        require(row["url"] == source.catalog_url.removesuffix("catalog.json") + "profiles/" + profile + ".json", f"{profile}: manifest is outside the published index item.")
+        by_profile[profile] = row
+    return value, by_profile
+
+
+def profile_records(path):
+    """Read the producer's final objects array with at most one record buffered."""
+    marker = ',"objects":['
+    decoder = json.JSONDecoder()
+    with open(path, "r", encoding="utf-8") as stream:
+        prefix = ""
+        while marker not in prefix:
+            more = stream.read(4096)
+            require(bool(more) and len(prefix) < 128 * 1024, "Profile objects array is missing or its header is too large.")
+            prefix += more
+        header, rest = prefix.split(marker, 1)
+        value = json.loads(header + "}")
+        require(isinstance(value, dict) and "objects" not in value, "Profile header is invalid.")
+        yield value
+        need_value = True
+        first = True
+        while True:
+            rest = rest.lstrip()
+            if not rest:
+                rest = stream.read(4096)
+                require(bool(rest), "Profile objects array ended unexpectedly.")
+                continue
+            if rest.startswith("]"):
+                require(first or not need_value, "Profile objects array has a trailing comma.")
+                tail = rest[1:] + stream.read(4096)
+                require(tail.strip() == "}" and not stream.read(1), "Profile has data after its final objects array.")
+                return
+            if not need_value:
+                require(rest.startswith(","), "Profile objects array separator is invalid.")
+                rest, need_value = rest[1:], True
+                continue
+            while True:
+                try:
+                    obj, end = decoder.raw_decode(rest)
+                    break
+                except json.JSONDecodeError:
+                    require(len(rest) < 32 * 1024, "Profile object exceeds its record size limit.")
+                    more = stream.read(4096)
+                    require(bool(more), "Profile contains an invalid JSON object.")
+                    rest += more
+            require(isinstance(obj, dict), "Profile asset record is not an object.")
+            yield obj
+            rest, need_value, first = rest[end:], False, False
+
+
+def add_profile(db, path, row, catalog, progress=None):
+    records = profile_records(path)
+    header = next(records)
+    profile = row["profile"]
+    require(type(header.get("schema")) is int and header["schema"] == 1 and header.get("document_type") == "profile" and header.get("profile") == profile and
+            header.get("inventory_sha256") == catalog["inventory_sha256"] and header.get("status") == header.get("target_status") == "COMPLETE" and
+            header.get("scope") == "authoritative_target" and header.get("unavailable") == [], f"{profile}: manifest identity or completion status is invalid.")
+    require(all(whole(header.get(k)) and header[k] == row[k] for k in ("expected_objects", "available_objects", "declared_bytes", "verified_bytes")), f"{profile}: manifest totals differ from its catalog descriptor.")
+    count, size_total = 0, 0
+    with db:
+        for obj in records:
+            if progress is not None and count % 128 == 0:
+                progress.check()
+            name, size = obj.get("name"), obj.get("size")
+            require(isinstance(name, str) and NAME.fullmatch(name) and obj.get("path") == "packs/" + name, f"{profile}: invalid asset name or path.")
+            require(whole(size, MAX_OBJECT) and digest(obj.get("sha256")) and digest(obj.get("md5"), HEX32), f"{name}: invalid asset size or digests.")
+            require(obj.get("url") == archive_url(obj.get("item"), obj["path"]), f"{name}: download URL differs from its item and path.")
+            membership = obj.get("profiles")
+            require(isinstance(membership, list) and all(isinstance(p, str) and p in PROFILES for p in membership) and
+                    profile in membership and len(membership) == len(set(membership)), f"{name}: invalid profile memberships.")
+            identity = (size, obj["sha256"], obj["md5"], obj["url"], json.dumps(sorted(membership), separators=(",", ":")))
+            try:
+                db.execute("INSERT INTO membership VALUES (?, ?)", (profile, name))
+            except sqlite3.IntegrityError:
+                raise DownloadError(f"{profile}: duplicate asset {name}.") from None
+            old = db.execute("SELECT size, sha256, md5, url, profiles FROM objects WHERE name=?", (name,)).fetchone()
+            require(old is None or old == identity, f"{name}: selected profiles disagree on the asset identity.")
+            if old is None:
+                db.execute("INSERT INTO objects VALUES (?, ?, ?, ?, ?, ?)", (name, *identity))
+            count += 1
+            size_total += size
+            require(count <= row["expected_objects"] and size_total <= row["declared_bytes"], f"{profile}: manifest exceeds its published totals.")
+    require(count == row["expected_objects"] and size_total == row["declared_bytes"], f"{profile}: manifest record totals do not match its descriptor.")
+
+
+def existing_matches(root_fd, name, size, sha256, progress):
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        raise DownloadError(f"{name}: existing file cannot be opened safely; check permissions or symbolic links.") from None
+    try:
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode), f"{name}: destination is not a regular file.")
+        if info.st_size != size:
+            return False
+        sha = hashlib.sha256()
+        with os.fdopen(fd, "rb", closefd=False) as source:
+            while block := source.read(CHUNK):
+                progress.check()
+                sha.update(block)
+                progress.update(current=name)
+        after = os.fstat(fd)
+        require((info.st_size, info.st_mtime_ns, info.st_ctime_ns) == (after.st_size, after.st_mtime_ns, after.st_ctime_ns), f"{name}: existing file changed while checking it; stop other asset writers.")
+        return sha.hexdigest() == sha256
+    finally:
+        os.close(fd)
+
+
+def _download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None):
+    """Download selected verified originals. Valid completed files resume across calls.
+
+    Returns counts. Raises Cancelled or DownloadError. Does not start/stop a
+    server, edit config/masterdata, add mods, or use archive.org credentials.
+    """
+    require(isinstance(source, Source), "Archive source must contain reviewed publication URL and SHA256 pins.")
+    source.validate()
+    selected = select_profiles(region, platform, language)
+    require(type(workers) is int and 1 <= workers <= 4, "Download workers must be between one and four.")
+    report = Progress(progress, cancelled or (lambda: False))
+    report.update(force=True)
+    http = http or PublicHTTP()
+    packs = Path(packs).absolute()
+    packs.mkdir(parents=True, exist_ok=True)
+    root_fd = os.open(packs, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        with tempfile.TemporaryDirectory(prefix=".elichika-download-", dir=packs) as temporary:
+            work = Path(temporary)
+            catalog_path = work / "catalog.json"
+            with catalog_path.open("w+b") as output:
+                fetch(http, source.catalog_url, output, MAX_CATALOG, report, sha256=source.catalog_sha256)
+            catalog, descriptors = load_catalog(catalog_path, source)
+            db = sqlite3.connect(work / "selection.sqlite3")
+            try:
+                db.executescript("PRAGMA journal_mode=DELETE; PRAGMA cache_size=-1024; CREATE TABLE objects(name TEXT PRIMARY KEY COLLATE NOCASE,size INTEGER,sha256 TEXT,md5 TEXT,url TEXT,profiles TEXT); CREATE TABLE membership(profile TEXT,name TEXT,PRIMARY KEY(profile,name));")
+                profile_path = work / "profile.json"
+                for profile in selected:
+                    report.update(force=True, stage="profile", current=profile)
+                    row = descriptors[profile]
+                    with profile_path.open("w+b") as output:
+                        fetch(http, row["url"], output, MAX_PROFILE, report, size=row["bytes"], sha256=row["sha256"], md5=row["md5"], label=profile)
+                    add_profile(db, profile_path, row, catalog, report)
+                total, total_bytes = db.execute("SELECT count(*),coalesce(sum(size),0) FROM objects").fetchone()
+                require(total <= TOTAL_OBJECTS, "Selected archive union exceeds the catalog's file count.")
+                if selected == PROFILES:
+                    require(total == TOTAL_OBJECTS and total_bytes == catalog["declared_bytes"], "Complete selected profile union does not cover the catalog's 42,830 files and byte total.")
+                report.update(force=True, stage="files", total_files=total, total_bytes=total_bytes, current="")
+
+                def one(row):
+                    name, size, sha256, md5, url = row
+                    report.check()
+                    reused = existing_matches(root_fd, name, size, sha256, report)
+                    if not reused:
+                        require(os.statvfs(work).f_bavail * os.statvfs(work).f_frsize >= size + 8 * 1024 * 1024,
+                                f"{name}: insufficient free disk space for the next verified asset.")
+                        fd, filename = tempfile.mkstemp(prefix="asset-", dir=work)
+                        try:
+                            with os.fdopen(fd, "w+b") as output:
+                                fetch(http, url, output, size, report, size=size, sha256=sha256, md5=md5, label=name)
+                            report.check()
+                            try:
+                                target = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+                                require(stat.S_ISREG(target.st_mode), f"{name}: destination changed to a nonregular file.")
+                            except FileNotFoundError:
+                                pass
+                            os.replace(filename, name, dst_dir_fd=root_fd)
+                            os.fsync(root_fd)
+                        finally:
+                            Path(filename).unlink(missing_ok=True)
+                    report.update(add={"completed_files": 1, "completed_bytes": size, "reused_files" if reused else "downloaded_files": 1}, current=name)
+
+                rows = iter(db.execute("SELECT name,size,sha256,md5,url FROM objects ORDER BY name"))
+                # At most workers live tasks; never enqueue the entire catalog.
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="archive-assets") as pool:
+                    active = set()
+                    try:
+                        for row in rows:
+                            report.check()
+                            active.add(pool.submit(one, row))
+                            if len(active) >= workers:
+                                done, active = concurrent.futures.wait(active, return_when=concurrent.futures.FIRST_COMPLETED)
+                                for future in done:
+                                    future.result()
+                        for future in active:
+                            future.result()
+                    except BaseException:
+                        report.abort.set()
+                        for future in active:
+                            future.cancel()
+                        raise
+                report.update(force=True, stage="complete", current="")
+                return {"profiles": list(selected), **report.value}
+            finally:
+                db.close()
+    finally:
+        os.close(root_fd)
+
+
+def download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None):
+    """Public API; see _download for operation-barrier and resume requirements."""
+    try:
+        return _download(source, packs, region=region, platform=platform, language=language,
+                         workers=workers, progress=progress, cancelled=cancelled, http=http)
+    except (Cancelled, DownloadError):
+        raise
+    except (json.JSONDecodeError, UnicodeError):
+        raise DownloadError("The published archive manifest is not valid UTF-8 JSON.") from None
+    except sqlite3.Error as error:
+        raise DownloadError(f"The temporary selected-file index failed ({type(error).__name__}); check available storage.") from None
+    except OSError as error:
+        raise DownloadError(f"The asset folder or temporary files could not be accessed ({error.strerror or type(error).__name__}).") from None
+
+
+def console_progress_record(packet):
+    """Map a module event to existing Mac ConsoleJob.Progress JSON keys.
+
+    Assign this directly under the runtime job lock. Do not pass it through
+    payload_upgrade_progress.make_record, whose stages describe DB upgrades.
+    """
+    return {"stage": "archive_" + packet["stage"], "completed": packet["completed_bytes"],
+            "total": packet["total_bytes"], "current": packet["current"], "percent": packet["percent"]}

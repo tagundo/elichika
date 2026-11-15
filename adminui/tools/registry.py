@@ -47,6 +47,9 @@ def _addon(folder, multi=False):
     picker becomes a multi-select so several files can be installed in one run."""
     f = {"name": "addon", "label": "File to install", "type": "dynamic_select",
          "source": "addon", "required": True,
+         "file_add": {"extensions": ["sql" if folder == "sql" else "zip"],
+                      "max_files": 128, "max_bytes": 512 * 1024 * 1024,
+                      "max_total_bytes": 8 * 1024 * 1024 * 1024},
          "help": "Files in sukusta/{folder} and …/addons appear here.",
          "help_folder": folder}
     if multi:
