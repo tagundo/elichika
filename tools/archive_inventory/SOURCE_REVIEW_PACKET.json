@@ -1,0 +1,130 @@
+{
+  "schema": 2,
+  "status": "READY_FOR_ROOT_REVIEW",
+  "source_only": true,
+  "activated": false,
+  "directory": "/tmp/asset-individual-uploader-20261115/v2",
+  "preserved_frozen_v1_directory": "/tmp/asset-individual-uploader-20261115",
+  "files": [
+    {
+      "name": "individual_uploader.py",
+      "bytes": 75103,
+      "sha256": "951ab67ecc4fb5c0ca306516a2de35b58515542910521561bbb7ba81e649926b"
+    },
+    {
+      "name": "merge_supplement.py",
+      "bytes": 12121,
+      "sha256": "9ddd44d666805e95955d0b8704941bb04a6efc44f09cbfa92b86bb65972116bf"
+    },
+    {
+      "name": "test_individual_uploader.py",
+      "bytes": 70151,
+      "sha256": "bcafe12cf8736c1e0f875143d10de574d1a76733daa86888a738b7c9443f4db6"
+    },
+    {
+      "name": "test_merge_supplement.py",
+      "bytes": 10316,
+      "sha256": "8652802726e269b6afe50bcf5ef3018b16c568537d015068229e973b0f38d5a3"
+    },
+    {
+      "name": "README.md",
+      "bytes": 8271,
+      "sha256": "3efaa47c177e632472d54d0df2096892147a0a998b27ada405c9544cf64a5937"
+    },
+    {
+      "name": "tests.log",
+      "bytes": 9697,
+      "sha256": "ea45fc6228cce7086ab64ace8b152fc74643d0f0e8bdab4ef9b7947dbed44f80"
+    }
+  ],
+  "tests": {
+    "passed": 54,
+    "uploader_tests": 49,
+    "merge_tests": 5,
+    "command": "python3 -B -m unittest -v test_individual_uploader test_merge_supplement",
+    "actual_credentials_read": false,
+    "real_network_requests": 0,
+    "real_payload_bytes_downloaded": 0,
+    "account_writes": 0
+  },
+  "target": {
+    "files": 42830,
+    "bytes": 33321064961,
+    "manifest_sha256": "e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c"
+  },
+  "original": {
+    "item": "llsifas-elichika-static-data",
+    "source_catalog_sha256": "0aa7c4b4cbc70f71298c47fb378b5a2d19d25a71f39907a37d14d45d5bded0ee",
+    "metadata_sha256": "7cb43889efd923a1b8df7b4d2b8873813aba66207070e3860084508db5d92318",
+    "base_inventory_sha256": "24875b44310c51a855f8536c55a092ee05f0c5555e18446e9655f2218abc198f",
+    "base_audit_sha256": "bcee508ab60e82ce62e27b1cfd69f9e987721bfe45f5d1b926a528a370e205be",
+    "verified_tar_objects": 34797,
+    "original_reports_rewritten": false
+  },
+  "supplemental": {
+    "item": "love-live-all-stars",
+    "metadata_sha256": "0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5",
+    "required_objects": 8033,
+    "required_bytes": 8101415374,
+    "proof_status": "PENDING_ROOT_VERIFIED_HOSTED_REPORT",
+    "proof_raw_sha256": null,
+    "proof_source_commit": "2b2d843efb99c6535b4e6f3c2f612d8e1c89c2de",
+    "proof_required_status": "VERIFIED",
+    "required_hashes": [
+      "size",
+      "md5",
+      "sha1",
+      "sha256"
+    ]
+  },
+  "merge_outputs": [
+    "inventory.json",
+    "audit.json",
+    "merge-receipt.json"
+  ],
+  "merge_cli_required_flags": [
+    "--inventory",
+    "--audit",
+    "--catalog",
+    "--metadata",
+    "--part-reports",
+    "--target-manifest",
+    "--target-manifest-sha256",
+    "--supplemental-metadata",
+    "--supplemental-metadata-sha256",
+    "--supplemental-proof",
+    "--supplemental-proof-sha256",
+    "--output"
+  ],
+  "uploader_extra_flags": [
+    "--supplemental-metadata",
+    "--supplemental-metadata-sha256",
+    "--supplemental-proof",
+    "--supplemental-proof-sha256"
+  ],
+  "strict_upload_gate": "Before auth: complete authoritative42830objects/33321064961bytes and noallowpartial; explicit targetSHA and both supplementalfileSHA pins; original18reports retained and exact originalTAR omission set supplied only by full verifiedsupplementproof.",
+  "verification_method": "OriginalTAR exact206payload SHA256 stage; supplemental exactHTTP200fullpayload size+MD5+SHA1+pre-provenSHA256 stage; boundedSHA256/MD5 re-readforPUT; serverhexContentMD5; acknowledgedPUTETag=MD5; allremote data metadata size+MD5; ownedjournal resume. All8profilesfullremoteSHAverifiedbefore smallglobalcataloglast andfullremoteSHAverified. No whole-corpus remoteSHA256 redownload claim.",
+  "catalog_metadata_changes": [
+    "source_snapshot_databases labels oldpre-migrationDBfingerprints",
+    "target_provenance from actualpinnedauthoritativewrapper",
+    "source_items identifiesbothpublicArchiveitems",
+    "supplementalmetadata/proofhash/provenance published"
+  ],
+  "workflow": "No v2 legacytemplate; Rootprepares reviewed fixedsource workflowwithallinput/provenance pins, authafterstrictplan,2workers,320minchunks,atmost5attempts, safejournalcontinuation.",
+  "actual_combined_plan": "NOT_RUN_PENDING_REAL_VERIFIED_SUPPLEMENT_REPORT",
+  "limits": {
+    "workers_default": 1,
+    "workers_maximum": 2,
+    "s3_connections_maximum": 2,
+    "stage_budget_bytes": 100663296,
+    "maximum_object_bytes": 141834336,
+    "data_items": 64,
+    "index_items": 1
+  },
+  "remaining_root_steps": [
+    "Obtain successful canonical full-stream8033supplementproof artifact andpinrun/source/report/ZIPdigest",
+    "Run actualimmutablemerge andstrictplan; verifycomplete42830/33321064961 andcombinedinventorySHA",
+    "Review/install exactsourcehashes in fixedsourceworkflow",
+    "Introduce confirmedRepositorySecrets onlyafterall preflightproof gates pass; run bounded resumable upload"
+  ]
+}

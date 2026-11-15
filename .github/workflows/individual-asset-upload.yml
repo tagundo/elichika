@@ -1,0 +1,150 @@
+name: Upload complete individual game assets
+
+on:
+  push:
+    branches: [codex/asset-individual-upload-20261115]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: elichika-individual-original-asset-upload
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 345
+    steps:
+      - name: Start finite attempt budget
+        run: |
+          python3 - <<'PY'
+          import os, time
+          from pathlib import Path
+          (Path(os.environ['RUNNER_TEMP']) / 'elichika-upload-budget-start').write_text(str(int(time.time())))
+          PY
+      - uses: actions/checkout@v4
+        timeout-minutes: 5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: tools/archive_inventory
+      - name: Check reviewed source and immutable CI provenance before credentials
+        id: pins
+        timeout-minutes: 5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RESUME_RUN_ID: ''
+        working-directory: tools/archive_inventory
+        run: python3 -B ci_preflight.py provenance
+      - name: Run synthetic transfer, merge and workflow safety tests
+        timeout-minutes: 5
+        working-directory: tools/archive_inventory
+        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_reaggregate_target test_ci_preflight
+      - name: Download unchanged original TAR proofs
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43681672170
+          pattern: archive-part-proofs-*
+          path: ${{ runner.temp }}/elichika-original-part-proofs
+      - name: Download verified supplemental payload proof
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43686115875
+          name: missing-8033-supplement-proof
+          path: ${{ runner.temp }}/elichika-supplement-inputs
+      - name: Derive and validate the complete pinned 42830-file inventory
+        timeout-minutes: 5
+        working-directory: tools/archive_inventory
+        run: python3 -B ci_prepare.py prepare
+      - name: Preserve complete source inventory and review receipt without payloads
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 10
+        with:
+          name: elichika-complete-upload-inputs
+          path: |
+            ${{ runner.temp }}/elichika-complete-upload-inputs/inventory.json
+            ${{ runner.temp }}/elichika-complete-upload-inputs/audit.json
+            ${{ runner.temp }}/elichika-complete-upload-inputs/merge-receipt.json
+            ${{ runner.temp }}/elichika-complete-upload-inputs/prepared-inputs-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Restore only the previous owned attempt journal
+        if: steps.pins.outputs.activate_upload == 'true' && steps.pins.outputs.resume_run_id != ''
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.pins.outputs.resume_run_id }}
+          name: ${{ steps.pins.outputs.resume_artifact_name }}
+          path: ${{ runner.temp }}/elichika-resume-inputs
+      - name: Prepare protected work directory and remaining time
+        if: steps.pins.outputs.activate_upload == 'true'
+        id: budget
+        timeout-minutes: 2
+        env:
+          RESUME_RUN_ID: ${{ steps.pins.outputs.resume_run_id }}
+        working-directory: tools/archive_inventory
+        run: |
+          python3 -B ci_prepare.py work
+          python3 -B ci_prepare.py budget
+      - name: Upload complete originals with ephemeral protected credentials
+        if: steps.pins.outputs.activate_upload == 'true'
+        timeout-minutes: 325
+        env:
+          ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+          ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+          UPLOAD_SECONDS: ${{ steps.budget.outputs.seconds }}
+        working-directory: tools/archive_inventory
+        run: |
+          umask 077
+          trap 'rm -f -- "$RUNNER_TEMP/elichika-ia-upload-auth/auth.json"; rmdir -- "$RUNNER_TEMP/elichika-ia-upload-auth" 2>/dev/null || true' EXIT
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          config = json.loads(Path('activation.json').read_bytes())
+          auth = {'access': os.environ['ELICHIKA_ARCHIVE_ACCESS_KEY'],
+                  'secret': os.environ['ELICHIKA_ARCHIVE_SECRET_KEY'],
+                  'account': config['account'], 'session_nonce': config['session_nonce']}
+          if not auth['access'] or not auth['secret']:
+              raise SystemExit('Required Repository Secrets are unavailable')
+          directory = Path(os.environ['RUNNER_TEMP']) / 'elichika-ia-upload-auth'
+          directory.mkdir(mode=0o700)
+          fd = os.open(directory / 'auth.json', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+          with os.fdopen(fd, 'w') as output:
+              json.dump(auth, output)
+          PY
+          unset ELICHIKA_ARCHIVE_ACCESS_KEY ELICHIKA_ARCHIVE_SECRET_KEY
+          timeout --signal=TERM --kill-after=30s "$UPLOAD_SECONDS" \
+            python3 -B individual_uploader.py upload \
+            --inventory "$RUNNER_TEMP/elichika-complete-upload-inputs/inventory.json" \
+            --audit "$RUNNER_TEMP/elichika-complete-upload-inputs/audit.json" \
+            --catalog expected-catalog.json.gz --metadata archive-metadata.json \
+            --part-reports "$RUNNER_TEMP/elichika-original-part-proofs" \
+            --target-manifest authoritative-target.json.gz \
+            --target-manifest-sha256 e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c \
+            --supplemental-metadata supplemental-metadata.json.gz \
+            --supplemental-metadata-sha256 0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5 \
+            --supplemental-proof "$RUNNER_TEMP/elichika-supplement-inputs/supplement-proof.json" \
+            --supplemental-proof-sha256 "$(python3 -c 'import json; print(json.load(open("activation.json"))["supplement_proof_sha256"])')" \
+            --requested-total 42830 --workers 2 --stage-budget 100663296 \
+            --work "$RUNNER_TEMP/elichika-ia-upload-work" \
+            --auth-file "$RUNNER_TEMP/elichika-ia-upload-auth/auth.json"
+      - name: Preserve only safe durable journal and public publication receipt
+        if: always() && steps.pins.outputs.activate_upload == 'true'
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 10
+        with:
+          name: elichika-individual-upload-journal-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/elichika-ia-upload-work/journal.json
+            ${{ runner.temp }}/elichika-ia-upload-work/journal.events.jsonl
+            ${{ runner.temp }}/elichika-ia-upload-work/publication.json
+          if-no-files-found: warn
+          retention-days: 30
