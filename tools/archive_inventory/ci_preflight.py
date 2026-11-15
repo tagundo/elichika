@@ -11,21 +11,27 @@ import urllib.request
 
 
 JOURNAL_SEED = {
-    "run_id": 43695514757,
-    "source_commit": "7afc12a27b38dee60b926546b3f716afd75bc00d",
+    "run_id": 43699687032,
+    "source_commit": "1d487a4cf512127f3b1afbe62b0ed4f83b3a3ba1",
     "run_attempt": 1,
-    "artifact_id": 14153389501,
+    "artifact_id": 14156036891,
     "name": "elichika-individual-upload-journal-attempt-1",
-    "artifact_bytes": 33346,
-    "digest": "sha256:8d5c7a092103540a1a39d0fbe05e683429216ed03d474f2d110e511dc8a5cd01",
+    "artifact_bytes": 33358,
+    "digest": "sha256:0dd6c141a9c9bb49a7f22cdf09b52e9019be216143b2a74d28686d546f041e0f",
     "rawfilehashes": {
         "journal.json": "76fc8a69c26b5830014401e54605b2e50ed22d458dd55301668609b3f61c7629",
-        "journal.events.jsonl": "08b271a1fe47f23236c4a0a501db04a89ec3b57bb05a9ead687746dd0483ffa6",
+        "journal.events.jsonl": "a22d940c9a626e01c5d18fcfe7012bcc709ddd5b9d9d2c8f94a7a0dec8d21c80",
     },
-    "prior_attempts": 2,
+    "prior_attempts": 3,
 }
 DIAGNOSTIC_SCOPE = {"name": "00jst0", "max_new_files": 1, "workers": 1,
-                    "max_attempts": 1, "index_publication": False}
+                    "max_attempts": 1, "index_publication": False,
+                    "existing_item": "elichika-assets-20261115-e316340d-fa6f6031-b04"}
+PUBLICATION_LAYOUT = {"schema": 1, "kind": "EXISTING_OWNED_FIVE_V1",
+                      "layout_sha256": "5369587bb29a63e7ac25ef29b7a183a61cddc2d017bee1836486350ed380650f",
+                      "index_item": "elichika-assets-20261115-e316340d-fa6f6031-b00",
+                      "index_prefix": "elichika-selective-five-v1"}
+LAYOUT_PLAN_SHA256 = "ecf10fb04cadbd3ce7359d03baf458c6eb48308f8658d17e44072f807e78479e"
 JOURNAL_SEED_IDENTITY = {
     "account": "tagundo", "allow_partial": False,
     "catalog_sha256": "0aa7c4b4cbc70f71298c47fb378b5a2d19d25a71f39907a37d14d45d5bded0ee",
@@ -57,10 +63,12 @@ def validate_seed(config):
     check(isinstance(seed, dict) and seed == JOURNAL_SEED,
           "Journal seed differs from the one statically reviewed prior run")
     check(type(seed["prior_attempts"]) is int and type(seed["run_attempt"]) is int and
-          seed["prior_attempts"] == 2 and seed["run_attempt"] == 1,
-          "Only the fixed V3 plus V4 attempt history may seed this diagnostic")
+          seed["prior_attempts"] == 3 and seed["run_attempt"] == 1,
+          "Only the fixed V3/V4/V5 attempt history may seed this diagnostic")
     check(config.get("diagnostic") == DIAGNOSTIC_SCOPE,
           "Only one statically reviewed diagnostic object and attempt are authorized")
+    check(config.get("publication_layout") == PUBLICATION_LAYOUT and config.get("layout_plan_sha256") == LAYOUT_PLAN_SHA256,
+          "Explicit reviewed five-owned publication layout is required")
     identity = JOURNAL_SEED_IDENTITY
     check(config.get("activate_upload") is True and config.get("account") == identity["account"] and
           config.get("session_nonce") == identity["session"] and

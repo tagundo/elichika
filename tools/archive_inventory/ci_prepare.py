@@ -10,6 +10,7 @@ import sys
 import time
 
 import ci_preflight
+import owned_layout
 
 
 def check(condition, message):
@@ -116,12 +117,13 @@ def main():
                    "target_manifest_sha256": config["target_manifest_sha256"],
                    "supplement_proof_sha256": config["supplement_proof_sha256"],
                    "requested_total": 42830}
-        receipt.update(upload_mode="ONE_OWNED_STAGED_OBJECT_DIAGNOSTIC", max_new_files=1,
+        receipt.update(upload_mode="ONE_EXISTING_OWNED_CONTAINER_DIAGNOSTIC", max_new_files=1,
                        index_publication_authorized=False)
         (combined / "prepared-inputs-receipt.json").write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
         print(json.dumps(receipt, sort_keys=True))
     elif args.command == "work":
-        prepare_work(config, temp, os.environ.get("RESUME_RUN_ID", ""), os.environ.get("RESUME_KIND", ""))
+        owned_layout.prepare_migration(config, base, temp, os.environ.get("RESUME_RUN_ID", ""),
+                                       os.environ.get("RESUME_KIND", ""))
     else:
         started = int((temp / "elichika-upload-budget-start").read_text())
         # Finite subprocess ends before the job limit, preserving durable receipts.

@@ -116,7 +116,8 @@ class SourceTests(unittest.TestCase):
 def seed_config():
     identity = copy.deepcopy(p.JOURNAL_SEED_IDENTITY)
     config = {"journal_seed": copy.deepcopy(p.JOURNAL_SEED), "activate_upload": True, "requested_total": 42830,
-              "diagnostic": copy.deepcopy(p.DIAGNOSTIC_SCOPE)}
+              "diagnostic": copy.deepcopy(p.DIAGNOSTIC_SCOPE), "publication_layout": copy.deepcopy(p.PUBLICATION_LAYOUT),
+              "layout_plan_sha256": p.LAYOUT_PLAN_SHA256}
     for config_key, identity_key in (
         ("account", "account"), ("session_nonce", "session"),
         ("inventory_sha256", "inventory_sha256"),
@@ -187,7 +188,7 @@ class SeedResumeTests(unittest.TestCase):
 
     def test_seed_config_pins_cannot_be_replaced_with_another_matching_run(self):
         for key, value in (("run_id", 99), ("source_commit", "b" * 40),
-                           ("artifact_id", 99), ("prior_attempts", 0), ("prior_attempts", 1),
+                           ("artifact_id", 99), ("prior_attempts", 0), ("prior_attempts", 1), ("prior_attempts", 2),
                            ("rawfilehashes", {"journal.json": "0" * 64, "journal.events.jsonl": "0" * 64})):
             with self.subTest(key=key):
                 config = copy.deepcopy(self.config)

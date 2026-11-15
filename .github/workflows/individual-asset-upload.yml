@@ -1,4 +1,4 @@
-name: Diagnose one owned pending game asset PUT
+name: Diagnose one existing owned container PUT
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
       - name: Run synthetic transfer, merge and workflow safety tests
         timeout-minutes: 5
         working-directory: tools/archive_inventory
-        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler test_reaggregate_target test_ci_preflight test_diagnostic_put
+        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler test_reaggregate_target test_ci_preflight test_diagnostic_put test_layout_review test_existing_owned
       - name: Download unchanged original TAR proofs
         uses: actions/download-artifact@v4
         timeout-minutes: 10
@@ -95,7 +95,7 @@ jobs:
         run: |
           python3 -B ci_prepare.py work
           python3 -B ci_prepare.py budget
-      - name: Diagnose exactly one reviewed STAGED object with protected credentials
+      - name: Diagnose one file in existing marked b04 without item-creation headers
         if: steps.pins.outputs.activate_upload == 'true'
         timeout-minutes: 6
         env:
@@ -123,7 +123,7 @@ jobs:
           PY
           unset ELICHIKA_ARCHIVE_ACCESS_KEY ELICHIKA_ARCHIVE_SECRET_KEY
           timeout --signal=TERM --kill-after=30s "$UPLOAD_SECONDS" \
-            python3 -B individual_uploader.py upload \
+            python3 -B existing_owned_diagnostic.py upload \
             --inventory "$RUNNER_TEMP/elichika-complete-upload-inputs/inventory.json" \
             --audit "$RUNNER_TEMP/elichika-complete-upload-inputs/audit.json" \
             --catalog expected-catalog.json.gz --metadata archive-metadata.json \
@@ -149,5 +149,6 @@ jobs:
             ${{ runner.temp }}/elichika-ia-upload-work/journal.events.jsonl
             ${{ runner.temp }}/elichika-ia-upload-work/publication.json
             ${{ runner.temp }}/elichika-ia-upload-work/diagnostic.json
+            ${{ runner.temp }}/elichika-ia-upload-work/migration.json
           if-no-files-found: warn
           retention-days: 30
