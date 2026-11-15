@@ -16,7 +16,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import safe_name, stream_copy, verify_file
 from fetch_game import fetch
-from package_ipa import bundle_versions, zip_inventory
+from package_ipa import bundle_versions, intended_app_info, zip_inventory
 from patch_load import HOST_LOAD, patch_main
 from signature_proof import image, prove
 
@@ -120,6 +120,22 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(bundle_versions('2026.11.16.12', now=now)['CFBundleVersion'], '2611.16.12')
         for value in ('2026.11.15.1', '2026.11.16.0', '2026.11.16.100', '2026.11.16'):
             with self.subTest(value=value), self.assertRaises(ValueError): bundle_versions(value, now=now)
+
+    def test_document_access_preserves_original_game_metadata_and_loopback_scope(self):
+        original = {'MinimumOSVersion': '13.0', 'CFBundleShortVersionString': '3.12.0',
+                    'CFBundleIdentifier': 'com.klab.lovelive.allstars.global', 'UIDeviceFamily': [1, 2],
+                    'UISupportedInterfaceOrientations': ['Portrait', 'LandscapeLeft', 'LandscapeRight'],
+                    'NSAppTransportSecurity': {'NSAllowsArbitraryLoads': False}}
+        before = plistlib.dumps(original)
+        result = intended_app_info(original, {'canonical': '2026.11.16.1', 'CFBundleVersion': '2611.16.1'})
+        self.assertEqual(plistlib.dumps(original), before)
+        for name in ('CFBundleShortVersionString', 'CFBundleIdentifier', 'UIDeviceFamily', 'UISupportedInterfaceOrientations'):
+            self.assertEqual(result[name], original[name])
+        self.assertIs(result['UIFileSharingEnabled'], True)
+        self.assertIs(result['LSSupportsOpeningDocumentsInPlace'], True)
+        self.assertIs(result['NSAppTransportSecurity']['NSAllowsArbitraryLoads'], False)
+        self.assertNotIn('UISupportsDocumentBrowser', result)
+        self.assertNotIn('NSLocalNetworkUsageDescription', result)
 
     def test_archive_paths_reject_traversal_and_noncanonical_entries(self):
         for value in ('/tmp/a', '../a', 'a/../b', 'a//b', './a', 'a\\b', 'a/./b'):

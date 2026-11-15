@@ -41,7 +41,7 @@ def validate_reply(value, core_only):
     require(value.get('schema') == 1 and value.get('probe_kind') == 'native-simulator-real-backend-fake-game',
             'Probe does not identify the separate Simulator test target')
     for key in ('captured', 'game_started', 'real_backend_ready', 'gate_installed', 'profile_supported',
-                'authenticated_go_health', 'tls_probe', 'probe_pass'):
+                'authenticated_go_health', 'tls_probe', 'storage_paths_valid', 'probe_pass'):
         require(value.get(key) is True, 'Real-backend Simulator gate did not pass: ' + key)
     require(value.get('phase') == 'running' and value.get('fake_game_start_count') == 1,
             'Readiness did not start the captured test game exactly once')

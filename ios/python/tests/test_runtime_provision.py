@@ -2,11 +2,87 @@ import importlib.util
 from pathlib import Path
 import sys
 import tempfile
+import hashlib
+import struct
 import unittest
+from unittest.mock import patch
+import zipfile
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "ios/runtime"))
 import provision
+
+
+def thin_fixture(platform, cpu=0x100000c):
+    return struct.pack("<8I", 0xfeedfacf, cpu, 0, 6, 1, 24, 0, 0) + struct.pack("<6I", 0x32, 24, platform, 13 << 16, 18 << 16, 0)
+
+
+def fat_fixture(slices):
+    records, contents = [], bytearray(64)
+    for cpu, raw in slices:
+        offset = len(contents)
+        records.append(struct.pack(">5I", cpu, 0, offset, len(raw), 0))
+        contents.extend(raw)
+    contents[:8] = struct.pack(">II", 0xcafebabe, len(records))
+    contents[8:8 + len(records) * 20] = b"".join(records)
+    return bytes(contents)
+
+
+class NativeNormalizationTests(unittest.TestCase):
+    def test_device_one_slice_fat_and_simulator_fat_select_real_arm64(self):
+        for target, platform in (("device", 2), ("simulator", 7)):
+            selected = thin_fixture(platform)
+            raw = fat_fixture([(0x100000c, selected)] if target == "device" else
+                              [(0x1000007, thin_fixture(platform, 0x1000007)), (0x100000c, selected)])
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                binary = Path(directory) / "Python"
+                binary.write_bytes(raw)
+                commands = []
+                def lipo(command, **kwargs):
+                    commands.append(list(map(str, command)))
+                    if "-archs" in command:
+                        return "arm64\n" if target == "device" else "x86_64 arm64\n"
+                    self.assertEqual(command[3:5], ["-thin", "arm64"])
+                    Path(command[-1]).write_bytes(selected)
+                with patch.object(provision, "run", side_effect=lipo):
+                    result = provision.normalize_arm64(binary, target)
+                self.assertEqual(binary.read_bytes(), selected)
+                self.assertEqual(result["selected_platform"], platform)
+                self.assertEqual(result["input_sha256"], hashlib.sha256(raw).hexdigest())
+                self.assertEqual(result["selected_sha256_before_relink_and_sign"], hashlib.sha256(selected).hexdigest())
+                self.assertEqual(len(result["input_slices"]), 1 if target == "device" else 2)
+                self.assertEqual(result["action"], "lipo-thin-arm64")
+                self.assertEqual(len(commands), 2)
+
+    def test_thinning_never_accepts_a_macos_slice_as_ios(self):
+        selected = thin_fixture(1)
+        raw = fat_fixture([(0x100000c, selected)])
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "Python"
+            binary.write_bytes(raw)
+            def lipo(command, **kwargs):
+                if "-archs" in command:
+                    return "arm64\n"
+                Path(command[-1]).write_bytes(selected)
+            with patch.object(provision, "run", side_effect=lipo), self.assertRaisesRegex(ValueError, "SDK platform differs"):
+                provision.normalize_arm64(binary, "device")
+            self.assertEqual(binary.read_bytes(), raw)
+            self.assertFalse(binary.with_name("Python.arm64-normalized").exists())
+
+    def test_only_the_two_pinned_abi3_distributions_are_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for distribution in ("etcpak-0.9.15", "astc_encoder_py-0.1.12", "numpy-1.26.2"):
+                wheel = root / (distribution + "-cp37-abi3-ios_13_0_arm64_iphoneos.whl")
+                with zipfile.ZipFile(wheel, "w") as archive:
+                    archive.writestr(distribution + "/marker.txt", "test input")
+                destination = root / distribution
+                if distribution.startswith("numpy-"):
+                    with self.assertRaisesRegex(ValueError, "Wrong Python ABI"):
+                        provision.unpack_wheel(wheel, destination, "device")
+                else:
+                    provision.unpack_wheel(wheel, destination, "device")
+                    self.assertTrue((destination / distribution / "marker.txt").is_file())
 
 
 class SourceResourceTests(unittest.TestCase):

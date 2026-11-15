@@ -67,6 +67,10 @@ def main():
         require(args.built_inputs is not None, 'Full candidate requires real current-build wheel+codec producer outputs (--built-inputs)')
     runtimes, archives = {}, {}
     for target, sdk in (('device', 'iphoneos'), ('simulator', 'iphonesimulator')):
+        archive = work / target / 'libElichikaServer.a'
+        build_go(repo, sdk, archive, evidence / ('go-' + target + '.json'))
+        archives[target] = archive
+    for target in ('device', 'simulator'):
         runtime = work / ('runtime-' + target)
         command = [sys.executable, '-B', repo / 'ios/runtime/provision.py', '--repo', repo,
                    '--target', target, '--output', runtime, '--cache', work / 'input-cache']
@@ -78,9 +82,6 @@ def main():
         run(command, cwd=repo)
         runtimes[target] = runtime
         shutil.copy2(runtime / 'runtime-report.json', evidence / ('runtime-' + target + '.json'))
-        archive = work / target / 'libElichikaServer.a'
-        build_go(repo, sdk, archive, evidence / ('go-' + target + '.json'))
-        archives[target] = archive
     native = work / 'device/ElichikaHost.framework'
     build_host(repo, 'iphoneos', runtimes['device'] / 'Frameworks/Python.framework', archives['device'],
                native, evidence / 'native-device.json')

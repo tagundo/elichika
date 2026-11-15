@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 import plistlib
 import re
 import shutil
+import struct
 import sys
 import tarfile
 import urllib.request
@@ -20,6 +21,65 @@ import zipfile
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "build"))
 from common import codesign, inventory, macho, require, run, safe_name, sha256, write_json
+
+
+def slice_inventory(path):
+    """Read the actual FAT wrapper without accepting it as a thin image."""
+    formats = {b"\xca\xfe\xba\xbe": (">", False), b"\xbe\xba\xfe\xca": ("<", False),
+               b"\xca\xfe\xba\xbf": (">", True), b"\xbf\xba\xfe\xca": ("<", True)}
+    size = path.stat().st_size
+    with path.open("rb") as stream:
+        header = stream.read(8)
+        require(len(header) == 8, "Truncated native runtime binary")
+        if header[:4] not in formats:
+            require(header[:4] == b"\xcf\xfa\xed\xfe", "Expected a Mach-O runtime input")
+            return None
+        endian, wide = formats[header[:4]]
+        count = struct.unpack(endian + "I", header[4:])[0]
+        require(0 < count <= 16, "Invalid FAT runtime slice count")
+        stride = 32 if wide else 20
+        raw = stream.read(count * stride)
+        require(len(raw) == count * stride, "Truncated FAT runtime slice table")
+    records = []
+    for index in range(count):
+        row = struct.unpack_from(endian + ("IIQQII" if wide else "IIIII"), raw, index * stride)
+        cpu, subtype, offset, length, alignment = row[:5]
+        require(length > 0 and offset >= 8 + count * stride and offset <= size and length <= size - offset
+                and alignment <= 32 and offset % (1 << alignment) == 0, "Invalid FAT runtime slice bounds")
+        require(not wide or row[5] == 0, "Invalid FAT64 reserved field")
+        for previous in records:
+            require(offset + length <= previous["offset"] or offset >= previous["offset"] + previous["bytes"],
+                    "Overlapping FAT runtime slices")
+        records.append({"cpu": cpu, "subtype": subtype, "offset": offset, "bytes": length, "alignment": alignment})
+    return records
+
+
+def normalize_arm64(path, target):
+    """Select arm64 from a verified iOS input, then retain the strict SDK audit."""
+    path = Path(path)
+    before = sha256(path)
+    slices = slice_inventory(path)
+    architectures = run(["xcrun", "lipo", "-archs", path], capture=True).split()
+    allowed = {"arm64", "arm64e"} if target == "device" else {"arm64", "x86_64"}
+    require("arm64" in architectures and set(architectures) <= allowed,
+            "The selected Python input does not contain the requested iOS arm64 architecture")
+    if slices is not None:
+        temporary = path.with_name(path.name + ".arm64-normalized")
+        require(not temporary.exists(), "Native normalization output already exists")
+        try:
+            run(["xcrun", "lipo", path, "-thin", "arm64", "-output", temporary])
+            macho(temporary, platform=2 if target == "device" else 7, kind=6)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    else:
+        require(architectures == ["arm64"], "Thin runtime input architecture differs")
+    selected = macho(path, platform=2 if target == "device" else 7, kind=6)
+    return {"input_sha256": before, "input_architectures": architectures,
+            "input_slices": slices or [{"cpu": selected["cpu"], "offset": 0, "bytes": path.stat().st_size}],
+            "action": "lipo-thin-arm64" if slices is not None else "already-thin-arm64",
+            "selected_architecture": "arm64", "selected_platform": selected["version"]["platform"],
+            "selected_sha256_before_relink_and_sign": sha256(path)}
 
 
 def download(row, cache):
@@ -44,7 +104,7 @@ def download(row, cache):
     return destination
 
 
-def extract_support(archive, output, target):
+def extract_support(archive, output, target, normalizations=None):
     framework_root = output / "Frameworks"
     stdlib = output / "ElichikaResources/python/lib/python3.13"
     framework_root.mkdir(parents=True)
@@ -88,10 +148,9 @@ def extract_support(archive, output, target):
                 shutil.copyfileobj(incoming, outgoing)
     python = framework_root / "Python.framework/Python"
     require(python.is_file(), "The selected iOS Python framework is missing")
-    if target == "simulator":
-        temporary = python.with_name("Python.arm64")
-        run(["xcrun", "lipo", python, "-thin", "arm64", "-output", temporary])
-        temporary.replace(python)
+    normalization = normalize_arm64(python, target)
+    if normalizations is not None:
+        normalizations[python.relative_to(output).as_posix()] = normalization
     info_path = python.parent / "Info.plist"
     info = plistlib.loads(info_path.read_bytes())
     info["CFBundleSupportedPlatforms"] = ["iPhoneOS" if target == "device" else "iPhoneSimulator"]
@@ -102,7 +161,9 @@ def extract_support(archive, output, target):
 
 def unpack_wheel(path, destination, target):
     platform = "ios_13_0_arm64_" + ("iphoneos" if target == "device" else "iphonesimulator")
-    require(path.name.endswith("none-any.whl") or re.search(r"-(?:cp313-cp313|cp3[0-9]+-abi3)-" + platform + r"\.whl$", path.name),
+    native_tag = bool(re.search(r"-cp313-cp313-" + platform + r"\.whl$", path.name))
+    pinned_abi3 = bool(re.fullmatch(r"(?:etcpak-0\.9\.15|astc_encoder_py-0\.1\.12)-cp37-abi3-" + platform + r"\.whl", path.name))
+    require(path.name.endswith("none-any.whl") or native_tag or pinned_abi3,
             "Wrong Python ABI or SDK wheel: " + path.name)
     seen, expanded = set(), 0
     with zipfile.ZipFile(path) as source:
@@ -123,7 +184,7 @@ def unpack_wheel(path, destination, target):
                 shutil.copyfileobj(incoming, outgoing)
 
 
-def framework_extensions(output, target):
+def framework_extensions(output, target, normalizations=None):
     mappings, libraries = {}, {}
     stdlib = output / "ElichikaResources/python/lib/python3.13"
     framework_root = output / "Frameworks"
@@ -138,7 +199,10 @@ def framework_extensions(output, target):
         moved = framework / name
         shutil.move(binary, moved)
         moved.chmod(0o755)
-        macho(moved, platform=2 if target == "device" else 7, kind=6)
+        normalization = normalize_arm64(moved, target)
+        if normalizations is not None:
+            normalization["source_path"] = (stdlib / relative).relative_to(output).as_posix()
+            normalizations[moved.relative_to(output).as_posix()] = normalization
         run(["xcrun", "install_name_tool", "-id", "@rpath/" + name + ".framework/" + name, moved])
         (framework / "Info.plist").write_bytes(plistlib.dumps({
             "CFBundleExecutable": name, "CFBundleIdentifier": "org.elichika.python." + re.sub(r"[^A-Za-z0-9.-]", "-", name),
@@ -210,7 +274,8 @@ def prepare(args):
     require(sys.platform == "darwin", "iOS framework conversion and signing require macOS")
     lock = json.loads((HERE / "runtime-lock.json").read_text())
     require(not args.output.exists(), "Use a fresh runtime output directory")
-    stdlib = extract_support(download(lock["python"], args.cache), args.output, args.target)
+    normalizations = {}
+    stdlib = extract_support(download(lock["python"], args.cache), args.output, args.target, normalizations)
     site = stdlib / "site-packages"
     site.mkdir()
     complete = False
@@ -252,11 +317,12 @@ def prepare(args):
         require(built.get("toolset_complete") is True, "Wheel producer has not proved full native dependency closure")
         complete = True
     copy_app(args.repo, args.output / "ElichikaResources/python-app", core_only=args.core_only)
-    mappings = framework_extensions(args.output, args.target)
+    mappings = framework_extensions(args.output, args.target, normalizations)
     report = {"schema": 1, "target": args.target, "python_abi": "3.13", "core_only": args.core_only,
               "toolset_complete": complete, "files": inventory(args.output), "extension_mappings": mappings,
               "frameworks_codesign_verify_passed": True, "actual_device_execution": False,
               "archive_publication_guard_passed": not args.core_only,
+              "native_input_normalizations": normalizations,
               "dependency_lock_sha256": sha256(HERE / "runtime-lock.json")}
     write_json(args.output / "runtime-report.json", report)
     return report

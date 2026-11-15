@@ -288,9 +288,21 @@ static BOOL ELPrepareConfiguration(NSString **error) {
     NSURL *support=[manager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
     NSURL *documents=[manager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
     NSString *root=[[support.path stringByAppendingPathComponent:@"Elichika"] stringByAppendingPathComponent:@"data"];
+    NSString *documentsRoot=documents.path.stringByStandardizingPath.stringByResolvingSymlinksInPath;
+    NSString *library=[documentsRoot stringByAppendingPathComponent:@"Elichika"];
+    NSString *packs=[library stringByAppendingPathComponent:@"packs"];
+    NSString *imports=[library stringByAppendingPathComponent:@"imports"];
     NSString *resources=[NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"ElichikaResources"];
     if (![manager createDirectoryAtPath:root withIntermediateDirectories:YES attributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:NULL]) {
         *error=@"Could not prepare app-private server storage."; return NO;
+    }
+    for (NSString *folder in @[packs,imports]) {
+        NSString *canonical=folder.stringByStandardizingPath.stringByResolvingSymlinksInPath;
+        if (![canonical hasPrefix:[documentsRoot stringByAppendingString:@"/"]] ||
+            ![manager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:NULL] ||
+            ![folder.stringByResolvingSymlinksInPath hasPrefix:[documentsRoot stringByAppendingString:@"/"]]) {
+            *error=@"Could not prepare the Elichika folder in Documents."; return NO;
+        }
     }
     uint8_t random[32]; if (SecRandomCopyBytes(kSecRandomDefault,sizeof random,random)!=errSecSuccess) {
         *error=@"Could not create the local server session."; return NO;
@@ -306,8 +318,8 @@ static BOOL ELPrepareConfiguration(NSString **error) {
         @"payload_root":[resources stringByAppendingPathComponent:@"python-app"],
         @"seed_root":[resources stringByAppendingPathComponent:@"payload"],
         @"tool_data_root":[resources stringByAppendingPathComponent:@"tool-data"],
-        @"data_root":root,@"documents_root":documents.path,
-        @"imports_root":[documents.path stringByAppendingPathComponent:@"Imports"],
+        @"data_root":root,@"documents_root":documentsRoot,
+        @"packs_root":packs,@"imports_root":imports,
         @"listen_address":@"127.0.0.1:8080",@"token":token,@"ready_token":readyToken,@"language":language,
         @"region":ELClientRegion ?: @"gl",
         @"core_only":@NO

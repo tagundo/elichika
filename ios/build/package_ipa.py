@@ -40,6 +40,19 @@ def bundle_versions(value=None, *, now=None):
             'Seoul_build_date': actual_day}
 
 
+def intended_app_info(original, versions):
+    """Keep game metadata and add only reviewed host/version/document access."""
+    info = copy.deepcopy(original)
+    info.update(CFBundleVersion=versions['CFBundleVersion'], SIFASBuildVersion=versions['canonical'],
+                ElichikaUnifiedBuildVersion=versions['canonical'], ElichikaUnifiedHostEnabled=True,
+                ElichikaUnifiedCandidateStatus='UNTESTED_PHYSICAL_IPHONE_IPAD_REQUIRES_USER_SIGNING',
+                UIFileSharingEnabled=True, LSSupportsOpeningDocumentsInPlace=True)
+    info.setdefault('NSAppTransportSecurity', {})['NSAllowsLocalNetworking'] = True
+    require(float(info['MinimumOSVersion']) <= 13.0, 'Original minimum iOS version changed unexpectedly')
+    info['MinimumOSVersion'] = '13.0'
+    return info
+
+
 def zip_inventory(archive, pin):
     rows = archive.infolist()
     names = [row.filename for row in rows]
@@ -252,13 +265,7 @@ def package(source, runtime, native, payload, output, work, report, *, lock, ver
     require(original_info['CFBundleIdentifier'] == lock['game']['bundle_id']
             and original_info['CFBundleShortVersionString'] == lock['game']['preserve_game_short_version']
             and original_info['UIDeviceFamily'] == [1, 2], 'Original iPhone/iPad game metadata differs')
-    info = copy.deepcopy(original_info)
-    info.update(CFBundleVersion=versions['CFBundleVersion'], SIFASBuildVersion=versions['canonical'],
-                ElichikaUnifiedBuildVersion=versions['canonical'], ElichikaUnifiedHostEnabled=True,
-                ElichikaUnifiedCandidateStatus='UNTESTED_PHYSICAL_IPHONE_IPAD_REQUIRES_USER_SIGNING')
-    info.setdefault('NSAppTransportSecurity', {})['NSAllowsLocalNetworking'] = True
-    require(float(info['MinimumOSVersion']) <= 13.0, 'Original minimum iOS version changed unexpectedly')
-    info['MinimumOSVersion'] = '13.0'
+    info = intended_app_info(original_info, versions)
     (app / 'Info.plist').write_bytes(plistlib.dumps(info, fmt=plistlib.FMT_BINARY, sort_keys=False))
     provenance = {'schema': 1, 'status': 'UNVALIDATED_PHYSICAL_DEVICE_CANDIDATE', 'source': source_identity(repo),
                   'version': versions, 'game_input': lock, 'Python_runtime_receipt': runtime_report,

@@ -35,6 +35,25 @@ static NSUInteger ELFakeGameStarts;
 - (void)write:(NSMutableDictionary *)result {
     result[@"fake_game_start_count"]=@(ELFakeGameStarts);
     result[@"probe_kind"]=@"native-simulator-real-backend-fake-game";
+    NSDictionary *configuration=ElichikaHostConfiguration();
+    NSFileManager *manager=NSFileManager.defaultManager;
+    NSString *documents=[manager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject.path.stringByResolvingSymlinksInPath;
+    NSString *support=[manager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject.path.stringByResolvingSymlinksInPath;
+    NSDictionary *expected=@{@"data_root":[support stringByAppendingPathComponent:@"Elichika/data"],
+        @"packs_root":[documents stringByAppendingPathComponent:@"Elichika/packs"],
+        @"imports_root":[documents stringByAppendingPathComponent:@"Elichika/imports"]};
+    BOOL storageValid=YES;
+    for (NSString *key in expected) {
+        NSString *actual=[configuration[key] stringByStandardizingPath].stringByResolvingSymlinksInPath;
+        BOOL directory=NO;
+        if (![actual isEqual:expected[key]] || ![manager fileExistsAtPath:actual isDirectory:&directory] || !directory) storageValid=NO;
+    }
+    result[@"storage_paths_valid"]=@(storageValid);
+    result[@"storage_layout"]=@{@"data_relative_application_support":@"Elichika/data",@"packs_relative_documents":@"Elichika/packs",@"imports_relative_documents":@"Elichika/imports"};
+    if (!storageValid) {
+        result[@"probe_pass"]=@NO; result[@"phase"]=@"error";
+        if (![result[@"error"] length]) result[@"error"]=@"The actual native storage configuration failed its Documents contract.";
+    }
     NSString *path=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"elichika-simulator-probe.json"];
     NSData *data=[NSJSONSerialization dataWithJSONObject:result options:NSJSONWritingPrettyPrinted error:NULL];
     [data writeToFile:path atomically:YES];

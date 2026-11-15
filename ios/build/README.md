@@ -35,6 +35,12 @@ All new native Python extensions live in signed iOS frameworks with CPython
 imported documents and downloaded assets use its writable sandbox. No build
 host executable, user database or host configuration is included.
 
+The intended app metadata enables `UIFileSharingEnabled` and
+`LSSupportsOpeningDocumentsInPlace`. The app's Documents directory, including
+its packs folder, is accessible through Files and Finder for direct placement
+of large asset sets. This does not turn the game into a document browser or
+add a LAN permission prompt; its embedded services use loopback addresses.
+
 The output is named `UNTESTED-iPhone-iPad.ipa`, is fully ad-hoc signed and
 verified, and requires the user's SideStore signing. Compiler, Simulator and
 packaging success do not prove actual SIFAS gameplay on a physical iPhone/iPad.
