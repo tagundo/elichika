@@ -1,7 +1,6 @@
 name: Resume complete Archive uploads through finite sequential jobs
 on:
-  push:
-    branches: [codex/asset-upload-resume-20261115]
+  workflow_dispatch:
 permissions:
   contents: read
   actions: read
@@ -24,6 +23,15 @@ jobs:
             tools/archive_inventory
             tools/archive_resume
             .github/workflows
+      - name: Initialize protected fail-closed bootstrap evidence before provenance
+        run: |
+          python3 -B - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/archive_resume')
+          import chain_control
+          chain_control.initialize_bootstrap_evidence(Path(os.environ['RUNNER_TEMP']))
+          PY
       - name: Verify exact run, source QA and original proof provenance before credentials
         timeout-minutes: 5
         env:

@@ -145,7 +145,19 @@ class SegmentTests(unittest.TestCase):
         self.assertEqual([x["type"] for x in events], ["put_begin", "put_ack"])
 
     def timed_transport(self, h, remote=False, bad_md5=False):
+        # Model a timeout while the coordinator is actually waiting for its
+        # begun PUT. Without this barrier, fake time can expire during initial
+        # admission and exercise the conservative fatal-drain branch instead.
+        coordinator_waiting = threading.Event()
+        original_wait = concurrent.futures.wait
+        def wait(*args, **kwargs):
+            coordinator_waiting.set()
+            return original_wait(*args, **kwargs)
+        waiting = patch.object(concurrent.futures, "wait", side_effect=wait)
+        waiting.start(); self.addCleanup(waiting.stop)
         def put(item, key, path, size, sha, md5, headers, progress):
+            if not coordinator_waiting.wait(5):
+                raise AssertionError("Coordinator never waited for the begun timeout fixture PUT")
             if remote: h.remote[item][key] = {"size": str(size), "md5": "0" * 32 if bad_md5 else md5}
             h.summary = {"http_status": None, "xml_code": "UNKNOWN", "spam_refusal": False}
             self.clock.sleep(3601)
@@ -163,6 +175,9 @@ class SegmentTests(unittest.TestCase):
         receipt = h.pub.checkpoint("HALTED")
         self.assertEqual(receipt["status"], "HALTED")
         self.assertEqual(len(receipt["unresolved_puts"]), 1)
+        self.assertFalse(h.puts)
+        self.assertEqual(h.pub.trace.attempt, 1)
+        self.assertEqual(h.pub.records()["f0000"]["status"], "STAGED")
 
     def test_accepted_unacknowledged_put_resolves_only_exact_owned_public_md5(self):
         h = self.make(count=1); self.timed_transport(h, remote=True)

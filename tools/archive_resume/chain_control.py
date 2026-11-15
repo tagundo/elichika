@@ -176,9 +176,9 @@ def verify_current_run(fetch, env=None, require_qa=True):
     run, attempt, sha = current_identity(env)
     row = fetch(f'/repos/{REPOSITORY}/actions/runs/{run}')
     require(row.get('id') == run and row.get('run_attempt') == attempt and row.get('head_sha') == sha and
-            row.get('path') == WORKFLOW and row.get('head_branch') == BRANCH and row.get('event') == 'push' and
+            row.get('path') == WORKFLOW and row.get('head_branch') == BRANCH and row.get('event') == 'workflow_dispatch' and
             row.get('head_repository', {}).get('full_name') == REPOSITORY,
-            'Current chain workflow identity differs from the reviewed push source')
+            'Current chain workflow identity differs from the reviewed manual dispatch source')
     if require_qa:
         values = fetch(f'/repos/{REPOSITORY}/actions/workflows/archive-resume-source-qa.yml/runs?head_sha={sha}&event=push&per_page=100')
         require(type(values.get('total_count')) is int and values['total_count'] <= 100, 'QA provenance exceeds bounded query')
@@ -378,7 +378,7 @@ def production_log(log):
             'Legacy failure is not an ordinary reviewed process time budget')
     require(not re.search(r'^\S+\s+(?:##\[error\])?FAILED:', region, re.M),
             'Runtime failure is not an ordinary budget checkpoint')
-    events = 0
+    structured = []
     for line in region.splitlines():
         body = re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line).strip()
         if not body.startswith('{'):
@@ -387,15 +387,76 @@ def production_log(log):
             event = json.loads(body)
         except json.JSONDecodeError:
             continue
+        if isinstance(event, dict):
+            structured.append(event)
+    def timeout_count(progress):
+        metrics = progress.get('transport_failure_counts')
+        require(isinstance(metrics, dict) and isinstance(metrics.get('s3', {}), dict),
+                'Malformed transport heartbeat evidence')
+        counts = metrics.get('s3', {})
+        require(all(k == 'TIMEOUT' and type(v) is int and v >= 0 for k,v in counts.items()),
+                'Only the known S3 TIMEOUT diagnostic can corroborate a missing response')
+        return counts.get('TIMEOUT', 0)
+    def http_counts(progress):
+        metrics = progress.get('http_status_counts')
+        require(isinstance(metrics, dict) and isinstance(metrics.get('s3', {}), dict),
+                'Malformed provider status heartbeat evidence')
+        counts = metrics.get('s3', {})
+        require(all(k in ('200','429','500','502','503','504') and type(v) is int and v >= 0 for k,v in counts.items()),
+                'Unknown provider status in transport heartbeat evidence')
+        return counts
+    events, timeouts, classified_http = 0, 0, {}
+    for index, event in enumerate(structured):
         if 's3_response' not in event:
             continue
-        response = event['s3_response']; events += 1
-        require(isinstance(response, dict) and response.get('spam_refusal') is False and
-                response.get('http_status') in (429, 500, 502, 503, 504) and
-                response.get('xml_code') in ('SlowDown', 'ServiceUnavailable', 'InternalError', 'RequestTimeout'),
+        response = event['s3_response']
+        require(isinstance(response, dict) and response.get('spam_refusal') is False,
                 'Archive spam/refusal/unknown response forbids automatic legacy continuation')
+        if response.get('http_status') is None:
+            # A missing HTTP response is not a provider HTTP refusal. The exact
+            # frozen worker emits this summary for a known transport failure.
+            # Accept only a TIMEOUT corroborated by the immediately surrounding
+            # structured heartbeats. This does NOT resolve any file or PUT.
+            require('http_status' in response and response.get('xml_code') == 'UNKNOWN' and
+                    0 < index < len(structured)-1,
+                    'Uncorroborated missing HTTP response forbids legacy continuation')
+            before, after = structured[index-1], structured[index+1]
+            require(before.get('progress') is True and after.get('progress') is True,
+                    'Missing response lacks adjacent transport heartbeat evidence')
+            require(timeout_count(after) == timeout_count(before)+1,
+                    'Missing response does not match exactly one S3 TIMEOUT increment')
+            # Cumulative provider status counters may show concurrent successful
+            # writes, but cannot hide a new or unknown HTTP response here.
+            old_counts, new_counts = http_counts(before), http_counts(after)
+            require(all(new_counts.get(k,0) >= v for k,v in old_counts.items()) and
+                    all(new_counts.get(k,0) == old_counts.get(k,0) for k in set(old_counts)|set(new_counts) if k != '200'),
+                    'Provider error counters changed around a missing HTTP response')
+            timeouts += 1
+        else:
+            require(type(response.get('http_status')) is int and response['http_status'] in (429,500,502,503,504) and
+                    response.get('xml_code') in ('SlowDown','ServiceUnavailable','InternalError','RequestTimeout'),
+                    'Archive spam/refusal/unknown response forbids automatic legacy continuation')
+            events += 1
+            classified_http[str(response['http_status'])] = classified_http.get(str(response['http_status']),0)+1
+    # Every production heartbeat is evidence, including the final heartbeat
+    # outside any timeout's local window. Refusal counters or unpaired failures
+    # cannot be hidden by later generic ACK progress or a final timeout124.
+    previous_timeout, previous_http = 0, {}
+    heartbeats = [event for event in structured if event.get('progress') is True]
+    for progress in heartbeats:
+        current_timeout, current_http = timeout_count(progress), http_counts(progress)
+        require(current_timeout >= previous_timeout and
+                all(current_http.get(k,0) >= v for k,v in previous_http.items()),
+                'Production S3 counters regressed or disappeared')
+        previous_timeout, previous_http = current_timeout, current_http
+    require(previous_timeout == timeouts,
+            'Production TIMEOUT counters do not match all classified transport summaries')
+    if heartbeats:
+        require(all(v <= classified_http.get(k,0) for k,v in previous_http.items() if k != '200'),
+                'A production provider error counter lacks a classified safe HTTP response')
     return {'status': 'ORDINARY_TIMEOUT124', 'production_log_sha256': digest(region.encode()),
-            'known_transient_responses': events, 'whole_log_sha256': digest(log)}
+            'known_transient_responses': events, 'corroborated_transport_timeouts': timeouts,
+            'transport_diagnostics_resolve_no_files': True, 'whole_log_sha256': digest(log)}
 
 
 def legacy_provenance(github):
@@ -431,9 +492,48 @@ def legacy_provenance(github):
     return row, rows[0], policy
 
 
-def copy_journals(source, work):
+
+def initialize_bootstrap_evidence(temporary):
+    work = u.secure_directory(Path(temporary) / 'elichika-ia-upload-work', create=True)
+    require(set(p.name for p in work.iterdir()) <= {'bootstrap.json'},
+            'Bootstrap evidence directory contains prior or unverified input')
+    path = work / 'bootstrap.json'
+    if path.exists():
+        previous = read_json(path, u.CHUNK)
+        require(previous.get('status') == 'HALTED' and previous.get('phase') == 'PRE_PROVENANCE' and
+                previous.get('identity_sha256') == IDENTITY_SHA,
+                'Bootstrap initial evidence is not the exact unverified placeholder')
+    u.atomic_json(path, {'schema':1,'status':'HALTED','phase':'PRE_PROVENANCE',
+                        'identity_sha256':IDENTITY_SHA,'account_writes':0,
+                        'reason_code':'VERIFIED_IMPORT_NOT_COMPLETED',
+                        'reason':'Verified legacy provenance and journal import have not completed',
+                        'unverified_inputs_copied':False})
+    return work
+
+
+def seal_bootstrap_failure(work, error):
+    # No exception string, response body, URL, or unchecked metadata enters this
+    # receipt. Journals can exist only after verified download and replay.
+    receipt = {'schema':1,'status':'HALTED','phase':'BOOTSTRAP_VALIDATION',
+               'identity_sha256':IDENTITY_SHA,'account_writes':0,
+               'reason_code':'VALIDATION_REJECTED' if isinstance(error, ChainError) else 'EXTERNAL_EVIDENCE_ERROR',
+               'reason':'Bootstrap did not complete verified provenance and exact journal reconciliation',
+               'exception_class':type(error).__name__ if type(error).__name__ in ('ChainError','Failure','Stop','ValueError','KeyError','TypeError','OSError','HTTPError','URLError') else 'OtherError',
+               'unverified_inputs_copied':False}
+    if all((work/name).is_file() and not (work/name).is_symlink() for name in JOURNALS):
+        receipt['raw_journal_sha256'] = raw_journals(work)
+    u.atomic_json(work/'bootstrap.json', receipt)
+
+
+def copy_journals(source, work, bootstrap_evidence=False):
     source, work = Path(source), Path(work)
-    work.mkdir(mode=0o700, parents=True, exist_ok=False)
+    if bootstrap_evidence:
+        u.secure_directory(work)
+        require({p.name for p in work.iterdir()} == {'bootstrap.json'} and
+                read_json(work/'bootstrap.json',u.CHUNK).get('status') == 'HALTED',
+                'Only the protected unverified bootstrap receipt may preexist')
+    else:
+        work.mkdir(mode=0o700, parents=True, exist_ok=False)
     for name in JOURNALS:
         path = source / name
         require(path.is_file() and not path.is_symlink() and path.stat().st_size < MAX_FILE, 'Unsafe journal copy')
@@ -660,6 +760,17 @@ def main(argv=None):
     parser.add_argument('--artifact-id', type=int)
     parser.add_argument('--artifact-sha256')
     args = parser.parse_args(argv)
+    temporary = Path(os.environ['RUNNER_TEMP'])
+    work = initialize_bootstrap_evidence(temporary) if args.command == 'bootstrap' else None
+    try:
+        return execute(args)
+    except Exception as error:
+        if work is not None:
+            seal_bootstrap_failure(work, error)
+        raise
+
+
+def execute(args):
     verify_sources()
     temporary = Path(os.environ['RUNNER_TEMP'])
     if args.command == 'verify-sources':
@@ -700,19 +811,11 @@ def main(argv=None):
         incoming = temporary / 'archive-resume-legacy'
         hashes = download_artifact(github, meta, incoming, JOURNALS, ('publication.json',))
         work = temporary / 'elichika-ia-upload-work'
-        copy_journals(incoming, work)
-        try:
-            resolved = resolve_legacy_staged(work, inventory, plan)
-        except Exception as error:
-            # Preserve the checked imported journals and a concrete safe reason;
-            # this HALTED receipt can never authorize an Archive credential step.
-            failure = {'schema': 1, 'status': 'HALTED', 'current_identity': identity,
-                       'legacy': {**LEGACY, 'artifact_id': meta['id'], 'artifact_sha256': meta['digest'][7:]},
-                       'raw_journal_sha256': raw_journals(work), 'exception_class': type(error).__name__}
-            if isinstance(error, ChainError):
-                failure['reason'] = str(error)
-            u.atomic_json(work / 'bootstrap.json', failure)
-            raise
+        # Validate complete ownership/source/layout semantics before copying any
+        # imported file into the protected failure/artifact work directory.
+        replay_journal(incoming, inventory, plan, allow_torn_tail=True)
+        copy_journals(incoming, work, bootstrap_evidence=True)
+        resolved = resolve_legacy_staged(work, inventory, plan)
         complete = row['conclusion'] == 'success'
         if complete:
             publication = publication_valid(read_json(incoming / 'publication.json', u.CHUNK))
@@ -792,7 +895,7 @@ if __name__ == '__main__':
         phase = sys.argv[1] if len(sys.argv) > 1 and re.fullmatch('[a-z-]{1,30}', sys.argv[1]) else 'startup'
         print('HALTED [' + phase + ']: ' + str(error)[:400], file=sys.stderr)
         raise SystemExit(1)
-    except (ValueError, KeyError, TypeError, OSError, u.Failure, old.Stop) as error:
+    except Exception as error:
         # Exception text can contain signed URLs. Only a fixed status is logged.
         phase = sys.argv[1] if len(sys.argv) > 1 and re.fullmatch('[a-z-]{1,30}', sys.argv[1]) else 'startup'
         print('HALTED [' + phase + ']: ' + type(error).__name__ + ' in external evidence or transport; inspect the step outcome and safe receipt', file=sys.stderr)

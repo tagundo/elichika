@@ -85,15 +85,26 @@ class ChainControlTests(unittest.TestCase):
             self.assertLessEqual(elapsed+got['hard_seconds'],20700)
         with self.assertRaises(c.ChainError):c.compute_budget(0,19000)
 
+    def test_production_is_manual_dispatch_only_while_source_qa_stays_push_and_manual(self):
+        root=Path(c.__file__).resolve().parents[2]
+        prod=(root/'.github/workflows/archive-upload-resume.yml').read_text()
+        qa=(root/'.github/workflows/archive-resume-source-qa.yml').read_text()
+        self.assertIn('on:\n  workflow_dispatch:',prod)
+        self.assertNotIn('\n  push:',prod)
+        self.assertIn('\n  push:',qa);self.assertIn('\n  workflow_dispatch:',qa)
+
     def test_rerun_cannot_fall_back_to_legacy_seed(self):
         bad=env();bad['GITHUB_RUN_ATTEMPT']='2'
         with self.assertRaises(c.ChainError):c.current_identity(bad)
 
     def test_exact_successful_source_qa_required(self):
-        row={**{'id':12345,'run_attempt':1,'head_sha':'b'*40,'path':c.WORKFLOW,'head_branch':c.BRANCH,'event':'push'},'head_repository':{'full_name':c.REPOSITORY}}
+        row={**{'id':12345,'run_attempt':1,'head_sha':'b'*40,'path':c.WORKFLOW,'head_branch':c.BRANCH,'event':'workflow_dispatch'},'head_repository':{'full_name':c.REPOSITORY}}
         qa={'head_sha':'b'*40,'path':c.QA_WORKFLOW,'event':'push','run_attempt':1,'status':'completed','conclusion':'success','head_repository':{'full_name':c.REPOSITORY}}
         def api(path):return row if path.endswith('/12345') else {'total_count':1,'workflow_runs':[qa]}
         self.assertEqual(c.verify_current_run(api,env()),identity())
+        row['event']='push'
+        with self.assertRaises(c.ChainError):c.verify_current_run(api,env())
+        row['event']='workflow_dispatch'
         for key,value in (('head_sha','f'*40),('conclusion','failure'),('path',c.WORKFLOW),('event','pull_request')):
             old=qa[key];qa[key]=value
             with self.assertRaises(c.ChainError):c.verify_current_run(api,env())
@@ -152,6 +163,127 @@ class ChainControlTests(unittest.TestCase):
     def test_known_transient_is_not_a_refusal_but_staged_still_requires_resolution(self):
         body='2026-11-15T01:00:00Z '+json.dumps({'s3_response':{'http_status':503,'xml_code':'SlowDown','spam_refusal':False}})
         self.assertEqual(c.production_log(self.log(body))['known_transient_responses'],1)
+
+    def transport_log(self,before=0,after=1,response=None,other_before=None,other_after=None,extra=''):
+        def progress(count,other):
+            v={'progress':True,'acknowledged_files':999,'transport_failure_counts':{'s3':{'TIMEOUT':count}},
+               'http_status_counts':{'s3':{'200':999}}}
+            if other:v.update(other)
+            return '2026-11-15T01:00:00Z '+json.dumps(v)
+        response=response or {'http_status':None,'xml_code':'UNKNOWN','spam_refusal':False}
+        body=progress(before,other_before)+'\n2026-11-15T01:00:01Z '+json.dumps({'s3_response':response})+'\n'+extra+'\n'+progress(after,other_after)
+        return self.log(body)
+
+    def test_corroborated_transport_timeout_is_not_a_provider_response_or_file_resolution(self):
+        result=c.production_log(self.transport_log())
+        self.assertEqual(result['corroborated_transport_timeouts'],1)
+        self.assertEqual(result['known_transient_responses'],0)
+        self.assertTrue(result['transport_diagnostics_resolve_no_files'])
+
+    def test_null_without_exact_timeout_increment_remains_halted(self):
+        for before,after in ((0,0),(2,1),(0,2),(True,1),(0,True),(0,-1)):
+            with self.subTest(before=before,after=after),self.assertRaises(c.ChainError):
+                c.production_log(self.transport_log(before,after))
+
+    def test_null_with_missing_or_wrong_transport_phase_or_category_is_halted(self):
+        for metrics in ({},{'source':{'TIMEOUT':1}},{'s3':{'NETWORK_IO_ERROR':1}},
+                        {'s3':{'TIMEOUT':'1'}},{'s3':None}):
+            with self.subTest(metrics=metrics),self.assertRaises(c.ChainError):
+                c.production_log(self.transport_log(other_after={'transport_failure_counts':metrics}))
+
+    def test_null_cannot_reuse_heartbeat_for_two_summaries_or_skip_structured_events(self):
+        duplicate='2026-11-15T01:00:02Z '+json.dumps({'s3_response':{'http_status':None,'xml_code':'UNKNOWN','spam_refusal':False}})
+        for extra in (duplicate,'2026-11-15T01:00:02Z {"unrelated":true}'):
+            with self.subTest(extra=extra),self.assertRaises(c.ChainError):c.production_log(self.transport_log(extra=extra))
+
+    def test_spam_and_numeric_unknown_are_not_excused_by_timeout_metrics(self):
+        for response in ({'http_status':503,'xml_code':'UNKNOWN','spam_refusal':False},
+                         {'http_status':503,'xml_code':'SlowDown','spam_refusal':True},
+                         {'http_status':403,'xml_code':'AccessDenied','spam_refusal':False},
+                         {'http_status':None,'xml_code':'UNKNOWN','spam_refusal':True},
+                         {'http_status':None,'xml_code':'SlowDown','spam_refusal':False},
+                         {'xml_code':'UNKNOWN','spam_refusal':False}):
+            with self.subTest(response=response),self.assertRaises(c.ChainError):c.production_log(self.transport_log(response=response))
+
+    def test_null_cannot_hide_new_provider_error_or_unknown_provider_counter(self):
+        for statuses in ({'200':999,'503':1},{'200':999,'403':1},{'200':True}):
+            with self.subTest(statuses=statuses),self.assertRaises(c.ChainError):
+                c.production_log(self.transport_log(other_after={'http_status_counts':{'s3':statuses}}))
+
+    def test_final_heartbeat_outside_timeout_window_cannot_hide_refusal_or_unpaired_error(self):
+        for transport,statuses in (({'TIMEOUT':1},{'200':999,'403':1}),
+                                   ({'TIMEOUT':1},{'200':999,'503':1}),
+                                   ({'TIMEOUT':2},{'200':999}),
+                                   ({'TIMEOUT':0},{'200':999}),
+                                   ({'TIMEOUT':1,'NETWORK_IO_ERROR':1},{'200':999})):
+            event={'progress':True,'transport_failure_counts':{'s3':transport},'http_status_counts':{'s3':statuses}}
+            raw=self.transport_log().replace(b'2026-11-15T05:20:01Z',('2026-11-15T05:19:59Z '+json.dumps(event)+'\n2026-11-15T05:20:01Z').encode())
+            with self.subTest(transport=transport,statuses=statuses),self.assertRaises(c.ChainError):c.production_log(raw)
+
+    def test_null_missing_final_progress_is_not_corroborated_by_exit124(self):
+        raw=self.transport_log();marker=b'2026-11-15T01:00:00Z {"progress": true'
+        at=raw.rfind(marker);end=raw.index(b'\n',at)
+        with self.assertRaises(c.ChainError):c.production_log(raw[:at]+raw[end+1:])
+
+    def test_successful_generic_ack_metrics_never_resolve_invisible_staged_file(self):
+        c.production_log(self.transport_log())
+        with tempfile.TemporaryDirectory() as t:
+            inv,plan,records=fixture(Path(t)/'work',staged=True,restaged=True)
+            pub=Public(records);clock=Clock()
+            with self.assertRaisesRegex(c.ChainError,'Unresolved legacy STAGED'):
+                c.resolve_legacy_staged(Path(t)/'work',inv,plan,pub,clock.now,clock.sleep)
+            self.assertEqual(c.replay_journal(Path(t)/'work',inv,plan)['objects']['jzpao2']['status'],'STAGED')
+
+    def test_early_source_failure_preserves_private_halt_receipt_without_unverified_inputs(self):
+        with tempfile.TemporaryDirectory() as t,mock.patch.dict(os.environ,{'RUNNER_TEMP':t}),\
+             mock.patch.object(c,'verify_sources',side_effect=c.ChainError('signed-secret-must-not-appear')),mock.patch.object(c,'GitHub') as gh:
+            with self.assertRaises(c.ChainError):c.main(['bootstrap'])
+            work=Path(t)/'elichika-ia-upload-work';receipt=c.read_json(work/'bootstrap.json')
+            self.assertEqual(receipt['status'],'HALTED');self.assertEqual(receipt['account_writes'],0)
+            self.assertNotIn('signed-secret',(work/'bootstrap.json').read_text())
+            self.assertEqual(set(p.name for p in work.iterdir()),{'bootstrap.json'})
+            self.assertEqual(stat.S_IMODE(work.stat().st_mode),0o700)
+            self.assertEqual(stat.S_IMODE((work/'bootstrap.json').stat().st_mode),0o600);gh.assert_not_called()
+
+    def test_current_provenance_failure_also_preserves_sanitized_halt_receipt(self):
+        with tempfile.TemporaryDirectory() as t,mock.patch.dict(os.environ,{'RUNNER_TEMP':t}),\
+             mock.patch.object(c,'verify_sources'),mock.patch.object(c,'GitHub'),\
+             mock.patch.object(c,'verify_current_run',side_effect=OSError('raw-url-secret')):
+            c.initialize_bootstrap_evidence(Path(t))
+            with self.assertRaises(OSError):c.main(['bootstrap'])
+            path=Path(t)/'elichika-ia-upload-work/bootstrap.json';receipt=c.read_json(path)
+            self.assertEqual(receipt['status'],'HALTED');self.assertNotIn('raw-url-secret',path.read_text())
+            self.assertNotIn('raw_journal_sha256',receipt)
+
+    def test_foreign_journal_is_rejected_before_copy_into_failure_artifact_directory(self):
+        with tempfile.TemporaryDirectory() as t:
+            temp=Path(t);fake_inventory={'objects':{}}
+            original_read=c.read_json
+            def read(path,*args,**kwargs):
+                if Path(path).name=='inventory.json':return fake_inventory
+                return original_read(path,*args,**kwargs)
+            def downloaded(gh,meta,incoming,*args):
+                incoming.mkdir();(incoming/'journal.json').write_text('{"schema":1,"identity":{"account":"unverified-secret"}}')
+                (incoming/'journal.events.jsonl').write_bytes(b'')
+                return {n:c.file_sha(incoming/n) for n in c.JOURNALS}
+            with mock.patch.dict(os.environ,{'RUNNER_TEMP':t}),mock.patch.object(c,'verify_sources'),\
+                 mock.patch.object(c,'GitHub'),mock.patch.object(c,'verify_current_run',return_value=identity()),\
+                 mock.patch.object(c,'read_json',side_effect=read),mock.patch.object(c,'file_sha',return_value=c.EXPECTED_IDENTITY['inventory_sha256']),\
+                 mock.patch.object(c.scope,'load_plan',return_value={}),\
+                 mock.patch.object(c,'legacy_provenance',return_value=({'conclusion':'failure'},{'id':8,'digest':'sha256:'+'a'*64},{})),\
+                 mock.patch.object(c,'download_artifact',side_effect=downloaded),mock.patch.object(c,'copy_journals') as copied:
+                with self.assertRaises(c.ChainError):c.main(['bootstrap'])
+            copied.assert_not_called()
+            work=temp/'elichika-ia-upload-work'
+            self.assertEqual({p.name for p in work.iterdir()},{'bootstrap.json'})
+            self.assertNotIn('unverified-secret',(work/'bootstrap.json').read_text())
+            self.assertEqual(c.read_json(work/'bootstrap.json')['status'],'HALTED')
+
+    def test_failure_placeholder_cannot_authorize_copy_over_unknown_files(self):
+        with tempfile.TemporaryDirectory() as t:
+            work=c.initialize_bootstrap_evidence(Path(t));(work/'unknown').write_text('unsafe')
+            with self.assertRaises(c.ChainError):c.initialize_bootstrap_evidence(Path(t))
+            with self.assertRaises(c.ChainError):c.copy_journals(Path(t),work,bootstrap_evidence=True)
 
     def test_exact_preexisting_unattempted_staged_record_carries_forward(self):
         with tempfile.TemporaryDirectory() as t:
