@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "status": "REVIEWED_METADATA_ONLY_FIX",
+  "official_client": {
+    "repository": "https://github.com/jjjake/internetarchive",
+    "commit": "dac4a6833d3cebac3cc41075092fa083fba838c5",
+    "source_url": "https://github.com/jjjake/internetarchive/blob/dac4a6833d3cebac3cc41075092fa083fba838c5/internetarchive/iarequest.py#L138-L148",
+    "raw_source_sha256": "15964720f276e81e6ed5f0b14631ff3733d2a04d0e5894fe3a660948f08f5019",
+    "exact_rule": "f'x-archive-{meta_type}{idx:02d}-{key}'.replace('_', '--')",
+    "numbering": "Counter starts at zero independently for each metadata field; scalar values are normalized to one-element lists."
+  },
+  "official_documentation": {
+    "url": "https://archive.org/developers/ias3.html#how-this-is-different-from-normal-s3",
+    "snapshot_sha256": "8fd0fb422b9aee55c3935ca5ec5ee6d649da26b5dbb64afe21f2467483db8518",
+    "finding": "Unnumbered metadata headers are documented valid. Double hyphens in a metadata field name are translated to underscores; raw underscore field names do not follow the published escaping convention."
+  },
+  "v3_changes": {
+    "marker_fields": [
+      "elichikasession",
+      "elichikainventorysha256",
+      "elichikaaccount"
+    ],
+    "wire_headers": [
+      "x-archive-meta00-elichikasession",
+      "x-archive-meta00-elichikainventorysha256",
+      "x-archive-meta00-elichikaaccount"
+    ],
+    "source_values": [
+      "x-archive-meta00-source",
+      "x-archive-meta01-source"
+    ],
+    "all_metadata_keys": "Lowercase alphanumeric only; raw underscores rejected before serialization.",
+    "description": "Status-neutral text links the exact final index catalog URL, which is published only after data and profile verification."
+  },
+  "ownership_policy": "Missing new markers always reject an existing item before journal/ACK resume decisions. No adoption of the unmarked v2 item; new nonce/prefix/work journal required.",
+  "independent_review": {
+    "agent": "v3_metadata_review",
+    "reviewed_uploader_sha256": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98",
+    "result": "No material issue in scoped diff. Numbering, alnum key reads, source00/01, strict unmarked rejection, and description URL verified against official source."
+  },
+  "development_network": "Only small public official-reference GETs; no Archive game payload GETs, authenticated requests, or account writes."
+}

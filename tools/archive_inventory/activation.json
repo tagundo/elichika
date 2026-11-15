@@ -13,6 +13,12 @@
     "132713428960": "inventory (2)",
     "132713428999": "inventory (1)"
   },
+  "metadata_protocol_review": {
+    "official_client_commit": "dac4a6833d3cebac3cc41075092fa083fba838c5",
+    "ownership_keys": "Numbered IAS3meta00 with alphanumeric fields; never adopt unmarked existing items",
+    "previous_unmarked_item_abandoned": "elichika-assets-20261115-e316340d-2c7c09fd-b00",
+    "reviewed_uploader_sha256": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98"
+  },
   "proof_sha256": {
     "packs_GL.tar.000.json": "db64ae737e7ddca68bc6429cbfafe8d2cb24bcf3a74669381daed750cd126bd2",
     "packs_GL.tar.001.json": "fc27dd6d2e762415032fa1018826dd3718336e56529b7668726bdcec89ac7925",
@@ -42,19 +48,19 @@
     "zip_sha256": "7cd32e8a2a5b27e5899b28905fa7718393fcfff7c36fbecdb224e23173fcf573"
   },
   "schema": 1,
-  "session_nonce": "2c7c09fd146863c17845c12261a6c328",
+  "session_nonce": "fa6f6031e8e339617ab58709d81f0e4f",
   "source_sha256": {
     "archive-metadata.json": "7cb43889efd923a1b8df7b4d2b8873813aba66207070e3860084508db5d92318",
     "authoritative-target.json.gz": "4c4eb47503009b188c196c501a03a279c77b4c5a3dc6deae81db5a79b81b778b",
     "ci_preflight.py": "597912744470c82d4d7a96d66bf3cbdbfd92929e3b6b1a913208557cdbafe4c8",
     "ci_prepare.py": "3f497b18e1b2d3d1b9c63f44ee7563dfd872ebd9be9bdf3659994c3f6cddfb4c",
     "expected-catalog.json.gz": "0a06f3cd4707e2ec5b1019fc60fbfabd38fbca698b8b857798fd28b82b38df96",
-    "individual_uploader.py": "951ab67ecc4fb5c0ca306516a2de35b58515542910521561bbb7ba81e649926b",
+    "individual_uploader.py": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98",
     "merge_supplement.py": "9ddd44d666805e95955d0b8704941bb04a6efc44f09cbfa92b86bb65972116bf",
     "reaggregate_target.py": "0c92132895792c1edc1e8d75a578b0cb526b3572a654af072285f8b4723b7c8f",
     "supplemental-metadata.json.gz": "25f6aa8c01162d009e72097eee592abc2edfca4f06d64674d342809f945e2776",
     "test_ci_preflight.py": "0ea06871a6475e2900829f182e471cebd5548715e1071e5b4925d7c2cda460ec",
-    "test_individual_uploader.py": "bcafe12cf8736c1e0f875143d10de574d1a76733daa86888a738b7c9443f4db6",
+    "test_individual_uploader.py": "d4181c99a2aeae66504f227e5bfa4215745dc75db7a7da6fcddac6b8a9baa23f",
     "test_merge_supplement.py": "8652802726e269b6afe50bcf5ef3018b16c568537d015068229e973b0f38d5a3",
     "test_reaggregate_target.py": "f101e9ce92eedb4930d30dadedbcb4530282ee8e4eed116cffd06b01eb4c0141"
   },

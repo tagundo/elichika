@@ -737,7 +737,7 @@ def scalar(value):
 def owned_metadata(remote, item, session, inventory_sha, account):
     require(isinstance(remote, dict) and not remote.get("is_dark"), "Remote item is unavailable/dark")
     meta = remote.get("metadata", {})
-    require(scalar(meta.get("identifier")) == item and scalar(meta.get("elichika_session")) == session and scalar(meta.get("elichika_inventory_sha256")) == inventory_sha and scalar(meta.get("elichika_account")) == account, "Existing item is foreign or has mismatching ownership markers")
+    require(scalar(meta.get("identifier")) == item and scalar(meta.get("elichikasession")) == session and scalar(meta.get("elichikainventorysha256")) == inventory_sha and scalar(meta.get("elichikaaccount")) == account, "Existing item is foreign or has mismatching ownership markers")
     if "@" in account and meta.get("uploader") is not None:
         require(scalar(meta["uploader"]).lower() == account.lower(), "Existing item uploader differs from authenticated account")
     files = {}
@@ -746,6 +746,23 @@ def owned_metadata(remote, item, session, inventory_sha, account):
         require(name not in files, "Duplicate remote file name")
         files[name] = file
     return files
+
+
+def ias3_metadata_headers(metadata):
+    """Official client format: index every value; use only alphanumeric keys.
+
+    internetarchive/iarequest.py at dac4a6833d3cebac3cc41075092fa083fba838c5
+    uses x-archive-meta{idx:02d}-{key}, replacing raw '_' with '--'. The
+    ownership keys here contain no underscores and need no such translation.
+    """
+    headers = {}
+    for key, value in metadata.items():
+        require(isinstance(key, str) and re.fullmatch(r"[a-z][a-z0-9]*", key), "IAS3 metadata keys must be lowercase alphanumeric")
+        values = value if isinstance(value, list) else [value]
+        for index, entry in enumerate(values):
+            require(isinstance(entry, str) and "\r" not in entry and "\n" not in entry, "Invalid IAS3 metadata header value")
+            headers[f"x-archive-meta{index:02d}-{key}"] = entry
+    return headers
 
 
 def remote_equal(file, size, md5):
@@ -866,15 +883,18 @@ class Publisher:
         return None if remote is None else owned_metadata(remote, item, self.session, self.inputs.inventory_sha, self.auth["account"])
 
     def headers(self, item, size_hint):
-        source_urls = "https://archive.org/details/" + SOURCE_ITEM
+        source_urls = ["https://archive.org/details/" + SOURCE_ITEM]
         if self.inputs.supplement:
-            source_urls += " and https://archive.org/details/" + SUPPLEMENT_ITEM
-        return {"x-archive-auto-make-bucket": "1", "x-archive-meta-mediatype": "data", "x-archive-meta-collection": self.args.collection,
-                "x-archive-meta-title": "Elichika original game asset packs " + item,
-                "x-archive-meta-description": "STAGING: byte-identical original Love Live! School Idol Festival ALL STARS game asset packs; sources " + source_urls + ". No new license is asserted. Consult the index catalog for verified profile coverage and publication status.",
-                "x-archive-meta-source": source_urls,
-                "x-archive-meta-elichika_session": self.session, "x-archive-meta-elichika_inventory_sha256": self.inputs.inventory_sha,
-                "x-archive-meta-elichika_account": self.auth["account"], "x-archive-size-hint": str(size_hint)}
+            source_urls.append("https://archive.org/details/" + SUPPLEMENT_ITEM)
+        catalog_url = "https://archive.org/download/" + self.prefix + "-index/catalog.json"
+        metadata = {"mediatype": "data", "collection": self.args.collection,
+                    "title": "Elichika original game asset packs " + item,
+                    "description": "Byte-identical original Love Live! School Idol Festival ALL STARS game asset packs; sources " + " and ".join(source_urls) +
+                                   ". The index catalog records coverage and verification status and is published after the referenced data and profile manifests pass verification. "
+                                   "No new license is asserted. Index catalog: " + catalog_url,
+                    "source": source_urls, "elichikasession": self.session,
+                    "elichikainventorysha256": self.inputs.inventory_sha, "elichikaaccount": self.auth["account"]}
+        return {"x-archive-auto-make-bucket": "1", "x-archive-size-hint": str(size_hint), **ias3_metadata_headers(metadata)}
 
     def put_retry(self, item, key, path, size, sha256, md5, headers):
         for attempt in range(5):

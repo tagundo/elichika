@@ -426,16 +426,74 @@ class UploaderTests(unittest.TestCase):
         path.unlink()
 
     def owned(self):
-        return {'metadata': {'identifier': ['fixture-assets-b00'], 'elichika_session': [FAKE_AUTH['session_nonce']],
-                             'elichika_inventory_sha256': ['b' * 64], 'elichika_account': [FAKE_AUTH['account']]},
+        return {'metadata': {'identifier': ['fixture-assets-b00'], 'elichikasession': [FAKE_AUTH['session_nonce']],
+                             'elichikainventorysha256': ['b' * 64], 'elichikaaccount': [FAKE_AUTH['account']]},
                 'files': [{'name': 'packs/fixture', 'size': str(len(DATA)), 'md5': MD5}]}
 
     def test_foreign_item_is_rejected_even_if_existing_file_matches(self):
         remote = self.owned()
-        remote['metadata']['elichika_session'] = 'foreign-session'
+        remote['metadata']['elichikasession'] = 'foreign-session'
         with self.assertRaises(u.Failure):
             u.owned_metadata(remote, 'fixture-assets-b00', FAKE_AUTH['session_nonce'], 'b' * 64, FAKE_AUTH['account'])
         self.assertTrue(u.remote_equal(remote['files'][0], len(DATA), MD5))
+
+    def test_v3_metadata_headers_use_official_numbering_and_only_alphanumeric_marker_keys(self):
+        self.assertEqual(u.ias3_metadata_headers({'title': 'fixture', 'source': ['first', 'second'],
+                                                 'elichikasession': FAKE_AUTH['session_nonce']}),
+                         {'x-archive-meta00-title': 'fixture', 'x-archive-meta00-source': 'first',
+                          'x-archive-meta01-source': 'second',
+                          'x-archive-meta00-elichikasession': FAKE_AUTH['session_nonce']})
+        with self.assertRaises(u.Failure): u.ias3_metadata_headers({'elichika_session': 'legacy'})
+        with self.assertRaises(u.Failure): u.ias3_metadata_headers({'title': 'bad\r\nheader'})
+        publisher = u.Publisher.__new__(u.Publisher)
+        publisher.inputs = types.SimpleNamespace(inventory_sha='b' * 64, supplement={'synthetic': True})
+        publisher.args = types.SimpleNamespace(collection='opensource_media')
+        publisher.session, publisher.auth, publisher.prefix = FAKE_AUTH['session_nonce'], FAKE_AUTH, 'fixture-assets'
+        headers = publisher.headers('fixture-assets-b00', len(DATA))
+        self.assertEqual(headers['x-archive-meta00-elichikasession'], FAKE_AUTH['session_nonce'])
+        self.assertEqual(headers['x-archive-meta00-elichikainventorysha256'], 'b' * 64)
+        self.assertEqual(headers['x-archive-meta00-elichikaaccount'], FAKE_AUTH['account'])
+        self.assertEqual(headers['x-archive-meta00-source'], 'https://archive.org/details/' + u.SOURCE_ITEM)
+        self.assertEqual(headers['x-archive-meta01-source'], 'https://archive.org/details/' + u.SUPPLEMENT_ITEM)
+        self.assertTrue(all('_' not in key for key in headers))
+        for key in headers:
+            if key.startswith('x-archive-meta'):
+                self.assertRegex(key, r'^x-archive-meta[0-9]{2}-[a-z][a-z0-9]*$')
+        description = headers['x-archive-meta00-description']
+        self.assertIn('https://archive.org/download/fixture-assets-index/catalog.json', description)
+        self.assertNotIn('STAGING', description)
+
+    def test_v3_legacy_underscore_metadata_is_not_an_ownership_fallback(self):
+        remote = self.owned()
+        for current, legacy in (('elichikasession', 'elichika_session'),
+                                ('elichikainventorysha256', 'elichika_inventory_sha256'),
+                                ('elichikaaccount', 'elichika_account')):
+            remote['metadata'][legacy] = remote['metadata'].pop(current)
+        with self.assertRaises(u.Failure):
+            u.owned_metadata(remote, 'fixture-assets-b00', FAKE_AUTH['session_nonce'], 'b' * 64, FAKE_AUTH['account'])
+
+    def test_unmarked_realistic_item_is_rejected_even_with_acknowledged_owned_journal(self):
+        publisher = u.Publisher.__new__(u.Publisher)
+        publisher.prefix, publisher.session, publisher.auth = 'fixture-assets', FAKE_AUTH['session_nonce'], FAKE_AUTH
+        publisher.inputs = types.SimpleNamespace(objects={'fixture': self.obj}, inventory_sha='b' * 64)
+        publisher.args = types.SimpleNamespace(workers=1)
+        item = publisher.prefix + f'-b{u.bucket_for("fixture"):02d}'
+        publisher.journal = types.SimpleNamespace(value={'objects': {'fixture': {
+            'size': len(DATA), 'sha256': SHA, 'md5': MD5, 'item': item, 'path': 'packs/fixture',
+            'status': 'PUT_ACKNOWLEDGED'}}})
+        remote = {'metadata': {'identifier': item, 'title': 'Elichika original game asset packs ' + item,
+                               'mediatype': 'data', 'collection': ['opensource_media'],
+                               'uploader': FAKE_AUTH['account'], 'description': 'Core metadata accepted by IA'},
+                  'files': [{'name': 'packs/fixture', 'size': str(len(DATA)), 'md5': MD5}]}
+        publisher.public = types.SimpleNamespace(metadata=mock.Mock(return_value=remote))
+        publisher.check_source = mock.Mock()
+        publisher.one = mock.Mock(side_effect=AssertionError('Unmarked item must never reach an object operation'))
+        publisher.s3 = types.SimpleNamespace(put=mock.Mock(side_effect=AssertionError('Unmarked item must never receive PUT')))
+        with self.assertRaisesRegex(u.Failure, 'foreign|ownership'):
+            publisher.data()
+        publisher.one.assert_not_called()
+        publisher.s3.put.assert_not_called()
+        publisher.public.metadata.assert_called_once_with(item)
 
     def test_remote_match_requires_exact_size_md5_and_active_public_file(self):
         remote = self.owned()

@@ -1,15 +1,15 @@
 {
-  "schema": 2,
+  "schema": 3,
   "status": "READY_FOR_ROOT_REVIEW",
   "source_only": true,
   "activated": false,
-  "directory": "/tmp/asset-individual-uploader-20261115/v2",
+  "directory": "/tmp/asset-individual-uploader-20261115/v3",
   "preserved_frozen_v1_directory": "/tmp/asset-individual-uploader-20261115",
   "files": [
     {
       "name": "individual_uploader.py",
-      "bytes": 75103,
-      "sha256": "951ab67ecc4fb5c0ca306516a2de35b58515542910521561bbb7ba81e649926b"
+      "bytes": 76156,
+      "sha256": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98"
     },
     {
       "name": "merge_supplement.py",
@@ -18,8 +18,8 @@
     },
     {
       "name": "test_individual_uploader.py",
-      "bytes": 70151,
-      "sha256": "bcafe12cf8736c1e0f875143d10de574d1a76733daa86888a738b7c9443f4db6"
+      "bytes": 74577,
+      "sha256": "d4181c99a2aeae66504f227e5bfa4215745dc75db7a7da6fcddac6b8a9baa23f"
     },
     {
       "name": "test_merge_supplement.py",
@@ -28,18 +28,23 @@
     },
     {
       "name": "README.md",
-      "bytes": 8271,
-      "sha256": "3efaa47c177e632472d54d0df2096892147a0a998b27ada405c9544cf64a5937"
+      "bytes": 9766,
+      "sha256": "0809f55c2eaa51ccb8e30c52fc0bba2888a88f57419064c5f7f7b7938d57cbd9"
+    },
+    {
+      "name": "METADATA_HEADER_AUDIT.json",
+      "bytes": 2405,
+      "sha256": "a9e9018369e023b6b89d4cc7a07ccf05a5b6c8b3f8bf2787aef497292e0a8e30"
     },
     {
       "name": "tests.log",
-      "bytes": 9697,
-      "sha256": "ea45fc6228cce7086ab64ace8b152fc74643d0f0e8bdab4ef9b7947dbed44f80"
+      "bytes": 10289,
+      "sha256": "3c226f1a5172b2d9e21fe11546b9401c6cf7a72dbd183ffb9b4825629155c15e"
     }
   ],
   "tests": {
-    "passed": 54,
-    "uploader_tests": 49,
+    "passed": 57,
+    "uploader_tests": 52,
     "merge_tests": 5,
     "command": "python3 -B -m unittest -v test_individual_uploader test_merge_supplement",
     "actual_credentials_read": false,
@@ -66,7 +71,7 @@
     "metadata_sha256": "0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5",
     "required_objects": 8033,
     "required_bytes": 8101415374,
-    "proof_status": "PENDING_ROOT_VERIFIED_HOSTED_REPORT",
+    "proof_status": "ROOT_ACTUAL_FULL_STREAM_SCAN_SUCCESS",
     "proof_raw_sha256": null,
     "proof_source_commit": "2b2d843efb99c6535b4e6f3c2f612d8e1c89c2de",
     "proof_required_status": "VERIFIED",
@@ -75,7 +80,10 @@
       "md5",
       "sha1",
       "sha256"
-    ]
+    ],
+    "proof_run_id": 43686115875,
+    "proof_artifact_id": 14150519223,
+    "proof_artifact_zip_sha256": "4517f2b52943bb9f734824570c625aa748a5ade39bc3443f786c3ddbd458e848"
   },
   "merge_outputs": [
     "inventory.json",
@@ -111,7 +119,7 @@
     "supplementalmetadata/proofhash/provenance published"
   ],
   "workflow": "No v2 legacytemplate; Rootprepares reviewed fixedsource workflowwithallinput/provenance pins, authafterstrictplan,2workers,320minchunks,atmost5attempts, safejournalcontinuation.",
-  "actual_combined_plan": "NOT_RUN_PENDING_REAL_VERIFIED_SUPPLEMENT_REPORT",
+  "actual_combined_plan": "ROOT ALREADY VERIFIED COMPLETE SOURCE; v3 IS METADATA ONLY AND DOES NOT REWRITE INVENTORY",
   "limits": {
     "workers_default": 1,
     "workers_maximum": 2,
@@ -122,9 +130,31 @@
     "index_items": 1
   },
   "remaining_root_steps": [
-    "Obtain successful canonical full-stream8033supplementproof artifact andpinrun/source/report/ZIPdigest",
-    "Run actualimmutablemerge andstrictplan; verifycomplete42830/33321064961 andcombinedinventorySHA",
-    "Review/install exactsourcehashes in fixedsourceworkflow",
-    "Introduce confirmedRepositorySecrets onlyafterall preflightproof gates pass; run bounded resumable upload"
-  ]
+    "Install/review exact v3 source hash and update fixed workflow config source pin",
+    "Choose fresh session nonce/prefix and work journal; never resume the unmarked v2 bucket",
+    "Run unchanged complete-source strict plan before auth",
+    "Activate bounded upload and confirm new alphanumeric ownership markers after first PUT"
+  ],
+  "preserved_frozen_v2_directory": "/tmp/asset-individual-uploader-20261115/v2",
+  "metadata_fix": {
+    "official_client_commit": "dac4a6833d3cebac3cc41075092fa083fba838c5",
+    "official_header_rule": "f'x-archive-{meta_type}{idx:02d}-{key}'.replace('_', '--')",
+    "markers": [
+      "elichikasession",
+      "elichikainventorysha256",
+      "elichikaaccount"
+    ],
+    "old_unmarked_item_policy": "ABANDON; NEVER ADOPT, OVERWRITE, OR DELETE",
+    "new_session_prefix_and_journal_required": true,
+    "inventory_and_payload_logic_unchanged": true,
+    "both_source_item_put_denylist_unchanged": true,
+    "stage_hash_and_complete_target_gates_unchanged": true,
+    "independent_review": "PASS; exact source SHA matches review",
+    "uploader_sha256": "9784a09559e05a21d478a3d314af5f764b6d66471339f3f3f49e2eca21879f98"
+  },
+  "development_public_references": [
+    "https://github.com/jjjake/internetarchive/blob/dac4a6833d3cebac3cc41075092fa083fba838c5/internetarchive/iarequest.py#L138-L148",
+    "https://archive.org/developers/ias3.html#how-this-is-different-from-normal-s3"
+  ],
+  "actual_v3_upload": "NOT_RUN_BY_WORKER"
 }
