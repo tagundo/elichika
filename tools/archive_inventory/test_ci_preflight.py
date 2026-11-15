@@ -116,7 +116,7 @@ class SourceTests(unittest.TestCase):
 def seed_config():
     identity = copy.deepcopy(p.JOURNAL_SEED_IDENTITY)
     config = {"journal_seed": copy.deepcopy(p.JOURNAL_SEED), "activate_upload": True, "requested_total": 42830,
-              "diagnostic": copy.deepcopy(p.DIAGNOSTIC_SCOPE), "publication_layout": copy.deepcopy(p.PUBLICATION_LAYOUT),
+              "publication": copy.deepcopy(p.PUBLICATION_SCOPE), "publication_layout": copy.deepcopy(p.PUBLICATION_LAYOUT),
               "layout_plan_sha256": p.LAYOUT_PLAN_SHA256}
     for config_key, identity_key in (
         ("account", "account"), ("session_nonce", "session"),
@@ -137,7 +137,7 @@ class SeedResumeTests(unittest.TestCase):
                         "path": ".github/workflows/individual-asset-upload.yml"}
         self.previous = {**self.current, "id": self.seed["run_id"],
                          "head_sha": self.seed["source_commit"], "status": "completed",
-                         "conclusion": "failure", "run_attempt": self.seed["run_attempt"]}
+                         "conclusion": "success", "run_attempt": self.seed["run_attempt"]}
         self.artifact = {"id": self.seed["artifact_id"], "name": self.seed["name"],
                          "size_in_bytes": self.seed["artifact_bytes"], "digest": self.seed["digest"],
                          "expired": False,
@@ -162,10 +162,10 @@ class SeedResumeTests(unittest.TestCase):
             f"/repos/tagundo/elichika/actions/artifacts/{self.seed['artifact_id']}",
         ])
 
-    def test_seed_previous_run_must_be_exact_completed_failure_and_workflow(self):
+    def test_seed_previous_run_must_be_exact_completed_success_and_workflow(self):
         for key, value in (("id", 99), ("head_sha", "b" * 40), ("workflow_id", 10),
                            ("path", "other.yml"), ("status", "in_progress"),
-                           ("conclusion", "success"), ("run_attempt", 2)):
+                           ("conclusion", "failure"), ("run_attempt", 2)):
             with self.subTest(key=key):
                 original = self.previous
                 self.previous = {**original, key: value}
@@ -188,7 +188,7 @@ class SeedResumeTests(unittest.TestCase):
 
     def test_seed_config_pins_cannot_be_replaced_with_another_matching_run(self):
         for key, value in (("run_id", 99), ("source_commit", "b" * 40),
-                           ("artifact_id", 99), ("prior_attempts", 0), ("prior_attempts", 1), ("prior_attempts", 2),
+                           ("artifact_id", 99), ("prior_attempts", 0), ("prior_attempts", 1), ("prior_attempts", 2), ("prior_attempts", 3),
                            ("rawfilehashes", {"journal.json": "0" * 64, "journal.events.jsonl": "0" * 64})):
             with self.subTest(key=key):
                 config = copy.deepcopy(self.config)
@@ -209,19 +209,26 @@ class SeedResumeTests(unittest.TestCase):
         with self.assertRaises(p.Stop):
             p.resume_identity(self.config, self.current, str(self.seed["run_id"]), 1, self.fetch)
 
-    def test_diagnostic_allows_exactly_one_attempt_without_api_retry(self):
-        for attempt in (0, 2, 3, 4, 5, 6):
+    def test_full_publication_rejects_attempts_outside_reviewed_total7_budget(self):
+        for attempt in (0, 4, 5, 6, 7, 8):
             with self.subTest(attempt=attempt), self.assertRaises(p.Stop):
                 p.resume_identity(self.config, self.current, "", attempt,
                                   lambda _: self.fail("No API call on disallowed attempt"))
 
-    def test_diagnostic_scope_cannot_select_another_file_or_full_upload(self):
-        for key, value in (("name", "other"), ("max_new_files", 2), ("workers", 4),
-                           ("max_attempts", 2), ("index_publication", True)):
-            config = copy.deepcopy(self.config)
-            config["diagnostic"][key] = value
-            with self.subTest(key=key), self.assertRaises(p.Stop):
-                p.resume_identity(config, self.current, "", 1, self.fetch)
+    def test_full_scope_cannot_change_workers_limits_or_publish_role(self):
+        for key,value in (("workers",1),("max_new_files",1),("max_attempts",4),("index_publication",False),
+                          ("max_outstanding_acknowledged",129),("job_minutes",346),("whole_budget_minutes",331)):
+            config=copy.deepcopy(self.config);config["publication"][key]=value
+            with self.subTest(key=key),self.assertRaises(p.Stop):
+                p.resume_identity(config,self.current,"",1,self.fetch)
+
+    def test_same_run_full_attempt2_3_require_previous_failure_and_exact_source(self):
+        for attempt in (2,3):
+            previous={**self.current,"status":"completed","conclusion":"failure","run_attempt":attempt-1}
+            self.assertEqual(p.resume_identity(self.config,self.current,"",attempt,lambda _:previous),
+                             ("123",f"elichika-individual-upload-journal-attempt-{attempt-1}","same_run"))
+            previous["conclusion"]="success"
+            with self.assertRaises(p.Stop):p.resume_identity(self.config,self.current,"",attempt,lambda _:previous)
 
 
 class SeedWorkTests(unittest.TestCase):
@@ -237,7 +244,11 @@ class SeedWorkTests(unittest.TestCase):
         self.config = seed_config()
         journal = {"schema": 1, "identity": copy.deepcopy(p.JOURNAL_SEED_IDENTITY), "objects": {}}
         self.rawfiles = {"journal.json": (json.dumps(journal, sort_keys=True) + "\n").encode(),
-                         "journal.events.jsonl": b'{"event":"fixture"}\n'}
+                         "journal.events.jsonl": b"".join((json.dumps({"type":"objects","name":"00jst0" if n==0 else f"fixture{n}",
+                             "record":{"status":"PUT_ACKNOWLEDGED" if n<402 else "STAGED",
+                                       "item":p.PUBLICATION_LAYOUT["index_item"][:-2]+"04", "size":9688,
+                                       "md5":"59d3c0f357b61893c19d46c119b76de2",
+                                       "sha256":"97455d0c890c0f9a3f6540d1d5236ad2a7287b40e0d3b0d8b37a3b65b208c137"}})+"\n").encode() for n in range(407))}
         self.seed = copy.deepcopy(p.JOURNAL_SEED)
         self.seed["rawfilehashes"] = {name: hashlib.sha256(raw).hexdigest() for name, raw in self.rawfiles.items()}
         self.config["journal_seed"] = copy.deepcopy(self.seed)
@@ -262,6 +273,14 @@ class SeedWorkTests(unittest.TestCase):
         for name, raw in self.rawfiles.items():
             self.assertEqual((self.work / name).read_bytes(), raw)
             self.assertEqual(stat.S_IMODE((self.work / name).stat().st_mode), 0o600)
+
+    def test_matching_raw_pins_do_not_allow_forgetting_diagnostic_ack(self):
+        raw=self.rawfiles["journal.events.jsonl"].replace(b'"00jst0"',b'"forgot"')
+        (self.previous/"journal.events.jsonl").write_bytes(raw)
+        self.seed["rawfilehashes"]["journal.events.jsonl"]=hashlib.sha256(raw).hexdigest()
+        self.config["journal_seed"]=copy.deepcopy(self.seed)
+        with self.assertRaises(ValueError):self.prepare()
+        self.assertFalse(self.work.exists())
 
     def test_all_seed_hashes_are_checked_before_any_file_is_copied(self):
         (self.previous / "journal.events.jsonl").write_bytes(b'changed')

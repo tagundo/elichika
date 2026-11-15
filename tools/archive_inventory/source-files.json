@@ -1,115 +1,131 @@
 {
+  "FULL_FIVE_REVIEW.md": {
+    "bytes": 5512,
+    "sha256": "f119e769e2e0323f5a85d498cc3ef1eb503f6cd0cda2c939d4ed8d4a3a53345f",
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/FULL_FIVE_REVIEW.md"
+  },
   "archive-metadata.json": {
     "bytes": 13773,
     "sha256": "7cb43889efd923a1b8df7b4d2b8873813aba66207070e3860084508db5d92318",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/archive-metadata.json"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/archive-metadata.json"
   },
   "authoritative-target.json.gz": {
     "bytes": 420959,
     "git_blob": "23bcd59379921fb37e2fb2ff8d24dde4dbd457d3",
     "sha256": "4c4eb47503009b188c196c501a03a279c77b4c5a3dc6deae81db5a79b81b778b",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/authoritative-target.json.gz"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/authoritative-target.json.gz"
   },
   "ci_preflight.py": {
-    "bytes": 14361,
-    "sha256": "791a057a05e8131819b144b6417da6bc0dac35ad1db5c6355e5364213d7a1653",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/ci_preflight.py"
+    "bytes": 14685,
+    "sha256": "bec7d1fb7b72f2e9b20cd7e1483e5c589df7af4367efd33425b9e3f7bb7345b2",
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/ci_preflight.py"
   },
   "ci_prepare.py": {
-    "bytes": 7233,
-    "sha256": "f0b3584170006078ae5ef635d9f18f222e54f9088b34ac8d918e7569b80f29c0",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/ci_prepare.py"
+    "bytes": 8551,
+    "sha256": "e7fe7753a14fe5896334ea1041a2412436bc28a826235681701000af0ffac552",
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/ci_prepare.py"
   },
   "existing_owned_diagnostic.py": {
     "bytes": 7102,
     "sha256": "6fee91dce6c7db6a82d8c5b914b5d7e166a2f9fbe2d3a9c68885199c7c81c249",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/existing_owned_diagnostic.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/existing_owned_diagnostic.py"
   },
   "expected-catalog.json.gz": {
     "bytes": 418240,
     "git_blob": "6a5332298927298b4f531d666053b11dc2afdbcf",
     "sha256": "0a06f3cd4707e2ec5b1019fc60fbfabd38fbca698b8b857798fd28b82b38df96",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/expected-catalog.json.gz"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/expected-catalog.json.gz"
   },
   "five-owned-layout.json.gz": {
     "bytes": 284093,
+    "git_blob": "b928d4d8dd72cfec5af78f003e47dab02532c04e",
     "sha256": "d19cc2ebb0bef61ed59e440497e038e9cc41418357a11fb1869906fbac2b536d",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/five-owned-layout.json.gz"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/five-owned-layout.json.gz"
   },
   "ia_s3_errors.py": {
     "bytes": 1654,
     "sha256": "a0e0f4d2a194648c63cefb9d822b449995cd4fb7e67d7c0bbd06008ee0e79878",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/ia_s3_errors.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/ia_s3_errors.py"
   },
   "individual_uploader.py": {
     "bytes": 94042,
     "sha256": "0ab29b1233302282c523b370df005662897b2a4ec0aff77f4b4627d07e292dd5",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/individual_uploader.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/individual_uploader.py"
   },
   "layout_review.py": {
     "bytes": 17440,
     "sha256": "d0ba5854e69447d573f10f44f677de64b1815871f389438290ec5ef57b6ed7e3",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/layout_review.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/layout_review.py"
   },
   "merge_supplement.py": {
     "bytes": 12121,
     "sha256": "9ddd44d666805e95955d0b8704941bb04a6efc44f09cbfa92b86bb65972116bf",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/merge_supplement.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/merge_supplement.py"
   },
   "owned_layout.py": {
     "bytes": 7674,
     "sha256": "429f1f1ad8e6570cbdd9478e5ba366d21b775de7749699865f4b844dd5839cfa",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/owned_layout.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/owned_layout.py"
+  },
+  "owned_publisher.py": {
+    "bytes": 24023,
+    "sha256": "f8bac9269aa182b3037bdb2c227dae1912ac2d22f3571b06de4b91031d619237",
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/owned_publisher.py"
   },
   "reaggregate_target.py": {
     "bytes": 14820,
     "sha256": "0c92132895792c1edc1e8d75a578b0cb526b3572a654af072285f8b4723b7c8f",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/reaggregate_target.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/reaggregate_target.py"
   },
   "supplemental-metadata.json.gz": {
     "bytes": 2903896,
     "git_blob": "d1b96911f207316888156baee5c7cc0bd5fb2eac",
     "sha256": "25f6aa8c01162d009e72097eee592abc2edfca4f06d64674d342809f945e2776",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/supplemental-metadata.json.gz"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/supplemental-metadata.json.gz"
   },
   "test_ci_preflight.py": {
-    "bytes": 16863,
-    "sha256": "4d39549cebda02b52bdc057c06b431b1c47a3ba8c7dfb96187836a7b848f8e9c",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/test_ci_preflight.py"
+    "bytes": 18498,
+    "sha256": "e229248699a7bb9dd9daa45690547cef7c0117229dde5b88e53cf43c2849d70c",
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_ci_preflight.py"
   },
   "test_diagnostic_put.py": {
     "bytes": 9204,
     "sha256": "df9b14c0c56d1feef74aaee5118a7fad4c33b41902db00f026ebb2cec454e2fe",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/test_diagnostic_put.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_diagnostic_put.py"
   },
   "test_existing_owned.py": {
     "bytes": 12007,
     "sha256": "f4db5216b2c056ab4bba446526711918f01c55111ce6bcb8c17072e24cbb70e5",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/test_existing_owned.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_existing_owned.py"
   },
   "test_fair_scheduler.py": {
     "bytes": 27509,
     "sha256": "614b3b23e67f262fcb9df871438d8b89c651c044ad463b21193e9b0064acfde6",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/test_fair_scheduler.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_fair_scheduler.py"
   },
   "test_individual_uploader.py": {
     "bytes": 74932,
     "sha256": "9235d0dca9391b04a5dec665ab43d9ac79cadd4d2055df42335a155506037b2f",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/test_individual_uploader.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_individual_uploader.py"
   },
   "test_layout_review.py": {
     "bytes": 6866,
     "sha256": "341c0b043da794992e0a075d11e570ebe5e48a3785cb027898a015689c39f1a3",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/test_layout_review.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_layout_review.py"
   },
   "test_merge_supplement.py": {
     "bytes": 10316,
     "sha256": "8652802726e269b6afe50bcf5ef3018b16c568537d015068229e973b0f38d5a3",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/test_merge_supplement.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_merge_supplement.py"
+  },
+  "test_owned_publisher.py": {
+    "bytes": 12807,
+    "sha256": "43ba8eccae21fbb77264f26f821b04024aaa96cab203ea12670567e316ce73c5",
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_owned_publisher.py"
   },
   "test_reaggregate_target.py": {
     "bytes": 10382,
     "sha256": "f101e9ce92eedb4930d30dadedbcb4530282ee8e4eed116cffd06b01eb4c0141",
-    "source": "/tmp/asset-existing-owned-diagnostic-20261115/test_reaggregate_target.py"
+    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_reaggregate_target.py"
   }
 }

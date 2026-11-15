@@ -1,4 +1,4 @@
-name: Diagnose one existing owned container PUT
+name: Publish complete assets in five existing owned items
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   upload:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 345
     steps:
       - name: Start finite attempt budget
         run: |
@@ -42,7 +42,7 @@ jobs:
       - name: Run synthetic transfer, merge and workflow safety tests
         timeout-minutes: 5
         working-directory: tools/archive_inventory
-        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler test_reaggregate_target test_ci_preflight test_diagnostic_put test_layout_review test_existing_owned
+        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler test_reaggregate_target test_ci_preflight test_diagnostic_put test_layout_review test_existing_owned test_owned_publisher
       - name: Download unchanged original TAR proofs
         uses: actions/download-artifact@v4
         timeout-minutes: 10
@@ -95,9 +95,9 @@ jobs:
         run: |
           python3 -B ci_prepare.py work
           python3 -B ci_prepare.py budget
-      - name: Diagnose one file in existing marked b04 without item-creation headers
+      - name: Publish verified full target only into the five already owned containers
         if: steps.pins.outputs.activate_upload == 'true'
-        timeout-minutes: 6
+        timeout-minutes: 321
         env:
           ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
           ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
@@ -123,7 +123,7 @@ jobs:
           PY
           unset ELICHIKA_ARCHIVE_ACCESS_KEY ELICHIKA_ARCHIVE_SECRET_KEY
           timeout --signal=TERM --kill-after=30s "$UPLOAD_SECONDS" \
-            python3 -B existing_owned_diagnostic.py upload \
+            python3 -B owned_publisher.py upload \
             --inventory "$RUNNER_TEMP/elichika-complete-upload-inputs/inventory.json" \
             --audit "$RUNNER_TEMP/elichika-complete-upload-inputs/audit.json" \
             --catalog expected-catalog.json.gz --metadata archive-metadata.json \
@@ -134,8 +134,7 @@ jobs:
             --supplemental-metadata-sha256 0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5 \
             --supplemental-proof "$RUNNER_TEMP/elichika-supplement-inputs/supplement-proof.json" \
             --supplemental-proof-sha256 "$(python3 -c 'import json; print(json.load(open("activation.json"))["supplement_proof_sha256"])')" \
-            --requested-total 42830 --workers 1 --stage-budget 100663296 \
-            --max-new-files 1 --diagnostic-name 00jst0 \
+            --requested-total 42830 --workers 4 --stage-budget 100663296 \
             --work "$RUNNER_TEMP/elichika-ia-upload-work" \
             --auth-file "$RUNNER_TEMP/elichika-ia-upload-auth/auth.json"
       - name: Preserve only safe durable journal and public publication receipt
@@ -148,7 +147,5 @@ jobs:
             ${{ runner.temp }}/elichika-ia-upload-work/journal.json
             ${{ runner.temp }}/elichika-ia-upload-work/journal.events.jsonl
             ${{ runner.temp }}/elichika-ia-upload-work/publication.json
-            ${{ runner.temp }}/elichika-ia-upload-work/diagnostic.json
-            ${{ runner.temp }}/elichika-ia-upload-work/migration.json
           if-no-files-found: warn
           retention-days: 30

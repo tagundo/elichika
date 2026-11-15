@@ -28,6 +28,24 @@ def invoke(args, wanted):
     check(result.returncode == wanted, "Preparation subprocess returned an unexpected status")
 
 
+def verify_seed_state(previous):
+    records={}
+    with (previous/'journal.events.jsonl').open('rb') as stream:
+        for line in stream:
+            check(len(line)<=8192 and line.endswith(b'\n'),'Reviewed seed event line differs')
+            event=json.loads(line)
+            if event.get('type')=='objects': records[event['name']]=event['record']
+            else: check(event.get('type')=='status','Reviewed diagnostic seed must have no index events')
+    check(len(records)==407 and sum(r.get('status') in ('PUT_ACKNOWLEDGED','REMOTE_METADATA_VERIFIED') for r in records.values())==402 and
+          sum(r.get('status')=='STAGED' for r in records.values())==5,
+          'Successful new-layout seed must retain exactly402 ACK/verified and5 STAGED objects')
+    known=records.get('00jst0',{})
+    check(known.get('status')=='PUT_ACKNOWLEDGED' and known.get('item')==ci_preflight.PUBLICATION_LAYOUT['index_item'][:-2]+'04' and
+          known.get('size')==9688 and known.get('md5')=='59d3c0f357b61893c19d46c119b76de2' and
+          known.get('sha256')=='97455d0c890c0f9a3f6540d1d5236ad2a7287b40e0d3b0d8b37a3b65b208c137',
+          'Successful existing-only00jst0 ACK differs')
+
+
 def prepare_work(config, temp, resume_run_id, resume_kind):
     work = temp / "elichika-ia-upload-work"
     previous = temp / "elichika-resume-inputs"
@@ -57,6 +75,7 @@ def prepare_work(config, temp, resume_run_id, resume_kind):
         if resume_kind == "pinned_seed":
             check(json.loads((previous / "journal.json").read_bytes()).get("identity") == ci_preflight.JOURNAL_SEED_IDENTITY,
                   "Reviewed seed journal ownership identity differs")
+            verify_seed_state(previous)
     else:
         check(resume_kind in ("", "fresh"), "Resume kind requires a verified run")
     # Validate every reviewed source first, then copy immutable bytes. The core
@@ -117,18 +136,19 @@ def main():
                    "target_manifest_sha256": config["target_manifest_sha256"],
                    "supplement_proof_sha256": config["supplement_proof_sha256"],
                    "requested_total": 42830}
-        receipt.update(upload_mode="ONE_EXISTING_OWNED_CONTAINER_DIAGNOSTIC", max_new_files=1,
-                       index_publication_authorized=False)
+        receipt.update(upload_mode="FULL_EXISTING_OWNED_FIVE_V1", max_new_files=0,
+                       index_publication_authorized=True, qa_status="PENDING",
+                       publication_layout=config["publication_layout"], layout_plan_sha256=config["layout_plan_sha256"])
         (combined / "prepared-inputs-receipt.json").write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
         print(json.dumps(receipt, sort_keys=True))
     elif args.command == "work":
-        owned_layout.prepare_migration(config, base, temp, os.environ.get("RESUME_RUN_ID", ""),
-                                       os.environ.get("RESUME_KIND", ""))
+        prepare_work(config, temp, os.environ.get("RESUME_RUN_ID", ""),
+                     os.environ.get("RESUME_KIND", ""))
     else:
         started = int((temp / "elichika-upload-budget-start").read_text())
         # Finite subprocess ends before the job limit, preserving durable receipts.
         elapsed = max(0, int(time.time()) - started)
-        seconds = min(5 * 60, 8 * 60 - elapsed)
+        seconds = min(320 * 60, 330 * 60 - elapsed)
         check(seconds >= 60, "No safe upload time remains in this attempt")
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             output.write("seconds=" + str(seconds) + "\n")

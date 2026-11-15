@@ -10,42 +10,14 @@ import urllib.error
 import urllib.request
 
 
-JOURNAL_SEED = {
-    "run_id": 43699687032,
-    "source_commit": "1d487a4cf512127f3b1afbe62b0ed4f83b3a3ba1",
-    "run_attempt": 1,
-    "artifact_id": 14156036891,
-    "name": "elichika-individual-upload-journal-attempt-1",
-    "artifact_bytes": 33358,
-    "digest": "sha256:0dd6c141a9c9bb49a7f22cdf09b52e9019be216143b2a74d28686d546f041e0f",
-    "rawfilehashes": {
-        "journal.json": "76fc8a69c26b5830014401e54605b2e50ed22d458dd55301668609b3f61c7629",
-        "journal.events.jsonl": "a22d940c9a626e01c5d18fcfe7012bcc709ddd5b9d9d2c8f94a7a0dec8d21c80",
-    },
-    "prior_attempts": 3,
-}
-DIAGNOSTIC_SCOPE = {"name": "00jst0", "max_new_files": 1, "workers": 1,
-                    "max_attempts": 1, "index_publication": False,
-                    "existing_item": "elichika-assets-20261115-e316340d-fa6f6031-b04"}
+JOURNAL_SEED = {'run_id': 43704970280, 'source_commit': '263f1e6b8d0fae30d0c02f0bd047c1215c47e35c', 'run_attempt': 1, 'artifact_id': 14158635327, 'name': 'elichika-individual-upload-journal-attempt-1', 'artifact_bytes': 32920, 'digest': 'sha256:6968bbffec028eba3d74ad2d58ae084b31d67369cd1ddb68d2af1de64f41a3ed', 'rawfilehashes': {'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee', 'journal.events.jsonl': '58bf6d27c74ec3c28b4f21a58f21ad19fd8e5320afb026acd5acd6c15ede9bfb'}, 'prior_attempts': 4}
+PUBLICATION_SCOPE = {'mode': 'FULL_EXISTING_OWNED_FIVE_V1', 'workers': 4, 'max_new_files': 0, 'max_attempts': 3, 'index_publication': True, 'max_outstanding_acknowledged': 128, 'job_minutes': 345, 'process_minutes': 320, 'whole_budget_minutes': 330}
 PUBLICATION_LAYOUT = {"schema": 1, "kind": "EXISTING_OWNED_FIVE_V1",
                       "layout_sha256": "5369587bb29a63e7ac25ef29b7a183a61cddc2d017bee1836486350ed380650f",
                       "index_item": "elichika-assets-20261115-e316340d-fa6f6031-b00",
                       "index_prefix": "elichika-selective-five-v1"}
 LAYOUT_PLAN_SHA256 = "ecf10fb04cadbd3ce7359d03baf458c6eb48308f8658d17e44072f807e78479e"
-JOURNAL_SEED_IDENTITY = {
-    "account": "tagundo", "allow_partial": False,
-    "catalog_sha256": "0aa7c4b4cbc70f71298c47fb378b5a2d19d25a71f39907a37d14d45d5bded0ee",
-    "collection": "opensource_media",
-    "effective_catalog_sha256": "e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c",
-    "inventory_sha256": "e316340dfda6078d0c8b7ab28951ab48f588608f8d1834a1de6580d5cc68c755",
-    "metadata_sha256": "7cb43889efd923a1b8df7b4d2b8873813aba66207070e3860084508db5d92318",
-    "prefix": "elichika-assets-20261115-e316340d-fa6f6031",
-    "requested_total": 42830,
-    "session": "fa6f6031e8e339617ab58709d81f0e4f",
-    "supplemental_metadata_sha256": "0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5",
-    "supplemental_proof_sha256": "e2eb04baff335e112939d65b2e371af7219821caa2c14188e50e496802d3dfa0",
-    "target_manifest_sha256": "e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c",
-}
+JOURNAL_SEED_IDENTITY = {'account': 'tagundo', 'allow_partial': False, 'catalog_sha256': '0aa7c4b4cbc70f71298c47fb378b5a2d19d25a71f39907a37d14d45d5bded0ee', 'collection': 'opensource_media', 'effective_catalog_sha256': 'e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c', 'inventory_sha256': 'e316340dfda6078d0c8b7ab28951ab48f588608f8d1834a1de6580d5cc68c755', 'metadata_sha256': '7cb43889efd923a1b8df7b4d2b8873813aba66207070e3860084508db5d92318', 'prefix': 'elichika-assets-20261115-e316340d-fa6f6031', 'publication_layout': {'index_item': 'elichika-assets-20261115-e316340d-fa6f6031-b00', 'index_prefix': 'elichika-selective-five-v1', 'kind': 'EXISTING_OWNED_FIVE_V1', 'layout_sha256': '5369587bb29a63e7ac25ef29b7a183a61cddc2d017bee1836486350ed380650f', 'schema': 1}, 'requested_total': 42830, 'session': 'fa6f6031e8e339617ab58709d81f0e4f', 'supplemental_metadata_sha256': '0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5', 'supplemental_proof_sha256': 'e2eb04baff335e112939d65b2e371af7219821caa2c14188e50e496802d3dfa0', 'target_manifest_sha256': 'e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c'}
 
 
 class Stop(Exception):
@@ -58,15 +30,15 @@ def check(condition, message):
 
 
 def validate_seed(config):
-    """This exact independently reviewed failed run is the only cross-run seed."""
+    """This exact independently reviewed successful existing-only run is the only cross-run seed."""
     seed = config.get("journal_seed")
     check(isinstance(seed, dict) and seed == JOURNAL_SEED,
           "Journal seed differs from the one statically reviewed prior run")
     check(type(seed["prior_attempts"]) is int and type(seed["run_attempt"]) is int and
-          seed["prior_attempts"] == 3 and seed["run_attempt"] == 1,
-          "Only the fixed V3/V4/V5 attempt history may seed this diagnostic")
-    check(config.get("diagnostic") == DIAGNOSTIC_SCOPE,
-          "Only one statically reviewed diagnostic object and attempt are authorized")
+          seed["prior_attempts"] == 4 and seed["run_attempt"] == 1,
+          "Only the fixed four-attempt history may seed this publication")
+    check(config.get("publication") == PUBLICATION_SCOPE,
+          "Only the reviewed full five-owned publication scope is authorized")
     check(config.get("publication_layout") == PUBLICATION_LAYOUT and config.get("layout_plan_sha256") == LAYOUT_PLAN_SHA256,
           "Explicit reviewed five-owned publication layout is required")
     identity = JOURNAL_SEED_IDENTITY
@@ -109,8 +81,8 @@ def load_config(base):
         check(isinstance(config.get("inventory_sha256"), str) and
               re.fullmatch(r"[0-9a-f]{64}", config["inventory_sha256"]) is not None,
               "Activation is missing the reviewed complete inventory SHA256")
-        check(config.get("diagnostic") == DIAGNOSTIC_SCOPE and "journal_seed" in config,
-              "This activation authorizes only the fixed one-file diagnostic")
+        check(config.get("publication") == PUBLICATION_SCOPE and "journal_seed" in config,
+              "This activation authorizes only the fixed complete five-owned publication")
     else:
         check(config.get("inventory_sha256") is None, "Read-only plan must not pretend to pin an unreviewed inventory")
     if "journal_seed" in config:
@@ -130,14 +102,14 @@ def resume_identity(config, current, requested, attempt, fetch=api):
     seed = validate_seed(config) if "journal_seed" in config else None
     prior_attempts = seed["prior_attempts"] if seed else 0
     if seed:
-        check(attempt == 1, "The controlled diagnostic permits exactly one run attempt; no automatic rerun")
-    check(type(attempt) is int and 1 <= attempt and prior_attempts + attempt <= 5,
-          "At most five total bounded attempts, including the reviewed seed, are allowed")
+        check(1 <= attempt <= 3, "Only three reviewed full-publication attempts are allowed; unknown/spam must be reviewed before any rerun")
+    check(type(attempt) is int and 1 <= attempt and prior_attempts + attempt <= (7 if seed else 5),
+          "At most seven total bounded attempts, including four reviewed prior attempts, are allowed")
     run_id = os.environ["GITHUB_RUN_ID"]
     check(current["head_sha"] == os.environ["GITHUB_SHA"], "Current workflow source differs")
     if attempt > 1:
         previous = fetch(f"/repos/tagundo/elichika/actions/runs/{run_id}/attempts/{attempt - 1}")
-        check(previous["status"] == "completed" and previous["head_sha"] == current["head_sha"] and
+        check(previous["status"] == "completed" and previous.get("conclusion") == "failure" and previous["head_sha"] == current["head_sha"] and
               previous["workflow_id"] == current["workflow_id"] and previous["path"] == current["path"] and
               previous["run_attempt"] == attempt - 1, "Previous attempt provenance differs")
         return run_id, f"elichika-individual-upload-journal-attempt-{attempt - 1}", "same_run"
@@ -145,10 +117,10 @@ def resume_identity(config, current, requested, attempt, fetch=api):
         check(str(seed["run_id"]) != run_id, "Pinned seed must precede the new run")
         previous = fetch(f"/repos/tagundo/elichika/actions/runs/{seed['run_id']}/attempts/1")
         check(previous.get("id") == seed["run_id"] and previous.get("status") == "completed" and
-              previous.get("conclusion") == "failure" and previous.get("head_sha") == seed["source_commit"] and
+              previous.get("conclusion") == "success" and previous.get("head_sha") == seed["source_commit"] and
               previous.get("run_attempt") == seed["run_attempt"] and
               previous.get("workflow_id") == current["workflow_id"] and previous.get("path") == current["path"],
-              "Pinned seed run is not the reviewed failed attempt of this workflow")
+              "Pinned seed run is not the reviewed successful existing-only attempt of this workflow")
         artifact = fetch(f"/repos/tagundo/elichika/actions/artifacts/{seed['artifact_id']}")
         binding = artifact.get("workflow_run", {})
         check(artifact.get("id") == seed["artifact_id"] and artifact.get("name") == seed["name"] and

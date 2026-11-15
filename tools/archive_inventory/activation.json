@@ -3,24 +3,6 @@
   "activate_upload": true,
   "baseline_audit_sha256": "bcee508ab60e82ce62e27b1cfd69f9e987721bfe45f5d1b926a528a370e205be",
   "baseline_inventory_sha256": "24875b44310c51a855f8536c55a092ee05f0c5555e18446e9655f2218abc198f",
-  "diagnostic": {
-    "existing_item": "elichika-assets-20261115-e316340d-fa6f6031-b04",
-    "index_publication": false,
-    "max_attempts": 1,
-    "max_new_files": 1,
-    "name": "00jst0",
-    "workers": 1
-  },
-  "diagnostic_review": {
-    "new_attempts": 1,
-    "old_seed_preserved": true,
-    "pending_existing": 2,
-    "prior_attempts": 3,
-    "retained_ack_locations": 401,
-    "retained_location_references": 403,
-    "retargeted_staged": 4,
-    "scope": "One9688-byte00jst0 PUT to already-owned marked b04; no creation/metadata/sizehintheaders; no retry/scheduler/index"
-  },
   "inventory_run_attempt": 1,
   "inventory_run_conclusion": "failure",
   "inventory_run_id": 43681672170,
@@ -32,18 +14,18 @@
     "132713428999": "inventory (1)"
   },
   "journal_seed": {
-    "artifact_bytes": 33358,
-    "artifact_id": 14156036891,
-    "digest": "sha256:0dd6c141a9c9bb49a7f22cdf09b52e9019be216143b2a74d28686d546f041e0f",
+    "artifact_bytes": 32920,
+    "artifact_id": 14158635327,
+    "digest": "sha256:6968bbffec028eba3d74ad2d58ae084b31d67369cd1ddb68d2af1de64f41a3ed",
     "name": "elichika-individual-upload-journal-attempt-1",
-    "prior_attempts": 3,
+    "prior_attempts": 4,
     "rawfilehashes": {
-      "journal.events.jsonl": "a22d940c9a626e01c5d18fcfe7012bcc709ddd5b9d9d2c8f94a7a0dec8d21c80",
-      "journal.json": "76fc8a69c26b5830014401e54605b2e50ed22d458dd55301668609b3f61c7629"
+      "journal.events.jsonl": "58bf6d27c74ec3c28b4f21a58f21ad19fd8e5320afb026acd5acd6c15ede9bfb",
+      "journal.json": "a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee"
     },
     "run_attempt": 1,
-    "run_id": 43699687032,
-    "source_commit": "1d487a4cf512127f3b1afbe62b0ed4f83b3a3ba1"
+    "run_id": 43704970280,
+    "source_commit": "263f1e6b8d0fae30d0c02f0bd047c1215c47e35c"
   },
   "layout_plan_sha256": "ecf10fb04cadbd3ce7359d03baf458c6eb48308f8658d17e44072f807e78479e",
   "metadata_protocol_review": {
@@ -72,6 +54,17 @@
     "packs_JP.tar.006.json": "8a79856aee3b3aba9b99641d92dd4ac827e2e9b4b35974f29c2aeca59ad35b9f",
     "packs_JP.tar.007.json": "20b765cd372476beddf258b87ebaaa37a856ef7ea7c28b259b015b280c05144c"
   },
+  "publication": {
+    "index_publication": true,
+    "job_minutes": 345,
+    "max_attempts": 3,
+    "max_new_files": 0,
+    "max_outstanding_acknowledged": 128,
+    "mode": "FULL_EXISTING_OWNED_FIVE_V1",
+    "process_minutes": 320,
+    "whole_budget_minutes": 330,
+    "workers": 4
+  },
   "publication_layout": {
     "index_item": "elichika-assets-20261115-e316340d-fa6f6031-b00",
     "index_prefix": "elichika-selective-five-v1",
@@ -79,7 +72,7 @@
     "layout_sha256": "5369587bb29a63e7ac25ef29b7a183a61cddc2d017bee1836486350ed380650f",
     "schema": 1
   },
-  "read_only_plan_note": "Full42830sourceplanunchanged; explicitnewlayoutjournal authorizesonlyoneexisting-ownedb04diagnostic,noindex.",
+  "read_only_plan_note": "Source-only review packet for full five-owned continuation; Root must review and activate exact source. No new item creation or metadata writes. Actual public downloader QA remains required before server release.",
   "requested_total": 42830,
   "reviewed_complete_plan": {
     "artifact_id": 14151790915,
@@ -88,17 +81,19 @@
     "zip_sha256": "7cd32e8a2a5b27e5899b28905fa7718393fcfff7c36fbecdb224e23173fcf573"
   },
   "scheduler_review": {
-    "active_mode": "No scheduler admitted; one statically pinned owned STAGED diagnostic object only",
+    "active_mode": "Fair five existing owned contexts; max4 global staging/PUT tasks; max128 outstanding ACK/reservations; drained public MD5 reconciliation; known congestion deferred; spam/refusal/unknown stops",
     "data_inventory_changed": false,
-    "original_source_proofs_changed": false
+    "original_source_proofs_changed": false,
+    "queue_limit_note": "128 is a conservative local bound, not an IA contractual queue limit; observed detail values are unstable."
   },
   "schema": 1,
   "session_nonce": "fa6f6031e8e339617ab58709d81f0e4f",
   "source_sha256": {
+    "FULL_FIVE_REVIEW.md": "f119e769e2e0323f5a85d498cc3ef1eb503f6cd0cda2c939d4ed8d4a3a53345f",
     "archive-metadata.json": "7cb43889efd923a1b8df7b4d2b8873813aba66207070e3860084508db5d92318",
     "authoritative-target.json.gz": "4c4eb47503009b188c196c501a03a279c77b4c5a3dc6deae81db5a79b81b778b",
-    "ci_preflight.py": "791a057a05e8131819b144b6417da6bc0dac35ad1db5c6355e5364213d7a1653",
-    "ci_prepare.py": "f0b3584170006078ae5ef635d9f18f222e54f9088b34ac8d918e7569b80f29c0",
+    "ci_preflight.py": "bec7d1fb7b72f2e9b20cd7e1483e5c589df7af4367efd33425b9e3f7bb7345b2",
+    "ci_prepare.py": "e7fe7753a14fe5896334ea1041a2412436bc28a826235681701000af0ffac552",
     "existing_owned_diagnostic.py": "6fee91dce6c7db6a82d8c5b914b5d7e166a2f9fbe2d3a9c68885199c7c81c249",
     "expected-catalog.json.gz": "0a06f3cd4707e2ec5b1019fc60fbfabd38fbca698b8b857798fd28b82b38df96",
     "five-owned-layout.json.gz": "d19cc2ebb0bef61ed59e440497e038e9cc41418357a11fb1869906fbac2b536d",
@@ -107,15 +102,17 @@
     "layout_review.py": "d0ba5854e69447d573f10f44f677de64b1815871f389438290ec5ef57b6ed7e3",
     "merge_supplement.py": "9ddd44d666805e95955d0b8704941bb04a6efc44f09cbfa92b86bb65972116bf",
     "owned_layout.py": "429f1f1ad8e6570cbdd9478e5ba366d21b775de7749699865f4b844dd5839cfa",
+    "owned_publisher.py": "f8bac9269aa182b3037bdb2c227dae1912ac2d22f3571b06de4b91031d619237",
     "reaggregate_target.py": "0c92132895792c1edc1e8d75a578b0cb526b3572a654af072285f8b4723b7c8f",
     "supplemental-metadata.json.gz": "25f6aa8c01162d009e72097eee592abc2edfca4f06d64674d342809f945e2776",
-    "test_ci_preflight.py": "4d39549cebda02b52bdc057c06b431b1c47a3ba8c7dfb96187836a7b848f8e9c",
+    "test_ci_preflight.py": "e229248699a7bb9dd9daa45690547cef7c0117229dde5b88e53cf43c2849d70c",
     "test_diagnostic_put.py": "df9b14c0c56d1feef74aaee5118a7fad4c33b41902db00f026ebb2cec454e2fe",
     "test_existing_owned.py": "f4db5216b2c056ab4bba446526711918f01c55111ce6bcb8c17072e24cbb70e5",
     "test_fair_scheduler.py": "614b3b23e67f262fcb9df871438d8b89c651c044ad463b21193e9b0064acfde6",
     "test_individual_uploader.py": "9235d0dca9391b04a5dec665ab43d9ac79cadd4d2055df42335a155506037b2f",
     "test_layout_review.py": "341c0b043da794992e0a075d11e570ebe5e48a3785cb027898a015689c39f1a3",
     "test_merge_supplement.py": "8652802726e269b6afe50bcf5ef3018b16c568537d015068229e973b0f38d5a3",
+    "test_owned_publisher.py": "43ba8eccae21fbb77264f26f821b04024aaa96cab203ea12670567e316ce73c5",
     "test_reaggregate_target.py": "f101e9ce92eedb4930d30dadedbcb4530282ee8e4eed116cffd06b01eb4c0141"
   },
   "supplement_metadata_sha256": "0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5",
