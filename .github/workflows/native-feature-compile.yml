@@ -1,98 +1,113 @@
-name: Native feature compile only
+name: Build unified Elichika and SIFAS iOS candidate
 
 on:
-  push:
-    branches: [codex/native-feature-compile-20261115]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
+        type: choice
+        options: [sdk-compile, core-runtime, full-candidate]
+        default: sdk-compile
+      version:
+        description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
+        required: false
+        default: ''
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: native-feature-compile-${{ github.ref }}-${{ github.sha }}
+  group: ios-unified-${{ github.sha }}-${{ inputs.mode }}
   cancel-in-progress: false
 
 jobs:
-  android:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+  apple-sdk:
+    runs-on: macos-15
+    timeout-minutes: 90
     env:
       PYTHONDONTWRITEBYTECODE: '1'
+      IPHONEOS_DEPLOYMENT_TARGET: '13.0'
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact reviewed implementation and official data
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          submodules: recursive
           fetch-depth: 1
-          submodules: false
           persist-credentials: false
-      - name: Verify immutable native sources and gitlinks
-        run: python3 ci/native_feature_compile.py preflight --out "$RUNNER_TEMP/native-feature-android-reports"
-      - uses: actions/setup-java@v4
+
+      - name: Set up Go compiler for the actual in-process backend
+        uses: actions/setup-go@v5
         with:
-          distribution: temurin
-          java-version: '17'
-      - uses: actions/setup-python@v5
+          go-version: '1.22.12'
+
+      - name: Set up host build Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Prepare checksum-pinned official Gradle 8.9
-        timeout-minutes: 8
+
+      - name: Verify portable packaging and native lifecycle contracts
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios-evidence" "$RUNNER_TEMP/ios-candidate"
+          python3 -B -m unittest discover -s ios/ci -p 'test_*.py' -v
+          python3 -B -m unittest discover -s ios/python/tests -p 'test_*.py' -v
+          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/HostCoreTests.cpp -o "$RUNNER_TEMP/elichika-host-policy-tests"
+          "$RUNNER_TEMP/elichika-host-policy-tests"
+          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/RSAPublicKeyTests.cpp -o "$RUNNER_TEMP/elichika-rsa-key-tests"
+          "$RUNNER_TEMP/elichika-rsa-key-tests"
+
+      - name: Test actual in-process Go lifecycle, initialization, keys and timezones
+        run: |
+          set -euo pipefail
+          go test -count=1 -tags=elichika_inprocess -v ./iosbridge ./runtimeinit ./db ./router \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-inprocess-tests.txt"
+          go test -count=1 -v ./config \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-legacy-config-tests.txt"
+
+      - name: Build complete Python wheels and native codecs for the full candidate
+        if: ${{ inputs.mode == 'full-candidate' }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --require-hashes -r ios/runtime/build-requirements.txt
+          for target in device simulator; do
+            python3 -B ios/runtime/build_wheels.py \
+              --target "$target" --output "$RUNNER_TEMP/ios-built-inputs/$target" \
+              --cache "$RUNNER_TEMP/ios-input-cache"
+            python3 -B ios/runtime/build_codecs.py \
+              --target "$target" --repo . \
+              --output "$RUNNER_TEMP/ios-built-inputs/$target/codecs"
+          done
+
+      - name: Compile actual device and Simulator targets and execute selected gates
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GRADLE_USER_HOME: ${{ runner.temp }}/native-feature-gradle
-        run: python3 android/ci/prepare_gradle.py --report "$RUNNER_TEMP/native-feature-android-reports/gradle-preparation.json"
-      - uses: android-actions/setup-android@v3
-        timeout-minutes: 4
-        with:
-          packages: platform-tools
-      - name: Install only Android Java compilation SDK inputs
-        timeout-minutes: 6
-        run: sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
-      - name: Audit task graph and compile real app Kotlin and Java
-        timeout-minutes: 19
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/native-feature-gradle
-        run: python3 ci/native_feature_compile.py android --out "$RUNNER_TEMP/native-feature-android-reports"
-      - name: Preserve bounded source/compiler receipts
-        if: always()
+          BUILD_MODE: ${{ inputs.mode }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 -B ios/ci/run_build.py --mode "$BUILD_MODE" --repo . \
+            --work "$RUNNER_TEMP/ios-build" --evidence "$RUNNER_TEMP/ios-evidence" \
+            --delivery "$RUNNER_TEMP/ios-candidate" --version "$REQUESTED_VERSION" \
+            --built-inputs "$RUNNER_TEMP/ios-built-inputs" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/build.log"
+
+      - name: Upload explicitly untested actual-game candidate
+        if: ${{ inputs.mode == 'full-candidate' && success() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-feature-android-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/native-feature-android-reports/*.json
-            ${{ runner.temp }}/native-feature-android-reports/*-tail.txt
-          if-no-files-found: warn
+          name: elichika-sifas-ios-UNTESTED-${{ github.sha }}
+          path: ${{ runner.temp }}/ios-candidate/
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
-  macos:
-    runs-on: macos-15
-    timeout-minutes: 20
-    env:
-      PYTHONDONTWRITEBYTECODE: '1'
-      MACOSX_DEPLOYMENT_TARGET: '13.0'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
-          submodules: false
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - name: Compile full SwiftUI app and run package tests
-        timeout-minutes: 18
-        run: >-
-          python3 ci/native_feature_compile.py swift
-          --out "$RUNNER_TEMP/native-feature-macos-reports"
-          --scratch "$RUNNER_TEMP/native-feature-swift"
-      - name: Preserve bounded source/compiler/test receipts
+      - name: Preserve exact source, Apple compiler and runtime gate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: native-feature-macos-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/native-feature-macos-reports/*.json
-            ${{ runner.temp }}/native-feature-macos-reports/*-tail.txt
+          name: elichika-ios-${{ inputs.mode }}-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ios-evidence/
           if-no-files-found: warn
           retention-days: 7
