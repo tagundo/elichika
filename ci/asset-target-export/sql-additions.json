@@ -1,0 +1,1323 @@
+{
+  "source_catalog": "/tmp/asset-hosted-inventory-20261115/expected-catalog.json.gz",
+  "per_profile": [
+    {
+      "profile": "gl/android/en",
+      "migration_rows": 48,
+      "missing_from_official_union": 37
+    },
+    {
+      "profile": "gl/android/ko",
+      "migration_rows": 52,
+      "missing_from_official_union": 41
+    },
+    {
+      "profile": "gl/android/zh",
+      "migration_rows": 48,
+      "missing_from_official_union": 37
+    },
+    {
+      "profile": "gl/ios/en",
+      "migration_rows": 47,
+      "missing_from_official_union": 37
+    },
+    {
+      "profile": "gl/ios/ko",
+      "migration_rows": 51,
+      "missing_from_official_union": 41
+    },
+    {
+      "profile": "gl/ios/zh",
+      "migration_rows": 47,
+      "missing_from_official_union": 37
+    },
+    {
+      "profile": "jp/android/ja",
+      "migration_rows": 47,
+      "missing_from_official_union": 37
+    },
+    {
+      "profile": "jp/ios/ja",
+      "migration_rows": 47,
+      "missing_from_official_union": 37
+    }
+  ],
+  "added_count": 52,
+  "added_bytes": 302993613,
+  "union_count": 42830,
+  "objects": {
+    "019bt4": {
+      "size": 1372096,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:76",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:82",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:76",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:62",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:68",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:62",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:62",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:62"
+      ]
+    },
+    "0ih31s": {
+      "size": 8918577,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:46",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:44",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:44",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:32",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:30",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:30",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:32",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:32"
+      ]
+    },
+    "0yw1p4": {
+      "size": 8169173,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:22",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:22"
+      ]
+    },
+    "204a18": {
+      "size": 7167082,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:38",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:36",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:36",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:24",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:22",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:22"
+      ]
+    },
+    "2g8p9b": {
+      "size": 6777049,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:24",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:24",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:24",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:10",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:10",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:10",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:10",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:10"
+      ]
+    },
+    "34fo2a": {
+      "size": 6400996,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:2",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:2"
+      ]
+    },
+    "3716a1": {
+      "size": 5534560,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:92",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:100",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:92",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:78",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:86",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:78",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:78",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:78"
+      ]
+    },
+    "4lgqdl": {
+      "size": 6043776,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:98",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:106",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:98",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:84",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:92",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:84",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:84",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:84"
+      ]
+    },
+    "52npq3": {
+      "size": 10243893,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:12",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:12"
+      ]
+    },
+    "5jzxe7": {
+      "size": 8965803,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:20",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:20",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:20",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:6",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:6",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:6"
+      ]
+    },
+    "5vx1dq": {
+      "size": 8183664,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:44",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:42",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:42",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:30",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:28",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:28"
+      ]
+    },
+    "6d2zta": {
+      "size": 1117696,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:72",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:76",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:72",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:58",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:62",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:58",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:58",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:58"
+      ]
+    },
+    "714f0j": {
+      "size": 1431744,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:74",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:78",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:74",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:60",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:64",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:60",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:60",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:60"
+      ]
+    },
+    "7fevd6": {
+      "size": 7148300,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:24",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:24"
+      ]
+    },
+    "8ny3oy": {
+      "size": 8464860,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:20",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:20"
+      ]
+    },
+    "8ysj3r": {
+      "size": 617874,
+      "profiles": [
+        "gl/android/ko",
+        "gl/ios/ko"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:73",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:59"
+      ]
+    },
+    "93e7yq": {
+      "size": 6712107,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:56",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:56",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:56",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:42",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:42",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:42",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:42",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:42"
+      ]
+    },
+    "966hio": {
+      "size": 6939898,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:16",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:16"
+      ]
+    },
+    "9djoov": {
+      "size": 635194,
+      "profiles": [
+        "gl/android/ko",
+        "gl/ios/ko"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:84",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:70"
+      ]
+    },
+    "9rpoy6": {
+      "size": 517920,
+      "profiles": [
+        "gl/android/ko",
+        "gl/ios/ko"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:80",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:66"
+      ]
+    },
+    "cla995": {
+      "size": 9083998,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:22",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:22",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:22",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:8",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:8",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:8"
+      ]
+    },
+    "d5mrei": {
+      "size": 6858715,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:54",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:54",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:54",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:40",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:40",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:40",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:40",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:40"
+      ]
+    },
+    "eaar3g": {
+      "size": 6762877,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:52",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:52",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:52",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:38",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:38",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:38",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:38",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:38"
+      ]
+    },
+    "f3dnzx": {
+      "size": 1506144,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:90",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:98",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:90",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:76",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:84",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:76",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:76",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:76"
+      ]
+    },
+    "fft5fy": {
+      "size": 9683328,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:26",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:26",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:26",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:12",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:12",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:12"
+      ]
+    },
+    "g1d6bd": {
+      "size": 8033793,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:28",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:28",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:28",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:14",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:14",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:14"
+      ]
+    },
+    "gat2un": {
+      "size": 7050890,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:28",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:28"
+      ]
+    },
+    "gbntg3": {
+      "size": 6425084,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:16",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:16",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:16",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:2",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:2",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:2"
+      ]
+    },
+    "hpqya5": {
+      "size": 1391400,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:80",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:88",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:80",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:66",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:74",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:66",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:66",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:66"
+      ]
+    },
+    "jeef7d": {
+      "size": 5824736,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:68",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:70",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:68",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:54",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:56",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:54",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:54",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:54"
+      ]
+    },
+    "ji4npl": {
+      "size": 1303136,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:18",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:18",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:18",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:4",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:4",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:4",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:4",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:4"
+      ]
+    },
+    "k15ag1": {
+      "size": 8430532,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:63",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:63",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:63",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:49",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:49",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:49",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:49",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:49"
+      ]
+    },
+    "kg5nh3": {
+      "size": 7348958,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:40",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:50",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:50",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:26",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:36",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:36",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:26",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:26"
+      ]
+    },
+    "ktszk5": {
+      "size": 9618035,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:8",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:8"
+      ]
+    },
+    "kwmjfa": {
+      "size": 7666798,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:30",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:30"
+      ]
+    },
+    "m2jezu": {
+      "size": 596765,
+      "profiles": [
+        "gl/android/ko",
+        "gl/ios/ko"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:65",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:51"
+      ]
+    },
+    "m97q9y": {
+      "size": 6953338,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:30",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:30",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:30",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:16",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:16",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:16"
+      ]
+    },
+    "mjuea4": {
+      "size": 7067317,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:42",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:40",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:40",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:28",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:26",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:26"
+      ]
+    },
+    "nlhkcn": {
+      "size": 1572192,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:86",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:94",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:86",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:72",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:80",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:72",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:72",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:72"
+      ]
+    },
+    "np05vj": {
+      "size": 8483077,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:34",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:38",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:38",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:20",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:24",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:24"
+      ]
+    },
+    "nrtec4": {
+      "size": 7356506,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:50",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:48",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:48",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:36",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:34",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:34",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:36",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:36"
+      ]
+    },
+    "op1rf1": {
+      "size": 10185418,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:48",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:46",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:46",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:34",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:32",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:32",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:34",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:34"
+      ]
+    },
+    "qvu5ch": {
+      "size": 9800784,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:32",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:32",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:32",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:18",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:18",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:18",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:18",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:18"
+      ]
+    },
+    "rccib2": {
+      "size": 8125197,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:36",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:34",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:34",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:22",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:20",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:20"
+      ]
+    },
+    "s77zfx": {
+      "size": 9184,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:78",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:86",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:78",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:64",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:72",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:64",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:64",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:64"
+      ]
+    },
+    "u4f7ev": {
+      "size": 9760,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:82",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:90",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:82",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:68",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:76",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:68",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:68",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:68"
+      ]
+    },
+    "unf7pe": {
+      "size": 6203712,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:58",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:58",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:58",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:44",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:44",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:44",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:44",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:44"
+      ]
+    },
+    "vv0fub": {
+      "size": 1395232,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:84",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:92",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:84",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:70",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:78",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:70",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:70",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:70"
+      ]
+    },
+    "y6o2uc": {
+      "size": 8023967,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:14",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:14"
+      ]
+    },
+    "yr5byr": {
+      "size": 9218462,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:6",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:6"
+      ]
+    },
+    "yzfoe2": {
+      "size": 5818176,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:88",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:96",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:88",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:74",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:82",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:74",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:74",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:74"
+      ]
+    },
+    "yzo0bx": {
+      "size": 3823840,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:65",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:67",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:65",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:51",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:53",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:51",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:51",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:51"
+      ]
+    }
+  },
+  "already_present": {
+    "18vy5a": {
+      "size": 334434,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:70",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:74",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:70",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:56",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:60",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:56"
+      ]
+    },
+    "1jqy13": {
+      "size": 204920,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:95",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:103",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:95",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:81",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:89",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:81"
+      ]
+    },
+    "7d2sna": {
+      "size": 420922,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:61",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:61",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:61",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:47",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:47",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:47"
+      ]
+    },
+    "c9zftx": {
+      "size": 497466,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:69",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:71",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:69",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:55",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:57",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:55",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:55",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:55"
+      ]
+    },
+    "e9ixeh": {
+      "size": 420922,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:47",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:47"
+      ]
+    },
+    "eo0fzy": {
+      "size": 204920,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:81",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:81"
+      ]
+    },
+    "ghm1os": {
+      "size": 4009397,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:94",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:102",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:94",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:80",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:88",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:80"
+      ]
+    },
+    "lqzwhz": {
+      "size": 404238,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:79",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:79"
+      ]
+    },
+    "n971km": {
+      "size": 1045721,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:45",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:45"
+      ]
+    },
+    "ofbjn0": {
+      "size": 334434,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:56",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:56"
+      ]
+    },
+    "p9604a": {
+      "size": 233518,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:66",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:68",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:66",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:52",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:54",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:52"
+      ]
+    },
+    "tdyk10": {
+      "size": 404238,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:93",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:101",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:93",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:79",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:87",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:79"
+      ]
+    },
+    "ubias7": {
+      "size": 394966,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:8",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:8",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:8"
+      ]
+    },
+    "uvsgh0": {
+      "size": 4009397,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:80",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:80"
+      ]
+    },
+    "wey34o": {
+      "size": 1045721,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:59",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:59",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:59",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:45",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:45",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:45"
+      ]
+    },
+    "x9y2x9": {
+      "size": 3079115,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:96",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:104",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:96",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:82",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:90",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:82"
+      ]
+    },
+    "yq6rlp": {
+      "size": 291592,
+      "profiles": [
+        "gl/android/en",
+        "gl/android/ko",
+        "gl/android/zh",
+        "gl/ios/en",
+        "gl/ios/ko",
+        "gl/ios/zh",
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/gl/004.asset_a_en.db.sql:60",
+        "/workspace/elichika/assets/sql/gl/007.asset_a_ko.db.sql:60",
+        "/workspace/elichika/assets/sql/gl/010.asset_a_zh.db.sql:60",
+        "/workspace/elichika/assets/sql/gl/014.asset_i_en.db.sql:46",
+        "/workspace/elichika/assets/sql/gl/015.asset_i_ko.db.sql:46",
+        "/workspace/elichika/assets/sql/gl/016.asset_i_zh.db.sql:46",
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:46",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:46"
+      ]
+    },
+    "z7uqo9": {
+      "size": 3079115,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:82",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:82"
+      ]
+    },
+    "zw1ffj": {
+      "size": 233518,
+      "profiles": [
+        "jp/android/ja",
+        "jp/ios/ja"
+      ],
+      "sources": [
+        "/workspace/elichika/assets/sql/jp/004.asset_a_ja.db.sql:52",
+        "/workspace/elichika/assets/sql/jp/005.asset_i_ja.db.sql:52"
+      ]
+    }
+  }
+}

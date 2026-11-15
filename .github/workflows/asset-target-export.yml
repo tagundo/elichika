@@ -1,0 +1,49 @@
+name: Released APK asset target export
+
+on:
+  push:
+    branches: [codex/asset-target-export-20261115]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          submodules: false
+          persist-credentials: false
+      - name: Verify exact Go download-set simulation
+        working-directory: ci/asset-target-export
+        run: python3 -m unittest -v test_apk_catalog_probe.py
+      - name: Download one public released APK on hosted runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --max-time 600 \
+            'https://github.com/tagundo/elichika/releases/download/v2026.11.14.1/elichika-2026.11.14.1.apk' \
+            --output "$RUNNER_TEMP/released.apk"
+          test "$(stat -c %s "$RUNNER_TEMP/released.apk")" = 290927759
+          echo 'eaa99603f292bd10f53134c57c90d158a13046d2d6f02d8bbb63490296654413  '"$RUNNER_TEMP/released.apk" | sha256sum --check --status
+      - name: Export pinned stock DB target and require all 24 locale orders agree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/asset-target-export/apk_catalog_probe.py \
+            --apk "$RUNNER_TEMP/released.apk" \
+            --official-catalog ci/asset-target-export/official-source-catalog.json.gz \
+            --sql-additions ci/asset-target-export/sql-additions.json \
+            --output "$RUNNER_TEMP/asset-target-proof"
+      - name: Retain only small target catalog and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: released-apk-42830-target-proof
+          path: ${{ runner.temp }}/asset-target-proof/
+          if-no-files-found: warn
+          retention-days: 14
