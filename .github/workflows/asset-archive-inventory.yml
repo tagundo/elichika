@@ -1,0 +1,85 @@
+name: Read-only archived asset inventory
+
+on:
+  push:
+    branches:
+      - codex/asset-archive-inventory-20261115
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: readonly-asset-archive-inventory
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/archive_inventory
+      - name: Test inventory source with tiny synthetic TARs
+        working-directory: tools/archive_inventory
+        run: python3 -B -m unittest -v test_hosted_inventory
+      - name: Inventory six pinned public TAR parts, one at a time
+        working-directory: tools/archive_inventory
+        env:
+          INVENTORY_SHARD: ${{ matrix.shard }}
+        run: >-
+          python3 -B hosted_inventory.py shard
+          --catalog expected-catalog.json.gz
+          --metadata archive-metadata.json
+          --shard "$INVENTORY_SHARD" --total 3
+          --work "$RUNNER_TEMP/archive-tar"
+          --output "$RUNNER_TEMP/part-proofs"
+      - name: Preserve small proofs even when source is incomplete
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-part-proofs-${{ matrix.shard }}
+          path: ${{ runner.temp }}/part-proofs/*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    if: always()
+    needs: inventory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/archive_inventory
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: archive-part-proofs-*
+          path: ${{ runner.temp }}/all-part-proofs
+      - name: Aggregate exact source proofs and official profiles
+        working-directory: tools/archive_inventory
+        run: >-
+          python3 -B hosted_inventory.py aggregate
+          --catalog expected-catalog.json.gz
+          --metadata archive-metadata.json
+          --input "$RUNNER_TEMP/all-part-proofs"
+          --output "$RUNNER_TEMP/asset-inventory"
+      - name: Publish inventory, manifests and explicit missing/conflict/extra audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-asset-inventory
+          path: ${{ runner.temp }}/asset-inventory
+          if-no-files-found: warn
+          retention-days: 30
