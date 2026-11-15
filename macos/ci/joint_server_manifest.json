@@ -1,0 +1,23 @@
+{
+  "version": "2026.11.14.1",
+  "source_sha": "02f659d707997e03218be231e8a675fb0358a6c8",
+  "android": {
+    "run_id": 43614298587,
+    "artifact_id": 14122046356,
+    "zip_sha256": "80ad92dbb57a21d41f1f6606c8334b5b63551fbf582cc2a318c5ccfad93170fe",
+    "file_sha256": "eaa99603f292bd10f53134c57c90d158a13046d2d6f02d8bbb63490296654413"
+  },
+  "macos": {
+    "run_id": 43605405103,
+    "artifact_id": 14119410956,
+    "zip_sha256": "f4e3a2748d4f07e7890e9a9f0ea3686e28d47682a264f2892e42038601e234de",
+    "file_sha256": "cae7643e68c342f9d15057b105771f3a138a95ae6bc300a7aa65dfe675bd3b74"
+  },
+  "general": {
+    "run_id": 43605418804,
+    "artifact_id": 14118960688,
+    "zip_sha256": "2e2d67b10862a81f89a971538ebea905d0f551b31481ef51b5d391e5730121c5"
+  },
+  "schema_version": 1,
+  "notes": "서버 앱과 SIFAS 게임 클라이언트를 함께 제공합니다.\n\n- 계정(유저) 관리에서 이 기기의 DB 계정 ID를 선택해 로그인할 수 있습니다. 클라이언트 이전 화면에서 서버 주소·ID·공개 키를 확인하고 복사할 수 있습니다.\n- 새 클라이언트 비밀번호를 설정하거나 생성하면 이 기기에서 암호화해 보관하며 표시·복사할 수 있습니다. 생성되는 비밀번호는 게임의 입력 규칙에 맞는 영문·숫자 16자리입니다. 기존 비밀번호와 진행 상황은 자동으로 바꾸지 않습니다. 이전 bcrypt 해시에서 원래 비밀번호를 복원할 수는 없습니다.\n- 앱 내부 서버 설정은 admin 입력 없이 열립니다. 일반 원격 웹 접근의 인증은 유지합니다. Mac의 앱 설정과 서버 설정은 별도 메뉴로 나눴습니다.\n- 코스튬 삭제와 클론 삭제를 별도 도구로 나눴습니다. 종속된 설치 항목과 얼굴·입 리소스의 소유권을 확인한 후 삭제하며 백업·복원 기능을 유지합니다.\n- Mac 콘솔은 추가된 로그를 묶어서 반영하며, 로그 갱신이 다른 메뉴와 편집 화면 전체에 전달되지 않도록 변경했습니다. 많은 로그를 읽을 때 응답 크기를 넘지 않도록 순서대로 나누어 받습니다.\n- 좁은 창에서 3D 모델의 상단 불러오기 칸과 모델 조작 버튼이 겹치던 배치를 수정했습니다. 모델 보기 크기를 바꿨다가 돌아올 때 기존 위치와 카메라 상태를 복원합니다.\n- 파일 일부를 내려주는 경로에서 요청이 끝나거나 취소되면 파일을 닫도록 수정하고, 작은 단위의 반복 읽기·쓰기를 줄였습니다.\n- PNG·레이어 프로젝트의 파일 열기·저장에서 큰 편집 데이터가 거부되던 제한을 수정했습니다. 유효한 레이어 프로젝트는 일반 `.json` 파일명으로도 열 수 있고, Mac 저장 창에서 확장자를 생략하면 PNG·JSON 확장자를 붙입니다.\n- 모션을 추가할 때 텍스쳐·스킨톤 편집과 되돌리기·다시 실행 이력을 유지합니다. 원본이 달라 기존 편집을 안전하게 연결할 수 없으면 원인을 표시하며 편집 상태를 보존합니다.\n- UV섬 선택에서 얇게 빠지던 경계 픽셀을 포함하고, 선택 밖 픽셀은 유지합니다. 텍스쳐 복원은 의미를 명확히 표시하고 확인 후 실행하며 되돌릴 수 있습니다.\n- GL/JP Android 게임 클라이언트의 FOV 배율, 화면 방향 고정, 인트로 빠르게 재생 설정을 수정했습니다. IPA에는 게임 화면 위 설정·연결 메뉴를 추가했습니다.\n- MV 멤버 선택에서 같은 캐릭터와 의상을 여러 슬롯에 사용할 수 있습니다. 슬롯마다 별도 모델을 생성하며 의상 목록에 새 클론 항목을 쌓지 않습니다. 기존에 설치한 클론과 일반 라이브 편성 규칙은 유지합니다.\n\nElichika APK는 서버 앱입니다. LLAS_GL/JP APK와 SIFAS IPA는 게임 클라이언트입니다.\n\n게임 APK는 새 전용 배포 키로 서명했습니다. 기존 b20/b21과 서명이 달라 직접 덮어쓰는 업데이트는 지원하지 않습니다. 앱을 삭제하기 전에 Elichika에서 계정 ID와 새 클라이언트 비밀번호를 확인하고 서버 데이터를 백업하세요. 재설치 시 클라이언트 내부 설정은 다시 입력해야 할 수 있습니다.\n\nIPA의 GL과 JP 기본 접속 주소는 원본과 같으며, 게임의 Connection 메뉴에서 Elichika 서버 주소와 공개 키를 설정하고 재시작해야 합니다. GL Local 버전은 같은 기기의 http://127.0.0.1:8080을 기본으로 사용합니다. 두 GL IPA는 같은 번들 ID를 사용하는 대체 설치본입니다. Local 버전은 기존 패처의 주소 길이 제한(21자)이 있으므로 긴 LAN 주소에는 일반 GL을 사용하세요.\n\nIPA는 처음 실행할 때 오른쪽 위 Settings 버튼을 표시합니다. MV 화면을 가리지 않으려면 Hide settings button을 선택하세요. 숨긴 뒤에도 게임 화면 오른쪽 위를 2초간 길게 누르면 설정 메뉴가 다시 열리고, 서버 주소는 Connection에서 변경할 수 있습니다. Show settings button으로 버튼을 다시 표시할 수 있으며 표시 여부는 재실행 후에도 유지됩니다. Restore defaults는 버튼을 다시 표시합니다.\n\nIPA의 주 검증 대상은 Apple Silicon Mac의 PlayCover입니다. 실제 iPhone/SideStore 설치와 최신 iOS 기기 동작은 별도 검증이 필요합니다. Android의 삼성 보안 분류는 해당 기기에서 최종 확인해야 합니다.\n\n각 파일의 SHA-256은 SHA256SUMS에 있습니다.\n\n이번 수정: Custom MV에서 같은 캐릭터·같은 의상 선택 후 화면 갱신이 멈추던 오류를 수정했습니다. 배우별 재질과 연결된 광원·표정 재질을 모델 초기화 때 분리하고, 텍스처·셰이더는 공유하며 MV 종료 시 정리합니다. GL Local IPA의 같은 의상 2명 비교에서 광원·눈·입·표정과 로딩·재생 안정성은 사용자의 MacBook/PlayCover에서 확인했습니다.\n\n검증 범위 / Validation scope\nAndroid game-client MV, lighting, FOV and orientation behaviour have not been tested on an Android device for this build.\nThe GL and JP IPA variants and SideStore installation were not tested on devices; actual MacBook/PlayCover MV verification used the GL Local IPA.\nFOV, orientation-lock and intro-speed controls have static implementation checks; their device behaviour was not separately verified in this release test.\n\n<!-- elichika-joint-clients:54b40492a1d6c804c87513d2825b5b820a4824796664113c826377080a661242 -->\n"
+}
