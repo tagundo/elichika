@@ -4,6 +4,7 @@ import sys
 import tempfile
 import hashlib
 import struct
+import re
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -29,6 +30,42 @@ def fat_fixture(slices):
 
 
 class NativeNormalizationTests(unittest.TestCase):
+    def test_only_exact_hashed_build_archive_is_omitted_and_recorded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wheel = root / "numpy-1.26.2-cp313-cp313-ios_13_0_arm64_iphoneos.whl"
+            name = "numpy/core/lib/libnpymath.a"
+            raw = b"!<arch>\nunit-test link input"
+            with zipfile.ZipFile(wheel, "w") as archive:
+                archive.writestr("numpy/__init__.py", "# Runtime Python stays present\n")
+                archive.writestr(name, raw)
+            expected = {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+            row = {"wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(), "files": {name: expected}}
+            omitted = []
+            with patch.dict(provision.BUILD_ONLY_ARCHIVES, {wheel.name: row}):
+                provision.unpack_wheel(wheel, root / "site", "device", omitted)
+                self.assertTrue((root / "site/numpy/__init__.py").is_file())
+                self.assertFalse((root / "site" / name).exists())
+                self.assertEqual(omitted[0]["sha256"], expected["sha256"])
+                self.assertEqual(omitted[0]["path"], name)
+                row["files"][name] = dict(expected, sha256="0" * 64)
+                with self.assertRaisesRegex(ValueError, "member hash differs.*libnpymath.a"):
+                    provision.unpack_wheel(wheel, root / "wrong-member", "device")
+                row["files"][name] = expected
+                row["wheel_sha256"] = "0" * 64
+                with self.assertRaisesRegex(ValueError, "wheel hash differs"):
+                    provision.unpack_wheel(wheel, root / "wrong-wheel", "device")
+
+    def test_unexpected_static_library_and_host_executable_are_rejected_with_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("numpy/new-native.a", "numpy/host.dll", "numpy/host.exe"):
+                wheel = root / ("test-" + Path(name).suffix[1:] + "-1-cp313-cp313-ios_13_0_arm64_iphoneos.whl")
+                with zipfile.ZipFile(wheel, "w") as archive:
+                    archive.writestr(name, b"unknown native input")
+                with self.subTest(member=name), self.assertRaisesRegex(ValueError, re.escape(wheel.name + ":" + name)):
+                    provision.unpack_wheel(wheel, root / Path(name).name, "device")
+
     def test_device_one_slice_fat_and_simulator_fat_select_real_arm64(self):
         for target, platform in (("device", 2), ("simulator", 7)):
             selected = thin_fixture(platform)

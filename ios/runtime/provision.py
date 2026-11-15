@@ -22,6 +22,22 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "build"))
 from common import codesign, inventory, macho, require, run, safe_name, sha256, write_json
 
+# These two archives are NumPy's development/link inputs, never Python runtime
+# imports. Both SDK variants were inspected in the exact pinned BeeWare wheels.
+# No other static library or host executable is admitted by this exception.
+BUILD_ONLY_ARCHIVES = {
+    "numpy-1.26.2-cp313-cp313-ios_13_0_arm64_iphoneos.whl": {
+        "wheel_sha256": "070f7f1133d18e716c837733b60c7dc8a540e19caa22cb6b33ba5d629e087230",
+        "files": {
+            "numpy/core/lib/libnpymath.a": {"bytes": 153744, "sha256": "773a6da4159b6e7edfc0ff6a18999765e965acf74951ac2bdcd69058036b6b5a"},
+            "numpy/random/lib/libnpyrandom.a": {"bytes": 166360, "sha256": "238680cf0c98b8f80c948113df359844a2f1c84f1697c83df062e050b8527279"}}},
+    "numpy-1.26.2-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl": {
+        "wheel_sha256": "d7c561e4c4942567ae3727b4ed9c79c79965549e103368b1074a145fc9094934",
+        "files": {
+            "numpy/core/lib/libnpymath.a": {"bytes": 152152, "sha256": "1778d2c64cb7b6e7309f6ff14d3354687f5ba80875ff231347595ba275682fbb"},
+            "numpy/random/lib/libnpyrandom.a": {"bytes": 163336, "sha256": "a2a9fdd4fea74289f18bae1f2548ce26501ad0786351cc5f9ae0fe490d8e1b18"}}},
+}
+
 
 def slice_inventory(path):
     """Read the actual FAT wrapper without accepting it as a thin image."""
@@ -159,13 +175,13 @@ def extract_support(archive, output, target, normalizations=None):
     return stdlib
 
 
-def unpack_wheel(path, destination, target):
+def unpack_wheel(path, destination, target, omitted_build_archives=None):
     platform = "ios_13_0_arm64_" + ("iphoneos" if target == "device" else "iphonesimulator")
     native_tag = bool(re.search(r"-cp313-cp313-" + platform + r"\.whl$", path.name))
     pinned_abi3 = bool(re.fullmatch(r"(?:etcpak-0\.9\.15|astc_encoder_py-0\.1\.12)-cp37-abi3-" + platform + r"\.whl", path.name))
     require(path.name.endswith("none-any.whl") or native_tag or pinned_abi3,
             "Wrong Python ABI or SDK wheel: " + path.name)
-    seen, expanded = set(), 0
+    seen, expanded, static_wheel_verified = set(), 0, False
     with zipfile.ZipFile(path) as source:
         for member in source.infolist():
             safe_name(member.filename)
@@ -176,7 +192,24 @@ def unpack_wheel(path, destination, target):
                 continue
             expanded += member.file_size
             require(len(seen) < 10000 and member.file_size < 128 * 1024**2 and expanded < 256 * 1024**2, "Wheel expansion exceeds capacity")
-            require(not member.filename.endswith((".dll", ".exe", ".a")), "Host binary inside iOS wheel")
+            identity = path.name + ":" + member.filename
+            require(not member.filename.lower().endswith((".dll", ".exe")), "Host executable inside iOS wheel: " + identity)
+            if member.filename.endswith(".a"):
+                approved = BUILD_ONLY_ARCHIVES.get(path.name, {})
+                expected = approved.get("files", {}).get(member.filename)
+                require(expected is not None, "Unexpected static archive inside iOS wheel: " + identity)
+                if not static_wheel_verified:
+                    require(sha256(path) == approved["wheel_sha256"], "NumPy build archive wheel hash differs: " + path.name)
+                    static_wheel_verified = True
+                require(member.file_size == expected["bytes"] and member.file_size <= 1024 * 1024,
+                        "NumPy build archive size differs: " + identity)
+                raw = source.read(member)
+                require(raw.startswith(b"!<arch>\n") and hashlib.sha256(raw).hexdigest() == expected["sha256"],
+                        "NumPy build archive member hash differs: " + identity)
+                if omitted_build_archives is not None:
+                    omitted_build_archives.append({"wheel": path.name, "wheel_sha256": approved["wheel_sha256"],
+                                                   "path": member.filename, **expected, "reason": "NumPy development-only static link input"})
+                continue
             output = destination / member.filename
             require(not output.exists(), "Wheel file overlap: " + member.filename)
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -279,7 +312,7 @@ def prepare(args):
             "--simulator-probe-only requires the full-tools Simulator target and cannot produce a device runtime")
     lock = json.loads((HERE / "runtime-lock.json").read_text())
     require(not args.output.exists(), "Use a fresh runtime output directory")
-    normalizations = {}
+    normalizations, omitted_build_archives = {}, []
     stdlib = extract_support(download(lock["python"], args.cache), args.output, args.target, normalizations)
     site = stdlib / "site-packages"
     site.mkdir()
@@ -306,7 +339,7 @@ def prepare(args):
                 require(path.is_relative_to(base) and path.is_file() and path.name == row["filename"],
                         "Built wheel escapes the producer output or has a different filename")
             require(sha256(path) == row["sha256"], "Built wheel hash differs")
-            unpack_wheel(path, site, args.target)
+            unpack_wheel(path, site, args.target, omitted_build_archives)
         # Use the same bounded parser implementation already retained on Android
         # and macOS. The native codec extensions remain mandatory.
         for boost in (site / "UnityPy").glob("UnityPyBoost*.so"):
@@ -330,6 +363,7 @@ def prepare(args):
               "archive_publication_guard_passed": not args.core_only and not simulator_probe_only,
               "simulator_probe_only": simulator_probe_only,
               "native_input_normalizations": normalizations,
+              "omitted_build_archives": omitted_build_archives,
               "dependency_lock_sha256": sha256(HERE / "runtime-lock.json")}
     write_json(args.output / "runtime-report.json", report)
     return report
