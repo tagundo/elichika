@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "channel": "EXPERIMENTAL_ARCHIVE_PENDING",
+  "config": {
+    "bytes": 217,
+    "sha256": "594a87c306f0d6ccb12b9cbcd2c505045cb17f6bb8cdcc063f956580aae289a9"
+  },
+  "expected_config": {
+    "schema": 1,
+    "status": "INCOMPLETE",
+    "requested_total": 42830,
+    "catalog_url": null,
+    "catalog_sha256": null,
+    "target_manifest_sha256": "e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c"
+  },
+  "scope": "Experimental QA device candidate only; not a complete Archive publication, production release, or tested physical gameplay"
+}

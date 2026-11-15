@@ -75,6 +75,20 @@ def forbidden(): os.chdir("/")
 
 
 class AuthenticationTests(unittest.TestCase):
+    def test_only_experimental_runtime_injects_archive_pending_capability(self):
+        class Receiver:
+            def _send_bytes(self, data, content_type):
+                self.data = data
+        with tempfile.TemporaryDirectory() as directory:
+            index = Path(directory) / "index.html"
+            index.write_text("<html><body>Original tools</body></html>")
+            for experimental in (False, True):
+                handler = authenticated_handler(Receiver, "a" * 64, experimental_device=experimental)()
+                handler._serve_file(index)
+                self.assertIn(b"Original tools", handler.data)
+                self.assertEqual(b"archive_pending:true" in handler.data, experimental)
+                self.assertNotIn(b"archive_ready:true", handler.data)
+
     def setUp(self):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):

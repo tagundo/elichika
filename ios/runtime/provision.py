@@ -266,13 +266,18 @@ def framework_extensions(output, target, normalizations=None):
     return mappings
 
 
-def copy_app(repo, destination, *, core_only=False, simulator_probe_only=False, target=None):
+def copy_app(repo, destination, *, core_only=False, simulator_probe_only=False, experimental_device=False, target=None):
     destination.mkdir(parents=True)
     require(not simulator_probe_only or (target == "simulator" and not core_only),
             "The full-tools probe exemption is restricted to the Simulator target")
+    require(not experimental_device or (target == "device" and not core_only and not simulator_probe_only),
+            "The experimental Archive-pending channel requires full tools on a device target")
     catalog = repo / "archive-hosted-catalog.json"
     require(catalog.is_file() and not catalog.is_symlink(), "The immutable archive publication configuration is missing")
-    if not core_only and not simulator_probe_only:
+    if experimental_device:
+        from experimental_archive import require_pending_archive
+        require_pending_archive(repo)
+    elif not core_only and not simulator_probe_only:
         sys.path.insert(0, str(repo))
         from archive_profile_download_bridge import load_source_config
         # Preserve the existing Android/macOS production gate. An incomplete
@@ -308,8 +313,15 @@ def copy_app(repo, destination, *, core_only=False, simulator_probe_only=False, 
 def prepare(args):
     require(sys.platform == "darwin", "iOS framework conversion and signing require macOS")
     simulator_probe_only = getattr(args, "simulator_probe_only", False)
+    experimental_device = getattr(args, "experimental_device", False)
     require(not simulator_probe_only or (args.target == "simulator" and not args.core_only),
             "--simulator-probe-only requires the full-tools Simulator target and cannot produce a device runtime")
+    require(not experimental_device or (args.target == "device" and not args.core_only and not simulator_probe_only),
+            "--experimental-device requires full device tools and cannot use core or Simulator exemptions")
+    experimental = None
+    if experimental_device:
+        from experimental_archive import require_pending_archive
+        experimental = require_pending_archive(args.repo)
     lock = json.loads((HERE / "runtime-lock.json").read_text())
     require(not args.output.exists(), "Use a fresh runtime output directory")
     normalizations, omitted_build_archives = {}, []
@@ -355,13 +367,15 @@ def prepare(args):
         require(built.get("toolset_complete") is True, "Wheel producer has not proved full native dependency closure")
         complete = True
     copy_app(args.repo, args.output / "ElichikaResources/python-app", core_only=args.core_only,
-             simulator_probe_only=simulator_probe_only, target=args.target)
+             simulator_probe_only=simulator_probe_only, experimental_device=experimental_device, target=args.target)
     mappings = framework_extensions(args.output, args.target, normalizations)
     report = {"schema": 1, "target": args.target, "python_abi": "3.13", "core_only": args.core_only,
               "toolset_complete": complete, "files": inventory(args.output), "extension_mappings": mappings,
               "frameworks_codesign_verify_passed": True, "actual_device_execution": False,
-              "archive_publication_guard_passed": not args.core_only and not simulator_probe_only,
+              "archive_publication_guard_passed": not args.core_only and not simulator_probe_only and not experimental_device,
               "simulator_probe_only": simulator_probe_only,
+              "experimental_device": experimental_device, "experimental_archive_pending": experimental_device,
+              "experimental_archive_config_sha256": experimental["archive_config"]["sha256"] if experimental else None,
               "native_input_normalizations": normalizations,
               "omitted_build_archives": omitted_build_archives,
               "dependency_lock_sha256": sha256(HERE / "runtime-lock.json")}
@@ -378,6 +392,8 @@ def main():
     parser.add_argument("--core-only", action="store_true")
     parser.add_argument("--simulator-probe-only", action="store_true",
                         help="Simulator validation only; retain the actual incomplete catalog and forbid distribution")
+    parser.add_argument("--experimental-device", action="store_true",
+                        help="Explicit Archive-pending QA device channel; exact pending-config pin and full tools required")
     parser.add_argument("--built-lock", type=Path)
     parser.add_argument("--codec-frameworks", type=Path)
     args = parser.parse_args()

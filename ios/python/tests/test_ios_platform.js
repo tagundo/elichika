@@ -18,6 +18,23 @@ const window = {
 };
 window.top = window.self = window;
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../elichika_ios/web/ios-platform.js"), "utf8"), { window });
+const guide = fs.readFileSync(path.join(__dirname, "../elichika_ios/web/ios-guidance.js"), "utf8");
+for (const experimental of [false, true]) {
+  let rendered;
+  const document = {
+    documentElement: { lang: "ko" },
+    createElement: tag => ({ tag, style: {}, children: [], setAttribute: () => {}, appendChild(child) { this.children.push(child); } }),
+    body: { insertBefore: node => { rendered = node; } }
+  };
+  const context = { window: { ElichikaIOS: {}, ElichikaIOSCapabilities: { experimental_device: experimental } },
+    document, location: { hostname: "127.0.0.1" }, MutationObserver: class { observe() {} } };
+  context.window.top = context.window.self = context.window;
+  vm.runInNewContext(guide, context);
+  const text = rendered.children.map(child => child.textContent).join(" ");
+  assert.strictEqual(text.includes("Archive 준비 중"), experimental);
+  assert.strictEqual(text.includes("Elichika/packs"), experimental);
+  assert.strictEqual(rendered.children.some(child => child.tag === "button"), false);
+}
 (async () => {
   assert.strictEqual(window.ElichikaPlatform.requestJSON, diagnostics);
   assert.strictEqual(window.ElichikaPlatform.info().platform, "ios");

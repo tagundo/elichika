@@ -108,6 +108,8 @@ def validate_runtime(root, target, *, full=True, probe_only=False):
     require(not probe_only or target == 'simulator', 'Only the separate Simulator probe may use probe-only inputs')
     require(report.get('simulator_probe_only', False) is probe_only,
             'A Simulator-only runtime cannot be accepted as production app input')
+    require(report.get('experimental_device', False) is False,
+            'An experimental device runtime cannot be accepted as production app input')
     if full:
         require(report['core_only'] is False and report['toolset_complete'] is True,
                 'Incomplete native/Python tools closure cannot be packaged as the unified IPA')

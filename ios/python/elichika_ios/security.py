@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 
-def authenticated_handler(base, token, language="en"):
+def authenticated_handler(base, token, language="en", experimental_device=False):
     if not isinstance(token, str) or len(token) < 32:
         raise ValueError("A random session token of at least 32 characters is required")
 
@@ -20,7 +20,9 @@ def authenticated_handler(base, token, language="en"):
                                         "application/javascript; charset=utf-8")
             if Path(fpath).name == "index.html" and Path(fpath).is_file():
                 guide = Path(__file__).parent / "web/ios-guidance.js"
-                body = Path(fpath).read_bytes().replace(b"</body>", b"<script>" + guide.read_bytes() + b"</script></body>", 1)
+                capabilities = (b"window.ElichikaIOSCapabilities=Object.freeze({experimental_device:true,archive_pending:true,existing_packs:true});\n"
+                                if experimental_device else b"")
+                body = Path(fpath).read_bytes().replace(b"</body>", b"<script>" + capabilities + guide.read_bytes() + b"</script></body>", 1)
                 return self._send_bytes(body, "text/html; charset=utf-8")
             return super()._serve_file(fpath, content_type)
 

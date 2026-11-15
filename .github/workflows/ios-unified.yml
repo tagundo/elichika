@@ -6,7 +6,7 @@ on:
       mode:
         description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
         type: choice
-        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, full-candidate]
+        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, full-candidate]
         default: sdk-compile
       version:
         description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
@@ -33,7 +33,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
-          fetch-depth: 0  # Keep the official historic SQL baseline audit available.
+          # Official SQL validators compare the historical Harasho baseline.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Go compiler for the actual in-process backend
@@ -58,6 +59,8 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/packaging-tests.txt"
           PYTHONPATH="$GITHUB_WORKSPACE/ios/python" python3 -B -m unittest discover -s ios/python/tests -p 'test_*.py' -v \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/python-host-tests.txt"
+          node ios/python/tests/test_ios_platform.js \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/ios-platform-node-tests.txt"
           clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/HostCoreTests.cpp -o "$RUNNER_TEMP/elichika-host-policy-tests" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-host-policy-compile.txt"
           "$RUNNER_TEMP/elichika-host-policy-tests" \
@@ -66,6 +69,10 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-rsa-key-compile.txt"
           "$RUNNER_TEMP/elichika-rsa-key-tests" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-rsa-key-tests.txt"
+          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/CandidatePolicyTests.cpp -o "$RUNNER_TEMP/elichika-candidate-policy-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-candidate-policy-compile.txt"
+          "$RUNNER_TEMP/elichika-candidate-policy-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-candidate-policy-tests.txt"
 
       - name: Test actual in-process Go lifecycle, initialization, keys and timezones
         if: ${{ inputs.mode != 'runtime-inputs' }}
@@ -98,7 +105,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/runtime-inputs-build.log"
 
       - name: Reuse the exact independently verified Simulator tool compiler outputs
-        if: ${{ inputs.mode == 'tools-runtime' }}
+        if: ${{ inputs.mode == 'tools-runtime' || inputs.mode == 'experimental-candidate' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -147,6 +154,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: elichika-sifas-ios-UNTESTED-${{ github.sha }}
+          path: ${{ runner.temp }}/ios-candidate/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload explicitly experimental Archive-pending physical-device-untested QA IPA
+        if: ${{ inputs.mode == 'experimental-candidate' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-sifas-EXPERIMENTAL-ARCHIVE_PENDING-UNTESTED_DEVICE-${{ github.sha }}
           path: ${{ runner.temp }}/ios-candidate/
           if-no-files-found: error
           compression-level: 0

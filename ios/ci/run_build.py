@@ -33,7 +33,7 @@ def prepare_probe(probe, runtime, payload, evidence, *, full, probe_only=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=('sdk-compile', 'core-runtime', 'tools-runtime', 'full-candidate'), default='sdk-compile')
+    parser.add_argument('--mode', choices=('sdk-compile', 'core-runtime', 'tools-runtime', 'experimental-candidate', 'full-candidate'), default='sdk-compile')
     parser.add_argument('--repo', type=Path, default=ROOT)
     parser.add_argument('--work', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
@@ -63,9 +63,13 @@ def main():
     write_json(evidence / 'environment.json', environment)
     full = args.mode == 'full-candidate'
     tools_probe = args.mode == 'tools-runtime'
-    full_tools = full or tools_probe
+    experimental = args.mode == 'experimental-candidate'
+    full_tools = full or tools_probe or experimental
     if full:
         environment['validated_archive_config_sha256'] = require_full_archive(repo)
+    if experimental:
+        from experimental_archive import require_pending_archive
+        environment['experimental_archive_capability'] = require_pending_archive(repo)
     if full_tools:
         require(args.built_inputs is not None, 'Full tools require proven wheel+codec producer outputs (--built-inputs)')
     runtimes, archives = {}, {}
@@ -81,8 +85,10 @@ def main():
         if full_tools:
             command += ['--built-lock', args.built_inputs / target / 'built-lock.json',
                         '--codec-frameworks', args.built_inputs / target / 'codecs']
-            if tools_probe:
+            if tools_probe or (experimental and target == 'simulator'):
                 command += ['--simulator-probe-only']
+            elif experimental:
+                command += ['--experimental-device']
         else:
             command += ['--core-only']
         run(command, cwd=repo)
@@ -104,16 +110,21 @@ def main():
     payload = work / 'shared-payload'
     run([sys.executable, '-B', repo / 'ios/build/build_payload.py', '--repo', repo, '--output', payload,
          '--evidence', evidence / 'payload'], cwd=repo)
-    prepare_probe(probe, runtimes['simulator'], payload, evidence, full=full_tools, probe_only=tools_probe)
+    prepare_probe(probe, runtimes['simulator'], payload, evidence, full=full_tools, probe_only=tools_probe or experimental)
     run([sys.executable, '-B', repo / 'ios/ci/run_simulator.py', '--app', probe,
          '--evidence', evidence / 'simulator', *([] if full_tools else ['--core-only'])], cwd=repo)
+    simulator_report = evidence / 'simulator/result.json'
+    simulator_result = json.loads(simulator_report.read_text())
+    simulator_result['source'] = identity
+    simulator_result['runtime_lock_sha256'] = environment['runtime_lock_sha256']
+    write_json(simulator_report, simulator_result)
     if tools_probe:
         write_json(evidence / 'result.json', {**environment, 'status': 'PASS_FULL_TOOLS_SIMULATOR_PROBE_ONLY',
                    'runtime_executed': True, 'IPA_produced': False, 'actual_device_app_built': False,
                    'toolset_complete': True, 'simulator_probe_only': True,
                    'archive_publication_guard_passed': False, 'actual_phone_gameplay_verified': False})
         return
-    if not full:
+    if not full and not experimental:
         write_json(evidence / 'result.json', {**environment, 'status': 'PASS_CORE_RUNTIME_PROBE_ONLY',
                    'runtime_executed': True, 'IPA_produced': False, 'toolset_complete': False,
                    'actual_phone_gameplay_verified': False})
@@ -122,15 +133,25 @@ def main():
     run([sys.executable, '-B', repo / 'ios/build/fetch_game.py', '--output', source,
          '--report', evidence / 'game-input-provenance.json'], cwd=repo)
     versions = bundle_versions(args.version)
-    output = args.delivery / ('Elichika-SIFAS-GL-' + versions['canonical'] + '-UNTESTED-iPhone-iPad.ipa')
-    receipt = package(source, runtimes['device'], native, payload, output, work / 'ipa-stage',
-                      evidence / 'IPA-build.json', lock=json.loads((repo / 'ios/build/inputs.lock.json').read_text()),
+    if experimental:
+        from package_experimental_ipa import package_experimental
+        output = args.delivery / ('Elichika-SIFAS-GL-' + versions['canonical'] + '-EXPERIMENTAL-ARCHIVE_PENDING-UNTESTED_DEVICE.ipa')
+        receipt = package_experimental(source, runtimes['device'], native, payload, output, work / 'ipa-stage',
+                      evidence / 'IPA-build.json', simulator_report=simulator_report,
+                      lock=json.loads((repo / 'ios/build/inputs.lock.json').read_text()),
                       version=versions['canonical'], repo=repo)
+    else:
+        output = args.delivery / ('Elichika-SIFAS-GL-' + versions['canonical'] + '-UNTESTED-iPhone-iPad.ipa')
+        receipt = package(source, runtimes['device'], native, payload, output, work / 'ipa-stage',
+                          evidence / 'IPA-build.json', lock=json.loads((repo / 'ios/build/inputs.lock.json').read_text()),
+                          version=versions['canonical'], repo=repo)
     (args.delivery / 'SHA256SUMS').write_text(receipt['IPA']['sha256'] + '  ' + output.name + '\n')
     write_json(args.delivery / 'candidate-manifest.json', receipt)
-    write_json(evidence / 'result.json', {**environment, 'status': 'PASS_FULL_CANDIDATE_PACKAGING_AND_SIMULATOR_GATES',
+    result_status = 'PASS_EXPERIMENTAL_ARCHIVE_PENDING_QA_PACKAGE_AND_FULL_SIMULATOR_GATES' if experimental else 'PASS_FULL_CANDIDATE_PACKAGING_AND_SIMULATOR_GATES'
+    write_json(evidence / 'result.json', {**environment, 'status': result_status,
                'runtime_executed': True, 'IPA_produced': True, 'IPA': receipt['IPA'], 'toolset_complete': True,
-               'actual_phone_gameplay_verified': False, 'SideStore_user_resigning_required': True})
+               'actual_phone_gameplay_verified': False, 'SideStore_user_resigning_required': True,
+               'experimental_archive_pending': experimental, 'production_release': False})
 
 
 if __name__ == '__main__':

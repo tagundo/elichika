@@ -23,6 +23,16 @@ Archive configuration for this test. No device app or IPA is built. Production
 full-runtime validation rejects this marker and still requires the existing
 complete Archive publication guard.
 
+`experimental-candidate` is a separate QA entry point for the exact reviewed
+217-byte Archive-pending configuration. It requires full Simulator tool,
+protocol, lifecycle and persistence gates from the same source before composing
+the actual device game. Its app label, signed capability, Info metadata,
+manifest and IPA filename identify `EXPERIMENTAL_ARCHIVE_PENDING` and
+`UNTESTED_DEVICE`; SideStore user signing is required. Existing user packs can
+be placed directly in Files/Finder. The pending individual-file publication is
+not advertised as available. A Simulator runtime cannot enter this device IPA,
+and an experimental runtime cannot pass the production packaging entry point.
+
 `full-candidate` requires the complete wheel/codec closure, runs full Simulator
 gates, obtains the exact existing GL Local game through the locked successful
 GitHub artifact export, and packages the actual monolithic SIFAS app. It refuses

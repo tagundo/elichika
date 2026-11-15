@@ -41,6 +41,18 @@ host probes both authenticated registries, eight real texture codecs, a neutral
 textured model through the actual HTTP-to-GLB routes, and a real embedded Go
 Stop/config_read/Start sequence. No production test endpoint is added.
 
+The separately authorized QA device channel uses `--experimental-device`
+with a full device runtime. It requires the exact reviewed 217-byte pending
+Archive configuration through `ios/build/experimental_archive.py`; core and
+Simulator flags are rejected. Its report sets `experimental_device: true`,
+`experimental_archive_pending: true`, `archive_publication_guard_passed: false`
+and the exact pending configuration SHA256. Production packaging rejects this
+channel. The separate experimental packager signs its capability marker and
+labels the device build as untested. Native and web panels show Archive
+preparation status and direct users to existing packs in Files → this app →
+`Elichika/packs`. The original pending config is copied unchanged; no working
+Archive bulk-download action or completed publication is fabricated.
+
 The host installs the official payload through the existing journal, recovery,
 merge and owner-preserving update engine. Per-module adapters resolve relative
 file IO under the explicit data root, preserve lexical Path operations, and

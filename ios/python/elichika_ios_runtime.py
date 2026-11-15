@@ -178,7 +178,7 @@ def _start(config):
             if _cancel.is_set():
                 raise InterruptedError("Setup cancelled")
             for module in modules:
-                handler = authenticated_handler(module.Handler, token, config.get("language", "en"))
+                handler = authenticated_handler(module.Handler, token, config.get("language", "en"), config.get("experimental_device") is True)
                 server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
                 server.daemon_threads = True
                 _servers.append(server)
@@ -241,7 +241,9 @@ def start(config_json):
             _scope.facades["os"].environ["SIFAS_LANG"] = _scope.language
         _cancel.clear()
         _state.update(phase="preparing", ready=False, error="", admin_url="", tools_url="", core_only=bool(config.get("core_only", False)),
-                      simulator_probe_only=bool(config.get("simulator_probe_only", False)))
+                      simulator_probe_only=bool(config.get("simulator_probe_only", False)),
+                      experimental_device=config.get("experimental_device") is True,
+                      archive_publication_pending=config.get("experimental_device") is True)
         _bootstrap_thread = threading.Thread(target=_start, args=(config,), daemon=True, name="ios-bootstrap")
         _bootstrap_thread.start()
         return json.dumps(_state)

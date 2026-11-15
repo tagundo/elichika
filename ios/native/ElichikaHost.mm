@@ -3,8 +3,10 @@
 #include "HostCore.hpp"
 #include "SIFASProfile.h"
 #include "RSAPublicKey.hpp"
+#include "CandidatePolicy.hpp"
 #import <WebKit/WebKit.h>
 #import <Security/Security.h>
+#import <CommonCrypto/CommonDigest.h>
 #import <dispatch/dispatch.h>
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
@@ -22,6 +24,7 @@ static NSDictionary *ELConfiguration, *ELRuntimeStatus;
 static NSString *ELHookError, *ELProgress;
 static NSString *ELClientRegion;
 static BOOL ELRoutingPrepared;
+static BOOL ELExperimentalArchivePending;
 static NSTimer *ELPollTimer;
 static UIWindow *ELPanelWindow;
 static UIButton *ELMenuButton;
@@ -72,6 +75,8 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
                     @"gate_installed":@(ELGateInstalled),@"profile_supported":@(ELProfileSupported),
                     @"routing_prepared":@(ELRoutingPrepared),
                     @"server_button_visible":@(ELButtonPolicy().visible()),
+                    @"archive_publication_pending":@(ELExperimentalArchivePending),
+                    @"candidate_channel":ELExperimentalArchivePending ? @"EXPERIMENTAL_ARCHIVE_PENDING" : @"STANDARD",
                     @"core_only":ELConfiguration[@"core_only"] ?: @NO,
                     @"generation":@(core.generation()),@"error":ELHookError ?: [NSString stringWithUTF8String:core.error().c_str()]});
 }
@@ -83,6 +88,7 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 @property(nonatomic,strong) WKWebView *web;
 @property(nonatomic,strong) UIButton *retry;
 @property(nonatomic,strong) UIButton *buttonVisibility;
+@property(nonatomic,strong) UILabel *candidateLabel;
 - (void)refresh;
 @end
 static ELPanelController *ELPanel;
@@ -121,13 +127,18 @@ static void ELHidePanel(void) {
     guidance.text=ELButtonText(@"Hide the button for MVs. Hold the upper-left corner for 2 seconds to reopen this panel. The choice is saved.",
         @"MV 화면을 가리지 않도록 버튼을 숨깁니다. 왼쪽 위 모서리를 2초간 길게 누르면 이 패널을 다시 열 수 있습니다. 선택은 저장됩니다.",
         @"MVを見やすくするためにボタンを隠します。左上隅を2秒間長押しすると、このパネルを再び開けます。設定は保存されます。");
+    _candidateLabel=[UILabel new]; _candidateLabel.numberOfLines=0;
+    _candidateLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption2]; _candidateLabel.textColor=UIColor.systemOrangeColor;
+    _candidateLabel.text=ELButtonText(@"Experimental: Archive publication and device testing are pending. Put existing packs in Files → Elichika → packs.",
+        @"실험 빌드: Archive 게시와 기기 검증이 대기 중입니다. 기존 팩은 파일 → Elichika → packs에 넣으세요.",
+        @"実験版: Archiveの公開と実機検証は未完了です。既存のパックは「ファイル」→ Elichika → packsに配置してください。");
     WKWebViewConfiguration *configuration=[WKWebViewConfiguration new];
     configuration.websiteDataStore=WKWebsiteDataStore.nonPersistentDataStore;
     [configuration.userContentController addScriptMessageHandler:self name:@"elichika"];
     NSString *script=@"(()=>{const p=new Map();let n=0;window.ElichikaIOS=Object.freeze({request:(action,options={})=>new Promise((resolve,reject)=>{const id=String(++n);p.set(id,{resolve,reject});window.webkit.messageHandlers.elichika.postMessage({id,action,...options});})});window.addEventListener('elichika-native-result',e=>{const x=e.detail,j=p.get(x.id);if(j){p.delete(x.id);x.error?j.reject(Error(x.error)):j.resolve(x.result)}})})();";
     [configuration.userContentController addUserScript:[[WKUserScript alloc] initWithSource:script injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
     _web=[[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration]; _web.navigationDelegate=self;
-    UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[_statusLabel,_spinner,_retry,_buttonVisibility,guidance,_sections]];
+    UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[_statusLabel,_candidateLabel,_spinner,_retry,_buttonVisibility,guidance,_sections]];
     head.axis=UILayoutConstraintAxisVertical; head.spacing=8;
     head.translatesAutoresizingMaskIntoConstraints=NO; _web.translatesAutoresizingMaskIntoConstraints=NO;
     [self.view addSubview:head]; [self.view addSubview:_web];
@@ -162,6 +173,7 @@ static void ELHidePanel(void) {
 }
 - (void)refresh {
     if (!self.isViewLoaded) return;
+    _candidateLabel.hidden=!ELExperimentalArchivePending;
     [_buttonVisibility setTitle:ELButtonPolicy().visible()
         ? ELButtonText(@"Hide server button",@"서버 버튼 숨기기",@"サーバーボタンを隠す")
         : ELButtonText(@"Show server button",@"서버 버튼 표시",@"サーバーボタンを表示") forState:UIControlStateNormal];
@@ -169,7 +181,8 @@ static void ELHidePanel(void) {
     if (error.length) _statusLabel.text=[NSString stringWithFormat:@"Setup could not finish.\n%@",error];
     else if (ELCore().ready()) _statusLabel.text=[ELConfiguration[@"core_only"] boolValue]
         ? @"Core server probe ready. Tools are excluded from this test."
-        : @"Server and tools are ready. Closing this panel keeps them running.";
+        : (ELExperimentalArchivePending ? @"Local server and tools are ready. Archive publication is still pending."
+           : @"Server and tools are ready. Closing this panel keeps them running.");
     else _statusLabel.text=ELProgress ?: @"Preparing your local server and tools…";
     BOOL busy=!ELCore().ready() && !error.length;
     if (busy) [_spinner startAnimating]; else [_spinner stopAnimating];
@@ -283,6 +296,52 @@ static void ELRefreshMenu(void) {
 @end
 static id ELMenuTarget(void) { static ELMenuAction *value; static dispatch_once_t once; dispatch_once(&once,^{ value=[ELMenuAction new]; }); return value; }
 
+static BOOL ELReadCandidateMode(NSString *resources,NSString **error) {
+    NSDictionary *info=NSBundle.mainBundle.infoDictionary;
+    NSString *channel=@"EXPERIMENTAL_ARCHIVE_PENDING";
+    NSString *pin=@"594a87c306f0d6ccb12b9cbcd2c505045cb17f6bb8cdcc063f956580aae289a9";
+    NSString *path=[resources stringByAppendingPathComponent:@"experimental-capability.json"];
+    id declaredChannel=info[@"ElichikaUnifiedCandidateChannel"];
+    BOOL present=[NSFileManager.defaultManager fileExistsAtPath:path] ||
+        ([declaredChannel isKindOfClass:NSString.class] && [declaredChannel hasPrefix:@"EXPERIMENTAL"]) ||
+        [info[@"ElichikaArchivePublicationStatus"] isEqual:@"INCOMPLETE"] ||
+        [info[@"ElichikaArchiveConfigSHA256"] isEqual:pin];
+    if (!present) { ELExperimentalArchivePending=NO; return YES; }
+    BOOL infoMatches=[info[@"ElichikaUnifiedCandidateChannel"] isEqual:channel] &&
+        [info[@"ElichikaArchivePublicationStatus"] isEqual:@"INCOMPLETE"] &&
+        [info[@"ElichikaArchiveConfigSHA256"] isEqual:pin] &&
+        [info[@"ElichikaUnifiedCandidateStatus"] isEqual:@"ARCHIVE_PENDING_UNTESTED_DEVICE_REQUIRES_USER_SIGNING"];
+    NSData *raw=[NSData dataWithContentsOfFile:path options:0 error:NULL];
+    id capability=raw.length && raw.length<=32768 ? [NSJSONSerialization JSONObjectWithData:raw options:0 error:NULL] : nil;
+    NSDictionary *pending=@{@"schema":@1,@"status":@"INCOMPLETE",@"requested_total":@42830,
+        @"catalog_url":NSNull.null,@"catalog_sha256":NSNull.null,
+        @"target_manifest_sha256":@"e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c"};
+    NSDictionary *runtime=@{@"target":@"device",@"python_abi":@"3.13",@"experimental_device":@YES,
+        @"simulator_probe_only":@NO,@"core_only":@NO,@"toolset_complete":@YES,@"archive_publication_guard_passed":@NO};
+    BOOL capabilityMatches=[capability isKindOfClass:NSDictionary.class] && [capability[@"schema"] isEqual:@1] &&
+        [capability[@"channel"] isEqual:channel] && [capability[@"archive_state"] isEqual:pending] &&
+        [capability[@"archive_config"] isEqual:@{@"bytes":@217,@"sha256":pin}] &&
+        [capability[@"new_archive_publication_ready"] isEqual:@NO] &&
+        [capability[@"existing_user_packs_supported"] isEqual:@YES] && [capability[@"runtime"] isEqual:runtime];
+    NSData *archive=[NSData dataWithContentsOfFile:[resources stringByAppendingPathComponent:@"python-app/archive-hosted-catalog.json"] options:0 error:NULL];
+    BOOL sourceMatches=NO;
+    if (archive.length==217) {
+        unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256(archive.bytes,(CC_LONG)archive.length,digest);
+        NSMutableString *actual=[NSMutableString new]; for (unsigned char byte:digest) [actual appendFormat:@"%02x",byte];
+        id state=[NSJSONSerialization JSONObjectWithData:archive options:0 error:NULL];
+        sourceMatches=[actual isEqual:pin] && [state isEqual:pending];
+    }
+    const auto mode=elichika::candidateMode(present,infoMatches,capabilityMatches,sourceMatches);
+    if (mode!=elichika::CandidateMode::ExperimentalArchivePending) {
+        *error=@"The experimental Archive marker does not match this signed app's runtime and source configuration."; return NO;
+    }
+#if ELICHIKA_SIMULATOR_PROBE
+    *error=@"An experimental device marker cannot enable the Simulator probe."; return NO;
+#else
+    ELExperimentalArchivePending=YES; return YES;
+#endif
+}
+
 static BOOL ELPrepareConfiguration(NSString **error) {
     NSFileManager *manager=NSFileManager.defaultManager;
     NSURL *support=[manager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
@@ -293,6 +352,7 @@ static BOOL ELPrepareConfiguration(NSString **error) {
     NSString *packs=[library stringByAppendingPathComponent:@"packs"];
     NSString *imports=[library stringByAppendingPathComponent:@"imports"];
     NSString *resources=[NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"ElichikaResources"];
+    if (!ELReadCandidateMode(resources,error)) return NO;
     if (![manager createDirectoryAtPath:root withIntermediateDirectories:YES attributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:NULL]) {
         *error=@"Could not prepare app-private server storage."; return NO;
     }
@@ -324,6 +384,7 @@ static BOOL ELPrepareConfiguration(NSString **error) {
         @"region":ELClientRegion ?: @"gl",
         @"core_only":@NO
     } mutableCopy];
+    if (ELExperimentalArchivePending) configuration[@"experimental_device"]=@YES;
 #if ELICHIKA_SIMULATOR_PROBE
     configuration[@"simulator_probe_only"]=@YES;
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--elichika-core-probe"]) configuration[@"core_only"]=@YES;
@@ -493,7 +554,8 @@ static BOOL ELInstall(Class controller) {
     if (!ELProfileSupported) ELHookError=@"This SIFAS executable does not match the supported startup profile. The game was held before startup.";
     else {
         NSString *error=nil;
-        if (!ELPrepareRouting(&error)) ELHookError=error;
+        NSString *resources=[NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"ElichikaResources"];
+        if (!ELReadCandidateMode(resources,&error) || !ELPrepareRouting(&error)) ELHookError=error;
     }
     IMP previous=class_replaceMethod(controller,selector,(IMP)ELHoldUnityStart,method_getTypeEncoding(method));
     ELGateInstalled=previous==ELOriginalStart;

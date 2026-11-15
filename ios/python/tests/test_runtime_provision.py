@@ -123,6 +123,37 @@ class NativeNormalizationTests(unittest.TestCase):
 
 
 class SourceResourceTests(unittest.TestCase):
+    def test_experimental_device_requires_exact_pending_bytes_and_preserves_them(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            for relative in ("adminui", "modtools/webtools", "ios/python", "ios/build"):
+                (repo / relative).mkdir(parents=True)
+            policy = (REPO / "ios/build/experimental-archive.lock.json").read_bytes()
+            (repo / "ios/build/experimental-archive.lock.json").write_bytes(policy)
+            expected = json.loads(policy)["expected_config"]
+            raw = (json.dumps(expected, indent=2) + "\n").encode()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), "594a87c306f0d6ccb12b9cbcd2c505045cb17f6bb8cdcc063f956580aae289a9")
+            config = repo / "archive-hosted-catalog.json"
+            config.write_bytes(raw)
+            (repo / "LICENSE").write_text("Test license\n")
+            destination = root / "experimental-device"
+            provision.copy_app(repo, destination, experimental_device=True, target="device")
+            self.assertEqual((destination / config.name).read_bytes(), raw)
+            config.write_bytes(raw + b" ")
+            with self.assertRaisesRegex(ValueError, "size/SHA256 mismatch"):
+                provision.copy_app(repo, root / "modified-pending", experimental_device=True, target="device")
+
+    def test_experimental_device_rejects_core_and_simulator_flags(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for target, core_only, simulator_probe_only in (("simulator", False, False), ("device", True, False), ("device", False, True)):
+                destination = root / (target + str(core_only) + str(simulator_probe_only))
+                with self.subTest(target=target, core=core_only, probe=simulator_probe_only), self.assertRaises(ValueError):
+                    provision.copy_app(root, destination, experimental_device=True, target=target,
+                                       core_only=core_only, simulator_probe_only=simulator_probe_only)
+
     def test_full_probe_exemption_is_simulator_only_and_copies_actual_catalog(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
