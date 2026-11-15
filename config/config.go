@@ -2,6 +2,7 @@ package config
 
 import (
 	"elichika/managementmode"
+	"elichika/runtimeinit"
 	"elichika/utils"
 
 	"os"
@@ -49,7 +50,11 @@ var (
 )
 
 func init() {
-	if managementmode.Enabled() {
+	runtimeinit.Register("config", initialize)
+}
+
+func initialize() {
+	if !runtimeinit.InProcess && managementmode.Enabled() {
 		// No configuration, migration or database access may precede this
 		// cooperative lease in the offline management process.
 		root := RootPath
@@ -59,7 +64,8 @@ func init() {
 		utils.CheckErr(managementmode.Acquire(root))
 	}
 	os.MkdirAll(UserDataBackupPath, 0755)
-	Conf = Load("./config.json")
+	Conf = Load(DataPath("config.json"))
+	applyHostOptions()
 	loc, err := time.LoadLocation(*Conf.TimeZone)
 	utils.CheckErr(err)
 	time.Local = loc

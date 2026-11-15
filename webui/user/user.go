@@ -28,6 +28,11 @@ var (
 
 // each features will be a button to jump to that features
 func addFeature(name, path string) {
+	for _, feature := range features {
+		if feature.Path == path {
+			return
+		}
+	}
 	features = append(features, UserFeature{
 		Name: name,
 		Path: path,

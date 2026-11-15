@@ -2,6 +2,7 @@ package image_form
 
 import (
 	"elichika/locale"
+	"elichika/runtimeinit"
 	"elichika/utils"
 )
 
@@ -11,6 +12,12 @@ var (
 )
 
 func init() {
+	runtimeinit.Register("card image paths", initializeCardPaths)
+}
+
+func initializeCardPaths() {
+	CardAssetPathByCardMasterId = map[int32]string{}
+	CardAwakenAssetPathByCardMasterId = map[int32]string{}
 	type CardAppearance struct {
 		CardMId            int32  `xorm:"'card_m_id'"`
 		AppearanceType     int32  `xorm:"'appearance_type'"`

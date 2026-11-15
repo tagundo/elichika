@@ -3,6 +3,7 @@ package clientdb
 import (
 	"elichika/config"
 	"elichika/log"
+	"elichika/runtimeinit"
 	"elichika/utils"
 
 	"bytes"
@@ -191,6 +192,10 @@ func publishManifests(writes []manifestWrite) {
 }
 
 func init() {
+	runtimeinit.Register("client databases and manifests", initialize)
+}
+
+func initialize() {
 	databaseInit()
 
 	// Gl

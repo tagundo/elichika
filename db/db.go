@@ -2,6 +2,7 @@ package db
 
 import (
 	"elichika/log"
+	"elichika/runtimeinit"
 
 	"xorm.io/xorm"
 )
@@ -63,6 +64,7 @@ func NewDatabase(path string) (d *DatabaseSync, err error) {
 	d.requestChannel = make(chan func(session *xorm.Session))
 	d.syncChannel = make(chan struct{})
 	go d.serve()
+	runtimeinit.TrackCloser(d.Close)
 	return
 }
 
@@ -86,8 +88,19 @@ func (d *DatabaseSync) Do(f func(session *xorm.Session)) {
 	if f == nil {
 		log.Println("nil function ignored. If you want to stop, use .Close() instead!")
 	}
+	var failure any
+	if runtimeinit.InProcess && f != nil {
+		original := f
+		f = func(session *xorm.Session) {
+			defer func() { failure = recover() }()
+			original(session)
+		}
+	}
 	d.requestChannel <- f
 	<-d.syncChannel
+	if failure != nil {
+		panic(failure)
+	}
 }
 
 func (d *DatabaseSync) Close() error {

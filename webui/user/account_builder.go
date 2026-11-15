@@ -7,6 +7,7 @@ import (
 	"elichika/item"
 	"elichika/locale"
 	"elichika/router"
+	"elichika/runtimeinit"
 	"elichika/subsystem/user_beginner_challenge"
 	"elichika/subsystem/user_card"
 	"elichika/subsystem/user_content"
@@ -120,6 +121,13 @@ function get_maxed_account() {
 }
 
 func init() {
+	runtimeinit.Register("account builder", initializeBuilder)
+}
+
+func initializeBuilder() {
+	if runtimeinit.InProcess {
+		builderFeatures = nil
+	}
 	addFeature("Account builder", "builder")
 	router.AddHandler("/webui/user", "GET", "/builder", builderForm)
 	AddBuilderFeature("Add user EXP", "add_user_exp",

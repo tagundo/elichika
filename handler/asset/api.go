@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"elichika/config"
 	"elichika/log"
 	"elichika/router"
 	"elichika/utils"
@@ -31,7 +32,7 @@ func staticApi(ctx *gin.Context) {
 	utils.MustExist(exist)
 	size, err := strconv.Atoi(sizeString)
 	utils.CheckErr(err)
-	path := fmt.Sprintf("static/%s/%s", masterVersion, file)
+	path := config.DataPath(fmt.Sprintf("static/%s/%s", masterVersion, file))
 	if strings.Contains(path, "..") {
 		log.Panic("Bad path (contains ..)")
 	}

@@ -6,6 +6,7 @@ import (
 	"elichika/client/response"
 	"elichika/config"
 	"elichika/generic"
+	"elichika/runtimeinit"
 	"elichika/utils"
 	"io"
 	"os"
@@ -16,6 +17,11 @@ import (
 
 // initialise the engine and add the tables that is constructed from client types
 func init() {
+	runtimeinit.Register("userdata database", openDatabase)
+	registerTables()
+}
+
+func openDatabase() {
 	if !utils.PathExists(config.UserdataPath) {
 
 		if utils.PathExists(config.YumemichiPath) {
@@ -33,15 +39,20 @@ func init() {
 
 		}
 	}
-	_ = os.Remove(config.UserdataPath + "-journal") // remove the dirty transactions, if any
+	if !runtimeinit.InProcess {
+		_ = os.Remove(config.UserdataPath + "-journal") // legacy standalone behavior
+	}
 
 	var err error
 	Engine, err = xorm.NewEngine("sqlite", config.UserdataPath)
 	utils.CheckErr(err)
 	Engine.SetMaxOpenConns(1)
 	Engine.SetMaxIdleConns(10)
+	runtimeinit.TrackCloser(Engine.Close)
 	// Engine.ShowSQL(true)
+}
 
+func registerTables() {
 	AddTable("u_status", generic.UserIdWrapper[client.UserStatus]{})
 	AddTable("u_content", generic.InterfaceWithAddedKey[int32](
 		// user_id can't be pk because we can't mark client content as pk to fetch into map

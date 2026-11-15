@@ -5,6 +5,7 @@ import (
 	"elichika/enum"
 	"elichika/locale"
 	"elichika/router"
+	"elichika/runtimeinit"
 	"elichika/subsystem/user_present"
 	"elichika/userdata"
 	"elichika/webui/webui_utils"
@@ -121,6 +122,13 @@ func resourceHelperHandler(ctx *gin.Context) {
 }
 
 func init() {
+	runtimeinit.Register("resource helper", initializeResourceHelper)
+}
+
+func initializeResourceHelper() {
+	if runtimeinit.InProcess {
+		resourceHelpers = nil
+	}
 	addFeature("Resource helper", "resource_helper")
 	router.AddHandler("/webui/user", "GET", "/resource_helper", resourceHelperForm)
 	router.AddHandler("/webui/user", "POST", "/resource_helper", resourceHelperHandler)

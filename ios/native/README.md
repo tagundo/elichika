@@ -1,0 +1,21 @@
+# Native unified iOS host
+
+The device host is a framework loaded into the existing SIFAS process. It does not define `UIApplicationMain`, create another Unity runtime, or run a server executable. All code is compiled ahead of time; the host performs Objective-C method replacement and writes its own state, rather than modifying executable memory.
+
+`SIFASProfile.h` pins the GL/Local and JP 3.12.0 main-image UUID, `UnityAppController.startUnity:` RVA, and first 32 bytes. Packaging separately pins the complete source IPA. The host checks the method ABI and owning main image before releasing the captured method. An unsupported profile with a compatible selector remains held and displays an error. Missing/incompatible methods are rejected, and packaging must refuse such source IPAs.
+
+The gate leaves the existing `application:didFinishLaunchingWithOptions:`/KJP delegate chain and `llas-patcher` endpoint/RSA initialization in place. `startUnity:` is captured without calling its original implementation; setup runs on a worker, while UIKit remains responsive. The original is called once on the main thread only after the aggregate Python runtime status confirms real Go readiness and both advertised tools listeners. This is deliberately different from UnityFramework-based hosting.
+
+Before the existing delegate hook runs, the host validates the actual bundled `payload/publickey.pem`, converts its bounded DER RSA modulus/exponent into the XML format that `llas-patcher` expects, and checks the game's actual initialized string capacity. It saves a previous external `ServerEndpoint`/different `RSAKey` under app-private backup keys and selects `127.0.0.1:8080` plus that public key. Missing/malformed/oversized keys keep startup held; no account credentials are changed. The Go/Python layer must also validate writable server keys against these bundled resources before readiness, preserving existing files on mismatch.
+
+`ElichikaPythonRuntime.mm` owns one persistent native thread and one CPython 3.13 interpreter. It uses isolated configuration, app-local module paths, no environment/site imports or signal handlers, and explicit GIL save/restore between control operations. Python serving/job threads remain Python-owned. The interpreter is never finalized or rebound to a different payload root.
+
+The built-in `_elichika_ios` exposes the Go JSON ABI in `ElichikaServerBridge.h`, progress events, OS-trusted bounded HTTPS, streamed atomic downloads, and document import/export. Document UI runs on main while file copies and waiting happen off main; imports are copied into app-private storage under a fresh identifier. HTTPS uses normal system trust, has size/time limits, rejects downgrades, and strips credentials on cross-host redirects.
+
+Accounts, server administration, and tools open in an app-owned WKWebView restricted to the currently owned loopback listeners. Private web capability and public readiness nonce are independently generated. Diagnostics omit both tokens and panel URLs. A separate upper-left Elichika button preserves the existing game Settings button and upper-right two-second restoration gesture. `ElichikaHostShowManagement` is exported for future direct menu integration.
+
+Background/foreground and memory-pressure events are sent to Python. No indefinite background-server execution is claimed. On return, actual backend status is polled before considering recovery; backend recovery never invokes Unity startup twice. Startup failures stay visible with the original game call held.
+
+`tests/HostCoreTests.cpp` exercises the pure policy: readiness/capture order, foreground gating, duplicate calls, failures, recovery, and stale-generation rejection. Build with a C++17 compiler. `tests/SimulatorProbe.mm` is compiled only with `ELICHIKA_SIMULATOR_PROBE=1` into an independent test application. It supplies a fake game entry while running real Go/Python/payload initialization and authenticated Go health. Its evidence identifies the fake-game boundary and any explicitly requested `--elichika-core-probe` mode; neither fake game nor that flag is compiled into the device framework.
+
+Successful compilation or this simulator probe does not establish physical iPhone/iPad gameplay, background behavior, or full editing-tool parity. Those require exact-artifact device validation.

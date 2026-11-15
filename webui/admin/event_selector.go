@@ -4,6 +4,7 @@ import (
 	"elichika/gamedata"
 	"elichika/i18n"
 	"elichika/router"
+	"elichika/runtimeinit"
 	"elichika/subsystem/event"
 	"elichika/utils"
 	"elichika/webui/form/object_form"
@@ -20,6 +21,10 @@ type EventSelectForm struct {
 }
 
 func init() {
+	runtimeinit.Register("event selector", initializeEventOptions)
+}
+
+func initializeEventOptions() {
 	// TODO(locale): Make other language available too
 	object_form.SetExternalOptions("events", gamedata.GamedataByLocale["en"].EventAvailable.GetEventToIdList())
 }

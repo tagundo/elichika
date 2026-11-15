@@ -2,6 +2,8 @@ package image_form
 
 import (
 	"elichika/assetdata"
+	"elichika/config"
+	"elichika/runtimeinit"
 	"elichika/utils"
 
 	hwdecrypt "gitlab.com/tatara_hisoka/gohwdecrypt"
@@ -35,10 +37,21 @@ var (
 )
 
 func init() {
+	runtimeinit.Register("texture image paths", initializeTextures)
+}
+
+func initializeTextures() {
+	TextureByAssetPath = map[string]Texture{}
+	ImageByAssetPath = map[string]string{}
+	for key := range cachedContentThumbnailImageHTML {
+		cachedContentThumbnailImageHTML[key] = map[int32]*string{}
+	}
+	cachedExchangeEventPointIconAssetPathHTML = map[int32]*string{}
 	// texture.db is a database containing the textures of the game
 	// if you are interested in playing around with this, contact the relevant people in discord
-	engine, err := xorm.NewEngine("sqlite", "texture.db")
+	engine, err := xorm.NewEngine("sqlite", config.DataPath("texture.db"))
 	utils.CheckErr(err)
+	defer engine.Close()
 	languages := []string{"en", "ja", "ko", "zh", "th"}
 	for _, language := range languages {
 		textures := []Texture{}
@@ -59,22 +72,32 @@ func getBase64ImageData(data []byte) string {
 }
 
 func init() {
-	missingAssetFile := "webui/form/image_form/missing_asset.png"
+	runtimeinit.Register("missing image", initializeMissingImage)
+}
+
+func initializeMissingImage() {
+	missingAssetFile := config.DataPath("webui/form/image_form/missing_asset.png")
 	stat, err := os.Stat(missingAssetFile)
 	utils.CheckErr(err)
 	data := make([]byte, stat.Size())
 	file, err := os.Open(missingAssetFile)
 	utils.CheckErr(err)
+	defer file.Close()
 	file.Read(data)
 	MissingAssetImage = getBase64ImageData(data)
 }
 func init() {
-	unknownAssetFile := "webui/form/image_form/unknown_asset.png"
+	runtimeinit.Register("unknown image", initializeUnknownImage)
+}
+
+func initializeUnknownImage() {
+	unknownAssetFile := config.DataPath("webui/form/image_form/unknown_asset.png")
 	stat, err := os.Stat(unknownAssetFile)
 	utils.CheckErr(err)
 	data := make([]byte, stat.Size())
 	file, err := os.Open(unknownAssetFile)
 	utils.CheckErr(err)
+	defer file.Close()
 	file.Read(data)
 	UnknownAssetImage = getBase64ImageData(data)
 }
@@ -87,7 +110,7 @@ func (t Texture) LoadUnencrypted() (output []byte) {
 		// }
 	}()
 	data := assetdata.GetDownloadData(t.PackName)
-	actualFile := fmt.Sprintf("static/%s", data.File)
+	actualFile := config.DataPath(fmt.Sprintf("static/%s", data.File))
 	if _, err := os.Stat(actualFile); errors.Is(err, os.ErrNotExist) {
 		return
 	}

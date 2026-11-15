@@ -218,6 +218,7 @@ func cacheDir() string {
 			dir = home + dir[1:]
 		}
 	}
+	dir = config.DataPath(dir)
 	if !strings.HasSuffix(dir, "/") {
 		dir += "/"
 	}

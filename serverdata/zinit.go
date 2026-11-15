@@ -4,6 +4,7 @@ import (
 	"elichika/config"
 	"elichika/db"
 	"elichika/log"
+	"elichika/runtimeinit"
 	"elichika/serverstate"
 	"elichika/utils"
 
@@ -13,13 +14,18 @@ import (
 )
 
 func init() {
+	runtimeinit.Register("serverdata", initialize)
+}
+
+func initialize() {
 	var err error
 	engine, err = xorm.NewEngine("sqlite", config.ServerdataPath)
 	migrateToServerstate(engine)
 	utils.CheckErr(err)
 	engine.SetMaxOpenConns(1)
 	engine.SetMaxIdleConns(1)
-	rebuildAsset = (len(os.Args) >= 2) && (os.Args[1] == "rebuild_assets")
+	runtimeinit.TrackCloser(engine.Close)
+	rebuildAsset = runtimeinit.InProcess && runtimeinit.RebuildAssets || !runtimeinit.InProcess && (len(os.Args) >= 2) && (os.Args[1] == "rebuild_assets")
 	InitTables()
 	engine.Close()
 	Database, err = db.NewDatabase(config.ServerdataPath)

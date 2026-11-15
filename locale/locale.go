@@ -7,6 +7,7 @@ import (
 	"elichika/dictionary"
 	"elichika/gamedata"
 	"elichika/log"
+	"elichika/runtimeinit"
 	"elichika/serverdata"
 	"elichika/utils"
 
@@ -30,6 +31,7 @@ func GetEngine(path string) *xorm.Engine {
 	engine, err := xorm.NewEngine("sqlite", path)
 	utils.CheckErr(err)
 	engines[path] = engine
+	runtimeinit.TrackCloser(engine.Close)
 	return engine
 }
 
@@ -108,10 +110,20 @@ func wantedLocales() map[string]bool {
 }
 
 func init() {
+	runtimeinit.Register("game data and asset catalogs", initialize)
+}
+
+func initialize() {
 	start := time.Now()
+	if runtimeinit.InProcess {
+		engines = map[string]*xorm.Engine{}
+		assetdata.ResetForReload()
+		gamedata.GamedataByLocale = map[string]*gamedata.Gamedata{}
+		gamedata.Instance = nil
+	}
 	gamedata.GenerateLoadOrder()
 	Locales = make(map[string](*Locale))
-	syncChannel := make(chan struct{})
+	syncChannel := make(chan struct{}, 4)
 
 	candidates := []localeCandidate{
 		{config.JpMasterdataPath, "ja", config.MasterVersionJp, config.JpStartupKey},
@@ -141,7 +153,13 @@ func init() {
 	}
 
 	for _, locale := range Locales {
-		go locale.LoadGamedata(syncChannel)
+		if runtimeinit.InProcess {
+			// Keep startup failures on the initializing goroutine so the native
+			// host receives an error instead of a fatal unhandled Go panic.
+			locale.LoadGamedata(syncChannel)
+		} else {
+			go locale.LoadGamedata(syncChannel)
+		}
 	}
 	// asset write to the same space so needed to be load manually
 	for _, locale := range Locales {

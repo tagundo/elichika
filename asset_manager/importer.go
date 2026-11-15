@@ -12,6 +12,7 @@ package asset_manager
 //   - but it might be faster
 
 import (
+	"elichika/config"
 	"elichika/log"
 	"elichika/utils"
 
@@ -24,28 +25,28 @@ import (
 )
 
 func ImportFromAssetsRepository() {
-	ImportAssetFromDatabase("assets/db/gl/asset_a_en.db", "en")
-	ImportAssetFromDatabase("assets/db/gl/asset_i_en.db", "en")
-	ImportAssetFromDatabase("assets/db/gl/asset_a_ko.db", "ko")
-	ImportAssetFromDatabase("assets/db/gl/asset_i_ko.db", "ko")
-	ImportAssetFromDatabase("assets/db/gl/asset_a_zh.db", "zh")
-	ImportAssetFromDatabase("assets/db/gl/asset_i_zh.db", "zh")
-	ImportAssetFromDatabase("assets/db/jp/asset_a_ja.db", "ja")
-	ImportAssetFromDatabase("assets/db/jp/asset_i_jp.db", "ja")
+	ImportAssetFromDatabase(config.DataPath("assets/db/gl/asset_a_en.db"), "en")
+	ImportAssetFromDatabase(config.DataPath("assets/db/gl/asset_i_en.db"), "en")
+	ImportAssetFromDatabase(config.DataPath("assets/db/gl/asset_a_ko.db"), "ko")
+	ImportAssetFromDatabase(config.DataPath("assets/db/gl/asset_i_ko.db"), "ko")
+	ImportAssetFromDatabase(config.DataPath("assets/db/gl/asset_a_zh.db"), "zh")
+	ImportAssetFromDatabase(config.DataPath("assets/db/gl/asset_i_zh.db"), "zh")
+	ImportAssetFromDatabase(config.DataPath("assets/db/jp/asset_a_ja.db"), "ja")
+	ImportAssetFromDatabase(config.DataPath("assets/db/jp/asset_i_jp.db"), "ja")
 }
 
 func ImportCachedAssets() {
-	if utils.PathExists("asset_manager_cached_asset_ja.db") {
-		ImportAssetFromDatabase("asset_manager_cached_asset_ja.db", "ja")
+	if utils.PathExists(CachedDBName("ja")) {
+		ImportAssetFromDatabase(CachedDBName("ja"), "ja")
 	}
-	if utils.PathExists("asset_manager_cached_asset_en.db") {
-		ImportAssetFromDatabase("asset_manager_cached_asset_en.db", "en")
+	if utils.PathExists(CachedDBName("en")) {
+		ImportAssetFromDatabase(CachedDBName("en"), "en")
 	}
-	if utils.PathExists("asset_manager_cached_asset_ko.db") {
-		ImportAssetFromDatabase("asset_manager_cached_asset_ko.db", "ko")
+	if utils.PathExists(CachedDBName("ko")) {
+		ImportAssetFromDatabase(CachedDBName("ko"), "ko")
 	}
-	if utils.PathExists("asset_manager_cached_asset_zh.db") {
-		ImportAssetFromDatabase("asset_manager_cached_asset_zh.db", "zh")
+	if utils.PathExists(CachedDBName("zh")) {
+		ImportAssetFromDatabase(CachedDBName("zh"), "zh")
 	}
 }
 

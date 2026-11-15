@@ -3,6 +3,7 @@ package config
 import (
 	"elichika/enum"
 	"elichika/log"
+	"elichika/runtimeinit"
 	"elichika/utils"
 
 	"encoding/json"
@@ -130,7 +131,9 @@ func Load(p string) *RuntimeConfig {
 			f.Set(reflect.ValueOf(d).Elem().Field(i))
 			changed = true
 		}
-		log.Println(reflect.TypeOf(c).Field(i).Name, ": ", f.Elem())
+		if !runtimeinit.InProcess {
+			log.Println(reflect.TypeOf(c).Field(i).Name, ": ", f.Elem())
+		}
 	}
 	if *c.CdnServer == "https://llsifas.catfolk.party/static/" {
 		*c.CdnServer = "https://llsifas.imsofucking.gay/static/"
@@ -185,7 +188,7 @@ var confs = []*RuntimeConfig{}
 
 func UpdateConfig(newConfig *RuntimeConfig) {
 	confs = append(confs, Conf)
-	newConfig.Save("./config.json") // this has lock so the file can't be corrupted
+	newConfig.Save(DataPath("config.json")) // this has lock so the file can't be corrupted
 	// this should be safe because we overwrite the pointer, not the object
 	// if someone had an old version of confs then they would just have an access to the old config until they discard it
 	// this also assume the pointer size is less than machine word, which it should be

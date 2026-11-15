@@ -6,6 +6,7 @@ import (
 	"elichika/log"
 	"elichika/nativeaccess"
 	"elichika/readiness"
+	"elichika/runtimeinit"
 	// "elichika/webui/user"
 
 	"html/template"
@@ -51,7 +52,7 @@ func (g *GroupInfo) AddInitialHandler(handler gin.HandlerFunc) {
 
 func (g *GroupInfo) AddHandler(method, path string, handler gin.HandlerFunc) {
 	_, exist := g.Handlers[method+path]
-	if exist {
+	if exist && !runtimeinit.InProcess {
 		log.Panic("Multiple handler for path and method: " + method + " " + path)
 	}
 	g.Handlers[method+path] = HandlerInfo{
@@ -93,8 +94,22 @@ func ManagementRouter(r *gin.Engine) {
 }
 
 func configure(r *gin.Engine, management bool) {
-	r.Use(nativeaccess.Middleware(os.Getenv(nativeaccess.Environment)))
-	r.GET(readiness.Path, gin.WrapH(readiness.Handler(os.Getenv(readiness.Environment))))
+	configureWithCredentials(r, management, os.Getenv(readiness.Environment), os.Getenv(nativeaccess.Environment))
+}
+
+// InProcessRouter keeps the real game and WebUI routes, with launch-local
+// credentials supplied explicitly rather than mutating the game environment.
+func InProcessRouter(r *gin.Engine, readyToken, localToken string) {
+	configureWithCredentials(r, false, readyToken, localToken)
+}
+
+func ManagementRouterWithCredentials(r *gin.Engine, localToken string) {
+	configureWithCredentials(r, true, "", localToken)
+}
+
+func configureWithCredentials(r *gin.Engine, management bool, readyToken, localToken string) {
+	r.Use(nativeaccess.Middleware(localToken))
+	r.GET(readiness.Path, gin.WrapH(readiness.Handler(readyToken)))
 	// whole pack/metapack files are served by the cache-aware /static/:fileName handler
 	// (handler/asset/whole.go), which can download missing packs from the upstream CDN when
 	// cdn_cache is enabled.
@@ -113,7 +128,11 @@ func configure(r *gin.Engine, management bool) {
 		return i18n.T(lang, text)
 	}
 	r.SetFuncMap(funcs)
-	r.LoadHTMLFiles(templates...)
+	resolvedTemplates := make([]string, len(templates))
+	for index, path := range templates {
+		resolvedTemplates[index] = config.DataPath(path)
+	}
+	r.LoadHTMLFiles(resolvedTemplates...)
 
 	for groupPath, groupInfo := range groups {
 		if management && groupPath != "/webui/admin" && groupPath != "/webui/user" {
@@ -121,7 +140,7 @@ func configure(r *gin.Engine, management bool) {
 		}
 		groupApi := r.Group(groupPath, groupInfo.InitialHandlers...)
 		for _, handlerInfo := range groupInfo.Handlers {
-			if management && groupPath == "/webui/admin" && (handlerInfo.Path == "/maintenance_mode" || handlerInfo.Path == "/run_alisa") {
+			if (management || runtimeinit.InProcess) && groupPath == "/webui/admin" && (handlerInfo.Path == "/maintenance_mode" || handlerInfo.Path == "/run_alisa") {
 				continue
 			}
 			switch handlerInfo.Method {

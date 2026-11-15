@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "purpose": "One iOS application containing the existing SIFAS game, an in-process Elichika Go server, and the existing Python/web editing tools",
+  "source_parent": "451ed15e746b34eeecff439d9c2f2cee4220578c",
+  "assets_source": "1b0154db2976ba345fb30f3516018bb04d408ce1",
+  "modtools_source": "b92bb0fdf3fed5b5d20c69fd2b7efbda15c84408",
+  "deployment_target": "iOS 13.0 or a higher documented minimum required by the final signed dependency closure",
+  "go_abi": {
+    "header": "ios/native/ElichikaServerBridge.h",
+    "functions": {
+      "ElichikaServerStart": "char *ElichikaServerStart(char *options_json)",
+      "ElichikaServerStatus": "char *ElichikaServerStatus(void)",
+      "ElichikaServerStop": "char *ElichikaServerStop(void)",
+      "ElichikaServerCommand": "char *ElichikaServerCommand(char *command_json)",
+      "ElichikaServerFree": "void ElichikaServerFree(char *owned_result)"
+    },
+    "memory": "Every result is a separately allocated UTF-8 JSON string; caller must use ElichikaServerFree. Input strings are copied and never modified.",
+    "start_options": {
+      "schema": 1,
+      "resources_root": "Read-only app LocalServer/payload directory",
+      "data_root": "Writable prepared Library/Application Support/Elichika root",
+      "packs_root": "Writable Documents/Elichika/packs root",
+      "listen_address": "127.0.0.1:8080",
+      "region": "gl or jp",
+      "language": "en, ko, zh, ja",
+      "ready_token": "Random per-launch native-host readiness token; never logged",
+      "web_token": "Random per-launch trusted embedded web UI token; never logged"
+    },
+    "result": {
+      "schema": 1,
+      "state": "starting, ready, stopping, stopped, or error",
+      "phase": "Specific current initialization/operation phase",
+      "endpoint": "Actual owned game HTTP endpoint, or null",
+      "error": "null, or an object with code and specific safe message"
+    },
+    "readiness": "ready only after real game routes and SQLite/data initialization succeed and the owned listener is accepting requests; expose token-authenticated /__elichika/health",
+    "lifecycle": "No os.Exit, process spawn, global cwd changes or application signal ownership; one Go runtime. Start/Stop/Status and command operations must return promptly or report an asynchronous job. Unknown commands fail explicitly."
+  },
+  "python_host": {
+    "module": "elichika_ios_runtime",
+    "functions": ["start(config_json) -> JSON string", "status() -> JSON string", "stop() -> JSON string"],
+    "native_builtin": "_elichika_ios",
+    "native_methods": ["go_start(json) -> JSON string", "go_status() -> JSON string", "go_stop() -> JSON string", "go_command(json) -> JSON string", "report_event(json)", "https_request(...) -> dict", "pick_document(types) -> imported path", "export_document(path) -> bool"],
+    "startup": "Isolated iOS CPython 3.13 on a serial worker; no Python signal handlers or runtime package installation. Prepare and validate writable payload first, start real Go server, start authenticated loopback admin/tools services; combined readiness requires all advertised components actually work.",
+    "ports": {"game": 8080, "admin": 8772, "tools": 8770},
+    "filesystem": "App-owned resources/data/packs roots; do not change the Unity process cwd or globally monkeypatch shared Python/OS state. Import/export through UIKit document bridges."
+  },
+  "game_host": {
+    "base_ipa": "SIFAS_GL_Local_3.12.0_PlayCover_2026.11.15.1_candidate.ipa",
+    "base_sha256": "830cfccc9e5397b2c69536ff3bf6d9e1626ff5ec7c8e587b0e89d4bdb135f53e",
+    "layout": "Monolithic Unity 2018 main executable; no UnityFramework",
+    "startup": "Audited SIFAS readiness gate with no second UIApplicationMain or Unity runtime; preserve original delegate/endpoint/RSA/FOV/orientation/duplicate/material/Settings behavior. No unbounded blocking of the main thread.",
+    "lifecycle": "Foreground recovery and recoverable interrupted work. Game and tools may switch screens; do not claim indefinite background execution."
+  },
+  "validation": {
+    "first_compile": "Real iphoneos arm64 and iphonesimulator builds of actual Go+SQLite and native host; no fake server",
+    "simulator": "Separate probe application may use fake game lifecycle entry points only; exercise real server, payload, encrypted API and tool services",
+    "candidate": "Real game IPA with audited load command additions and complete ad-hoc signing, explicit REQUIRES_USER_RESIGN for SideStore",
+    "preservation": "All original game content and executable code/section addresses preserved except audited startup load additions; signing metadata changes explicitly allowlisted and verified",
+    "truth": "Compile/probe success does not establish physical iPhone/iPad game or full modding parity; report exact passed gates and concrete remaining failures",
+    "archive": "Existing upload and queued resume remain unchanged; no fabricated complete Archive config and no bypass of production APK/Mac publication gates"
+  }
+}

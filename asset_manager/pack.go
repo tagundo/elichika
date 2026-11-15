@@ -1,6 +1,7 @@
 package asset_manager
 
 import (
+	"elichika/config"
 	"elichika/log"
 	"elichika/utils"
 
@@ -25,9 +26,9 @@ func (pack *Pack) IsAvailable() bool {
 	}
 	pack.HasLocalFile = new(bool)
 	if pack.MetapackName != nil {
-		*pack.HasLocalFile = utils.PathExists(fmt.Sprintf("static/%s", *pack.MetapackName))
+		*pack.HasLocalFile = utils.PathExists(config.DataPath(fmt.Sprintf("static/%s", *pack.MetapackName)))
 		if !*pack.HasLocalFile {
-			*pack.HasLocalFile = utils.PathExists(fmt.Sprintf("static/%s", pack.PackName))
+			*pack.HasLocalFile = utils.PathExists(config.DataPath(fmt.Sprintf("static/%s", pack.PackName)))
 			if *pack.HasLocalFile {
 				log.Printf("WARNING: Metapack doesn't exists but pack exist: pack: %s metapack: %s\n", pack.PackName, *pack.MetapackName)
 				log.Printf("WARNING: Removed the metapack attribute from the pack")
@@ -36,7 +37,7 @@ func (pack *Pack) IsAvailable() bool {
 			}
 		}
 	} else {
-		*pack.HasLocalFile = utils.PathExists(fmt.Sprintf("static/%s", pack.PackName))
+		*pack.HasLocalFile = utils.PathExists(config.DataPath(fmt.Sprintf("static/%s", pack.PackName)))
 	}
 	return *pack.HasLocalFile
 }

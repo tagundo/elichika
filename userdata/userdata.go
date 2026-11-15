@@ -11,5 +11,6 @@ var (
 )
 
 func Init() {
+	Engine = database.Engine
 	database.InitTables(Engine)
 }

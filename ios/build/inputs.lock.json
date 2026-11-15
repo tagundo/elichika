@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "server_public_key_sha256": "ffc81d1044590d3a785cc383bccc36981b39d6f10676fd839fc6b004d9760fbd",
+  "purpose": "Pinned GL Local monolithic SIFAS candidate; device gameplay remains untested",
+  "repository": "tagundo/elichika",
+  "game_source_repository": "tagundo/elichika",
+  "game_source_sha": "cb40d8337e4d986cd2918c9bb595348996c4898c",
+  "game_build_run_id": 43686835093,
+  "export_source_sha": "40c99de574a3aaece82d0b8387badc0a06b33ffe",
+  "export_run_id": 43689208250,
+  "artifact": {
+    "id": 14150829830,
+    "name": "ios-gl-local-adhoc",
+    "bytes": 66457236,
+    "sha256": "8157e023a3a8d53b351dd28a3c935546a4a4e0bcd7be2086300d7065d99a26cb"
+  },
+  "game": {
+    "name": "SIFAS_GL_Local_3.12.0_PlayCover_2026.11.15.1_candidate.ipa",
+    "bytes": 66457006,
+    "sha256": "830cfccc9e5397b2c69536ff3bf6d9e1626ff5ec7c8e587b0e89d4bdb135f53e",
+    "app": "Payload/global.app/",
+    "executable": "global",
+    "bundle_id": "com.klab.lovelive.allstars.global",
+    "main_sha256": "071607a0b7e4d4e080af68ce9ce7c84cf279bf8e73e70ec9dc8cf1f3be1cd4dd",
+    "main_uuid": "10dff3f5cfc33be8aaaa3c38a99d1717",
+    "feature_sha256": "5f3ed872e667ef4ca693cc93c3e49f797fdd5646ba9a810d0555d7a1b73031b8",
+    "preserve_game_short_version": "3.12.0",
+    "allowed_original_symlinks": {
+      "Payload/global.app/Frameworks/CydiaSubstrate.framework/Libraries/SubstrateInjection.dylib": "SubstrateBootstrap.dylib"
+    }
+  },
+  "reference": {
+    "repository": "tagundo/IdolyPride_client",
+    "source_sha": "b9c3e3d7ed954e0c1c9d87e1f726fb8c29a8e479"
+  }
+}

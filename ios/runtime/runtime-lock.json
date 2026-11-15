@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "python": {
+    "filename": "Python-3.13-iOS-support.b18.tar.gz",
+    "url": "https://github.com/beeware/Python-Apple-support/releases/download/3.13-b18/Python-3.13-iOS-support.b18.tar.gz",
+    "sha256": "d06acf2a9c7964a8689566353a0e707402eff822037de5e29ba0e16040f7047d"
+  },
+  "wheels": {
+    "device": [
+      {
+        "name": "numpy",
+        "version": "1.26.2",
+        "filename": "numpy-1.26.2-cp313-cp313-ios_13_0_arm64_iphoneos.whl",
+        "url": "https://api.anaconda.org/download/beeware/numpy/1.26.2/numpy-1.26.2-cp313-cp313-ios_13_0_arm64_iphoneos.whl",
+        "sha256": "070f7f1133d18e716c837733b60c7dc8a540e19caa22cb6b33ba5d629e087230"
+      },
+      {
+        "name": "pillow",
+        "version": "11.0.0",
+        "filename": "pillow-11.0.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl",
+        "url": "https://api.anaconda.org/download/beeware/Pillow/11.0.0/pillow-11.0.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl",
+        "sha256": "42543f517e0f888102db194ae34e903786c82bbb062854e7694d227a2044b984"
+      },
+      {
+        "name": "brotli",
+        "version": "1.1.0",
+        "filename": "Brotli-1.1.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl",
+        "url": "https://api.anaconda.org/download/beeware/Brotli/1.1.0/Brotli-1.1.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl",
+        "sha256": "9c2db29a2cce60bab705fc27ec3bcef65bc187103144ffaf965dfff1e9a194e6"
+      },
+      {
+        "name": "attrs",
+        "version": "26.1.0",
+        "filename": "attrs-26.1.0-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl",
+        "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"
+      },
+      {
+        "name": "fsspec",
+        "version": "2026.9.0",
+        "filename": "fsspec-2026.9.0-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/6c/c0/a98505f18594f1bce828bb159cec0fcf9860562f1a2c85913409fc8f3d9e/fsspec-2026.9.0-py3-none-any.whl",
+        "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f"
+      },
+      {
+        "name": "archspec",
+        "version": "0.2.7",
+        "filename": "archspec-0.2.7-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/8a/51/ef383bb83ed9018413d3a9259c3d0535c9fb2c05ebce13a7ada259b20a0b/archspec-0.2.7-py3-none-any.whl",
+        "sha256": "b6d97c2d840d8538d3f63b70c7c45ace2d26b3d9591d7c93d5fb33e50b1bc592"
+      },
+      {
+        "name": "certifi",
+        "version": "2026.10.23",
+        "filename": "certifi-2026.10.23-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl",
+        "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1"
+      }
+    ],
+    "simulator": [
+      {
+        "name": "numpy",
+        "version": "1.26.2",
+        "filename": "numpy-1.26.2-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",
+        "url": "https://api.anaconda.org/download/beeware/numpy/1.26.2/numpy-1.26.2-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",
+        "sha256": "d7c561e4c4942567ae3727b4ed9c79c79965549e103368b1074a145fc9094934"
+      },
+      {
+        "name": "pillow",
+        "version": "11.0.0",
+        "filename": "pillow-11.0.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",
+        "url": "https://api.anaconda.org/download/beeware/Pillow/11.0.0/pillow-11.0.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",
+        "sha256": "6c7d4fbfb2a3b7b823f8cb8a5af5d91570d597a4385ea11ad0e29ea316e197ff"
+      },
+      {
+        "name": "brotli",
+        "version": "1.1.0",
+        "filename": "Brotli-1.1.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",
+        "url": "https://api.anaconda.org/download/beeware/Brotli/1.1.0/Brotli-1.1.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl",
+        "sha256": "aa79edb86c7f393a7d2698c9842a5246154ba25909e7e5c826cbb8609cacc124"
+      },
+      {
+        "name": "attrs",
+        "version": "26.1.0",
+        "filename": "attrs-26.1.0-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl",
+        "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"
+      },
+      {
+        "name": "fsspec",
+        "version": "2026.9.0",
+        "filename": "fsspec-2026.9.0-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/6c/c0/a98505f18594f1bce828bb159cec0fcf9860562f1a2c85913409fc8f3d9e/fsspec-2026.9.0-py3-none-any.whl",
+        "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f"
+      },
+      {
+        "name": "archspec",
+        "version": "0.2.7",
+        "filename": "archspec-0.2.7-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/8a/51/ef383bb83ed9018413d3a9259c3d0535c9fb2c05ebce13a7ada259b20a0b/archspec-0.2.7-py3-none-any.whl",
+        "sha256": "b6d97c2d840d8538d3f63b70c7c45ace2d26b3d9591d7c93d5fb33e50b1bc592"
+      },
+      {
+        "name": "certifi",
+        "version": "2026.10.23",
+        "filename": "certifi-2026.10.23-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl",
+        "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "name": "UnityPy",
+      "version": "1.25.0",
+      "filename": "unitypy-1.25.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/62/27/06cefca42800be22895c38679aa2963575fc65a87037584d33856749ca25/unitypy-1.25.0.tar.gz",
+      "sha256": "4267195aba76fff95975a9687e2d04b8f16e5909a92ac8d4020241284d9082fb"
+    },
+    {
+      "name": "lz4",
+      "version": "4.3.3",
+      "filename": "lz4-4.3.3.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/a4/31/ec1259ca8ad11568abaf090a7da719616ca96b60d097ccc5799cd0ff599c/lz4-4.3.3.tar.gz",
+      "sha256": "01fe674ef2889dbb9899d8a67361e0c4a2c833af5aeb37dd505727cf5d2a131e"
+    },
+    {
+      "name": "texture2ddecoder",
+      "version": "1.0.6",
+      "filename": "texture2ddecoder-1.0.6.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/d8/25/603483a6c5f0fcd694732cbb079c83a026aa4ff153278a1f400c2bdf65e7/texture2ddecoder-1.0.6.tar.gz",
+      "sha256": "88f04d8951018ac13b8dacd07e57e8adad4a6f1cfe5509646e8a1020346a81ca"
+    },
+    {
+      "name": "etcpak",
+      "version": "0.9.15",
+      "filename": "etcpak-0.9.15.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/76/21/c504ccfe89dbff7154a7733b6792885b3af88a6a5db534b381ae6c3048fd/etcpak-0.9.15.tar.gz",
+      "sha256": "fe09e32d8aa75b8163832428c3d6df65a51b2b7e0237292c10c1224ca5728a43"
+    },
+    {
+      "name": "astc-encoder-py",
+      "version": "0.1.12",
+      "filename": "astc_encoder_py-0.1.12.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/4f/1e/fca57bdb9b429a1d2e2f83ad0621b4ab6af65ee5fefc38a4f318afad0d8e/astc_encoder_py-0.1.12.tar.gz",
+      "sha256": "03759ac32804cae32bc238e72f94c5ba27e228507df00816b741f7961f1184f9"
+    }
+  ],
+  "blockers": [],
+  "audio_closure": {
+    "existing_registered_audio": "CRI ACB/AFS2 HCA plus standard ADX",
+    "fmod": "UnityPy eager optional import only; no existing registered tool exports FSB/AudioClip.samples. Existing packer already rejects that operation. No FMOD host binary bundled."
+  }
+}

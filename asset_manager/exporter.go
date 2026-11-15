@@ -9,6 +9,7 @@ package asset_manager
 // the format is similar to the asset_a_en.db files, except without some relevant pack
 
 import (
+	"elichika/config"
 	"elichika/log"
 	"elichika/utils"
 
@@ -16,7 +17,7 @@ import (
 )
 
 func CachedDBName(locale string) string {
-	return "asset_manager_cached_asset_" + locale + ".db"
+	return config.DataPath("asset_manager_cached_asset_" + locale + ".db")
 }
 
 func BackupCachedDatabase(locale string) {
