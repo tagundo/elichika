@@ -308,9 +308,11 @@ class ResumablePublisher(frozen.OwnedPublisher):
         return super().put_index_document(*args, **kwargs)
 
     def verify_batch(self, item, names, index=False):
-        """Frozen MD5 verification bounds, preserving already verified SHA rank."""
+        """Wait within this segment's budget; a durable ACK is never re-PUT."""
         table = self.journal.value["index_objects" if index else "objects"]
-        for attempt in range(12):
+        backoff = NoProgressBackoff()
+        while True:
+            self.check_budget()
             files = self.files(item)
             pending = []
             for name in names:
@@ -331,10 +333,8 @@ class ResumablePublisher(frozen.OwnedPublisher):
                         self.progress.add("verified_bytes", record["size"])
                         self.counted.add(name)
                 return
-            if attempt + 1 < 12:
-                self.progress.emit()
-                self.sleep(min(30, 2 ** min(attempt, 5)))
-        raise u.Failure("Public metadata verification timed out; index remains unpublished")
+            self.progress.emit()
+            self._sleep_budget(backoff.next())
 
     def verify_index_sha256(self, item, key):
         """Always reread the full document, including a prior verified SHA."""
@@ -414,7 +414,7 @@ class ResumablePublisher(frozen.OwnedPublisher):
         active = {}
         pending = {n for n, r in self.records().items() if r["status"] == "PUT_ACKNOWLEDGED"}
         refresh_at, since_refresh = self.now() + frozen.REFRESH_SECONDS, 0
-        last_progress = self.now(); backoff = NoProgressBackoff()
+        backoff = NoProgressBackoff()
         fatal = None; pausing = False
         self.all_workers_reaped = False
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.workers) as executor:
@@ -427,13 +427,14 @@ class ResumablePublisher(frozen.OwnedPublisher):
                     if refresh and not active and not pausing:
                         snapshots = self.preflight()
                         promoted = self.reconcile(snapshots)
-                        if promoted: last_progress = self.now(); backoff.reset()
+                        if promoted: backoff.reset()
                         pending = {n for n, r in self.records().items() if r["status"] == "PUT_ACKNOWLEDGED"}
                         refresh_at, since_refresh = self.now() + frozen.REFRESH_SECONDS, 0
                         if len(pending) >= frozen.MAX_OUTSTANDING:
-                            remaining = frozen.VISIBILITY_SECONDS - (self.now() - last_progress)
-                            u.require(remaining > 0, "Bounded visibility wait exhausted; ACKs preserved")
-                            self._sleep_budget(min(backoff.next(), remaining)); continue
+                            # Public listings may lag longer than 900 seconds.
+                            # Keep the 128-entry barrier closed until visibility
+                            # or a clean cooperative checkpoint, never resend.
+                            self._sleep_budget(backoff.next()); continue
                         backoff.reset()
                     with self.state_lock: cooling = self.now() < self.cooldown_until
                     while ready and len(active) < self.args.workers and not refresh and not cooling and not pausing and not self.stop_admission.is_set():
@@ -459,7 +460,7 @@ class ResumablePublisher(frozen.OwnedPublisher):
                                 with self.journal.lock: acknowledged = self.journal.value["objects"][name]["status"] == "PUT_ACKNOWLEDGED"
                                 if acknowledged: pending.add(name)
                                 c["index"] += 1; c["deferrals"] = 0
-                                since_refresh += 1; last_progress = self.now()
+                                since_refresh += 1
                             except BudgetPause:
                                 pausing = True
                             except frozen.Deferred:
@@ -489,7 +490,7 @@ class ResumablePublisher(frozen.OwnedPublisher):
         self.all_workers_reaped = True
         if fatal is not None: raise fatal
         if pausing: raise BudgetPause()
-        deadline = self.now() + frozen.VISIBILITY_SECONDS
+        backoff = NoProgressBackoff()
         while True:
             self.check_budget()
             snapshots = self.preflight(); self.reconcile(snapshots)
@@ -497,9 +498,7 @@ class ResumablePublisher(frozen.OwnedPublisher):
             if all(records.get(n, {}).get("status") == "REMOTE_METADATA_VERIFIED" and
                    u.remote_equal(snapshots[self.plan["layout"]["placements"][n]].get(self.inputs.objects[n]["path"], {}),
                                   self.inputs.objects[n]["size"], records[n]["md5"]) for n in self.inputs.objects): break
-            remaining = deadline - self.now()
-            u.require(remaining > 0, "Final public MD5 verification timed out; catalog remains unpublished")
-            self._sleep_budget(min(10, remaining))
+            self._sleep_budget(backoff.next())
         self.journal.status("ALL_42830_REMOTE_MD5_VERIFIED")
 
     def checkpoint(self, status):

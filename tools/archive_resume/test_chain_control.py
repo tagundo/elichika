@@ -262,7 +262,7 @@ class ChainControlTests(unittest.TestCase):
             def read(path,*args,**kwargs):
                 if Path(path).name=='inventory.json':return fake_inventory
                 return original_read(path,*args,**kwargs)
-            def downloaded(gh,meta,incoming,*args):
+            def downloaded(gh,meta,incoming,*args,**kwargs):
                 incoming.mkdir();(incoming/'journal.json').write_text('{"schema":1,"identity":{"account":"unverified-secret"}}')
                 (incoming/'journal.events.jsonl').write_bytes(b'')
                 return {n:c.file_sha(incoming/n) for n in c.JOURNALS}
@@ -270,7 +270,7 @@ class ChainControlTests(unittest.TestCase):
                  mock.patch.object(c,'GitHub'),mock.patch.object(c,'verify_current_run',return_value=identity()),\
                  mock.patch.object(c,'read_json',side_effect=read),mock.patch.object(c,'file_sha',return_value=c.EXPECTED_IDENTITY['inventory_sha256']),\
                  mock.patch.object(c.scope,'load_plan',return_value={}),\
-                 mock.patch.object(c,'legacy_provenance',return_value=({'conclusion':'failure'},{'id':8,'digest':'sha256:'+'a'*64},{})),\
+                 mock.patch.object(c,'visibility_recovery_provenance',return_value={'id':8}),\
                  mock.patch.object(c,'download_artifact',side_effect=downloaded),mock.patch.object(c,'copy_journals') as copied:
                 with self.assertRaises(c.ChainError):c.main(['bootstrap'])
             copied.assert_not_called()
@@ -420,6 +420,144 @@ class ChainControlTests(unittest.TestCase):
         self.assertLess(reusable.index('chain_control.py prepare'),reusable.index('ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.'))
         self.assertIn('steps.budget.outputs.hard_seconds',reusable)
         self.assertIn('archive-resume-complete/publication.json',text)
+
+
+class VisibilityRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name);self.source=self.root/'source'
+        self.inv,self.plan,self.records=fixture(self.source,staged=True)
+        row={**self.records['jzpao2'],'path':'packs/k0jfna','size':4494,'sha256':'7'*64}
+        self.records['k0jfna']=row
+        self.inv['objects']['k0jfna']={k:row[k] for k in ('size','sha256','path')}
+        self.plan['layout']['placements']['k0jfna']=row['item']
+        self.plan['layout']['retained_locations']['k0jfna']=copy.deepcopy(row)
+        with (self.source/'journal.events.jsonl').open('ab') as stream:
+            stream.write(c.u.canonical({'type':'objects','name':'k0jfna','record':row}))
+        self.pin=copy.deepcopy(c.VISIBILITY_RECOVERY)
+        self.pin['counts']={'total':42830,'journal_objects':3,'PUT_ACKNOWLEDGED':1,'STAGED':2}
+        self.receipt=checkpoint(self.source,self.records,status='HALTED')
+        self.receipt.update(phase='data',credentials_in_receipt=False,
+            halt_reason={'exception_class':'Failure','phase':'data','public_message':'Bounded visibility wait exhausted; ACKs preserved'},
+            lineage={'repository':c.REPOSITORY,'run_id':self.pin['run_id'],'run_attempt':1,
+                'source_sha':self.pin['source_sha'],'workflow_path':c.WORKFLOW,'segment':1,'parent':self.pin['parent']})
+        self.repin()
+        self.current={**identity(),'run_id':self.pin['run_id']+100}
+
+    def repin(self):
+        self.receipt['raw_journal_sha256']=c.raw_journals(self.source)
+        self.receipt['transfer_events_sha256']=c.file_sha(self.source/c.TRACE)
+        (self.source/c.RECEIPT).write_bytes(c.u.canonical(self.receipt))
+        self.pin.update(raw_journal_sha256=c.raw_journals(self.source),
+            transfer_events_sha256=c.file_sha(self.source/c.TRACE),receipt_sha256=c.file_sha(self.source/c.RECEIPT),
+            file_bytes={n:(self.source/n).stat().st_size for n in (*c.JOURNALS,c.TRACE,c.RECEIPT)})
+        self.raw=pack({n:(self.source/n).read_bytes() for n in (*c.JOURNALS,c.TRACE,c.RECEIPT)})
+        self.pin.update(artifact_bytes=len(self.raw),artifact_sha256=c.digest(self.raw))
+
+    def github(self):
+        pin=self.pin
+        oldrun={'id':pin['run_id'],'run_attempt':1,'head_sha':pin['source_sha'],'workflow_id':pin['workflow_id'],
+            'path':c.WORKFLOW,'head_branch':c.BRANCH,'event':'workflow_dispatch','head_repository':{'full_name':c.REPOSITORY},
+            'status':'completed','conclusion':'failure'}
+        current={**oldrun,'id':self.current['run_id'],'head_sha':self.current['source_sha'],'status':'in_progress','conclusion':None}
+        job={'id':pin['job_id'],'run_id':pin['run_id'],'run_attempt':1,'head_sha':pin['source_sha'],
+             'name':'segment_01 / Upload segment 1','status':'completed','conclusion':'failure'}
+        meta={'id':pin['artifact_id'],'name':pin['artifact_name'],'size_in_bytes':len(self.raw),'digest':'sha256:'+c.digest(self.raw),
+              'expired':False,'workflow_run':{'id':pin['run_id'],'head_sha':pin['source_sha']}}
+        rows={'total_count':2,'workflow_runs':[current,oldrun]}
+        data={'run':oldrun,'job':job,'meta':meta,'rows':rows}
+        class Github:
+            def api(gh,path):
+                if '/workflows/' in path:return rows
+                if '/artifacts/' in path:return meta
+                if '/jobs/' in path:return job
+                return oldrun
+            def signed_bytes(gh,path,limit):return self.raw
+        return Github(),data
+
+    def validate(self):
+        with mock.patch.object(c,'VISIBILITY_RECOVERY',self.pin):
+            return c.validate_visibility_recovery(self.source,self.inv,self.plan)
+
+    def test_exact_recovery_preserves_raw_acks_original_halt_and_fresh_trace_boundary(self):
+        gh,_=self.github();(self.root/'runner').mkdir();work=c.initialize_bootstrap_evidence(self.root/'runner')
+        with mock.patch.object(c,'VISIBILITY_RECOVERY',self.pin):
+            result=c.import_visibility_recovery(gh,self.current,self.root/'incoming',work,self.inv,self.plan,Public(self.records))
+            ref=c.reference_for(work,self.current,0,123,'f'*64)
+            raw=pack({p.name:p.read_bytes() for p in work.iterdir()})
+            meta={'id':123,'name':ref['artifact_name'],'expired':False,'size_in_bytes':len(raw),
+                'digest':'sha256:'+c.digest(raw),'workflow_run':{'id':self.current['run_id'],'head_sha':self.current['source_sha']}}
+            ref['artifact_sha256']=c.digest(raw)
+            c.prepare_segment(GithubArtifact(raw,meta),self.current,ref,1,self.root/'next-in',self.root/'next-work',self.root/'lineage',self.inv,self.plan)
+        self.assertEqual(result['status'],'VISIBILITY_HALT_IMPORTED')
+        self.assertEqual(result['account_writes'],0)
+        self.assertEqual(c.raw_journals(work),self.pin['raw_journal_sha256'])
+        self.assertEqual(c.file_sha(work/'recovered-segment.json'),self.pin['receipt_sha256'])
+        self.assertEqual(c.read_json(work/'recovered-segment.json')['status'],'HALTED')
+        self.assertEqual(c.file_sha(work/'recovered-slice-transfer-events.jsonl'),self.pin['transfer_events_sha256'])
+        self.assertEqual(set(p.name for p in (self.root/'next-work').iterdir()),set(c.JOURNALS))
+        self.assertEqual(c.raw_journals(self.root/'next-work'),self.pin['raw_journal_sha256'])
+
+    def test_recovery_run_source_workflow_job_and_artifact_binding_are_exact(self):
+        for table,key,value in (('run','head_sha','f'*40),('run','workflow_id',1),('run','status','in_progress'),
+                ('job','head_sha','f'*40),('job','run_attempt',2),('meta','digest','sha256:'+'f'*64),
+                ('meta','id',1),('meta','size_in_bytes',1),('meta','expired',True)):
+            gh,data=self.github();data[table][key]=value
+            with self.subTest(table=table,key=key),mock.patch.object(c,'VISIBILITY_RECOVERY',self.pin),self.assertRaises(c.ChainError):
+                c.visibility_recovery_provenance(gh,self.current)
+
+    def test_seed_is_single_use_even_when_another_successor_has_a_different_source(self):
+        gh,data=self.github();other=copy.deepcopy(data['rows']['workflow_runs'][0]);other.update(id=self.current['run_id']-1,head_sha='f'*40)
+        data['rows']['workflow_runs'].append(other);data['rows']['total_count']=3
+        with mock.patch.object(c,'VISIBILITY_RECOVERY',self.pin),self.assertRaisesRegex(c.ChainError,'another production successor'):
+            c.visibility_recovery_provenance(gh,self.current)
+
+    def test_incomplete_or_unbounded_chronology_is_rejected(self):
+        for count in (101,3):
+            gh,data=self.github();data['rows']['total_count']=count
+            with mock.patch.object(c,'VISIBILITY_RECOVERY',self.pin),self.assertRaises(c.ChainError):
+                c.visibility_recovery_provenance(gh,self.current)
+
+    def test_wrong_halt_reason_flags_counts_or_lineage_remain_rejected_even_with_rebound_fixture_sha(self):
+        changes=[('halt_reason',{'exception_class':'Failure','phase':'data','public_message':reason})
+            for reason in ('S3 spam/refusal/unknown category stops publication; no blind retry','Conflict','Unresolved begun PUT')]
+        changes += [('status','PAUSED_BUDGET'),('active_puts',1),('active_workers',1),('all_workers_reaped',False),
+            ('unresolved_puts',[{}]),('never_submitted_staged',[]),('never_submitted_index_staged',['catalog']),
+            ('counts',{}),('identity_sha256','f'*64),('credentials_in_receipt',True),('lineage',{})]
+        original=copy.deepcopy(self.receipt)
+        for key,value in changes:
+            self.receipt=copy.deepcopy(original);self.receipt[key]=value;self.repin()
+            with self.subTest(key=key,value=value),self.assertRaises(c.ChainError):self.validate()
+
+    def test_raw_mutation_and_foreign_journal_cannot_enter_protected_work(self):
+        with (self.source/'journal.events.jsonl').open('ab') as stream:stream.write(b'\n')
+        with self.assertRaises(c.ChainError):self.validate()
+        header=c.read_json(self.source/'journal.json');header['identity']={'account':'foreign'}
+        (self.source/'journal.json').write_bytes(c.u.canonical(header));self.repin()
+        with self.assertRaisesRegex(c.ChainError,'another source/account/session/layout'):self.validate()
+
+    def test_unresolved_trace_and_falsely_never_submitted_staged_are_rejected(self):
+        row={k:self.records['jzpao2'][k] for k in ('item','path','size','sha256','md5')}
+        (self.source/c.TRACE).write_bytes(c.u.canonical({'type':'put_begin','attempt':1,**row}));self.repin()
+        with self.assertRaisesRegex(c.ChainError,'did not drain'):self.validate()
+        with (self.source/c.TRACE).open('ab') as stream:stream.write(c.u.canonical({'type':'put_ack','attempt':1,**row}))
+        self.repin()
+        with self.assertRaisesRegex(c.ChainError,'never submitted'):self.validate()
+
+    def test_missing_ack_listing_is_safe_but_public_md5_conflict_or_wrong_owner_halts(self):
+        records=self.validate()
+        self.assertEqual(c.check_visibility_recovery_public(records,Public({}))['visible_exact_size_md5_checked'],0)
+        with self.assertRaisesRegex(c.ChainError,'size/MD5 conflicts'):
+            c.check_visibility_recovery_public(records,Public(self.records,wrong=True))
+        class WrongOwner(Public):
+            def metadata(self,*args,**kwargs):
+                row=super().metadata(*args,**kwargs);row['metadata']['elichikasession']='foreign';return row
+        with self.assertRaises(c.u.Failure):c.check_visibility_recovery_public(records,WrongOwner(self.records))
+
+    def test_general_segment_validator_still_rejects_visibility_halt(self):
+        ref=reference(1);ref['raw_journal_sha256']=c.raw_journals(self.source)
+        with self.assertRaisesRegex(c.ChainError,'not a clean exact segment'):
+            c.validate_segment(self.receipt,self.source,ref,identity(),2,self.inv,self.plan)
 
 
 if __name__=='__main__':unittest.main()

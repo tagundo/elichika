@@ -223,6 +223,76 @@ class SegmentTests(unittest.TestCase):
         receipt = h.pub.checkpoint("PAUSED_BUDGET")
         self.assertEqual(receipt["counts"]["PUT_ACKNOWLEDGED"], 128)
 
+    def visibility_after(self, h, seconds):
+        original = h.pub.files
+        visible_at = self.clock.now + seconds
+        def files(item):
+            result = original(item)
+            return result if self.clock.now >= visible_at else {}
+        h.pub.files = files
+
+    def test_128_invisible_acks_wait_past_900_then_pause_without_any_put(self):
+        h = self.make(count=129, seed_ack=128, release=-999999)
+        h.pub.soft_deadline = self.clock.now + 1001
+        before = copy.deepcopy(h.pub.records())
+        with self.assertRaises(r.BudgetPause): self.run_data(h)
+        self.assertFalse(h.puts)
+        self.assertEqual(h.pub.records(), before)
+        receipt = h.pub.checkpoint("PAUSED_BUDGET")
+        self.assertEqual(receipt["counts"]["PUT_ACKNOWLEDGED"], 128)
+        self.assertEqual(receipt["active_puts"], 0)
+
+    def test_128_barrier_opens_only_when_exact_metadata_eventually_appears(self):
+        h = self.make(count=129, seed_ack=128)
+        self.visibility_after(h, 1001)
+        self.run_data(h)
+        self.assertEqual(len(h.puts), 1)
+        self.assertTrue(all(x["status"] == "REMOTE_METADATA_VERIFIED" for x in h.pub.records().values()))
+
+    def test_final_data_visibility_wait_pauses_without_reput_or_publication(self):
+        h = self.make(count=1, seed_ack=1, release=-999999)
+        h.pub.soft_deadline = self.clock.now + 1001
+        with self.assertRaises(r.BudgetPause): self.run_data(h)
+        self.assertFalse(h.puts)
+        self.assertEqual(h.pub.records()["f0000"]["status"], "PUT_ACKNOWLEDGED")
+        self.assertEqual(h.pub.checkpoint("PAUSED_BUDGET")["counts"]["PUT_ACKNOWLEDGED"], 1)
+        self.assertFalse((h.work.path / "publication.json").exists())
+
+    def test_final_data_wait_promotes_only_eventual_exact_public_md5(self):
+        h = self.make(count=1, seed_ack=1)
+        self.visibility_after(h, 1001)
+        self.run_data(h)
+        self.assertFalse(h.puts)
+        self.assertEqual(h.pub.records()["f0000"]["status"], "REMOTE_METADATA_VERIFIED")
+
+    def index_ack(self, h):
+        key = layout.INDEX_PREFIX + "/profiles/" + u.PROFILES[0] + ".json"
+        record = {"item": layout.ITEMS[0], "path": key, "size": len(DATA), "sha256": SHA,
+                  "md5": MD5, "status": "PUT_ACKNOWLEDGED"}
+        h.pub.journal.record(key, record, True)
+        h.remote[layout.ITEMS[0]][key] = {"size": str(len(DATA)), "md5": MD5}
+        return key, record
+
+    def test_prior_invisible_index_ack_pauses_durably_without_put(self):
+        h = self.make(count=0, release=-999999)
+        key, record = self.index_ack(h)
+        h.pub.soft_deadline = self.clock.now + 1001
+        with patch.object(frozen, "time", self.fake), self.assertRaises(r.BudgetPause):
+            h.pub.put_index_document(layout.ITEMS[0], key, Path("unused"), len(DATA), SHA, MD5, {})
+        self.assertFalse(h.puts)
+        self.assertEqual(h.pub.journal.value["index_objects"][key], record)
+        self.assertEqual(h.pub.checkpoint("PAUSED_BUDGET")["status"], "PAUSED_BUDGET")
+        self.assertNotIn(layout.INDEX_PREFIX + "/catalog.json", h.pub.journal.value["index_objects"])
+
+    def test_prior_index_ack_promotes_when_metadata_appears_without_put(self):
+        h = self.make(count=0)
+        key, _ = self.index_ack(h)
+        self.visibility_after(h, 1001)
+        with patch.object(frozen, "time", self.fake):
+            h.pub.put_index_document(layout.ITEMS[0], key, Path("unused"), len(DATA), SHA, MD5, {})
+        self.assertFalse(h.puts)
+        self.assertEqual(h.pub.journal.value["index_objects"][key]["status"], "REMOTE_METADATA_VERIFIED")
+
     def test_spam_refusal_and_unknown_categories_remain_fatal(self):
         for value in ({"http_status": 503, "xml_code": "SlowDown", "spam_refusal": True},
                       {"http_status": 503, "xml_code": "UNKNOWN", "spam_refusal": False}):
@@ -301,7 +371,7 @@ class SegmentTests(unittest.TestCase):
         with patch.object(frozen, "time", self.fake): receipt = h.pub.execute()
         self.assertEqual(receipt["status"], "PAUSED_BUDGET")
         self.assertEqual(len(h.puts), 1)
-        self.assertEqual(h.pub.journal.value["index_objects"][key]["status"], "REMOTE_METADATA_VERIFIED")
+        self.assertEqual(h.pub.journal.value["index_objects"][key]["status"], "PUT_ACKNOWLEDGED")
         self.assertEqual([json.loads(x)["type"] for x in (h.work.path / r.TRACE_NAME).read_text().splitlines()], ["put_begin", "put_ack"])
         # A fresh successor replays the exact checkpoint, retains the document,
         # and executes its full remote digest check without another PUT.

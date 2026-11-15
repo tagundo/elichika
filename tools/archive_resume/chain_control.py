@@ -34,6 +34,32 @@ LEGACY = {'run_id': 43707924556, 'run_attempt': 1,
           'source_sha': '79d4040c1e4b4bdedce61aa35391d654bad9c428',
           'workflow_id': 418942989, 'workflow_path': '.github/workflows/individual-asset-upload.yml',
           'job_id': 132792950713, 'artifact_name': 'elichika-individual-upload-journal-attempt-1'}
+# A source-reviewed exception for ONE exact visibility-only HALT. This is not
+# a general permission to adopt HALTED checkpoints or accept manual seeds.
+VISIBILITY_RECOVERY = {
+    'run_id': 43740956544, 'run_attempt': 1,
+    'source_sha': '463715bd089d2cae8369c22be1bcf9a1385af519',
+    'workflow_id': 419149617, 'job_id': 132893958317,
+    'artifact_id': 14178146233, 'artifact_name': 'archive-upload-segment-01-43740956544-a1',
+    'artifact_bytes': 1809651,
+    'artifact_sha256': 'cbfeb722f9508d42c11484af153a5d85a6e0a1ed40917075a4a5e19bd19d1a44',
+    'receipt_sha256': '8bae6a485686da0d78a848e4d54c1aae8cc7c8193cc6ed600621425db9471813',
+    'raw_journal_sha256': {
+        'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee',
+        'journal.events.jsonl': 'cde2717d2adfa52175c8eb9b19d47b2b73da08e00f4e6ade84fa48a2f8c4d837'},
+    'transfer_events_sha256': '862bc44e19808f2a884e3e1458fc879fd1945173e0a89db29af1c9860ce4bcca',
+    'file_bytes': {'journal.json': 1160, 'journal.events.jsonl': 9005020,
+                   'slice-transfer-events.jsonl': 1140714, 'segment.json': 1617},
+    'counts': {'total': 42830, 'journal_objects': 10832, 'REMOTE_METADATA_VERIFIED': 10702,
+               'PUT_ACKNOWLEDGED': 128, 'STAGED': 2},
+    'parent': {'run_id': 43740956544, 'run_attempt': 1,
+        'source_sha': '463715bd089d2cae8369c22be1bcf9a1385af519',
+        'artifact_id': 14171439677, 'artifact_name': 'archive-upload-bootstrap-43740956544-a1',
+        'artifact_sha256': 'b2b012d760859b4dc1e41eb7ccf1be31d7dea5c6750a06ad82c3346c3fc5e062',
+        'receipt_sha256': 'dfb9984c410c0169393eeb0188c20f932a882bcb8318ff58df39aa9883cfa0bc',
+        'raw_journal_sha256': {
+            'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee',
+            'journal.events.jsonl': '8efdb8d32cfd5d810f775daa3efd2a57566d66434785ef86ad0c528518f4f926'}}}
 EXPECTED_IDENTITY = old.JOURNAL_SEED_IDENTITY
 IDENTITY_SHA = hashlib.sha256(u.canonical(EXPECTED_IDENTITY)).hexdigest()
 MAX_SEGMENTS, MAX_ZIP, MAX_FILE = 12, 64 * 1024**2, 128 * 1024**2
@@ -661,6 +687,117 @@ def validate_transfer_audit(receipt, directory, records):
     require(receipt.get('counts') == counts, 'Checkpoint progress counters differ from the durable journal')
 
 
+def visibility_recovery_provenance(github, identity):
+    pin = VISIBILITY_RECOVERY
+    row = github.api(f'/repos/{REPOSITORY}/actions/runs/{pin["run_id"]}')
+    require(row.get('id') == pin['run_id'] and row.get('run_attempt') == pin['run_attempt'] and
+            row.get('head_sha') == pin['source_sha'] and row.get('workflow_id') == pin['workflow_id'] and
+            row.get('path') == WORKFLOW and row.get('head_branch') == BRANCH and row.get('event') == 'workflow_dispatch' and
+            row.get('head_repository', {}).get('full_name') == REPOSITORY and
+            row.get('status') == 'completed' and row.get('conclusion') == 'failure',
+            'The one reviewed visibility-only recovery run differs')
+    # This seed is single use across commits, not merely once per source SHA.
+    # A later manual chain must import its newest checkpoint after review.
+    values = github.api(f'/repos/{REPOSITORY}/actions/workflows/archive-upload-resume.yml/runs?'
+        'branch=codex%2Fasset-upload-resume-20261115&event=workflow_dispatch&per_page=100')
+    rows = values.get('workflow_runs', [])
+    require(type(values.get('total_count')) is int and values['total_count'] <= 100 and
+            isinstance(rows, list) and len(rows) == values['total_count'] and
+            all(positive(r.get('id')) for r in rows), 'Recovery chronology query is incomplete or unbounded')
+    successors = [r for r in rows if r['id'] > pin['run_id']]
+    require(identity['run_id'] > pin['run_id'] and len(successors) == 1 and
+            successors[0].get('id') == identity['run_id'] and successors[0].get('run_attempt') == 1 and
+            successors[0].get('head_sha') == identity['source_sha'] and successors[0].get('path') == WORKFLOW and
+            successors[0].get('head_branch') == BRANCH and successors[0].get('event') == 'workflow_dispatch' and
+            successors[0].get('head_repository', {}).get('full_name') == REPOSITORY,
+            'Recovery seed already has another production successor; newest checkpoint review is required')
+    job = github.api(f'/repos/{REPOSITORY}/actions/jobs/{pin["job_id"]}')
+    require(job.get('id') == pin['job_id'] and job.get('run_id') == pin['run_id'] and
+            job.get('head_sha') == pin['source_sha'] and job.get('run_attempt') == pin['run_attempt'] and
+            job.get('name') == 'segment_01 / Upload segment 1' and job.get('status') == 'completed' and
+            job.get('conclusion') == 'failure', 'The reviewed visibility-only segment job differs')
+    meta = github.api(f'/repos/{REPOSITORY}/actions/artifacts/{pin["artifact_id"]}')
+    validate_artifact(meta, pin['run_id'], pin['source_sha'], pin['artifact_name'], pin['artifact_sha256'])
+    require(meta.get('id') == pin['artifact_id'] and meta.get('size_in_bytes') == pin['artifact_bytes'],
+            'The one reviewed visibility-only artifact differs')
+    return meta
+
+
+def validate_visibility_recovery(directory, inventory, plan):
+    """Validate the pinned exception separately; validate_segment still rejects HALT."""
+    pin, directory = VISIBILITY_RECOVERY, Path(directory)
+    expected = {**pin['raw_journal_sha256'], TRACE: pin['transfer_events_sha256'], RECEIPT: pin['receipt_sha256']}
+    require({p.name for p in directory.iterdir()} == set(expected), 'Visibility recovery evidence scope differs')
+    for name, sha in expected.items():
+        path = directory / name
+        require(path.is_file() and not path.is_symlink() and path.stat().st_size == pin['file_bytes'][name] and
+                file_sha(path) == sha, 'Pinned visibility recovery raw evidence differs')
+    receipt = read_json(directory / RECEIPT, u.CHUNK)
+    expected_lineage = {'repository': REPOSITORY, 'run_id': pin['run_id'], 'run_attempt': pin['run_attempt'],
+                        'source_sha': pin['source_sha'], 'workflow_path': WORKFLOW, 'segment': 1, 'parent': pin['parent']}
+    require(receipt.get('schema') == 1 and receipt.get('status') == 'HALTED' and receipt.get('phase') == 'data' and
+            receipt.get('halt_reason') == {'exception_class': 'Failure', 'phase': 'data',
+                'public_message': 'Bounded visibility wait exhausted; ACKs preserved'} and
+            receipt.get('lineage') == expected_lineage and receipt.get('identity_sha256') == IDENTITY_SHA and
+            receipt.get('all_workers_reaped') is True and receipt.get('active_workers') == 0 and
+            receipt.get('active_puts') == 0 and receipt.get('unresolved_puts') == [] and
+            receipt.get('never_submitted_staged') == ['jzpao2', 'k0jfna'] and
+            receipt.get('never_submitted_index_staged') == [] and receipt.get('counts') == pin['counts'] and
+            receipt.get('credentials_in_receipt') is False and
+            receipt.get('raw_journal_sha256') == pin['raw_journal_sha256'] and
+            receipt.get('transfer_events_sha256') == pin['transfer_events_sha256'],
+            'Checkpoint is not the exact drained visibility-only exception')
+    records = replay_journal(directory, inventory, plan)
+    require(not records['index_objects'] and records['legacy_continuation_markers'] == 1,
+            'Recovery journal has an unexpected index or continuation history')
+    validate_transfer_audit(receipt, directory, records)
+    return records
+
+
+def check_visibility_recovery_public(records, public=None):
+    # Missing ACK listings are expected and do not authorize a duplicate PUT.
+    # Any present object must still have the exact owned placement/size/MD5.
+    public = public or scope.BoundedPublic()
+    checked = 0
+    for item in layout.ITEMS:
+        remote = public.metadata(item, attempts=1)
+        require(remote is not None, 'Owned recovery destination is absent')
+        files = u.owned_metadata(remote, item, EXPECTED_IDENTITY['session'],
+                                 EXPECTED_IDENTITY['inventory_sha256'], EXPECTED_IDENTITY['account'])
+        for key, file in files.items():
+            if not key.startswith('packs/'):
+                continue
+            record = records['objects'].get(key[6:])
+            require(record is not None and record['item'] == item and record['path'] == key,
+                    'Visible recovery file has no exact durable owned reference')
+            require(u.remote_equal(file, record['size'], record['md5']), 'Recovery public size/MD5 conflicts')
+            checked += 1
+    return {'owned_items_checked': len(layout.ITEMS), 'visible_exact_size_md5_checked': checked,
+            'missing_ack_allows_reput': False, 'account_writes': 0}
+
+
+def import_visibility_recovery(github, identity, incoming, work, inventory, plan, public=None):
+    meta = visibility_recovery_provenance(github, identity)
+    download_artifact(github, meta, incoming, (*JOURNALS, RECEIPT, TRACE),
+                      expected_digest=VISIBILITY_RECOVERY['artifact_sha256'])
+    records = validate_visibility_recovery(incoming, inventory, plan)
+    public_checks = check_visibility_recovery_public(records, public)
+    copy_journals(incoming, work, bootstrap_evidence=True)
+    # Preserve the original HALT/trace under audit-only names. The next segment
+    # starts a fresh trace and never edits or mistakes these for a clean pause.
+    for source, destination in ((RECEIPT, 'recovered-segment.json'), (TRACE, 'recovered-slice-transfer-events.jsonl')):
+        shutil.copyfile(Path(incoming) / source, Path(work) / destination)
+        (Path(work) / destination).chmod(0o600)
+    receipt = {'schema': 1, 'status': 'VISIBILITY_HALT_IMPORTED', 'current_identity': identity,
+        'recovery': VISIBILITY_RECOVERY, 'policy': 'ONE_EXACT_DRAINED_VISIBILITY_HALT',
+        'original_halt_status_preserved': True, 'counts_at_import': VISIBILITY_RECOVERY['counts'],
+        'public_checks': public_checks, 'unresolved_staged': [],
+        'never_submitted_staged': ['jzpao2', 'k0jfna'], 'raw_journal_sha256': raw_journals(work),
+        'credentials_in_receipt': False, 'account_writes': 0}
+    u.atomic_json(Path(work) / 'bootstrap.json', receipt)
+    return receipt
+
+
 def validate_segment(receipt, directory, reference, identity, segment, inventory=None, plan=None):
     require(type(segment) is int and 2 <= segment <= MAX_SEGMENTS + 1,
             'Segment validation context is outside the finite chain')
@@ -703,17 +840,21 @@ def prepare_segment(github, identity, reference, segment, incoming, work, lineag
     require(meta.get('id') == reference['artifact_id'], 'Predecessor artifact API returned a different exact ID')
     validate_artifact(meta, identity['run_id'], identity['source_sha'], reference['artifact_name'], reference['artifact_sha256'])
     required = (*JOURNALS, 'bootstrap.json') if segment == 1 else (*JOURNALS, RECEIPT, TRACE)
-    hashes = download_artifact(github, meta, incoming, required, ('publication.json',), reference['artifact_sha256'])
+    hashes = download_artifact(github, meta, incoming, required,
+        ('publication.json', 'recovered-segment.json', 'recovered-slice-transfer-events.jsonl') if segment == 1 else ('publication.json',),
+        reference['artifact_sha256'])
     name = 'bootstrap.json' if segment == 1 else RECEIPT
     require(hashes[name] == reference['receipt_sha256'] and
             {n: hashes[n] for n in JOURNALS} == reference['raw_journal_sha256'], 'Parent receipt/raw file pins differ')
     receipt = read_json(Path(incoming) / name, u.CHUNK)
     if segment == 1:
-        require(receipt.get('status') in ('LEGACY_IMPORTED', 'COMPLETE') and receipt.get('schema') == 1 and
+        require(receipt.get('status') == 'VISIBILITY_HALT_IMPORTED' and receipt.get('schema') == 1 and
                 receipt.get('current_identity') == identity and receipt.get('raw_journal_sha256') == reference['raw_journal_sha256'] and
-                receipt.get('legacy', {}).get('source_sha') == LEGACY['source_sha'] and
-                receipt['legacy'].get('run_id') == LEGACY['run_id'] and receipt.get('unresolved_staged') == [],
-                'Bootstrap is not the exact checked legacy transition')
+                receipt.get('raw_journal_sha256') == VISIBILITY_RECOVERY['raw_journal_sha256'] and
+                receipt.get('recovery') == VISIBILITY_RECOVERY and receipt.get('unresolved_staged') == [] and
+                hashes.get('recovered-segment.json') == VISIBILITY_RECOVERY['receipt_sha256'] and
+                hashes.get('recovered-slice-transfer-events.jsonl') == VISIBILITY_RECOVERY['transfer_events_sha256'],
+                'Bootstrap is not the exact checked visibility-only transition')
     else:
         validate_segment(receipt, incoming, reference, identity, segment, inventory, plan)
     replay_journal(incoming, inventory, plan, allow_torn_tail=False)
@@ -807,29 +948,9 @@ def execute(args):
     require(file_sha(inventory_path) == EXPECTED_IDENTITY['inventory_sha256'], 'Prepared complete inventory SHA differs')
     plan = scope.load_plan(BASE.parent / 'archive_inventory/five-owned-layout.json.gz')
     if args.command == 'bootstrap':
-        row, meta, policy = legacy_provenance(github)
-        incoming = temporary / 'archive-resume-legacy'
-        hashes = download_artifact(github, meta, incoming, JOURNALS, ('publication.json',))
-        work = temporary / 'elichika-ia-upload-work'
-        # Validate complete ownership/source/layout semantics before copying any
-        # imported file into the protected failure/artifact work directory.
-        replay_journal(incoming, inventory, plan, allow_torn_tail=True)
-        copy_journals(incoming, work, bootstrap_evidence=True)
-        resolved = resolve_legacy_staged(work, inventory, plan)
-        complete = row['conclusion'] == 'success'
-        if complete:
-            publication = publication_valid(read_json(incoming / 'publication.json', u.CHUNK))
-            records = replay_journal(work, inventory, plan)
-            require(len(records['objects']) == 42830 and all(r['status'] == 'REMOTE_METADATA_VERIFIED' for r in records['objects'].values()) and
-                    len(records['index_objects']) == 9 and all(r['status'] == 'REMOTE_SHA256_VERIFIED' for r in records['index_objects'].values()),
-                    'Successful legacy run lacks the exact complete durable journal')
-            shutil.copyfile(incoming / 'publication.json', work / 'publication.json')
-        receipt = {'schema': 1, 'status': 'COMPLETE' if complete else 'LEGACY_IMPORTED',
-                   'current_identity': identity, 'legacy': {**LEGACY, 'artifact_id': meta['id'],
-                       'artifact_sha256': meta['digest'][7:], 'raw_journal_sha256': {n: hashes[n] for n in JOURNALS}},
-                   'policy': policy, **resolved, 'unresolved_staged': [], 'raw_journal_sha256': raw_journals(work)}
-        u.atomic_json(work / 'bootstrap.json', receipt)
-        emit_outputs({'status': 'COMPLETE' if complete else 'CONTINUE'})
+        import_visibility_recovery(github, identity, temporary / 'archive-resume-visibility-recovery',
+            temporary / 'elichika-ia-upload-work', inventory, plan)
+        emit_outputs({'status': 'CONTINUE'})
     elif args.command == 'prepare':
         reference = json.loads(os.environ['PARENT_REFERENCE'])
         prepare_segment(github, identity, reference, args.segment, temporary / 'archive-resume-parent',
