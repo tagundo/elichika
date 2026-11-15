@@ -1,0 +1,115 @@
+# Source-reviewed isolated joint-release gate; Root activation remains explicit.
+name: Joint validated release gate
+
+on:
+  push:
+    branches:
+      - codex/joint-tag-20261115-v4
+      - codex/joint-publish-20261115-v4-*
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: joint-validated-release-v3026.11.14.1-v4
+  cancel-in-progress: false
+
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  # Root replaces this after every mandatory frozen-server CI job has passed.
+  APP_SOURCE_SHA: 02f659d707997e03218be231e8a675fb0358a6c8
+
+jobs:
+  tag:
+    if: github.repository == 'tagundo/elichika' && github.ref == 'refs/heads/codex/joint-tag-20261115-v4'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out frozen reviewed helper bytes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: helper
+          persist-credentials: false
+      - name: Check out unchanged validated schema-1 publisher
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.APP_SOURCE_SHA }}
+          path: validated-source
+          persist-credentials: false
+      - name: Validate all seven installables, scoped client evidence and checksums before exact tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ELICHIKA_BASE_PUBLISHER_PATH: ${{ github.workspace }}/validated-source/macos/ci/publish_validated_apps.py
+        run: |
+          set -euo pipefail
+          python3 helper/macos/ci/joint_publisher.py \
+            --server-manifest helper/macos/ci/joint_server_manifest.json \
+            --client-manifest helper/macos/ci/joint_client_manifest.json \
+            --source-sha "$APP_SOURCE_SHA" --helper-sha "$GITHUB_SHA" \
+            --version-file validated-source/macos/VERSION \
+            --work-dir "$RUNNER_TEMP/joint-tag" --create-token-tag
+      - name: Upload exact token-created tag attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: joint-tag-attestation
+          path: ${{ runner.temp }}/joint-tag/joint-tag-attestation.json
+          if-no-files-found: error
+      - name: Upload complete preflight for root review; this phase never publishes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: joint-preflight
+          path: ${{ runner.temp }}/joint-tag/joint-preflight.json
+          if-no-files-found: warn
+
+  publish:
+    # Root creates a NEW branch AT THE SAME HELPER COMMIT only after reviewing
+    # the completed tag-phase preflight. The suffix is the exact approved run ID.
+    if: github.repository == 'tagundo/elichika' && startsWith(github.ref, 'refs/heads/codex/joint-publish-20261115-v4-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the same frozen helper commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: helper
+          persist-credentials: false
+      - name: Check out unchanged validated schema-1 publisher
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.APP_SOURCE_SHA }}
+          path: validated-source
+          persist-credentials: false
+      - name: Resolve only the explicit root-approved completed preflight run
+        id: approval
+        run: |
+          python3 - <<'PY'
+          import os,re
+          match=re.fullmatch(r'refs/heads/codex/joint-publish-20261115-v4-([1-9][0-9]{0,15})',os.environ['GITHUB_REF'])
+          assert match,'Malformed approval branch; no arbitrary refs or versions accepted'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write('run_id='+match[1]+'\n')
+          PY
+      - name: Revalidate every source/run/artifact/report/input and publish only the existing exact tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ELICHIKA_BASE_PUBLISHER_PATH: ${{ github.workspace }}/validated-source/macos/ci/publish_validated_apps.py
+          APPROVED_RUN_ID: ${{ steps.approval.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          python3 helper/macos/ci/joint_publisher.py \
+            --server-manifest helper/macos/ci/joint_server_manifest.json \
+            --client-manifest helper/macos/ci/joint_client_manifest.json \
+            --source-sha "$APP_SOURCE_SHA" --helper-sha "$GITHUB_SHA" \
+            --version-file validated-source/macos/VERSION \
+            --work-dir "$RUNNER_TEMP/joint-publish" --publish \
+            --approved-preflight-run-id "$APPROVED_RUN_ID"
+      - name: Retain exact publication or owned-draft failure receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: joint-publication-result
+          path: ${{ runner.temp }}/joint-publish/publish-result.json
+          if-no-files-found: warn
