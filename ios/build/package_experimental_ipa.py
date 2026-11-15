@@ -75,7 +75,7 @@ def simulator_gates(path, source):
     require(len(rows) == 4, 'Both iPhone and iPad must pass two full-tools launches')
     models = {}
     for row in rows:
-        validate_reply(row['reply'], False)
+        validate_reply(row['reply'], False, launch_number=row['launch_number'])
         require(row['encrypted_protocol']['passed'] is True and row['signed_bundle_unchanged'] is True
                 and row['data_outside_bundle'] is True, 'Full-tools protocol/sandbox execution gate failed')
         models.setdefault(row['model'], []).append(row['launch_number'])

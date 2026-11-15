@@ -90,12 +90,31 @@ class RuntimeInputTests(unittest.TestCase):
             reply[name] = True
         lifecycle = dict.fromkeys(('ready', 'stopped', 'read_only_command_succeeded', 'restarted'), True)
         reply['runtime_probe'] = {'ready': True, 'tools_probe': {'ready': True, 'lifecycle': lifecycle}}
-        self.assertIs(validate_reply(reply, False), reply)
+        reply['web_storage_probe'] = {'ready': True, 'actual_management_webview': True, 'persistent_store': True, 'launch_number': 2,
+            'admin': {'ready': True, 'origin_port': 8772, 'seeded': False, 'persisted': True},
+            'tools': {'ready': True, 'origin_port': 8770, 'seeded': False, 'persisted': True}}
+        self.assertIs(validate_reply(reply, False, launch_number=2), reply)
+        first = copy.deepcopy(reply)
+        first['web_storage_probe']['launch_number'] = 1
+        for section in ('admin', 'tools'):
+            first['web_storage_probe'][section].update(seeded=True, persisted=False)
+        self.assertIs(validate_reply(first, False, launch_number=1), first)
         for key in lifecycle:
             failed = copy.deepcopy(reply)
             failed['runtime_probe']['tools_probe']['lifecycle'][key] = False
             with self.subTest(key=key), self.assertRaises(ValueError):
-                validate_reply(failed, False)
+                validate_reply(failed, False, launch_number=2)
+        for section in ('admin', 'tools'):
+            failed = copy.deepcopy(reply)
+            failed['web_storage_probe'][section]['persisted'] = False
+            with self.subTest(section=section), self.assertRaises(ValueError):
+                validate_reply(failed, False, launch_number=2)
+            overwritten = copy.deepcopy(reply)
+            overwritten['web_storage_probe'][section]['seeded'] = True
+            with self.subTest(overwritten=section), self.assertRaises(ValueError):
+                validate_reply(overwritten, False, launch_number=2)
+        with self.assertRaises(ValueError):
+            validate_reply(reply, False, launch_number=1)
 
 
 if __name__ == '__main__':

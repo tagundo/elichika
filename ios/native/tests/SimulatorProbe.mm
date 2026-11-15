@@ -96,8 +96,25 @@ static NSUInteger ELFakeGameStarts;
                 status[@"probe_pass"]=@([probe[@"ready"] boolValue] && tls && dependenciesReady && [runtime[@"ready"] boolValue] && ELFakeGameStarts==1);
                 if (![status[@"probe_pass"] boolValue]) {
                     status[@"phase"]=@"error"; status[@"error"]=@"The real Python/TLS runtime probe failed.";
+                    [self write:status]; return;
                 }
-                [self write:status];
+                if ([status[@"core_only"] boolValue]) {
+                    status[@"web_storage_probe"]=@{@"ready":@NO,@"actual_management_webview":@NO,@"skipped_core_only":@YES};
+                    [self write:status]; return;
+                }
+                NSUInteger launchNumber=0;
+                for (NSString *argument in NSProcessInfo.processInfo.arguments) {
+                    if ([argument isEqual:@"--elichika-probe-launch=1"]) launchNumber=1;
+                    if ([argument isEqual:@"--elichika-probe-launch=2"]) launchNumber=2;
+                }
+                ElichikaHostProbeWebStorage(launchNumber,^(NSDictionary *storage) {
+                    status[@"web_storage_probe"]=storage;
+                    if (![storage[@"ready"] boolValue]) {
+                        status[@"probe_pass"]=@NO; status[@"phase"]=@"error";
+                        status[@"error"]=@"The actual management WebView failed its cold-launch preferences persistence check.";
+                    }
+                    [self write:status];
+                });
             });
         });
     }] resume];

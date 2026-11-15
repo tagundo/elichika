@@ -11,5 +11,6 @@ FOUNDATION_EXPORT NSArray<NSString *> * _Nullable ElichikaHostImportDocuments(NS
 FOUNDATION_EXPORT BOOL ElichikaHostExportDocument(NSString *path, NSError **error);
 #if ELICHIKA_SIMULATOR_PROBE
 FOUNDATION_EXPORT BOOL ElichikaHostInstallForProbe(Class gameClass);
+FOUNDATION_EXPORT void ElichikaHostProbeWebStorage(NSUInteger launchNumber, void (^completion)(NSDictionary *result));
 #endif
 NS_ASSUME_NONNULL_END

@@ -61,6 +61,10 @@ certificates. They never change the Unity process cwd or environment. The
 native Go server drains before a job obtains the shared database maintenance
 lease; failed/cancelled jobs stay stopped. Same-root bootstrap retries reuse
 the initialized interpreter after the prior worker and Go operation finish.
+The admin and tools listeners always use `127.0.0.1:8772` and
+`127.0.0.1:8770`, preserving Web Storage origins across launches while session
+tokens rotate. A busy port names the affected service and address, closes any
+partially bound pair, and fails startup; it never falls back to another port.
 
 Portable verification:
 

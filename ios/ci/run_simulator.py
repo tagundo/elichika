@@ -37,7 +37,7 @@ def await_closed(timeout=30):
     raise ValueError('An embedded runtime listener remains open after its app process exited')
 
 
-def validate_reply(value, core_only):
+def validate_reply(value, core_only, *, launch_number=None):
     require(value.get('schema') == 1 and value.get('probe_kind') == 'native-simulator-real-backend-fake-game',
             'Probe does not identify the separate Simulator test target')
     for key in ('captured', 'game_started', 'real_backend_ready', 'gate_installed', 'profile_supported',
@@ -54,6 +54,19 @@ def validate_reply(value, core_only):
                 'Full Simulator probe did not prove the actual Python tool stack')
         for key in ('ready', 'stopped', 'read_only_command_succeeded', 'restarted'):
             require(lifecycle.get(key) is True, 'Actual Go/tool lifecycle gate did not pass: ' + key)
+        storage = value.get('web_storage_probe', {})
+        require(launch_number in (1, 2) and storage.get('launch_number') == launch_number
+                and storage.get('ready') is True and storage.get('actual_management_webview') is True
+                and storage.get('persistent_store') is True,
+                'Actual management WebView preference evidence is missing or has the wrong cold launch')
+        for section, port in (('admin', 8772), ('tools', 8770)):
+            origin = storage.get(section, {})
+            require(origin.get('ready') is True and origin.get('origin_port') == port,
+                    'Management WebView origin is unstable or unverified: ' + section)
+            require(origin.get('seeded' if launch_number == 1 else 'persisted') is True,
+                    'Management WebView preference seed/retention failed: ' + section)
+            require(origin.get('persisted' if launch_number == 1 else 'seeded') is False,
+                    'Management WebView evidence conflates initial seeding with cold-launch retention: ' + section)
     return value
 
 
@@ -85,9 +98,6 @@ def execute(app, evidence, *, core_only):
     evidence.mkdir(parents=True, exist_ok=True)
     require(not any(port_open(port) for port in PORTS), 'A conflicting pre-existing loopback server is listening')
     before = inventory(app)
-    for path in [*app.rglob('*'), app]:
-        if not path.is_symlink():
-            path.chmod(path.stat().st_mode & ~0o222)
     runtime, devices = choose_runtime_and_types()
     results = []
     for model in devices:
@@ -101,6 +111,12 @@ def execute(app, evidence, *, core_only):
             run(['xcrun', 'simctl', 'install', identifier, app])
             installed = Path(run(['xcrun', 'simctl', 'get_app_container', identifier, BUNDLE, 'app'], capture=True).strip())
             require(inventory(installed) == before, 'Simulator installation changed signed bundle bytes')
+            # CoreSimulator must copy/reparent the normally writable staging
+            # directory first. Enforce the read-only runtime boundary on its
+            # installed copy, before any application code is launched.
+            for path in [*installed.rglob('*'), installed]:
+                if not path.is_symlink():
+                    path.chmod(path.stat().st_mode & ~0o222)
             sandbox = Path(run(['xcrun', 'simctl', 'get_app_container', identifier, BUNDLE, 'data'], capture=True).strip())
             require(not sandbox.is_relative_to(installed), 'Writable data root is inside the installed signed bundle')
             for launch_number in (1, 2):
@@ -109,6 +125,7 @@ def execute(app, evidence, *, core_only):
                 log = evidence / (model['name'].replace('/', '-') + '-launch-' + str(launch_number) + '.txt')
                 with log.open('w') as output:
                     command = ['xcrun', 'simctl', 'launch', '--console-pty', '--terminate-running-process', identifier, BUNDLE]
+                    command.append('--elichika-probe-launch=' + str(launch_number))
                     if core_only:
                         command.append('--elichika-core-probe')
                     process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT, text=True)
@@ -119,7 +136,7 @@ def execute(app, evidence, *, core_only):
                             time.sleep(.5)
                         require(reply_file.is_file(), 'Probe timed out before real-backend readiness')
                         require(reply_file.stat().st_size <= 1024*1024, 'Probe receipt exceeds bound')
-                        reply = validate_reply(json.loads(reply_file.read_text()), core_only)
+                        reply = validate_reply(json.loads(reply_file.read_text()), core_only, launch_number=launch_number)
                         require(port_open(8080), 'Probe health claimed ready without an actual game listener')
                         from probe_protocol import probe as probe_protocol
                         protocol = probe_protocol('http://127.0.0.1:8080',

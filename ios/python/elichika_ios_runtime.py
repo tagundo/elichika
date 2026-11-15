@@ -12,12 +12,11 @@ from pathlib import Path
 import shutil
 import threading
 import time
-from http.server import ThreadingHTTPServer
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from elichika_ios.controller import GoController
 from elichika_ios.scoped_imports import ScopedImports
-from elichika_ios.security import authenticated_handler
+from elichika_ios.listeners import bind_panels, panel_urls
 
 _lock = threading.RLock()
 _state = {"phase": "stopped", "ready": False, "admin_url": "", "tools_url": "", "error": ""}
@@ -177,11 +176,7 @@ def _start(config):
             _server_lock.acquire()
             if _cancel.is_set():
                 raise InterruptedError("Setup cancelled")
-            for module in modules:
-                handler = authenticated_handler(module.Handler, token, config.get("language", "en"), config.get("experimental_device") is True)
-                server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-                server.daemon_threads = True
-                _servers.append(server)
+            _servers.extend(bind_panels(modules, token, config.get("language", "en"), config.get("experimental_device") is True))
             for server in _servers:
                 thread = threading.Thread(target=_serve, args=(server,), daemon=True, name="ios-webtools")
                 thread.start()
@@ -194,7 +189,7 @@ def _start(config):
             _server_lock.release()
         if _cancel.is_set():
             raise InterruptedError("Setup cancelled")
-        urls = ["http://127.0.0.1:%d/?%s" % (server.server_port, urlencode({"session": token})) for server in _servers]
+        urls = panel_urls(_servers, token)
         _event("ready", ready=True, dependencies=dependencies, admin_url=urls[0], tools_url=urls[1])
     except Exception as error:
         _close_servers()

@@ -139,6 +139,31 @@ jobs:
           test "$PORTABLE_TEST_OUTCOME" = success
           test "$GO_TEST_OUTCOME" = success
 
+      - name: Optionally retain completed verified official payload and original producer proof
+        id: retain_payload
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/ios-evidence/payload/payload-build.json" ]; then
+            python3 -B ios/ci/retain_payload.py --repo . \
+              --payload "$RUNNER_TEMP/ios-build/shared-payload" \
+              --proof "$RUNNER_TEMP/ios-evidence/payload/payload-build.json" \
+              --output "$RUNNER_TEMP/ios-verified-payload-retention"
+            echo 'retained=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload verified official payload, explicitly not an IPA or runtime proof
+        if: ${{ always() && steps.retain_payload.outputs.retained == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-ios-verified-shared-payload-NOT-IPA-${{ github.sha }}
+          path: ${{ runner.temp }}/ios-verified-payload-retention/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
       - name: Preserve real dependency inputs, explicitly not an IPA or runtime proof
         if: ${{ inputs.mode == 'runtime-inputs' && success() }}
         uses: actions/upload-artifact@v4

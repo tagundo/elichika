@@ -89,6 +89,17 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 @property(nonatomic,strong) UIButton *retry;
 @property(nonatomic,strong) UIButton *buttonVisibility;
 @property(nonatomic,strong) UILabel *candidateLabel;
+#if ELICHIKA_SIMULATOR_PROBE
+@property(nonatomic,copy) void (^storageProbeReply)(NSDictionary *reply);
+@property(nonatomic,strong) WKNavigation *storageProbeNavigation;
+@property(nonatomic,copy) NSString *storageProbeService;
+@property(nonatomic,copy) NSString *storageProbeOrigin;
+@property(nonatomic,assign) NSUInteger storageProbeLaunch;
+@property(nonatomic,assign) NSUInteger storageProbeGeneration;
+@property(nonatomic,assign) NSInteger storageProbeHTTPStatus;
+- (void)probeStorageService:(NSString *)service port:(NSInteger)port launch:(NSUInteger)launch completion:(void (^)(NSDictionary *reply))completion;
+#endif
+- (WKNavigation *)loadPanelURL:(NSURL *)target;
 - (void)refresh;
 @end
 static ELPanelController *ELPanel;
@@ -133,7 +144,7 @@ static void ELHidePanel(void) {
         @"실험 빌드: Archive 게시와 기기 검증이 대기 중입니다. 기존 팩은 파일 → Elichika → packs에 넣으세요.",
         @"実験版: Archiveの公開と実機検証は未完了です。既存のパックは「ファイル」→ Elichika → packsに配置してください。");
     WKWebViewConfiguration *configuration=[WKWebViewConfiguration new];
-    configuration.websiteDataStore=WKWebsiteDataStore.nonPersistentDataStore;
+    configuration.websiteDataStore=WKWebsiteDataStore.defaultDataStore;
     [configuration.userContentController addScriptMessageHandler:self name:@"elichika"];
     NSString *script=@"(()=>{const p=new Map();let n=0;window.ElichikaIOS=Object.freeze({request:(action,options={})=>new Promise((resolve,reject)=>{const id=String(++n);p.set(id,{resolve,reject});window.webkit.messageHandlers.elichika.postMessage({id,action,...options});})});window.addEventListener('elichika-native-result',e=>{const x=e.detail,j=p.get(x.id);if(j){p.delete(x.id);x.error?j.reject(Error(x.error)):j.resolve(x.result)}})})();";
     [configuration.userContentController addUserScript:[[WKUserScript alloc] initWithSource:script injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
@@ -196,11 +207,81 @@ static void ELHidePanel(void) {
     else if (_sections.selectedSegmentIndex==1) url=ELRuntimeStatus[@"admin_url"];
     else url=ELRuntimeStatus[@"tools_url"];
     NSURL *target=[NSURL URLWithString:url ?: @""];
-    if (!ELIsPanelURL(target)) return;
+    [self loadPanelURL:target];
+}
+- (WKNavigation *)loadPanelURL:(NSURL *)target {
+    if (!ELIsPanelURL(target)) return nil;
     NSMutableURLRequest *request=[NSMutableURLRequest requestWithURL:target];
     [request setValue:ELConfiguration[@"token"] forHTTPHeaderField:@"X-Elichika-Local-Access"];
-    [_web loadRequest:request];
+    return [_web loadRequest:request];
 }
+#if ELICHIKA_SIMULATOR_PROBE
+- (void)finishStorageProbe:(NSDictionary *)reply {
+    void (^completion)(NSDictionary *)=_storageProbeReply;
+    if (!completion) return;
+    _storageProbeReply=nil; _storageProbeNavigation=nil; ++_storageProbeGeneration;
+    completion(reply);
+}
+- (NSDictionary *)failedStorageProbe:(NSString *)message {
+    return @{@"ready":@NO,@"persisted":@NO,@"seeded":@NO,
+        @"origin_port":@([NSURL URLWithString:_storageProbeOrigin].port.integerValue),@"error":message};
+}
+- (void)probeStorageService:(NSString *)service port:(NSInteger)port launch:(NSUInteger)launch completion:(void (^)(NSDictionary *))completion {
+    if (_storageProbeReply) { completion(@{@"ready":@NO,@"error":@"A management WebView probe is already active."}); return; }
+    _storageProbeReply=[completion copy]; _storageProbeService=service; _storageProbeLaunch=launch;
+    _storageProbeOrigin=[NSString stringWithFormat:@"http://127.0.0.1:%ld",(long)port];
+    _storageProbeHTTPStatus=0; NSUInteger generation=++_storageProbeGeneration;
+    NSString *url=ELRuntimeStatus[[service stringByAppendingString:@"_url"]];
+    NSURL *target=[NSURL URLWithString:url ?: @""];
+    if (![target.scheme isEqual:@"http"] || ![target.host isEqual:@"127.0.0.1"] || target.port.integerValue!=port ||
+        !_web.configuration.websiteDataStore.persistent) {
+        [self finishStorageProbe:[self failedStorageProbe:@"Management origin or persistent data store does not match."]]; return;
+    }
+    _sections.selectedSegmentIndex=[service isEqual:@"admin"] ? 1 : 2;
+    _storageProbeNavigation=[self loadPanelURL:target];
+    if (!_storageProbeNavigation) { [self finishStorageProbe:[self failedStorageProbe:@"Could not navigate the actual management WebView."]]; return; }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,30*NSEC_PER_SEC),dispatch_get_main_queue(),^{
+        if (self.storageProbeReply && self.storageProbeGeneration==generation)
+            [self finishStorageProbe:[self failedStorageProbe:@"Management WebView storage probe timed out."]];
+    });
+}
+- (void)webView:(WKWebView *)web decidePolicyForNavigationResponse:(WKNavigationResponse *)response decisionHandler:(void (^)(WKNavigationResponsePolicy))decision {
+    if (web==_web && _storageProbeReply && response.forMainFrame && [response.response isKindOfClass:NSHTTPURLResponse.class])
+        _storageProbeHTTPStatus=((NSHTTPURLResponse *)response.response).statusCode;
+    decision(WKNavigationResponsePolicyAllow);
+}
+- (void)webView:(WKWebView *)web didFinishNavigation:(WKNavigation *)navigation {
+    if (web!=_web || !_storageProbeReply || navigation!=_storageProbeNavigation) return;
+    if (_storageProbeHTTPStatus!=200) { [self finishStorageProbe:[self failedStorageProbe:@"The real management page did not return HTTP 200."]]; return; }
+    NSDictionary *arguments=@{@"origin":_storageProbeOrigin,@"service":_storageProbeService,@"launch":@(_storageProbeLaunch)};
+    NSString *script=[NSString stringWithFormat:@"(()=>{const a=%@,k='elichika.simulator.preferences-persistence.v1',v=a.service+'-v1',p=localStorage.getItem(k);let seeded=false;if(a.launch===1){localStorage.setItem(k,v);seeded=localStorage.getItem(k)===v;}return{origin_matches:location.origin===a.origin,prior_present:p!==null,persisted:a.launch===2&&p===v,seeded};})()",ELJSON(arguments)];
+    NSUInteger generation=_storageProbeGeneration;
+    [_web evaluateJavaScript:script completionHandler:^(id value,NSError *error) {
+        if (!self.storageProbeReply || self.storageProbeGeneration!=generation) return;
+        if (error || ![value isKindOfClass:NSDictionary.class]) {
+            [self finishStorageProbe:[self failedStorageProbe:@"Management localStorage evaluation failed."]]; return;
+        }
+        BOOL persisted=[value[@"persisted"] boolValue],seeded=[value[@"seeded"] boolValue];
+        BOOL ready=[value[@"origin_matches"] boolValue] && self.web.configuration.websiteDataStore.persistent &&
+            (self.storageProbeLaunch==1 ? seeded && ![value[@"prior_present"] boolValue] : persisted);
+        NSDictionary *reply=@{@"ready":@(ready),@"persisted":@(persisted),@"seeded":@(seeded),
+            @"origin_port":@([NSURL URLWithString:self.storageProbeOrigin].port.integerValue)};
+        // The next process verifies persistence; this bounded asynchronous
+        // interval merely lets WebKit finish its ordinary disk scheduling.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,self.storageProbeLaunch==1 ? NSEC_PER_SEC : 0),dispatch_get_main_queue(),^{
+            if (self.storageProbeReply && self.storageProbeGeneration==generation) [self finishStorageProbe:reply];
+        });
+    }];
+}
+- (void)webView:(WKWebView *)web didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    (void)error;
+    if (web==_web && _storageProbeReply && navigation==_storageProbeNavigation)
+        [self finishStorageProbe:[self failedStorageProbe:@"Management navigation failed."]];
+}
+- (void)webView:(WKWebView *)web didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    [self webView:web didFailNavigation:navigation withError:error];
+}
+#endif
 - (void)webView:(WKWebView *)web decidePolicyForNavigationAction:(WKNavigationAction *)action decisionHandler:(void (^)(WKNavigationActionPolicy))decision {
     (void)web;
     NSURL *url=action.request.URL;
@@ -579,6 +660,25 @@ static void ELObserve(void) {
 }
 #if ELICHIKA_SIMULATOR_PROBE
 BOOL ElichikaHostInstallForProbe(Class controller) { BOOL good=ELInstall(controller); ELObserve(); return good; }
+void ElichikaHostProbeWebStorage(NSUInteger launchNumber,void (^completion)(NSDictionary *)) {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(),^{ ElichikaHostProbeWebStorage(launchNumber,completion); }); return; }
+    if (launchNumber!=1 && launchNumber!=2) {
+        completion(@{@"ready":@NO,@"actual_management_webview":@NO,@"launch_number":@(launchNumber),@"error":@"The cold-launch index must be 1 or 2."}); return;
+    }
+    ElichikaHostShowManagement(); [ELPanel loadViewIfNeeded];
+    BOOL actual=ELPanel.web && [ELPanel.web isDescendantOfView:ELPanel.view] && ELPanel.web.navigationDelegate==ELPanel;
+    BOOL persistent=ELPanel.web.configuration.websiteDataStore.persistent;
+    if (!actual || !persistent) {
+        completion(@{@"ready":@NO,@"actual_management_webview":@(actual),@"launch_number":@(launchNumber),@"error":@"The actual management WebView is not persistent."}); return;
+    }
+    [ELPanel probeStorageService:@"admin" port:8772 launch:launchNumber completion:^(NSDictionary *admin) {
+        [ELPanel probeStorageService:@"tools" port:8770 launch:launchNumber completion:^(NSDictionary *tools) {
+            completion(@{@"ready":@([admin[@"ready"] boolValue] && [tools[@"ready"] boolValue]),
+                @"actual_management_webview":@(actual),@"persistent_store":@(persistent),@"launch_number":@(launchNumber),
+                @"admin":admin,@"tools":tools});
+        }];
+    }];
+}
 #else
 __attribute__((constructor)) static void ElichikaInstallHost(void) {
     @autoreleasepool {
