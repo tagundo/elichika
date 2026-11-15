@@ -6,7 +6,7 @@ on:
       mode:
         description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
         type: choice
-        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, full-candidate]
+        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, full-candidate]
         default: sdk-compile
       version:
         description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
@@ -47,6 +47,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
+      - name: Fetch and fully verify the pinned actual game before experimental compilation
+        if: ${{ inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios-evidence"
+          python3 -B ios/build/fetch_game.py --output "$RUNNER_TEMP/ios-verified-game.ipa" \
+            --report "$RUNNER_TEMP/ios-evidence/game-input-provenance.json"
 
       - name: Verify portable packaging and native lifecycle contracts
         if: ${{ inputs.mode != 'runtime-inputs' }}
@@ -109,7 +119,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/runtime-inputs-build.log"
 
       - name: Reuse the exact independently verified Simulator tool compiler outputs
-        if: ${{ inputs.mode == 'tools-runtime' || inputs.mode == 'experimental-candidate' }}
+        if: ${{ inputs.mode == 'tools-runtime' || inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -118,7 +128,17 @@ jobs:
             --output "$RUNNER_TEMP/ios-built-inputs" \
             --report "$RUNNER_TEMP/ios-evidence/reused-runtime-inputs.json"
 
-      - name: Compile actual device and Simulator targets and execute selected gates
+      - name: Verify the exact Source 12 full Simulator proof and unchanged runtime source
+        if: ${{ inputs.mode == 'experimental-package' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -B ios/build/fetch_simulator_proof.py --repo . \
+            --output "$RUNNER_TEMP/ios-source12-proof" \
+            --report "$RUNNER_TEMP/ios-source12-proof/consumption.json"
+
+      - name: Compile selected actual Apple targets and execute required gates
         if: ${{ inputs.mode != 'runtime-inputs' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -129,6 +149,15 @@ jobs:
           set --
           if [ "$BUILD_MODE" = experimental-candidate ] || [ "$BUILD_MODE" = tools-runtime ]; then
             set -- --reuse-official-payload
+          fi
+          if [ "$BUILD_MODE" = experimental-candidate ]; then
+            set -- "$@" --game-input "$RUNNER_TEMP/ios-verified-game.ipa" \
+              --game-provenance "$RUNNER_TEMP/ios-evidence/game-input-provenance.json"
+          fi
+          if [ "$BUILD_MODE" = experimental-package ]; then
+            set -- --reuse-official-payload --simulator-proof-root "$RUNNER_TEMP/ios-source12-proof" \
+              --game-input "$RUNNER_TEMP/ios-verified-game.ipa" \
+              --game-provenance "$RUNNER_TEMP/ios-evidence/game-input-provenance.json"
           fi
           python3 -B ios/ci/run_build.py --mode "$BUILD_MODE" --repo . \
             --work "$RUNNER_TEMP/ios-build" --evidence "$RUNNER_TEMP/ios-evidence" \
@@ -194,7 +223,7 @@ jobs:
           retention-days: 7
 
       - name: Upload explicitly experimental Archive-pending physical-device-untested QA IPA
-        if: ${{ inputs.mode == 'experimental-candidate' && success() }}
+        if: ${{ (inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package') && success() }}
         uses: actions/upload-artifact@v4
         with:
           name: elichika-sifas-EXPERIMENTAL-ARCHIVE_PENDING-UNTESTED_DEVICE-${{ github.sha }}

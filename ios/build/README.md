@@ -33,6 +33,19 @@ be placed directly in Files/Finder. The pending individual-file publication is
 not advertised as available. A Simulator runtime cannot enter this device IPA,
 and an experimental runtime cannot pass the production packaging entry point.
 
+`experimental-package` is a narrow device packaging consumer of Source 12's
+completed four-launch full Simulator proof. It accepts only the pinned original
+evidence and the exact game artifact label correction. Every native, Python,
+runtime, Go, root app, assets and tools input must be unchanged; only explicitly
+listed packaging, CI, documentation and test paths can differ. The packaging
+entry point independently rechecks this closure and original proof SHA. It
+preserves Source 12 as the tested runtime source and records the current
+packaging consumer separately, with no fresh Simulator execution claim. The
+actual 66 MB game is fetched and fully verified before compilation, then the
+real device Go/Python/native app is rebuilt, signed and checked for preservation.
+No Simulator target or binary is built or included by this mode. The normal
+same-source experimental path and production publication guard are unchanged.
+
 The test/QA workflow can reuse only the exact retained official payload pinned
 in `official-payload.lock.json`. Its Source 9 data producer remains identified
 separately from the current platform consumer. Reuse requires that producer to

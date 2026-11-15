@@ -87,7 +87,7 @@ def simulator_gates(path, source):
 
 
 def package_experimental(source, runtime, native, payload, output, work, report, *, simulator_report,
-                         lock, version=None, repo=ROOT, payload_consumption=None):
+                         lock, version=None, repo=ROOT, payload_consumption=None, simulator_consumption=None):
     source, runtime, native, payload, output, work = map(Path, (source, runtime, native, payload, output, work))
     capability = require_pending_archive(repo)
     require('EXPERIMENTAL-ARCHIVE_PENDING-UNTESTED_DEVICE' in output.name,
@@ -102,7 +102,14 @@ def package_experimental(source, runtime, native, payload, output, work, report,
                 and payload_consumption['producer_identity_reassigned'] is False
                 and payload_consumption['original_inventory_and_packaged_manifest_verified'] is True,
                 'QA payload consumption must identify the original producer and current consumer')
-    sim_proof = simulator_gates(simulator_report, identity)
+    if simulator_consumption is None:
+        sim_proof = simulator_gates(simulator_report, identity)
+    else:
+        # Only the explicit experimental packaging consumer can use the one
+        # canonical Source 12 proof. Recheck current source/lock closure here,
+        # even when a caller supplies a locally forged consumer receipt.
+        from fetch_simulator_proof import verify_consumption
+        sim_proof = verify_consumption(repo, simulator_report, simulator_consumption)
     runtime_report = experimental_runtime(runtime, capability)
     capability['runtime'] = {key: runtime_report[key] for key in
         ('target', 'python_abi', 'experimental_device', 'simulator_probe_only', 'core_only',
@@ -150,6 +157,7 @@ def package_experimental(source, runtime, native, payload, output, work, report,
     provenance = {'schema': 1, 'channel': CHANNEL, 'status': STATUS, 'source': identity, 'version': versions,
                   'game_input': lock, 'Python_runtime_receipt': runtime_report, 'experimental_capability': capability,
                   'full_tools_simulator_evidence': sim_proof, 'native_framework_sha256': sha256(native / 'ElichikaHost'),
+                  'fresh_simulator_execution_claimed': simulator_consumption is None,
                   'official_payload_original_producer': json.loads((payload / 'shared-payload-build.json').read_text()),
                   'official_payload_consumption': payload_consumption,
                   'server_runs_in_process': True, 'simulator_probe_included': False,

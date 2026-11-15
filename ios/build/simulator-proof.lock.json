@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "repository": "tagundo/elichika",
+  "run_id": 43746936566,
+  "run_attempt": 1,
+  "job_id": 132912212843,
+  "workflow_id": 419049415,
+  "source": {
+    "source_sha": "d653a97aebba92955096ef33d678b714bdf44111",
+    "source_tree": "74a2d6d9a50f76563e3c3a283ab126ba3df6f4da",
+    "assets_sha": "1b0154db2976ba345fb30f3516018bb04d408ce1",
+    "assets_tree": "0ca03aed0c0deee7d8915ad15b8a9e2c93c9554a",
+    "modtools_sha": "b92bb0fdf3fed5b5d20c69fd2b7efbda15c84408",
+    "modtools_tree": "6d2975f9561daa48dd8f8b249e73f860bc1bc59e"
+  },
+  "artifact": {
+    "id": 14175996105,
+    "name": "elichika-ios-experimental-candidate-evidence-d653a97aebba92955096ef33d678b714bdf44111-1",
+    "bytes": 1817070,
+    "sha256": "a8938ebd1feb54fe2166b08d0c0e98e6222fd59d3ad166104ab7996c23a33638"
+  },
+  "aggregate": {
+    "bytes": 72938,
+    "sha256": "46db6dd398eba602c06509b6d1222087fc541cf0411e1a52e1838e21cd7bc23c"
+  },
+  "runtime_lock_sha256": "e49781dde9a36757a239dd559f28ebc2073532ad0fee300176c1369ed45f4751",
+  "old_artifact_name": "ios-gl-local-adhoc",
+  "correct_artifact_name": "dateclient-2026.11.15.1-ios-gl-local-adhoc",
+  "scope": "Source 12 completed all four full Simulator launches, then failed only on the game export artifact name. Exact unchanged runtime code only; experimental device packaging is rebuilt and independently gated."
+}
