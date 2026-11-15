@@ -1,0 +1,47 @@
+name: Read-only supplemental asset inventory
+
+on:
+  push:
+    branches:
+      - codex/asset-supplement-inventory-20261115
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: readonly-asset-supplement-inventory
+  cancel-in-progress: false
+
+jobs:
+  supplement:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/asset_supplement_inventory
+      - name: Test streaming verification and bounded queue on tiny fixtures
+        working-directory: tools/asset_supplement_inventory
+        run: python3 -B -m unittest -v test_supplement_inventory
+      - name: Verify only the 8033 exact missing public objects
+        working-directory: tools/asset_supplement_inventory
+        run: >-
+          python3 -B supplement_inventory.py
+          --metadata source-metadata.json.gz
+          --missing-map missing-map.json.gz
+          --coverage actual-source-coverage.json.gz
+          --target authoritative-target.json.gz
+          --source-inventory-sha256 24875b44310c51a855f8536c55a092ee05f0c5555e18446e9655f2218abc198f
+          --max-seconds 4800 --workers 4
+          --output "$RUNNER_TEMP/supplement-proof.json"
+      - name: Preserve complete or incomplete proof without game payloads
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: missing-8033-supplement-proof
+          path: ${{ runner.temp }}/supplement-proof.json
+          if-no-files-found: warn
+          retention-days: 30
