@@ -1,0 +1,354 @@
+{
+  "evidence_files": [
+    {
+      "path": "/dev/shm/sifas-ios-settings-overlay-v3-final-20261114/SIFASFeatures_Settings_v3.dylib.build.json",
+      "sha256": "16c1fc9893b4f5a2479eae2f381f24473cb3f6d8df08b72b6f27e5fcd824c0f8"
+    },
+    {
+      "path": "/tmp/ios-material-cxx-imports-proof-20261115.json",
+      "sha256": "6f4b96ceb963d68280cbe90ec47b83d5f66be31e269073415c03327ead2484ca"
+    },
+    {
+      "path": "/tmp/ios-material-nslog-import-proof-20261115.json",
+      "sha256": "4215c029b06f8b996f85fb95d4e3fecb20efcc1e1157cf848621b7b2dfe9ed4f"
+    },
+    {
+      "path": "/tmp/ios-material-extra-import-proof-20261115.json",
+      "sha256": "fcc7f5a79761746d2ee8b61fbdbafb42753e78f42a8451b93cf70efad844da74"
+    }
+  ],
+  "libraries": {
+    "CoreFoundation": "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
+    "CoreGraphics": "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
+    "Foundation": "/System/Library/Frameworks/Foundation.framework/Foundation",
+    "QuartzCore": "/System/Library/Frameworks/QuartzCore.framework/QuartzCore",
+    "System": "/usr/lib/libSystem.B.dylib",
+    "UIKit": "/System/Library/Frameworks/UIKit.framework/UIKit",
+    "cxx": "/usr/lib/libc++.1.dylib",
+    "objc": "/usr/lib/libobjc.A.dylib"
+  },
+  "qualification": "Exact old UI imports are inherited from the frozen Settings V3 build receipt. New C++ bindings come from actual Local V4 main symbol ordinals. This proves binding names, not runtime material behavior or SideStore provisioning.",
+  "schema": 1,
+  "symbols": {
+    "_NSHomeDirectory": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_NSLog": {
+      "evidence": "actual-retained-llas-patcher-arm64-undefined-library-ordinal",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSBundle": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSCharacterSet": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSDictionary": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSFileHandle": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSJSONSerialization": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSNumber": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSObject": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSProcessInfo": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSScanner": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSString": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSTimer": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSURL": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_NSUserDefaults": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_CLASS_$_UIAlertAction": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/UIKit.framework/UIKit"
+    },
+    "_OBJC_CLASS_$_UIAlertController": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/UIKit.framework/UIKit"
+    },
+    "_OBJC_CLASS_$_UIApplication": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/UIKit.framework/UIKit"
+    },
+    "_OBJC_CLASS_$_UIButton": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/UIKit.framework/UIKit"
+    },
+    "_OBJC_CLASS_$_UIColor": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/UIKit.framework/UIKit"
+    },
+    "_OBJC_CLASS_$_UILongPressGestureRecognizer": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/UIKit.framework/UIKit"
+    },
+    "_OBJC_CLASS_$_UIViewController": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/UIKit.framework/UIKit"
+    },
+    "_OBJC_EHTYPE_id": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_OBJC_METACLASS_$_NSObject": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    },
+    "_OBJC_METACLASS_$_UIViewController": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/UIKit.framework/UIKit"
+    },
+    "__Block_object_assign": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "__NSConcreteGlobalBlock": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "__NSConcreteStackBlock": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "__Unwind_Resume": {
+      "evidence": "actual-local-v4-main-undefined-library-ordinal",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "__ZSt9terminatev": {
+      "evidence": "actual-LocalV4-main-undefined-library-ordinal-extra-import-proof",
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    "___CFConstantStringClassReference": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
+    },
+    "___cxa_allocate_exception": {
+      "evidence": "actual-local-v4-main-undefined-library-ordinal",
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    "___cxa_begin_catch": {
+      "evidence": "actual-local-v4-main-undefined-library-ordinal",
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    "___cxa_end_catch": {
+      "evidence": "actual-local-v4-main-undefined-library-ordinal",
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    "___cxa_rethrow": {
+      "evidence": "actual-local-v4-main-undefined-library-ordinal",
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    "___cxa_throw": {
+      "evidence": "actual-local-v4-main-undefined-library-ordinal",
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    "___gxx_personality_v0": {
+      "evidence": "actual-local-v4-main-undefined-library-ordinal",
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    "___objc_personality_v0": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "___stack_chk_fail": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "___stack_chk_guard": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "__dispatch_main_q": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "__dyld_get_image_header": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "__dyld_get_image_vmaddr_slide": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "__objc_empty_cache": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_abort": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_bzero": {
+      "evidence": "actual-LocalV4-main-undefined-library-ordinal-extra-import-proof",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_calloc": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_class_replaceMethod": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_dispatch_async": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_free": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_getpid": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_malloc": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_memcmp": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_memcpy": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_memmove": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_memset": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_objc_alloc": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_autoreleaseReturnValue": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_begin_catch": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_copyWeak": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_destroyWeak": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_end_catch": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_getClass": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_initWeak": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_loadWeakRetained": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_msgSend": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_release": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_retain": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_retainAutoreleaseReturnValue": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_retainAutoreleasedReturnValue": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_objc_storeStrong": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_realloc": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_sel_registerName": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libobjc.A.dylib"
+    },
+    "_snprintf": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_strcmp": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_strlen": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_strncmp": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_vsnprintf": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "_write": {
+      "evidence": "public-standard-C-or-POSIX-libSystem-ABI; inherited-old-builder-library-contract",
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    "dyld_stub_binder": {
+      "evidence": "unchanged-settings-v3-receipt",
+      "library": "/usr/lib/libSystem.B.dylib"
+    }
+  }
+}

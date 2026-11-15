@@ -1,0 +1,18 @@
+{
+  "source_ipa": "/tmp/sifas-ios-suit-fix-local-v4-20261115/SIFAS_GL_Local_3.12.0_PlayCover_v4_candidate.ipa",
+  "source_ipa_sha256": "568f0c0ad9c2ca7f42de3f9cef21cf5581987d7f49482da7b2233f965dc94923",
+  "native_member": "Payload/global.app/global",
+  "reason": "Actual first mixed-source object compilation found these two standard imports; prove exact existing game library ordinals before extending source-only manifest.",
+  "bindings": [
+    {
+      "symbol": "__ZSt9terminatev",
+      "library_ordinal": 1,
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    {
+      "symbol": "_bzero",
+      "library_ordinal": 12,
+      "library": "/usr/lib/libSystem.B.dylib"
+    }
+  ]
+}

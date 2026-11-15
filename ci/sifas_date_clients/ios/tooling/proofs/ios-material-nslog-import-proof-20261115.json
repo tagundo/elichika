@@ -1,0 +1,14 @@
+{
+  "source": "/dev/shm/sifas-client-20261113/ios/allstarslocalgl/Frameworks/llas-patcher.dylib",
+  "source_sha256": "93463ddff751d5323ea38e893372b8f3cf609dc64012fc4b9c2456e42768425b",
+  "bytes": 68640,
+  "arm64_slice_offset": 16384,
+  "proof": "Actual retained llas-patcher fat arm64 LC_SYMTAB undefined nlist64 library ordinal mapped to LC_LOAD_DYLIB",
+  "bindings": [
+    {
+      "symbol": "_NSLog",
+      "library_ordinal": 2,
+      "library": "/System/Library/Frameworks/Foundation.framework/Foundation"
+    }
+  ]
+}

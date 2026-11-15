@@ -1,0 +1,17 @@
+[
+  {
+    "bytes": 1178232,
+    "path": "com/android/tools/smali/smali-dexlib2/3.0.3/smali-dexlib2-3.0.3.jar",
+    "sha256": "11cc5e7b75b23feb65e41e28e5c225b4a77dbf7210d6cedd4bdb3f04c1f6ea24"
+  },
+  {
+    "bytes": 2959479,
+    "path": "com/google/guava/guava/31.1-jre/guava-31.1-jre.jar",
+    "sha256": "a42edc9cab792e39fe39bb94f3fca655ed157ff87a8af78e1d6ba5b07c4a00ab"
+  },
+  {
+    "bytes": 4617,
+    "path": "com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.jar",
+    "sha256": "a171ee4c734dd2da837e4b16be9df4661afab72a41adaf31eb84dfdaf936ca26"
+  }
+]

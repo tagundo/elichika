@@ -1,0 +1,106 @@
+{
+  "source_ipa": "/tmp/sifas-ios-suit-fix-local-v4-20261115/SIFAS_GL_Local_3.12.0_PlayCover_v4_candidate.ipa",
+  "source_ipa_sha256": "568f0c0ad9c2ca7f42de3f9cef21cf5581987d7f49482da7b2233f965dc94923",
+  "native_member": "Payload/global.app/global",
+  "proof": "Actual LC_SYMTAB undefined nlist64 library ordinal mapped to ordered LC_LOAD_DYLIB commands; no guessed install names",
+  "bindings": [
+    {
+      "symbol": "__Unwind_Resume",
+      "n_type": 1,
+      "section": 0,
+      "value": 0,
+      "library_ordinal": 12,
+      "library": "/usr/lib/libSystem.B.dylib"
+    },
+    {
+      "symbol": "___cxa_allocate_exception",
+      "n_type": 1,
+      "section": 0,
+      "value": 0,
+      "library_ordinal": 1,
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    {
+      "symbol": "___cxa_begin_catch",
+      "n_type": 1,
+      "section": 0,
+      "value": 0,
+      "library_ordinal": 1,
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    {
+      "symbol": "___cxa_end_catch",
+      "n_type": 1,
+      "section": 0,
+      "value": 0,
+      "library_ordinal": 1,
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    {
+      "symbol": "___cxa_rethrow",
+      "n_type": 1,
+      "section": 0,
+      "value": 0,
+      "library_ordinal": 1,
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    {
+      "symbol": "___cxa_throw",
+      "n_type": 1,
+      "section": 0,
+      "value": 0,
+      "library_ordinal": 1,
+      "library": "/usr/lib/libc++.1.dylib"
+    },
+    {
+      "symbol": "___gxx_personality_v0",
+      "n_type": 1,
+      "section": 0,
+      "value": 0,
+      "library_ordinal": 1,
+      "library": "/usr/lib/libc++.1.dylib"
+    }
+  ],
+  "dylibs": [
+    "/usr/lib/libc++.1.dylib",
+    "/usr/lib/libsqlite3.dylib",
+    "/usr/lib/libz.1.dylib",
+    "/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony",
+    "/System/Library/Frameworks/Foundation.framework/Foundation",
+    "/System/Library/Frameworks/Security.framework/Security",
+    "/System/Library/Frameworks/StoreKit.framework/StoreKit",
+    "/System/Library/Frameworks/SystemConfiguration.framework/SystemConfiguration",
+    "/System/Library/Frameworks/UIKit.framework/UIKit",
+    "/System/Library/Frameworks/UserNotifications.framework/UserNotifications",
+    "/System/Library/Frameworks/CoreMotion.framework/CoreMotion",
+    "/usr/lib/libSystem.B.dylib",
+    "/System/Library/Frameworks/MediaToolbox.framework/MediaToolbox",
+    "/System/Library/Frameworks/CoreText.framework/CoreText",
+    "/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox",
+    "/System/Library/Frameworks/AVFoundation.framework/AVFoundation",
+    "/System/Library/Frameworks/AVKit.framework/AVKit",
+    "/System/Library/Frameworks/CFNetwork.framework/CFNetwork",
+    "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
+    "/System/Library/Frameworks/CoreMedia.framework/CoreMedia",
+    "/System/Library/Frameworks/CoreVideo.framework/CoreVideo",
+    "/System/Library/Frameworks/OpenAL.framework/OpenAL",
+    "/System/Library/Frameworks/OpenGLES.framework/OpenGLES",
+    "/System/Library/Frameworks/QuartzCore.framework/QuartzCore",
+    "/usr/lib/libiconv.2.dylib",
+    "/System/Library/Frameworks/GameKit.framework/GameKit",
+    "/System/Library/Frameworks/Metal.framework/Metal",
+    "/System/Library/Frameworks/AdSupport.framework/AdSupport",
+    "/System/Library/Frameworks/iAd.framework/iAd",
+    "/System/Library/Frameworks/AdServices.framework/AdServices",
+    "/System/Library/Frameworks/AppTrackingTransparency.framework/AppTrackingTransparency",
+    "/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox",
+    "/System/Library/Frameworks/SafariServices.framework/SafariServices",
+    "/System/Library/Frameworks/MediaPlayer.framework/MediaPlayer",
+    "/usr/lib/libobjc.A.dylib",
+    "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
+    "/System/Library/Frameworks/CoreLocation.framework/CoreLocation",
+    "@executable_path/Frameworks/llas-patcher.dylib",
+    "@executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate",
+    "@executable_path/Frameworks/SIFASFeatures.dylib"
+  ]
+}

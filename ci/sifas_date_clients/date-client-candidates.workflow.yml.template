@@ -1,0 +1,83 @@
+# SOURCE ONLY. Root must choose an isolated branch, allocate CLIENT_BUILD once,
+# install the frozen source tree below ci/sifas_date_clients, and review before
+# creating/pushing that branch. Nothing here signs Android or publishes releases.
+name: Date client candidate packages
+
+"on":
+  push:
+    branches: ["codex/sifas-date-candidate-TO_BE_FILLED"]
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Explicit allocated Seoul date build YYYY.MM.DD.N
+        required: true
+        type: string
+        default: "2026.11.15.1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sifas-date-client-candidates
+  cancel-in-progress: false
+
+env:
+  CLIENT_BUILD: ${{ inputs.build || '2026.11.15.1' }}
+
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: ci/sifas_date_clients
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Check frozen source and synthetic package safety
+        working-directory: ci/sifas_date_clients
+        run: |
+          python3 -B -c 'import client_pipeline; client_pipeline.verify_lock()'
+          python3 -B -m unittest -v test_client_pipeline
+      - name: Check shared date metadata rules
+        working-directory: ci/sifas_date_clients/metadata
+        run: python3 -B -m unittest discover -s tests -v
+      - uses: android-actions/setup-android@v3
+      - name: Install exact SDK tool versions on hosted runner
+        run: sdkmanager "cmdline-tools;12.0" "platforms;android-34" "build-tools;34.0.0" "ndk;28.2.13676358"
+      - name: Build incremental date candidates from verified released b25 and v5
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: >-
+          python3 -B ci/sifas_date_clients/client_pipeline.py
+          --build "$CLIENT_BUILD" --execute-build
+          --android-sdk "$ANDROID_HOME"
+          --work "$RUNNER_TEMP/sifas-date-candidates"
+      - name: Preserve candidates and complete payload proofs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sifas-date-candidates-${{ env.CLIENT_BUILD }}
+          path: ${{ runner.temp }}/sifas-date-candidates/candidates/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve failed build diagnostics without game payloads
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sifas-date-candidate-build-diagnostics
+          path: |
+            ${{ runner.temp }}/sifas-date-candidates/*.stdout
+            ${{ runner.temp }}/sifas-date-candidates/*.stderr
+            ${{ runner.temp }}/sifas-date-candidates/*plan.json
+            ${{ runner.temp }}/sifas-date-candidates/SIFASFeatures.dylib.build.json
+            ${{ runner.temp }}/sifas-date-candidates/dex-*/build-report.json
+            ${{ runner.temp }}/sifas-date-candidates/dex-*/*.stdout
+            ${{ runner.temp }}/sifas-date-candidates/dex-*/*.stderr
+          if-no-files-found: warn

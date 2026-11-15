@@ -1,0 +1,154 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 5631,
+      "sha256": "3d4e5c5a4dea081a7d77ffe568ba48a604f8c589e0eaa1480225924fec51ebd8"
+    },
+    "android/FovMod.java": {
+      "bytes": 21287,
+      "sha256": "d2281465bda586f2987b90d7a813e18438235501df578a24638a3bd16a6ea69e"
+    },
+    "android/GestureStateTest.java": {
+      "bytes": 4470,
+      "sha256": "117c96eb650a842957aecdc3b1a74b5f3e51ea83db20565f66519e8b0e3d766c"
+    },
+    "android/UpdateFovDex.java": {
+      "bytes": 16312,
+      "sha256": "3ee79b1fe666501680179e7952cac1527ea00415e6cd86bd710d00caf3b25e13"
+    },
+    "android/UpdateFovDexTest.java": {
+      "bytes": 8664,
+      "sha256": "d93ae757e2303cc1b4f903bf2e451045c6ec1661d6404aedf378dcf4b96b1fdb"
+    },
+    "android/build_menu_dex.py": {
+      "bytes": 7176,
+      "sha256": "aed69fe09cfe9ca25470bd919211daa9e41df1b6365a8a0d9dba541f413c0a4e"
+    },
+    "android/java-dependencies.json": {
+      "bytes": 561,
+      "sha256": "5d86105397dc6887fd40d692744755469e331aba029e4d2c860376af66b605d2"
+    },
+    "client_pipeline.py": {
+      "bytes": 14054,
+      "sha256": "739622183ce6137f371bdaaaffe08ff29d5c49254d46c7410a68a4523130e419"
+    },
+    "date-client-candidates.workflow.yml.template": {
+      "bytes": 3210,
+      "sha256": "eb8d1399e645c8ae64ec1b91c4f7804a0aa1497bf2593d4a498fe2f9f62581bb"
+    },
+    "ios/src/AppleABI.h": {
+      "bytes": 8862,
+      "sha256": "2284cacb2ee68480246e6b161a9ff1bc0d8082c783e26f03fccb8d0dcd3ca190"
+    },
+    "ios/src/InputValidation.h": {
+      "bytes": 1593,
+      "sha256": "deddcbd65d4ce5b5403b1c1c43b4b1a16b5bc6a051fb4c0e6be42df21723a03b"
+    },
+    "ios/src/SIFASFeatures.m": {
+      "bytes": 31633,
+      "sha256": "2cf314676ba2a8a70ecbb46158e6585092b187d4f065fe883091f6e5210c62ef"
+    },
+    "ios/src/SettingsOverlay.h": {
+      "bytes": 1868,
+      "sha256": "e37d00bbd5ddccb3780e653aef8e161a2dfb42219372c1197aabaeefdfe0873a"
+    },
+    "ios/src/ios_generated_bindings.h": {
+      "bytes": 7581,
+      "sha256": "e6e9d62aebfe4da21e4c8701d1f38f1686d9685f81d9ad17738c7f409b406c73"
+    },
+    "ios/src/ios_mat_bindings.cpp": {
+      "bytes": 6654,
+      "sha256": "391f62dc9ca03b2ba0e3719cc1d07105a9d5e399b24a99c47a5948e909471721"
+    },
+    "ios/src/ios_mat_dispatch.h": {
+      "bytes": 12353,
+      "sha256": "f8c55de028fbb10bd5846c5c2f2db090657cb9f77928cbc58e4cb5dfdffe7265"
+    },
+    "ios/src/material_isolation.c": {
+      "bytes": 23822,
+      "sha256": "3c9bee9c2c9daa6810d0eab600d4936432ecc572181a49b02cf465c75d74489e"
+    },
+    "ios/src/material_isolation.h": {
+      "bytes": 6001,
+      "sha256": "b97f609039e757b8e77ec9b97ffe2b19b23814b69523d318baaec692b91fd490"
+    },
+    "ios/src/material_isolation_log.m": {
+      "bytes": 264,
+      "sha256": "a8ff05c6bca94482600888460cc6f886b90a973ab4ca3d3bfd7c928918d9a664"
+    },
+    "ios/src/unity_material_backend.cpp": {
+      "bytes": 30797,
+      "sha256": "50ecdc8db5e8b28cae9fb1a88670a83d63fcfe1b59beb95bbfce8848f5b631d6"
+    },
+    "ios/src/unity_material_backend.h": {
+      "bytes": 5976,
+      "sha256": "019bd83e99f481e2e81f960b93ffb62215e2f874a75347d292b5946fade19fdc"
+    },
+    "ios/tooling/build_dylib_material.py": {
+      "bytes": 17186,
+      "sha256": "2d87195f71a7845d6c2b6a7bf60880d14ab4f9b1d556bc43a01ebe575fff59aa"
+    },
+    "ios/tooling/imports.json": {
+      "bytes": 13803,
+      "sha256": "95a34b9e11abaea0ae6f1c33633726d3c1f16de9fdc4c6ae98d071c2cafeb898"
+    },
+    "ios/tooling/include/stdlib.h": {
+      "bytes": 312,
+      "sha256": "638c59f2c14fc6e3817ce284863da3767e7201dae17df699cc11cb5013203dd0"
+    },
+    "ios/tooling/include/string.h": {
+      "bytes": 456,
+      "sha256": "2cc4103f813ad6dbe8ed9b10815244bf8d28f37bddacf5ae3de67859368f48df"
+    },
+    "ios/tooling/proofs/SIFASFeatures_Settings_v3.dylib.build.json": {
+      "bytes": 4090,
+      "sha256": "16c1fc9893b4f5a2479eae2f381f24473cb3f6d8df08b72b6f27e5fcd824c0f8"
+    },
+    "ios/tooling/proofs/build_dylib.py": {
+      "bytes": 6987,
+      "sha256": "da6d7a1a1ea94ada9bedf5a762157db1c5f68e783ff09667f8dfea43003652e3"
+    },
+    "ios/tooling/proofs/ios-material-cxx-imports-proof-20261115.json": {
+      "bytes": 4120,
+      "sha256": "6f4b96ceb963d68280cbe90ec47b83d5f66be31e269073415c03327ead2484ca"
+    },
+    "ios/tooling/proofs/ios-material-extra-import-proof-20261115.json": {
+      "bytes": 682,
+      "sha256": "fcc7f5a79761746d2ee8b61fbdbafb42753e78f42a8451b93cf70efad844da74"
+    },
+    "ios/tooling/proofs/ios-material-nslog-import-proof-20261115.json": {
+      "bytes": 521,
+      "sha256": "4215c029b06f8b996f85fb95d4e3fecb20efcc1e1157cf848621b7b2dfe9ed4f"
+    },
+    "ios/tooling/proofs/original-imports.json": {
+      "bytes": 13844,
+      "sha256": "dd2b2143327f374ba798df2a01591978bf9ea84b9191197b2794c7f64f2c8e69"
+    },
+    "metadata/client_build_version.py": {
+      "bytes": 4300,
+      "sha256": "a8b49b9a2b9900385fe0086271cd148d6dee513dd3298f7e6f550f6dddba49ac"
+    },
+    "metadata/client_metadata.py": {
+      "bytes": 12052,
+      "sha256": "01ae1e1af93f809d4295d0fa056432e38ff1b161b4e962862576a83fca7715af"
+    },
+    "metadata/date_build_metadata.py": {
+      "bytes": 2108,
+      "sha256": "bb802e27e8b1e06d56c0d6430d34b668d259f7441e6e6cefff7d758c29f2fd48"
+    },
+    "metadata/tests/test_date_metadata.py": {
+      "bytes": 15404,
+      "sha256": "c734dfa81e3088c2374740b4528d4b992ca20fef9e4e3990afc22db1b25547b7"
+    },
+    "original-copy-provenance.json": {
+      "bytes": 6676,
+      "sha256": "27b75fec83829d98de1a46dc2ddbcf1a4e4449189dcfff41c19ceebf322f31fe"
+    },
+    "test_client_pipeline.py": {
+      "bytes": 6221,
+      "sha256": "b5042415faa4336614611a1436d0fdf187b64499db5ba459e290f0db84799450"
+    }
+  },
+  "kind": "source-only-date-client-build-input-lock",
+  "schema": 1
+}
