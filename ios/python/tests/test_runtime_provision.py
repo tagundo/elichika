@@ -86,6 +86,23 @@ class NativeNormalizationTests(unittest.TestCase):
 
 
 class SourceResourceTests(unittest.TestCase):
+    def test_full_probe_exemption_is_simulator_only_and_copies_actual_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            for relative in ("adminui", "modtools/webtools", "ios/python"):
+                (repo / relative).mkdir(parents=True)
+            raw = b'{"schema":1,"status":"INCOMPLETE","requested_total":42830}\n'
+            (repo / "archive-hosted-catalog.json").write_bytes(raw)
+            (repo / "LICENSE").write_text("Test license\n")
+            for target, core_only in (("device", False), ("simulator", True)):
+                with self.subTest(target=target, core_only=core_only), self.assertRaisesRegex(ValueError, "restricted to the Simulator"):
+                    provision.copy_app(repo, root / (target + str(core_only)), simulator_probe_only=True,
+                                       target=target, core_only=core_only)
+            destination = root / "simulator-full-tools-probe"
+            provision.copy_app(repo, destination, simulator_probe_only=True, target="simulator")
+            self.assertEqual((destination / "archive-hosted-catalog.json").read_bytes(), raw)
+
     def test_full_runtime_preserves_existing_archive_publication_guard(self):
         # The source deliberately still records the ongoing, incomplete upload.
         # This regression must be revisited when the verified catalog publishes.

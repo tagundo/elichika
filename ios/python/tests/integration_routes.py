@@ -47,13 +47,14 @@ def main():
         glb = model_viewer.get_model(model["id"])
         assert glb[:4] == b"glTF" and len(glb) > 1024
         assert model["stats"]["meshes"] == 1 and model["stats"]["triangles"] == 1 and model["stats"]["textures"] == 1
-        routes = []
-        for module in (admin, tools):
-            token = "a" * 64
-            server = ThreadingHTTPServer(("127.0.0.1", 0), authenticated_handler(module.Handler, token))
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            try:
+        routes, servers = [], []
+        token = "a" * 64
+        try:
+            for module in (admin, tools):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), authenticated_handler(module.Handler, token))
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                servers.append((server, thread))
                 connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
                 connection.request("GET", "/api/tools", headers={"Authorization": "Bearer " + token})
                 response = connection.getresponse()
@@ -61,7 +62,11 @@ def main():
                 assert response.status == 200 and len(result["tools"]) > 10
                 routes.append({"module": module.__name__, "tools": len(result["tools"]), "http_status": response.status})
                 connection.close()
-            finally:
+            from elichika_ios.probes import run
+            tools_probe = run([(name, server.server_port) for name, (server, _) in zip(("admin", "tools"), servers)], token, library)
+            assert tools_probe["ready"], tools_probe
+        finally:
+            for server, thread in servers:
                 server.shutdown()
                 thread.join()
                 server.server_close()
@@ -69,6 +74,7 @@ def main():
     assert os.getcwd() == before_cwd and dict(os.environ) == before_environment
     print(json.dumps({"schema": 1, "host_only": True, "actual_ios_execution": False,
                       "routes": routes, "model_stats": model["stats"], "glb_bytes": len(glb),
+                      "tools_probe": tools_probe,
                       "codecs": codec_report, "process_cwd_and_environment_preserved": True}))
 
 

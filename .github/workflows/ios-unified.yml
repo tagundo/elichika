@@ -6,7 +6,7 @@ on:
       mode:
         description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
         type: choice
-        options: [sdk-compile, core-runtime, runtime-inputs, full-candidate]
+        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, full-candidate]
         default: sdk-compile
       version:
         description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
@@ -96,6 +96,16 @@ jobs:
             --work "$RUNNER_TEMP/ios-runtime-producer" --output "$RUNNER_TEMP/ios-built-inputs" \
             --cache "$RUNNER_TEMP/ios-input-cache" --evidence "$RUNNER_TEMP/ios-evidence" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/runtime-inputs-build.log"
+
+      - name: Reuse the exact independently verified Simulator tool compiler outputs
+        if: ${{ inputs.mode == 'tools-runtime' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -B ios/build/fetch_runtime_inputs.py --repo . \
+            --output "$RUNNER_TEMP/ios-built-inputs" \
+            --report "$RUNNER_TEMP/ios-evidence/reused-runtime-inputs.json"
 
       - name: Compile actual device and Simulator targets and execute selected gates
         if: ${{ inputs.mode != 'runtime-inputs' }}

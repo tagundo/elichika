@@ -46,6 +46,14 @@ def validate_reply(value, core_only):
     require(value.get('phase') == 'running' and value.get('fake_game_start_count') == 1,
             'Readiness did not start the captured test game exactly once')
     require(value.get('core_only') is core_only, 'Probe readiness scope differs from selected runtime')
+    if not core_only:
+        runtime = value.get('runtime_probe', {})
+        tools = runtime.get('tools_probe', {})
+        lifecycle = tools.get('lifecycle', {})
+        require(runtime.get('ready') is True and tools.get('ready') is True,
+                'Full Simulator probe did not prove the actual Python tool stack')
+        for key in ('ready', 'stopped', 'read_only_command_succeeded', 'restarted'):
+            require(lifecycle.get(key) is True, 'Actual Go/tool lifecycle gate did not pass: ' + key)
     return value
 
 

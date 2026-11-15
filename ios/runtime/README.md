@@ -32,6 +32,15 @@ guard. `archive-hosted-catalog.json` must describe the verified COMPLETE set of
 is copied unchanged only into an explicitly labelled core SDK probe. A core
 probe cannot be packaged as a complete game/tools candidate.
 
+`--simulator-probe-only` permits full tools validation against the actual
+incomplete publication configuration only for `--target simulator`. It cannot
+be combined with `--core-only` or a device target. Its runtime report records
+`simulator_probe_only: true` and `archive_publication_guard_passed: false`;
+production IPA packaging must reject it. The native compile-flagged Simulator
+host probes both authenticated registries, eight real texture codecs, a neutral
+textured model through the actual HTTP-to-GLB routes, and a real embedded Go
+Stop/config_read/Start sequence. No production test endpoint is added.
+
 The host installs the official payload through the existing journal, recovery,
 merge and owner-preserving update engine. Per-module adapters resolve relative
 file IO under the explicit data root, preserve lexical Path operations, and

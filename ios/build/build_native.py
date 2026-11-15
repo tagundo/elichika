@@ -80,7 +80,7 @@ def build_host(repo, sdk, python_framework, go_archive, output, report, *, simul
                '-Wall', '-Wextra', '-Wno-deprecated-declarations', '-Wno-nullability-completeness',
                '-I', native, '-I', python_framework / 'Headers', '-F', python_framework.parent,
                '-framework', 'Python', '-framework', 'Foundation', '-framework', 'UIKit',
-               '-framework', 'WebKit', '-framework', 'Security',
+               '-framework', 'WebKit', '-framework', 'Security', '-framework', 'CoreGraphics',
                '-lresolv', '-lc++', '-Wl,-headerpad_max_install_names',
                '-Wl,-rpath,@executable_path/Frameworks']
     if simulator_probe:

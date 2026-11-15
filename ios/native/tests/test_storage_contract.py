@@ -20,6 +20,12 @@ class StorageContractTests(unittest.TestCase):
         self.assertIn('[[support.path stringByAppendingPathComponent:@"Elichika"] stringByAppendingPathComponent:@"data"]', self.source)
         self.assertRegex(self.source, r'@"data_root"\s*:\s*root\b')
 
+    def test_maintenance_probe_capability_is_simulator_compile_only(self):
+        blocks = re.findall(r'#if ELICHIKA_SIMULATOR_PROBE\n(.*?)#endif', self.source, re.DOTALL)
+        assignment = 'configuration[@"simulator_probe_only"]=@YES;'
+        self.assertEqual(self.source.count(assignment), 1)
+        self.assertTrue(any(assignment in block for block in blocks))
+
 
 if __name__ == "__main__":
     unittest.main()

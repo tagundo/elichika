@@ -16,8 +16,8 @@ from build_native import build_go, build_host
 from package_ipa import bundle_versions, codesign, merge_tree, package, validate_runtime
 
 
-def prepare_probe(probe, runtime, payload, evidence, *, full):
-    validate_runtime(runtime, 'simulator', full=full)
+def prepare_probe(probe, runtime, payload, evidence, *, full, probe_only=False):
+    validate_runtime(runtime, 'simulator', full=full, probe_only=probe_only)
     merge_tree(runtime, probe)
     (probe / 'runtime-report.json').unlink()
     resources = probe / 'ElichikaResources'
@@ -33,7 +33,7 @@ def prepare_probe(probe, runtime, payload, evidence, *, full):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=('sdk-compile', 'core-runtime', 'full-candidate'), default='sdk-compile')
+    parser.add_argument('--mode', choices=('sdk-compile', 'core-runtime', 'tools-runtime', 'full-candidate'), default='sdk-compile')
     parser.add_argument('--repo', type=Path, default=ROOT)
     parser.add_argument('--work', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
@@ -62,29 +62,37 @@ def main():
                    'actual_phone_gameplay_verified': False}
     write_json(evidence / 'environment.json', environment)
     full = args.mode == 'full-candidate'
+    tools_probe = args.mode == 'tools-runtime'
+    full_tools = full or tools_probe
     if full:
         environment['validated_archive_config_sha256'] = require_full_archive(repo)
-        require(args.built_inputs is not None, 'Full candidate requires real current-build wheel+codec producer outputs (--built-inputs)')
+    if full_tools:
+        require(args.built_inputs is not None, 'Full tools require proven wheel+codec producer outputs (--built-inputs)')
     runtimes, archives = {}, {}
-    for target, sdk in (('device', 'iphoneos'), ('simulator', 'iphonesimulator')):
+    targets = (('simulator', 'iphonesimulator'),) if tools_probe else (('device', 'iphoneos'), ('simulator', 'iphonesimulator'))
+    for target, sdk in targets:
         archive = work / target / 'libElichikaServer.a'
         build_go(repo, sdk, archive, evidence / ('go-' + target + '.json'))
         archives[target] = archive
-    for target in ('device', 'simulator'):
+    for target, _sdk in targets:
         runtime = work / ('runtime-' + target)
         command = [sys.executable, '-B', repo / 'ios/runtime/provision.py', '--repo', repo,
                    '--target', target, '--output', runtime, '--cache', work / 'input-cache']
-        if full:
+        if full_tools:
             command += ['--built-lock', args.built_inputs / target / 'built-lock.json',
                         '--codec-frameworks', args.built_inputs / target / 'codecs']
+            if tools_probe:
+                command += ['--simulator-probe-only']
         else:
             command += ['--core-only']
         run(command, cwd=repo)
         runtimes[target] = runtime
         shutil.copy2(runtime / 'runtime-report.json', evidence / ('runtime-' + target + '.json'))
-    native = work / 'device/ElichikaHost.framework'
-    build_host(repo, 'iphoneos', runtimes['device'] / 'Frameworks/Python.framework', archives['device'],
-               native, evidence / 'native-device.json')
+    native = None
+    if not tools_probe:
+        native = work / 'device/ElichikaHost.framework'
+        build_host(repo, 'iphoneos', runtimes['device'] / 'Frameworks/Python.framework', archives['device'],
+                   native, evidence / 'native-device.json')
     probe = work / 'simulator/ElichikaSimulatorProbe.app'
     build_host(repo, 'iphonesimulator', runtimes['simulator'] / 'Frameworks/Python.framework', archives['simulator'],
                probe, evidence / 'native-simulator.json', simulator_probe=True)
@@ -96,9 +104,15 @@ def main():
     payload = work / 'shared-payload'
     run([sys.executable, '-B', repo / 'ios/build/build_payload.py', '--repo', repo, '--output', payload,
          '--evidence', evidence / 'payload'], cwd=repo)
-    prepare_probe(probe, runtimes['simulator'], payload, evidence, full=full)
+    prepare_probe(probe, runtimes['simulator'], payload, evidence, full=full_tools, probe_only=tools_probe)
     run([sys.executable, '-B', repo / 'ios/ci/run_simulator.py', '--app', probe,
-         '--evidence', evidence / 'simulator', *([] if full else ['--core-only'])], cwd=repo)
+         '--evidence', evidence / 'simulator', *([] if full_tools else ['--core-only'])], cwd=repo)
+    if tools_probe:
+        write_json(evidence / 'result.json', {**environment, 'status': 'PASS_FULL_TOOLS_SIMULATOR_PROBE_ONLY',
+                   'runtime_executed': True, 'IPA_produced': False, 'actual_device_app_built': False,
+                   'toolset_complete': True, 'simulator_probe_only': True,
+                   'archive_publication_guard_passed': False, 'actual_phone_gameplay_verified': False})
+        return
     if not full:
         write_json(evidence / 'result.json', {**environment, 'status': 'PASS_CORE_RUNTIME_PROBE_ONLY',
                    'runtime_executed': True, 'IPA_produced': False, 'toolset_complete': False,

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "fixture": "probe_textured_triangle.unity",
+  "bytes": 1476,
+  "sha256": "512035f15592dd8a32bdeca4cacaaf2ea8a9c5d70c9b269080c9348ebf537fd4",
+  "license": "Mechanically authored neutral triangle fixture from this repository Android instrumentation tests; no game assets.",
+  "expected": {
+    "meshes": 1,
+    "vertices": 3,
+    "triangles": 1,
+    "materials": 1,
+    "textures": 1
+  }
+}

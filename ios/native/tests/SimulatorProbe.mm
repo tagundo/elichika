@@ -87,11 +87,13 @@ static NSUInteger ELFakeGameStarts;
                 BOOL tls=[probe[@"tls_probe"] boolValue];
                 NSDictionary *dependencies=[probe[@"dependencies"] isKindOfClass:NSDictionary.class] ? probe[@"dependencies"] : @{};
                 NSDictionary *runtime=[probe[@"runtime"] isKindOfClass:NSDictionary.class] ? probe[@"runtime"] : @{};
+                NSDictionary *tools=[probe[@"tools_probe"] isKindOfClass:NSDictionary.class] ? probe[@"tools_probe"] : @{};
                 BOOL dependenciesReady=[status[@"core_only"] boolValue] || [dependencies[@"ready"] boolValue];
                 status[@"tls_probe"]=@(tls);
                 status[@"runtime_probe"]=@{@"tls_probe":@(tls),@"tls_status":probe[@"tls_status"] ?: @0,
-                    @"tls_error":probe[@"tls_error"] ?: @"",@"dependencies":dependencies};
-                status[@"probe_pass"]=@(tls && dependenciesReady && [runtime[@"ready"] boolValue] && ELFakeGameStarts==1);
+                    @"tls_error":probe[@"tls_error"] ?: @"",@"dependencies":dependencies,@"tools_probe":tools,
+                    @"ready":@([probe[@"ready"] boolValue])};
+                status[@"probe_pass"]=@([probe[@"ready"] boolValue] && tls && dependenciesReady && [runtime[@"ready"] boolValue] && ELFakeGameStarts==1);
                 if (![status[@"probe_pass"] boolValue]) {
                     status[@"phase"]=@"error"; status[@"error"]=@"The real Python/TLS runtime probe failed.";
                 }

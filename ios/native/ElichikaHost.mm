@@ -325,6 +325,7 @@ static BOOL ELPrepareConfiguration(NSString **error) {
         @"core_only":@NO
     } mutableCopy];
 #if ELICHIKA_SIMULATOR_PROBE
+    configuration[@"simulator_probe_only"]=@YES;
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--elichika-core-probe"]) configuration[@"core_only"]=@YES;
 #endif
     ELConfiguration=[configuration copy]; return YES;

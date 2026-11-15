@@ -13,7 +13,7 @@ import shutil
 import threading
 import time
 from http.server import ThreadingHTTPServer
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from elichika_ios.controller import GoController
 from elichika_ios.scoped_imports import ScopedImports
@@ -240,7 +240,8 @@ def start(config_json):
             _scope.language = config.get("language", "en")
             _scope.facades["os"].environ["SIFAS_LANG"] = _scope.language
         _cancel.clear()
-        _state.update(phase="preparing", ready=False, error="", admin_url="", tools_url="", core_only=bool(config.get("core_only", False)))
+        _state.update(phase="preparing", ready=False, error="", admin_url="", tools_url="", core_only=bool(config.get("core_only", False)),
+                      simulator_probe_only=bool(config.get("simulator_probe_only", False)))
         _bootstrap_thread = threading.Thread(target=_start, args=(config,), daemon=True, name="ios-bootstrap")
         _bootstrap_thread.start()
         return json.dumps(_state)
@@ -304,4 +305,19 @@ def probe():
         result["tls_error"] = "%s: %s" % (type(error).__name__, error)
     from elichika_ios.dependencies import probe as dependency_probe
     result["dependencies"] = dependency_probe()
+    if not runtime.get("core_only"):
+        with _server_lock:
+            services = [(name, server.server_port) for name, server in zip(("admin", "tools"), _servers)]
+        session = parse_qs(urlsplit(runtime.get("tools_url", "")).query).get("session", [""])[0]
+        if _scope is None:
+            result["tools_probe"] = {"ready": False, "error": "The tool runtime is not initialized"}
+        else:
+            from elichika_ios.probes import run as run_tools_probe
+            result["tools_probe"] = run_tools_probe(services, session, _scope.library_root)
+            if result["tools_probe"]["ready"] and runtime.get("simulator_probe_only"):
+                from elichika_ios.probes import lifecycle as run_lifecycle_probe
+                result["tools_probe"]["lifecycle"] = run_lifecycle_probe(_native)
+                result["tools_probe"]["ready"] = result["tools_probe"]["lifecycle"]["ready"]
+    result["ready"] = bool(result["tls_probe"] and runtime.get("ready") and runtime.get("server", {}).get("ready")
+                           and (runtime.get("core_only") or result["dependencies"].get("ready") and result.get("tools_probe", {}).get("ready")))
     return json.dumps(result)

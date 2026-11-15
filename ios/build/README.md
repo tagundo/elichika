@@ -10,6 +10,19 @@ It produces compiler receipts, not an IPA or a runtime validation claim.
 data as Android/macOS and runs the separate probe twice on each of an iPhone
 and an iPad Simulator. This mode explicitly omits full modding dependencies.
 
+`runtime-inputs` compiles and retains only the real device/Simulator wheels
+and signed codec frameworks. Its NOT-IPA artifact records exact source, lock,
+patch and output hashes; it does not initialize a server, provision an app or
+claim runtime execution.
+
+`tools-runtime` reuses the pinned successful dependency artifact after checking
+its run/source identity, every file hash and the unchanged compiler inputs.
+It builds and runs only the separate Simulator probe with the full tool stack.
+The explicit Simulator-only provision flag may retain the currently incomplete
+Archive configuration for this test. No device app or IPA is built. Production
+full-runtime validation rejects this marker and still requires the existing
+complete Archive publication guard.
+
 `full-candidate` requires the complete wheel/codec closure, runs full Simulator
 gates, obtains the exact existing GL Local game through the locked successful
 GitHub artifact export, and packages the actual monolithic SIFAS app. It refuses

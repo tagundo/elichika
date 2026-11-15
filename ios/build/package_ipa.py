@@ -99,15 +99,21 @@ def extract_original(source, stage, pin):
     return rows
 
 
-def validate_runtime(root, target, *, full=True):
+def validate_runtime(root, target, *, full=True, probe_only=False):
     root = Path(root)
     report = json.loads((root / 'runtime-report.json').read_text())
     require(report['schema'] == 1 and report['target'] == target and report['python_abi'] == '3.13',
             'Runtime target/ABI differs')
     require(report['frameworks_codesign_verify_passed'] is True, 'Runtime framework signature proof is missing')
+    require(not probe_only or target == 'simulator', 'Only the separate Simulator probe may use probe-only inputs')
+    require(report.get('simulator_probe_only', False) is probe_only,
+            'A Simulator-only runtime cannot be accepted as production app input')
     if full:
         require(report['core_only'] is False and report['toolset_complete'] is True,
                 'Incomplete native/Python tools closure cannot be packaged as the unified IPA')
+        if not probe_only:
+            require(report.get('archive_publication_guard_passed') is True,
+                    'Full IPA runtime must pass the unchanged complete Archive publication guard')
     files = inventory(root)
     files.pop('runtime-report.json')
     require(files == report['files'], 'Runtime tree differs from its signed build receipt')

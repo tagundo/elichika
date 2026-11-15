@@ -233,11 +233,13 @@ def framework_extensions(output, target, normalizations=None):
     return mappings
 
 
-def copy_app(repo, destination, *, core_only=False):
+def copy_app(repo, destination, *, core_only=False, simulator_probe_only=False, target=None):
     destination.mkdir(parents=True)
+    require(not simulator_probe_only or (target == "simulator" and not core_only),
+            "The full-tools probe exemption is restricted to the Simulator target")
     catalog = repo / "archive-hosted-catalog.json"
     require(catalog.is_file() and not catalog.is_symlink(), "The immutable archive publication configuration is missing")
-    if not core_only:
+    if not core_only and not simulator_probe_only:
         sys.path.insert(0, str(repo))
         from archive_profile_download_bridge import load_source_config
         # Preserve the existing Android/macOS production gate. An incomplete
@@ -272,6 +274,9 @@ def copy_app(repo, destination, *, core_only=False):
 
 def prepare(args):
     require(sys.platform == "darwin", "iOS framework conversion and signing require macOS")
+    simulator_probe_only = getattr(args, "simulator_probe_only", False)
+    require(not simulator_probe_only or (args.target == "simulator" and not args.core_only),
+            "--simulator-probe-only requires the full-tools Simulator target and cannot produce a device runtime")
     lock = json.loads((HERE / "runtime-lock.json").read_text())
     require(not args.output.exists(), "Use a fresh runtime output directory")
     normalizations = {}
@@ -316,12 +321,14 @@ def prepare(args):
         # running host probes extensions before exposing any full-tools URLs.
         require(built.get("toolset_complete") is True, "Wheel producer has not proved full native dependency closure")
         complete = True
-    copy_app(args.repo, args.output / "ElichikaResources/python-app", core_only=args.core_only)
+    copy_app(args.repo, args.output / "ElichikaResources/python-app", core_only=args.core_only,
+             simulator_probe_only=simulator_probe_only, target=args.target)
     mappings = framework_extensions(args.output, args.target, normalizations)
     report = {"schema": 1, "target": args.target, "python_abi": "3.13", "core_only": args.core_only,
               "toolset_complete": complete, "files": inventory(args.output), "extension_mappings": mappings,
               "frameworks_codesign_verify_passed": True, "actual_device_execution": False,
-              "archive_publication_guard_passed": not args.core_only,
+              "archive_publication_guard_passed": not args.core_only and not simulator_probe_only,
+              "simulator_probe_only": simulator_probe_only,
               "native_input_normalizations": normalizations,
               "dependency_lock_sha256": sha256(HERE / "runtime-lock.json")}
     write_json(args.output / "runtime-report.json", report)
@@ -335,6 +342,8 @@ def main():
     parser.add_argument("--cache", type=Path, default=Path(".ios-runtime-cache"))
     parser.add_argument("--repo", type=Path, default=HERE.parents[1])
     parser.add_argument("--core-only", action="store_true")
+    parser.add_argument("--simulator-probe-only", action="store_true",
+                        help="Simulator validation only; retain the actual incomplete catalog and forbid distribution")
     parser.add_argument("--built-lock", type=Path)
     parser.add_argument("--codec-frameworks", type=Path)
     args = parser.parse_args()
