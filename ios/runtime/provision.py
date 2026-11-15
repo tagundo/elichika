@@ -169,8 +169,19 @@ def framework_extensions(output, target):
     return mappings
 
 
-def copy_app(repo, destination):
+def copy_app(repo, destination, *, core_only=False):
     destination.mkdir(parents=True)
+    catalog = repo / "archive-hosted-catalog.json"
+    require(catalog.is_file() and not catalog.is_symlink(), "The immutable archive publication configuration is missing")
+    if not core_only:
+        sys.path.insert(0, str(repo))
+        from archive_profile_download_bridge import load_source_config
+        # Preserve the existing Android/macOS production gate. An incomplete
+        # 42,830-file publication can be used only by an explicitly labelled
+        # core SDK probe, never a full distributable tool/game candidate.
+        load_source_config(catalog)
+    shutil.copy2(catalog, destination / catalog.name)
+    shutil.copy2(repo / "LICENSE", destination / "LICENSE")
     for source in repo.glob("*.py"):
         shutil.copy2(source, destination / source.name)
     for name in ("adminui",):
@@ -183,6 +194,16 @@ def copy_app(repo, destination):
             shutil.copytree(source, destination / source.name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         elif source.suffix == ".py":
             shutil.copy2(source, destination / source.name)
+    for path in destination.rglob("*"):
+        if not path.is_file():
+            continue
+        require(not path.is_symlink(), "Application source resources cannot contain symlinks")
+        require(path.suffix.lower() not in (".so", ".dylib", ".dll", ".a", ".exe", ".ipa", ".apk"),
+                "Host native/application artifact inside source resources: " + path.name)
+        with path.open("rb") as stream:
+            magic = stream.read(4)
+        require(magic not in (b"\x7fELF", b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe"),
+                "Host executable inside source resources: " + path.name)
 
 
 def prepare(args):
@@ -197,8 +218,23 @@ def prepare(args):
         require(args.built_lock is not None, "Full tool runtime requires --built-lock from build_wheels.py")
         built = json.loads(args.built_lock.read_text())
         require(built["target"] == args.target and built["python_abi"] == "3.13", "Built wheel SDK/ABI differs")
+        require(built.get("source_lock_sha256") == sha256(HERE / "runtime-lock.json"), "Built wheel source lock differs")
+        expected = {row["name"]: row["version"] for row in lock["sources"]}
+        require({row["name"]: row["version"] for row in built["wheels"]} == expected
+                and len(built["wheels"]) == len(expected), "The built native/parser dependency closure differs")
         for row in lock["wheels"][args.target] + built["wheels"]:
-            path = download(row, args.cache) if "url" in row else Path(row["path"])
+            if "url" in row:
+                path = download(row, args.cache)
+            else:
+                candidate = Path(row["path"])
+                base = args.built_lock.parent.resolve(strict=True)
+                if not candidate.is_absolute():
+                    safe_name(row["path"])
+                    candidate = base / candidate
+                require(not candidate.is_symlink(), "Built wheel cannot be a symlink")
+                path = candidate.resolve(strict=True)
+                require(path.is_relative_to(base) and path.is_file() and path.name == row["filename"],
+                        "Built wheel escapes the producer output or has a different filename")
             require(sha256(path) == row["sha256"], "Built wheel hash differs")
             unpack_wheel(path, site, args.target)
         # Use the same bounded parser implementation already retained on Android
@@ -215,11 +251,12 @@ def prepare(args):
         # running host probes extensions before exposing any full-tools URLs.
         require(built.get("toolset_complete") is True, "Wheel producer has not proved full native dependency closure")
         complete = True
-    copy_app(args.repo, args.output / "ElichikaResources/python-app")
+    copy_app(args.repo, args.output / "ElichikaResources/python-app", core_only=args.core_only)
     mappings = framework_extensions(args.output, args.target)
     report = {"schema": 1, "target": args.target, "python_abi": "3.13", "core_only": args.core_only,
               "toolset_complete": complete, "files": inventory(args.output), "extension_mappings": mappings,
               "frameworks_codesign_verify_passed": True, "actual_device_execution": False,
+              "archive_publication_guard_passed": not args.core_only,
               "dependency_lock_sha256": sha256(HERE / "runtime-lock.json")}
     write_json(args.output / "runtime-report.json", report)
     return report

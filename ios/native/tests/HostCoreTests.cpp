@@ -1,6 +1,19 @@
 #include "../HostCore.hpp"
 #include <cassert>
 int main() {
+    elichika::ServerButtonPolicy menu;
+    assert(menu.visible());
+    menu.load(false,false); assert(menu.visible()); // absent preference stays visible on first launch
+    menu.toggle(); assert(!menu.visible());
+    elichika::ServerButtonPolicy relaunched;
+    relaunched.load(true,menu.visible()); assert(!relaunched.visible());
+    relaunched.toggle(); assert(relaunched.visible());
+    assert(elichika::ServerButtonPolicy::restoreHoldSeconds==2.0);
+    assert(elichika::ServerButtonPolicy::restoreCorner(20,40,390,844,0,44));
+    assert(!elichika::ServerButtonPolicy::restoreCorner(380,40,390,844,0,44)); // existing upper-right gesture stays separate
+    assert(!elichika::ServerButtonPolicy::restoreCorner(20,400,390,844,0,44));
+    assert(!elichika::ServerButtonPolicy::restoreCorner(-1,0,390,844,0,44));
+    assert(!elichika::ServerButtonPolicy::restoreCorner(NAN,0,390,844,0,44));
     elichika::HostCore h;
     const auto first = h.begin();
     assert(!h.canStart());

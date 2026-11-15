@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 import stat
 import struct
 import subprocess
+import sys
 import urllib.parse
 import urllib.request
 
@@ -87,6 +88,15 @@ def source_identity(repo=ROOT):
         result[key + '_sha'] = run(['git', '-C', where, 'rev-parse', 'HEAD'], capture=True).strip()
         result[key + '_tree'] = run(['git', '-C', where, 'rev-parse', 'HEAD^{tree}'], capture=True).strip()
     return result
+
+
+def require_full_archive(repo=ROOT):
+    """Apply the existing production publication guard unchanged for full IPAs."""
+    repo = Path(repo).resolve()
+    sys.path.insert(0, str(repo))
+    from archive_profile_download_bridge import load_source_config
+    load_source_config(repo / 'archive-hosted-catalog.json')
+    return sha256(repo / 'archive-hosted-catalog.json')
 
 
 def api_json(path, token):

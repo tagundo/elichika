@@ -19,6 +19,11 @@ def build(args):
     sdkroot = run(["xcrun", "--sdk", sdk, "--show-sdk-path"], capture=True).strip()
     triple = "arm64-apple-ios13.0" + ("-simulator" if args.target == "simulator" else "")
     resources = args.repo / "modtools/webtools/core/resources"
+    lock = json.loads((HERE / "runtime-lock.json").read_text())
+    for name, expected in lock["codec_sources"].items():
+        path = resources / name
+        require(path.is_file() and not path.is_symlink() and sha256(path) == expected,
+                "Pinned native codec source changed: " + name)
     manifest = json.loads((resources / "texture65_decoder/source-manifest.json").read_text())
     require(manifest["commit"] == "3ebc3b758bd6b1a3108b50148f7998ee34f058c6", "Crunch source pin differs")
     for name, expected in manifest["files"].items():
@@ -41,6 +46,7 @@ def build(args):
             "CFBundleSupportedPlatforms": ["iPhoneOS" if args.target == "device" else "iPhoneSimulator"]}))
         codesign(framework)
     report = {"schema": 1, "target": args.target, "files": inventory(args.output), "actual_device_execution": False,
+              "source_lock_sha256": sha256(HERE / "runtime-lock.json"),
               "sources": {str(p.relative_to(args.repo)): sha256(p) for p in [HERE / "texture65_library.cpp", resources / "cri_hca/clhca.c", resources / "cri_hca/clhca.h", resources / "cri_hca/clhca_data.h"]},
               "hca_upstream": "6802153425adde134e49394fc653455166d7d2f2", "texture65_upstream": manifest["commit"]}
     write_json(args.output / "codec-report.json", report)

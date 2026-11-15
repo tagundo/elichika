@@ -150,5 +150,12 @@
   "audio_closure": {
     "existing_registered_audio": "CRI ACB/AFS2 HCA plus standard ADX",
     "fmod": "UnityPy eager optional import only; no existing registered tool exports FSB/AudioClip.samples. Existing packer already rejects that operation. No FMOD host binary bundled."
+  },
+  "codec_sources": {
+    "cri_hca/clhca.c": "4ef480d075acd8da35271aba34a048fc7012fa7a0ca1f014a025080be70043f1",
+    "cri_hca/clhca.h": "083ee638ed41ecb295423cede35c24a2de3659c35b6f6ea5554d7c2ab96af359",
+    "cri_hca/clhca_data.h": "bad3edd920331b506e2d141e115c3638d3ab118b4af1752fcec96e9bd64d542c",
+    "cri_hca/LICENSE": "fcc26d35c4c4365e31f21734f846e4ee362ff0b57ba696085605a7b4768d8763",
+    "texture65_decoder/source-manifest.json": "303014bc97569998e56380ceed95705da651a7f1b0d34a11fe3cc210b0946f7f"
   }
 }

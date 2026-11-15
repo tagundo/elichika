@@ -90,7 +90,13 @@ class GoController:
                 generation = status.get("generation")
                 if self._generation is not None and generation != self._generation:
                     return False
-                self.native.go_start(json.dumps(self.options))
+                started = self.native.go_start(json.dumps(self.options))
+                started = json.loads(started) if isinstance(started, str) else started
+                if isinstance(started, dict) and started.get("error"):
+                    error = started["error"]
+                    if isinstance(error, dict):
+                        raise RuntimeError(str(error.get("code", "START_REJECTED")) + ": " + str(error.get("message", error)))
+                    raise RuntimeError(str(error))
                 deadline = time.monotonic() + self.timeout
                 while time.monotonic() < deadline:
                     status = self._status()

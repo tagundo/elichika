@@ -3,6 +3,7 @@
 #import <dispatch/dispatch.h>
 #include <limits.h>
 #include <string.h>
+#include <cmath>
 
 static NSError *ELError(NSString *message) {
     return [NSError errorWithDomain:@"ElichikaNative" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
@@ -150,7 +151,7 @@ PyObject *ElichikaHTTPSRequest(PyObject *self, PyObject *args, PyObject *kwargs)
     unsigned long long maximum=16*1024*1024; double timeout=30;
     static char *keys[]={(char *)"url",(char *)"method",(char *)"headers_json",(char *)"body",(char *)"max_bytes",(char *)"timeout",NULL};
     if (!PyArg_ParseTupleAndKeywords(args,kwargs,"s|ssy*Kd:https_request",keys,&url,&method,&headers,&body,&maximum,&timeout)) return NULL;
-    if (!maximum || maximum>64ULL*1024*1024 || timeout<1 || timeout>300 || body.len>16*1024*1024 ||
+    if (!maximum || maximum>64ULL*1024*1024 || !std::isfinite(timeout) || timeout<1 || timeout>300 || body.len>16*1024*1024 ||
         strnlen(url,8193)>8192 || strnlen(headers,65537)>65536 || strnlen(method,17)>16) {
         PyBuffer_Release(&body); PyErr_SetString(PyExc_ValueError,"Invalid HTTPS request limits."); return NULL;
     }
@@ -165,7 +166,7 @@ PyObject *ElichikaHTTPSDownload(PyObject *self, PyObject *args, PyObject *kwargs
     (void)self; const char *url,*path,*headers="{}"; unsigned long long maximum=4ULL*1024*1024*1024; double timeout=300;
     static char *keys[]={(char *)"url",(char *)"path",(char *)"headers_json",(char *)"max_bytes",(char *)"timeout",NULL};
     if (!PyArg_ParseTupleAndKeywords(args,kwargs,"ss|sKd:https_download",keys,&url,&path,&headers,&maximum,&timeout)) return NULL;
-    if (!maximum || maximum>4ULL*1024*1024*1024 || timeout<1 || timeout>1800 ||
+    if (!maximum || maximum>4ULL*1024*1024*1024 || !std::isfinite(timeout) || timeout<1 || timeout>1800 ||
         strnlen(url,8193)>8192 || strnlen(path,PATH_MAX+1)>PATH_MAX || strnlen(headers,65537)>65536) {
         PyErr_SetString(PyExc_ValueError,"Invalid download limits."); return NULL;
     }

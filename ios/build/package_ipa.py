@@ -23,7 +23,7 @@ import zipfile
 from zoneinfo import ZoneInfo
 
 from common import (MAX_ENTRIES, MAX_EXPANDED, ROOT, codesign, inventory, macho, require,
-                    run, safe_name, sha256, source_identity, stream_copy, verify_file, write_json)
+                    require_full_archive, run, safe_name, sha256, source_identity, stream_copy, verify_file, write_json)
 from patch_load import HOST_LOAD, patch_main
 from signature_proof import is_macho, prove
 
@@ -206,6 +206,7 @@ def archive_stage(stage, source, output):
 def package(source, runtime, native, payload, output, work, report, *, lock, version=None, repo=ROOT):
     source, runtime, native, payload, output, work = map(Path, (source, runtime, native, payload, output, work))
     verify_file(source, lock['game'])
+    archive_config_sha256 = require_full_archive(repo)
     require(not work.exists() and work.resolve() != Path(repo).resolve(), 'Fresh isolated packaging directory required')
     runtime_report = validate_runtime(runtime, 'device', full=True)
     versions = bundle_versions(version)
@@ -265,6 +266,7 @@ def package(source, runtime, native, payload, output, work, report, *, lock, ver
                   'physical_iPhone_iPad_gameplay_tested': False, 'SideStore_user_resigning_required': True,
                   'simulator_probe_included': False, 'server_runs_in_process': True,
                   'archive_catalog_publication_claimed': False}
+    provenance['validated_archive_config_sha256'] = archive_config_sha256
     write_json(resources / 'bundle-provenance.json', provenance)
     binaries = sign_app(app)
     preservation = original_preservation(source, work, lock['game'], info)

@@ -1,8 +1,24 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <algorithm>
+#include <cmath>
 
 namespace elichika {
+class ServerButtonPolicy {
+public:
+    static constexpr double restoreHoldSeconds=2.0;
+    void load(bool present,bool savedVisible) { visible_=!present || savedVisible; }
+    bool visible() const { return visible_; }
+    void toggle() { visible_=!visible_; }
+    static bool restoreCorner(double x,double y,double width,double height,double safeLeft,double safeTop) {
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) || !std::isfinite(height) ||
+            !std::isfinite(safeLeft) || !std::isfinite(safeTop) || width<=0 || height<=0 || safeLeft<0 || safeTop<0) return false;
+        return x>=0 && y>=0 && x<=std::min(width/3.0,safeLeft+88.0) && y<=std::min(height/3.0,safeTop+72.0);
+    }
+private:
+    bool visible_=true;
+};
 /* Main-thread-owned policy, independent of UIKit, Python, Go and Unity. A new
  * backend generation never permits a stale result to release game startup. */
 class HostCore {

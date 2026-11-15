@@ -19,7 +19,9 @@
     }).then(importedPaths);
     if (action === "chooseDirectory") return ios.request("import", {
       types: ["public.folder"], multiple: false
-    }).then(importedPaths);
+    }).then(importedPaths).then(function (result) {
+      return { path: result.paths[0] || "", paths: result.paths, cancelled: result.cancelled === true };
+    });
     if (action === "reveal") {
       if (typeof args.path !== "string" || args.path[0] !== "/" || args.path.indexOf("\0") >= 0)
         return Promise.reject(new Error("Choose a completed file to export."));

@@ -37,7 +37,7 @@ def forbidden(): os.chdir("/")
             sys.path.insert(0, str(source))
             try:
                 module = importlib.import_module("ios_test_tool")
-                self.assertEqual(module.cwd, str(data))
+                self.assertEqual(module.cwd, str(data.resolve()))
                 self.assertEqual((data / "a.txt").read_text(), "one")
                 self.assertEqual((data / "b.txt").read_text(), "two")
                 self.assertTrue((data / "database.db").is_file())
@@ -71,7 +71,7 @@ def forbidden(): os.chdir("/")
             path = scope.facades["pathlib"].Path
             self.assertEqual(str(path("nested/file").relative_to("nested")), "file")
             self.assertEqual(str(path("output") / path("nested/file")), "output/nested/file")
-            self.assertEqual(path("nested/file").absolute(), Path(directory) / "nested/file")
+            self.assertEqual(path("nested/file").absolute(), Path(directory).resolve() / "nested/file")
 
 
 class AuthenticationTests(unittest.TestCase):
@@ -120,6 +120,17 @@ class AuthenticationTests(unittest.TestCase):
 
 
 class ControllerTests(unittest.TestCase):
+    def test_rejected_restart_reports_native_error_without_polling(self):
+        native = types.SimpleNamespace(state={"phase": "stopped", "ready": False, "generation": 1})
+        native.go_status = lambda: json.dumps(native.state)
+        native.go_start = lambda config: json.dumps({"error": {"code": "START_BUSY", "message": "A command still owns the server"}})
+        controller = GoController(native, {})
+        controller._generation = 1
+        controller.start()
+        with self.assertRaisesRegex(RuntimeError, "START_BUSY: A command still owns the server"):
+            controller.finish_job(True)
+        self.assertFalse(native.state["ready"])
+
     def test_manual_stop_cancels_deferred_restart(self):
         native = types.SimpleNamespace(state={"phase": "running", "ready": True, "generation": 1}, starts=0)
         native.go_status = lambda: json.dumps(native.state)

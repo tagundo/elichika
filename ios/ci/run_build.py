@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
-from common import ROOT, inventory, require, run, sha256, source_identity, write_json
+from common import ROOT, inventory, require, require_full_archive, run, sha256, source_identity, write_json
 from build_native import build_go, build_host
 from package_ipa import bundle_versions, codesign, merge_tree, package, validate_runtime
 
@@ -63,6 +63,7 @@ def main():
     write_json(evidence / 'environment.json', environment)
     full = args.mode == 'full-candidate'
     if full:
+        environment['validated_archive_config_sha256'] = require_full_archive(repo)
         require(args.built_inputs is not None, 'Full candidate requires real current-build wheel+codec producer outputs (--built-inputs)')
     runtimes, archives = {}, {}
     for target, sdk in (('device', 'iphoneos'), ('simulator', 'iphonesimulator')):

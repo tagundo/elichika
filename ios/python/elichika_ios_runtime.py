@@ -27,16 +27,20 @@ _server_lock = threading.Lock()
 _native = None
 _scope = None
 _cancel = threading.Event()
+_bootstrap_thread = None
 
 
 def _error_message(value):
     if isinstance(value, dict):
-        return value.get("message") or json.dumps(value)
+        message = value.get("message") or json.dumps(value)
+        return (str(value["code"]) + ": " + message) if value.get("code") else message
     return str(value or "Embedded Go startup failed")
 
 
 def _event(phase, **values):
     with _lock:
+        if values.get("ready") and _cancel.is_set():
+            return
         _state.update(phase=phase, **values)
         snapshot = dict(_state)
     if _native is not None:
@@ -100,12 +104,28 @@ def _start(config):
         root.mkdir(parents=True, exist_ok=True)
         library = Path(config.get("packs_root") or root / "sukusta/packs").parent
         library.mkdir(parents=True, exist_ok=True)
-        _scope = ScopedImports(payload, root, library, config.get("language", "en"))
-        _scope.install()
+        if _scope is None:
+            _scope = ScopedImports(payload, root, library, config.get("language", "en"))
+            _scope.install()
         import sys
         for directory in (payload, payload / "modtools"):
             if str(directory) not in sys.path:
                 sys.path.insert(0, str(directory))
+        # A prior startup can fail after Go acquired its lifetime DB lease.
+        # Native Stop drains asynchronously; never enter the payload updater
+        # until that lease and any owned management command are released.
+        deadline = time.monotonic() + config.get("startup_timeout", 120)
+        while True:
+            previous = json.loads(_native.go_status())
+            state = previous.get("state", previous.get("phase"))
+            active_job = previous.get("job") or {}
+            if state in ("stopped", "error", "failed") and active_job.get("state") != "running":
+                break
+            if _cancel.is_set():
+                raise InterruptedError("Setup cancelled")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("The previous server operation is still draining. Retry after it finishes.")
+            _cancel.wait(0.05)
         root = _prepare_data(config)
         if _cancel.is_set():
             raise InterruptedError("Setup cancelled")
@@ -116,7 +136,11 @@ def _start(config):
                       "listen_address": config.get("listen_address", "127.0.0.1:8080"),
                       "region": config.get("region", "gl"), "language": config.get("language", "en"),
                       "ready_token": config["ready_token"], "local_webui_token": token, "web_token": token}
-        _native.go_start(json.dumps(go_options))
+        start_result = _native.go_start(json.dumps(go_options))
+        if isinstance(start_result, str):
+            start_result = json.loads(start_result)
+        if isinstance(start_result, dict) and start_result.get("error"):
+            raise RuntimeError(_error_message(start_result["error"]))
         _event("starting_server")
         deadline = time.monotonic() + config.get("startup_timeout", 120)
         while time.monotonic() < deadline:
@@ -192,7 +216,7 @@ def _close_servers():
 
 
 def start(config_json):
-    global _native
+    global _native, _bootstrap_thread
     config = json.loads(config_json)
     if not isinstance(config.get("token"), str) or len(config["token"]) < 32:
         raise ValueError("A random session token of at least 32 characters is required")
@@ -203,13 +227,22 @@ def start(config_json):
     with _lock:
         if _state["phase"] not in ("stopped", "failed", "cancelled"):
             return json.dumps(_state)
+        if _bootstrap_thread is not None and _bootstrap_thread.is_alive():
+            return json.dumps(dict(_state, error="The previous startup is still finishing. Retry after it finishes."))
         if _scope is not None:
-            # Python retains imported modules; moving an initialized runtime to
-            # another root would leave stale module constants and open handles.
-            raise RuntimeError("A Python runtime instance cannot be rebound; reopen the app")
+            payload = Path(config["payload_root"]).resolve(strict=True)
+            root = Path(config["data_root"]).resolve(strict=True)
+            library = Path(config.get("packs_root") or root / "sukusta/packs").parent.resolve()
+            if (payload, root, library) != (_scope.source_root, _scope.data_root, _scope.library_root):
+                raise RuntimeError("Close and reopen the app before selecting a different installation")
+            # Same-root retries retain valid imported modules and path facades;
+            # refresh only the local language setting, never process globals.
+            _scope.language = config.get("language", "en")
+            _scope.facades["os"].environ["SIFAS_LANG"] = _scope.language
         _cancel.clear()
-        _state.update(phase="preparing", ready=False, error="", admin_url="", tools_url="")
-        threading.Thread(target=_start, args=(config,), daemon=True, name="ios-bootstrap").start()
+        _state.update(phase="preparing", ready=False, error="", admin_url="", tools_url="", core_only=bool(config.get("core_only", False)))
+        _bootstrap_thread = threading.Thread(target=_start, args=(config,), daemon=True, name="ios-bootstrap")
+        _bootstrap_thread.start()
         return json.dumps(_state)
 
 

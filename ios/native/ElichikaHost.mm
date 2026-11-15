@@ -27,6 +27,18 @@ static UIWindow *ELPanelWindow;
 static UIButton *ELMenuButton;
 static __weak UIWindow *ELGameWindow;
 static id ELMenuTarget(void);
+static void ELRefreshMenu(void);
+static NSString *const ELShowServerButtonKey=@"ElichikaShowServerButton";
+static elichika::ServerButtonPolicy &ELButtonPolicy(void) {
+    static elichika::ServerButtonPolicy policy; static BOOL loaded;
+    if (!loaded) { NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+        policy.load([defaults objectForKey:ELShowServerButtonKey]!=nil,[defaults boolForKey:ELShowServerButtonKey]); loaded=YES; }
+    return policy;
+}
+static NSString *ELButtonText(NSString *english,NSString *korean,NSString *japanese) {
+    NSString *language=ELConfiguration[@"language"] ?: NSLocale.preferredLanguages.firstObject;
+    return [language hasPrefix:@"ko"] ? korean : ([language hasPrefix:@"ja"] ? japanese : english);
+}
 
 static NSString *ELJSON(id value) {
     NSData *data=[NSJSONSerialization dataWithJSONObject:value options:0 error:NULL];
@@ -59,6 +71,7 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
                     @"real_backend_ready":@(core.ready()),@"foreground":@(core.foreground()),
                     @"gate_installed":@(ELGateInstalled),@"profile_supported":@(ELProfileSupported),
                     @"routing_prepared":@(ELRoutingPrepared),
+                    @"server_button_visible":@(ELButtonPolicy().visible()),
                     @"core_only":ELConfiguration[@"core_only"] ?: @NO,
                     @"generation":@(core.generation()),@"error":ELHookError ?: [NSString stringWithUTF8String:core.error().c_str()]});
 }
@@ -69,11 +82,13 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 @property(nonatomic,strong) UISegmentedControl *sections;
 @property(nonatomic,strong) WKWebView *web;
 @property(nonatomic,strong) UIButton *retry;
+@property(nonatomic,strong) UIButton *buttonVisibility;
 - (void)refresh;
 @end
 static ELPanelController *ELPanel;
 static void ELBeginBackend(void);
 static void ELMaybeStartGame(void);
+static void ELReceiveStatus(NSDictionary *status, uint64_t generation);
 
 static BOOL ELIsPanelURL(NSURL *url) {
     if (![url.scheme.lowercaseString isEqual:@"http"] || ![url.host isEqual:@"127.0.0.1"] || url.user || url.password) return NO;
@@ -99,13 +114,20 @@ static void ELHidePanel(void) {
     [_retry addTarget:self action:@selector(retrySetup) forControlEvents:UIControlEventTouchUpInside];
     _sections=[[UISegmentedControl alloc] initWithItems:@[@"Accounts",@"Server",@"Tools"]];
     [_sections addTarget:self action:@selector(openSection) forControlEvents:UIControlEventValueChanged];
+    _buttonVisibility=[UIButton buttonWithType:UIButtonTypeSystem];
+    [_buttonVisibility addTarget:self action:@selector(toggleServerButton) forControlEvents:UIControlEventTouchUpInside];
+    UILabel *guidance=[UILabel new]; guidance.numberOfLines=0;
+    guidance.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption2]; guidance.textColor=UIColor.secondaryLabelColor;
+    guidance.text=ELButtonText(@"Hide the button for MVs. Hold the upper-left corner for 2 seconds to reopen this panel. The choice is saved.",
+        @"MV 화면을 가리지 않도록 버튼을 숨깁니다. 왼쪽 위 모서리를 2초간 길게 누르면 이 패널을 다시 열 수 있습니다. 선택은 저장됩니다.",
+        @"MVを見やすくするためにボタンを隠します。左上隅を2秒間長押しすると、このパネルを再び開けます。設定は保存されます。");
     WKWebViewConfiguration *configuration=[WKWebViewConfiguration new];
     configuration.websiteDataStore=WKWebsiteDataStore.nonPersistentDataStore;
     [configuration.userContentController addScriptMessageHandler:self name:@"elichika"];
     NSString *script=@"(()=>{const p=new Map();let n=0;window.ElichikaIOS=Object.freeze({request:(action,options={})=>new Promise((resolve,reject)=>{const id=String(++n);p.set(id,{resolve,reject});window.webkit.messageHandlers.elichika.postMessage({id,action,...options});})});window.addEventListener('elichika-native-result',e=>{const x=e.detail,j=p.get(x.id);if(j){p.delete(x.id);x.error?j.reject(Error(x.error)):j.resolve(x.result)}})})();";
     [configuration.userContentController addUserScript:[[WKUserScript alloc] initWithSource:script injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
     _web=[[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration]; _web.navigationDelegate=self;
-    UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[_statusLabel,_spinner,_retry,_sections]];
+    UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[_statusLabel,_spinner,_retry,_buttonVisibility,guidance,_sections]];
     head.axis=UILayoutConstraintAxisVertical; head.spacing=8;
     head.translatesAutoresizingMaskIntoConstraints=NO; _web.translatesAutoresizingMaskIntoConstraints=NO;
     [self.view addSubview:head]; [self.view addSubview:_web];
@@ -122,16 +144,27 @@ static void ELHidePanel(void) {
 }
 - (void)dealloc { [_web.configuration.userContentController removeScriptMessageHandlerForName:@"elichika"]; }
 - (void)close { if (ELCore().started()) ELHidePanel(); }
+- (void)toggleServerButton {
+    ELButtonPolicy().toggle();
+    [NSUserDefaults.standardUserDefaults setBool:ELButtonPolicy().visible() forKey:ELShowServerButtonKey];
+    ELRefreshMenu(); [self refresh];
+}
 - (void)retrySetup {
     if (!ELProfileSupported || !ELRoutingPrepared) return;
     [self.retry setEnabled:NO];
     ElichikaPythonCall(@"status",^(NSDictionary *status) {
-        if ([status[@"ready"] boolValue]) { ELRuntimeStatus=status; ELCore().report(ELCore().generation(),YES,""); ELMaybeStartGame(); }
+        if ([status[@"ready"] boolValue]) {
+            const auto generation=ELCore().begin(); ELHookError=nil;
+            ELReceiveStatus(status,generation);
+        }
         else ELBeginBackend();
     });
 }
 - (void)refresh {
     if (!self.isViewLoaded) return;
+    [_buttonVisibility setTitle:ELButtonPolicy().visible()
+        ? ELButtonText(@"Hide server button",@"서버 버튼 숨기기",@"サーバーボタンを隠す")
+        : ELButtonText(@"Show server button",@"서버 버튼 표시",@"サーバーボタンを表示") forState:UIControlStateNormal];
     NSString *error=ELHookError ?: [NSString stringWithUTF8String:ELCore().error().c_str()];
     if (error.length) _statusLabel.text=[NSString stringWithFormat:@"Setup could not finish.\n%@",error];
     else if (ELCore().ready()) _statusLabel.text=[ELConfiguration[@"core_only"] boolValue]
@@ -211,6 +244,15 @@ void ElichikaHostShowManagement(void) {
 }
 static void ELRefreshMenu(void) {
     UIWindow *window=ELFindGameWindow(); if (!window) return;
+    static NSHashTable *gestureWindows;
+    if (!gestureWindows) gestureWindows=NSHashTable.weakObjectsHashTable;
+    if (![gestureWindows containsObject:window]) {
+        UILongPressGestureRecognizer *restore=[[UILongPressGestureRecognizer alloc] initWithTarget:ELMenuTarget() action:@selector(restore:)];
+        restore.minimumPressDuration=elichika::ServerButtonPolicy::restoreHoldSeconds;
+        restore.numberOfTouchesRequired=1; restore.allowableMovement=12;
+        restore.cancelsTouchesInView=NO; restore.delaysTouchesBegan=NO; restore.delaysTouchesEnded=NO;
+        restore.delegate=ELMenuTarget(); [window addGestureRecognizer:restore]; [gestureWindows addObject:window];
+    }
     if (!ELMenuButton) {
         ELMenuButton=[UIButton buttonWithType:UIButtonTypeSystem];
         [ELMenuButton setTitle:@"Elichika" forState:UIControlStateNormal];
@@ -219,15 +261,25 @@ static void ELRefreshMenu(void) {
         [ELMenuButton addTarget:ELMenuTarget() action:@selector(show) forControlEvents:UIControlEventTouchUpInside];
     }
     if (ELMenuButton.superview!=window) [window addSubview:ELMenuButton];
+    ELMenuButton.hidden=!ELButtonPolicy().visible();
     ELMenuButton.frame=CGRectMake(window.safeAreaInsets.left+8,window.safeAreaInsets.top+8,82,34);
     [window bringSubviewToFront:ELMenuButton];
 }
 
-@interface ELMenuAction : NSObject
+@interface ELMenuAction : NSObject <UIGestureRecognizerDelegate>
 - (void)show;
+- (void)restore:(UILongPressGestureRecognizer *)gesture;
 @end
 @implementation ELMenuAction
 - (void)show { ElichikaHostShowManagement(); }
+- (void)restore:(UILongPressGestureRecognizer *)gesture { if (gesture.state==UIGestureRecognizerStateBegan) ElichikaHostShowManagement(); }
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
+    CGPoint point=[touch locationInView:gesture.view]; CGRect bounds=gesture.view.bounds; UIEdgeInsets safe=gesture.view.safeAreaInsets;
+    return elichika::ServerButtonPolicy::restoreCorner(point.x,point.y,bounds.size.width,bounds.size.height,safe.left,safe.top);
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+    (void)gesture; (void)other; return YES;
+}
 @end
 static id ELMenuTarget(void) { static ELMenuAction *value; static dispatch_once_t once; dispatch_once(&once,^{ value=[ELMenuAction new]; }); return value; }
 

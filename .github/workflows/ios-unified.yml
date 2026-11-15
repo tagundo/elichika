@@ -6,7 +6,7 @@ on:
       mode:
         description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
         type: choice
-        options: [sdk-compile, core-runtime, full-candidate]
+        options: [sdk-compile, core-runtime, runtime-inputs, full-candidate]
         default: sdk-compile
       version:
         description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
@@ -38,6 +38,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go compiler for the actual in-process backend
+        if: ${{ inputs.mode != 'runtime-inputs' }}
         uses: actions/setup-go@v5
         with:
           go-version: '1.22.12'
@@ -48,6 +49,9 @@ jobs:
           python-version: '3.13'
 
       - name: Verify portable packaging and native lifecycle contracts
+        if: ${{ inputs.mode != 'runtime-inputs' }}
+        id: preflight
+        continue-on-error: true
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ios-evidence" "$RUNNER_TEMP/ios-candidate"
@@ -65,6 +69,9 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-rsa-key-tests.txt"
 
       - name: Test actual in-process Go lifecycle, initialization, keys and timezones
+        if: ${{ inputs.mode != 'runtime-inputs' }}
+        id: go_tests
+        continue-on-error: true
         run: |
           set -euo pipefail
           go test -count=1 -tags=elichika_inprocess -v ./iosbridge ./runtimeinit ./db ./router \
@@ -72,21 +79,27 @@ jobs:
           go test -count=1 -v ./config \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-legacy-config-tests.txt"
 
-      - name: Build complete Python wheels and native codecs for the full candidate
+      - name: Require the unchanged production Archive publication guard for a full IPA
         if: ${{ inputs.mode == 'full-candidate' }}
         run: |
+          python3 -B - <<'PY'
+          from archive_profile_download_bridge import load_source_config
+          load_source_config('archive-hosted-catalog.json')
+          PY
+
+      - name: Build exact Python wheels and signed codec inputs without an app
+        if: ${{ inputs.mode == 'full-candidate' || inputs.mode == 'runtime-inputs' }}
+        run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios-evidence"
           python3 -m pip install --disable-pip-version-check --require-hashes -r ios/runtime/build-requirements.txt
-          for target in device simulator; do
-            python3 -B ios/runtime/build_wheels.py \
-              --target "$target" --output "$RUNNER_TEMP/ios-built-inputs/$target" \
-              --cache "$RUNNER_TEMP/ios-input-cache"
-            python3 -B ios/runtime/build_codecs.py \
-              --target "$target" --repo . \
-              --output "$RUNNER_TEMP/ios-built-inputs/$target/codecs"
-          done
+          python3 -B ios/ci/build_runtime_inputs.py --repo . \
+            --work "$RUNNER_TEMP/ios-runtime-producer" --output "$RUNNER_TEMP/ios-built-inputs" \
+            --cache "$RUNNER_TEMP/ios-input-cache" --evidence "$RUNNER_TEMP/ios-evidence" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/runtime-inputs-build.log"
 
       - name: Compile actual device and Simulator targets and execute selected gates
+        if: ${{ inputs.mode != 'runtime-inputs' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           BUILD_MODE: ${{ inputs.mode }}
@@ -98,6 +111,27 @@ jobs:
             --delivery "$RUNNER_TEMP/ios-candidate" --version "$REQUESTED_VERSION" \
             --built-inputs "$RUNNER_TEMP/ios-built-inputs" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/build.log"
+
+      - name: Require portable and Go tests to have passed
+        if: ${{ always() && inputs.mode != 'runtime-inputs' }}
+        env:
+          PORTABLE_TEST_OUTCOME: ${{ steps.preflight.outcome }}
+          GO_TEST_OUTCOME: ${{ steps.go_tests.outcome }}
+        run: |
+          set -euo pipefail
+          printf 'Portable test outcome: %s\nGo test outcome: %s\n' "$PORTABLE_TEST_OUTCOME" "$GO_TEST_OUTCOME"
+          test "$PORTABLE_TEST_OUTCOME" = success
+          test "$GO_TEST_OUTCOME" = success
+
+      - name: Preserve real dependency inputs, explicitly not an IPA or runtime proof
+        if: ${{ inputs.mode == 'runtime-inputs' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-ios-runtime-inputs-NOT-IPA-${{ github.sha }}
+          path: ${{ runner.temp }}/ios-built-inputs/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
 
       - name: Upload explicitly untested actual-game candidate
         if: ${{ inputs.mode == 'full-candidate' && success() }}

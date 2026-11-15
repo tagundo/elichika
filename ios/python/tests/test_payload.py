@@ -29,7 +29,7 @@ class PayloadOwnershipTests(unittest.TestCase):
             first.mkdir()
             next_library.mkdir()
             config = ensure_config(data, first, "en")
-            self.assertEqual(config["cdn_cache_dir"], str(first / "packs"))
+            self.assertEqual(config["cdn_cache_dir"], str(first.resolve() / "packs"))
             config["cdn_cache_dir"] = "/owner/custom/cache"
             config["tap_bond_gain"] = 123
             (data / "config.json").write_text(json.dumps(config))
