@@ -112,7 +112,7 @@
     "test_individual_uploader.py": "9235d0dca9391b04a5dec665ab43d9ac79cadd4d2055df42335a155506037b2f",
     "test_layout_review.py": "341c0b043da794992e0a075d11e570ebe5e48a3785cb027898a015689c39f1a3",
     "test_merge_supplement.py": "8652802726e269b6afe50bcf5ef3018b16c568537d015068229e973b0f38d5a3",
-    "test_owned_publisher.py": "43ba8eccae21fbb77264f26f821b04024aaa96cab203ea12670567e316ce73c5",
+    "test_owned_publisher.py": "435873a6a447c485ed4c56f1b838602e8169158d47f31487a15f07dbfcbff945",
     "test_reaggregate_target.py": "f101e9ce92eedb4930d30dadedbcb4530282ee8e4eed116cffd06b01eb4c0141"
   },
   "supplement_metadata_sha256": "0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5",

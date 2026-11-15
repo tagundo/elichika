@@ -119,9 +119,9 @@
     "source": "/tmp/asset-five-owned-full-publisher-20261115/test_merge_supplement.py"
   },
   "test_owned_publisher.py": {
-    "bytes": 12807,
-    "sha256": "43ba8eccae21fbb77264f26f821b04024aaa96cab203ea12670567e316ce73c5",
-    "source": "/tmp/asset-five-owned-full-publisher-20261115/test_owned_publisher.py"
+    "bytes": 13334,
+    "sha256": "435873a6a447c485ed4c56f1b838602e8169158d47f31487a15f07dbfcbff945",
+    "source": "/dev/shm/archive-chain-orchestration-20261115/legacy-qa-fix/test_owned_publisher.py"
   },
   "test_reaggregate_target.py": {
     "bytes": 10382,

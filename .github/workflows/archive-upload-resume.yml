@@ -1,0 +1,266 @@
+name: Resume complete Archive uploads through finite sequential jobs
+on:
+  push:
+    branches: [codex/asset-upload-resume-20261115]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: elichika-individual-original-asset-upload
+  cancel-in-progress: false
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    outputs:
+      status: ${{ steps.importer.outputs.status }}
+      reference: ${{ steps.handoff.outputs.reference }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            tools/archive_inventory
+            tools/archive_resume
+            .github/workflows
+      - name: Verify exact run, source QA and original proof provenance before credentials
+        timeout-minutes: 5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -B tools/archive_resume/chain_control.py preflight
+      - name: Download unchanged original TAR proofs
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43681672170
+          pattern: archive-part-proofs-*
+          path: ${{ runner.temp }}/elichika-original-part-proofs
+      - name: Download unchanged supplemental full-source proof
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43686115875
+          name: missing-8033-supplement-proof
+          path: ${{ runner.temp }}/elichika-supplement-inputs
+      - name: Reproduce exact complete 42830-file inputs without Archive credentials
+        timeout-minutes: 5
+        working-directory: tools/archive_inventory
+        run: python3 -B ci_prepare.py prepare
+      - name: Import only the completed exact legacy journal and resolve ambiguous writes
+        id: importer
+        timeout-minutes: 20
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -B tools/archive_resume/chain_control.py bootstrap
+      - name: Preserve checked legacy transition or halted evidence
+        id: archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 10
+        with:
+          name: archive-upload-bootstrap-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/elichika-ia-upload-work/journal.json
+            ${{ runner.temp }}/elichika-ia-upload-work/journal.events.jsonl
+            ${{ runner.temp }}/elichika-ia-upload-work/bootstrap.json
+            ${{ runner.temp }}/elichika-ia-upload-work/publication.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Bind successful bootstrap artifact to its exact receipt and raw journal hashes
+        id: handoff
+        if: steps.importer.outcome == 'success' && steps.archive.outcome == 'success'
+        env:
+          ARTIFACT_ID: ${{ steps.archive.outputs.artifact-id }}
+          ARTIFACT_SHA256: ${{ steps.archive.outputs.artifact-digest }}
+        run: >-
+          python3 -B tools/archive_resume/chain_control.py handoff --segment 0
+          --directory "$RUNNER_TEMP/elichika-ia-upload-work"
+          --artifact-id "$ARTIFACT_ID" --artifact-sha256 "$ARTIFACT_SHA256"
+  segment_01:
+    needs: bootstrap
+    if: ${{ needs.bootstrap.result == 'success' && needs.bootstrap.outputs.status == 'CONTINUE' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 1
+      parent_reference: ${{ needs.bootstrap.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_02:
+    needs: segment_01
+    if: ${{ needs.segment_01.result == 'success' && needs.segment_01.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 2
+      parent_reference: ${{ needs.segment_01.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_03:
+    needs: segment_02
+    if: ${{ needs.segment_02.result == 'success' && needs.segment_02.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 3
+      parent_reference: ${{ needs.segment_02.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_04:
+    needs: segment_03
+    if: ${{ needs.segment_03.result == 'success' && needs.segment_03.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 4
+      parent_reference: ${{ needs.segment_03.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_05:
+    needs: segment_04
+    if: ${{ needs.segment_04.result == 'success' && needs.segment_04.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 5
+      parent_reference: ${{ needs.segment_04.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_06:
+    needs: segment_05
+    if: ${{ needs.segment_05.result == 'success' && needs.segment_05.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 6
+      parent_reference: ${{ needs.segment_05.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_07:
+    needs: segment_06
+    if: ${{ needs.segment_06.result == 'success' && needs.segment_06.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 7
+      parent_reference: ${{ needs.segment_06.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_08:
+    needs: segment_07
+    if: ${{ needs.segment_07.result == 'success' && needs.segment_07.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 8
+      parent_reference: ${{ needs.segment_07.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_09:
+    needs: segment_08
+    if: ${{ needs.segment_08.result == 'success' && needs.segment_08.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 9
+      parent_reference: ${{ needs.segment_08.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_10:
+    needs: segment_09
+    if: ${{ needs.segment_09.result == 'success' && needs.segment_09.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 10
+      parent_reference: ${{ needs.segment_09.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_11:
+    needs: segment_10
+    if: ${{ needs.segment_10.result == 'success' && needs.segment_10.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 11
+      parent_reference: ${{ needs.segment_10.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  segment_12:
+    needs: segment_11
+    if: ${{ needs.segment_11.result == 'success' && needs.segment_11.outputs.status == 'PAUSED_BUDGET' }}
+    uses: ./.github/workflows/archive-upload-segment.yml
+    with:
+      segment: 12
+      parent_reference: ${{ needs.segment_11.outputs.reference }}
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+      ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+  finish:
+    if: always()
+    needs: [bootstrap, segment_01, segment_02, segment_03, segment_04, segment_05, segment_06, segment_07, segment_08, segment_09, segment_10, segment_11, segment_12]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            tools/archive_inventory
+            tools/archive_resume
+            .github/workflows
+      - name: Verify exact run, source QA and original proof provenance before credentials
+        timeout-minutes: 5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -B tools/archive_resume/chain_control.py preflight
+      - name: Download unchanged original TAR proofs
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43681672170
+          pattern: archive-part-proofs-*
+          path: ${{ runner.temp }}/elichika-original-part-proofs
+      - name: Download unchanged supplemental full-source proof
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43686115875
+          name: missing-8033-supplement-proof
+          path: ${{ runner.temp }}/elichika-supplement-inputs
+      - name: Reproduce exact complete 42830-file inputs without Archive credentials
+        timeout-minutes: 5
+        working-directory: tools/archive_inventory
+        run: python3 -B ci_prepare.py prepare
+      - name: Require actual COMPLETE publication or fail visibly as INCOMPLETE
+        id: final
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHAIN_NEEDS: ${{ toJSON(needs) }}
+        run: python3 -B tools/archive_resume/chain_control.py final
+      - name: Preserve backward-compatible complete publication receipt only after verification
+        if: steps.final.outputs.status == 'COMPLETE'
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 10
+        with:
+          name: elichika-individual-upload-journal-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/archive-resume-complete/journal.json
+            ${{ runner.temp }}/archive-resume-complete/journal.events.jsonl
+            ${{ runner.temp }}/archive-resume-complete/publication.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Preserve final chain provenance without game payloads
+        if: steps.final.outputs.status == 'COMPLETE'
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-upload-chain-complete-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/archive-resume-complete/chain-complete.json
+          if-no-files-found: error
+          retention-days: 30

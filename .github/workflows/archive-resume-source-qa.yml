@@ -1,0 +1,82 @@
+name: Validate resumable Archive upload source
+
+on:
+  push:
+    branches: [codex/asset-upload-resume-20261115]
+    paths:
+      - 'tools/archive_resume/**'
+      - '.github/workflows/archive-resume-*.yml'
+      - '.github/workflows/archive-upload-resume.yml'
+      - '.github/workflows/archive-upload-segment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elichika-archive-resume-source-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/workflows
+            tools/archive_inventory
+            tools/archive_resume
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify reviewed source files
+        id: pins
+        env:
+          PYTHONPATH: ${{ github.workspace }}/tools/archive_resume:${{ github.workspace }}/tools/archive_inventory
+        run: python3 -B -c 'import chain_control; chain_control.verify_sources()'
+      - name: Test unchanged original transfer and publication contracts
+        id: original
+        working-directory: tools/archive_inventory
+        run: python3 -B -m unittest -v test_individual_uploader test_merge_supplement test_fair_scheduler test_reaggregate_target test_ci_preflight test_diagnostic_put test_layout_review test_existing_owned test_owned_publisher
+      - name: Test cooperative checkpoints and exact successor lineage
+        id: resume
+        env:
+          PYTHONPATH: ${{ github.workspace }}/tools/archive_resume:${{ github.workspace }}/tools/archive_inventory
+        run: python3 -B -m unittest discover -s tools/archive_resume -p 'test_*.py' -v
+      - name: Record source QA outcome
+        if: always()
+        env:
+          REPORT_DIR: ${{ runner.temp }}/archive-resume-source-qa
+          PINS_OUTCOME: ${{ steps.pins.outcome }}
+          ORIGINAL_TEST_OUTCOME: ${{ steps.original.outcome }}
+          RESUME_TEST_OUTCOME: ${{ steps.resume.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          outcomes = {name: os.environ[name] for name in (
+              'PINS_OUTCOME', 'ORIGINAL_TEST_OUTCOME', 'RESUME_TEST_OUTCOME')}
+          report = {
+              'schema': 1, 'kind': 'SOURCE_QA_ONLY_NOT_AN_ARCHIVE_UPLOAD',
+              'status': 'PASS' if all(value == 'success' for value in outcomes.values()) else 'FAIL',
+              'source_sha': os.environ['GITHUB_SHA'], 'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'run_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']), 'outcomes': outcomes,
+              'archive_credentials_used': False, 'archive_writes': 0,
+              'real_download_or_resume_proven': False,
+          }
+          destination = Path(os.environ['REPORT_DIR'])
+          destination.mkdir(mode=0o700, exist_ok=True)
+          (destination / 'source-qa.json').write_text(json.dumps(report, sort_keys=True, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: archive-resume-source-qa-${{ github.run_id }}
+          path: ${{ runner.temp }}/archive-resume-source-qa/source-qa.json
+          if-no-files-found: error
+          retention-days: 30

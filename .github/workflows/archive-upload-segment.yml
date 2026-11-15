@@ -1,0 +1,155 @@
+name: One drained and resumable Archive upload segment
+on:
+  workflow_call:
+    inputs:
+      segment:
+        type: number
+        required: true
+      parent_reference:
+        type: string
+        required: true
+    secrets:
+      ELICHIKA_ARCHIVE_ACCESS_KEY:
+        required: true
+      ELICHIKA_ARCHIVE_SECRET_KEY:
+        required: true
+    outputs:
+      status:
+        value: ${{ jobs.upload.outputs.status }}
+      reference:
+        value: ${{ jobs.upload.outputs.reference }}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  upload:
+    name: Upload segment ${{ inputs.segment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    outputs:
+      status: ${{ steps.result.outputs.status }}
+      reference: ${{ steps.handoff.outputs.reference }}
+    steps:
+      - name: Start the whole-job budget before checkout and preparation
+        run: |
+          python3 - <<'PYCODE'
+          import os,time
+          from pathlib import Path
+          (Path(os.environ['RUNNER_TEMP'])/'archive-resume-job-start').write_text(str(int(time.time())))
+          PYCODE
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            tools/archive_inventory
+            tools/archive_resume
+            .github/workflows
+      - name: Verify exact run, source QA and original proof provenance before credentials
+        timeout-minutes: 5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -B tools/archive_resume/chain_control.py preflight
+      - name: Download unchanged original TAR proofs
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43681672170
+          pattern: archive-part-proofs-*
+          path: ${{ runner.temp }}/elichika-original-part-proofs
+      - name: Download unchanged supplemental full-source proof
+        uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43686115875
+          name: missing-8033-supplement-proof
+          path: ${{ runner.temp }}/elichika-supplement-inputs
+      - name: Reproduce exact complete 42830-file inputs without Archive credentials
+        timeout-minutes: 5
+        working-directory: tools/archive_inventory
+        run: python3 -B ci_prepare.py prepare
+      - name: Verify predecessor artifact, receipt, trace and both raw journals before Archive secrets
+        id: parent
+        timeout-minutes: 10
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PARENT_REFERENCE: ${{ inputs.parent_reference }}
+          SEGMENT: ${{ inputs.segment }}
+        run: python3 -B tools/archive_resume/chain_control.py prepare --segment "$SEGMENT"
+      - name: Reserve at least forty minutes to drain PUTs and fifteen for durable artifacts
+        id: budget
+        run: python3 -B tools/archive_resume/chain_control.py budget
+      - name: Upload with a cooperative budget and no implicit retry after refusal
+        working-directory: tools/archive_inventory
+        env:
+          ELICHIKA_ARCHIVE_ACCESS_KEY: ${{ secrets.ELICHIKA_ARCHIVE_ACCESS_KEY }}
+          ELICHIKA_ARCHIVE_SECRET_KEY: ${{ secrets.ELICHIKA_ARCHIVE_SECRET_KEY }}
+          SOFT_SECONDS: ${{ steps.budget.outputs.soft_seconds }}
+          HARD_SECONDS: ${{ steps.budget.outputs.hard_seconds }}
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f -- "$RUNNER_TEMP/elichika-ia-upload-auth/auth.json"; rmdir -- "$RUNNER_TEMP/elichika-ia-upload-auth" 2>/dev/null || true' EXIT
+          python3 - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          c=json.loads(Path('activation.json').read_bytes())
+          auth={'access':os.environ['ELICHIKA_ARCHIVE_ACCESS_KEY'],'secret':os.environ['ELICHIKA_ARCHIVE_SECRET_KEY'],
+                'account':c['account'],'session_nonce':c['session_nonce']}
+          if not auth['access'] or not auth['secret']:raise SystemExit('Both Archive Repository Secrets are required')
+          directory=Path(os.environ['RUNNER_TEMP'])/'elichika-ia-upload-auth';directory.mkdir(mode=0o700)
+          fd=os.open(directory/'auth.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          with os.fdopen(fd,'w') as stream:json.dump(auth,stream)
+          PYCODE
+          unset ELICHIKA_ARCHIVE_ACCESS_KEY ELICHIKA_ARCHIVE_SECRET_KEY
+          timeout --signal=TERM --kill-after=30s "${HARD_SECONDS}s" \
+            python3 -B ../archive_resume/resumable_publisher.py upload \
+            --segment-lineage "$RUNNER_TEMP/archive-segment-lineage.json" --segment-soft-seconds "$SOFT_SECONDS" \
+            --inventory "$RUNNER_TEMP/elichika-complete-upload-inputs/inventory.json" \
+            --audit "$RUNNER_TEMP/elichika-complete-upload-inputs/audit.json" \
+            --catalog expected-catalog.json.gz --metadata archive-metadata.json \
+            --part-reports "$RUNNER_TEMP/elichika-original-part-proofs" \
+            --target-manifest authoritative-target.json.gz \
+            --target-manifest-sha256 e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c \
+            --supplemental-metadata supplemental-metadata.json.gz \
+            --supplemental-metadata-sha256 0b42b8933fed37dc458f4b5e8605b39e101d7bd2cc0cb6cd39ac4ba4d6679bf5 \
+            --supplemental-proof "$RUNNER_TEMP/elichika-supplement-inputs/supplement-proof.json" \
+            --supplemental-proof-sha256 e2eb04baff335e112939d65b2e371af7219821caa2c14188e50e496802d3dfa0 \
+            --requested-total 42830 --workers 4 --stage-budget 100663296 \
+            --work "$RUNNER_TEMP/elichika-ia-upload-work" \
+            --auth-file "$RUNNER_TEMP/elichika-ia-upload-auth/auth.json"
+      - name: Accept only the just-finished current segment receipt with reaped workers
+        id: result
+        env:
+          SEGMENT: ${{ inputs.segment }}
+        run: >-
+          python3 -B tools/archive_resume/chain_control.py result --segment "$SEGMENT"
+          --directory "$RUNNER_TEMP/elichika-ia-upload-work"
+      - name: Preserve durable checkpoint even when a worker halts or is forcibly terminated
+        id: archive
+        if: always() && steps.parent.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 10
+        with:
+          name: ${{ steps.parent.outputs.artifact_name }}
+          path: |
+            ${{ runner.temp }}/elichika-ia-upload-work/journal.json
+            ${{ runner.temp }}/elichika-ia-upload-work/journal.events.jsonl
+            ${{ runner.temp }}/elichika-ia-upload-work/segment.json
+            ${{ runner.temp }}/elichika-ia-upload-work/slice-transfer-events.jsonl
+            ${{ runner.temp }}/elichika-ia-upload-work/publication.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Bind successful artifact identity, full digest and exact receipt for the successor
+        id: handoff
+        if: steps.result.outcome == 'success' && steps.archive.outcome == 'success'
+        env:
+          SEGMENT: ${{ inputs.segment }}
+          ARTIFACT_ID: ${{ steps.archive.outputs.artifact-id }}
+          ARTIFACT_SHA256: ${{ steps.archive.outputs.artifact-digest }}
+        run: >-
+          python3 -B tools/archive_resume/chain_control.py handoff --segment "$SEGMENT"
+          --directory "$RUNNER_TEMP/elichika-ia-upload-work"
+          --artifact-id "$ARTIFACT_ID" --artifact-sha256 "$ARTIFACT_SHA256"

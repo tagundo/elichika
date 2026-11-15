@@ -102,9 +102,17 @@ class SchedulerTests(unittest.TestCase):
     def make(self,**kwargs):
         h=Harness(Path(self.dir.name)/'work',**kwargs);self.addCleanup(h.close);return h
     def test_five_contexts_fair_four_global_tasks_and_actual_md5(self):
-        h=self.make(count=30);self.run_harness(h)
+        h=self.make(count=30);admitted=[]
+        original_submit=concurrent.futures.ThreadPoolExecutor.submit
+        def record_admission(executor,function,*args,**kwargs):
+            if function == h.pub.one: admitted.append(args[2])
+            return original_submit(executor,function,*args,**kwargs)
+        # Fairness is a coordinator admission contract. OS worker-start order
+        # can differ even when all five contexts were admitted fairly.
+        with patch.object(concurrent.futures.ThreadPoolExecutor,'submit',record_admission):
+            self.run_harness(h)
         self.assertEqual(len(h.puts),30);self.assertLessEqual(h.maxlive,4)
-        self.assertEqual(set(h.order[:5]),set(layout.ITEMS))
+        self.assertEqual(admitted[:5],list(layout.ITEMS))
         self.assertTrue(all(r['status']=='REMOTE_METADATA_VERIFIED' for r in h.pub.records().values()))
     def test_global128_admission_reserved_while_visibility_is_held(self):
         h=self.make(count=145,release=128);self.run_harness(h)
