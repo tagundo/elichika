@@ -50,6 +50,9 @@ jobs:
         working-directory: ci/sifas_date_clients/metadata
         run: python3 -B -m unittest discover -s tests -v
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - name: Install exact SDK tool versions on hosted runner
         run: sdkmanager "cmdline-tools;12.0" "platforms;android-34" "build-tools;34.0.0" "ndk;28.2.13676358"
       - name: Build incremental date candidates from verified released b25 and v5
