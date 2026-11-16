@@ -5,9 +5,13 @@ and imported documents live below data_root. The runtime does not chdir, mutate
 os.environ, run subprocesses, install packages, or finalize CPython.
 """
 import importlib
+import base64
+from contextlib import closing
 import hashlib
 import json
 import mimetypes
+import sqlite3
+import uuid
 from elichika_ios.mime_bootstrap import configure as _configure_mime
 
 # The embedded app cannot read macOS Apache/system MIME databases. Establish
@@ -34,6 +38,10 @@ _scope = None
 _cancel = threading.Event()
 _bootstrap_thread = None
 _management = None
+_mv_audio_lock = threading.RLock()
+_mv_audio_prepare_lock = threading.Lock()
+_mv_audio_session = None
+_mv_audio_pending = None
 _PROBE_STAGES = frozenset({"payload_prepare", "go_start", "tool_dependencies", "tls", "tools",
                            "dependencies", "registries", "texture_codecs", "model_glb",
                            "go_stop", "config_read", "go_restart", "python_complete"})
@@ -300,6 +308,7 @@ def start(config_json):
             # refresh only the local language setting, never process globals.
             _scope.language = config.get("language", "en")
             _scope.facades["os"].environ["SIFAS_LANG"] = _scope.language
+        _mv_audio_dispose()
         _cancel.clear()
         _state.update(phase="preparing", ready=False, error="", admin_url="", tools_url="", core_only=bool(config.get("core_only", False)),
                       preparation_timings={},
@@ -321,6 +330,7 @@ def status():
 
 def cancel():
     _cancel.set()
+    _mv_audio_dispose()
     try:
         from adminui.jobs import MANAGER
         with MANAGER._lock:
@@ -351,6 +361,222 @@ def lifecycle(event):
         except ImportError:
             pass
     return status()
+
+
+class _MVAudioError(ValueError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def _mv_audio_reply(*, error=None, **values):
+    if error is not None:
+        return json.dumps({"ok": False, "error": {"code": error.code, "message": str(error)}})
+    return json.dumps({"ok": True, **values}, separators=(",", ":"))
+
+
+def _mv_audio_args(raw, required, optional=()):
+    def fail():
+        raise _MVAudioError("MV_AUDIO_INVALID_ARGUMENT", "The native MV audio request is invalid.")
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                fail()
+            result[key] = value
+        return result
+    if not isinstance(raw, str) or len(raw) > 16384:
+        fail()
+    try:
+        value = json.loads(raw, object_pairs_hook=unique, parse_constant=lambda _: fail())
+    except (ValueError, TypeError) as error:
+        if isinstance(error, _MVAudioError):
+            raise
+        fail()
+    if (not isinstance(value, dict) or not set(required).issubset(value)
+            or set(value) - set(required) - set(optional) or type(value.get("schema")) is not int
+            or value["schema"] != 1):
+        fail()
+    return value
+
+
+def _mv_audio_uuid(value):
+    try:
+        if not isinstance(value, str) or str(uuid.UUID(value)) != value:
+            raise ValueError()
+    except (ValueError, AttributeError):
+        raise _MVAudioError("MV_AUDIO_INVALID_ARGUMENT", "The native MV audio session identity is invalid.") from None
+    return value
+
+
+def _mv_audio_dispose(session_id=None):
+    """Cancel preparation or close only the requested owned audio session."""
+    global _mv_audio_session
+    with _mv_audio_lock:
+        if session_id is None and _mv_audio_pending is not None:
+            _mv_audio_pending.set()
+        current = _mv_audio_session
+        if current is None or session_id is not None and current[0] != session_id:
+            return False
+        _mv_audio_session = None
+        current[2].set()
+        current[1].close()
+        return True
+
+
+def _mv_audio_context():
+    with _lock:
+        if (_scope is None or _management is None or not _state.get("ready")
+                or _state.get("core_only") or _cancel.is_set()):
+            raise _MVAudioError("MV_AUDIO_NOT_READY", "Start the full game tool runtime before preparing MV audio.")
+        scope = _scope
+        region = _management.config.get("region", "gl")
+        language = scope.language
+    if region not in ("gl", "jp") or language not in ("en", "ja", "ko", "zh"):
+        raise _MVAudioError("MV_AUDIO_NOT_READY", "The selected game audio region or language is unavailable.")
+    return scope, region, language
+
+
+def _mv_audio_catalog(scope, region, language, sheet):
+    """Use this installation's selected iOS catalog, with its usual language fallback."""
+    directory = scope.data_root / "assets/db" / region
+    if directory.resolve() != directory:
+        raise _MVAudioError("MV_AUDIO_CATALOG_MISSING", "The local iOS song catalog directory is unavailable.")
+    catalogs = sorted(directory.glob("asset_i_*.db"), key=lambda path:
+                      (path.name != "asset_i_" + language + ".db", path.name != "asset_i_en.db", path.name))
+    if len(catalogs) > 8:
+        raise _MVAudioError("MV_AUDIO_CATALOG_MISSING", "The local iOS song catalog is ambiguous.")
+    for catalog in catalogs:
+        if catalog.is_symlink() or not catalog.resolve().is_relative_to(directory.resolve()):
+            continue
+        with closing(sqlite3.connect(catalog.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+            rows = db.execute("SELECT sheet_name FROM m_asset_sound WHERE sheet_name=? LIMIT 2", (sheet,)).fetchall()
+        if len(rows) > 1:
+            raise _MVAudioError("MV_AUDIO_CATALOG_MISSING", "The selected cue sheet has an ambiguous local mapping.")
+        if rows:
+            return catalog
+    raise _MVAudioError("MV_AUDIO_CATALOG_MISSING", "The selected song cue sheet is missing from this installation's iOS catalogs.")
+
+
+def mv_export_audio_prepare(args_json):
+    """Native-only JSON entry point. No request may supply a path or a URL.
+
+    Required schema 1 payload: song {sheet, cue, gain, music_length_ms,
+    start_time_ms, source_offset_ms}, video {frame_count, fps_numerator,
+    fps_denominator}. All song fields come from the verified game adapter.
+    """
+    global _mv_audio_session, _mv_audio_pending
+    acquired = False
+    prepared = event = None
+    try:
+        args = _mv_audio_args(args_json, ("schema", "song", "video"))
+        song, video = args["song"], args["video"]
+        if (not isinstance(song, dict) or set(song) != {"sheet", "cue", "gain", "music_length_ms", "start_time_ms", "source_offset_ms"}
+                or not isinstance(video, dict) or set(video) != {"frame_count", "fps_numerator", "fps_denominator"}):
+            raise _MVAudioError("MV_AUDIO_INVALID_ARGUMENT", "The native MV song or video configuration is incomplete.")
+        if (any(not isinstance(song[key], str) or not 1 <= len(song[key]) <= 240 or "\0" in song[key] for key in ("sheet", "cue"))
+                or type(song["gain"]) not in (int, float) or not 0 <= song["gain"] <= 4
+                or any(type(song[key]) is not int for key in ("music_length_ms", "start_time_ms", "source_offset_ms"))
+                or not 1 <= song["music_length_ms"] <= 1200000 or abs(song["start_time_ms"]) > 1200000
+                or not 0 <= song["source_offset_ms"] <= 1200000):
+            raise _MVAudioError("MV_AUDIO_INVALID_ARGUMENT", "The verified native song cue, gain or timing is invalid.")
+        from fractions import Fraction
+        from elichika_ios.mv_audio import MusicSelection, prepare_audio, _clock
+        try:
+            _clock(video["frame_count"], video["fps_numerator"], video["fps_denominator"])
+        except ValueError as error:
+            raise _MVAudioError("MV_AUDIO_INVALID_ARGUMENT", str(error)) from None
+        scope, region, language = _mv_audio_context()
+        acquired = _mv_audio_prepare_lock.acquire(blocking=False)
+        if not acquired:
+            raise _MVAudioError("MV_AUDIO_BUSY", "Another native MV song preparation is still running.")
+        _mv_audio_dispose()
+        event = threading.Event()
+        with _mv_audio_lock:
+            _mv_audio_pending = event
+        catalog = _mv_audio_catalog(scope, region, language, song["sheet"])
+        temporary = scope.data_root / ".tmp" / "mv-export-audio"
+        if temporary.is_symlink() or (scope.data_root / ".tmp").is_symlink():
+            raise _MVAudioError("MV_AUDIO_NOT_READY", "The private MV audio temporary directory is unavailable.")
+        temporary.mkdir(parents=True, exist_ok=True)
+        if not temporary.resolve().is_relative_to(scope.data_root):
+            raise _MVAudioError("MV_AUDIO_NOT_READY", "The private MV audio temporary directory is unavailable.")
+        prepared = prepare_audio(repo_root=scope.data_root, catalog_path=catalog,
+            selection=MusicSelection(sheet=song["sheet"], cue=song["cue"], gain=song["gain"],
+                                     start_time=Fraction(song["start_time_ms"], 1000), source_offset=Fraction(song["source_offset_ms"], 1000)),
+            temporary_root=temporary.resolve(), video_frame_count=video["frame_count"],
+            fps_numerator=video["fps_numerator"], fps_denominator=video["fps_denominator"],
+            should_stop=lambda: event.is_set() or _cancel.is_set())
+        manifest = prepared.manifest
+        manifest["reportedMusicLengthMs"] = song["music_length_ms"]
+        session_id = str(uuid.uuid4())
+        with _mv_audio_lock:
+            if event.is_set() or _cancel.is_set() or _mv_audio_pending is not event:
+                raise InterruptedError("MV song preparation was cancelled.")
+            _mv_audio_session = session_id, prepared, event, manifest
+            prepared = None
+            _mv_audio_pending = None
+        return _mv_audio_reply(session_id=session_id, manifest=manifest)
+    except _MVAudioError as error:
+        return _mv_audio_reply(error=error)
+    except InterruptedError:
+        return _mv_audio_reply(error=_MVAudioError("MV_AUDIO_CANCELLED", "Native MV song preparation was cancelled."))
+    except (ValueError, TimeoutError) as error:
+        if event is not None and (event.is_set() or _cancel.is_set()):
+            return _mv_audio_reply(error=_MVAudioError("MV_AUDIO_CANCELLED", "Native MV song preparation was cancelled."))
+        return _mv_audio_reply(error=_MVAudioError("MV_AUDIO_PREPARE_FAILED", str(error)[:320]))
+    except Exception:
+        if event is not None and (event.is_set() or _cancel.is_set()):
+            return _mv_audio_reply(error=_MVAudioError("MV_AUDIO_CANCELLED", "Native MV song preparation was cancelled."))
+        return _mv_audio_reply(error=_MVAudioError("MV_AUDIO_PREPARE_FAILED", "The selected local MV song could not be prepared."))
+    finally:
+        if prepared is not None:
+            prepared.close()
+        with _mv_audio_lock:
+            if event is not None and _mv_audio_pending is event:
+                _mv_audio_pending = None
+        if acquired:
+            _mv_audio_prepare_lock.release()
+
+
+def mv_export_audio_read(args_json):
+    """Read at most 8192 PCM sample frames; retries return the same bytes."""
+    try:
+        args = _mv_audio_args(args_json, ("schema", "session_id", "first_sample", "max_frames"))
+        session_id = _mv_audio_uuid(args["session_id"])
+        first, maximum = args["first_sample"], args["max_frames"]
+        if type(first) is not int or first < 0 or type(maximum) is not int or not 1 <= maximum <= 8192:
+            raise _MVAudioError("MV_AUDIO_INVALID_ARGUMENT", "The requested native MV PCM chunk is out of bounds.")
+        with _mv_audio_lock:
+            current = _mv_audio_session
+            if current is None or current[0] != session_id:
+                raise _MVAudioError("MV_AUDIO_SESSION_MISSING", "The prepared native MV song session is closed or expired.")
+            manifest = current[3]
+            if first > manifest["sampleCount"]:
+                raise _MVAudioError("MV_AUDIO_INVALID_ARGUMENT", "The requested native MV PCM chunk starts beyond the export.")
+            pcm = current[1].read_chunk(first, maximum)
+            count = len(pcm) // manifest["bytesPerFrame"]
+            return _mv_audio_reply(session_id=session_id, first_sample=first, frame_count=count,
+                pcm_base64=base64.b64encode(pcm).decode("ascii"), manifest=manifest,
+                eof=first + count == manifest["sampleCount"])
+    except _MVAudioError as error:
+        return _mv_audio_reply(error=error)
+    except InterruptedError:
+        return _mv_audio_reply(error=_MVAudioError("MV_AUDIO_CANCELLED", "The native MV song session was cancelled."))
+    except Exception:
+        return _mv_audio_reply(error=_MVAudioError("MV_AUDIO_READ_FAILED", "The prepared native MV PCM could not be read."))
+
+
+def mv_export_audio_close(args_json):
+    """Close one opaque session, or cancel all owned audio when ID is omitted."""
+    try:
+        args = _mv_audio_args(args_json, ("schema",), ("session_id",))
+        session_id = _mv_audio_uuid(args["session_id"]) if "session_id" in args else None
+        return _mv_audio_reply(closed=_mv_audio_dispose(session_id))
+    except _MVAudioError as error:
+        return _mv_audio_reply(error=error)
+    except Exception:
+        return _mv_audio_reply(error=_MVAudioError("MV_AUDIO_CLOSE_FAILED", "The owned native MV audio session could not be closed."))
 
 
 def probe():

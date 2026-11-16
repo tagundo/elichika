@@ -15,7 +15,9 @@ import platform
 
 from common import ROOT, codesign, inventory, macho, require, run, sha256, source_identity, write_json
 
-SOURCES = ('ElichikaHost.mm', 'ElichikaPythonRuntime.mm', 'ElichikaNativeBridges.mm')
+SOURCES = ('ElichikaHost.mm', 'ElichikaPythonRuntime.mm', 'ElichikaNativeBridges.mm',
+           'ElichikaMVEncoder.mm', 'SIFASMVExportBindings.mm',
+           'SIFASMVExportBootstrap.mm', 'SIFASMVExportSession.mm')
 
 
 def target_settings(sdk):
@@ -81,6 +83,8 @@ def build_host(repo, sdk, python_framework, go_archive, output, report, *, simul
                '-I', native, '-I', python_framework / 'Headers', '-F', python_framework.parent,
                '-framework', 'Python', '-framework', 'Foundation', '-framework', 'UIKit',
                '-framework', 'WebKit', '-framework', 'Security', '-framework', 'CoreGraphics',
+               '-framework', 'AVFoundation', '-framework', 'CoreMedia', '-framework', 'CoreVideo',
+               '-framework', 'AudioToolbox', '-framework', 'VideoToolbox',
                '-lresolv', '-lc++', '-Wl,-headerpad_max_install_names',
                '-Wl,-rpath,@executable_path/Frameworks']
     if simulator_probe:

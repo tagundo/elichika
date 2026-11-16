@@ -18,7 +18,8 @@ from common import (ROOT, inventory, macho, require, run, sha256, source_identit
 from experimental_archive import require_pending_archive
 from package_ipa import (archive_stage, bundle_versions, extract_original, intended_app_info,
                          merge_tree, original_preservation, sign_app)
-from patch_load import HOST_LOAD, patch_main
+from patch_load import HOST_LOAD
+from mv_export_patch import patch_main
 
 
 CHANNEL = 'EXPERIMENTAL_ARCHIVE_PENDING'

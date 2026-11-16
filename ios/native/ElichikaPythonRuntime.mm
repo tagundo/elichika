@@ -196,7 +196,7 @@ static NSDictionary *ELReadReply(PyObject *result) {
     }
     return reply;
 }
-static void ELInvoke(NSString *method, NSDictionary *configuration, ElichikaRuntimeReply completion) {
+static void ELInvoke(NSString *method, NSDictionary *configuration, NSDictionary *arguments, ElichikaRuntimeReply completion) {
     [ELWorker() enqueue:^{
         NSString *error = nil;
         if (!ELInterpreterOwned && !configuration) {
@@ -211,8 +211,9 @@ static void ELInvoke(NSString *method, NSDictionary *configuration, ElichikaRunt
         if (!ELRuntimeModule) reply = ELFailure(ELPythonError());
         else {
             PyObject *result = NULL;
-            if (configuration) {
-                NSData *json = [NSJSONSerialization dataWithJSONObject:configuration options:0 error:NULL];
+            NSDictionary *payload = arguments ?: configuration;
+            if (payload) {
+                NSData *json = [NSJSONSerialization dataWithJSONObject:payload options:0 error:NULL];
                 NSString *text = json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : nil;
                 result = text ? PyObject_CallMethod(ELRuntimeModule,method.UTF8String,"s",text.UTF8String) : NULL;
             } else result = PyObject_CallMethod(ELRuntimeModule,method.UTF8String,NULL);
@@ -222,8 +223,11 @@ static void ELInvoke(NSString *method, NSDictionary *configuration, ElichikaRunt
         dispatch_async(dispatch_get_main_queue(), ^{ completion(reply); });
     }];
 }
-void ElichikaPythonStart(NSDictionary *configuration, ElichikaRuntimeReply completion) { ELInvoke(@"start",configuration,completion); }
-void ElichikaPythonCall(NSString *method, ElichikaRuntimeReply completion) { ELInvoke(method,nil,completion); }
+void ElichikaPythonStart(NSDictionary *configuration, ElichikaRuntimeReply completion) { ELInvoke(@"start",configuration,nil,completion); }
+void ElichikaPythonCall(NSString *method, ElichikaRuntimeReply completion) { ELInvoke(method,nil,nil,completion); }
+void ElichikaPythonCallWithArguments(NSString *method, NSDictionary *arguments, ElichikaRuntimeReply completion) {
+    ELInvoke(method,nil,arguments,completion);
+}
 void ElichikaPythonLifecycle(NSString *event) {
     if (!ELInterpreterOwned) return;
     [ELWorker() enqueue:^{

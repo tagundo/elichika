@@ -1,5 +1,6 @@
 #import "ElichikaHost.h"
 #import "ElichikaPythonRuntime.h"
+#import "SIFASMVExportSession.h"
 #include "HostCore.hpp"
 #include "NavigationPolicy.hpp"
 #include "SIFASProfile.h"
@@ -581,6 +582,9 @@ static void ELHidePanel(void) {
         style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *selected) { ELClientControlRoute(weakMenu,@"showCamera",nil); }]];
     [menu addAction:[UIAlertAction actionWithTitle:ELButtonText(@"Orientation lock",@"화면 방향 고정",@"画面の向きを固定")
         style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *selected) { ELClientControlRoute(weakMenu,@"showOrientation",nil); }]];
+    add(ELButtonText(@"Export MV as MP4",@"MV를 MP4로 내보내기",@"MVをMP4に書き出す"),^{
+        ElichikaPresentMVExportMenu(ElichikaHostPresenter());
+    });
     add(fast ? ELButtonText(@"Fast intro: On",@"인트로 빠르게: 켜짐",@"イントロ高速:オン")
              : ELButtonText(@"Fast intro: Off",@"인트로 빠르게: 꺼짐",@"イントロ高速:オフ"),^{
         [defaults setBool:!fast forKey:@"SIFASFastIntro"]; ELClientApplyPreferences();

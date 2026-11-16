@@ -313,6 +313,8 @@ jobs:
             xcrun --sdk "$mv_sdk" clang++ -target "$mv_target" -isysroot "$(xcrun --sdk "$mv_sdk" --show-sdk-path)" \
               -std=c++17 -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-deprecated-declarations \
               -Wno-nullability-completeness -fsyntax-only ios/native/ElichikaMVEncoder.mm \
+              ios/native/SIFASMVExportBindings.mm ios/native/SIFASMVExportBootstrap.mm \
+              ios/native/SIFASMVExportSession.mm \
               2>&1 | tee "$RUNNER_TEMP/mv-export-evidence/$mv_sdk-compile.txt"
           done
       - name: Encode and independently decode actual MP4 video and AAC audio

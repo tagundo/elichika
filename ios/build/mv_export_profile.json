@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "source_main_sha256": "071607a0b7e4d4e080af68ce9ce7c84cf279bf8e73e70ec9dc8cf1f3be1cd4dd",
+  "source_uuid": "10dff3f5cfc33be8aaaa3c38a99d1717",
+  "instruction_policy": "exact first instruction, only Music.Update plain B is relocated",
+  "hooks": [
+    {
+      "key": "timeUpdate",
+      "method": "Native.TimeManager.Update",
+      "va": 4303438808,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa686640f908050091686600f968d240b9",
+      "first_instruction": 2847821812,
+      "preferred_rva": 8471512,
+      "patched_first_word": 357412618,
+      "shim_preferred_rva": 95944704,
+      "trampoline_preferred_rva": 95944720,
+      "callback_slot_preferred_rva": 95961216
+    },
+    {
+      "key": "liveUpdate",
+      "method": "Live.Update",
+      "va": 4317129972,
+      "first32hex": "e923bd6df44f01a9fd7b02a9fd83009108804039c8040034f30300aa143440f9",
+      "first_instruction": 1841112041,
+      "preferred_rva": 22162676,
+      "patched_first_word": 353989843,
+      "shim_preferred_rva": 95944768,
+      "trampoline_preferred_rva": 95944784,
+      "callback_slot_preferred_rva": 95961224
+    },
+    {
+      "key": "musicUpdate",
+      "method": "Music.Update",
+      "va": 4316587004,
+      "first32hex": "9bffff17fd7bbfa9fd0300916cfdff97fd7bc1a801000014f44fbea9fd7b01a9",
+      "first_instruction": 402653083,
+      "preferred_rva": 21619708,
+      "patched_first_word": 354125601,
+      "shim_preferred_rva": 95944832,
+      "trampoline_preferred_rva": 95944848,
+      "callback_slot_preferred_rva": 95961232
+    },
+    {
+      "key": "memberUpdate",
+      "method": "Member.Update",
+      "va": 4316502392,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa0100805209000094a0000034e00313aa",
+      "first_instruction": 2847821812,
+      "preferred_rva": 21535096,
+      "patched_first_word": 354146770,
+      "shim_preferred_rva": 95944896,
+      "trampoline_preferred_rva": 95944912,
+      "callback_slot_preferred_rva": 95961240
+    },
+    {
+      "key": "overlayRender",
+      "method": "Overlay.Render",
+      "va": 4316520116,
+      "first32hex": "f657bda9f44f01a9fd7b02a9fd830091f30302aaf40301aaf50300aa56150290",
+      "first_instruction": 2847758326,
+      "preferred_rva": 21552820,
+      "patched_first_word": 354142355,
+      "shim_preferred_rva": 95944960,
+      "trampoline_preferred_rva": 95944976,
+      "callback_slot_preferred_rva": 95961248
+    },
+    {
+      "key": "screenWidth",
+      "method": "UnityEngine.Screen.get_width",
+      "va": 4355146760,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd83009113ef00b060ba43f9c00100b5a04900f0",
+      "first_instruction": 3506488319,
+      "preferred_rva": 60179464,
+      "patched_first_word": 344485710,
+      "shim_preferred_rva": 95945024,
+      "trampoline_preferred_rva": 95945040,
+      "callback_slot_preferred_rva": 95961256
+    },
+    {
+      "key": "screenHeight",
+      "method": "UnityEngine.Screen.get_height",
+      "va": 4355146856,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd83009113ef00b060be43f9c00100b5a04900f0",
+      "first_instruction": 3506488319,
+      "preferred_rva": 60179560,
+      "patched_first_word": 344485702,
+      "shim_preferred_rva": 95945088,
+      "trampoline_preferred_rva": 95945104,
+      "callback_slot_preferred_rva": 95961264
+    },
+    {
+      "key": "memberLateUpdate",
+      "method": "Member.LateUpdate",
+      "va": 4316503056,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa0100805263ffff976002003468424239",
+      "first_instruction": 2847821812,
+      "preferred_rva": 21535760,
+      "patched_first_word": 354146668,
+      "shim_preferred_rva": 95945152,
+      "trampoline_preferred_rva": 95945168,
+      "callback_slot_preferred_rva": 95961272
+    }
+  ]
+}

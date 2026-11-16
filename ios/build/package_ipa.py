@@ -2,8 +2,9 @@
 """Package the actual pinned SIFAS game with the in-process Elichika runtime.
 
 All original IPA members remain present. Changes are limited to the reviewed
-main load-command addition, intended top-level Info.plist metadata, and ad-hoc
-signatures. Every old Mach-O slice is compared beyond its signature fields.
+main load-command addition and exact SHA-pinned MV entry shims, intended
+top-level Info.plist metadata, and ad-hoc signatures. Other original Mach-O
+bytes are compared beyond their signature fields.
 The resulting IPA remains a candidate requiring SideStore/user signing and a
 physical iPhone/iPad gameplay test.
 """
@@ -24,7 +25,8 @@ from zoneinfo import ZoneInfo
 
 from common import (MAX_ENTRIES, MAX_EXPANDED, ROOT, codesign, inventory, macho, require,
                     require_full_archive, run, safe_name, sha256, source_identity, stream_copy, verify_file, write_json)
-from patch_load import HOST_LOAD, patch_main
+from patch_load import HOST_LOAD
+from mv_export_patch import patch_main
 from signature_proof import is_macho, prove
 
 
@@ -186,8 +188,16 @@ def original_preservation(source, stage, pin, intended_info):
                 require(plistlib.loads(current) == intended_info, 'Top-level game Info.plist changed beyond intended fields')
                 changes[name] = {'reason': 'intended_version_and_host_opt_in_metadata', 'before': before, 'after': after}
             elif is_macho(original):
-                code_proofs[name] = prove(original, current, added_host=name == main)
-                changes[name] = {'reason': 'reviewed_host_load_plus_signing' if name == main else 'ad_hoc_signing_only',
+                if name == main:
+                    # Reconstruct only the exact reviewed transformation from
+                    # the immutable original. Never normalize arbitrary current
+                    # bytes or exempt the main executable from comparison.
+                    expected, mv_proof = patch_main(original, pin, add_host=False)
+                    code_proofs[name] = prove(expected, current, added_host=True)
+                    code_proofs[name]['reviewed_MV_entry_patch'] = mv_proof
+                else:
+                    code_proofs[name] = prove(original, current, added_host=False)
+                changes[name] = {'reason': 'reviewed_MV_shims_host_load_and_signing' if name == main else 'ad_hoc_signing_only',
                                  'before': before, 'after': after}
             elif '/_CodeSignature/' in name and name.startswith(pin['app']):
                 changes[name] = {'reason': 'ad_hoc_resource_signature', 'before': before, 'after': after}
