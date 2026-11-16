@@ -341,10 +341,47 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
 
 
 class KernelExecutableTests(unittest.TestCase):
-    def test_real_current_process_image_is_read_without_process_signals(self):
+    def assert_current_process_image_matches_independent_reference(self):
         if not (sys.platform=='darwin' or sys.platform.startswith('linux')):
             self.skipTest('Kernel image API is implemented for production Darwin and test Linux')
-        self.assertEqual(diagnostics.kernel_executable(os.getpid()),Path(sys.executable).resolve())
+        expected=Path(sys.executable).resolve(strict=True)
+        if sys.platform=='darwin':
+            # Framework Python's bin/python launcher can exec Python.app; argv
+            # and sys.executable then legitimately differ from the kernel image.
+            snapshot=diagnostics.bounded_command(
+                ['ps','-ww','-p',str(os.getpid()),'-o','comm='],timeout=2,cap=8192)
+            self.assertEqual(snapshot['returncode'],0)
+            self.assertFalse(snapshot['timed_out']);self.assertFalse(snapshot['truncated'])
+            rows=[line.strip() for line in snapshot['text'].splitlines() if line.strip()]
+            self.assertEqual(len(rows),1)
+            expected=Path(rows[0]);self.assertTrue(expected.is_absolute())
+            expected=expected.resolve(strict=True)
+        self.assertEqual(diagnostics.kernel_executable(os.getpid()),expected)
+
+    def test_real_current_process_image_is_read_without_process_signals(self):
+        self.assert_current_process_image_matches_independent_reference()
+
+    def test_darwin_framework_launcher_is_not_assumed_to_be_the_kernel_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            framework=Path(directory)/'Python.framework/Versions/3.13'
+            launcher=framework/'bin/python3.13'
+            image=framework/'Resources/Python.app/Contents/MacOS/Python'
+            for path in (launcher,image):
+                path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'fixture')
+            self.assertNotEqual(launcher.resolve(),image.resolve())
+            library=Mock()
+            def lookup(pid,buffer,size):
+                self.assertEqual(pid,os.getpid());self.assertEqual(size,4096)
+                value=os.fsencode(image)+b'\0';ctypes.memmove(buffer,value,len(value));return len(value)-1
+            library.proc_pidpath.side_effect=lookup
+            with patch.object(diagnostics.sys,'platform','darwin'), \
+                    patch.object(diagnostics.sys,'executable',str(launcher)), \
+                    patch.object(diagnostics,'_LIBPROC',None), \
+                    patch.object(ctypes,'CDLL',return_value=library), \
+                    patch.object(diagnostics,'bounded_command',return_value=response(str(image)+'\n')) as command:
+                self.assert_current_process_image_matches_independent_reference()
+                command.assert_called_once_with(
+                    ['ps','-ww','-p',str(os.getpid()),'-o','comm='],timeout=2,cap=8192)
 
     def test_non_application_pid_values_are_rejected_before_native_lookup(self):
         with patch.object(ctypes,'CDLL',side_effect=AssertionError('must not load')):
