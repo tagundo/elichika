@@ -28,6 +28,9 @@ from verify_playcover_native_imports import (DEBUG_RESOURCE, SOURCE as STABLE_CO
 
 UI_KEYS = ('ready','actual_management_webview','page_loaded','javascript_ready',
            'state_fetch','controls_present','native_binding','go_stopped','server_restarted','offline_accounts','retained_panels')
+MENU_KEYS = ('ready','original_poll_preserved','old_button_hidden','old_gesture_disabled',
+             'decoys_unchanged','show_settings_redirected','fov_route','orientation_route',
+             'right_corner_gesture','wide_sidebar','compact_navigation','retained_navigation')
 
 
 def aggregate(root, parity=True):
@@ -41,6 +44,9 @@ def aggregate(root, parity=True):
             reply['management_ui_required'] = True
             reply['management_ui_probe'] = dict.fromkeys(UI_KEYS, True)
             reply['management_ui_probe']['error'] = False
+            reply['unified_menu_probe'] = {**dict.fromkeys(MENU_KEYS, True),
+                'fake_client_controls': True, 'real_game_fov': False,
+                'source_tag': 'SIMULATOR_FAKE_CLIENT_UI_ONLY', 'error': False}
             reply['probe_timing']['events'] = [dict(stage=name,
                 detail='go_start' if name == 'native_backend' else '', elapsed_seconds=n)
                 for n, name in enumerate(stage_budgets(True))]
@@ -145,6 +151,27 @@ class ParityDataTests(unittest.TestCase):
 
 
 class ParitySimulatorTests(unittest.TestCase):
+    def test_unified_menu_requires_each_real_uikit_route_and_honest_fake_client_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); result = aggregate(root); path = root/'current.json'
+            for row_number in range(4):
+                for key in MENU_KEYS:
+                    changed = copy.deepcopy(result)
+                    changed['results'][row_number]['reply']['unified_menu_probe'][key] = False
+                    write_json(path, changed)
+                    with self.subTest(row=row_number, key=key), self.assertRaisesRegex(ValueError, key):
+                        simulator_gates(path, result['source'], require_parity_ui=True)
+            for change in ('missing', 'real-game-claim', 'wrong-source', 'no-fake-label', 'error'):
+                reply = copy.deepcopy(result['results'][0]['reply'])
+                menu = reply['unified_menu_probe']
+                if change == 'missing': reply.pop('unified_menu_probe')
+                elif change == 'real-game-claim': menu['real_game_fov'] = True
+                elif change == 'wrong-source': menu['source_tag'] = 'ACTUAL_GAME'
+                elif change == 'no-fake-label': menu.pop('fake_client_controls')
+                elif change == 'error': menu['error'] = 'The route failed.'
+                with self.subTest(change=change), self.assertRaises(ValueError):
+                    validate_reply(reply, False, launch_number=1, require_parity_ui=True)
+
     def test_parity_executes_ipad_first_without_normalizing_or_skipping_four_launches(self):
         runtime = {'identifier':'com.apple.CoreSimulator.SimRuntime.iOS-26-2',
                    'version':'26.2','isAvailable':True}

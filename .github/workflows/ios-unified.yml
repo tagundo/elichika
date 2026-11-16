@@ -97,6 +97,10 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-parity-policy-compile.txt"
           "$RUNNER_TEMP/elichika-native-parity-policy-tests" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-parity-policy-tests.txt"
+          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/NavigationPolicyTests.cpp -o "$RUNNER_TEMP/elichika-navigation-policy-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-navigation-policy-compile.txt"
+          "$RUNNER_TEMP/elichika-navigation-policy-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-navigation-policy-tests.txt"
 
       - name: Test actual in-process Go lifecycle, initialization, keys and timezones
         if: ${{ inputs.mode != 'runtime-inputs' }}

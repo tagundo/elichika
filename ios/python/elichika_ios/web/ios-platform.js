@@ -45,4 +45,6 @@
   });
   global.ElichikaPlatform = Object.freeze(adapter);
   global.document.documentElement.classList.add("elichika-ios");
+  if (global.ElichikaUnifiedNavigation === true)
+    global.document.documentElement.classList.add("elichika-native-editor-navigation");
 })(window);

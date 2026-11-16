@@ -20,11 +20,77 @@ static NSUInteger ELFakeGameStarts;
 @implementation ELProbeGame
 - (void)startUnity:(UIApplication *)application { (void)application; ++ELFakeGameStarts; }
 @end
+// Test-only stand-in for the dated client's registered Objective-C UI API.
+// It exercises the real host integration, never Unity camera or game playback.
+@interface ELProbeClientDecoy : NSObject <UIGestureRecognizerDelegate>
+- (void)showSettings;
+@end
+@implementation ELProbeClientDecoy
+- (void)showSettings {}
+@end
+@interface SIFASFeatures : NSObject <UIGestureRecognizerDelegate>
+@property(nonatomic,strong) UIButton *button;
+@property(nonatomic,strong) UILongPressGestureRecognizer *shortcut;
+@property(nonatomic,strong) UIButton *decoyButton;
+@property(nonatomic,strong) UILongPressGestureRecognizer *decoyShortcut;
+@property(nonatomic,strong) ELProbeClientDecoy *decoyTarget;
+@property(nonatomic,assign) NSUInteger pollCalls;
+@property(nonatomic,assign) NSUInteger settingsCalls;
+@property(nonatomic,assign) NSUInteger cameraCalls;
+@property(nonatomic,assign) NSUInteger orientationCalls;
+- (instancetype)initWithRootView:(UIView *)root;
+- (void)poll:(NSTimer *)timer;
+- (void)showSettings;
+- (void)showCamera;
+- (void)showOrientation;
+- (NSDictionary *)probeCounters;
+@end
+@implementation SIFASFeatures
+- (instancetype)initWithRootView:(UIView *)root {
+    if ((self=[super init])) {
+        _decoyTarget=[ELProbeClientDecoy new];
+        _decoyButton=[UIButton buttonWithType:UIButtonTypeSystem];
+        _decoyButton.accessibilityIdentifier=@"SIFASFeatures.Settings";
+        [_decoyButton addTarget:_decoyTarget action:@selector(showSettings) forControlEvents:UIControlEventTouchUpInside];
+        [root addSubview:_decoyButton];
+        _decoyShortcut=[[UILongPressGestureRecognizer alloc] initWithTarget:_decoyTarget action:@selector(showSettings)];
+        _decoyShortcut.delegate=_decoyTarget; [root addGestureRecognizer:_decoyShortcut];
+        _button=[UIButton buttonWithType:UIButtonTypeSystem];
+        _button.accessibilityIdentifier=@"SIFASFeatures.Settings";
+        [_button addTarget:self action:@selector(showSettings) forControlEvents:UIControlEventTouchUpInside];
+        [root addSubview:_button];
+        _shortcut=[[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(showSettings)];
+        _shortcut.delegate=self; [root addGestureRecognizer:_shortcut];
+    }
+    return self;
+}
+- (void)poll:(NSTimer *)timer {
+    (void)timer; ++_pollCalls;
+    // The original client moves its controls to the current key-window root.
+    // Include same-looking unrelated controls to test precise owner matching.
+    UIView *root=UIApplication.sharedApplication.keyWindow.rootViewController.view;
+    if (root && _button.superview!=root) {
+        [root addSubview:_decoyButton]; [root addGestureRecognizer:_decoyShortcut];
+        [root addSubview:_button]; [root addGestureRecognizer:_shortcut];
+    }
+    _button.hidden=NO; _shortcut.enabled=YES;
+}
+- (void)showSettings { ++_settingsCalls; }
+- (void)showCamera { ++_cameraCalls; }
+- (void)showOrientation { ++_orientationCalls; }
+- (NSDictionary *)probeCounters {
+    return @{@"poll":@(_pollCalls),@"settings":@(_settingsCalls),@"camera":@(_cameraCalls),
+        @"orientation":@(_orientationCalls),@"button_hidden":@(_button.hidden),
+        @"shortcut_enabled":@(_shortcut.enabled),@"decoy_button_hidden":@(_decoyButton.hidden),
+        @"decoy_shortcut_enabled":@(_decoyShortcut.enabled)};
+}
+@end
 @interface ELProbeDelegate : UIResponder <UIApplicationDelegate> {
     elichika::ProbeBudget _budget;
 }
 @property(nonatomic,strong) UIWindow *window;
 @property(nonatomic,strong) ELProbeGame *game;
+@property(nonatomic,strong) SIFASFeatures *clientFeatures;
 @property(nonatomic,strong) NSTimer *timer;
 @property(nonatomic,assign) BOOL finishing;
 @property(nonatomic,assign) NSTimeInterval began;
@@ -61,6 +127,7 @@ static NSUInteger ELFakeGameStarts;
     _window=[[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     UIViewController *controller=[UIViewController new]; controller.view.backgroundColor=UIColor.systemBackgroundColor;
     _window.rootViewController=controller; [_window makeKeyAndVisible];
+    self.clientFeatures=[[SIFASFeatures alloc] initWithRootView:controller.view];
     ELProbeStartupMarker("window_ready");
     if (coreOnly && self.parityProbe) {
         [self write:[@{@"schema":@1,@"phase":@"error",@"probe_pass":@NO,
@@ -242,7 +309,19 @@ static NSUInteger ELFakeGameStarts;
                             status[@"error"]=[detail isKindOfClass:NSString.class] && [detail length]
                                 ? detail : @"The actual management WebView failed its stop/start and native-binding proof.";
                         }
-                        [self write:status];
+                        if (!managementReady) { [self write:status]; return; }
+                        ElichikaHostProbeUnifiedMenu(self.clientFeatures,^(NSDictionary *menu) {
+                            if (self.completed) return;
+                            status[@"unified_menu_probe"]=menu ?: @{};
+                            BOOL ready=[menu[@"ready"] isEqual:@YES] && [menu[@"fake_client_controls"] isEqual:@YES]
+                                && [menu[@"real_game_fov"] isEqual:@NO];
+                            if (!ready) {
+                                status[@"probe_pass"]=@NO; status[@"phase"]=@"error";
+                                status[@"error"]=[menu[@"error"] isKindOfClass:NSString.class] && [menu[@"error"] length]
+                                    ? menu[@"error"] : @"The actual UIKit unified-menu fixture failed.";
+                            }
+                            [self write:status];
+                        });
                     });
                 });
             });

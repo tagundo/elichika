@@ -10,8 +10,8 @@
 </head>
 <body>
   <header class="page-header">
-    <div class="title-row"><h1>Elichika</h1><span id="version" class="muted"></span><select id="ui-language" aria-label="Language"><option value="en">English</option><option value="ko">한국어</option><option value="ja">日本語</option></select></div>
-    <nav class="tabs" aria-label="Management">
+    <div class="title-row"><h1 id="management-title">Server</h1><span id="version" class="muted"></span><select id="ui-language" aria-label="Language"><option value="en">English</option><option value="ko">한국어</option><option value="ja">日本語</option></select></div>
+    <nav class="tabs" id="management-navigation" aria-label="Management">
       <button type="button" class="tab active" id="manage-home-tab" data-page="home" aria-current="page" data-t="home">Server</button>
       <button type="button" class="tab" id="manage-downloads-tab" data-page="downloads" data-t="downloads">Downloads</button>
       <button type="button" class="tab" id="manage-app-tab" data-page="app" data-t="appSettings">App settings</button>
@@ -74,7 +74,14 @@
           <div class="actions"><button type="submit" id="app-settings-save" data-t="saveSettings" disabled>Save settings</button></div>
         </form>
       </div>
-      <div class="card"><h2 data-t="assetFolder">Asset library folder</h2><p id="library-current" class="mono small muted"></p><p class="small muted" data-t="folderHelp">File import normally copies selected files into this app. Choose an external folder below to edit that asset library directly. Close and reopen the app after changing the library.</p><div class="actions wrap"><button type="button" id="choose-library" data-t="chooseLibrary">Edit an external folder directly</button><button type="button" id="default-library" class="secondary" data-t="defaultLibrary">Use app’s default asset folder</button></div><p class="small muted" data-t="folderLifetime">Keep the external folder available. If access expires, select the same folder again; existing files are not moved or deleted.</p></div>
+      <div class="card">
+        <h2 data-t="assetFolder">Asset library folder</h2>
+        <dl class="library-paths"><dt data-t="activeFolder">Currently in use</dt><dd id="library-current" class="mono small"></dd><dd id="library-active-access" class="library-access small muted" hidden></dd></dl>
+        <dl id="library-pending" class="library-paths pending-path" hidden><dt data-t="pendingFolder">After restarting the app</dt><dd id="library-next" class="mono small"></dd><dd id="library-next-access" class="library-access small muted" hidden></dd></dl>
+        <p class="small muted" data-t="folderHelp">Choose the asset library containing packs, extracted and modded, rather than packs itself. Close and reopen the app to apply a different library.</p>
+        <div class="actions wrap"><button type="button" id="choose-library" data-t="chooseLibrary">Choose asset library folder</button><button type="button" id="default-library" class="secondary" data-t="defaultLibrary">Use app’s default asset folder</button></div>
+        <p class="small muted" data-t="folderLifetime">Keep the external folder available. If access expires, select the same folder again; existing files are not moved or deleted.</p>
+      </div>
     </section>
 
     <section data-view="server" hidden>
@@ -88,7 +95,7 @@
     </section>
 
     <section data-view="help" hidden>
-      <div class="card"><h2 data-t="quickGuide">Quick guide</h2><ul class="help-list"><li data-t="helpPanel">The Elichika button starts visible. Hide it for MV playback; hold the upper-left corner for two seconds to reopen management.</li><li data-t="helpFov">Hold the upper-right corner for two seconds to restore the game’s FOV/settings menu.</li><li data-t="helpFiles">Place existing packs in this app’s Elichika/packs folder through Files or Finder. Large libraries can use the external-folder option.</li><li data-t="helpEdits">Finish game downloads and MV playback before installing mods or changing databases. Restart the game to load edited assets.</li><li data-t="helpBackground">iOS can suspend an app in the background. Keep this app open while downloading or serving other devices.</li><li data-t="helpAccounts">The integrated app’s local database is separate from the Mac server. Export and import accounts to move them.</li></ul></div>
+      <div class="card"><h2 data-t="quickGuide">Quick guide</h2><ul class="help-list"><li data-t="helpPanel">The Elichika button starts visible. Hide it for MV playback; hold the upper-right corner for two seconds to reopen the combined server and game menu.</li><li data-t="helpFov">Choose Game settings in the same menu to adjust FOV, orientation and intro speed.</li><li data-t="helpFiles">Place existing packs in this app’s Elichika/packs folder through Files or Finder. Large libraries can use the external-folder option.</li><li data-t="helpEdits">Finish game downloads and MV playback before installing mods or changing databases. Restart the game to load edited assets.</li><li data-t="helpBackground">iOS can suspend an app in the background. Keep this app open while downloading or serving other devices.</li><li data-t="helpAccounts">The integrated app’s local database is separate from the Mac server. Export and import accounts to move them.</li></ul></div>
       <div class="card"><h2 data-t="modPages">Mod pages</h2><div class="actions wrap"><a href="https://ayakamods.com/games/love-live-school-idol-festival-all-stars.217/" target="_blank" rel="noopener noreferrer">AyakaMods</a><a href="https://gamebanana.com/games/20519" target="_blank" rel="noopener noreferrer">GameBanana</a></div></div>
       <div class="card"><h2 data-t="about">About</h2><p id="about-version">Elichika + SIFAS</p><p id="about-channel" class="small muted"></p><p class="small muted" data-t="helpSigning">SideStore installations require your own signature for the app and embedded frameworks.</p></div>
     </section>

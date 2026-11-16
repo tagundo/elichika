@@ -1,6 +1,7 @@
 #import "ElichikaHost.h"
 #import "ElichikaPythonRuntime.h"
 #include "HostCore.hpp"
+#include "NavigationPolicy.hpp"
 #include "SIFASProfile.h"
 #include "RSAPublicKey.hpp"
 #include "CandidatePolicy.hpp"
@@ -14,6 +15,7 @@
 #import <mach/vm_prot.h>
 #include <dlfcn.h>
 #include <cstring>
+#include <cstdlib>
 
 static elichika::HostCore &ELCore(void) { static elichika::HostCore value; return value; }
 static IMP ELOriginalStart;
@@ -43,7 +45,7 @@ static __weak UIWindow *ELGameWindow;
 static id ELMenuTarget(void);
 static void ELRefreshMenu(void);
 static NSDictionary *ELChooseAssetDirectory(NSError **error);
-static NSDictionary *ELRestoreAssetDirectory(void);
+static NSDictionary *ELRestoreAssetDirectory(NSError **error);
 static NSInteger ELDocumentChoice(NSString *title,NSString *message,NSArray<NSString *> *choices);
 static NSURL *ELActiveLibraryURL;
 static NSMutableArray<NSURL *> *ELHeldScopes;
@@ -61,8 +63,130 @@ static NSString *ELButtonText(NSString *english,NSString *korean,NSString *japan
     return [language hasPrefix:@"ko"] ? korean : ([language hasPrefix:@"ja"] ? japanese : english);
 }
 
+// PlayCover converts this iOS binary to Catalyst after compilation. Select
+// bookmark options at runtime: the public Foundation flag values are stable,
+// while their SDK names are unavailable when compiling the iOS slice.
+static NSURLBookmarkCreationOptions ELAssetBookmarkCreationOptions(void) {
+    return [NSProcessInfo.processInfo isMacCatalystApp] ? (NSURLBookmarkCreationOptions)(1UL << 11)
+        : NSURLBookmarkCreationMinimalBookmark;
+}
+static NSURLBookmarkResolutionOptions ELAssetBookmarkResolutionOptions(NSString *mode) {
+    return NSURLBookmarkResolutionWithoutUI | ([NSProcessInfo.processInfo isMacCatalystApp] && [mode isEqual:@"mac_security_scoped"]
+        ? (NSURLBookmarkResolutionOptions)(1UL << 10) : 0);
+}
+static NSError *ELAssetFolderError(NSString *action,NSString *path,NSError *underlying) {
+    NSString *detail=underlying ? [NSString stringWithFormat:@" (%@ %ld): %@",underlying.domain,
+        (long)underlying.code,underlying.localizedDescription] : @"";
+    NSMutableDictionary *info=[@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"%@\n%@%@",
+        action,path ?: @"",detail]} mutableCopy];
+    if (underlying) info[NSUnderlyingErrorKey]=underlying;
+    return [NSError errorWithDomain:@"ElichikaAssetDirectory" code:1 userInfo:info];
+}
+// Standard PlayCover signatures omit the app-scoped-bookmark entitlement.
+// Foundation's implicit bookmark scope can still carry the picker grant until
+// a system reboot, but it must never be advertised as permanent access.
+static NSString *ELAssetBookmarkLifetime(NSString *mode) {
+    return [mode isEqual:@"mac_security_scoped"] ? @"persistent" :
+        ([mode isEqual:@"mac_implicit"] ? @"until_reboot" :
+         ([mode isEqual:@"ios_document_picker"] ? @"document_provider" : mode));
+}
+static NSString *ELAssetBookmarkWarning(NSString *mode) {
+    return [mode isEqual:@"mac_implicit"] ? ELButtonText(
+        @"This PlayCover installation may require choosing the folder again after the Mac restarts. If access expires, choose the same folder again. Existing files stay in place.",
+        @"이 PlayCover 설치에서는 Mac을 재시동하면 폴더를 다시 선택해야 할 수 있습니다. 접근 권한이 만료되면 같은 폴더를 다시 선택하세요. 기존 파일은 그대로 유지됩니다.",
+        @"このPlayCover環境ではMacの再起動後にフォルダーの再選択が必要になる場合があります。アクセス期限が切れたら同じフォルダーを再選択してください。既存ファイルは移動しません。") : @"";
+}
+static NSData *ELCreateAssetBookmark(NSURL *url,NSString **mode,NSError **error) {
+    NSError *failure=nil;
+    NSData *data=[url bookmarkDataWithOptions:ELAssetBookmarkCreationOptions() includingResourceValuesForKeys:nil relativeToURL:nil error:&failure];
+    NSString *chosen=[NSProcessInfo.processInfo isMacCatalystApp] ? @"mac_security_scoped" : @"ios_document_picker";
+    if (!data && [NSProcessInfo.processInfo isMacCatalystApp]) {
+        // This is a documented ephemeral grant, not an entitlement bypass.
+        failure=nil;
+        data=[url bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark includingResourceValuesForKeys:nil relativeToURL:nil error:&failure];
+        chosen=@"mac_implicit";
+    }
+    if (!data.length || data.length>262144) { if (error) *error=failure ?: ELAssetFolderError(@"The selected folder's bookmark could not be retained.",url.path,nil); return nil; }
+    if (mode) *mode=chosen;
+    return data;
+}
+static NSData *ELStoreAssetBookmark(NSData *bookmark,NSString *mode,NSError **error) {
+    // Mode and bytes share a single atomic UserDefaults value. The old raw
+    // bookmark format remains readable; no extra mode key can get out of sync.
+    NSData *plist=[NSPropertyListSerialization dataWithPropertyList:@{@"schema":@1,@"mode":mode,@"bookmark":bookmark}
+        format:NSPropertyListBinaryFormat_v1_0 options:0 error:error];
+    if (!plist) return nil;
+    NSMutableData *stored=[NSMutableData dataWithBytes:"ELBK1" length:5]; [stored appendData:plist]; return stored;
+}
+static NSData *ELReadAssetBookmark(NSData *stored,NSString **mode,NSError **error) {
+    if (!stored.length || stored.length>300000) { if (error) *error=ELAssetFolderError(@"The saved folder bookmark is invalid.",@"",nil); return nil; }
+    BOOL envelope=stored.length>=5 && memcmp(stored.bytes,"ELBK1",5)==0;
+    NSData *payload=envelope ? [stored subdataWithRange:NSMakeRange(5,stored.length-5)] : nil;
+    id value=envelope ? [NSPropertyListSerialization propertyListWithData:payload options:NSPropertyListImmutable format:NULL error:NULL] : nil;
+    if (envelope) {
+        BOOL valid=[value isKindOfClass:NSDictionary.class] && [value count]==3 && [value[@"schema"] isEqual:@1] &&
+            [value[@"mode"] isKindOfClass:NSString.class] &&
+            [@[@"mac_security_scoped",@"mac_implicit",@"ios_document_picker"] containsObject:value[@"mode"]] &&
+            [value[@"bookmark"] isKindOfClass:NSData.class] && [value[@"bookmark"] length]>0 && [value[@"bookmark"] length]<=262144;
+        if (!valid) { if (error) *error=ELAssetFolderError(@"The saved folder bookmark metadata is invalid. Choose the folder again.",@"",nil); return nil; }
+        if (mode) *mode=value[@"mode"];
+        return value[@"bookmark"];
+    }
+    // .3 used raw minimal bookmarks on every platform, including PlayCover.
+    if (mode) *mode=[NSProcessInfo.processInfo isMacCatalystApp] ? @"mac_implicit" : @"ios_document_picker";
+    return stored;
+}
+static NSString *ELSavedAssetBookmarkMode(void) {
+    NSData *saved=[NSUserDefaults.standardUserDefaults dataForKey:ELAssetBookmarkKey];
+    if (!saved) return @"app_storage";
+    NSString *mode=nil; ELReadAssetBookmark(saved,&mode,NULL); return mode ?: @"unavailable";
+}
+static BOOL ELPrepareAssetFolders(NSString *library,NSError **error) {
+    NSFileManager *manager=NSFileManager.defaultManager;
+    for (NSString *component in @[@"packs",@"imports"]) {
+        NSString *folder=[library stringByAppendingPathComponent:component];
+        NSString *prefix=[library stringByAppendingString:@"/"];
+        NSError *failure=nil;
+        if (![folder.stringByStandardizingPath.stringByResolvingSymlinksInPath hasPrefix:prefix]) {
+            if (error) *error=ELAssetFolderError(ELButtonText(@"An asset subfolder points outside the selected library.",
+                @"에셋 하위 폴더가 선택한 보관 폴더 밖을 가리킵니다.",@"アセットのサブフォルダーが選択した保存先の外を参照しています。"),folder,nil);
+            return NO;
+        }
+        if (![manager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:&failure] ||
+            ![folder.stringByResolvingSymlinksInPath hasPrefix:prefix] ||
+            ![manager isReadableFileAtPath:folder] || ![manager isWritableFileAtPath:folder]) {
+            if (error) *error=ELAssetFolderError(ELButtonText(@"Could not prepare this asset subfolder.",
+                @"이 에셋 하위 폴더를 준비하지 못했습니다.",@"このアセットのサブフォルダーを準備できませんでした。"),folder,failure);
+            return NO;
+        }
+    }
+    return YES;
+}
+// A failed restore/selection releases its acquired access. Successful roots
+// transfer that reference to the process-lived list, keeping active jobs valid.
+@interface ELAssetScopeLease : NSObject
+@property(nonatomic,strong) NSURL *url;
+@property(nonatomic,assign) BOOL acquired;
+- (instancetype)initWithURL:(NSURL *)url;
+- (void)keepUntilExit;
+@end
+@implementation ELAssetScopeLease
+- (instancetype)initWithURL:(NSURL *)url {
+    if ((self=[super init])) { _url=url; _acquired=[url startAccessingSecurityScopedResource]; }
+    return self;
+}
+- (void)dealloc { if (_acquired) [_url stopAccessingSecurityScopedResource]; }
+- (void)keepUntilExit {
+    if (!_acquired) return;
+    @synchronized(NSUserDefaults.standardUserDefaults) {
+        if (!ELHeldScopes) ELHeldScopes=[NSMutableArray new]; [ELHeldScopes addObject:_url];
+    }
+    _acquired=NO;
+}
+@end
+
 static NSString *ELJSON(id value) {
-    NSData *data=[NSJSONSerialization dataWithJSONObject:value options:0 error:NULL];
+    NSData *data=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingFragmentsAllowed error:NULL];
     return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
 }
 static NSString *ELMessage(id value) {
@@ -84,11 +208,97 @@ UIViewController *ElichikaHostPresenter(void) {
     while (controller.presentedViewController && !controller.presentedViewController.isBeingDismissed) controller=controller.presentedViewController;
     return controller;
 }
+
+// The dated client library remains byte-for-byte unchanged. Bind only after
+// Objective-C has registered its exact API, then capture its already-initialized
+// controller from the real preference poll. A fresh instance would bypass the
+// client's verified configuration initialization.
+static IMP ELClientOriginalPoll;
+static __weak id ELClientControls;
+static __weak UIView *ELClientControlRoot;
+static __weak UIButton *ELClientOldButton;
+static __weak UILongPressGestureRecognizer *ELClientOldShortcut;
+static BOOL ELClientMenuHooked,ELClientMenuInspected;
+static BOOL ELClientMethod(Class type,SEL selector,unsigned int arguments,const char *argument=nullptr) {
+    Method method=class_getInstanceMethod(type,selector);
+    if (!method || method_getNumberOfArguments(method)!=arguments) return NO;
+    char *result=method_copyReturnType(method); BOOL valid=result && !std::strcmp(result,"v"); free(result);
+    if (valid && argument) { char *value=method_copyArgumentType(method,2); valid=value && !std::strcmp(value,argument); free(value); }
+    return valid;
+}
+static void ELHideOriginalClientMenu(id owner) {
+    UIWindow *window=ELPanelWindow.isKeyWindow ? ELPanelWindow : ELGameWindow;
+    UIView *root=window.rootViewController.view; if (!root) return;
+    if (root!=ELClientControlRoot) {
+        ELClientControlRoot=root; ELClientOldButton=nil; ELClientOldShortcut=nil;
+        // The client inserts these as direct children. Reinspect only when it
+        // reparents them to a different root; normal polls allocate/scan nothing.
+        for (UIView *child in root.subviews)
+            if ([child isKindOfClass:UIButton.class] && [child.accessibilityIdentifier isEqual:@"SIFASFeatures.Settings"] &&
+                [((UIButton *)child).allTargets containsObject:owner]) { ELClientOldButton=(UIButton *)child; break; }
+        for (UIGestureRecognizer *gesture in root.gestureRecognizers)
+            if ([gesture isKindOfClass:UILongPressGestureRecognizer.class] && gesture.delegate==owner) {
+                ELClientOldShortcut=(UILongPressGestureRecognizer *)gesture; break;
+            }
+    }
+    // Original poll refreshes the button's visibility. Override only that
+    // presentation, without changing either standalone client's saved setting.
+    ELClientOldButton.hidden=YES; ELClientOldShortcut.enabled=NO;
+}
+static void ELUnifiedClientPoll(id owner,SEL selector,id timer) {
+    ((void (*)(id,SEL,id))ELClientOriginalPoll)(owner,selector,timer);
+    ELClientControls=owner; ELHideOriginalClientMenu(owner);
+}
+static void ELUnifiedClientShow(id owner,SEL selector) {
+    (void)owner; (void)selector; ElichikaHostShowManagement();
+}
+static void ELInstallClientMenuBridge(void) {
+    if (ELClientMenuInspected || !NSThread.isMainThread) return;
+    Class type=NSClassFromString(@"SIFASFeatures"); if (!type) return;
+    ELClientMenuInspected=YES;
+    SEL poll=@selector(poll:),show=@selector(showSettings);
+    if (!ELClientMethod(type,poll,3,"@") || !ELClientMethod(type,show,2) ||
+        !ELClientMethod(type,@selector(showCamera),2) || !ELClientMethod(type,@selector(showOrientation),2)) return;
+    Method method=class_getInstanceMethod(type,poll); ELClientOriginalPoll=method_getImplementation(method);
+    method_setImplementation(method,(IMP)ELUnifiedClientPoll);
+    method_setImplementation(class_getInstanceMethod(type,show),(IMP)ELUnifiedClientShow);
+    ELClientMenuHooked=YES;
+}
+static BOOL ELClientControlsAvailable(void) { return ELClientMenuHooked && ELClientControls!=nil; }
+static void ELClientApplyPreferences(void) {
+    id controller=ELClientControls;
+    if (controller && ELClientOriginalPoll) ELUnifiedClientPoll(controller,@selector(poll:),nil);
+}
+static BOOL ELClientOpenControl(NSString *name) {
+    id controller=ELClientControls;
+    if (!ELClientControlsAvailable() || !([name isEqual:@"showCamera"] || [name isEqual:@"showOrientation"])) return NO;
+    SEL selector=NSSelectorFromString(name);
+    IMP action=[controller methodForSelector:selector];
+    if (!action) return NO;
+    ((void (*)(id,SEL))action)(controller,selector); return YES;
+}
+static void ELAfterMenuDismissal(UIAlertController *menu,void (^action)(void)) {
+    UIViewController *presenting=menu.presentingViewController;
+    if (!presenting) { dispatch_async(dispatch_get_main_queue(),action); return; }
+    id<UIViewControllerTransitionCoordinator> transition=menu.transitionCoordinator;
+    if (menu.isBeingDismissed && transition) {
+        [transition animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+            if (!context.isCancelled) action();
+        }];
+    } else [presenting dismissViewControllerAnimated:YES completion:action];
+}
+static void ELClientControlRoute(UIAlertController *menu,NSString *name,void (^completion)(BOOL)) {
+    ELAfterMenuDismissal(menu,^{
+        BOOL delivered=ELClientOpenControl(name);
+        if (completion) completion(delivered);
+    });
+}
 NSDictionary *ElichikaHostConfiguration(void) { return ELConfiguration ?: @{}; }
 NSString *ElichikaHostDiagnosticsJSON(void) {
     const auto &core=ELCore();
     NSString *active=ELConfiguration[@"library_root"] ?: @"";
     NSString *saved=[NSUserDefaults.standardUserDefaults stringForKey:ELAssetPathKey];
+    NSString *nextMode=ELSavedAssetBookmarkMode();
     if (!saved.length) saved=[[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject
         stringByAppendingPathComponent:@"Elichika"] stringByResolvingSymlinksInPath];
     return ELJSON(@{@"schema":@1,@"phase":[NSString stringWithUTF8String:core.phase()],
@@ -102,6 +312,12 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
                     @"core_only":ELConfiguration[@"core_only"] ?: @NO,
                     @"asset_directory":active,@"next_asset_directory":saved ?: @"",
                     @"external_asset_directory":ELConfiguration[@"external_asset_directory"] ?: @NO,
+                    @"next_external_asset_directory":@([NSUserDefaults.standardUserDefaults dataForKey:ELAssetBookmarkKey]!=nil),
+                    @"bookmark_mode":ELConfiguration[@"bookmark_mode"] ?: @"app_storage",@"next_bookmark_mode":nextMode,
+                    @"access_lifetime":ELConfiguration[@"access_lifetime"] ?: @"app_storage",
+                    @"persistence_warning":ELConfiguration[@"persistence_warning"] ?: @"",
+                    @"next_access_lifetime":[nextMode isEqual:@"app_storage"] ? @"app_storage" : ELAssetBookmarkLifetime(nextMode),
+                    @"next_persistence_warning":ELAssetBookmarkWarning(nextMode),
                     @"restart_required":@(active.length && ![active isEqual:saved]),
                     @"generation":@(core.generation()),@"error":ELHookError ?: [NSString stringWithUTF8String:core.error().c_str()]});
 }
@@ -120,7 +336,18 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 @interface ELPanelController : UIViewController <WKNavigationDelegate,WKScriptMessageHandler,WKUIDelegate,WKDownloadDelegate>
 @property(nonatomic,strong) UILabel *statusLabel;
 @property(nonatomic,strong) UIActivityIndicatorView *spinner;
-@property(nonatomic,strong) UISegmentedControl *sections;
+@property(nonatomic,assign) NSInteger selectedWebSection;
+@property(nonatomic,assign) NSInteger selectedDestination;
+@property(nonatomic,assign) BOOL managementAvailable;
+@property(nonatomic,copy) NSString *managementPage;
+@property(nonatomic,copy) NSString *editorPage;
+@property(nonatomic,strong) UIScrollView *sidebar;
+@property(nonatomic,strong) NSLayoutConstraint *sidebarContentWidth;
+@property(nonatomic,strong) UIButton *destinationPicker;
+@property(nonatomic,strong) NSArray<UIButton *> *destinationButtons;
+@property(nonatomic,assign) NSInteger renderedDestination;
+@property(nonatomic,assign) BOOL renderedAvailable;
+@property(nonatomic,copy) NSString *renderedLanguage;
 @property(nonatomic,strong) WKWebView *web;
 @property(nonatomic,strong) UIView *webContainer;
 @property(nonatomic,strong) NSMutableDictionary<NSNumber *,WKWebView *> *sectionWebViews;
@@ -129,6 +356,7 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 @property(nonatomic,strong) NSMapTable<WKWebView *,NSString *> *panelErrors;
 @property(nonatomic,strong) UIButton *retry;
 @property(nonatomic,strong) UIButton *storageRecovery;
+@property(nonatomic,strong) UIButton *storageReselect;
 @property(nonatomic,strong) UIBarButtonItem *buttonVisibility;
 @property(nonatomic,strong) UILabel *candidateLabel;
 @property(nonatomic,assign) BOOL initialPanelLoaded;
@@ -155,6 +383,8 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 - (WKWebView *)activateSection:(NSInteger)section;
 - (WKNavigation *)loadPanelURL:(NSURL *)target;
 - (void)refresh;
+- (void)applyDestinationToWebView:(WKWebView *)web;
+- (void)selectDestination:(NSInteger)destination;
 @end
 static ELPanelController *ELPanel;
 static void ELBeginBackend(void);
@@ -191,29 +421,23 @@ static void ELHidePanel(void) {
 - (void)viewDidLoad {
     [super viewDidLoad]; self.view.backgroundColor=UIColor.systemBackgroundColor;
     self.title=@"Elichika";
-    self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithTitle:@"Game" style:UIBarButtonItemStyleDone target:self action:@selector(close)];
+    self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithTitle:ELButtonText(@"Game",@"게임으로",@"ゲームへ") style:UIBarButtonItemStyleDone target:self action:@selector(close)];
     _statusLabel=[UILabel new]; _statusLabel.numberOfLines=0; _statusLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     _spinner=[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     _retry=[UIButton buttonWithType:UIButtonTypeSystem]; [_retry setTitle:@"Retry setup" forState:UIControlStateNormal];
     [_retry addTarget:self action:@selector(retrySetup) forControlEvents:UIControlEventTouchUpInside];
-    _sections=[[UISegmentedControl alloc] initWithItems:@[@"Manage",@"Accounts",@"Content",@"Tools"]];
-    _sections.selectedSegmentIndex=0;
-    [_sections addTarget:self action:@selector(openSection) forControlEvents:UIControlEventValueChanged];
+    _selectedWebSection=0; _selectedDestination=0; _renderedDestination=-1; _managementPage=@"server"; _editorPage=@"tools";
     _buttonVisibility=[[UIBarButtonItem alloc] initWithTitle:@"" style:UIBarButtonItemStylePlain target:self action:@selector(toggleServerButton)];
     self.navigationItem.leftBarButtonItem=_buttonVisibility;
-    _buttonVisibility.accessibilityHint=ELButtonText(@"The choice is saved. Hold the upper-left corner for 2 seconds to reopen this panel.",
-        @"선택은 저장됩니다. 왼쪽 위 모서리를 2초간 길게 누르면 이 패널을 다시 열 수 있습니다.",
-        @"設定は保存されます。左上隅を2秒間長押しすると、このパネルを再び開けます。");
-    UILabel *guidance=[UILabel new]; guidance.numberOfLines=0;
-    guidance.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption2]; guidance.textColor=UIColor.secondaryLabelColor;
-    guidance.text=ELButtonText(@"Hide for MV. Hold upper-left 2s to reopen.",
-        @"MV 중 숨기기 · 왼쪽 위 2초 길게 눌러 다시 열기",
-        @"MV中は非表示に。左上を2秒長押しで再表示。");
-    _candidateLabel=[UILabel new]; _candidateLabel.numberOfLines=0;
+    _buttonVisibility.accessibilityHint=ELButtonText(@"The choice is saved. Hold the upper-right corner for 2 seconds to reopen server and game settings.",
+        @"선택은 저장됩니다. 오른쪽 위를 2초 길게 누르면 서버·게임 설정을 다시 열 수 있습니다.",
+        @"設定は保存されます。右上を2秒間長押しするとサーバー・ゲーム設定を再び開けます。");
+    _candidateLabel=[UILabel new]; _candidateLabel.numberOfLines=1;
     _candidateLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption2]; _candidateLabel.textColor=UIColor.systemOrangeColor;
-    _candidateLabel.text=ELButtonText(@"Experimental · Archive pending · Device untested\nFiles: Elichika/packs",
-        @"실험 빌드 · Archive 게시 대기 · 실기기 미검증\n파일: Elichika/packs",
-        @"実験版 · Archive公開待ち · 実機未検証\nファイル: Elichika/packs");
+    _candidateLabel.text=ELButtonText(@"Preview",@"미리보기",@"プレビュー");
+    _candidateLabel.accessibilityLabel=ELButtonText(@"Experimental build. Archive publication and physical device testing are pending.",
+        @"실험 빌드입니다. Archive 게시와 실기기 검증은 대기 중입니다.",
+        @"実験ビルドです。Archive公開と実機検証は未完了です。");
     _sectionWebViews=[NSMutableDictionary new]; _sectionTargets=[NSMutableDictionary new];
     _failedPanels=NSHashTable.weakObjectsHashTable; _panelErrors=[NSMapTable weakToStrongObjectsMapTable];
     _webContainer=[UIView new];
@@ -221,23 +445,153 @@ static void ELHidePanel(void) {
     _storageRecovery=[UIButton buttonWithType:UIButtonTypeSystem];
     [_storageRecovery setTitle:ELButtonText(@"Use default asset folder",@"기본 에셋 폴더 사용",@"既定の保存先を使用") forState:UIControlStateNormal];
     [_storageRecovery addTarget:self action:@selector(restoreStorage) forControlEvents:UIControlEventTouchUpInside];
-    UIStackView *statusRow=[[UIStackView alloc] initWithArrangedSubviews:@[_spinner,_statusLabel]];
+    _storageReselect=[UIButton buttonWithType:UIButtonTypeSystem];
+    [_storageReselect setTitle:ELButtonText(@"Choose asset folder again",@"에셋 폴더 다시 선택",@"保存先を再選択") forState:UIControlStateNormal];
+    [_storageReselect addTarget:self action:@selector(reselectStorage) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *statusRow=[[UIStackView alloc] initWithArrangedSubviews:@[_spinner,_statusLabel,_candidateLabel]];
     statusRow.axis=UILayoutConstraintAxisHorizontal; statusRow.alignment=UIStackViewAlignmentCenter; statusRow.spacing=8;
     [_spinner setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[statusRow,_candidateLabel,_retry,_storageRecovery,guidance,_sections]];
+    [_candidateLabel setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    _destinationPicker=[UIButton buttonWithType:UIButtonTypeSystem];
+    _destinationPicker.contentHorizontalAlignment=UIControlContentHorizontalAlignmentLeading;
+    _destinationPicker.titleLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    [_destinationPicker addTarget:self action:@selector(chooseDestination) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *recovery=[[UIStackView alloc] initWithArrangedSubviews:@[_storageReselect,_storageRecovery]];
+    recovery.axis=UILayoutConstraintAxisHorizontal; recovery.spacing=12; recovery.distribution=UIStackViewDistributionFillEqually;
+    UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[statusRow,_retry,recovery,_destinationPicker]];
     head.axis=UILayoutConstraintAxisVertical; head.spacing=6;
-    head.translatesAutoresizingMaskIntoConstraints=NO; _webContainer.translatesAutoresizingMaskIntoConstraints=NO;
-    [self.view addSubview:head]; [self.view addSubview:_webContainer];
+    _sidebar=[UIScrollView new]; _sidebar.backgroundColor=UIColor.secondarySystemBackgroundColor;
+    NSLayoutConstraint *sidebarWidth=[_sidebar.widthAnchor constraintEqualToConstant:196];
+    sidebarWidth.priority=999; sidebarWidth.active=YES;
+    UIStackView *navigation=[UIStackView new]; navigation.axis=UILayoutConstraintAxisVertical; navigation.spacing=3;
+    navigation.translatesAutoresizingMaskIntoConstraints=NO; [_sidebar addSubview:navigation];
+    NSMutableArray *buttons=[NSMutableArray new];
+    NSArray *icons=@[@"server.rack",@"person.crop.circle",@"slider.horizontal.3",@"externaldrive",@"paintbrush.pointed",@"cube",@"gearshape",@"camera",@"arrow.down.circle",@"questionmark.circle"];
+    for (NSInteger index=0;index<(NSInteger)elichika::Destination::count;++index) {
+        UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem]; button.tag=index;
+        button.contentHorizontalAlignment=UIControlContentHorizontalAlignmentLeading;
+        button.contentEdgeInsets=UIEdgeInsetsMake(8,10,8,8); button.layer.cornerRadius=6;
+        button.titleLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+        [button setImage:[UIImage systemImageNamed:icons[index]] forState:UIControlStateNormal];
+        button.imageEdgeInsets=UIEdgeInsetsMake(0,0,0,8);
+        [button.heightAnchor constraintGreaterThanOrEqualToConstant:36].active=YES;
+        [button addTarget:self action:@selector(destinationPressed:) forControlEvents:UIControlEventTouchUpInside];
+        [navigation addArrangedSubview:button]; [buttons addObject:button];
+    }
+    UILabel *guidance=[UILabel new]; guidance.numberOfLines=0; guidance.textColor=UIColor.secondaryLabelColor;
+    guidance.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption2];
+    guidance.text=ELButtonText(@"Hide the button for MV. Hold upper-right 2s to reopen.",
+        @"MV 중 버튼 숨기기\n오른쪽 위 2초 길게 눌러 다시 열기",@"MV中はボタンを非表示に。右上を2秒長押しで再表示。");
+    [navigation addArrangedSubview:guidance]; _destinationButtons=buttons;
+    _sidebarContentWidth=[navigation.widthAnchor constraintEqualToAnchor:_sidebar.frameLayoutGuide.widthAnchor constant:-16];
+    [NSLayoutConstraint activateConstraints:@[
+        [navigation.topAnchor constraintEqualToAnchor:_sidebar.contentLayoutGuide.topAnchor constant:8],
+        [navigation.bottomAnchor constraintEqualToAnchor:_sidebar.contentLayoutGuide.bottomAnchor constant:-8],
+        [navigation.leadingAnchor constraintEqualToAnchor:_sidebar.contentLayoutGuide.leadingAnchor constant:8],
+        [navigation.trailingAnchor constraintEqualToAnchor:_sidebar.contentLayoutGuide.trailingAnchor constant:-8]]];
+    UIStackView *body=[[UIStackView alloc] initWithArrangedSubviews:@[_sidebar,_webContainer]];
+    body.axis=UILayoutConstraintAxisHorizontal; body.spacing=0;
+    head.translatesAutoresizingMaskIntoConstraints=NO; body.translatesAutoresizingMaskIntoConstraints=NO;
+    [_webContainer setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    [self.view addSubview:head]; [self.view addSubview:body];
     UILayoutGuide *safe=self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
         [head.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
         [head.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
         [head.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],
-        [_webContainer.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:8],
-        [_webContainer.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
-        [_webContainer.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
-        [_webContainer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor]]];
+        [body.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:6],
+        [body.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [body.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        [body.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor]]];
     [self activateSection:0]; [self refresh];
+}
+- (NSString *)destinationTitle:(NSInteger)destination {
+    NSArray *titles=@[ELButtonText(@"Server",@"서버",@"サーバー"),ELButtonText(@"Accounts",@"계정",@"アカウント"),
+        ELButtonText(@"Server settings",@"서버 설정",@"サーバー設定"),ELButtonText(@"Content",@"서버 콘텐츠",@"コンテンツ"),
+        ELButtonText(@"Asset tools",@"에셋 편집 도구",@"アセット編集"),ELButtonText(@"3D model",@"3D 모델",@"3Dモデル"),
+        ELButtonText(@"App settings",@"앱 설정",@"アプリ設定"),ELButtonText(@"Game settings",@"게임 설정",@"ゲーム設定"),
+        ELButtonText(@"Downloads",@"다운로드",@"ダウンロード"),ELButtonText(@"Help",@"도움말",@"ヘルプ")];
+    return destination>=0 && destination<(NSInteger)titles.count ? titles[destination] : @"Elichika";
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    BOOL wide=elichika::wideNavigation(self.view.bounds.size.width);
+    // A hidden arranged sidebar collapses to width zero. Do not leave its
+    // content constrained to zero-minus-insets during compact layout.
+    if (_sidebarContentWidth.active!=wide) _sidebarContentWidth.active=wide;
+    _sidebar.hidden=!wide; _destinationPicker.hidden=wide;
+}
+- (void)destinationPressed:(UIButton *)sender { [self selectDestination:sender.tag]; }
+- (void)chooseDestination {
+    UIAlertController *menu=[UIAlertController alertControllerWithTitle:@"Elichika" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    for (NSInteger index=0;index<(NSInteger)elichika::Destination::count;++index) {
+        UIAlertAction *action=[UIAlertAction actionWithTitle:[self destinationTitle:index] style:UIAlertActionStyleDefault
+            handler:^(__unused UIAlertAction *selected) { [self selectDestination:index]; }];
+        action.enabled=_managementAvailable || index==(NSInteger)elichika::Destination::gameSettings;
+        [menu addAction:action];
+    }
+    [menu addAction:[UIAlertAction actionWithTitle:ELButtonText(@"Cancel",@"취소",@"キャンセル") style:UIAlertActionStyleCancel handler:nil]];
+    menu.popoverPresentationController.sourceView=_destinationPicker;
+    menu.popoverPresentationController.sourceRect=_destinationPicker.bounds;
+    [self presentViewController:menu animated:YES completion:nil];
+}
+- (void)selectDestination:(NSInteger)destination {
+    if (destination<0 || destination>=(NSInteger)elichika::Destination::count) return;
+    const auto choice=static_cast<elichika::Destination>(destination);
+    if (choice==elichika::Destination::gameSettings) { [self showGameSettings]; return; }
+    if (!_managementAvailable) return;
+    _selectedDestination=destination; _selectedWebSection=elichika::webSection(choice);
+    if (const char *page=elichika::managementPage(choice)) _managementPage=[NSString stringWithUTF8String:page];
+    if (const char *page=elichika::editorPage(choice)) _editorPage=[NSString stringWithUTF8String:page];
+    [self openSection];
+}
+- (void)applyDestinationToWebView:(WKWebView *)web {
+    if (!web || web.loading || !ELIsPanelURL(web.URL)) return;
+    NSString *script=nil;
+    if (web==_sectionWebViews[@0]) script=[NSString stringWithFormat:
+        @"window.ElichikaManagementNavigate&&window.ElichikaManagementNavigate(%@)",ELJSON(_managementPage ?: @"server")];
+    else if (web==_sectionWebViews[@3]) script=[NSString stringWithFormat:
+        @"window.ElichikaNavigation&&window.ElichikaNavigation.showSection(%@,{notify:false})",ELJSON(_editorPage ?: @"tools")];
+    if (script) [web evaluateJavaScript:script completionHandler:nil];
+}
+- (void)showGameSettings {
+    UIViewController *presenter=ElichikaHostPresenter();
+    if (!presenter || presenter.isBeingPresented || presenter.isBeingDismissed || presenter.presentedViewController) return;
+    if (!ELClientControlsAvailable()) {
+        UIAlertController *notice=[UIAlertController alertControllerWithTitle:[self destinationTitle:7]
+            message:ELButtonText(@"Game controls are not ready yet. Open the game first; the original client must finish initializing its controls.",
+                @"게임 설정이 아직 준비되지 않았습니다. 게임을 먼저 열어 클라이언트의 설정 초기화를 마쳐 주세요.",
+                @"ゲーム設定はまだ準備中です。ゲームを開いてクライアントの初期化を完了してください。") preferredStyle:UIAlertControllerStyleAlert];
+        [notice addAction:[UIAlertAction actionWithTitle:ELButtonText(@"OK",@"확인",@"OK") style:UIAlertActionStyleCancel handler:nil]];
+        [presenter presentViewController:notice animated:YES completion:nil]; return;
+    }
+    NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+    BOOL fast=[defaults boolForKey:@"SIFASFastIntro"];
+    NSString *detail=ELButtonText(@"FOV, screen orientation and intro speed use the original client controls. Hold upper-right for two seconds to reopen this menu.",
+        @"시야각·화면 방향·인트로 속도를 설정합니다. 오른쪽 위를 2초 길게 누르면 서버·게임 메뉴를 다시 열 수 있습니다.",
+        @"視野角・画面の向き・イントロ速度を設定します。右上を2秒長押しでサーバー・ゲームメニューを再び開けます。");
+    UIAlertController *menu=[UIAlertController alertControllerWithTitle:[self destinationTitle:7] message:detail preferredStyle:UIAlertControllerStyleAlert];
+    __weak UIAlertController *weakMenu=menu;
+    void (^add)(NSString *,void (^)(void))=^(NSString *title,void (^action)(void)) {
+        [menu addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *selected) {
+            ELAfterMenuDismissal(weakMenu,action);
+        }]];
+    };
+    [menu addAction:[UIAlertAction actionWithTitle:ELButtonText(@"Adjust FOV",@"시야각(FOV) 조절",@"視野角(FOV)調整")
+        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *selected) { ELClientControlRoute(weakMenu,@"showCamera",nil); }]];
+    [menu addAction:[UIAlertAction actionWithTitle:ELButtonText(@"Orientation lock",@"화면 방향 고정",@"画面の向きを固定")
+        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *selected) { ELClientControlRoute(weakMenu,@"showOrientation",nil); }]];
+    add(fast ? ELButtonText(@"Fast intro: On",@"인트로 빠르게: 켜짐",@"イントロ高速:オン")
+             : ELButtonText(@"Fast intro: Off",@"인트로 빠르게: 꺼짐",@"イントロ高速:オフ"),^{
+        [defaults setBool:!fast forKey:@"SIFASFastIntro"]; ELClientApplyPreferences();
+    });
+    add(ELButtonText(@"Restore game view defaults",@"게임 보기 설정 초기화",@"ゲーム表示設定を初期化"),^{
+        [defaults setDouble:0.75 forKey:@"SIFASFOVMinimum"]; [defaults setDouble:1.0 forKey:@"SIFASFOVMaximum"];
+        [defaults setBool:NO forKey:@"SIFASFastIntro"]; [defaults setInteger:0 forKey:@"SIFASOrientation"];
+        ELClientApplyPreferences();
+    });
+    [menu addAction:[UIAlertAction actionWithTitle:ELButtonText(@"Done",@"닫기",@"閉じる") style:UIAlertActionStyleCancel handler:nil]];
+    [presenter presentViewController:menu animated:YES completion:nil];
 }
 - (void)dealloc {
     for (WKWebView *web in _sectionWebViews.allValues)
@@ -251,7 +605,7 @@ static void ELHidePanel(void) {
 }
 - (void)retrySetup {
     if ([_failedPanels containsObject:_web]) {
-        NSNumber *section=@(_sections.selectedSegmentIndex); NSString *entry=_sectionTargets[section];
+        NSNumber *section=@(_selectedWebSection); NSString *entry=_sectionTargets[section];
         NSURL *target=_web.URL ?: [NSURL URLWithString:entry ?: @""];
         if (ELIsPanelURL(target)) {
             [_failedPanels removeObject:_web]; [self loadPanelURL:target];
@@ -269,9 +623,30 @@ static void ELHidePanel(void) {
         else ELBeginBackend();
     });
 }
+- (void)reselectStorage {
+    if (!ELStorageError || ELCore().started()) return;
+    _storageReselect.enabled=NO;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+        NSError *error=nil; NSDictionary *result=ELChooseAssetDirectory(&error);
+        dispatch_async(dispatch_get_main_queue(),^{
+            self.storageReselect.enabled=YES;
+            if (error || !result) {
+                if (!(error.code==2 && [error.domain isEqual:@"ElichikaDocument"])) ELHookError=error.localizedDescription;
+                [self refresh]; return;
+            }
+            // Recovery precedes successful setup, so no Python scope/jobs use
+            // an old library. A running session still needs a process restart.
+            if (!ELCore().started()) {
+                ELStorageError=NO; ELConfiguration=nil; ELHookError=nil; ELBeginBackend();
+            }
+        });
+    });
+}
 - (void)restoreStorage {
     if (!ELStorageError || ELCore().started()) return;
-    ELRestoreAssetDirectory(); ELStorageError=NO; ELConfiguration=nil; ELHookError=nil; ELBeginBackend();
+    NSError *error=nil;
+    if (!ELRestoreAssetDirectory(&error)) { ELHookError=error.localizedDescription; [self refresh]; return; }
+    ELStorageError=NO; ELConfiguration=nil; ELHookError=nil; ELBeginBackend();
 }
 - (void)refresh {
     if (!self.isViewLoaded) return;
@@ -283,7 +658,7 @@ static void ELHidePanel(void) {
         ? ELButtonText(@"Hide server button",@"서버 버튼 숨기기",@"サーバーボタンを隠す")
         : ELButtonText(@"Show server button",@"서버 버튼 표시",@"サーバーボタンを表示");
     NSString *error=ELHookError ?: [NSString stringWithUTF8String:ELCore().error().c_str()];
-    _statusLabel.numberOfLines=ELCore().ready() && !error.length ? 1 : 0;
+    _statusLabel.numberOfLines=error.length ? 0 : 1;
     if (error.length) _statusLabel.text=[NSString stringWithFormat:@"Setup could not finish.\n%@",error];
     else if (ELCore().started() && !ELCore().ready() && ELPanelReady()) {
         NSDictionary *server=ELRuntimeStatus[@"server"];
@@ -310,28 +685,40 @@ static void ELHidePanel(void) {
     [_retry setTitle:pageFailed ? ELButtonText(@"Reload page",@"페이지 다시 열기",@"ページを再読み込み") : @"Retry setup" forState:UIControlStateNormal];
     _retry.hidden=!error.length && !pageFailed; _retry.enabled=ELProfileSupported && ELRoutingPrepared;
     _storageRecovery.hidden=!ELStorageError;
-    _sections.enabled=elichika::managementAvailable(ELCore().started(),ELCore().ready(),ELPanelReady())
+    _storageReselect.hidden=!ELStorageError;
+    _managementAvailable=elichika::managementAvailable(ELCore().started(),ELCore().ready(),ELPanelReady())
         && ![ELConfiguration[@"core_only"] boolValue];
+    NSString *language=ELConfiguration[@"language"] ?: @"";
+    if (_renderedDestination!=_selectedDestination || _renderedAvailable!=_managementAvailable || ![_renderedLanguage isEqual:language]) {
+        _renderedDestination=_selectedDestination; _renderedAvailable=_managementAvailable; _renderedLanguage=language;
+        for (UIButton *button in _destinationButtons) {
+            [button setTitle:[self destinationTitle:button.tag] forState:UIControlStateNormal];
+            button.enabled=_managementAvailable || button.tag==(NSInteger)elichika::Destination::gameSettings;
+            button.backgroundColor=button.tag==_selectedDestination ? [self.view.tintColor colorWithAlphaComponent:0.14] : UIColor.clearColor;
+        }
+        [_destinationPicker setTitle:[[self destinationTitle:_selectedDestination] stringByAppendingString:@"  ▾"] forState:UIControlStateNormal];
+    }
     self.navigationItem.rightBarButtonItem.enabled=ELCore().started();
-    if (_sections.enabled && !_initialPanelLoaded) { _initialPanelLoaded=YES; [self openSection]; }
+    if (_managementAvailable && !_initialPanelLoaded) { _initialPanelLoaded=YES; [self openSection]; }
 }
 - (void)openSection {
     NSString *url;
-    if (_sections.selectedSegmentIndex==0) {
+    if (_selectedWebSection==0) {
         NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
         parts.path=@"/ios/"; parts.fragment=nil; url=parts.URL.absoluteString;
     }
-    else if (_sections.selectedSegmentIndex==1) url=[ELAccountsURL() absoluteString];
-    else if (_sections.selectedSegmentIndex==2) url=ELRuntimeStatus[@"admin_url"];
+    else if (_selectedWebSection==1) url=[ELAccountsURL() absoluteString];
+    else if (_selectedWebSection==2) url=ELRuntimeStatus[@"admin_url"];
     else url=ELRuntimeStatus[@"tools_url"];
     NSURL *target=[NSURL URLWithString:url ?: @""];
     if (!ELIsPanelURL(target)) return;
-    NSInteger section=_sections.selectedSegmentIndex;
+    NSInteger section=_selectedWebSection;
     WKWebView *web=[self activateSection:section]; if (!web) return;
     // Internal navigation belongs to this retained document. Comparing its
     // original entry URL (including auth/origin) avoids reloading editors when
     // a tab is revisited, while a server-origin change still gets a fresh page.
     if (![_sectionTargets[@(section)] isEqual:target.absoluteString]) [self loadPanelURL:target];
+    else [self applyDestinationToWebView:web];
     [self refresh];
 }
 - (WKWebView *)activateSection:(NSInteger)section {
@@ -344,7 +731,7 @@ static void ELHidePanel(void) {
         [configuration.userContentController addScriptMessageHandler:handler name:@"elichika"];
         // A reply also carries this document's nonce: navigating the same WK
         // while a picker is open cannot resolve a newer document's request ID.
-        NSString *script=@"(()=>{const p=new Map();let n=0;const d=(globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now())+'-'+Math.random();window.__elichikaNativeDocument=d;window.ElichikaIOS=Object.freeze({request:(action,options={})=>new Promise((resolve,reject)=>{const id=String(++n);p.set(id,{resolve,reject});window.webkit.messageHandlers.elichika.postMessage({...options,id,action,document:d});})});window.addEventListener('elichika-native-result',e=>{const x=e.detail;if(!x||x.document!==d)return;const j=p.get(x.id);if(j){p.delete(x.id);x.error?j.reject(Error(x.error)):j.resolve(x.result)}})})();";
+        NSString *script=@"(()=>{window.ElichikaUnifiedNavigation=true;const p=new Map();let n=0;const d=(globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now())+'-'+Math.random();window.__elichikaNativeDocument=d;window.ElichikaIOS=Object.freeze({request:(action,options={})=>new Promise((resolve,reject)=>{const id=String(++n);p.set(id,{resolve,reject});window.webkit.messageHandlers.elichika.postMessage({...options,id,action,document:d});})});window.addEventListener('elichika-native-result',e=>{const x=e.detail;if(!x||x.document!==d)return;const j=p.get(x.id);if(j){p.delete(x.id);x.error?j.reject(Error(x.error)):j.resolve(x.result)}})})();";
         [configuration.userContentController addUserScript:[[WKUserScript alloc] initWithSource:script injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
         web=[[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
         web.navigationDelegate=self; web.UIDelegate=self; web.translatesAutoresizingMaskIntoConstraints=NO;
@@ -362,7 +749,7 @@ static void ELHidePanel(void) {
 }
 - (WKNavigation *)loadPanelURL:(NSURL *)target {
     if (!ELIsPanelURL(target)) return nil;
-    NSInteger section=_sections.selectedSegmentIndex;
+    NSInteger section=_selectedWebSection;
     WKWebView *web=[self activateSection:section]; if (!web) return nil;
     _sectionTargets[@(section)]=target.absoluteString; [_failedPanels removeObject:web]; [_panelErrors removeObjectForKey:web];
     NSMutableURLRequest *request=[NSMutableURLRequest requestWithURL:target];
@@ -379,6 +766,14 @@ static void ELHidePanel(void) {
     [_failedPanels removeObject:web]; [_panelErrors removeObjectForKey:web];
 #if ELICHIKA_SIMULATOR_PROBE
     if (web==_web && _managementProbeReply && _managementProbeStep==2) _managementProbeNavigation=navigation;
+#endif
+}
+- (void)webView:(WKWebView *)web didFinishNavigation:(WKNavigation *)navigation {
+    [self applyDestinationToWebView:web];
+#if ELICHIKA_SIMULATOR_PROBE
+    [self probeWebView:web didFinishNavigation:navigation];
+#else
+    (void)navigation;
 #endif
 }
 - (void)webView:(WKWebView *)web didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
@@ -420,7 +815,7 @@ static void ELHidePanel(void) {
         !_web.configuration.websiteDataStore.persistent) {
         [self finishStorageProbe:[self failedStorageProbe:@"Management origin or persistent data store does not match."]]; return;
     }
-    _sections.selectedSegmentIndex=[service isEqual:@"admin"] ? 2 : 3;
+    _selectedWebSection=[service isEqual:@"admin"] ? 2 : 3;
     _storageProbeNavigation=[self loadPanelURL:target];
     if (!_storageProbeNavigation) { [self finishStorageProbe:[self failedStorageProbe:@"Could not navigate the actual management WebView."]]; return; }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,30*NSEC_PER_SEC),dispatch_get_main_queue(),^{
@@ -428,7 +823,7 @@ static void ELHidePanel(void) {
             [self finishStorageProbe:[self failedStorageProbe:@"Management WebView storage probe timed out."]];
     });
 }
-- (void)webView:(WKWebView *)web didFinishNavigation:(WKNavigation *)navigation {
+- (void)probeWebView:(WKWebView *)web didFinishNavigation:(WKNavigation *)navigation {
     if (web==_web && _managementProbeReply && navigation==_managementProbeNavigation) {
         // The existing Accounts hub redirects to its login picker in JavaScript
         // when this WebView has no selected account. Follow that real navigation.
@@ -488,15 +883,15 @@ static void ELHidePanel(void) {
         [content evaluateJavaScript:seed completionHandler:^(id contentSeed,NSError *contentError) {
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
             if (contentError || ![contentSeed isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Could not seed the actual Content document's unsaved state.",contentError)]; return; }
-        self.sections.selectedSegmentIndex=3; [self openSection];
+        self.selectedWebSection=3; [self openSection];
         if (self.web!=tools) { [self finishManagementProbe:@"Revisiting Tools replaced its retained WebView."]; return; }
         NSString *toolSeed=[seed stringByAppendingString:@";window.ElichikaIOS.request('__probe_deferred_status').then(v=>{window.__elichikaRetentionProbe.reply=v.returned_to_origin===true&&v.other_tab_active===true});true;"];
         [tools evaluateJavaScript:toolSeed completionHandler:^(id seeded,NSError *seedError) {
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
             if (seedError || ![seeded isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Could not seed the actual Tools document and deferred native request.",seedError)]; return; }
-            self.sections.selectedSegmentIndex=0; [self openSection];
+            self.selectedWebSection=0; [self openSection];
             if (self.web!=manage) { [self finishManagementProbe:@"Revisiting Manage replaced its retained WebView."]; return; }
-            self.sections.selectedSegmentIndex=2; [self openSection];
+            self.selectedWebSection=2; [self openSection];
             if (self.web!=content) { [self finishManagementProbe:@"Revisiting Content replaced its retained WebView."]; return; }
             ELHidePanel(); ElichikaHostShowManagement();
             if (self.web!=content || ![content isDescendantOfView:self.view] || content.hidden || ELPanelWindow.hidden) {
@@ -527,14 +922,14 @@ static void ELHidePanel(void) {
                 [self pollRetainedTools:tools manage:manage script:check generation:generation];
             }); return;
         }
-        self.sections.selectedSegmentIndex=3; [self openSection];
+        self.selectedWebSection=3; [self openSection];
         if (self.web!=tools) { [self finishManagementProbe:@"Tools was recreated after hiding and reopening management."]; return; }
         [tools evaluateJavaScript:check completionHandler:^(id visible,NSError *visibleError) {
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
             if (visibleError || ![visible isKindOfClass:NSDictionary.class] || ![visible[@"same"] isEqual:@YES] || ![visible[@"reply"] isEqual:@YES]) {
                 [self finishManagementProbe:ELProbeJavaScriptFailure(@"Revisiting Tools discarded its document state or deferred native reply.",visibleError)]; return;
             }
-            self.sections.selectedSegmentIndex=0; [self openSection];
+            self.selectedWebSection=0; [self openSection];
             if (self.web!=manage) { [self finishManagementProbe:@"The management document was recreated after revisiting other tabs."]; return; }
             [manage evaluateJavaScript:check completionHandler:^(id preserved,NSError *preservedError) {
                 if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
@@ -568,14 +963,14 @@ static void ELHidePanel(void) {
         if (error || ![value isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Could not seed the actual Accounts document's unsaved form state.",error)]; return; }
         for (NSNumber *section in @[@0,@2,@3,@1]) {
             WKWebView *retained=self.sectionWebViews[section];
-            self.sections.selectedSegmentIndex=section.integerValue; [self openSection];
+            self.selectedWebSection=section.integerValue; [self openSection];
             if (self.web!=retained) { [self finishManagementProbe:@"A management tab was recreated during the Accounts retention check."]; return; }
         }
         NSString *check=[NSString stringWithFormat:@"(()=>{const a=%@,p=window.__elichikaAccountRetention,f=document.getElementById('elichika-retention-account-draft');return !!p&&p.token===a.token&&p.pagehide===0&&!!f&&f.value==='unsaved account draft';})()",ELJSON(arguments)];
         [accounts evaluateJavaScript:check completionHandler:^(id retained,NSError *retainedError) {
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
             if (retainedError || ![retained isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Accounts lost its unsaved form state after visiting the other three tabs.",retainedError)]; return; }
-            self.sections.selectedSegmentIndex=0; [self openSection];
+            self.selectedWebSection=0; [self openSection];
             if (!self.web || self.web!=self.sectionWebViews[@0] || !self.retainedDocumentsChecked) {
                 [self finishManagementProbe:@"Could not return to retained management after the offline Accounts check."]; return;
             }
@@ -591,7 +986,7 @@ static void ELHidePanel(void) {
         return;
     }
     NSUInteger generation=_managementProbeGeneration;
-    BOOL nativeStopped=ELCore().started() && !ELCore().ready() && ELPanelReady() && _sections.enabled;
+    BOOL nativeStopped=ELCore().started() && !ELCore().ready() && ELPanelReady() && _managementAvailable;
     NSDictionary *arguments=@{@"step":@(_managementProbeStep),@"allowStart":@(nativeStopped)};
     NSString *script=_managementProbeStep==2
         ? @"if(location.pathname!=='/ios/server/webui/user/login')return{waiting:true};"
@@ -617,7 +1012,7 @@ static void ELHidePanel(void) {
             if (error || ![value isKindOfClass:NSDictionary.class] || [value[@"error"] boolValue]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"The actual management JavaScript/API probe failed.",error)]; return; }
             if (![value[@"waiting"] boolValue]) {
                 if (self.managementProbeStep==2) {
-                    if (![value[@"offline_accounts"] isEqual:@YES] || ELCore().ready() || !ELPanelReady() || !self.sections.enabled) {
+                    if (![value[@"offline_accounts"] isEqual:@YES] || ELCore().ready() || !ELPanelReady() || !self.managementAvailable) {
                         [self finishManagementProbe:@"The stopped-server Accounts page or native account directory was unavailable."]; return;
                     }
                     self.managementProof[@"offline_accounts"]=@YES; self.managementProbeStep=3;
@@ -629,13 +1024,13 @@ static void ELHidePanel(void) {
                 }
                 if (self.managementProbeStep==0 && [value[@"requested"] isEqual:@"stop"]) self.managementProbeStep=1;
                 else if (self.managementProbeStep==1 && [value[@"requested"] isEqual:@"offline_accounts"]) {
-                    self.managementProof[@"go_stopped"]=@YES; self.managementProbeStep=2; self.sections.selectedSegmentIndex=1;
+                    self.managementProof[@"go_stopped"]=@YES; self.managementProbeStep=2; self.selectedWebSection=1;
                     self.managementProbeHTTPStatus=0; self.managementProbeNavigation=[self loadPanelURL:ELAccountsURL()];
                     if (!self.managementProbeNavigation) [self finishManagementProbe:@"Could not open Accounts while the game server was stopped."];
                     return;
                 }
                 else if (self.managementProbeStep==3 && [value[@"requested"] isEqual:@"start"]) self.managementProbeStep=4;
-                else if (self.managementProbeStep==4 && [value[@"server_ready"] boolValue] && ELCore().ready() && self.sections.enabled) {
+                else if (self.managementProbeStep==4 && [value[@"server_ready"] boolValue] && ELCore().ready() && self.managementAvailable) {
                     self.managementProof[@"server_restarted"]=@YES; [self finishManagementProbe:nil]; return;
                 }
             }
@@ -652,7 +1047,7 @@ static void ELHidePanel(void) {
     _managementProof=[@{@"schema":@1,@"ready":@NO,@"actual_management_webview":@(_web && [_web isDescendantOfView:self.view] && _web.navigationDelegate==self),
         @"page_loaded":@NO,@"javascript_ready":@NO,@"state_fetch":@NO,@"controls_present":@NO,@"native_binding":@NO,@"retained_panels":@NO,@"go_stopped":@NO,@"offline_accounts":@NO,@"server_restarted":@NO,@"error":@NO} mutableCopy];
     NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
-    parts.path=@"/ios/"; parts.fragment=nil; _sections.selectedSegmentIndex=0;
+    parts.path=@"/ios/"; parts.fragment=nil; _selectedWebSection=0;
     _managementProbeNavigation=[self loadPanelURL:parts.URL];
     if (!_managementProbeNavigation) { [self finishManagementProbe:@"The actual management page URL was unavailable."]; return; }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,115*NSEC_PER_SEC),dispatch_get_main_queue(),^{
@@ -789,7 +1184,8 @@ static void ELHidePanel(void) {
         }); return;
     }
     if ([action isEqual:@"restoreDefaultAssetDirectory"]) {
-        [self reply:identifier inWebView:source document:document result:ELRestoreAssetDirectory() error:nil]; return;
+        NSError *error=nil; NSDictionary *result=ELRestoreAssetDirectory(&error);
+        [self reply:identifier inWebView:source document:document result:result error:error.localizedDescription]; return;
     }
     if ([action isEqual:@"import"]) {
         NSArray *types=[request[@"types"] isKindOfClass:NSArray.class] ? request[@"types"] : @[@"public.data"];
@@ -830,7 +1226,9 @@ void ElichikaHostShowManagement(void) {
     [ELPanel refresh]; [ELPanelWindow makeKeyAndVisible];
 }
 static void ELRefreshMenu(void) {
+    ELInstallClientMenuBridge();
     UIWindow *window=ELFindGameWindow(); if (!window) return;
+    ELGameWindow=window;
     static NSHashTable *gestureWindows;
     if (!gestureWindows) gestureWindows=NSHashTable.weakObjectsHashTable;
     if (![gestureWindows containsObject:window]) {
@@ -843,13 +1241,14 @@ static void ELRefreshMenu(void) {
     if (!ELMenuButton) {
         ELMenuButton=[UIButton buttonWithType:UIButtonTypeSystem];
         [ELMenuButton setTitle:@"Elichika" forState:UIControlStateNormal];
+        ELMenuButton.accessibilityLabel=ELButtonText(@"Server and game settings",@"서버·게임 설정",@"サーバー・ゲーム設定");
         ELMenuButton.backgroundColor=[UIColor.systemBackgroundColor colorWithAlphaComponent:0.88];
         ELMenuButton.layer.cornerRadius=9;
         [ELMenuButton addTarget:ELMenuTarget() action:@selector(show) forControlEvents:UIControlEventTouchUpInside];
     }
     if (ELMenuButton.superview!=window) [window addSubview:ELMenuButton];
     ELMenuButton.hidden=!ELButtonPolicy().visible();
-    ELMenuButton.frame=CGRectMake(window.safeAreaInsets.left+8,window.safeAreaInsets.top+8,82,34);
+    ELMenuButton.frame=CGRectMake(MAX(8,window.bounds.size.width-window.safeAreaInsets.right-90),window.safeAreaInsets.top+8,82,34);
     [window bringSubviewToFront:ELMenuButton];
 }
 
@@ -862,7 +1261,8 @@ static void ELRefreshMenu(void) {
 - (void)restore:(UILongPressGestureRecognizer *)gesture { if (gesture.state==UIGestureRecognizerStateBegan) ElichikaHostShowManagement(); }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
     CGPoint point=[touch locationInView:gesture.view]; CGRect bounds=gesture.view.bounds; UIEdgeInsets safe=gesture.view.safeAreaInsets;
-    return elichika::ServerButtonPolicy::restoreCorner(point.x,point.y,bounds.size.width,bounds.size.height,safe.left,safe.top);
+    return !gesture.view.window.rootViewController.presentedViewController &&
+        elichika::ServerButtonPolicy::restoreCorner(point.x,point.y,bounds.size.width,bounds.size.height,safe.right,safe.top);
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
     (void)gesture; (void)other; return YES;
@@ -924,39 +1324,50 @@ static BOOL ELPrepareConfiguration(NSString **error) {
     NSString *documentsRoot=documents.path.stringByStandardizingPath.stringByResolvingSymlinksInPath;
     NSString *library=[documentsRoot stringByAppendingPathComponent:@"Elichika"];
     ELStorageError=NO;
-    NSData *bookmark=[NSUserDefaults.standardUserDefaults dataForKey:ELAssetBookmarkKey];
-    if (bookmark) {
+    NSData *savedBookmark=[NSUserDefaults.standardUserDefaults dataForKey:ELAssetBookmarkKey];
+    NSData *bookmark=nil; NSString *bookmarkMode=@"app_storage";
+    __attribute__((objc_precise_lifetime)) ELAssetScopeLease *lease=nil;
+    NSData *renewedBookmark=nil;
+    if (savedBookmark) {
         BOOL stale=NO; NSError *bookmarkError=nil;
-        NSURL *url=bookmark.length<=262144 ? [NSURL URLByResolvingBookmarkData:bookmark options:NSURLBookmarkResolutionWithoutUI
+        bookmark=ELReadAssetBookmark(savedBookmark,&bookmarkMode,&bookmarkError);
+        NSURL *url=bookmark ? [NSURL URLByResolvingBookmarkData:bookmark options:ELAssetBookmarkResolutionOptions(bookmarkMode)
             relativeToURL:nil bookmarkDataIsStale:&stale error:&bookmarkError] : nil;
-        if (!url.isFileURL) { ELStorageError=YES; *error=@"The saved asset folder is unavailable. Reconnect it or use the default asset folder."; return NO; }
-        BOOL scoped=[url startAccessingSecurityScopedResource];
-        if (!scoped && !([manager isReadableFileAtPath:url.path] && [manager isWritableFileAtPath:url.path])) {
-            ELStorageError=YES; *error=@"Access to the saved asset folder expired. Select it again or use the default asset folder."; return NO;
+        if (!url.isFileURL) {
+            ELStorageError=YES; *error=ELAssetFolderError(ELButtonText(@"The saved asset folder could not be reopened. Select it again or use the default folder.",
+                @"저장된 에셋 폴더를 다시 열지 못했습니다. 같은 폴더를 다시 선택하거나 기본 폴더를 사용하세요.",
+                @"保存したアセットフォルダーを再び開けませんでした。同じフォルダーを再選択するか、既定の保存先を使用してください。"),
+                [NSUserDefaults.standardUserDefaults stringForKey:ELAssetPathKey],bookmarkError).localizedDescription; return NO;
         }
-        if (!ELHeldScopes) ELHeldScopes=[NSMutableArray new]; [ELHeldScopes addObject:url]; ELActiveLibraryURL=url;
+        // Access must precede even metadata reads on a picker/bookmark URL.
+        lease=[[ELAssetScopeLease alloc] initWithURL:url];
+        NSNumber *directory=nil;
+        if (![url getResourceValue:&directory forKey:NSURLIsDirectoryKey error:&bookmarkError] || !directory.boolValue ||
+            !([manager isReadableFileAtPath:url.path] && [manager isWritableFileAtPath:url.path])) {
+            ELStorageError=YES; *error=ELAssetFolderError(ELButtonText(@"Access to the saved asset folder is unavailable. Select it again.",
+                @"저장된 에셋 폴더에 접근할 수 없습니다. 같은 폴더를 다시 선택하세요.",
+                @"保存したアセットフォルダーにアクセスできません。同じフォルダーを再選択してください。"),url.path,bookmarkError).localizedDescription; return NO;
+        }
         library=url.path.stringByStandardizingPath.stringByResolvingSymlinksInPath;
         if (stale) {
-            NSData *renewed=[url bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark includingResourceValuesForKeys:nil relativeToURL:nil error:&bookmarkError];
-            if (!renewed) { ELStorageError=YES; *error=@"The saved asset folder bookmark could not be renewed."; return NO; }
-            [NSUserDefaults.standardUserDefaults setObject:renewed forKey:ELAssetBookmarkKey];
+            NSData *raw=ELCreateAssetBookmark(url,&bookmarkMode,&bookmarkError);
+            renewedBookmark=raw ? ELStoreAssetBookmark(raw,bookmarkMode,&bookmarkError) : nil;
+            if (!renewedBookmark) {
+                ELStorageError=YES; *error=ELAssetFolderError(ELButtonText(@"Could not renew saved access to the asset folder.",
+                    @"에셋 폴더의 저장된 접근 권한을 갱신하지 못했습니다.",@"アセットフォルダーへの保存済みアクセスを更新できませんでした。"),url.path,bookmarkError).localizedDescription; return NO;
+            }
         }
-        [NSUserDefaults.standardUserDefaults setObject:library forKey:ELAssetPathKey];
     }
     NSString *packs=[library stringByAppendingPathComponent:@"packs"];
     NSString *imports=[library stringByAppendingPathComponent:@"imports"];
     NSString *resources=[NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"ElichikaResources"];
     if (!ELReadCandidateMode(resources,error)) return NO;
-    if (![manager createDirectoryAtPath:root withIntermediateDirectories:YES attributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:NULL]) {
-        *error=@"Could not prepare app-private server storage."; return NO;
+    NSError *storageFailure=nil;
+    if (![manager createDirectoryAtPath:root withIntermediateDirectories:YES attributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:&storageFailure]) {
+        *error=ELAssetFolderError(@"Could not prepare app-private server storage.",root,storageFailure).localizedDescription; return NO;
     }
-    for (NSString *folder in @[packs,imports]) {
-        NSString *canonical=folder.stringByStandardizingPath.stringByResolvingSymlinksInPath;
-        if (![canonical hasPrefix:[library stringByAppendingString:@"/"]] ||
-            ![manager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:NULL] ||
-            ![folder.stringByResolvingSymlinksInPath hasPrefix:[library stringByAppendingString:@"/"]]) {
-            ELStorageError=YES; *error=@"Could not prepare packs/imports in the selected asset folder."; return NO;
-        }
+    if (!ELPrepareAssetFolders(library,&storageFailure)) {
+        ELStorageError=YES; *error=storageFailure.localizedDescription; return NO;
     }
     uint8_t random[32]; if (SecRandomCopyBytes(kSecRandomDefault,sizeof random,random)!=errSecSuccess) {
         *error=@"Could not create the local server session."; return NO;
@@ -988,6 +1399,8 @@ static BOOL ELPrepareConfiguration(NSString **error) {
         @"tool_data_root":[resources stringByAppendingPathComponent:@"tool-data"],
         @"data_root":root,@"documents_root":documentsRoot,
         @"library_root":library,@"external_asset_directory":@(bookmark!=nil),
+        @"bookmark_mode":bookmarkMode,@"access_lifetime":bookmark ? ELAssetBookmarkLifetime(bookmarkMode) : @"app_storage",
+        @"persistence_warning":ELAssetBookmarkWarning(bookmarkMode),
         @"packs_root":packs,@"imports_root":imports,
         @"listen_address":listen,@"token":token,@"ready_token":readyToken,@"language":language,@"language_preference":languagePreference,
         @"region":ELClientRegion ?: @"gl",
@@ -1000,6 +1413,11 @@ static BOOL ELPrepareConfiguration(NSString **error) {
     configuration[@"simulator_probe_only"]=@YES;
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--elichika-core-probe"]) configuration[@"core_only"]=@YES;
 #endif
+    if (bookmark) {
+        if (renewedBookmark) [NSUserDefaults.standardUserDefaults setObject:renewedBookmark forKey:ELAssetBookmarkKey];
+        [NSUserDefaults.standardUserDefaults setObject:library forKey:ELAssetPathKey];
+        [lease keepUntilExit]; ELActiveLibraryURL=lease.url;
+    }
     ELConfiguration=[configuration copy]; return YES;
 }
 static void ELReceiveStatus(NSDictionary *status, uint64_t generation) {
@@ -1229,6 +1647,122 @@ void ElichikaHostProbeManagement(void (^completion)(NSDictionary *)) {
     }
     [ELPanel probeManagement:completion];
 }
+static NSDictionary *ELProbeClientCounters(id fixture) {
+    SEL selector=NSSelectorFromString(@"probeCounters");
+    if (![fixture respondsToSelector:selector]) return @{};
+    id result=((id (*)(id,SEL))[fixture methodForSelector:selector])(fixture,selector);
+    return [result isKindOfClass:NSDictionary.class] ? result : @{};
+}
+void ElichikaHostProbeUnifiedMenu(id fixture,void (^completion)(NSDictionary *)) {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(),^{ ElichikaHostProbeUnifiedMenu(fixture,completion); }); return; }
+    NSMutableDictionary *proof=[@{@"ready":@NO,@"fake_client_controls":@YES,@"real_game_fov":@NO,
+        @"source_tag":@"SIMULATOR_FAKE_CLIENT_UI_ONLY",@"original_poll_preserved":@NO,@"old_button_hidden":@NO,
+        @"old_gesture_disabled":@NO,@"decoys_unchanged":@NO,@"show_settings_redirected":@NO,@"fov_route":@NO,
+        @"orientation_route":@NO,@"right_corner_gesture":@NO,@"wide_sidebar":@NO,@"compact_navigation":@NO,
+        @"retained_navigation":@NO} mutableCopy];
+    if (![fixture isKindOfClass:NSClassFromString(@"SIFASFeatures")] || !ELCore().started() || !ELPanel.managementAvailable) {
+        proof[@"error"]=@"The initialized Simulator-only client fixture or retained panel is unavailable."; completion(proof); return;
+    }
+    ELInstallClientMenuBridge(); ELHidePanel(); ELRefreshMenu();
+    NSUInteger before=[ELProbeClientCounters(fixture)[@"poll"] unsignedIntegerValue];
+    SEL poll=@selector(poll:),settings=@selector(showSettings);
+    ((void (*)(id,SEL,id))[fixture methodForSelector:poll])(fixture,poll,nil);
+    ((void (*)(id,SEL))[fixture methodForSelector:settings])(fixture,settings);
+    proof[@"show_settings_redirected"]=@(!ELPanelWindow.hidden && ELPanelWindow.isKeyWindow &&
+        [ELProbeClientCounters(fixture)[@"settings"] unsignedIntegerValue]==0);
+    ((void (*)(id,SEL,id))[fixture methodForSelector:poll])(fixture,poll,nil);
+    NSDictionary *counters=ELProbeClientCounters(fixture);
+    proof[@"original_poll_preserved"]=@([counters[@"poll"] unsignedIntegerValue]>=before+2 && ELClientControls==fixture);
+    proof[@"old_button_hidden"]=counters[@"button_hidden"] ?: @NO;
+    proof[@"old_gesture_disabled"]=@(![counters[@"shortcut_enabled"] boolValue]);
+    proof[@"decoys_unchanged"]=@(![counters[@"decoy_button_hidden"] boolValue] && [counters[@"decoy_shortcut_enabled"] boolValue]);
+    BOOL shortcut=NO;
+    for (UIGestureRecognizer *recognizer in ELGameWindow.gestureRecognizers)
+        if ([recognizer isKindOfClass:UILongPressGestureRecognizer.class] && recognizer.delegate==ELMenuTarget()) {
+            UILongPressGestureRecognizer *hold=(UILongPressGestureRecognizer *)recognizer;
+            shortcut=hold.enabled && hold.minimumPressDuration==2.0 && !hold.cancelsTouchesInView &&
+                !hold.delaysTouchesBegan && !hold.delaysTouchesEnded;
+        }
+    CGRect game=ELGameWindow.bounds; UIEdgeInsets inset=ELGameWindow.safeAreaInsets;
+    proof[@"right_corner_gesture"]=@(shortcut &&
+        elichika::ServerButtonPolicy::restoreCorner(game.size.width-1,1,game.size.width,game.size.height,inset.right,inset.top) &&
+        !elichika::ServerButtonPolicy::restoreCorner(1,1,game.size.width,game.size.height,inset.right,inset.top));
+    CGRect prior=ELPanel.view.bounds;
+    ELPanel.view.bounds=CGRectMake(0,0,1024,768); [ELPanel.view setNeedsLayout]; [ELPanel.view layoutIfNeeded];
+    proof[@"wide_sidebar"]=@(!ELPanel.sidebar.hidden && ELPanel.destinationPicker.hidden &&
+        ELPanel.sidebar.bounds.size.width>=180 && ELPanel.webContainer.bounds.size.width>500 &&
+        !ELPanel.webContainer.hasAmbiguousLayout);
+    ELPanel.view.bounds=CGRectMake(0,0,390,844); [ELPanel.view setNeedsLayout]; [ELPanel.view layoutIfNeeded];
+    proof[@"compact_navigation"]=@(ELPanel.sidebar.hidden && !ELPanel.destinationPicker.hidden &&
+        ELPanel.sidebar.bounds.size.width<1 && ELPanel.webContainer.bounds.size.width>300 &&
+        !ELPanel.webContainer.hasAmbiguousLayout);
+    ELPanel.view.bounds=prior; [ELPanel.view setNeedsLayout]; [ELPanel.view layoutIfNeeded];
+    NSDictionary *documents=[ELPanel.sectionWebViews copy];
+    if (documents.count!=4 || !documents[@0] || !documents[@3]) {
+        proof[@"error"]=@"The four retained WebKit documents were not available."; completion(proof); return;
+    }
+    NSString *token=NSUUID.UUID.UUIDString;
+    NSString *seed=[NSString stringWithFormat:@"window.__elichikaUnifiedMenuToken=%@;window.__elichikaNativeDocument",ELJSON(token)];
+    WKWebView *management=documents[@0],*editor=documents[@3];
+    [management evaluateJavaScript:seed completionHandler:^(id managementNonce,NSError *managementError) {
+        [editor evaluateJavaScript:seed completionHandler:^(id editorNonce,NSError *editorError) {
+            if (managementError || editorError || ![managementNonce isKindOfClass:NSString.class] || ![editorNonce isKindOfClass:NSString.class]) {
+                proof[@"error"]=@"The real retained documents could not be seeded."; completion(proof); return;
+            }
+            NSArray *routes=@[@[@0,@0,@"home"],@[@2,@0,@"server"],@[@6,@0,@"app"],@[@8,@0,@"downloads"],
+                @[@9,@0,@"help"],@[@4,@3,@"tools"],@[@5,@3,@"viewer"]];
+            __block void (^next)(NSUInteger);
+            void (^finish)(NSString *)=^(NSString *error) {
+                next=nil; [ELPanel selectDestination:0];
+                BOOL ready=!error.length;
+                for (NSString *key in @[@"original_poll_preserved",@"old_button_hidden",@"old_gesture_disabled",@"decoys_unchanged",
+                    @"show_settings_redirected",@"fov_route",@"orientation_route",@"right_corner_gesture",@"wide_sidebar",
+                    @"compact_navigation",@"retained_navigation"]) ready=ready && [proof[key] boolValue];
+                proof[@"ready"]=@(ready);
+                if (error.length) proof[@"error"]=error;
+                else if (!ready) proof[@"error"]=@"A native menu or fake-client dispatch assertion failed.";
+                completion([proof copy]);
+            };
+            next=^(NSUInteger index) {
+                if (index<routes.count) {
+                    NSArray *route=routes[index]; [ELPanel selectDestination:[route[0] integerValue]];
+                    WKWebView *web=documents[route[1]];
+                    NSString *page=[route[1] isEqual:@0] ? @"window.ElichikaManagementProof.page" : @"window.ElichikaNavigation.currentSection()";
+                    NSString *script=[NSString stringWithFormat:@"({page:%@,nonce:window.__elichikaNativeDocument,token:window.__elichikaUnifiedMenuToken,unified:window.ElichikaUnifiedNavigation===true})",page];
+                    [web evaluateJavaScript:script completionHandler:^(id value,NSError *error) {
+                        NSString *nonce=[route[1] isEqual:@0] ? managementNonce : editorNonce;
+                        BOOL same=ELPanel.web==web && !web.loading && [value isKindOfClass:NSDictionary.class] &&
+                            [value[@"page"] isEqual:route[2]] && [value[@"nonce"] isEqual:nonce] &&
+                            [value[@"token"] isEqual:token] && [value[@"unified"] isEqual:@YES];
+                        for (NSNumber *key in documents) same=same && ELPanel.sectionWebViews[key]==documents[key];
+                        if (error || !same) { finish(@"Native navigation changed a document or failed to select its requested page."); return; }
+                        next(index+1);
+                    }]; return;
+                }
+                proof[@"retained_navigation"]=@YES;
+                UIViewController *presenter=ElichikaHostPresenter();
+                UIAlertController *camera=[UIAlertController alertControllerWithTitle:@"Fake client route probe" message:nil preferredStyle:UIAlertControllerStyleAlert];
+                [camera addAction:[UIAlertAction actionWithTitle:@"Close" style:UIAlertActionStyleCancel handler:nil]];
+                NSUInteger cameraBefore=[ELProbeClientCounters(fixture)[@"camera"] unsignedIntegerValue];
+                [presenter presentViewController:camera animated:NO completion:^{
+                    ELClientControlRoute(camera,@"showCamera",^(BOOL delivered) {
+                        proof[@"fov_route"]=@(delivered && [ELProbeClientCounters(fixture)[@"camera"] unsignedIntegerValue]==cameraBefore+1 && !presenter.presentedViewController);
+                        UIAlertController *orientation=[UIAlertController alertControllerWithTitle:@"Fake client route probe" message:nil preferredStyle:UIAlertControllerStyleAlert];
+                        [orientation addAction:[UIAlertAction actionWithTitle:@"Close" style:UIAlertActionStyleCancel handler:nil]];
+                        NSUInteger orientationBefore=[ELProbeClientCounters(fixture)[@"orientation"] unsignedIntegerValue];
+                        [presenter presentViewController:orientation animated:NO completion:^{
+                            ELClientControlRoute(orientation,@"showOrientation",^(BOOL changed) {
+                                proof[@"orientation_route"]=@(changed && [ELProbeClientCounters(fixture)[@"orientation"] unsignedIntegerValue]==orientationBefore+1 && !presenter.presentedViewController);
+                                finish(nil);
+                            });
+                        }];
+                    });
+                }];
+            };
+            next(0);
+        }];
+    }];
+}
 #else
 __attribute__((constructor)) static void ElichikaInstallHost(void) {
     @autoreleasepool {
@@ -1250,6 +1784,7 @@ __attribute__((constructor)) static void ElichikaInstallHost(void) {
 @property(nonatomic,assign) NSInteger selectionKind;
 @property(nonatomic,strong) NSURL *selectedURL;
 @property(nonatomic,strong) NSData *bookmark;
+@property(nonatomic,copy) NSString *bookmarkMode;
 @property(nonatomic,assign) BOOL securityScope;
 @property(nonatomic,weak) UIDocumentPickerViewController *picker;
 - (void)finish;
@@ -1274,20 +1809,36 @@ static ELDocumentTransaction *ELPendingDocument;
     }
     if (_selectionKind) {
         NSURL *source=urls.firstObject; NSNumber *directory=nil; NSError *error=nil;
-        [source getResourceValue:&directory forKey:NSURLIsDirectoryKey error:&error];
-        if (!source.isFileURL || error || (_selectionKind==1 && !directory.boolValue) || (_selectionKind==2 && directory.boolValue)) {
-            _error=error ?: [NSError errorWithDomain:@"ElichikaDocument" code:7 userInfo:@{NSLocalizedDescriptionKey:@"Choose the requested file or folder."}]; [self finish]; return;
+        if (!source.isFileURL) {
+            _error=ELAssetFolderError(ELButtonText(@"Choose a local file or folder.",@"로컬 파일 또는 폴더를 선택하세요.",@"ローカルファイルまたはフォルダーを選択してください。"),source.absoluteString,nil); [self finish]; return;
         }
+        // UIDocumentPicker grants access on this URL, not on a reconstructed
+        // file URL. Opening the scope after getResourceValue already fails.
         BOOL scoped=[source startAccessingSecurityScopedResource];
-        if (!scoped && !([NSFileManager.defaultManager isReadableFileAtPath:source.path] && [NSFileManager.defaultManager isWritableFileAtPath:source.path])) {
-            _error=[NSError errorWithDomain:@"ElichikaDocument" code:8 userInfo:@{NSLocalizedDescriptionKey:@"The selected location is not writable."}]; [self finish]; return;
+        _securityScope=scoped; _selectedURL=source;
+        if (![source getResourceValue:&directory forKey:NSURLIsDirectoryKey error:&error] ||
+            (_selectionKind==1 && !directory.boolValue) || (_selectionKind==2 && directory.boolValue)) {
+            _error=ELAssetFolderError(ELButtonText(@"Could not inspect the selected file or folder after requesting access.",
+                @"접근 권한을 요청한 뒤에도 선택한 파일 또는 폴더를 확인하지 못했습니다.",
+                @"アクセスを要求した後も、選択したファイルまたはフォルダーを確認できませんでした。"),source.path,error); [self finish]; return;
         }
-        NSData *bookmark=_selectionKind==1 ? [source bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark includingResourceValuesForKeys:nil relativeToURL:nil error:&error] : nil;
+        if (!([NSFileManager.defaultManager isReadableFileAtPath:source.path] && [NSFileManager.defaultManager isWritableFileAtPath:source.path])) {
+            _error=ELAssetFolderError(ELButtonText(@"The selected location does not allow reading and saving.",
+                @"선택한 위치에서 파일을 읽고 저장할 수 없습니다.",@"選択した場所では読み取りと保存が許可されていません。"),source.path,nil); [self finish]; return;
+        }
+        if (_selectionKind==1 && [source.lastPathComponent.lowercaseString isEqual:@"packs"]) {
+            NSString *message=[NSString stringWithFormat:ELButtonText(@"Select the asset library that contains packs, extracted and modded, rather than packs itself. Choose: %@",
+                @"packs 폴더 자체가 아닌, packs·extracted·modded가 들어 있는 에셋 보관 폴더를 선택하세요. 선택할 폴더: %@",
+                @"packs 自体ではなく、packs・extracted・modded を含むアセット保存フォルダーを選択してください。選択するフォルダー: %@"),source.URLByDeletingLastPathComponent.path];
+            _error=ELAssetFolderError(message,source.path,nil); [self finish]; return;
+        }
+        NSString *bookmarkMode=nil;
+        NSData *bookmark=_selectionKind==1 ? ELCreateAssetBookmark(source,&bookmarkMode,&error) : nil;
         if (_selectionKind==1 && (!bookmark || bookmark.length>262144)) {
-            if (scoped) [source stopAccessingSecurityScopedResource];
-            _error=error ?: [NSError errorWithDomain:@"ElichikaDocument" code:8 userInfo:@{NSLocalizedDescriptionKey:@"Could not retain access to this location."}]; [self finish]; return;
+            _error=ELAssetFolderError(ELButtonText(@"Could not save access to the selected asset folder.",
+                @"선택한 에셋 폴더의 접근 권한을 저장하지 못했습니다.",@"選択したアセットフォルダーへのアクセスを保存できませんでした。"),source.path,error); [self finish]; return;
         }
-        _securityScope=scoped; _bookmark=bookmark; _selectedURL=source; _path=source.path; [self finish]; return;
+        _bookmark=bookmark; _bookmarkMode=bookmarkMode; _path=source.path; [self finish]; return;
     }
     _copying=YES;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
@@ -1347,23 +1898,39 @@ static NSDictionary *ELChooseAssetDirectory(NSError **error) {
         @[ELButtonText(@"Use folder directly",@"폴더 직접 사용",@"直接使用"),ELButtonText(@"Cancel",@"취소",@"キャンセル")])!=0) {
         if (error) *error=[NSError errorWithDomain:@"ElichikaDocument" code:2 userInfo:@{NSLocalizedDescriptionKey:@"Folder selection cancelled."}]; return nil;
     }
-    [NSUserDefaults.standardUserDefaults setObject:transaction.bookmark forKey:ELAssetBookmarkKey];
-    [NSUserDefaults.standardUserDefaults setObject:transaction.path.stringByResolvingSymlinksInPath forKey:ELAssetPathKey];
+    NSString *selected=transaction.path.stringByStandardizingPath.stringByResolvingSymlinksInPath;
+    NSError *validationError=nil;
+    if (!ELPrepareAssetFolders(selected,&validationError)) { if (error) *error=validationError; return nil; }
+    // No saved preference changes until selection, durable access and the
+    // actual packs/imports layout have all succeeded.
+    NSData *stored=ELStoreAssetBookmark(transaction.bookmark,transaction.bookmarkMode,&validationError);
+    if (!stored) { if (error) *error=validationError; return nil; }
+    [NSUserDefaults.standardUserDefaults setObject:stored forKey:ELAssetBookmarkKey];
+    [NSUserDefaults.standardUserDefaults setObject:selected forKey:ELAssetPathKey];
     if (transaction.securityScope) {
         @synchronized(NSUserDefaults.standardUserDefaults) {
             if (!ELHeldScopes) ELHeldScopes=[NSMutableArray new]; [ELHeldScopes addObject:transaction.selectedURL];
         }
         transaction.securityScope=NO;
     }
-    return @{@"path":transaction.path.stringByResolvingSymlinksInPath,@"external":@YES,@"requires_restart":@YES};
+    NSString *active=ELConfiguration[@"library_root"] ?: @"";
+    BOOL same=[selected isEqual:active];
+    return @{@"path":selected,@"active_path":active,@"external":@YES,@"requires_restart":@(!same),@"applied":@(same),
+        @"bookmark_mode":transaction.bookmarkMode,@"access_lifetime":ELAssetBookmarkLifetime(transaction.bookmarkMode),
+        @"persistence_warning":ELAssetBookmarkWarning(transaction.bookmarkMode)};
 }
-static NSDictionary *ELRestoreAssetDirectory(void) {
+static NSDictionary *ELRestoreAssetDirectory(NSError **error) {
+    NSString *path=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"Elichika"];
+    path=path.stringByStandardizingPath.stringByResolvingSymlinksInPath;
+    if (!ELPrepareAssetFolders(path,error)) return nil;
     [NSUserDefaults.standardUserDefaults removeObjectForKey:ELAssetBookmarkKey];
     [NSUserDefaults.standardUserDefaults removeObjectForKey:ELAssetPathKey];
-    NSString *path=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"Elichika"];
     // Existing security scopes stay alive until process exit. Active jobs and
     // current ELConfiguration continue using the old library until reopening.
-    return @{@"path":path.stringByResolvingSymlinksInPath,@"external":@NO,@"requires_restart":@YES};
+    NSString *active=ELConfiguration[@"library_root"] ?: @"";
+    BOOL same=[path isEqual:active];
+    return @{@"path":path,@"active_path":active,@"external":@NO,@"requires_restart":@(!same),@"applied":@(same),
+        @"bookmark_mode":@"app_storage",@"access_lifetime":@"app_storage",@"persistence_warning":@""};
 }
 BOOL ElichikaHostWritablePath(NSString *path) {
     if (![path isKindOfClass:NSString.class] || !path.isAbsolutePath ||

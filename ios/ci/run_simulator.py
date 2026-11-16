@@ -119,6 +119,16 @@ def validate_reply(value, core_only, *, launch_number=None, require_parity_ui=Fa
                 require(ui.get(key) is True, 'Actual current management WebView gate failed: ' + key)
             error = ui.get('error')
             require(error is None or error is False or error == '', 'Actual management WebView probe reported an error')
+            menu = value.get('unified_menu_probe', {})
+            require(menu.get('fake_client_controls') is True and menu.get('real_game_fov') is False
+                    and menu.get('source_tag') == 'SIMULATOR_FAKE_CLIENT_UI_ONLY',
+                    'Unified menu proof must identify its fake client UI scope, never actual game FOV')
+            for key in ('ready', 'original_poll_preserved', 'old_button_hidden', 'old_gesture_disabled',
+                        'decoys_unchanged', 'show_settings_redirected', 'fov_route', 'orientation_route',
+                        'right_corner_gesture', 'wide_sidebar', 'compact_navigation', 'retained_navigation'):
+                require(menu.get(key) is True, 'Actual UIKit unified-menu fixture failed: ' + key)
+            error = menu.get('error')
+            require(error is None or error is False or error == '', 'Unified menu fixture reported an error')
     return value
 
 

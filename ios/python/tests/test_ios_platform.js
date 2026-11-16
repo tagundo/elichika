@@ -1,9 +1,10 @@
 "use strict";
 const assert = require("assert"), fs = require("fs"), vm = require("vm"), path = require("path");
-const requests = [], diagnostics = () => "existing shared diagnostics";
+const requests = [], classes = [], diagnostics = () => "existing shared diagnostics";
 const window = {
+  ElichikaUnifiedNavigation: true,
   location: { protocol: "http:", hostname: "127.0.0.1" },
-  document: { documentElement: { classList: { add: () => {} } } },
+  document: { documentElement: { classList: { add: name => classes.push(name) } } },
   ElichikaPlatform: {
     supports: () => false, request: () => Promise.reject(new Error("unsupported")),
     info: () => ({ platform: "browser", native: false }), bind: () => {}, perform: () => false,
@@ -37,6 +38,7 @@ for (const experimental of [false, true]) {
 }
 (async () => {
   assert.strictEqual(window.ElichikaPlatform.requestJSON, diagnostics);
+  assert(classes.includes("elichika-native-editor-navigation"), "The single native sidebar replaces duplicate editor tabs");
   assert.strictEqual(window.ElichikaPlatform.info().platform, "ios");
   assert.strictEqual((await window.ElichikaPlatform.request("openFiles", { multiple: true })).paths.length, 2);
   const directory = await window.ElichikaPlatform.request("chooseDirectory");

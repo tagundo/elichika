@@ -11,10 +11,12 @@ public:
     void load(bool present,bool savedVisible) { visible_=!present || savedVisible; }
     bool visible() const { return visible_; }
     void toggle() { visible_=!visible_; }
-    static bool restoreCorner(double x,double y,double width,double height,double safeLeft,double safeTop) {
+    static bool restoreCorner(double x,double y,double width,double height,double safeRight,double safeTop) {
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) || !std::isfinite(height) ||
-            !std::isfinite(safeLeft) || !std::isfinite(safeTop) || width<=0 || height<=0 || safeLeft<0 || safeTop<0) return false;
-        return x>=0 && y>=0 && x<=std::min(width/3.0,safeLeft+88.0) && y<=std::min(height/3.0,safeTop+72.0);
+            !std::isfinite(safeRight) || !std::isfinite(safeTop) || width<=0 || height<=0 || safeRight<0 || safeTop<0 ||
+            safeRight>=width || safeTop>=height) return false;
+        return x>=width-std::min(width/3.0,safeRight+96.0) && x<=width &&
+            y>=0 && y<=std::min(height/3.0,safeTop+72.0);
     }
 private:
     bool visible_=true;

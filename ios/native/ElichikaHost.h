@@ -16,6 +16,9 @@ FOUNDATION_EXPORT BOOL ElichikaHostWritablePath(NSString *path);
 FOUNDATION_EXPORT BOOL ElichikaHostInstallForProbe(Class gameClass);
 FOUNDATION_EXPORT void ElichikaHostProbeWebStorage(NSUInteger launchNumber, void (^completion)(NSDictionary *result));
 FOUNDATION_EXPORT void ElichikaHostProbeManagement(void (^completion)(NSDictionary *result));
+// Actual UIKit/bridge exercise with a Simulator-only fake client API. This is
+// explicitly not evidence that Unity changed the real game's camera/FOV.
+FOUNDATION_EXPORT void ElichikaHostProbeUnifiedMenu(id fixture, void (^completion)(NSDictionary *result));
 FOUNDATION_EXPORT void ElichikaHostSetProbeStageHandler(void (^handler)(NSString *stage, NSTimeInterval entered));
 FOUNDATION_EXPORT void ElichikaHostProbeStage(NSString *stage);
 #endif
