@@ -24,8 +24,8 @@ final class CodecRoundTripTest {
     private static void deadline(long end) throws IOException { check(System.nanoTime()<end,"Codec QA deadline exceeded"); }
     private static void pause(long end) throws Exception { deadline(end); Thread.sleep(2); }
 
-    static JSONObject run(File directory,String mime) throws Exception {
-        JSONObject report=new JSONObject(); report.put("mime",mime);
+    static JSONObject run(File directory,String mime,JSONObject report) throws Exception {
+        report.put("mime",mime); report.put("status","RUNNING");
         MediaFormat selection=MediaFormat.createVideoFormat(mime,W,H);
         selection.setInteger(MediaFormat.KEY_BIT_RATE,BITRATE);
         selection.setInteger(MediaFormat.KEY_FRAME_RATE,FPS);
@@ -67,9 +67,10 @@ final class CodecRoundTripTest {
         check(output.isFile()&&output.length()>0,"Missing MP4");
         report.put("backpressureRetries",retries); report.put("wallTimeMs",elapsed/1000000);
         report.put("video",decodeVideo(output,mime));
-        report.put("audio",decodeAudio(output));
         cancellation(directory,config,output);
-        report.put("cancelPartialCleanup","PASS"); report.put("status","PASS");
+        report.put("cancelPartialCleanup","PASS");
+        report.put("audio",decodeAudio(output));
+        report.put("status","PASS");
         report.put("mp4",output.getName()); report.put("mp4Bytes",output.length()); return report;
     }
     private static void paint(byte[] bytes,int frame) {
@@ -167,7 +168,7 @@ final class CodecRoundTripTest {
     }
     private static JSONObject decodeAudio(File file) throws Exception {
         MediaExtractor e=extractor(file,"audio/"); MediaCodec decoder=null; JSONObject report=new JSONObject();
-        int packets=0,rawFrames=0,delay=0,padding=0; long last=-1; short[] pcm=new short[(AUDIO_FRAMES+8192)*CHANNELS];
+        int packets=0,rawFrames=0,delay=0,padding=0; long last=Long.MIN_VALUE,firstPacketPTS=Long.MIN_VALUE,firstDecodedPTS=Long.MIN_VALUE; short[] pcm=new short[(AUDIO_FRAMES+8192)*CHANNELS];
         try {
             MediaFormat format=e.getTrackFormat(e.getSampleTrackIndex());
             check("audio/mp4a-latm".equals(format.getString(MediaFormat.KEY_MIME)),"Audio must be AAC");
@@ -176,12 +177,25 @@ final class CodecRoundTripTest {
             padding=format.containsKey("encoder-padding")?format.getInteger("encoder-padding"):0;
             while (e.getSampleTrackIndex()>=0) {
                 check(e.getSampleTime()>last,"AAC extractor PTS reordered");
-                if (packets==0) check(e.getSampleTime()==0,"AAC extractor timeline does not start at zero");
+                if (packets==0) {
+                    firstPacketPTS=e.getSampleTime();
+                    check(firstPacketPTS==0||(delay>0&&Math.abs(firstPacketPTS+MVExportContract.timestampUs(delay,RATE))<=1),
+                        "AAC timeline has an unexplained start PTS="+firstPacketPTS+" delay="+delay);
+                }
+                check(Math.abs(e.getSampleTime()-firstPacketPTS-MVExportContract.timestampUs(packets*1024L,RATE))<=1,
+                    "AAC packet PTS differs from its 1024-sample LC clock at packet "+packets);
                 last=e.getSampleTime(); packets++;
                 if (!e.advance()) break;
             }
-            check(packets>0,"AAC contains no packets"); e.seekTo(0,MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+            check(packets>0,"AAC contains no packets");
+            // A gapless edit list exposes negative priming packets. Seeking to 0
+            // would discard those before MediaCodec applies the declared trim.
+            e.release(); e=extractor(file,"audio/");
             decoder=MediaCodec.createDecoderByType("audio/mp4a-latm"); report.put("decoder",decoder.getName());
+            // Inspect the raw decoder clock independently. Android's automatic
+            // SkipCutBuffer repacks trimmed bytes without adjusting buffer PTS.
+            // Apply only the extractor-declared edit after checking every raw PTS.
+            format.setInteger("encoder-delay",0); format.setInteger("encoder-padding",0);
             decoder.configure(format,null,null,0); decoder.start();
             MediaCodec.BufferInfo info=new MediaCodec.BufferInfo(); boolean in=false,out=false;
             long end=System.nanoTime()+TIMEOUT_NS;
@@ -196,7 +210,8 @@ final class CodecRoundTripTest {
                     try {
                         if (info.size>0) {
                             check(info.size%(CHANNELS*2)==0,"Partial decoded PCM frame");
-                            check(Math.abs(info.presentationTimeUs-MVExportContract.timestampUs(rawFrames,RATE))<=1,
+                            if (firstDecodedPTS==Long.MIN_VALUE) firstDecodedPTS=info.presentationTimeUs;
+                            check(Math.abs(info.presentationTimeUs-firstDecodedPTS-MVExportContract.timestampUs(rawFrames,RATE))<=1,
                                 "Decoded PCM timeline changed at sample "+rawFrames+" PTS="+info.presentationTimeUs);
                             ByteBuffer data=decoder.getOutputBuffer(index); check(data!=null,"Missing decoded PCM");
                             data.position(info.offset); data.limit(info.offset+info.size); data.order(ByteOrder.LITTLE_ENDIAN);
@@ -207,14 +222,11 @@ final class CodecRoundTripTest {
                     } finally { decoder.releaseOutputBuffer(index,false); }
                 }
             }
-            // Android decoders may apply the extractor's gapless metadata themselves.
-            // Accept only an exact presented sample count or an exact documented trim.
-            int offset=0;
-            if (rawFrames!=AUDIO_FRAMES) {
-                check(delay>=0&&padding>=0&&rawFrames-delay-padding==AUDIO_FRAMES,
-                    "AAC exact sample count failed: decoded="+rawFrames+" expected="+AUDIO_FRAMES+" encoder-delay="+delay+" encoder-padding="+padding);
-                offset=delay;
-            }
+            check(delay>=0&&padding>=0&&rawFrames-delay-padding==AUDIO_FRAMES,
+                "AAC exact sample count failed: decoded="+rawFrames+" expected="+AUDIO_FRAMES+" encoder-delay="+delay+" encoder-padding="+padding);
+            int offset=delay;
+            check(firstDecodedPTS!=Long.MIN_VALUE&&Math.abs(firstDecodedPTS+MVExportContract.timestampUs(offset,RATE))<=1,
+                "Presented PCM timeline does not begin at zero after declared priming trim: firstPTS="+firstDecodedPTS+" trim="+offset);
             int onset=-1;
             for (int n=0;n<AUDIO_FRAMES-128;n+=128) {
                 double rms=energy(pcm,offset+n,128,0);
@@ -227,11 +239,35 @@ final class CodecRoundTripTest {
             double left440=projection(pcm,offset+24000,24000,0,440),left880=projection(pcm,offset+24000,24000,0,880);
             double right880=projection(pcm,offset+24000,24000,1,880),right440=projection(pcm,offset+24000,24000,1,440);
             check(left440>5000&&left440>left880*8&&right880>5000&&right880>right440*8,"AAC tone frequency/amplitude/channel order mismatch");
+            int platformFrames=platformGaplessFrames(file);
+            check(platformFrames==AUDIO_FRAMES,"Android automatic gapless PCM count differs: "+platformFrames);
+            report.put("androidGaplessPCMFrames",platformFrames);
             report.put("aacPackets",packets); report.put("rawDecodedPCMFrames",rawFrames);
             report.put("encoderDelay",delay); report.put("encoderPadding",padding); report.put("verifiedPCMFrames",AUDIO_FRAMES);
+            report.put("firstAACPacketPTS",firstPacketPTS); report.put("firstDecodedPCMPTS",firstDecodedPTS);
             report.put("toneOnsetSample",onset); report.put("expectedOnsetSample",ONSET);
             report.put("stereoTonesHz","440 left, 880 right");
-            report.put("audioPTS","extractor starts at zero; every PCM buffer follows exact sample timeline within 1us"); return report;
+            report.put("audioPTS","AAC priming PTS explained by gapless metadata; presented PCM starts zero; packet and PCM clocks within 1us"); return report;
+        } finally { e.release(); if (decoder!=null) { try { decoder.stop(); } finally { decoder.release(); } } }
+    }
+    private static int platformGaplessFrames(File file) throws Exception {
+        MediaExtractor e=extractor(file,"audio/"); MediaCodec decoder=null; int frames=0;
+        try {
+            MediaFormat format=e.getTrackFormat(e.getSampleTrackIndex());
+            decoder=MediaCodec.createDecoderByType("audio/mp4a-latm"); decoder.configure(format,null,null,0); decoder.start();
+            boolean in=false,out=false; MediaCodec.BufferInfo info=new MediaCodec.BufferInfo(); long end=System.nanoTime()+TIMEOUT_NS;
+            while (!out) {
+                deadline(end); in=input(e,decoder,in); int index=decoder.dequeueOutputBuffer(info,1000);
+                if (index>=0) {
+                    try {
+                        check(info.size%(CHANNELS*2)==0,"Partial platform gapless PCM sample");
+                        frames+=info.size/(CHANNELS*2);
+                        check(frames<=AUDIO_FRAMES+8192,"Excess platform gapless PCM");
+                        out=(info.flags&MediaCodec.BUFFER_FLAG_END_OF_STREAM)!=0;
+                    } finally { decoder.releaseOutputBuffer(index,false); }
+                }
+            }
+            return frames;
         } finally { e.release(); if (decoder!=null) { try { decoder.stop(); } finally { decoder.release(); } } }
     }
     private static double energy(short[] pcm,int at,int count,int channel) {

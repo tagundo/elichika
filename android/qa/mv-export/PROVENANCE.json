@@ -3,14 +3,56 @@
   "productionSource": "../android-client-source/android/",
   "productionEncoderAbi": {
     "config": "AndroidMVEncoder.Config(String,int,int,int,int,long,int,int,int,long)",
-    "producer": ["offerVideo(long,ByteBuffer):boolean", "offerAudio(long,ByteBuffer):boolean"],
-    "lifecycle": ["finish():void", "cancel():void", "awaitCompletion(long,TimeUnit):File", "matchesConfig(int,int,int,long,int,int,long):boolean"]
+    "producer": [
+      "offerVideo(long,ByteBuffer):boolean",
+      "offerAudio(long,ByteBuffer):boolean"
+    ],
+    "lifecycle": [
+      "finish():void",
+      "cancel():void",
+      "awaitCompletion(long,TimeUnit):File",
+      "matchesConfig(int,int,int,long,int,int,long):boolean"
+    ],
+    "mp4Finalizer": "MP4Gapless.finalizeAac(File,int,long,int,long):void; final long is AAC-LC packet count"
   },
-  "sourceHashFile": "SOURCE_SHA256SUMS",
-  "allowedVideoMimes": ["video/avc", "video/hevc"],
+  "sourceHashFile": "SOURCE_SHA256SUMS (four exact production Java inputs, including gapless finalizer)",
+  "allowedVideoMimes": [
+    "video/avc",
+    "video/hevc"
+  ],
   "audioMime": "audio/mp4a-latm",
-  "qaRuntimeResult": "NOT_RUN_LOCALLY_NO_ADB_TARGET",
+  "qaRuntimeResult": "CURRENT_CORRECTION_NOT_YET_RUN; root dispatch required",
   "qaRuntimeRequired": "Actual API34 x86_64 Android emulator via bounded workflow; compile success is not a codec pass",
-  "input": {"width":1280,"height":720,"fps":30,"frames":60,"sampleRate":48000,"channels":2,"pcmFrames":96000,"toneOnsetSample":12000},
-  "evidence": ["report.json", "status.txt", "MP4 outputs", "screenshot.png", "ui-tree.xml", "logcat.txt", "logcat-crash.txt", "device-properties.txt"]
+  "input": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "frames": 60,
+    "sampleRate": 48000,
+    "channels": 2,
+    "pcmFrames": 96000,
+    "toneOnsetSample": 12000
+  },
+  "evidence": [
+    "report.json",
+    "status.txt",
+    "MP4 outputs",
+    "screenshot.png",
+    "ui-tree.xml",
+    "logcat.txt",
+    "logcat-crash.txt",
+    "device-properties.txt"
+  ],
+  "previousActualEmulatorResult": {
+    "run": 43931783367,
+    "source": "ee697f98b68436ba462b376d34068a4d7f5736e4",
+    "conclusion": "FAIL: unflushed/untrimmed AAC; 95232 PCM frames instead of 96000; artifact preserved"
+  },
+  "gaplessChecks": [
+    "raw AAC packet/PCM clocks within 1us",
+    "exact extractor-declared priming/padding trims only",
+    "presented PCM starts0 and has exact96000 sample frames",
+    "tone onset12000 +/-256 samples and final4096 tone samples",
+    "second Android automatic gapless decode also exactly96000 PCM frames"
+  ]
 }

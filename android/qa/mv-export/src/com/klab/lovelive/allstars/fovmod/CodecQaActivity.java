@@ -24,9 +24,11 @@ public final class CodecQaActivity extends Activity {
             put(report,"scope","actual Android encoder backend + independent decode; no game/MV integration claim");
             put(report,"sdk",android.os.Build.VERSION.SDK_INT);
             put(report,"fingerprint",android.os.Build.FINGERPRINT);
-            put(report,"h264",CodecRoundTripTest.run(getFilesDir(),AndroidMVEncoder.AVC));
+            JSONObject h264=new JSONObject(); put(report,"h264",h264);
+            CodecRoundTripTest.run(getFilesDir(),AndroidMVEncoder.AVC,h264);
             show("RUNNING: H.264 passed. Checking HEVC availability and round-trip.");
-            put(report,"hevc",CodecRoundTripTest.run(getFilesDir(),AndroidMVEncoder.HEVC));
+            JSONObject hevc=new JSONObject(); put(report,"hevc",hevc);
+            CodecRoundTripTest.run(getFilesDir(),AndroidMVEncoder.HEVC,hevc);
             put(report,"result","PASS");
             write("report.json",report.toString(2)); write("status.txt","PASS\n");
             Log.i("MP4CodecQA",report.toString()); show("PASS\n"+report.toString(2));

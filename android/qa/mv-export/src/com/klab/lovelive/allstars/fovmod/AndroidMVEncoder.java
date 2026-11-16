@@ -89,6 +89,8 @@ public final class AndroidMVEncoder {
     private int videoTrack=-1, audioTrack=-1, pendingBytes;
     private boolean muxStarted, videoOutputEOS, audioOutputEOS;
     private long outputVideoFrames, lastVideoPTS=-1, lastAudioPTS=-1;
+    private long outputAudioPackets, firstAudioCodecPTS=Long.MIN_VALUE;
+    private int audioEncoderDelay=-1;
     private final ArrayDeque<Sample> pending = new ArrayDeque<Sample>();
 
     /** The destination must be a new path in app-private storage. */
@@ -235,7 +237,16 @@ public final class AndroidMVEncoder {
         format.setInteger(MediaFormat.KEY_AAC_PROFILE,MediaCodecInfo.CodecProfileLevel.AACObjectLC);
         format.setInteger(MediaFormat.KEY_BIT_RATE,config.audioBitrate);
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE,AUDIO_PACKET_FRAMES*config.channels*2);
-        MediaCodec codec=MediaCodec.createEncoderByType("audio/mp4a-latm");
+        // Android's software AAC-LC implementations have an audited FDK
+        // priming contract. Prefer them to an unspecified vendor encoder.
+        String selected=null;
+        MediaCodecInfo[] codecs=new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos();
+        for (String preferred : new String[] {"c2.android.aac.encoder","OMX.google.aac.encoder"}) {
+            for (MediaCodecInfo info : codecs) if(info.isEncoder()&&info.getName().equals(preferred)) selected=preferred;
+            if(selected!=null)break;
+        }
+        MediaCodec codec=selected!=null?MediaCodec.createByCodecName(selected):MediaCodec.createEncoderByType("audio/mp4a-latm");
+        if(selected!=null)audioEncoderDelay=2048;
         try { codec.configure(format,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE); codec.start(); return codec; }
         catch (Throwable error) { codec.release(); throw error; }
     }
@@ -264,6 +275,7 @@ public final class AndroidMVEncoder {
                 drain(false); drain(true);
             }
             feedEOS(false);
+            if(config.hasAudio())feedAudioFlush();
             if (config.hasAudio()) feedEOS(true);
             long deadline=System.nanoTime()+STALL_NS;
             while (!videoOutputEOS || !audioOutputEOS) {
@@ -276,6 +288,11 @@ public final class AndroidMVEncoder {
                 throw new IOException("Encoded frame count or tracks are incomplete");
             muxer.stop(); muxStarted=false;
             muxer.release(); muxer=null;
+            if(config.hasAudio()){
+                checkCancelled();
+                MP4Gapless.finalizeAac(partial,config.sampleRate,config.audioFrames,audioEncoderDelay,outputAudioPackets);
+                checkCancelled();
+            }
             synchronized (guard) {
                 checkCancelled();
                 if (!partial.renameTo(output)) throw new IOException("Could not finalize MP4");
@@ -343,7 +360,8 @@ public final class AndroidMVEncoder {
             checkCancelled();
             int index=codec.dequeueInputBuffer(0);
             if (index >= 0) {
-                long pts=MVExportContract.timestampUs(audio?config.audioFrames:config.videoFrames,
+                long audioEnd=config.audioFrames+audioEncoderDelay+2048L;
+                long pts=MVExportContract.timestampUs(audio?audioEnd:config.videoFrames,
                         audio?config.sampleRate:config.fps);
                 codec.queueInputBuffer(index,0,0,pts,MediaCodec.BUFFER_FLAG_END_OF_STREAM); return;
             }
@@ -351,6 +369,42 @@ public final class AndroidMVEncoder {
             if (progress) deadline=System.nanoTime()+STALL_NS;
             else { if (System.nanoTime()>deadline) throw new IOException("Encoder EOS input stalled"); Thread.sleep(2); }
         }
+    }
+    private void feedAudioFlush() throws Exception {
+        // Empty EOS does not flush all pending FDK samples on Android C2.
+        // Explicit silent input carries every logical sample past priming.
+        if(audioEncoderDelay<0||audioEncoderDelay>8192)
+            throw new IOException("AAC encoder has no verified priming delay");
+        byte[] zeros=new byte[AUDIO_PACKET_FRAMES*config.channels*2];
+        long index=config.audioFrames,remaining=audioEncoderDelay+2048L;
+        while(remaining>0){
+            int frames=(int)Math.min(remaining,AUDIO_PACKET_FRAMES);
+            feed(new Packet(true,zeros,frames*config.channels*2,index));
+            index+=frames;remaining-=frames;
+        }
+    }
+    private void validateAacFormat(MediaFormat format) throws IOException {
+        if(format.containsKey("encoder-delay")){
+            int reported=format.getInteger("encoder-delay");
+            if(reported<0||reported>8192)throw new IOException("Invalid AAC encoder priming delay");
+            if(audioEncoderDelay<0)audioEncoderDelay=reported;
+            else if(reported!=audioEncoderDelay)throw new IOException("AAC encoder priming differs from its audited contract");
+        }
+        if(audioEncoderDelay<0)throw new IOException("This AAC encoder does not report a supported priming delay");
+        ByteBuffer csd=format.getByteBuffer("csd-0");
+        if(csd==null||csd.remaining()<2||csd.remaining()>64)throw new IOException("Missing AAC AudioSpecificConfig");
+        byte[] data=new byte[csd.remaining()];csd.duplicate().get(data);
+        int[] cursor={0};int object=bits(data,cursor,5),frequency=bits(data,cursor,4);
+        if(object!=2)throw new IOException("Only AAC-LC is supported");
+        int[] rates={96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000,7350};
+        int rate=frequency==15?bits(data,cursor,24):frequency<rates.length?rates[frequency]:0;
+        int channels=bits(data,cursor,4),shortFrame=bits(data,cursor,1);
+        if(rate!=config.sampleRate||channels!=config.channels||shortFrame!=0)
+            throw new IOException("AAC frame/rate/channel configuration differs from input PCM");
+    }
+    private static int bits(byte[] data,int[] cursor,int count)throws IOException{
+        if(count<0||count>24||cursor[0]+count>data.length*8)throw new IOException("Truncated AAC configuration");
+        int value=0;for(int i=0;i<count;i++){int at=cursor[0]++;value=(value<<1)|((data[at/8]>>(7-at%8))&1);}return value;
     }
     private boolean drain(boolean audio) throws IOException {
         MediaCodec codec=audio?audioCodec:videoCodec;
@@ -365,7 +419,9 @@ public final class AndroidMVEncoder {
             if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 if (muxStarted || (audio?audioTrack:videoTrack) >= 0)
                     throw new IOException("Unexpected repeated encoder format");
-                int track=muxer.addTrack(codec.getOutputFormat());
+                MediaFormat format=codec.getOutputFormat();
+                if(audio)validateAacFormat(format);
+                int track=muxer.addTrack(format);
                 if (audio) audioTrack=track; else videoTrack=track;
                 if (videoTrack>=0 && (!config.hasAudio() || audioTrack>=0)) {
                     muxer.start(); muxStarted=true;
@@ -376,6 +432,15 @@ public final class AndroidMVEncoder {
             if (index < 0) continue;
             try {
                 if (info.size>0 && (info.flags&MediaCodec.BUFFER_FLAG_CODEC_CONFIG)==0) {
+                    if(audio){
+                        if(firstAudioCodecPTS==Long.MIN_VALUE)firstAudioCodecPTS=info.presentationTimeUs;
+                        long normalized=info.presentationTimeUs-firstAudioCodecPTS;
+                        long expected=MVExportContract.timestampUs(outputAudioPackets*1024,config.sampleRate);
+                        if(Math.abs(normalized-expected)>3)throw new IOException("AAC encoder changed its packet sample clock");
+                        // The edit list later trims actual codec priming. Raw
+                        // media packets own an exact 1024-sample clock here.
+                        info.presentationTimeUs=expected;outputAudioPackets++;
+                    }
                     long previous=audio?lastAudioPTS:lastVideoPTS;
                     if (info.presentationTimeUs < 0 || info.presentationTimeUs <= previous)
                         throw new IOException("Encoder produced invalid or reordered presentation timestamps");
