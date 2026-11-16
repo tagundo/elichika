@@ -5,6 +5,13 @@
 #import "../ElichikaHost.h"
 #import "../ElichikaPythonRuntime.h"
 #include "../ProbeBudget.hpp"
+#include <stdio.h>
+
+// Fixed diagnostic markers only. They cannot advance a stage or grant readiness.
+static void ELProbeStartupMarker(const char *stage) {
+    fprintf(stderr,"ELICHIKA_SIMULATOR_STARTUP %s\n",stage);
+    fflush(stderr);
+}
 
 static NSUInteger ELFakeGameStarts;
 @interface ELProbeGame : NSObject
@@ -32,9 +39,7 @@ static NSUInteger ELFakeGameStarts;
 @implementation ELProbeDelegate
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
     (void)options;
-    _window=[[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    UIViewController *controller=[UIViewController new]; controller.view.backgroundColor=UIColor.systemBackgroundColor;
-    _window.rootViewController=controller; [_window makeKeyAndVisible];
+    ELProbeStartupMarker("delegate_entry");
     self.began=NSProcessInfo.processInfo.systemUptime;
     const BOOL coreOnly=[NSProcessInfo.processInfo.arguments containsObject:@"--elichika-core-probe"];
     self.parityProbe=[NSProcessInfo.processInfo.arguments containsObject:@"--elichika-parity-probe"];
@@ -52,6 +57,11 @@ static NSUInteger ELFakeGameStarts;
         if (strong && !strong.completed && ![stage isEqual:@"python_complete"]) [strong advanceStage:stage entered:entered];
     });
     [self recordTimingAt:self.began]; [self progress:@"running"];
+    // UIKit construction is charged to the same already-started 240/600 clock.
+    _window=[[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    UIViewController *controller=[UIViewController new]; controller.view.backgroundColor=UIColor.systemBackgroundColor;
+    _window.rootViewController=controller; [_window makeKeyAndVisible];
+    ELProbeStartupMarker("window_ready");
     if (coreOnly && self.parityProbe) {
         [self write:[@{@"schema":@1,@"phase":@"error",@"probe_pass":@NO,
             @"error":@"The management UI proof requires the full tools runtime, not core-only mode."} mutableCopy]];
@@ -241,5 +251,6 @@ static NSUInteger ELFakeGameStarts;
 }
 @end
 int main(int argc,char *argv[]) {
+    ELProbeStartupMarker("main_entry");
     @autoreleasepool { return UIApplicationMain(argc,argv,nil,NSStringFromClass(ELProbeDelegate.class)); }
 }

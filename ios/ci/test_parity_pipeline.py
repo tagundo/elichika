@@ -20,7 +20,7 @@ from fetch_official_payload import verify_consumer_source
 from package_experimental_ipa import simulator_gates
 from parity_payload_policy import POLICY, RUNTIME_REKEY_INPUTS, validate_source_scope, verify_consumption, verify_lock
 from probe_watchdog import ProbeWatchdog, STAGE_SECONDS, stage_budgets
-from run_simulator import validate_reply
+from run_simulator import choose_runtime_and_types, validate_reply
 from test_probe_watchdog import progress
 from test_simulator_proof import fixture as historical_fixture
 from verify_playcover_native_imports import (DEBUG_RESOURCE, SOURCE as STABLE_CONVERTER_SOURCE,
@@ -145,6 +145,31 @@ class ParityDataTests(unittest.TestCase):
 
 
 class ParitySimulatorTests(unittest.TestCase):
+    def test_parity_executes_ipad_first_without_normalizing_or_skipping_four_launches(self):
+        runtime = {'identifier':'com.apple.CoreSimulator.SimRuntime.iOS-26-2',
+                   'version':'26.2','isAvailable':True}
+        devices = [{'name':'iPhone 16 Pro','identifier':'phone'},
+                   {'name':'iPad Pro 13-inch (M4)','identifier':'tablet'}]
+        for parity, first in ((True,'iPad'),(False,'iPhone')):
+            with patch('run_simulator.run', side_effect=[json.dumps({'runtimes':[runtime]}),
+                                                        json.dumps({'devicetypes':devices})]):
+                _, selected = choose_runtime_and_types(ipad_first=parity)
+                self.assertTrue(selected[0]['name'].startswith(first))
+                self.assertEqual(len(selected),2)
+        code=(ROOT/'ios/ci/run_simulator.py').read_text()
+        self.assertIn('choose_runtime_and_types(ipad_first=require_parity_ui)',code)
+        self.assertIn("report['actual_execution_order']",code)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);result=aggregate(root)
+            result['results'].sort(key=lambda row:(not row['model'].startswith('iPad'),row['launch_number']))
+            result['actual_execution_order']=[{'model':row['model'],'launch_number':row['launch_number']}
+                                              for row in result['results']]
+            proof=root/'current-order.json';write_json(proof,result)
+            simulator_gates(proof,result['source'],require_parity_ui=True)
+            result['results'].pop();write_json(proof,result)
+            with self.assertRaises(ValueError):
+                simulator_gates(proof,result['source'],require_parity_ui=True)
+
     def test_retained_panel_document_proof_cannot_be_missing_or_false(self):
         with tempfile.TemporaryDirectory() as directory:
             reply = aggregate(Path(directory))['results'][0]['reply']

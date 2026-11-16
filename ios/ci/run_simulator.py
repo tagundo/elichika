@@ -19,6 +19,7 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import inventory, require, run, write_json
 from probe_watchdog import DETAILS, STAGE_SECONDS, ProbeWatchdog, read_progress, stage_budgets
+from simulator_diagnostics import capture_owned_diagnostics
 
 BUNDLE = 'org.elichika.simulator-probe'
 PORTS = (8080, 8770, 8772)
@@ -121,7 +122,7 @@ def validate_reply(value, core_only, *, launch_number=None, require_parity_ui=Fa
     return value
 
 
-def choose_runtime_and_types():
+def choose_runtime_and_types(*, ipad_first=False):
     runtimes = json.loads(run(['xcrun', 'simctl', 'list', 'runtimes', '--json'], capture=True))['runtimes']
     available = [row for row in runtimes if row.get('isAvailable') and row['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-')]
     require(available, 'An installed real iOS Simulator runtime is required')
@@ -131,7 +132,9 @@ def choose_runtime_and_types():
     version_parts += [0] * (3-len(version_parts))
     encoded_version = (version_parts[0] << 16) | (version_parts[1] << 8) | version_parts[2]
     chosen = []
-    for family, preferred in (('iPhone', 'iPhone 16 Pro'), ('iPad', 'iPad Pro 13-inch (M4)')):
+    families = (('iPad', 'iPad Pro 13-inch (M4)'), ('iPhone', 'iPhone 16 Pro')) if ipad_first else (
+        ('iPhone', 'iPhone 16 Pro'), ('iPad', 'iPad Pro 13-inch (M4)'))
+    for family, preferred in families:
         matches = [row for row in types if row['name'].startswith(family)
                    and row.get('minRuntimeVersion', 0) <= encoded_version
                    and row.get('maxRuntimeVersion', 0xffffffff) >= encoded_version]
@@ -144,7 +147,8 @@ def choose_runtime_and_types():
     return runtime, chosen
 
 
-def retain_failure(evidence, label, identifier, process, watchdog, error, reply_file):
+def retain_failure(evidence, label, identifier, process, watchdog, error, reply_file,
+                   *, installed=None, launch_wall=None):
     """Capture small owned-probe diagnostics before termination/sandbox deletion."""
     diagnostics = {'schema': 1, 'status': 'FAIL_SIMULATOR_PROBE',
                    'error_type': type(error).__name__, 'error': str(error)[:512],
@@ -152,6 +156,14 @@ def retain_failure(evidence, label, identifier, process, watchdog, error, reply_
                    'owned_loopback_ports_listening': {str(port): port_open(port) for port in PORTS},
                    'watchdog': watchdog.snapshot(time.monotonic()),
                    'all_final_readiness_gates_still_required': True}
+    if installed is not None and launch_wall is not None:
+        try:
+            diagnostics['startup_diagnostics'] = capture_owned_diagnostics(
+                evidence, label, identifier, installed, launch_wall)
+        except Exception as diagnostic_error:
+            # Evidence capture is not a retry/readiness path. Even a late native
+            # PASS written during capture cannot revive the original failure.
+            diagnostics['startup_diagnostic_capture_error'] = type(diagnostic_error).__name__
     try:
         shot = subprocess.run(['xcrun', 'simctl', 'io', identifier, 'screenshot', evidence / (label + '-failure.png')],
                               check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
@@ -175,7 +187,7 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
     evidence.mkdir(parents=True, exist_ok=True)
     require(not any(port_open(port) for port in PORTS), 'A conflicting pre-existing loopback server is listening')
     before = inventory(app)
-    runtime, devices = choose_runtime_and_types()
+    runtime, devices = choose_runtime_and_types(ipad_first=require_parity_ui)
     results = []
     for model in devices:
         identifier = None
@@ -210,6 +222,7 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                         command.append('--elichika-core-probe')
                     if require_parity_ui:
                         command.append('--elichika-parity-probe')
+                    launch_wall = time.time()
                     began = time.monotonic()
                     process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT, text=True)
                     watchdog = ProbeWatchdog(launch_number, began, require_parity_ui=require_parity_ui)
@@ -261,7 +274,8 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                         watchdog.remaining(time.monotonic())
                     except Exception as error:
                         output.flush()
-                        retain_failure(evidence, label, identifier, process, watchdog, error, reply_file)
+                        retain_failure(evidence, label, identifier, process, watchdog, error, reply_file,
+                                       installed=installed, launch_wall=launch_wall)
                         raise
                     finally:
                         subprocess.run(['xcrun', 'simctl', 'terminate', identifier, BUNDLE], check=False,
@@ -285,6 +299,8 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
               'results': results, 'all_owned_ports_closed_after_termination': True,
               'signed_bundle_readonly_and_unchanged': True, 'actual_SIFAS_game_executed': False,
               'physical_iPhone_iPad_execution': False, 'probe_not_a_device_IPA_input': True}
+    report['actual_execution_order'] = [{'model': row['model'], 'launch_number': row['launch_number']}
+                                        for row in results]
     write_json(evidence / 'result.json', report)
     return report
 
