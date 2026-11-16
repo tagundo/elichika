@@ -10,6 +10,7 @@ import (
 	"elichika/config"
 	"elichika/log"
 
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -36,7 +37,43 @@ func DownloadMissing(workers int, selection assetdata.DownloadSelection) error {
 	return downloadMissingFiles(workers, names)
 }
 
+// DownloadProgress is a bounded snapshot, never a growing list of file names.
+// CompletedBytes counts transferred bytes, including bytes of a failed file.
+// TotalBytes is zero when the source catalogs do not provide a whole-file size.
+type DownloadProgress struct {
+	Stage          string `json:"stage"`
+	CompletedFiles int64  `json:"completed_files"`
+	TotalFiles     int64  `json:"total_files"`
+	CompletedBytes int64  `json:"completed_bytes"`
+	TotalBytes     int64  `json:"total_bytes"`
+}
+
+// DownloadMissingContext reuses the CLI's profile selection and atomic pack
+// cache writes. Cancellation reaches active HTTP requests and body reads.
+// Progress callbacks are serialized and run at most once per second plus the
+// initial/final snapshots, rather than once per byte or downloaded file.
+func DownloadMissingContext(ctx context.Context, workers int, selection assetdata.DownloadSelection, progress func(DownloadProgress)) error {
+	names, err := assetdata.SelectWholeFiles(selection)
+	if err != nil {
+		return err
+	}
+	log.Printf("download_packs: selected %d whole files (%s); all loaded profiles contain %d whole files\n",
+		len(names), selection, assetdata.ProfileWholeFileCount())
+	return downloadMissingFilesContext(ctx, workers, names, progress)
+}
+
 func downloadMissingFiles(workers int, names map[string]struct{}) error {
+	return downloadMissingFilesWithTimeout(context.Background(), workers, names, nil, 0)
+}
+
+func downloadMissingFilesContext(ctx context.Context, workers int, names map[string]struct{}, progress func(DownloadProgress)) error {
+	return downloadMissingFilesWithTimeout(ctx, workers, names, progress, 10*time.Minute)
+}
+
+func downloadMissingFilesWithTimeout(ctx context.Context, workers int, names map[string]struct{}, progress func(DownloadProgress), fileTimeout time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	host := *config.Conf.CdnServer
 	if host == "" || host == "elichika" || host == "elichika_tls" {
 		return fmt.Errorf("cdn_server must be a real CDN url (not 'elichika'); aborting")
@@ -50,14 +87,23 @@ func downloadMissingFiles(workers int, names map[string]struct{}) error {
 
 	todo := make([]string, 0, len(names))
 	for name := range names {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if _, ok := localPath(name); !ok {
 			todo = append(todo, name)
 		}
 	}
 	total := len(todo)
 	log.Printf("download_packs: %d missing of %d; downloading %d at a time\n", total, len(names), workers)
+	if progress != nil {
+		progress(DownloadProgress{Stage: "downloading", TotalFiles: int64(total)})
+	}
 	if total == 0 {
 		log.Println("download_packs: nothing to do - everything is already cached")
+		if progress != nil {
+			progress(DownloadProgress{Stage: "finished"})
+		}
 		return nil
 	}
 
@@ -70,10 +116,11 @@ func downloadMissingFiles(workers int, names map[string]struct{}) error {
 	repWg.Add(1)
 	go func() {
 		defer repWg.Done()
-		t := time.NewTicker(3 * time.Second)
+		t := time.NewTicker(time.Second)
 		defer t.Stop()
 		lastBytes := int64(0)
 		lastTime := time.Now()
+		lastLog := lastTime
 		for {
 			select {
 			case <-stop:
@@ -83,8 +130,14 @@ func downloadMissingFiles(workers int, names map[string]struct{}) error {
 				now := time.Now()
 				mbps := float64(b-lastBytes) / now.Sub(lastTime).Seconds() / 1e6
 				lastBytes, lastTime = b, now
-				log.Printf("download_packs: %d/%d files, %.1f MB so far, %.1f MB/s\n",
-					atomic.LoadInt64(&done), total, float64(b)/1e6, mbps)
+				if progress != nil {
+					progress(DownloadProgress{Stage: "downloading", CompletedFiles: atomic.LoadInt64(&done), TotalFiles: int64(total), CompletedBytes: b})
+				}
+				if now.Sub(lastLog) >= 3*time.Second {
+					log.Printf("download_packs: %d/%d files, %.1f MB so far, %.1f MB/s\n",
+						atomic.LoadInt64(&done), total, float64(b)/1e6, mbps)
+					lastLog = now
+				}
 			}
 		}
 	}()
@@ -96,11 +149,25 @@ func downloadMissingFiles(workers int, names map[string]struct{}) error {
 		go func() {
 			defer wg.Done()
 			for name := range ch {
+				if ctx.Err() != nil {
+					return
+				}
 				source, err := sourceCDNURL(host, name, nil)
 				if err == nil {
-					err = downloadFromURLProgress(source, packPath(name), &bytesTotal)
+					// A stalled body cannot retain a worker forever. The shared
+					// client keeps its connect/TLS/header timeout behavior.
+					fileContext, cancel := context.WithCancel(ctx)
+					if fileTimeout > 0 {
+						cancel()
+						fileContext, cancel = context.WithTimeout(ctx, fileTimeout)
+					}
+					err = downloadFromURLProgressWithContext(fileContext, source, packPath(name), &bytesTotal, nil)
+					cancel()
 				}
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					atomic.AddInt64(&failed, 1)
 					log.Printf("download_packs: failed %s: %v\n", name, err)
 				}
@@ -108,13 +175,30 @@ func downloadMissingFiles(workers int, names map[string]struct{}) error {
 			}
 		}()
 	}
+queue:
 	for _, name := range todo {
-		ch <- name
+		select {
+		case <-ctx.Done():
+			break queue
+		case ch <- name:
+		}
 	}
 	close(ch)
 	wg.Wait()
 	close(stop)
 	repWg.Wait()
+	stage := "finished"
+	if ctx.Err() != nil {
+		stage = "cancelled"
+	} else if failed != 0 {
+		stage = "failed"
+	}
+	if progress != nil {
+		progress(DownloadProgress{Stage: stage, CompletedFiles: atomic.LoadInt64(&done), TotalFiles: int64(total), CompletedBytes: atomic.LoadInt64(&bytesTotal)})
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	log.Printf("download_packs: finished - %d downloaded, %d failed, %.1f MB total\n",
 		total-int(failed), failed, float64(atomic.LoadInt64(&bytesTotal))/1e6)
 	if failed != 0 {

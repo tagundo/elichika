@@ -24,6 +24,7 @@ static NSUInteger ELFakeGameStarts;
 @property(nonatomic,assign) NSTimeInterval lastHeartbeat;
 @property(nonatomic,assign) NSUInteger launchNumber;
 @property(nonatomic,assign) BOOL completed;
+@property(nonatomic,assign) BOOL parityProbe;
 @property(nonatomic,copy) NSString *detail;
 @property(nonatomic,strong) NSMutableArray *timingEvents;
 - (void)advanceStage:(NSString *)name entered:(NSTimeInterval)entered;
@@ -35,7 +36,9 @@ static NSUInteger ELFakeGameStarts;
     UIViewController *controller=[UIViewController new]; controller.view.backgroundColor=UIColor.systemBackgroundColor;
     _window.rootViewController=controller; [_window makeKeyAndVisible];
     self.began=NSProcessInfo.processInfo.systemUptime;
-    _budget=elichika::ProbeBudget(self.began,[NSProcessInfo.processInfo.arguments containsObject:@"--elichika-core-probe"]);
+    const BOOL coreOnly=[NSProcessInfo.processInfo.arguments containsObject:@"--elichika-core-probe"];
+    self.parityProbe=[NSProcessInfo.processInfo.arguments containsObject:@"--elichika-parity-probe"];
+    _budget=elichika::ProbeBudget(self.began,coreOnly,self.parityProbe);
     self.detail=@""; self.timingEvents=[NSMutableArray new];
     for (NSString *argument in NSProcessInfo.processInfo.arguments) {
         if ([argument isEqual:@"--elichika-probe-launch=1"]) self.launchNumber=1;
@@ -49,6 +52,11 @@ static NSUInteger ELFakeGameStarts;
         if (strong && !strong.completed && ![stage isEqual:@"python_complete"]) [strong advanceStage:stage entered:entered];
     });
     [self recordTimingAt:self.began]; [self progress:@"running"];
+    if (coreOnly && self.parityProbe) {
+        [self write:[@{@"schema":@1,@"phase":@"error",@"probe_pass":@NO,
+            @"error":@"The management UI proof requires the full tools runtime, not core-only mode."} mutableCopy]];
+        return YES;
+    }
     if (!self.launchNumber) {
         [self write:[@{@"schema":@1,@"phase":@"error",@"probe_pass":@NO,@"error":@"The cold-launch index is missing."} mutableCopy]];
         return YES;
@@ -105,6 +113,7 @@ static NSUInteger ELFakeGameStarts;
     // main thread stalls, and cannot accept a JSON file until complete/complete.
     [self progress:[result[@"probe_pass"] boolValue] ? @"running" : @"failed"];
     result[@"fake_game_start_count"]=@(ELFakeGameStarts);
+    if (self.parityProbe) result[@"management_ui_required"]=@YES;
     result[@"probe_kind"]=@"native-simulator-real-backend-fake-game";
     NSDictionary *configuration=ElichikaHostConfiguration();
     NSFileManager *manager=NSFileManager.defaultManager;
@@ -202,8 +211,29 @@ static NSUInteger ELFakeGameStarts;
                     if (![storage[@"ready"] boolValue]) {
                         status[@"probe_pass"]=@NO; status[@"phase"]=@"error";
                         status[@"error"]=@"The actual management WebView failed its cold-launch preferences persistence check.";
+                        [self write:status]; return;
                     }
-                    [self write:status];
+                    if (!self.parityProbe) { [self write:status]; return; }
+                    ElichikaHostProbeManagement(^(NSDictionary *management) {
+                        if (self.completed) return;
+                        NSDictionary *reply=[management isKindOfClass:NSDictionary.class] ? management : @{};
+                        status[@"management_ui_probe"]=reply;
+                        BOOL managementReady=[management isKindOfClass:NSDictionary.class];
+                        for (NSString *key in @[@"ready",@"actual_management_webview",@"page_loaded",@"javascript_ready",
+                            @"state_fetch",@"controls_present",@"native_binding",@"go_stopped",@"server_restarted"])
+                            managementReady=managementReady && [reply[key] isEqual:@YES];
+                        id detail=reply[@"error"];
+                        BOOL noError=!detail || detail==NSNull.null || [detail isEqual:@NO]
+                            || ([detail isKindOfClass:NSString.class] && ![detail length]);
+                        managementReady=managementReady && noError && ELFakeGameStarts==1;
+                        status[@"probe_pass"]=@(managementReady);
+                        if (!managementReady) {
+                            status[@"phase"]=@"error";
+                            status[@"error"]=[detail isKindOfClass:NSString.class] && [detail length]
+                                ? detail : @"The actual management WebView failed its stop/start and native-binding proof.";
+                        }
+                        [self write:status];
+                    });
                 });
             });
         });

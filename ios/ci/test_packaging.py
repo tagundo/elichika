@@ -121,7 +121,7 @@ class PackagingTests(unittest.TestCase):
         for value in ('2026.11.15.1', '2026.11.16.0', '2026.11.16.100', '2026.11.16'):
             with self.subTest(value=value), self.assertRaises(ValueError): bundle_versions(value, now=now)
 
-    def test_document_access_preserves_original_game_metadata_and_loopback_scope(self):
+    def test_document_access_preserves_game_metadata_and_describes_opt_in_game_lan(self):
         original = {'MinimumOSVersion': '13.0', 'CFBundleShortVersionString': '3.12.0',
                     'CFBundleIdentifier': 'com.klab.lovelive.allstars.global', 'UIDeviceFamily': [1, 2],
                     'UISupportedInterfaceOrientations': ['Portrait', 'LandscapeLeft', 'LandscapeRight'],
@@ -135,7 +135,11 @@ class PackagingTests(unittest.TestCase):
         self.assertIs(result['LSSupportsOpeningDocumentsInPlace'], True)
         self.assertIs(result['NSAppTransportSecurity']['NSAllowsArbitraryLoads'], False)
         self.assertNotIn('UISupportsDocumentBrowser', result)
-        self.assertNotIn('NSLocalNetworkUsageDescription', result)
+        self.assertIn('When you enable LAN access', result['NSLocalNetworkUsageDescription'])
+        self.assertIn('game server and installed game assets', result['NSLocalNetworkUsageDescription'])
+        self.assertNotIn('management', result['NSLocalNetworkUsageDescription'])
+        self.assertNotIn('NSBonjourServices', result)
+        self.assertEqual(result['ElichikaUnifiedBuildVersion'], '2026.11.16.1')
 
     def test_archive_paths_reject_traversal_and_noncanonical_entries(self):
         for value in ('/tmp/a', '../a', 'a/../b', 'a//b', './a', 'a\\b', 'a/./b'):

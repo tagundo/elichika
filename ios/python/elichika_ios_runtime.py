@@ -27,6 +27,7 @@ _native = None
 _scope = None
 _cancel = threading.Event()
 _bootstrap_thread = None
+_management = None
 _PROBE_STAGES = frozenset({"payload_prepare", "go_start", "tool_dependencies", "tls", "tools",
                            "dependencies", "registries", "texture_codecs", "model_glb",
                            "go_stop", "config_read", "go_restart", "python_complete"})
@@ -112,7 +113,7 @@ def _serve(server):
 
 
 def _start(config):
-    global _scope
+    global _scope, _management
     try:
         payload = Path(config["payload_root"]).resolve(strict=True)
         root = Path(config["data_root"])
@@ -191,13 +192,18 @@ def _start(config):
         modules = [importlib.import_module(name) for name in ("adminui.server", "webtools.server")]
         _bind_managers(root, modules)
         from adminui.serverctl import register_controller
-        register_controller(GoController(_native, go_options))
+        controller = GoController(_native, go_options)
+        register_controller(controller)
+        from elichika_ios.management import Management
+        from adminui.jobs import MANAGER
+        _management = Management(_native, controller, config, MANAGER)
         mimetypes.add_type("application/javascript", ".js")
         try:
             _server_lock.acquire()
             if _cancel.is_set():
                 raise InterruptedError("Setup cancelled")
-            _servers.extend(bind_panels(modules, token, config.get("language", "en"), config.get("experimental_device") is True))
+            _servers.extend(bind_panels(modules, token, config.get("language", "en"), config.get("experimental_device") is True,
+                                        management=_management))
             for server in _servers:
                 thread = threading.Thread(target=_serve, args=(server,), daemon=True, name="ios-webtools")
                 thread.start()
@@ -211,7 +217,9 @@ def _start(config):
         if _cancel.is_set():
             raise InterruptedError("Setup cancelled")
         urls = panel_urls(_servers, token)
-        _event("ready", ready=True, dependencies=dependencies, admin_url=urls[0], tools_url=urls[1])
+        admin = urlsplit(urls[0])
+        management_url = admin._replace(path="/ios/").geturl()
+        _event("ready", ready=True, dependencies=dependencies, admin_url=urls[0], tools_url=urls[1], management_url=management_url)
     except Exception as error:
         _close_servers()
         _native.go_stop()
@@ -220,6 +228,10 @@ def _start(config):
 
 
 def _close_servers():
+    global _management
+    management, _management = _management, None
+    if management is not None:
+        management.close()
     with _server_lock:
         servers, threads = list(_servers), list(_threads)
         _servers.clear()
@@ -338,7 +350,8 @@ def probe():
             result["tools_probe"] = {"ready": False, "error": "The tool runtime is not initialized"}
         else:
             from elichika_ios.probes import run as run_tools_probe
-            result["tools_probe"] = run_tools_probe(services, session, _scope.library_root, progress=_probe_stage)
+            result["tools_probe"] = run_tools_probe(services, session, _scope.library_root,
+                                                   progress=_probe_stage, require_management=True)
             if result["tools_probe"]["ready"] and runtime.get("simulator_probe_only"):
                 from elichika_ios.probes import lifecycle as run_lifecycle_probe
                 result["tools_probe"]["lifecycle"] = run_lifecycle_probe(_native, progress=_probe_stage)

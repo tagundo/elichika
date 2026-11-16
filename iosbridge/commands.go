@@ -4,7 +4,10 @@ package iosbridge
 
 import (
 	"bytes"
+	"context"
+	"elichika/assetdata"
 	"elichika/config"
+	"elichika/handler/asset"
 	"elichika/locale"
 	"elichika/router"
 	"elichika/runtimeinit"
@@ -35,9 +38,16 @@ type Command struct {
 	Path        string          `json:"path,omitempty"`
 	Body        json.RawMessage `json:"body,omitempty"`
 	ContentType string          `json:"content_type,omitempty"`
+	Region      string          `json:"region,omitempty"`
+	Platform    string          `json:"platform,omitempty"`
+	Language    string          `json:"language,omitempty"`
+	Workers     int             `json:"workers,omitempty"`
+	JobID       uint64          `json:"job_id,omitempty"`
+	After       uint64          `json:"after,omitempty"`
+	Limit       int             `json:"limit,omitempty"`
 }
 
-func CommandJSON(input string) string { return encode(service.command(input)) }
+func CommandJSON(input string) string { return service.commandJSON(input) }
 
 func (c *controller) command(input string) State {
 	var command Command
@@ -52,13 +62,15 @@ func (c *controller) command(input string) State {
 		return c.status()
 	case "stop":
 		return c.stop()
+	case "cancel_job":
+		return c.cancelJob(command.JobID)
 	case "start":
 		if command.Options == nil {
 			return failed(c.status(), "INVALID_COMMAND", errors.New("start requires options"))
 		}
 		options, _ := json.Marshal(command.Options)
 		return c.start(string(options))
-	case "management_request", "config_read", "config_save", "reload", "rebuild_assets", "fix_training_trees", "reset_accounts", "cdn_cache":
+	case "management_request", "config_read", "config_save", "reload", "rebuild_assets", "fix_training_trees", "reset_accounts", "cdn_cache", "download_packs":
 	default:
 		return failed(c.status(), "UNSUPPORTED_COMMAND", fmt.Errorf("unsupported command %q", command.Command))
 	}
@@ -67,6 +79,20 @@ func (c *controller) command(input string) State {
 	}
 	if command.Command == "management_request" {
 		if err := validateManagement(command); err != nil {
+			return failed(c.status(), "INVALID_COMMAND", err)
+		}
+	}
+	if command.Command == "download_packs" {
+		if command.Region == "" || command.Platform == "" || command.Language == "" {
+			return failed(c.status(), "INVALID_COMMAND", errors.New("download_packs requires explicit region, platform and language"))
+		}
+		if command.Workers == 0 {
+			command.Workers = 4
+		}
+		if command.Workers < 1 || command.Workers > 16 {
+			return failed(c.status(), "INVALID_COMMAND", errors.New("workers must be between 1 and 16"))
+		}
+		if err := downloadSelection(command).Validate(); err != nil {
 			return failed(c.status(), "INVALID_COMMAND", err)
 		}
 	}
@@ -83,13 +109,46 @@ func (c *controller) command(input string) State {
 	c.state.Error, c.state.Ready, c.state.Endpoint, c.state.URL = nil, false, nil, ""
 	c.state.Phase, c.state.Detail = "maintenance", command.Command
 	c.state.Job = &Job{ID: c.state.Generation, Command: command.Command, State: "running"}
-	go c.runCommand(command)
-	return c.state
+	ctx := context.Background()
+	if command.Command == "download_packs" {
+		ctx, c.commandCancel = context.WithCancel(ctx)
+		c.state.Job.Progress = &asset.DownloadProgress{Stage: "preparing"}
+	}
+	go c.runCommand(ctx, command, c.state.Job.ID, c.epoch)
+	return snapshot(c.state)
 }
 
-func (c *controller) runCommand(command Command) {
+func downloadSelection(command Command) assetdata.DownloadSelection {
+	return assetdata.DownloadSelection{Region: assetdata.Region(command.Region), Platform: assetdata.Platform(command.Platform), Language: assetdata.Language(command.Language)}
+}
+
+func (c *controller) cancelJob(id uint64) State {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if id == 0 || c.state.Job == nil || c.state.Job.ID != id {
+		return failed(snapshot(c.state), "JOB_NOT_FOUND", errors.New("job_id does not match the current job"))
+	}
+	if c.state.Job.Command != "download_packs" {
+		return failed(snapshot(c.state), "NOT_CANCELLABLE", errors.New("only download_packs supports cancellation"))
+	}
+	if c.state.Job.State == "running" && c.commandCancel != nil {
+		c.commandCancel()
+		job := *c.state.Job
+		job.CancelRequested = true
+		c.state.Job = &job
+	}
+	return snapshot(c.state)
+}
+
+func (c *controller) runCommand(ctx context.Context, command Command, id, epoch uint64) {
 	c.operation.Lock()
 	defer c.operation.Unlock()
+	c.mu.Lock()
+	current := c.epoch == epoch && c.state.Job != nil && c.state.Job.ID == id && c.state.Job.State == "running"
+	c.mu.Unlock()
+	if !current {
+		return
+	}
 	var result any
 	var err error
 	defer func() {
@@ -100,14 +159,32 @@ func (c *controller) runCommand(command Command) {
 		err = errors.Join(err, c.closePrepared())
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		job := Job{ID: c.state.Job.ID, Command: command.Command, State: "succeeded", Result: result}
+		if c.epoch != epoch || c.state.Job == nil || c.state.Job.ID != id {
+			return
+		}
+		if c.commandCancel != nil {
+			c.commandCancel()
+			c.commandCancel = nil
+		}
+		job := Job{ID: id, Command: command.Command, State: "succeeded", Result: result, Progress: c.state.Job.Progress, CancelRequested: c.state.Job.CancelRequested}
 		c.state.State, c.state.Phase, c.state.Detail = "stopped", "stopped", ""
 		if err != nil {
 			job.State, job.Error = "failed", &Failure{"COMMAND_FAILED", err.Error()}
+			if errors.Is(err, context.Canceled) {
+				job.State, job.Error = "cancelled", &Failure{"COMMAND_CANCELLED", "Download cancelled; completed files remain cached."}
+			}
 			c.state.Error = job.Error
+		}
+		if job.Progress != nil && job.State != "succeeded" {
+			progress := *job.Progress
+			progress.Stage = job.State
+			job.Progress = &progress
 		}
 		c.state.Job = &job
 	}()
+	if err = ctx.Err(); err != nil {
+		return
+	}
 	runtimeinit.RebuildAssets = command.Command == "rebuild_assets"
 	_, cleanup, prepareError := c.prepare(c.options, c.progress)
 	c.cleanup = cleanup
@@ -115,7 +192,21 @@ func (c *controller) runCommand(command Command) {
 		err = prepareError
 		return
 	}
+	if err = ctx.Err(); err != nil {
+		return
+	}
 	switch command.Command {
+	case "download_packs":
+		err = c.download(ctx, command.Workers, downloadSelection(command), func(progress asset.DownloadProgress) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.epoch != epoch || c.state.Job == nil || c.state.Job.ID != id {
+				return
+			}
+			job := *c.state.Job
+			job.Progress = &progress
+			c.state.Job = &job
+		})
 	case "management_request":
 		result, err = managementRequest(command, c.options.WebToken)
 	case "config_read":

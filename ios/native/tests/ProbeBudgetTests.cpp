@@ -40,4 +40,33 @@ int main() {
     assert(!queued.advanceAt("go_stop",3.5,25)); // captured clock cannot regress
     assert(!queued.advanceAt("config_read",25,24)); // receipt cannot predate entry
     assert(!queued.advanceAt("config_read",NAN,25));
+    // Parity adds one real UI stage, without changing any legacy stage index,
+    // deadline, cold-launch order, or the shared absolute 600-second ceiling.
+    assert(elichika::probeStageIndex("management_ui")==-1);
+    assert(elichika::probeStageIndex("complete")==10);
+    assert(elichika::probeStageIndex("management_ui",true)==10);
+    assert(elichika::probeStageIndex("complete",true)==11);
+    const char *parityStages[]={"native_health","tls","tools","go_stop","config_read","go_restart","python_complete","web_admin","web_tools"};
+    elichika::ProbeBudget parity(0,false,true);
+    for (unsigned i=0;i<9;++i) assert(parity.advance(parityStages[i],i+1));
+    assert(!parity.advance("complete",10)); // Cannot skip the actual UI probe.
+    assert(parity.advanceAt("management_ui",10,11));
+    assert(parity.stage().seconds==120 && parity.entered()==10);
+    const auto paritySequence=parity.sequence();
+    assert(parity.advance("management_ui",40));
+    assert(parity.entered()==10 && parity.sequence()==paritySequence);
+    assert(!parity.advance("complete",130)); // Repeating UI heartbeat cannot renew120.
+    elichika::ProbeBudget parityAbsolute(0,false,true);
+    for (unsigned i=0;i<9;++i) assert(parityAbsolute.advance(stages[i],times[i]));
+    assert(parityAbsolute.advance("management_ui",599.5));
+    assert(!parityAbsolute.advance("complete",600));
+    assert(parityAbsolute.expired(600));
+    elichika::ProbeBudget queuedParity(0,false,true);
+    for (unsigned i=0;i<9;++i) assert(queuedParity.advance(parityStages[i],i+1));
+    assert(!queuedParity.advanceAt("management_ui",10,130));
+    assert(queuedParity.index()==9 && queuedParity.entered()==9);
+    elichika::ProbeBudget legacy;
+    for (unsigned i=0;i<9;++i) assert(legacy.advance(parityStages[i],i+1));
+    assert(!legacy.advance("management_ui",10));
+    assert(legacy.advance("complete",10));
 }

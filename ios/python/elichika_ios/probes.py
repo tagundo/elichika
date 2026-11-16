@@ -47,7 +47,27 @@ def request(port, path, token=None, payload=None):
         connection.close()
 
 
-def run(services, token, library, *, progress=None):
+def management_http(port, token):
+    """Read the real authenticated management UI/API without changing user data."""
+    denied, _ = request(port, "/ios/api/state")
+    status, raw = request(port, "/ios/api/state?after=0", token)
+    if denied != 403 or status != 200:
+        raise RuntimeError("Management state authentication or HTTP API failed")
+    value = json.loads(raw)
+    if (value.get("schema") != 1 or not isinstance(value.get("server"), dict)
+            or not isinstance(value.get("logs"), list) or type(value.get("next_cursor")) is not int):
+        raise RuntimeError("The actual management API returned an incomplete state")
+    resources = []
+    for path in ("/ios/", "/ios/management.js", "/ios/management.css"):
+        code, body = request(port, path, token)
+        if code != 200 or not body or token.encode() in body:
+            raise RuntimeError("The bundled management resource failed: " + path)
+        resources.append({"path": path, "http_status": code, "bytes": len(body)})
+    return {"ready": True, "state_http_status": status, "unauthenticated_status": denied,
+            "resources": resources, "incremental_logs_available": True}
+
+
+def run(services, token, library, *, progress=None, require_management=False):
     result = {"ready": False, "stage": "registries", "registries": [], "model": {}, "codecs": {}, "error": ""}
     timings = _Timings(progress)
     try:
@@ -63,6 +83,8 @@ def run(services, token, library, *, progress=None):
             if len(tools) < 10:
                 raise RuntimeError(name + " tool registry is incomplete")
             result["registries"].append({"service": name, "http_status": status, "unauthenticated_status": denied, "tool_count": len(tools)})
+        if require_management:
+            result["management_http_probe"] = management_http(services[0][1], token)
         result["stage"] = "native_texture_codecs"
         timings.enter("texture_codecs")
         from PIL import Image

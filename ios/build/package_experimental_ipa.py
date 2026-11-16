@@ -58,7 +58,7 @@ def experimental_runtime(root, capability):
     return report
 
 
-def simulator_gates(path, source):
+def simulator_gates(path, source, *, require_parity_ui=False):
     path = Path(path)
     require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 32*1024**2,
             'Bounded full-tools Simulator evidence is required before a QA IPA')
@@ -69,13 +69,15 @@ def simulator_gates(path, source):
             and result['signed_bundle_readonly_and_unchanged'] is True
             and result['actual_SIFAS_game_executed'] is False and result['physical_iPhone_iPad_execution'] is False,
             'Full-tools Simulator evidence does not match this exact source/scope')
+    require(not require_parity_ui or result.get('parity_management_ui_required') is True,
+            'Fresh parity Simulator execution must require actual management UI gates')
     sys.path.insert(0, str(ROOT / 'ios/ci'))
     from run_simulator import validate_reply
     rows = result['results']
     require(len(rows) == 4, 'Both iPhone and iPad must pass two full-tools launches')
     models = {}
     for row in rows:
-        validate_reply(row['reply'], False, launch_number=row['launch_number'])
+        validate_reply(row['reply'], False, launch_number=row['launch_number'], require_parity_ui=require_parity_ui)
         require(row['encrypted_protocol']['passed'] is True and row['signed_bundle_unchanged'] is True
                 and row['data_outside_bundle'] is True, 'Full-tools protocol/sandbox execution gate failed')
         models.setdefault(row['model'], []).append(row['launch_number'])
@@ -83,11 +85,15 @@ def simulator_gates(path, source):
             and any(name.startswith('iPad') for name in models)
             and all(sorted(numbers) == [1, 2] for numbers in models.values()),
             'Full-tools Simulator evidence lacks each device-family cold relaunch')
-    return {'sha256': sha256(path), 'bytes': path.stat().st_size, 'scope': 'real backend/tools with fake game lifecycle'}
+    proof = {'sha256': sha256(path), 'bytes': path.stat().st_size, 'scope': 'real backend/tools with fake game lifecycle'}
+    if require_parity_ui:
+        proof['parity_management_ui_required'] = True
+    return proof
 
 
 def package_experimental(source, runtime, native, payload, output, work, report, *, simulator_report,
-                         lock, version=None, repo=ROOT, payload_consumption=None, simulator_consumption=None):
+                         lock, version=None, repo=ROOT, payload_consumption=None, simulator_consumption=None,
+                         require_parity_ui=False):
     source, runtime, native, payload, output, work = map(Path, (source, runtime, native, payload, output, work))
     capability = require_pending_archive(repo)
     require('EXPERIMENTAL-ARCHIVE_PENDING-UNTESTED_DEVICE' in output.name,
@@ -102,8 +108,11 @@ def package_experimental(source, runtime, native, payload, output, work, report,
                 and payload_consumption['producer_identity_reassigned'] is False
                 and payload_consumption['original_inventory_and_packaged_manifest_verified'] is True,
                 'QA payload consumption must identify the original producer and current consumer')
+        if payload_consumption.get('payload_reuse_policy') is not None:
+            from parity_payload_policy import verify_consumption
+            verify_consumption(repo, payload, payload_consumption)
     if simulator_consumption is None:
-        sim_proof = simulator_gates(simulator_report, identity)
+        sim_proof = simulator_gates(simulator_report, identity, require_parity_ui=require_parity_ui)
     else:
         # Only the explicit experimental packaging consumer can use the one
         # canonical Source 12 proof. Recheck current source/lock closure here,
@@ -170,6 +179,19 @@ def package_experimental(source, runtime, native, payload, output, work, report,
     result = {**provenance, 'IPA': {'name': output.name, 'bytes': output.stat().st_size, 'sha256': sha256(output)},
               'load_patch': load_proof, 'preservation': preservation, 'ad_hoc_signed_MachO': binaries,
               'codesign_strict_deep_verified': True}
+    if require_parity_ui:
+        debug_name = 'Frameworks/ElichikaHost.framework/ElichikaHost.dSYM/Contents/Resources/DWARF/ElichikaHost'
+        debug = app / debug_name
+        source_debug = native / 'ElichikaHost.dSYM/Contents/Resources/DWARF/ElichikaHost'
+        macho(debug, platform=2, kind=10)
+        require(sha256(debug) == sha256(source_debug), 'Fresh native debug resource changed during packaging/signing')
+        result['ad_hoc_signing_candidate_MachO'] = binaries
+        result['ad_hoc_signed_MachO'] = [name for name in binaries if name != debug_name]
+        require(len(result['ad_hoc_signed_MachO']) == 99 and len(binaries) == 100,
+                'Fresh parity runtime/debug image count differs')
+        result['signed_runtime_MachO_count'] = 99
+        result['nonruntime_debug_resources'] = [{'path': debug_name, 'bytes': debug.stat().st_size,
+                                               'sha256': sha256(debug), 'MachO_kind': 10}]
     write_json(report, result)
     return result
 

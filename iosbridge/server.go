@@ -10,8 +10,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"elichika/assetdata"
+	"elichika/handler/asset"
 )
 
 type Failure struct {
@@ -20,11 +24,13 @@ type Failure struct {
 }
 
 type Job struct {
-	ID      uint64   `json:"id"`
-	Command string   `json:"command"`
-	State   string   `json:"state"`
-	Error   *Failure `json:"error"`
-	Result  any      `json:"result,omitempty"`
+	ID              uint64                  `json:"id"`
+	Command         string                  `json:"command"`
+	State           string                  `json:"state"`
+	Error           *Failure                `json:"error"`
+	Result          any                     `json:"result,omitempty"`
+	Progress        *asset.DownloadProgress `json:"progress,omitempty"`
+	CancelRequested bool                    `json:"cancel_requested,omitempty"`
 }
 
 type State struct {
@@ -47,23 +53,27 @@ type State struct {
 type prepareFunc func(Options, func(string)) (http.Handler, func() error, error)
 
 type controller struct {
-	mu        sync.Mutex
-	operation sync.Mutex
-	state     State
-	options   Options
-	server    *http.Server
-	cleanup   func() error
-	prepare   prepareFunc
-	epoch     uint64 // private operation ownership; repeated Stop only bumps public generation
+	mu            sync.Mutex
+	operation     sync.Mutex
+	state         State
+	options       Options
+	server        *http.Server
+	cleanup       func() error
+	prepare       prepareFunc
+	epoch         uint64 // private operation ownership; repeated Stop only bumps public generation
+	commandCancel context.CancelFunc
+	download      func(context.Context, int, assetdata.DownloadSelection, func(asset.DownloadProgress)) error
+	logs          *logRing
 }
 
 func newController(prepare prepareFunc) *controller {
-	return &controller{state: State{Schema: 1, State: "stopped", Phase: "stopped"}, prepare: prepare}
+	return &controller{state: State{Schema: 1, State: "stopped", Phase: "stopped"}, prepare: prepare,
+		download: asset.DownloadMissingContext, logs: newLogRing()}
 }
 
 var service = newController(prepareServer)
 
-func encode(value State) string { data, _ := json.Marshal(value); return string(data) }
+func encode(value any) string { data, _ := json.Marshal(value); return string(data) }
 
 func StatusJSON() string            { return encode(service.status()) }
 func StartJSON(input string) string { return encode(service.start(input)) }
@@ -72,7 +82,21 @@ func StopJSON() string              { return encode(service.stop()) }
 func (c *controller) status() State {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.state
+	return snapshot(c.state)
+}
+
+// Status escapes the mutex before JSON encoding. Mutable progress must never
+// alias an earlier snapshot held by a native/Python caller.
+func snapshot(state State) State {
+	if state.Job != nil {
+		job := *state.Job
+		if job.Progress != nil {
+			progress := *job.Progress
+			job.Progress = &progress
+		}
+		state.Job = &job
+	}
+	return state
 }
 
 func failed(state State, code string, err error) State {
@@ -97,18 +121,20 @@ func (c *controller) start(input string) State {
 	}
 	generation := c.state.Generation + 1
 	c.options = options
+	c.logs.setSecrets(options.ReadyToken, options.WebToken)
 	c.epoch++
 	epoch := c.epoch
 	c.state = State{Schema: 1, State: "starting", Phase: "starting", Generation: generation, DataRoot: options.DataRoot,
 		ReadyToken: options.ReadyToken, WebToken: options.WebToken, LocalWebUIToken: options.WebToken}
 	go c.launch(options, epoch)
-	return c.state
+	return snapshot(c.state)
 }
 
 func (c *controller) progress(detail string) {
 	c.mu.Lock()
 	c.state.Detail = detail
 	c.mu.Unlock()
+	_, _ = c.logs.Write([]byte("[server] " + detail + "\n"))
 }
 
 func (c *controller) launch(options Options, epoch uint64) {
@@ -140,20 +166,11 @@ func (c *controller) launch(options Options, epoch uint64) {
 		return
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/__elichika/health", func(w http.ResponseWriter, r *http.Request) {
-		expected := "Bearer " + options.ReadyToken
-		if r.Method != http.MethodGet || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte(expected)) != 1 {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ready": true, "schema": 1})
-	})
-	mux.Handle("/", handler)
+	mux.HandleFunc("/__elichika/health", healthHandler(options.ReadyToken))
+	mux.Handle("/", localManagementOnly(handler))
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second}
 	c.server = server
-	endpoint := "http://" + listener.Addr().String()
+	endpoint := localEndpoint(listener.Addr().String())
 	serveError := make(chan error, 1)
 	go func() { serveError <- server.Serve(listener) }()
 	if err := probe(endpoint, options.ReadyToken); err != nil {
@@ -184,6 +201,37 @@ func (c *controller) launch(options Options, epoch uint64) {
 	}()
 }
 
+func healthHandler(token string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		remote := net.ParseIP(host)
+		expected := "Bearer " + token
+		if remote == nil || !remote.IsLoopback() || r.Method != http.MethodGet || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte(expected)) != 1 {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ready": true, "schema": 1})
+	}
+}
+
+func localManagementOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/webui" || strings.HasPrefix(r.URL.Path, "/webui/") {
+			host, _, _ := net.SplitHostPort(r.RemoteAddr)
+			peer := net.ParseIP(host)
+			if peer == nil || !peer.IsLoopback() {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		// The real router still validates the local WebView capability and
+		// write Origin. Only game RPC/pack routes are exposed by LAN opt-in.
+		next.ServeHTTP(w, r)
+	})
+}
+
 func probe(endpoint, token string) error {
 	request, err := http.NewRequest(http.MethodGet, endpoint+"/__elichika/health", nil)
 	if err != nil {
@@ -203,14 +251,32 @@ func probe(endpoint, token string) error {
 	return nil
 }
 
+func localEndpoint(address string) string {
+	host, port, err := net.SplitHostPort(address)
+	if err == nil && net.ParseIP(host) != nil && net.ParseIP(host).IsUnspecified() {
+		address = net.JoinHostPort("127.0.0.1", port)
+	}
+	return "http://" + address
+}
+
 func (c *controller) stop() State {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.state.Generation++
 	if c.state.Job != nil && c.state.Job.State == "running" {
+		if c.commandCancel != nil {
+			c.commandCancel()
+			job := *c.state.Job
+			job.CancelRequested = true
+			c.state.Job = &job
+			return snapshot(c.state)
+		}
 		return failed(c.state, "JOB_RUNNING", errors.New("wait for the current maintenance job to finish"))
 	}
 	if c.state.State == "stopped" {
+		// A completed failed job remains in job.error for history, but an
+		// accepted Stop must not report that stale error as a fresh rejection.
+		c.state.Error = nil
 		return c.state
 	}
 	if c.state.State == "stopping" {

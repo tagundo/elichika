@@ -6,11 +6,44 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 
-def authenticated_handler(base, token, language="en", experimental_device=False):
+def authenticated_handler(base, token, language="en", experimental_device=False, *, management=None):
     if not isinstance(token, str) or len(token) < 32:
         raise ValueError("A random session token of at least 32 characters is required")
 
     class AuthenticatedHandler(base):
+        def _management_request(self):
+            path = urlsplit(self.path).path
+            if management is None or not (path == "/ios" or path.startswith("/ios/")):
+                return False
+            if path.startswith(("/ios/api/", "/ios/server/")):
+                if management.handle(self):
+                    return True
+                self.send_error(404, "Unknown management API")
+                return True
+            files = {"/ios": "management.html", "/ios/": "management.html",
+                     "/ios/management.js": "management.js", "/ios/management.css": "management.css"}
+            name = files.get(path)
+            if name is None:
+                self.send_error(404, "Unknown management resource")
+                return True
+            if self.command not in ("GET", "HEAD"):
+                self.send_error(405, "Use GET for management resources")
+                return True
+            source = Path(__file__).parent / "web" / name
+            if not source.is_file() or source.is_symlink():
+                self.send_error(503, "The bundled management resource is missing")
+                return True
+            body = source.read_bytes()
+            content_type = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
+                            ".css": "text/css; charset=utf-8"}[source.suffix]
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+            return True
+
         def _serve_file(self, fpath, content_type=None):
             # Append only the iOS integration seam; retain every shared viewer
             # module and its original diagnostics, settings and editing logic.
@@ -82,6 +115,8 @@ def authenticated_handler(base, token, language="en", experimental_device=False)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+                return
+            if self._management_request():
                 return
             callback = getattr(super(), method, None)
             if callback is None:

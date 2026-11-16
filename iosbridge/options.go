@@ -70,8 +70,9 @@ func parseOptions(input string) (Options, error) {
 	}
 	ip := net.ParseIP(host)
 	portNumber, portError := strconv.Atoi(port)
-	if ip == nil || !ip.IsLoopback() || portError != nil || portNumber < 0 || portNumber > 65535 {
-		return options, fmt.Errorf("listen_address must be a loopback IP and port 0-65535")
+	lan := host == "0.0.0.0" && portNumber == 8080
+	if ip == nil || (!ip.IsLoopback() && !lan) || portError != nil || portNumber < 0 || portNumber > 65535 {
+		return options, fmt.Errorf("listen_address must be a loopback IP and port 0-65535, or opt-in 0.0.0.0:8080")
 	}
 	if options.Region != "" && options.Region != "gl" && options.Region != "jp" {
 		return options, fmt.Errorf("region must be gl or jp")

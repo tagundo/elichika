@@ -14,6 +14,7 @@ import (
 
 	"fmt"
 	"io"
+	standardlog "log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -69,6 +70,7 @@ func prepareServer(options Options, progress func(string)) (handler http.Handler
 	userdata.Init()
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
+	engine.Use(gin.LoggerWithWriter(standardlog.Writer()))
 	engine.Use(gin.RecoveryWithWriter(io.Discard))
 	router.InProcessRouter(engine, options.ReadyToken, options.WebToken)
 	handler = engine

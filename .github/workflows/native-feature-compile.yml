@@ -6,7 +6,7 @@ on:
       mode:
         description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
         type: choice
-        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, full-candidate]
+        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, experimental-parity, full-candidate]
         default: sdk-compile
       version:
         description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
@@ -49,7 +49,7 @@ jobs:
           python-version: '3.13'
 
       - name: Fetch and fully verify the pinned actual game before experimental compilation
-        if: ${{ inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package' }}
+        if: ${{ inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package' || inputs.mode == 'experimental-parity' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -67,10 +67,16 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ios-evidence" "$RUNNER_TEMP/ios-candidate"
           python3 -B -m unittest discover -s ios/ci -p 'test_*.py' -v \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/packaging-tests.txt"
-          PYTHONPATH="$GITHUB_WORKSPACE/ios/python" python3 -B -m unittest discover -s ios/python/tests -p 'test_*.py' -v \
+          PYTHONPATH="$GITHUB_WORKSPACE/ios/python:$GITHUB_WORKSPACE:$GITHUB_WORKSPACE/modtools" python3 -B -m unittest discover -s ios/python/tests -p 'test_*.py' -v \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/python-host-tests.txt"
+          python3 -B -m unittest discover -s ios/native/tests -p 'test_*.py' -v \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-static-tests.txt"
           node ios/python/tests/test_ios_platform.js \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/ios-platform-node-tests.txt"
+          node ios/python/tests/test_management_ui.js \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/management-ui-node-tests.txt"
+          python3 -B ios/ci/verify_playcover_native_imports.py --self-test \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/mac-native-consumer-contract-tests.txt"
           clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/HostCoreTests.cpp -o "$RUNNER_TEMP/elichika-host-policy-tests" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-host-policy-compile.txt"
           "$RUNNER_TEMP/elichika-host-policy-tests" \
@@ -87,6 +93,10 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-probe-budget-compile.txt"
           "$RUNNER_TEMP/elichika-probe-budget-tests" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-probe-budget-tests.txt"
+          clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/NativeParityPolicyTests.cpp -o "$RUNNER_TEMP/elichika-native-parity-policy-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-parity-policy-compile.txt"
+          "$RUNNER_TEMP/elichika-native-parity-policy-tests" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/native-parity-policy-tests.txt"
 
       - name: Test actual in-process Go lifecycle, initialization, keys and timezones
         if: ${{ inputs.mode != 'runtime-inputs' }}
@@ -94,7 +104,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          go test -count=1 -tags=elichika_inprocess -v ./iosbridge ./runtimeinit ./db ./router \
+          go test -p 1 -timeout 120s -count=1 -tags=elichika_inprocess -v ./iosbridge ./runtimeinit ./db ./router ./handler/asset ./nativeaccess \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-inprocess-tests.txt"
           go test -count=1 -v ./config \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-legacy-config-tests.txt"
@@ -119,7 +129,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/runtime-inputs-build.log"
 
       - name: Reuse the exact independently verified Simulator tool compiler outputs
-        if: ${{ inputs.mode == 'tools-runtime' || inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package' }}
+        if: ${{ inputs.mode == 'tools-runtime' || inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package' || inputs.mode == 'experimental-parity' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -147,10 +157,10 @@ jobs:
         run: |
           set -euo pipefail
           set --
-          if [ "$BUILD_MODE" = experimental-candidate ] || [ "$BUILD_MODE" = tools-runtime ]; then
+          if [ "$BUILD_MODE" = experimental-candidate ] || [ "$BUILD_MODE" = experimental-parity ] || [ "$BUILD_MODE" = tools-runtime ]; then
             set -- --reuse-official-payload
           fi
-          if [ "$BUILD_MODE" = experimental-candidate ]; then
+          if [ "$BUILD_MODE" = experimental-candidate ] || [ "$BUILD_MODE" = experimental-parity ]; then
             set -- "$@" --game-input "$RUNNER_TEMP/ios-verified-game.ipa" \
               --game-provenance "$RUNNER_TEMP/ios-evidence/game-input-provenance.json"
           fi
@@ -165,6 +175,20 @@ jobs:
             --built-inputs "$RUNNER_TEMP/ios-built-inputs" \
             "$@" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/build.log"
+
+      - name: Require actual Mac native imports on a separate disposable copy for fresh parity builds
+        if: ${{ inputs.mode == 'experimental-parity' }}
+        run: |
+          set -euo pipefail
+          python3 -B ios/ci/verify_playcover_native_imports.py --repo . \
+            --app "$RUNNER_TEMP/ios-build/ipa-stage/Payload/global.app" \
+            --native-build-report "$RUNNER_TEMP/ios-evidence/native-device.json" \
+            --work "$RUNNER_TEMP/ios-parity-Mac-copy" \
+            --evidence "$RUNNER_TEMP/ios-evidence/playcover-native" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/playcover-native.log"
+          python3 -B ios/ci/finalize_parity_candidate.py --repo . \
+            --work "$RUNNER_TEMP/ios-build" --evidence "$RUNNER_TEMP/ios-evidence" \
+            --delivery "$RUNNER_TEMP/ios-candidate"
 
       - name: Require portable and Go tests to have passed
         if: ${{ always() && inputs.mode != 'runtime-inputs' }}
@@ -223,7 +247,7 @@ jobs:
           retention-days: 7
 
       - name: Upload explicitly experimental Archive-pending physical-device-untested QA IPA
-        if: ${{ (inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package') && success() }}
+        if: ${{ (inputs.mode == 'experimental-candidate' || inputs.mode == 'experimental-package' || inputs.mode == 'experimental-parity') && success() }}
         uses: actions/upload-artifact@v4
         with:
           name: elichika-sifas-EXPERIMENTAL-ARCHIVE_PENDING-UNTESTED_DEVICE-${{ github.sha }}

@@ -33,7 +33,7 @@ def prepare_probe(probe, runtime, payload, evidence, *, full, probe_only=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=('sdk-compile', 'core-runtime', 'tools-runtime', 'experimental-candidate', 'experimental-package', 'full-candidate'), default='sdk-compile')
+    parser.add_argument('--mode', choices=('sdk-compile', 'core-runtime', 'tools-runtime', 'experimental-candidate', 'experimental-package', 'experimental-parity', 'full-candidate'), default='sdk-compile')
     parser.add_argument('--repo', type=Path, default=ROOT)
     parser.add_argument('--work', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
@@ -70,9 +70,13 @@ def main():
     full = args.mode == 'full-candidate'
     tools_probe = args.mode == 'tools-runtime'
     package_only = args.mode == 'experimental-package'
-    experimental = args.mode in ('experimental-candidate', 'experimental-package')
+    parity = args.mode == 'experimental-parity'
+    if parity and not args.version:
+        args.version = bundle_versions()['canonical'].rsplit('.', 1)[0] + '.3'
+    experimental = args.mode in ('experimental-candidate', 'experimental-package', 'experimental-parity')
     full_tools = full or tools_probe or experimental
     require(package_only or args.simulator_proof_root is None, 'Only experimental-package may consume prior Simulator proof')
+    require(not parity or args.reuse_official_payload, 'Parity builds require the canonical exact official DATA consumer')
     simulator_consumption = None
     if package_only:
         require(args.simulator_proof_root is not None and args.game_input is not None and args.game_provenance is not None,
@@ -130,11 +134,11 @@ def main():
     if not tools_probe:
         native = work / 'device/ElichikaHost.framework'
         build_host(repo, 'iphoneos', runtimes['device'] / 'Frameworks/Python.framework', archives['device'],
-                   native, evidence / 'native-device.json')
+                   native, evidence / 'native-device.json', build_version=args.version)
     if not package_only:
         probe = work / 'simulator/ElichikaSimulatorProbe.app'
         build_host(repo, 'iphonesimulator', runtimes['simulator'] / 'Frameworks/Python.framework', archives['simulator'],
-                   probe, evidence / 'native-simulator.json', simulator_probe=True)
+                   probe, evidence / 'native-simulator.json', simulator_probe=True, build_version=args.version)
     if args.mode == 'sdk-compile':
         write_json(evidence / 'result.json', {**environment, 'status': 'PASS_REAL_DEVICE_AND_SIMULATOR_SDK_COMPILE_ONLY',
                    'runtime_executed': False, 'IPA_produced': False, 'toolset_complete': False,
@@ -146,7 +150,7 @@ def main():
         retained = work / 'original-official-payload'
         environment['official_payload_consumption'] = fetch(repo, retained,
             evidence / 'reused-official-payload.json',
-            json.loads((repo / 'ios/build/official-payload.lock.json').read_text()))
+            json.loads((repo / 'ios/build/official-payload.lock.json').read_text()), parity=parity)
         payload = retained / 'shared-payload'
         # Preserve the old proof under its own name; never present it as a new
         # payload/payload-build.json or trigger retention as a current producer.
@@ -158,7 +162,8 @@ def main():
     if not package_only:
         prepare_probe(probe, runtimes['simulator'], payload, evidence, full=full_tools, probe_only=tools_probe or experimental)
         run([sys.executable, '-B', repo / 'ios/ci/run_simulator.py', '--app', probe,
-             '--evidence', evidence / 'simulator', *([] if full_tools else ['--core-only'])], cwd=repo)
+             '--evidence', evidence / 'simulator', *([] if full_tools else ['--core-only']),
+             *(['--require-parity-ui'] if parity else [])], cwd=repo)
         simulator_report = evidence / 'simulator/result.json'
         simulator_result = json.loads(simulator_report.read_text())
         simulator_result['source'] = identity
@@ -189,7 +194,7 @@ def main():
                       lock=json.loads((repo / 'ios/build/inputs.lock.json').read_text()),
                       version=versions['canonical'], repo=repo,
                       payload_consumption=environment.get('official_payload_consumption'),
-                      simulator_consumption=simulator_consumption)
+                      simulator_consumption=simulator_consumption, require_parity_ui=parity)
     else:
         output = args.delivery / ('Elichika-SIFAS-GL-' + versions['canonical'] + '-UNTESTED-iPhone-iPad.ipa')
         receipt = package(source, runtimes['device'], native, payload, output, work / 'ipa-stage',
@@ -197,7 +202,8 @@ def main():
                           version=versions['canonical'], repo=repo)
     (args.delivery / 'SHA256SUMS').write_text(receipt['IPA']['sha256'] + '  ' + output.name + '\n')
     write_json(args.delivery / 'candidate-manifest.json', receipt)
-    result_status = ('PASS_EXPERIMENTAL_DEVICE_PACKAGE_WITH_VERIFIED_SOURCE12_RUNTIME_PROOF' if package_only else
+    result_status = ('PASS_FRESH_PARITY_DEVICE_AND_SIMULATOR_GATES_PENDING_MAC' if parity else
+                    'PASS_EXPERIMENTAL_DEVICE_PACKAGE_WITH_VERIFIED_SOURCE12_RUNTIME_PROOF' if package_only else
                     ('PASS_EXPERIMENTAL_ARCHIVE_PENDING_QA_PACKAGE_AND_FULL_SIMULATOR_GATES' if experimental else 'PASS_FULL_CANDIDATE_PACKAGING_AND_SIMULATOR_GATES'))
     write_json(evidence / 'result.json', {**environment, 'status': result_status,
                'runtime_executed': not package_only, 'fresh_simulator_execution_claimed': not package_only,

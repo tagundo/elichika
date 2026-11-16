@@ -34,6 +34,14 @@ FIELDS = {'schema', 'probe_kind', 'launch_number', 'sequence', 'stage', 'detail'
           'start_uptime_seconds', 'stage_enter_uptime_seconds', 'sample_uptime_seconds'}
 
 
+def stage_budgets(require_parity_ui=False):
+    # Historical full/core paths retain their exact original ordered phases.
+    if not require_parity_ui:
+        return dict(STAGE_SECONDS)
+    return {**{name: budget for name, budget in STAGE_SECONDS.items() if name != 'complete'},
+            'management_ui': 120, 'complete': STAGE_SECONDS['complete']}
+
+
 def read_progress(path):
     path = Path(path)
     require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 8192,
@@ -42,14 +50,15 @@ def read_progress(path):
 
 
 class ProbeWatchdog:
-    def __init__(self, launch_number, started):
+    def __init__(self, launch_number, started, *, require_parity_ui=False):
         require(launch_number in (1, 2), 'Invalid probe cold-launch number')
         self.launch_number = launch_number
         self.started = started
         self.last = None
         self.stage_deadline = None
         self.events = []
-        self.rank = {name: position for position, name in enumerate(STAGE_SECONDS)}
+        self.budgets = stage_budgets(require_parity_ui)
+        self.rank = {name: position for position, name in enumerate(self.budgets)}
 
     def observe(self, value, now):
         # A late first heartbeat or transition cannot revive an expired stage.
@@ -61,7 +70,7 @@ class ProbeWatchdog:
                 and type(value['launch_number']) is int and value['launch_number'] == self.launch_number,
                 'Simulator progress belongs to a different probe/launch')
         stage, sequence = value['stage'], value['sequence']
-        require(stage in STAGE_SECONDS and type(sequence) is int and 1 <= sequence <= len(STAGE_SECONDS),
+        require(stage in self.budgets and type(sequence) is int and 1 <= sequence <= len(self.budgets),
                 'Simulator progress stage/sequence is invalid')
         require(value.get('detail', '') in {'', stage, *DETAILS.get(stage, set())},
                 'Simulator progress detail is not a reviewed fixed label')
@@ -72,7 +81,7 @@ class ProbeWatchdog:
             ('elapsed_seconds', 'stage_elapsed_seconds', 'stage_budget_seconds'))
         require(all(type(number) in (int, float) and math.isfinite(number) and number >= 0
                     for number in (elapsed, stage_elapsed, budget))
-                and budget == STAGE_SECONDS[stage] and stage_elapsed <= elapsed + .1
+                and budget == self.budgets[stage] and stage_elapsed <= elapsed + .1
                 and elapsed <= max(0, now-self.started) + 5,
                 'Simulator progress clocks/budget are invalid')
         start, entered, sample = (value[key] for key in
@@ -102,11 +111,11 @@ class ProbeWatchdog:
             # move its entrance earlier than Popen or reset an existing stage.
             observed_age = min(stage_elapsed, max(0, now-self.started))
             self.stage_deadline = min(self.started + ABSOLUTE_SECONDS,
-                                      now + STAGE_SECONDS[stage] - observed_age)
+                                      now + self.budgets[stage] - observed_age)
             self.events.append({'stage': stage, 'sequence': sequence,
                 'host_observed_elapsed_seconds': round(max(0, now-self.started), 3),
                 'native_elapsed_seconds': elapsed, 'stage_elapsed_seconds': stage_elapsed,
-                'stage_budget_seconds': STAGE_SECONDS[stage]})
+                'stage_budget_seconds': self.budgets[stage]})
         self.last = dict(value)
         require(value['status'] != 'failed', 'Native Simulator progress reported failure in stage: ' + stage)
 
@@ -131,7 +140,7 @@ class ProbeWatchdog:
         return {'schema': 1, 'diagnostic_only_not_readiness': True,
                 'launch_number': self.launch_number, 'absolute_cap_seconds': ABSOLUTE_SECONDS,
                 'first_progress_budget_seconds': FIRST_PROGRESS_SECONDS,
-                'stage_budgets_seconds': STAGE_SECONDS,
+                'stage_budgets_seconds': self.budgets,
                 'host_elapsed_seconds': round(max(0, now-self.started), 3),
                 'last_progress': self.last, 'observed_transitions': self.events,
                 'same_stage_heartbeats_extend_deadline': False}

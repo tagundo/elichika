@@ -18,7 +18,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import inventory, require, run, write_json
-from probe_watchdog import DETAILS, STAGE_SECONDS, ProbeWatchdog, read_progress
+from probe_watchdog import DETAILS, STAGE_SECONDS, ProbeWatchdog, read_progress, stage_budgets
 
 BUNDLE = 'org.elichika.simulator-probe'
 PORTS = (8080, 8770, 8772)
@@ -39,7 +39,9 @@ def await_closed(timeout=30):
     raise ValueError('An embedded runtime listener remains open after its app process exited')
 
 
-def validate_reply(value, core_only, *, launch_number=None):
+def validate_reply(value, core_only, *, launch_number=None, require_parity_ui=False):
+    require(not core_only or not require_parity_ui, 'Parity UI cannot use a core-only probe')
+    budgets = stage_budgets(require_parity_ui)
     require(value.get('schema') == 1 and value.get('probe_kind') == 'native-simulator-real-backend-fake-game',
             'Probe does not identify the separate Simulator test target')
     for key in ('captured', 'game_started', 'real_backend_ready', 'gate_installed', 'profile_supported',
@@ -60,14 +62,14 @@ def validate_reply(value, core_only, *, launch_number=None):
         require(isinstance(event, dict) and set(event) == {'stage', 'detail', 'elapsed_seconds'},
                 'Native probe timing event contract differs')
         stage, at = event['stage'], event['elapsed_seconds']
-        require(stage in STAGE_SECONDS and event['detail'] in {'', stage, *DETAILS.get(stage, set())}
+        require(stage in budgets and event['detail'] in {'', stage, *DETAILS.get(stage, set())}
                 and type(at) in (int, float) and math.isfinite(at) and previous_elapsed <= at <= elapsed,
                 'Native probe timing stage/clock evidence differs')
         if not stages or stages[-1] != stage:
             stages.append(stage)
         previous_elapsed = at
     expected_stages = (['native_start', 'native_health', 'tls', 'python_complete', 'complete']
-                       if core_only else list(STAGE_SECONDS))
+                       if core_only else list(budgets))
     require(stages == expected_stages, 'Native probe did not complete its exact ordered stage history')
     if not core_only:
         runtime = value.get('runtime_probe', {})
@@ -90,6 +92,27 @@ def validate_reply(value, core_only, *, launch_number=None):
                     'Management WebView preference seed/retention failed: ' + section)
             require(origin.get('persisted' if launch_number == 1 else 'seeded') is False,
                     'Management WebView evidence conflates initial seeding with cold-launch retention: ' + section)
+        if require_parity_ui:
+            http = tools.get('management_http_probe', {})
+            require(http.get('ready') is True and http.get('state_http_status') == 200
+                    and http.get('unauthenticated_status') == 403
+                    and http.get('incremental_logs_available') is True,
+                    'Actual authenticated management HTTP/state/log transport did not pass')
+            resources = http.get('resources', [])
+            require(isinstance(resources, list) and len(resources) == 3
+                    and {row.get('path') for row in resources}
+                        == {'/ios/', '/ios/management.js', '/ios/management.css'}
+                    and all(row.get('http_status') == 200 and type(row.get('bytes')) is int
+                            and row['bytes'] > 0 for row in resources),
+                    'Actual bundled management HTML/JS/CSS HTTP evidence is incomplete')
+            require(value.get('management_ui_required') is True,
+                    'Native probe did not enable the required fresh management UI path')
+            ui = value.get('management_ui_probe', {})
+            for key in ('ready', 'actual_management_webview', 'page_loaded', 'javascript_ready',
+                        'state_fetch', 'controls_present', 'native_binding', 'go_stopped', 'server_restarted'):
+                require(ui.get(key) is True, 'Actual current management WebView gate failed: ' + key)
+            error = ui.get('error')
+            require(error is None or error is False or error == '', 'Actual management WebView probe reported an error')
     return value
 
 
@@ -141,7 +164,8 @@ def retain_failure(evidence, label, identifier, process, watchdog, error, reply_
     write_json(evidence / (label + '-failure.json'), diagnostics)
 
 
-def execute(app, evidence, *, core_only):
+def execute(app, evidence, *, core_only, require_parity_ui=False):
+    require(not core_only or not require_parity_ui, 'Parity UI requires full real tools')
     app, evidence = Path(app).resolve(), Path(evidence).resolve()
     evidence.mkdir(parents=True, exist_ok=True)
     require(not any(port_open(port) for port in PORTS), 'A conflicting pre-existing loopback server is listening')
@@ -179,9 +203,11 @@ def execute(app, evidence, *, core_only):
                     command.append('--elichika-probe-launch=' + str(launch_number))
                     if core_only:
                         command.append('--elichika-core-probe')
+                    if require_parity_ui:
+                        command.append('--elichika-parity-probe')
                     began = time.monotonic()
                     process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT, text=True)
-                    watchdog = ProbeWatchdog(launch_number, began)
+                    watchdog = ProbeWatchdog(launch_number, began, require_parity_ui=require_parity_ui)
                     try:
                         while True:
                             now = time.monotonic()
@@ -197,7 +223,8 @@ def execute(app, evidence, *, core_only):
                         require(reply_file.stat().st_size <= 1024*1024, 'Probe receipt exceeds bound')
                         raw_reply = json.loads(reply_file.read_text())
                         write_json(evidence / (model['name'].replace('/', '-') + '-launch-' + str(launch_number) + '-native.json'), raw_reply)
-                        reply = validate_reply(raw_reply, core_only, launch_number=launch_number)
+                        reply = validate_reply(raw_reply, core_only, launch_number=launch_number,
+                                               require_parity_ui=require_parity_ui)
                         require(port_open(8080), 'Probe health claimed ready without an actual game listener')
                         protocol_file = evidence / ('encrypted-protocol-' + str(len(results)+1) + '.json')
                         # The existing CLI invokes the same real protocol API.
@@ -249,6 +276,7 @@ def execute(app, evidence, *, core_only):
     require(len(results) == 4, 'Both iPhone and iPad must pass two launches')
     require(inventory(app) == before, 'Runtime changed source application bundle bytes')
     report = {'schema': 1, 'status': 'PASS_REAL_BACKEND_SIMULATOR_PROBE', 'core_only': core_only,
+              'parity_management_ui_required': require_parity_ui,
               'results': results, 'all_owned_ports_closed_after_termination': True,
               'signed_bundle_readonly_and_unchanged': True, 'actual_SIFAS_game_executed': False,
               'physical_iPhone_iPad_execution': False, 'probe_not_a_device_IPA_input': True}
@@ -261,8 +289,9 @@ def main():
     parser.add_argument('--app', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
     parser.add_argument('--core-only', action='store_true')
+    parser.add_argument('--require-parity-ui', action='store_true')
     args = parser.parse_args()
-    execute(args.app, args.evidence, core_only=args.core_only)
+    execute(args.app, args.evidence, core_only=args.core_only, require_parity_ui=args.require_parity_ui)
 
 
 if __name__ == '__main__':

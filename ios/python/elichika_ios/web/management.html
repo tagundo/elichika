@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Elichika</title>
+  <link rel="stylesheet" href="/ios/management.css">
+  <script src="/ios/management.js" defer></script>
+</head>
+<body>
+  <header class="page-header">
+    <div class="title-row"><h1>Elichika</h1><span id="version" class="muted"></span><select id="ui-language" aria-label="Language"><option value="en">English</option><option value="ko">한국어</option><option value="ja">日本語</option></select></div>
+    <nav class="tabs" aria-label="Management">
+      <button type="button" class="tab active" id="manage-home-tab" data-page="home" aria-current="page" data-t="home">Server</button>
+      <button type="button" class="tab" id="manage-downloads-tab" data-page="downloads" data-t="downloads">Downloads</button>
+      <button type="button" class="tab" id="manage-app-tab" data-page="app" data-t="appSettings">App settings</button>
+      <button type="button" class="tab" id="manage-server-tab" data-page="server" data-t="serverSettings">Server settings</button>
+      <button type="button" class="tab" id="manage-help-tab" data-page="help" data-t="help">Help</button>
+    </nav>
+  </header>
+  <main>
+    <p id="error" class="notice error" role="alert" hidden></p>
+    <p id="notice" class="notice" role="status" hidden></p>
+    <section id="job-card" class="card job-card" aria-live="polite" hidden>
+      <div class="row"><strong id="job-title"></strong><span id="job-status" class="muted"></span><button type="button" id="job-cancel" data-t="cancel">Cancel</button></div>
+      <progress id="job-progress" max="1"></progress><p id="job-counts" class="small muted mono" hidden></p><p id="job-message" class="small"></p>
+    </section>
+
+    <section data-view="home">
+      <div class="card">
+        <div class="row"><span id="server-dot" class="dot"></span><strong id="server-status" data-t="connecting">Connecting…</strong><span id="server-address" class="mono muted"></span></div>
+        <p id="server-error" class="small error" role="status" hidden></p>
+        <div class="row actions"><button type="button" id="server-start" data-t="start">Start server</button><button type="button" id="server-stop" data-t="stop">Stop server</button><button type="button" id="server-reload" data-t="reload">Reload state</button></div>
+        <p class="small muted" data-t="stopHelp">Stopping the server does not close the game. Finish downloads and MV playback before maintenance.</p>
+      </div>
+      <div class="card console-card">
+        <div class="row"><h2 data-t="console">Console</h2><label class="inline"><input type="checkbox" id="log-follow" checked><span data-t="follow">Follow new lines</span></label><button type="button" id="log-clear" class="quiet" data-t="clearView">Clear view</button></div>
+        <div id="logs" class="logs" role="log" aria-live="off" tabindex="0"></div>
+        <p id="logs-error" class="small error" role="status" hidden></p>
+        <p class="small muted" data-t="logHelp">Recent lines are kept in this view. Hidden pages stop polling.</p>
+      </div>
+      <details class="card advanced"><summary data-t="advanced">Advanced maintenance</summary><p class="small muted" data-t="advancedHelp">These operations stop the server temporarily. Back up databases and export accounts before resetting.</p><div class="actions wrap"><button type="button" data-maintenance="rebuild_assets" data-t="rebuild">Rebuild master data</button><button type="button" data-maintenance="fix_training_trees" data-t="repairTraining">Repair training trees</button><button type="button" data-maintenance="reset_accounts" class="danger" data-t="reset">Reset server and accounts</button></div></details>
+    </section>
+
+    <section data-view="downloads" hidden>
+      <div class="card">
+        <h2 data-t="gameData">Game data</h2>
+        <p class="small muted" data-t="downloadHelp">Only the selected region, platform and languages are downloaded. Existing matching files are reused; run again to resume missing files.</p>
+        <form id="download-form">
+          <div class="fields three">
+            <label><span data-t="region">Region</span><select id="download-region"><option value="gl">GL</option><option value="jp">JP</option><option value="both" data-t="bothRegions">GL + JP</option></select></label>
+            <label><span data-t="platform">Game platform</span><select id="download-platform"><option value="ios">iOS</option><option value="android">Android</option><option value="both" data-t="bothPlatforms">Android + iOS</option></select></label>
+            <label><span data-t="gameLanguage">Game language</span><select id="download-language"></select></label>
+          </div>
+          <label class="field"><span data-t="source">Download source</span><select id="download-source"><option value="cdn">CDN</option><option value="archive">archive.org</option></select></label>
+          <p id="archive-state" class="small muted"></p>
+          <div class="actions wrap"><button type="submit" id="download-missing" data-t="downloadMissing">Download missing files</button><button type="button" id="download-all" class="secondary" data-t="downloadAll">Download selected data from archive.org</button></div>
+        </form>
+      </div>
+      <div class="card"><div class="row"><h2 data-t="cache">CDN cache</h2><span id="cache-value" class="muted"></span><button type="button" id="cache-toggle" data-t="toggleCache">Change cache setting</button></div><p class="small muted" data-t="cacheHelp">The cache setting controls whether downloaded original files are saved locally. Installed mod files and existing local packs remain available.</p></div>
+    </section>
+
+    <section data-view="app" hidden>
+      <div class="card">
+        <div class="row"><h2 data-t="appSettings">App settings</h2><button type="button" class="load-settings secondary" data-t="loadSettings">Load settings</button></div>
+        <p class="small muted" data-t="loadSettingsHelp">Reading settings briefly stops the server and restores its previous running state. Saving leaves it stopped; start it again when ready.</p>
+        <form id="app-settings-form">
+          <div class="fields two"><label><span data-t="appLanguage">App language</span><select id="app-language"><option value="auto" data-t="systemLanguage">System language</option><option value="en">English</option><option value="ko">한국어</option><option value="ja">日本語</option></select></label><label><span data-t="listen">Server connections</span><select id="listen-address"><option value="127.0.0.1:8080" data-t="localOnly">This device only</option><option value="0.0.0.0:8080" data-t="lan">Allow devices on this Wi-Fi / LAN</option></select></label></div>
+          <p class="small muted" data-t="lanHelp">LAN sharing is off by default. Connect other clients to this device’s LAN address on port 8080. The integrated game continues to use 127.0.0.1.</p>
+          <label class="field"><span data-t="cdnAddress">Original game CDN address</span><input id="cdn-address" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…/"></label>
+          <p class="small muted" data-t="cdnHelp">Keep the original CDN here. Elichika provides installed mod files automatically and checks local packs before downloading missing originals.</p>
+          <label class="inline"><input id="cache-enabled" type="checkbox"><span data-t="enableCache">Save missing original files in the CDN cache</span></label>
+          <div class="actions"><button type="submit" id="app-settings-save" data-t="saveSettings" disabled>Save settings</button></div>
+        </form>
+      </div>
+      <div class="card"><h2 data-t="assetFolder">Asset library folder</h2><p id="library-current" class="mono small muted"></p><p class="small muted" data-t="folderHelp">File import normally copies selected files into this app. Choose an external folder below to edit that asset library directly. Close and reopen the app after changing the library.</p><div class="actions wrap"><button type="button" id="choose-library" data-t="chooseLibrary">Edit an external folder directly</button><button type="button" id="default-library" class="secondary" data-t="defaultLibrary">Use app’s default asset folder</button></div><p class="small muted" data-t="folderLifetime">Keep the external folder available. If access expires, select the same folder again; existing files are not moved or deleted.</p></div>
+    </section>
+
+    <section data-view="server" hidden>
+      <div class="card">
+        <div class="row"><h2 data-t="serverSettings">Server settings</h2><button type="button" class="load-settings secondary" data-t="loadSettings">Load settings</button></div>
+        <p class="small"><a id="legacy-server-admin" href="/ios/server/webui/admin/" data-t="legacyServerAdmin">Open event selection, scheduling and existing server administration</a></p>
+        <p class="small muted" data-t="serverSettingsHelp">The full server configuration is preserved. Change only the fields you need. Saving leaves the server stopped; start it again when ready.</p>
+        <p id="settings-empty" class="muted" data-t="settingsEmpty">Load settings to edit the current server configuration.</p>
+        <form id="server-settings-form" hidden><div id="config-fields" class="config-fields"></div><div class="actions"><button type="submit" id="server-settings-save" data-t="saveSettings">Save settings</button><button type="button" id="config-reset" class="secondary" data-t="discardChanges">Discard unsaved changes</button></div></form>
+      </div>
+    </section>
+
+    <section data-view="help" hidden>
+      <div class="card"><h2 data-t="quickGuide">Quick guide</h2><ul class="help-list"><li data-t="helpPanel">The Elichika button starts visible. Hide it for MV playback; hold the upper-left corner for two seconds to reopen management.</li><li data-t="helpFov">Hold the upper-right corner for two seconds to restore the game’s FOV/settings menu.</li><li data-t="helpFiles">Place existing packs in this app’s Elichika/packs folder through Files or Finder. Large libraries can use the external-folder option.</li><li data-t="helpEdits">Finish game downloads and MV playback before installing mods or changing databases. Restart the game to load edited assets.</li><li data-t="helpBackground">iOS can suspend an app in the background. Keep this app open while downloading or serving other devices.</li><li data-t="helpAccounts">The integrated app’s local database is separate from the Mac server. Export and import accounts to move them.</li></ul></div>
+      <div class="card"><h2 data-t="modPages">Mod pages</h2><div class="actions wrap"><a href="https://ayakamods.com/games/love-live-school-idol-festival-all-stars.217/" target="_blank" rel="noopener noreferrer">AyakaMods</a><a href="https://gamebanana.com/games/20519" target="_blank" rel="noopener noreferrer">GameBanana</a></div></div>
+      <div class="card"><h2 data-t="about">About</h2><p id="about-version">Elichika + SIFAS</p><p id="about-channel" class="small muted"></p><p class="small muted" data-t="helpSigning">SideStore installations require your own signature for the app and embedded frameworks.</p></div>
+    </section>
+  </main>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title"><form method="dialog"><h2 id="confirm-title"></h2><p id="confirm-message"></p><p id="confirm-scope" class="mono small"></p><label id="reset-label" hidden><span data-t="typeReset">Type RESET to erase the server data and accounts</span><input id="reset-value" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false"></label><p id="confirm-error" class="error small" hidden></p><div class="actions"><button id="confirm-cancel" value="cancel" class="secondary" data-t="cancel">Cancel</button><button type="button" id="confirm-continue" data-t="continue">Continue</button></div></form></dialog>
+</body>
+</html>

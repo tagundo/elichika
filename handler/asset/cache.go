@@ -11,6 +11,7 @@ package asset
 // migrated into the cache dir.
 
 import (
+	"context"
 	"elichika/config"
 	"elichika/log"
 
@@ -51,13 +52,34 @@ func cdnGet(url string) (*http.Response, error) {
 }
 
 func cdnGetForRequest(url string, request *http.Request) (*http.Response, error) {
+	ctx := context.Background()
+	if request != nil {
+		ctx = request.Context()
+	}
+	return cdnGetWithContext(ctx, url, request)
+}
+
+func cdnGetWithContext(ctx context.Context, url string, request *http.Request) (*http.Response, error) {
 	var lastErr error
 	client := cdnHTTPClient(request)
 	for attempt := 0; attempt < 4; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-		res, err := client.Get(url)
+		if attempt > 0 {
+			timer := time.NewTimer(time.Duration(attempt) * 400 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		res, err := client.Do(req)
 		if err != nil {
 			lastErr = err
 			continue
@@ -362,7 +384,15 @@ func downloadFromURLProgress(url, dest string, progress *int64) error {
 }
 
 func downloadFromURLProgressForRequest(url, dest string, progress *int64, request *http.Request) error {
-	res, err := cdnGetForRequest(url, request)
+	ctx := context.Background()
+	if request != nil {
+		ctx = request.Context()
+	}
+	return downloadFromURLProgressWithContext(ctx, url, dest, progress, request)
+}
+
+func downloadFromURLProgressWithContext(ctx context.Context, url, dest string, progress *int64, request *http.Request) error {
+	res, err := cdnGetWithContext(ctx, url, request)
 	if err != nil {
 		return err
 	}

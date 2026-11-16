@@ -9,14 +9,7 @@ static NSError *ELError(NSString *message) {
     return [NSError errorWithDomain:@"ElichikaNative" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
 }
 static BOOL ELWritablePath(NSString *path) {
-    if (!path.isAbsolutePath || [path rangeOfCharacterFromSet:[NSCharacterSet characterSetWithRange:NSMakeRange(0,1)]].location != NSNotFound) return NO;
-    NSString *resolved = path.stringByStandardizingPath.stringByResolvingSymlinksInPath;
-    NSDictionary *config = ElichikaHostConfiguration();
-    for (NSString *key in @[@"data_root",@"documents_root"]) {
-        NSString *root = [config[key] stringByStandardizingPath].stringByResolvingSymlinksInPath;
-        if (root.length && [resolved hasPrefix:[root stringByAppendingString:@"/"]]) return YES;
-    }
-    return NO;
+    return ElichikaHostWritablePath(path);
 }
 
 @interface ELHTTPTransaction : NSObject <NSURLSessionDataDelegate>
@@ -212,6 +205,6 @@ PyObject *ElichikaExportDocument(PyObject *self, PyObject *args) {
     Py_BEGIN_ALLOW_THREADS
     good=ElichikaHostExportDocument(path,&error);
     Py_END_ALLOW_THREADS
-    if (!good && error) { PyErr_SetString(PyExc_OSError,error.localizedDescription.UTF8String); return NULL; }
+    if (!good && error && !(error.code==2 && [error.domain isEqual:@"ElichikaDocument"])) { PyErr_SetString(PyExc_OSError,error.localizedDescription.UTF8String); return NULL; }
     return PyBool_FromLong(good);
 }

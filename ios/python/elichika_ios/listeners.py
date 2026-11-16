@@ -7,7 +7,7 @@ from elichika_ios.security import authenticated_handler
 PANEL_PORTS = (("admin", 8772), ("tools", 8770))
 
 
-def bind_panels(modules, token, language="en", experimental_device=False, *, ports=None):
+def bind_panels(modules, token, language="en", experimental_device=False, *, ports=None, management=None):
     """Bind the contract ports, or explicit isolated fixture ports in host tests.
 
     The runtime never supplies an override. Port zero and fallback allocation
@@ -22,7 +22,8 @@ def bind_panels(modules, token, language="en", experimental_device=False, *, por
     servers = []
     try:
         for (name, _), port, module in zip(PANEL_PORTS, selected, modules):
-            handler = authenticated_handler(module.Handler, token, language, experimental_device)
+            handler = authenticated_handler(module.Handler, token, language, experimental_device,
+                                            management=management if name == "admin" else None)
             try:
                 server = ThreadingHTTPServer(("127.0.0.1", port), handler)
             except OSError as error:

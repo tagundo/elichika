@@ -112,18 +112,59 @@ def native_files(app):
     need(0<len(rows)<=256,'Unexpected native closure size')
     return sorted(rows)
 
-def split_code_and_debug(app,natives,before):
-    """Only the exact preserved Source13 MH_DSYM is not runnable code."""
+def split_code_and_debug(app,natives,before,debug_resource=None):
+    """Only the exact source-bound host MH_DSYM is not runnable code."""
+    pin=DEBUG_RESOURCE if debug_resource is None else debug_resource
     debug=[];code=[]
     for path in natives:
         relative=path.relative_to(app).as_posix()
         if before[relative]['kind']==10:
-            need(relative==DEBUG_RESOURCE['path'] and path.stat().st_size==DEBUG_RESOURCE['bytes']
-                 and digest(path)==DEBUG_RESOURCE['sha256'],'Unknown or changed nonruntime MH_DSYM resource')
+            need(relative==pin['path'] and path.stat().st_size==pin['bytes']
+                 and digest(path)==pin['sha256'],'Unknown or changed nonruntime MH_DSYM resource')
             debug.append(path)
         else:code.append(path)
-    need(len(debug)==1,'Exact Source13 debug resource missing')
+    need(len(debug)==1,'Exact source-bound debug resource missing')
     return code,debug
+
+
+def fresh_debug_resource(app,report_path,repo):
+    """A fresh build may replace ONLY the old, exact host debug-resource pin."""
+    sys.path.insert(0,str(Path(repo)/'ios/build'))
+    from common import source_identity, sha256
+    report_path=Path(report_path)
+    need(report_path.is_file() and not report_path.is_symlink() and report_path.stat().st_size<=4*CHUNK,
+         'Bounded fresh native build report required')
+    report=json.loads(report_path.read_text());current=source_identity(repo)
+    need(current['source_sha']==os.environ.get('GITHUB_SHA'),'Fresh native report checkout/workflow differs')
+    need(report['schema']==1 and report['source']==current and report['sdk']=='iphoneos'
+         and report['target']=='arm64-apple-ios13.0' and report['simulator_probe_only'] is False
+         and report['actual_Apple_SDK_compile'] is True and report['device_IPA_contains_probe'] is False
+         and report['physical_device_execution'] is False
+         and report['MachO']['filetype']==6 and report['MachO']['version']['platform']==2
+         and report['MachO']['install_name']=='@rpath/ElichikaHost.framework/ElichikaHost',
+         'Fresh native build identity/platform/scope differs')
+    native_root=Path(repo)/'ios/native'
+    expected_sources={str(p.relative_to(repo)) for p in
+        [*(native_root/name for name in ('ElichikaHost.mm','ElichikaPythonRuntime.mm','ElichikaNativeBridges.mm')),
+         *native_root.glob('*.h'),*native_root.glob('*.hpp')]}
+    need(set(report['source_sha256'])==expected_sources,'Fresh native compiler source closure is incomplete')
+    for name,expected in report['source_sha256'].items():
+        path=Path(repo)/name
+        need(name.startswith('ios/native/') and path.is_file() and not path.is_symlink()
+             and sha256(path)==expected,'Fresh native compiler source differs')
+    provenance=json.loads((app/'ElichikaResources/bundle-provenance.json').read_text())
+    need(provenance['source']==current and provenance['native_framework_sha256']==report['binary_sha256']
+         and provenance['fresh_simulator_execution_claimed'] is True,
+         'Staged app does not identify this fresh native build and Simulator execution')
+    rows=report['nonruntime_debug_resources']
+    need(len(rows)==1,'One exact fresh host debug resource required')
+    pin=rows[0]
+    need(pin['path']==DEBUG_RESOURCE['path'] and pin['MachO_kind']==10
+         and isinstance(pin['bytes'],int) and 0<pin['bytes']<=128*CHUNK
+         and isinstance(pin['sha256'],str) and len(pin['sha256'])==64
+         and all(c in '0123456789abcdef' for c in pin['sha256']),
+         'Fresh debug-resource path/kind/pin differs')
+    return {key:pin[key] for key in ('path','bytes','sha256')},report
 
 def framework_rows(app):
     rows=[]
@@ -194,6 +235,8 @@ def main():
     global DEADLINE
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--app',type=Path,required=True);p.add_argument('--work',type=Path,required=True);p.add_argument('--evidence',type=Path,required=True)
+    p.add_argument('--native-build-report',type=Path)
+    p.add_argument('--repo',type=Path,default=OWN.parents[1])
     args=p.parse_args();need(sys.platform=='darwin' and os.environ.get('GITHUB_ACTIONS')=='true','Disposable Mac Actions runner required')
     root=Path(os.environ['RUNNER_TEMP']).resolve()
     need(args.work.resolve().is_relative_to(root) and args.evidence.resolve().is_relative_to(root),'Fresh output must remain within RUNNER_TEMP')
@@ -204,6 +247,12 @@ def main():
     try:
         original=args.app.resolve();need(original.is_dir() and original.suffix=='.app','Fixed staged app required')
         app=work/'converted.app';shutil.copytree(original,app,symlinks=True)
+        debug_resource=DEBUG_RESOURCE
+        if args.native_build_report is not None:
+            debug_resource,fresh_report=fresh_debug_resource(app,args.native_build_report,args.repo)
+            write(evidence/'fresh-native-build-report.json',fresh_report)
+            result['fresh_native_build_source']=fresh_report['source']
+            result['fresh_native_build_report_sha256']=digest(args.native_build_report)
         info=plistlib.loads((app/'Info.plist').read_bytes());need(info['CFBundleExecutable']=='global','Unexpected main executable')
         # The normal PlayCover assert(minimumVersion:11) metadata step, on the
         # disposable copy only. Raw fixed iOS output remains unchanged.
@@ -217,7 +266,7 @@ def main():
         natives=native_files(app)
         need(len(natives)==100,'Exact 100-image native closure differs')
         before={f.relative_to(app).as_posix():headers(f) for f in natives};write(evidence/'platforms-before.json',before)
-        code,debug=split_code_and_debug(app,natives,before)
+        code,debug=split_code_and_debug(app,natives,before,debug_resource)
         need(len(code)==99,'Exact 99-code-image closure differs')
         accepted=[f for f in code if f.suffix in ('','.dylib')]
         need(len(accepted)==99,'A code image remains excluded by the real filename filter')
@@ -225,7 +274,7 @@ def main():
         need(runtime.issubset(set(accepted)),'A native runtime binary is still excluded by the real filename filter')
         write(evidence/'filter-acceptance.json',{'filter':'regular file, suffix empty or dylib, FAT/arm64 magic','traversal':'explicit recursive native closure; GUI traversal not claimed',
             'accepted':[f.relative_to(app).as_posix() for f in accepted],'excluded_code':[f.relative_to(app).as_posix() for f in code if f not in accepted],
-            'preserved_nonruntime_MH_DSYM':DEBUG_RESOURCE})
+            'preserved_nonruntime_MH_DSYM':debug_resource})
         paths=work/'convert-paths.json';paths.write_text(json.dumps([str(f) for f in accepted]))
         exe=converter(work,evidence);run([exe,paths],evidence,'actual-playcover-convert.json',120)
         (app/'global').chmod(0o755)
@@ -233,7 +282,7 @@ def main():
         for path in code:
             key=path.relative_to(app).as_posix()
             need(after[key]['platforms']==[6] and not after[key]['legacy'],'Code image platform conversion differs: '+key)
-        need(digest(debug[0])==DEBUG_RESOURCE['sha256'],'Nonruntime debug bytes changed during conversion')
+        need(digest(debug[0])==debug_resource['sha256'],'Nonruntime debug bytes changed during conversion')
         for row in frameworks:
             key=row['binary'];need(after[key]['platforms']==[6] and not after[key]['legacy'],'Framework platform conversion closure differs: '+key)
         for i,f in enumerate(accepted):run(['/usr/bin/codesign','--force','--sign','-',f],evidence,'sign-'+str(i)+'.json',15)
@@ -241,7 +290,7 @@ def main():
             run(['/usr/bin/codesign','--force','--sign','-',fw],evidence,'sign-framework-'+str(i)+'.json',15)
         run(['/usr/bin/codesign','--force','--sign','-',app],evidence,'sign-app.json',30)
         run(['/usr/bin/codesign','--verify','--deep','--strict',app],evidence,'signature-closure.json',30)
-        need(digest(debug[0])==DEBUG_RESOURCE['sha256'],'Nonruntime debug bytes changed during signing')
+        need(digest(debug[0])==debug_resource['sha256'],'Nonruntime debug bytes changed during signing')
         sdk=run(['/usr/bin/xcrun','--sdk','macosx','--show-sdk-path'],evidence,'mac-sdk.json')['stdout'].strip()
         helper=work/'python-native-probe'
         run(['/usr/bin/xcrun','clang','-x','objective-c','-target','arm64-apple-ios13.1-macabi','-isysroot',sdk,
@@ -254,7 +303,7 @@ def main():
         run([helper,app,OWN/'playcover_python_imports.py',evidence/'framework-mappings.json',evidence/'actual-native-imports.json'],evidence,'actual-embedded-imports.json',120,env)
         reply=json.loads((evidence/'actual-native-imports.json').read_text())
         need(reply['status']=='ACTUAL_CONVERTED_NATIVE_IMPORTS_PASS' and reply['codec_count']==8,'Native import proof did not pass')
-        result.update(status='ACTUAL_PLAYCOVER_CONVERSION_AND_NATIVE_IMPORTS_PASS',native_headers=len(natives),code_images=len(code),preserved_debug_resources=[DEBUG_RESOURCE],frameworks=len(frameworks),mapped_extensions=reply['native_leaf_count'],codec_count=8,
+        result.update(status='ACTUAL_PLAYCOVER_CONVERSION_AND_NATIVE_IMPORTS_PASS',native_headers=len(natives),code_images=len(code),preserved_debug_resources=[debug_resource],frameworks=len(frameworks),mapped_extensions=reply['native_leaf_count'],codec_count=8,
                       qualification='Real converted packaged CPython/math/SSL/ctypes/NumPy/eight texture codecs and all mapped AOT dyld loads. No game/MV, GUI install or physical iOS execution.')
         result['optional_alias_launch']=optional_alias_probe(app,work,evidence)
     except Exception as e:

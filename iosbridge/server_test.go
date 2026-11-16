@@ -43,7 +43,7 @@ func TestOptionsRejectUnsafeHostAndAmbiguousJSON(t *testing.T) {
 	root := t.TempDir()
 	for _, input := range []string{
 		`{"data_root":"relative"}`,
-		`{"data_root":"` + root + `","listen_address":"0.0.0.0:8080"}`,
+		`{"data_root":"` + root + `","listen_address":"0.0.0.0:8081"}`,
 		`{"data_root":"` + root + `","ready_token":"bad"}`,
 		`{"data_root":"` + root + `","region":"jp","language":"en"}`,
 		`{"data_root":"` + root + `","unknown":true}`,

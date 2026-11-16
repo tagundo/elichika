@@ -38,8 +38,11 @@ def validate_source_scope(original, current, changed_paths, dirty):
                 'Official payload producer or non-platform source changed: ' + name)
 
 
-def verify_consumer_source(repo, lock):
+def verify_consumer_source(repo, lock, *, parity=False):
     repo = Path(repo).resolve()
+    if parity:
+        from parity_payload_policy import verify_lock
+        verify_lock(repo, lock)
     original = lock['producer_source']
     current = source_identity(repo)
     if os.environ.get('GITHUB_SHA'):
@@ -56,7 +59,11 @@ def verify_consumer_source(repo, lock):
         dirty += run(['git', '-C', repo / submodule, 'status', '--porcelain',
                       '--untracked-files=all', '--ignore-submodules=none'], capture=True)
     paths = changed.rstrip('\0').split('\0') if changed else []
-    validate_source_scope(original, current, paths, dirty)
+    if parity:
+        from parity_payload_policy import validate_source_scope as parity_scope
+        parity_scope(original, current, paths, dirty)
+    else:
+        validate_source_scope(original, current, paths, dirty)
     return current, paths
 
 
@@ -165,8 +172,8 @@ def extract(archive_path, output, lock, repo):
     return producer
 
 
-def fetch(repo, output, report, lock):
-    current, changes = verify_consumer_source(repo, lock)
+def fetch(repo, output, report, lock, *, parity=False):
+    current, changes = verify_consumer_source(repo, lock, parity=parity)
     token = os.environ.get('GITHUB_TOKEN', '')
     base = '/repos/' + lock['repository'] + '/actions/'
     result = api_json(base + 'runs/' + str(lock['run_id']), token)
@@ -184,10 +191,16 @@ def fetch(repo, output, report, lock):
     receipt = {'schema': 1, 'status': 'VERIFIED_EXACT_ORIGINAL_OFFICIAL_PAYLOAD_REUSE_NOT_AN_IPA',
                'producer': lock, 'original_producer_source': producer['source'],
                'consumer_source': current, 'changed_committed_platform_paths': changes,
-               'current_only_platform_consumers_changed': True, 'producer_identity_reassigned': False,
+               'current_only_platform_consumers_changed': not parity, 'producer_identity_reassigned': False,
                'original_inventory_and_packaged_manifest_verified': True,
                'cache_consumed': True, 'IPA_produced': False, 'runtime_execution_proven': False,
                'Archive_publication_claimed': False}
+    if parity:
+        from parity_payload_policy import POLICY
+        receipt.pop('changed_committed_platform_paths')
+        receipt.update(payload_reuse_policy=POLICY,
+                       changed_committed_data_consumer_paths=changes,
+                       current_only_reviewed_data_consumers_changed=True)
     write_json(report, receipt)
     return receipt
 

@@ -57,7 +57,7 @@ def build_go(repo, sdk, output, report):
     return result
 
 
-def build_host(repo, sdk, python_framework, go_archive, output, report, *, simulator_probe=False):
+def build_host(repo, sdk, python_framework, go_archive, output, report, *, simulator_probe=False, build_version=None):
     repo, python_framework, go_archive = map(lambda p: Path(p).resolve(), (repo, python_framework, go_archive))
     output = Path(output).absolute()
     require(not output.exists(), 'Fresh native framework/app output required')
@@ -108,8 +108,13 @@ def build_host(repo, sdk, python_framework, go_archive, output, report, *, simul
             'CFBundlePackageType': 'APPL' if simulator_probe else 'FMWK',
             'CFBundleShortVersionString': '1.0', 'CFBundleVersion': '1', 'MinimumOSVersion': '13.0',
             'CFBundleSupportedPlatforms': ['iPhoneSimulator' if simulator_probe else 'iPhoneOS']}
+    from package_ipa import bundle_versions
+    versions = bundle_versions(build_version)
+    info['ElichikaUnifiedBuildVersion'] = versions['canonical']
     if simulator_probe:
-        info.update(UIDeviceFamily=[1, 2], LSRequiresIPhoneOS=True, ElichikaUnifiedHostEnabled=True,
+        info.update(CFBundleVersion=versions['CFBundleVersion'], UIDeviceFamily=[1, 2],
+                    LSRequiresIPhoneOS=True, ElichikaUnifiedHostEnabled=True,
+                    NSLocalNetworkUsageDescription='When you enable LAN access, Elichika lets your other devices connect to the local game server and installed game assets.',
                     NSAppTransportSecurity={'NSAllowsLocalNetworking': True},
                     UILaunchScreen={}, UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait',
                     'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'])
@@ -124,6 +129,13 @@ def build_host(repo, sdk, python_framework, go_archive, output, report, *, simul
               'go_archive_sha256': sha256(go_archive), 'binary_sha256': sha256(binary),
               'MachO': image, 'device_IPA_contains_probe': False,
               'actual_Apple_SDK_compile': True, 'physical_device_execution': False}
+    if not simulator_probe:
+        debug = output / 'ElichikaHost.dSYM/Contents/Resources/DWARF/ElichikaHost'
+        require(debug.is_file() and not debug.is_symlink(), 'Fresh device host debug resource is missing')
+        macho(debug, platform=2, kind=10)
+        result['nonruntime_debug_resources'] = [{
+            'path': 'Frameworks/ElichikaHost.framework/ElichikaHost.dSYM/Contents/Resources/DWARF/ElichikaHost',
+            'bytes': debug.stat().st_size, 'sha256': sha256(debug), 'MachO_kind': 10}]
     write_json(report, result)
     return result
 
@@ -137,13 +149,14 @@ def main():
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--python-framework', type=Path)
     parser.add_argument('--go-archive', type=Path)
+    parser.add_argument('--version')
     args = parser.parse_args()
     if args.kind == 'go':
         build_go(args.repo, args.sdk, args.output, args.report)
     else:
         require(args.python_framework and args.go_archive, 'Host build requires Python and Go archive')
         build_host(args.repo, args.sdk, args.python_framework, args.go_archive, args.output, args.report,
-                   simulator_probe=args.kind == 'probe')
+                   simulator_probe=args.kind == 'probe', build_version=args.version)
 
 
 if __name__ == '__main__':

@@ -46,7 +46,8 @@ def intended_app_info(original, versions):
     info.update(CFBundleVersion=versions['CFBundleVersion'], SIFASBuildVersion=versions['canonical'],
                 ElichikaUnifiedBuildVersion=versions['canonical'], ElichikaUnifiedHostEnabled=True,
                 ElichikaUnifiedCandidateStatus='UNTESTED_PHYSICAL_IPHONE_IPAD_REQUIRES_USER_SIGNING',
-                UIFileSharingEnabled=True, LSSupportsOpeningDocumentsInPlace=True)
+                UIFileSharingEnabled=True, LSSupportsOpeningDocumentsInPlace=True,
+                NSLocalNetworkUsageDescription='When you enable LAN access, Elichika lets your other devices connect to the local game server and installed game assets.')
     info.setdefault('NSAppTransportSecurity', {})['NSAllowsLocalNetworking'] = True
     require(float(info['MinimumOSVersion']) <= 13.0, 'Original minimum iOS version changed unexpectedly')
     info['MinimumOSVersion'] = '13.0'
