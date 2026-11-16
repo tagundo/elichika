@@ -150,6 +150,13 @@ static BOOL ELIsPanelURL(NSURL *url) {
     }
     return url.port && [ports containsObject:url.port];
 }
+static NSURL *ELAccountsURL(void) {
+    NSDictionary *server=[ELRuntimeStatus[@"server"] isKindOfClass:NSDictionary.class] ? ELRuntimeStatus[@"server"] : nil;
+    if ([server[@"ready"] boolValue]) return [NSURL URLWithString:@"http://127.0.0.1:8080/webui/user"];
+    NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
+    parts.path=@"/ios/server/webui/user/"; parts.fragment=nil;
+    return parts.URL;
+}
 static void ELHidePanel(void) {
     ELPanelWindow.hidden=YES;
     UIWindow *window=ELGameWindow ?: ELFindGameWindow(); [window makeKeyWindow];
@@ -270,7 +277,7 @@ static void ELHidePanel(void) {
         NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
         parts.path=@"/ios/"; parts.fragment=nil; url=parts.URL.absoluteString;
     }
-    else if (_sections.selectedSegmentIndex==1) url=@"http://127.0.0.1:8080/webui/user";
+    else if (_sections.selectedSegmentIndex==1) url=[ELAccountsURL() absoluteString];
     else if (_sections.selectedSegmentIndex==2) url=ELRuntimeStatus[@"admin_url"];
     else url=ELRuntimeStatus[@"tools_url"];
     NSURL *target=[NSURL URLWithString:url ?: @""];
@@ -312,8 +319,14 @@ static void ELHidePanel(void) {
             [self finishStorageProbe:[self failedStorageProbe:@"Management WebView storage probe timed out."]];
     });
 }
+- (void)webView:(WKWebView *)web didStartProvisionalNavigation:(WKNavigation *)navigation {
+    if (web==_web && _managementProbeReply && _managementProbeStep==2) _managementProbeNavigation=navigation;
+}
 - (void)webView:(WKWebView *)web didFinishNavigation:(WKNavigation *)navigation {
     if (web==_web && _managementProbeReply && navigation==_managementProbeNavigation) {
+        // The existing Accounts hub redirects to its login picker in JavaScript
+        // when this WebView has no selected account. Follow that real navigation.
+        if (_managementProbeStep==2 && ![web.URL.path isEqual:@"/ios/server/webui/user/login"]) return;
         if (_managementProbeHTTPStatus!=200) { [self finishManagementProbe:@"The management page did not return HTTP 200."]; return; }
         _managementProof[@"page_loaded"]=@YES; [self pollManagementProbe]; return;
     }
@@ -340,7 +353,8 @@ static void ELHidePanel(void) {
     }];
 }
 - (void)webView:(WKWebView *)web didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    (void)error;
+    if (web==_web && _managementProbeReply && _managementProbeStep==2 &&
+        [error.domain isEqual:NSURLErrorDomain] && error.code==NSURLErrorCancelled) return;
     if (web==_web && _managementProbeReply && navigation==_managementProbeNavigation) { [self finishManagementProbe:@"Management navigation failed."]; return; }
     if (web==_web && _storageProbeReply && navigation==_storageProbeNavigation)
         [self finishStorageProbe:[self failedStorageProbe:@"Management navigation failed."]];
@@ -353,7 +367,7 @@ static void ELHidePanel(void) {
     _managementProbeReply=nil; _managementProbeNavigation=nil; ++_managementProbeGeneration;
     _managementProof[@"error"]=error.length ? (id)error : (id)@NO;
     BOOL ready=!error.length;
-    for (NSString *key in @[@"actual_management_webview",@"page_loaded",@"javascript_ready",@"state_fetch",@"controls_present",@"native_binding",@"go_stopped",@"server_restarted"])
+    for (NSString *key in @[@"actual_management_webview",@"page_loaded",@"javascript_ready",@"state_fetch",@"controls_present",@"native_binding",@"go_stopped",@"offline_accounts",@"server_restarted"])
         ready=ready && [_managementProof[key] boolValue];
     _managementProof[@"ready"]=@(ready); completion([_managementProof copy]);
 }
@@ -362,26 +376,51 @@ static void ELHidePanel(void) {
     NSUInteger generation=_managementProbeGeneration;
     BOOL nativeStopped=ELCore().started() && !ELCore().ready() && ELPanelReady() && _sections.enabled;
     NSDictionary *arguments=@{@"step":@(_managementProbeStep),@"allowStart":@(nativeStopped)};
-    NSString *script=@"if(!window.ElichikaManagementReady||typeof window.ElichikaManagementProbe!=='function')return{waiting:true};"
+    NSString *script=_managementProbeStep==2
+        ? @"if(location.pathname!=='/ios/server/webui/user/login')return{waiting:true};"
+          "const picker=document.getElementById('native-account-picker'),list=document.getElementById('native-account-list');"
+          "if(!picker||!list||picker.hidden||document.body.dataset.elichikaLocalAccess!=='true')return{waiting:true};"
+          "const u=new URL('/ios/server/webui/user/native_accounts',location.href);u.search=location.search;"
+          "const response=await fetch(u,{cache:'no-store'});if(!response.ok)return{error:true};"
+          "const data=await response.json();if(!Array.isArray(data.accounts)||data.accounts.some(a=>!Number.isInteger(a.user_id)||!Number.isInteger(a.rank)))return{error:true};"
+          "if(list.querySelectorAll('button[data-user-id]').length!==data.accounts.length)return{waiting:true};"
+          "const native=await window.ElichikaIOS.request('status');return{offline_accounts:native.real_backend_ready===false};"
+        : @"if(!window.ElichikaManagementReady||typeof window.ElichikaManagementProbe!=='function')return{waiting:true};"
         "const p=await window.ElichikaManagementProbe();if(p.error)return{error:true};"
         "const s=window.ElichikaManagementProof||{};const r={javascript_ready:!!p.javascript_ready,state_fetch:!!p.state_fetch,controls_present:!!p.controls_present,native_binding:!!p.native_binding,server_ready:!!p.server_ready};"
         "if(step===0){const b=document.getElementById('server-stop');if(!b||b.disabled||!r.server_ready)return{waiting:true};b.click();r.requested='stop';}"
-        "else if(step===1){if(r.server_ready||s.server_state!=='stopped'||!allowStart)return{waiting:true};const b=document.getElementById('server-start');if(!b||b.disabled)return{waiting:true};b.click();r.requested='start';r.go_stopped=true;}"
+        "else if(step===1){if(r.server_ready||s.server_state!=='stopped'||!allowStart)return{waiting:true};r.requested='offline_accounts';}"
+        "else if(step===3){if(r.server_ready||s.server_state!=='stopped'||!allowStart)return{waiting:true};const b=document.getElementById('server-start');if(!b||b.disabled)return{waiting:true};b.click();r.requested='start';}"
         "return r;";
     if (@available(iOS 14.0,*)) {
         [_web callAsyncJavaScript:script arguments:arguments inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:^(id value,NSError *error){
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
             if (error || ![value isKindOfClass:NSDictionary.class] || [value[@"error"] boolValue]) { [self finishManagementProbe:@"The actual management JavaScript/API probe failed."]; return; }
             if (![value[@"waiting"] boolValue]) {
+                if (self.managementProbeStep==2) {
+                    if (![value[@"offline_accounts"] isEqual:@YES] || ELCore().ready() || !ELPanelReady() || !self.sections.enabled) {
+                        [self finishManagementProbe:@"The stopped-server Accounts page or native account directory was unavailable."]; return;
+                    }
+                    self.managementProof[@"offline_accounts"]=@YES; self.managementProbeStep=3;
+                    NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
+                    parts.path=@"/ios/"; parts.fragment=nil; self.sections.selectedSegmentIndex=0;
+                    self.managementProbeHTTPStatus=0; self.managementProbeNavigation=[self loadPanelURL:parts.URL];
+                    if (!self.managementProbeNavigation) [self finishManagementProbe:@"Could not return to management after the offline Accounts check."];
+                    return;
+                }
                 for (NSString *key in @[@"javascript_ready",@"state_fetch",@"controls_present",@"native_binding"]) {
                     if (![value[key] boolValue]) { [self finishManagementProbe:@"Management controls or native binding were unavailable."]; return; }
                     self.managementProof[key]=@YES;
                 }
                 if (self.managementProbeStep==0 && [value[@"requested"] isEqual:@"stop"]) self.managementProbeStep=1;
-                else if (self.managementProbeStep==1 && [value[@"requested"] isEqual:@"start"] && [value[@"go_stopped"] boolValue]) {
-                    self.managementProof[@"go_stopped"]=@YES; self.managementProbeStep=2;
+                else if (self.managementProbeStep==1 && [value[@"requested"] isEqual:@"offline_accounts"]) {
+                    self.managementProof[@"go_stopped"]=@YES; self.managementProbeStep=2; self.sections.selectedSegmentIndex=1;
+                    self.managementProbeHTTPStatus=0; self.managementProbeNavigation=[self loadPanelURL:ELAccountsURL()];
+                    if (!self.managementProbeNavigation) [self finishManagementProbe:@"Could not open Accounts while the game server was stopped."];
+                    return;
                 }
-                else if (self.managementProbeStep==2 && [value[@"server_ready"] boolValue] && ELCore().ready() && self.sections.enabled) {
+                else if (self.managementProbeStep==3 && [value[@"requested"] isEqual:@"start"]) self.managementProbeStep=4;
+                else if (self.managementProbeStep==4 && [value[@"server_ready"] boolValue] && ELCore().ready() && self.sections.enabled) {
                     self.managementProof[@"server_restarted"]=@YES; [self finishManagementProbe:nil]; return;
                 }
             }
@@ -396,7 +435,7 @@ static void ELHidePanel(void) {
     _managementProbeReply=[completion copy]; NSUInteger generation=++_managementProbeGeneration;
     _managementProbeStep=0; _managementProbeHTTPStatus=0;
     _managementProof=[@{@"schema":@1,@"ready":@NO,@"actual_management_webview":@(_web && [_web isDescendantOfView:self.view] && _web.navigationDelegate==self),
-        @"page_loaded":@NO,@"javascript_ready":@NO,@"state_fetch":@NO,@"controls_present":@NO,@"native_binding":@NO,@"go_stopped":@NO,@"server_restarted":@NO,@"error":@NO} mutableCopy];
+        @"page_loaded":@NO,@"javascript_ready":@NO,@"state_fetch":@NO,@"controls_present":@NO,@"native_binding":@NO,@"go_stopped":@NO,@"offline_accounts":@NO,@"server_restarted":@NO,@"error":@NO} mutableCopy];
     NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
     parts.path=@"/ios/"; parts.fragment=nil; _sections.selectedSegmentIndex=0;
     _managementProbeNavigation=[self loadPanelURL:parts.URL];

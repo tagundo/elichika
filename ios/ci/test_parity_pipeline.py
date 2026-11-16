@@ -25,7 +25,7 @@ from test_simulator_proof import fixture as historical_fixture
 from verify_playcover_native_imports import DEBUG_RESOURCE, fresh_debug_resource, headers, split_code_and_debug
 
 UI_KEYS = ('ready','actual_management_webview','page_loaded','javascript_ready',
-           'state_fetch','controls_present','native_binding','go_stopped','server_restarted')
+           'state_fetch','controls_present','native_binding','go_stopped','server_restarted','offline_accounts')
 
 
 def aggregate(root, parity=True):
@@ -39,7 +39,8 @@ def aggregate(root, parity=True):
             reply['management_ui_required'] = True
             reply['management_ui_probe'] = dict.fromkeys(UI_KEYS, True)
             reply['management_ui_probe']['error'] = False
-            reply['probe_timing']['events'] = [dict(stage=name, detail='', elapsed_seconds=n)
+            reply['probe_timing']['events'] = [dict(stage=name,
+                detail='go_start' if name == 'native_backend' else '', elapsed_seconds=n)
                 for n, name in enumerate(stage_budgets(True))]
             reply['runtime_probe']['tools_probe']['management_http_probe'] = {
                 'ready': True, 'state_http_status': 200, 'unauthenticated_status': 403,
@@ -109,6 +110,40 @@ class ParityDataTests(unittest.TestCase):
 
 
 class ParitySimulatorTests(unittest.TestCase):
+    def test_backend_phase_has_its_own_90_seconds_after_real_data_preparation(self):
+        self.assertEqual(list(stage_budgets(True))[:3], ['native_start','native_backend','native_health'])
+        self.assertEqual(len(stage_budgets(True)),13)
+        self.assertNotIn('native_backend',stage_budgets())
+        watchdog=ProbeWatchdog(1,0,require_parity_ui=True)
+        watchdog.observe(progress(),0)
+        watchdog.observe(progress(elapsed=224,stage_elapsed=224,detail='payload_prepare'),224)
+        backend=dict(progress('native_health',2,elapsed=224.618),stage='native_backend',
+                     stage_budget_seconds=90,detail='go_start')
+        watchdog.observe(backend,224.618)
+        self.assertAlmostEqual(watchdog.stage_deadline,314.618)
+        backend.update(elapsed_seconds=313.618,stage_elapsed_seconds=89,
+                       sample_uptime_seconds=1313.618,detail='tool_dependencies')
+        watchdog.observe(backend,313.618)
+        self.assertAlmostEqual(watchdog.stage_deadline,314.618)
+        with self.assertRaises(ValueError):watchdog.check(314.618)
+        watchdog=ProbeWatchdog(1,0,require_parity_ui=True);watchdog.observe(progress(),0)
+        late=dict(progress('native_health',2,elapsed=241,stage_elapsed=16),stage='native_backend',
+                  stage_budget_seconds=90,detail='go_start')
+        with self.assertRaisesRegex(ValueError,'fixed budget: native_start'):watchdog.observe(late,241)
+
+    def test_offline_account_page_proof_cannot_be_missing_or_false_after_go_stop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reply = aggregate(Path(directory))['results'][0]['reply']
+            for missing in (True, False):
+                value = copy.deepcopy(reply)
+                if missing:
+                    value['management_ui_probe'].pop('offline_accounts')
+                else:
+                    value['management_ui_probe']['offline_accounts'] = False
+                self.assertIs(value['management_ui_probe']['go_stopped'], True)
+                with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, 'offline_accounts'):
+                    validate_reply(value, False, launch_number=1, require_parity_ui=True)
+
     def test_historical_full_reply_remains_legacy_only(self):
         with tempfile.TemporaryDirectory() as directory:
             old = aggregate(Path(directory), False)['results'][0]['reply']
@@ -126,7 +161,7 @@ class ParitySimulatorTests(unittest.TestCase):
                     write_json(path, changed)
                     with self.subTest(row=row_number,key=key), self.assertRaises(ValueError):
                         simulator_gates(path, result['source'], require_parity_ui=True)
-            for change in ('auth','empty-css','duplicate','old-source','missing-launch','old-history','error','no-native-flag'):
+            for change in ('auth','empty-css','duplicate','old-source','missing-launch','old-history','source-a-history','backend-no-boundary','error','no-native-flag'):
                 changed = copy.deepcopy(result); reply = changed['results'][0]['reply']
                 http = reply['runtime_probe']['tools_probe']['management_http_probe']
                 if change == 'auth': http['unauthenticated_status'] = 200
@@ -135,6 +170,9 @@ class ParitySimulatorTests(unittest.TestCase):
                 elif change == 'old-source': changed['source'] = {'source_sha':'old-source12'}
                 elif change == 'missing-launch': changed['results'].pop()
                 elif change == 'old-history': reply['probe_timing']['events'] = [r for r in reply['probe_timing']['events'] if r['stage'] != 'management_ui']
+                elif change == 'source-a-history': reply['probe_timing']['events'] = [r for r in reply['probe_timing']['events'] if r['stage'] != 'native_backend']
+                elif change == 'backend-no-boundary':
+                    next(r for r in reply['probe_timing']['events'] if r['stage'] == 'native_backend')['detail'] = 'tool_dependencies'
                 elif change == 'error': reply['management_ui_probe']['error'] = 'failed'
                 elif change == 'no-native-flag': reply['management_ui_required'] = False
                 write_json(path, changed)

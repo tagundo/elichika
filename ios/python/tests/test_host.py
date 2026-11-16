@@ -16,6 +16,46 @@ from elichika_ios.controller import GoController
 
 
 class ScopeTests(unittest.TestCase):
+    def test_directory_fd_operations_keep_the_callers_anchor(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            data, library, destination = base / "data", base / "library", base / "selected"
+            for path in (data, library, destination):
+                path.mkdir()
+            scope = ScopedImports(base, data, library)
+            local_os = scope.facades["os"]
+            root_fd = os.open(destination, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                fd = local_os.open("part", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=root_fd)
+                os.write(fd, b"verified bytes")
+                os.close(fd)
+                self.assertEqual(local_os.stat("part", dir_fd=root_fd).st_size, 14)
+                self.assertFalse((data / "part").exists())
+                local_os.replace("part", "complete", src_dir_fd=root_fd, dst_dir_fd=root_fd)
+                self.assertEqual((destination / "complete").read_bytes(), b"verified bytes")
+                local_os.unlink("complete", dir_fd=root_fd)
+                self.assertFalse((destination / "complete").exists())
+            finally:
+                os.close(root_fd)
+
+    def test_archive_publication_roots_only_the_unanchored_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            data, library, packs = base / "data", base / "library", base / "packs"
+            for path in (data, library, packs):
+                path.mkdir()
+            (data / "download.part").write_bytes(b"verified asset")
+            (data / "asset").write_bytes(b"unrelated file")
+            scope = ScopedImports(base, data, library)
+            root_fd = os.open(packs, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                scope.facades["os"].replace("download.part", "asset", dst_dir_fd=root_fd)
+                self.assertEqual((packs / "asset").read_bytes(), b"verified asset")
+                self.assertEqual((data / "asset").read_bytes(), b"unrelated file")
+                self.assertFalse((data / "download.part").exists())
+            finally:
+                os.close(root_fd)
+
     def test_legacy_files_and_database_do_not_change_process(self):
         old_cwd, old_environment = os.getcwd(), dict(os.environ)
         with tempfile.TemporaryDirectory() as temporary:

@@ -43,12 +43,17 @@ class ScopedImports(importlib.abc.MetaPathFinder):
             return raw if os.path.isabs(raw) else os.fsencode(self.data_root) + b"/" + raw
         return raw if os.path.isabs(raw) else str(self.data_root / raw)
 
-    def wrap(self, callback, positions=(0,), keywords=()):
+    def wrap(self, callback, positions=(0,), keywords=(), *, dir_fd_positions=None):
+        dir_fd_positions = dir_fd_positions or {}
         @functools.wraps(callback)
         def wrapped(*args, **kwargs):
             args = list(args)
             for index in positions:
-                if index < len(args):
+                # An explicit directory descriptor already supplies the path
+                # anchor. Rooting its basename would silently bypass that
+                # descriptor and break atomic Archive downloads/spool IO.
+                anchored = kwargs.get(dir_fd_positions.get(index, "")) is not None
+                if index < len(args) and not anchored:
                     args[index] = self.path(args[index])
             for key in keywords:
                 if key in kwargs:
@@ -71,9 +76,10 @@ class ScopedImports(importlib.abc.MetaPathFinder):
                         "posix_spawn": forbidden, "execv": forbidden, "kill": forbidden}
         for name in ("open", "stat", "lstat", "access", "listdir", "scandir", "mkdir", "makedirs",
                      "remove", "unlink", "rmdir", "removedirs", "walk", "chmod", "utime", "readlink"):
-            os_overrides[name] = self.wrap(getattr(os, name))
+            os_overrides[name] = self.wrap(getattr(os, name), dir_fd_positions={0: "dir_fd"})
         for name in ("rename", "replace", "link", "symlink"):
-            os_overrides[name] = self.wrap(getattr(os, name), (0, 1))
+            anchors = {0: "dir_fd", 1: "dir_fd"} if name == "symlink" else {0: "src_dir_fd", 1: "dst_dir_fd"}
+            os_overrides[name] = self.wrap(getattr(os, name), (0, 1), dir_fd_positions=anchors)
         path_overrides = {}
         for name in ("abspath", "realpath", "exists", "lexists", "isfile", "isdir", "islink", "getsize", "getmtime"):
             path_overrides[name] = self.wrap(getattr(os.path, name))

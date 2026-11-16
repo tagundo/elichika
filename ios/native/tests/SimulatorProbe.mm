@@ -220,7 +220,7 @@ static NSUInteger ELFakeGameStarts;
                         status[@"management_ui_probe"]=reply;
                         BOOL managementReady=[management isKindOfClass:NSDictionary.class];
                         for (NSString *key in @[@"ready",@"actual_management_webview",@"page_loaded",@"javascript_ready",
-                            @"state_fetch",@"controls_present",@"native_binding",@"go_stopped",@"server_restarted"])
+                            @"state_fetch",@"controls_present",@"native_binding",@"go_stopped",@"offline_accounts",@"server_restarted"])
                             managementReady=managementReady && [reply[key] isEqual:@YES];
                         id detail=reply[@"error"];
                         BOOL noError=!detail || detail==NSNull.null || [detail isEqual:@NO]

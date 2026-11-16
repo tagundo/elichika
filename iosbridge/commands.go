@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -29,22 +28,24 @@ import (
 )
 
 type Command struct {
-	Schema      int             `json:"schema"`
-	Command     string          `json:"command"`
-	Options     *Options        `json:"options,omitempty"`
-	Enabled     *bool           `json:"enabled,omitempty"`
-	Config      json.RawMessage `json:"config,omitempty"`
-	Method      string          `json:"method,omitempty"`
-	Path        string          `json:"path,omitempty"`
-	Body        json.RawMessage `json:"body,omitempty"`
-	ContentType string          `json:"content_type,omitempty"`
-	Region      string          `json:"region,omitempty"`
-	Platform    string          `json:"platform,omitempty"`
-	Language    string          `json:"language,omitempty"`
-	Workers     int             `json:"workers,omitempty"`
-	JobID       uint64          `json:"job_id,omitempty"`
-	After       uint64          `json:"after,omitempty"`
-	Limit       int             `json:"limit,omitempty"`
+	Schema        int             `json:"schema"`
+	Command       string          `json:"command"`
+	Options       *Options        `json:"options,omitempty"`
+	Enabled       *bool           `json:"enabled,omitempty"`
+	Config        json.RawMessage `json:"config,omitempty"`
+	Method        string          `json:"method,omitempty"`
+	Path          string          `json:"path,omitempty"`
+	Body          json.RawMessage `json:"body,omitempty"`
+	BodyFile      string          `json:"body_file,omitempty"`
+	SpoolResponse bool            `json:"spool_response,omitempty"`
+	ContentType   string          `json:"content_type,omitempty"`
+	Region        string          `json:"region,omitempty"`
+	Platform      string          `json:"platform,omitempty"`
+	Language      string          `json:"language,omitempty"`
+	Workers       int             `json:"workers,omitempty"`
+	JobID         uint64          `json:"job_id,omitempty"`
+	After         uint64          `json:"after,omitempty"`
+	Limit         int             `json:"limit,omitempty"`
 }
 
 func CommandJSON(input string) string { return service.commandJSON(input) }
@@ -157,6 +158,11 @@ func (c *controller) runCommand(ctx context.Context, command Command, id, epoch 
 		}
 		runtimeinit.RebuildAssets = false
 		err = errors.Join(err, c.closePrepared())
+		if err != nil && command.Command == "management_request" {
+			var cleanupError error
+			result, cleanupError = discardFailedManagementResult(c.options.DataRoot, result)
+			err = errors.Join(err, cleanupError)
+		}
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.epoch != epoch || c.state.Job == nil || c.state.Job.ID != id {
@@ -208,7 +214,7 @@ func (c *controller) runCommand(ctx context.Context, command Command, id, epoch 
 			c.state.Job = &job
 		})
 	case "management_request":
-		result, err = managementRequest(command, c.options.WebToken)
+		result, err = managementRequest(command, c.options.WebToken, c.options.DataRoot)
 	case "config_read":
 		result = config.Conf
 	case "config_save":
@@ -266,6 +272,9 @@ func (c *controller) runCommand(ctx context.Context, command Command, id, epoch 
 }
 
 func validateManagement(command Command) error {
+	if command.BodyFile != "" && len(command.Body) != 0 && string(command.Body) != "null" {
+		return errors.New("management body and body_file are mutually exclusive")
+	}
 	if command.Method != http.MethodGet && command.Method != http.MethodPost {
 		return errors.New("management method must be GET or POST")
 	}
@@ -283,9 +292,12 @@ func validateManagement(command Command) error {
 }
 
 type managementResponse struct {
-	Status  int         `json:"status"`
-	Headers http.Header `json:"headers"`
-	Body    string      `json:"body"`
+	Status        int         `json:"status"`
+	Headers       http.Header `json:"headers"`
+	Body          string      `json:"body"`
+	BodyFile      string      `json:"body_file,omitempty"`
+	BodyBytes     int64       `json:"body_bytes"`
+	spoolIdentity *managementSpoolIdentity
 }
 
 type boundedResponse struct {
@@ -312,54 +324,15 @@ func (w *boundedResponse) Write(data []byte) (int, error) {
 	return w.body.Write(data)
 }
 
-func managementRequest(command Command, token string) (managementResponse, error) {
-	var body bytes.Buffer
-	contentType := command.ContentType
-	if len(command.Body) != 0 && string(command.Body) != "null" {
-		var text string
-		if json.Unmarshal(command.Body, &text) == nil {
-			body.WriteString(text)
-		} else {
-			var fields map[string]string
-			if err := json.Unmarshal(command.Body, &fields); err != nil {
-				return managementResponse{}, errors.New("management body must be text or an object of string form fields")
-			}
-			writer := multipart.NewWriter(&body)
-			for name, value := range fields {
-				if err := writer.WriteField(name, value); err != nil {
-					return managementResponse{}, err
-				}
-			}
-			if err := writer.Close(); err != nil {
-				return managementResponse{}, err
-			}
-			contentType = writer.FormDataContentType()
-		}
-	}
-	request, err := http.NewRequest(command.Method, "http://127.0.0.1:8080"+command.Path, &body)
-	if err != nil {
-		return managementResponse{}, err
-	}
-	request.RemoteAddr = "127.0.0.1:1"
-	request.Header.Set("X-Elichika-Local-Access", token)
-	if command.Method == http.MethodPost {
-		request.Header.Set("Origin", "http://127.0.0.1:8080")
-	}
-	if contentType != "" {
-		request.Header.Set("Content-Type", contentType)
-	}
+func managementRequest(command Command, token string, dataRoots ...string) (managementResponse, error) {
 	engine := gin.New()
 	engine.Use(gin.RecoveryWithWriter(io.Discard))
 	router.ManagementRouterWithCredentials(engine, token)
-	response := &boundedResponse{header: make(http.Header)}
-	engine.ServeHTTP(response, request)
-	if response.overflow {
-		return managementResponse{}, errors.New("management response exceeds 8 MiB")
+	dataRoot := ""
+	if len(dataRoots) != 0 {
+		dataRoot = dataRoots[0]
 	}
-	if response.status == 0 {
-		response.status = http.StatusOK
-	}
-	return managementResponse{response.status, response.header, response.body.String()}, nil
+	return serveManagementRequest(command, token, dataRoot, engine, defaultManagementLimits)
 }
 
 func resetAccounts() error {

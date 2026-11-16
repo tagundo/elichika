@@ -2,9 +2,11 @@
 import copy
 import fcntl
 import io
+import importlib
 import json
 import os
 from pathlib import Path
+import re
 import ssl
 import sys
 import tempfile
@@ -34,6 +36,8 @@ class NativeFixture:
         self.rejected, self.failed, self.calls = {}, {}, []
         self.hold = None
         self.starts = 0
+        self.received_bodies, self.response_paths, self.request_paths = [], [], []
+        self.override_response = None
         self.webui_response = {"status": 200, "headers": {"Content-Type": ["text/html; charset=utf-8"]},
                                "body": '<html><body><a href="/webui/admin/event_selector">Events</a><a href="config_editor">Config</a><link href="/webui/webui.css"><script>fetch("/webui/admin/native_access")</script><a href="https://example.org/webui/admin/">External</a></body></html>'}
         self._lock = threading.RLock()
@@ -100,7 +104,27 @@ class NativeFixture:
                     elif command == "cdn_cache":
                         self.config["cdn_cache"] = self.job["input"]["enabled"]
                     elif command == "management_request":
-                        self.job["result"] = copy.deepcopy(self.webui_response)
+                        request = self.job["input"]
+                        if request.get("body_file"):
+                            path = Path(request["body_file"])
+                            self.request_paths.append(path)
+                            self.received_bodies.append(path.read_bytes())
+                        if self.override_response is not None:
+                            self.job["result"] = copy.deepcopy(self.override_response)
+                        elif request.get("spool_response"):
+                            root = self.root / Management.SPOOL_NAME
+                            root.mkdir(mode=0o700, exist_ok=True)
+                            path = root / ("response-" + str(self.job["id"]) + ".body")
+                            raw = self.webui_response["body"]
+                            raw = raw.encode() if isinstance(raw, str) else raw
+                            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                            with os.fdopen(descriptor, "wb") as target:
+                                target.write(raw)
+                            self.response_paths.append(path)
+                            self.job["result"] = {"status": self.webui_response["status"], "headers": copy.deepcopy(self.webui_response["headers"]),
+                                                  "body": "", "body_file": str(path), "body_bytes": len(raw)}
+                        else:
+                            self.job["result"] = copy.deepcopy(self.webui_response)
                     self.close()
                     self.state, self.phase = "stopped", "stopped"
             return self.reply()
@@ -137,7 +161,9 @@ class NativeFixture:
 class ManagementTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
+        # Darwin exposes /var through /private/var. Match the runtime's
+        # canonical roots before comparing injected filesystem failures.
+        self.root = Path(self.temporary.name).resolve()
         self.data, self.app, self.library = self.root / "data", self.root / "python-app", self.root / "library"
         for path in (self.data, self.app, self.library / "packs"):
             path.mkdir(parents=True)
@@ -389,8 +415,14 @@ class ManagementTests(unittest.TestCase):
     def test_failed_app_preference_publish_rolls_server_settings_back(self):
         original_config = copy.deepcopy(self.native.config)
         original_replace = os.replace
+        injected = threading.Event()
+        alias = self.root / "data-alias"
+        alias.symlink_to(self.data, target_is_directory=True)
+        self.management = Management(self.native, self.controller, {**self.config, "data_root": str(alias)}, self.manager)
+        self.assertEqual(self.management.data, self.data.resolve())
         def replacement(source, destination):
             if Path(destination) == self.data / "ios-app-settings.json":
+                injected.set()
                 raise OSError("Fixture preference publication failure")
             return original_replace(source, destination)
         value = {"config": {**original_config, "cdn_cache": False},
@@ -399,6 +431,7 @@ class ManagementTests(unittest.TestCase):
         with patch("elichika_ios.management.os.replace", side_effect=replacement):
             self.management.settings(value)
             result = self.wait()
+        self.assertTrue(injected.is_set(), "The canonical preference target must trigger the rollback fault fixture")
         self.assertEqual(result["status"], "error")
         self.assertIn("previous server settings were restored", result["error"])
         self.assertEqual(self.native.config, original_config)
@@ -561,7 +594,9 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual(handler.status, 200)
         self.assertFalse(self.native.ready)
         command = [value for name, value in self.native.calls if name == "management_request"][-1]
-        self.assertEqual(command["body"], raw.decode())
+        self.assertNotIn("body", command)
+        self.assertEqual(self.native.received_bodies[-1], raw)
+        self.assertFalse(Path(command["body_file"]).exists())
         self.assertEqual(command["content_type"], "application/x-www-form-urlencoded")
 
     def test_proxy_preserves_upstream_errors_and_only_local_admin_redirects(self):
@@ -582,7 +617,7 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual((handler.status, handler.value["code"]), (502, "INVALID_WEBUI_REDIRECT"))
 
     def test_proxy_denylist_paths_body_limits_and_native_errors_never_broaden_scope(self):
-        for path in ("/ios/server/webui/user/login", "/ios/server/anything", "/ios/server/webui/admin/../user/login",
+        for path in ("/ios/server/webui/other/login", "/ios/server/anything", "/ios/server/webui/admin/../user/login",
                      "/ios/server/webui/admin/%2e%2e/login", "/ios/server/webui/admin/foo%2fbar"):
             with self.subTest(path=path):
                 handler = self.proxy_handler(path)
@@ -593,7 +628,7 @@ class ManagementTests(unittest.TestCase):
         self.management.handle(handler)
         self.assertEqual(handler.status, 415)
         handler = self.proxy_handler(method="POST")
-        handler.headers["Content-Length"] = str(Management.MAX_BODY + 1)
+        handler.headers["Content-Length"] = str(Management.MAX_PROXY_REQUEST + 1)
         self.management.handle(handler)
         self.assertEqual(handler.status, 413)
         self.native.rejected["management_request"] = {"code": "COMMAND_FAILED", "message": "Event database is missing its schedule table."}
@@ -635,6 +670,237 @@ class ManagementTests(unittest.TestCase):
         self.native.hold.set()
         self.assertEqual(self.wait()["status"], "done")
         self.assertEqual(self.management._proxy_responses, {})
+        self.assertTrue(all(not path.exists() for path in self.native.response_paths))
+
+    def assert_spool_empty(self):
+        spool = self.data / Management.SPOOL_NAME
+        self.assertEqual(list(spool.iterdir()) if spool.exists() else [], [])
+        self.assertEqual(self.management._owned_requests, {})
+        self.assertEqual(self.management._owned_responses, {})
+
+    def test_offline_user_login_rewrites_real_interface_paths_and_preserves_account_ids(self):
+        self.management.action({"action": "stop"})
+        self.native.webui_response["body"] = (REPO / "webui/user/login.html").read_text()
+        handler = self.proxy_handler("/ios/server/webui/user/login?l=ko")
+        self.management.handle(handler)
+        self.assertEqual(handler.status, 200)
+        body = handler.wfile.getvalue().decode()
+        self.assertIn('id="native-account-picker"', body)
+        self.assertIn("fetch('/ios/server/webui/user/native_accounts'", body)
+        self.assertIn('req.open("POST", "/ios/server/webui/user/login")', body)
+        self.assertIn('src="/ios/server/webui/native_local.js"', body)
+        self.assertIn('href="/ios/"', body)
+        self.assertFalse(self.native.ready)
+        raw = b'{"accounts":[{"user_id":120034567,"rank":42}],"path":"/webui/user/foo"}'
+        self.native.webui_response = {"status": 200, "headers": {"Content-Type": ["application/json"]}, "body": raw}
+        handler = self.proxy_handler("/ios/server/webui/user/native_accounts")
+        self.management.handle(handler)
+        self.assertEqual(handler.wfile.getvalue(), raw)
+        self.assertEqual(json.loads(handler.wfile.getvalue())["accounts"][0]["user_id"], 120034567)
+        self.assert_spool_empty()
+
+    def test_user_root_query_and_shared_native_script_stay_on_private_proxy(self):
+        handler = self.proxy_handler("/ios/server/webui/user?l=ja")
+        self.management.handle(handler)
+        self.assertEqual(handler.response_headers["Location"], "/ios/server/webui/user/?l=ja")
+        seed = self.root / "payload/webui"
+        seed.mkdir(parents=True)
+        raw = b'fetch("/webui/user/native_accounts");const relative="client_connection";'
+        (seed / "native_local.js").write_bytes(raw)
+        handler = self.proxy_handler("/ios/server/webui/native_local.js")
+        self.management.handle(handler)
+        self.assertEqual(handler.content_type, "application/javascript; charset=utf-8")
+        self.assertIn(b'fetch("/ios/server/webui/user/native_accounts")', handler.wfile.getvalue())
+        self.assertIn(b'const relative="client_connection"', handler.wfile.getvalue())
+        self.assertEqual(self.native.calls, [])
+
+    def test_binary_multipart_spools_bounded_chunks_and_preserves_selected_identity(self):
+        boundary = "WebKitFormBoundaryOfflineFixture"
+        binary = b"SQLite format 3\0\x00\xff\xfe" + bytes(range(256)) * 1300
+        raw = (b"--" + boundary.encode() + b'\r\nContent-Disposition: form-data; name="user_id"\r\n\r\n120034567\r\n' +
+               b"--" + boundary.encode() + b'\r\nContent-Disposition: form-data; name="user_session_key"\r\n\r\nunchanged-session\r\n' +
+               b"--" + boundary.encode() + b'\r\nContent-Disposition: form-data; name="file"; filename="backup.db"\r\nContent-Type: application/octet-stream\r\n\r\n' +
+               binary + b"\r\n--" + boundary.encode() + b"--\r\n")
+        class BoundedReader(io.BytesIO):
+            def read(reader, size=-1):
+                self.assertTrue(0 < size <= 64 * 1024)
+                return super().read(size)
+        content_type = "multipart/form-data; boundary=" + boundary
+        handler = self.proxy_handler("/ios/server/webui/user/transfer", "POST", raw, content_type)
+        handler.rfile = BoundedReader(raw)
+        self.native.webui_response = {"status": 200, "headers": {"Content-Type": ["application/json"]}, "body": b'{"response":"Imported fixture","error":null}'}
+        self.management.handle(handler)
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(self.native.received_bodies[-1], raw)
+        command = next(value for name, value in self.native.calls if name == "management_request")
+        self.assertEqual(command["content_type"], content_type)
+        self.assertTrue(command["spool_response"])
+        self.assertNotIn("body", command)
+        self.assertTrue(re.fullmatch(r"request-[0-9a-f]{32}\.body", Path(command["body_file"]).name))
+        self.assertEqual(Path(command["body_file"]).parent, self.data / Management.SPOOL_NAME)
+        self.assertEqual((self.data / Management.SPOOL_NAME).stat().st_mode & 0o777, 0o700)
+        self.assert_spool_empty()
+
+    def test_db_and_json_attachments_are_byte_exact_including_paths_nul_and_non_utf8(self):
+        payloads = (("application/octet-stream", "backup_120034567.db", b"SQLite format 3\0\xff\xfe" + bytes(range(256)) * 4200),
+                    ("application/json", "login_120034567.json", b'{"token":"/webui/user/foo","other":"/webui/admin/foo","nul":"\\u0000"}\0\xff'))
+        for content_type, filename, raw in payloads:
+            with self.subTest(filename=filename):
+                self.native.webui_response = {"status": 200, "headers": {"Content-Type": [content_type],
+                    "Content-Disposition": ["attachment; filename=" + filename], "Content-Description": ["File Transfer"],
+                    "Content-Transfer-Encoding": ["binary"], "Set-Cookie": ["must-not-forward=secret"]}, "body": raw}
+                handler = self.proxy_handler("/ios/server/webui/user/" + ("export_db" if filename.endswith(".db") else "export_json"),
+                                             "POST", b"user_id=120034567&user_session_key=unchanged-session")
+                self.management.handle(handler)
+                self.assertEqual(handler.status, 200)
+                self.assertEqual(handler.wfile.getvalue(), raw)
+                self.assertEqual(handler.response_headers["Content-Length"], str(len(raw)))
+                self.assertEqual(handler.response_headers["Content-Disposition"], "attachment; filename=" + filename)
+                self.assertEqual(handler.response_headers["Content-Transfer-Encoding"], "binary")
+                self.assertNotIn("Set-Cookie", handler.response_headers)
+                self.assertNotIn("body_file", json.dumps(self.management.snapshot()["job"]))
+                self.assert_spool_empty()
+
+    def test_request_truncation_and_admission_failure_do_not_leave_upload_spools(self):
+        handler = self.proxy_handler("/ios/server/webui/user/transfer", "POST", b"short", "multipart/form-data; boundary=fixture")
+        handler.headers["Content-Length"] = "100"
+        self.management.handle(handler)
+        self.assertEqual((handler.status, handler.value["code"]), (400, "INVALID_BODY"))
+        self.assertEqual(self.native.calls, [])
+        self.assert_spool_empty()
+        queued = self.manager.create("queued-tool")
+        handler = self.proxy_handler("/ios/server/webui/user/transfer", "POST", b"not-admitted")
+        self.management.handle(handler)
+        self.assertEqual((handler.status, handler.value["code"]), (409, "BUSY"))
+        self.assert_spool_empty()
+        queued.emit({"type": "done", "status": "cancelled"})
+
+    def test_request_survives_timeout_and_close_until_native_reader_finishes(self):
+        self.native.hold = threading.Event()
+        handler = self.proxy_handler("/ios/server/webui/user/transfer", "POST", b"\0\xffmultipart-fixture")
+        with patch.object(threading.Thread, "join", autospec=True):
+            self.management.handle(handler)
+        self.assertEqual(handler.status, 504)
+        self.wait_running("management_request")
+        request = Path(self.native.job["input"]["body_file"])
+        self.assertTrue(request.is_file())
+        self.assertEqual(request.stat().st_mode & 0o777, 0o600)
+        self.management.close()
+        self.assertTrue(request.is_file(), "A live Go reader must keep its owned request file")
+        self.native.hold.set()
+        self.wait()
+        self.assertEqual(self.native.received_bodies[-1], b"\0\xffmultipart-fixture")
+        self.assertTrue(all(not path.exists() for path in self.native.response_paths))
+        self.assert_spool_empty()
+
+    def test_response_outside_jail_symlink_and_unsafe_spool_never_read_or_delete_foreign_file(self):
+        foreign = self.root / "foreign-secret.body"
+        foreign.write_bytes(b"owner secret remains")
+        self.native.override_response = {"status": 200, "headers": {"Content-Type": ["application/octet-stream"]},
+                                         "body_file": str(foreign), "body_bytes": foreign.stat().st_size}
+        handler = self.proxy_handler("/ios/server/webui/user/export_db", "POST", b"user_id=7")
+        self.management.handle(handler)
+        self.assertEqual(handler.status, 409)
+        self.assertNotIn(b"owner secret remains", handler.wfile.getvalue())
+        self.assertEqual(foreign.read_bytes(), b"owner secret remains")
+        self.assert_spool_empty()
+        link = self.data / Management.SPOOL_NAME / "response-foreign.body"
+        link.symlink_to(foreign)
+        self.native.override_response["body_file"] = str(link)
+        handler = self.proxy_handler()
+        self.management.handle(handler)
+        self.assertEqual(handler.status, 409)
+        self.assertEqual(foreign.read_bytes(), b"owner secret remains")
+        link.unlink()
+        spool = self.data / Management.SPOOL_NAME
+        spool.rmdir()
+        spool.symlink_to(self.root, target_is_directory=True)
+        before = len(self.native.calls)
+        handler = self.proxy_handler("/ios/server/webui/user/transfer", "POST", b"user_id=7")
+        self.management.handle(handler)
+        self.assertEqual((handler.status, handler.value["code"]), (500, "UNSAFE_WEBUI_SPOOL"))
+        self.assertEqual(len(self.native.calls), before)
+        self.assertEqual(foreign.read_bytes(), b"owner secret remains")
+
+    def test_response_cleanup_on_bad_header_and_disconnected_http_client(self):
+        self.native.webui_response["headers"]["Content-Disposition"] = ["attachment; filename=x.db\r\nInjected: true"]
+        handler = self.proxy_handler()
+        self.management.handle(handler)
+        self.assertEqual((handler.status, handler.value["code"]), (502, "INVALID_WEBUI_HEADERS"))
+        self.assert_spool_empty()
+        self.native.webui_response["headers"].pop("Content-Disposition")
+        class Disconnected(io.BytesIO):
+            def write(writer, raw):
+                raise BrokenPipeError("Client closed transfer")
+        handler = self.proxy_handler()
+        handler.wfile = Disconnected()
+        self.assertTrue(self.management.handle(handler))
+        self.assert_spool_empty()
+
+    def test_adapter_loaded_through_actual_scoped_imports_keeps_descriptor_relative_io(self):
+        from elichika_ios.scoped_imports import ScopedImports
+        import elichika_ios
+        name = "elichika_ios.management"
+        original = sys.modules.pop(name)
+        scope = ScopedImports(REPO, self.data, self.library)
+        scope.install()
+        loaded = None
+        try:
+            loaded = importlib.import_module(name)
+            self.assertIs(loaded.os, os, "The native adapter must not root dir_fd filenames through the legacy os facade")
+            management = loaded.Management(self.native, self.controller, self.config, self.manager)
+            raw = b"\x00\xffactual scoped import"
+            path = management._request_spool(io.BytesIO(raw), len(raw))
+            self.assertEqual(path.parent, self.data / Management.SPOOL_NAME)
+            self.assertEqual(path.read_bytes(), raw)
+            self.assertFalse((self.data / path.name).exists())
+            management._discard_spool(path, requests=True)
+            management.close()
+            self.assertFalse(path.exists())
+        finally:
+            scope.uninstall()
+            sys.modules[name] = original
+            elichika_ios.management = original
+
+    def test_cleanup_never_unlinks_a_replacement_inode_for_owned_response_or_request(self):
+        self.management._spool_directory_create()
+        spool = self.data / Management.SPOOL_NAME
+        response = spool / "response-owned.body"
+        response.write_bytes(b"original")
+        response.chmod(0o600)
+        _, reader = self.management._open_response_spool({"body_file": str(response), "body_bytes": 8}, register=True)
+        reader.close()
+        replacement = spool / "replacement.body"
+        replacement.write_bytes(b"replacement remains")
+        replacement.chmod(0o600)
+        replacement.replace(response)
+        self.management._discard_spool(response)
+        self.assertEqual(response.read_bytes(), b"replacement remains")
+        self.assertNotIn(response, self.management._owned_responses)
+        request = self.management._request_spool(io.BytesIO(b"owned request"), 13)
+        replacement.write_bytes(b"different request remains")
+        replacement.chmod(0o600)
+        replacement.replace(request)
+        self.management._discard_spool(request, requests=True)
+        self.assertEqual(request.read_bytes(), b"different request remains")
+        self.assertNotIn(request, self.management._owned_requests)
+
+    def test_cleanup_never_unlinks_from_replacement_spool_directory(self):
+        self.management._spool_directory_create()
+        spool = self.data / Management.SPOOL_NAME
+        response = spool / "response-owned.body"
+        response.write_bytes(b"original")
+        response.chmod(0o600)
+        _, reader = self.management._open_response_spool({"body_file": str(response), "body_bytes": 8}, register=True)
+        reader.close()
+        preserved = self.data / "preserved-spool"
+        spool.rename(preserved)
+        spool.mkdir(mode=0o700)
+        response.write_bytes(b"replacement directory file remains")
+        response.chmod(0o600)
+        self.management._discard_spool(response)
+        self.assertEqual(response.read_bytes(), b"replacement directory file remains")
+        self.assertEqual((preserved / response.name).read_bytes(), b"original")
 
 
 if __name__ == "__main__":

@@ -8,8 +8,8 @@ guard cannot surround an in-process Go command using the same lock file.
 from collections import deque
 import copy
 import hmac
+import importlib
 import json
-import os
 from pathlib import Path
 import re
 import secrets
@@ -18,6 +18,12 @@ import tempfile
 import threading
 import time
 from urllib.parse import parse_qs, unquote, urlsplit
+
+# This native adapter already validates absolute app-owned paths and uses
+# descriptor-relative IO. The legacy application's relative-path os facade
+# must not reinterpret a filename supplied with dir_fd. This is local binding,
+# never a mutation of Python's os module or the process working directory.
+os = importlib.import_module("os")
 
 
 class ManagementError(RuntimeError):
@@ -34,6 +40,9 @@ class Management:
     MAX_BODY = 256 * 1024
     MAX_RESPONSE = 1024 * 1024
     MAX_LOG_BYTES = 512 * 1024
+    MAX_PROXY_REQUEST = 256 * 1024 * 1024
+    MAX_PROXY_RESPONSE = 512 * 1024 * 1024
+    SPOOL_NAME = ".elichika-management-spool"
     ACTIONS = frozenset(("download_archive", "download_packs", "cdn_cache_toggle",
                          "rebuild_assets", "fix_training_trees", "reset_accounts", "save_settings"))
 
@@ -51,6 +60,7 @@ class Management:
         self._cache_enabled = None
         self._proxy_responses = {}
         self._proxy_waiter = None
+        self._owned_requests, self._owned_responses = {}, {}
         self._closed, self._stop_epoch = False, 0
         self._confirmations = {action: secrets.token_urlsafe(24) for action in self.ACTIONS}
         self._secrets = tuple(value for key in ("token", "ready_token")
@@ -364,7 +374,7 @@ class Management:
             if job.should_stop() and self._job["cancellable"]:
                 raise _Cancelled()
             successful = True
-            self._update(result=result, message={"read_settings": "Settings loaded.", "proxy_get": "Admin page loaded."}.get(
+            self._update(result=result, message={"read_settings": "Settings loaded.", "proxy_get": "Account/admin page loaded."}.get(
                 action, "Completed; the local server remains stopped."))
         except _Cancelled:
             job.status = "cancelled"
@@ -374,6 +384,8 @@ class Management:
             self._update(status="error", error=self._safe(error), message="The operation failed; the local server remains stopped.")
             self._log("[management] " + self._safe(error))
         finally:
+            if action in ("proxy_get", "proxy_post"):
+                self._discard_spool(value.get("body_file"), requests=True)
             if reserved:
                 try:
                     # Commands increment generation themselves. Adopt only the
@@ -445,18 +457,22 @@ class Management:
             result = self._command({"command": "management_request", **value}, job)
             if (not isinstance(result, dict) or type(result.get("status")) is not int
                     or not 100 <= result["status"] <= 599 or not isinstance(result.get("headers"), dict)
-                    or not isinstance(result.get("body"), str)):
-                raise ManagementError("INVALID_WEBUI_REPLY", "The embedded admin page returned an invalid response.", 502)
-            size = len(result["body"].encode("utf-8"))
-            if size > self.MAX_RESPONSE:
-                raise ManagementError("WEBUI_RESPONSE_TOO_LARGE", "The admin page exceeds the 1 MiB proxy limit.", 413)
+                    or not isinstance(result.get("body_file"), str) or type(result.get("body_bytes")) is not int
+                    or result.get("body") not in (None, "")):
+                raise ManagementError("INVALID_WEBUI_REPLY", "The embedded account/admin page did not return a valid binary spool response.", 502)
+            path, stream = self._open_response_spool(result, register=True)
+            stream.close()
             with self._lock:
-                # HTTP waiters consume this one bounded slot. Full HTML/forms
-                # never enter public job results or the persistent job events.
+                for previous in self._proxy_responses.values():
+                    self._discard_spool(previous.get("body_file"))
                 self._proxy_responses.clear()
                 if not self._closed and self._proxy_waiter == job.id:
                     self._proxy_responses[job.id] = result
-            return {"http_status": result["status"], "response_bytes": size}
+                else:
+                    self._discard_spool(path)
+            # No body, filepath, selected user ID or credential enters the
+            # public management history. The HTTP waiter owns file delivery.
+            return {"http_status": result["status"], "response_bytes": result["body_bytes"]}
         if action == "read_settings":
             result = self._command({"command": "config_read"}, job)
             if not isinstance(result, dict):
@@ -565,113 +581,308 @@ class Management:
     def close(self):
         with self._lock:
             self._closed = True
+            for path in tuple(self._owned_responses):
+                self._discard_spool(path)
             self._proxy_responses.clear()
             self._proxy_waiter = None
             self._stop_epoch += 1
             if self._job and self._job["running"] and self._job["cancellable"]:
                 self._job["object"].cancel_event.set()
+            # Never unlink an upload while an accepted Go reader can use it.
+            # Active workers remove their request in _run's final cleanup.
+            if self._thread is None or not self._thread.is_alive():
+                for path in tuple(self._owned_requests):
+                    self._discard_spool(path, requests=True)
 
     @staticmethod
     def _rewrite_webui(text):
-        # Match rooted local literals, not https://other.example/webui/admin or
+        # Match rooted local literals, not https://other.example/webui/user or
         # suffixes of another path. Leave existing relative URLs untouched.
-        text = re.sub(r"(?<![A-Za-z0-9:/._-])/webui/admin(?=/|[?#'\"\s<]|$)", "/ios/server/webui/admin", text)
-        return re.sub(r"(?<![A-Za-z0-9:/._-])/webui/webui\.css(?=[?#'\"\s<]|$)", "/ios/server/webui/webui.css", text)
+        text = re.sub(r"(?<![A-Za-z0-9:/._-])/webui/(admin|user)(?=/|[?#'\"\s<]|$)", r"/ios/server/webui/\1", text)
+        return re.sub(r"(?<![A-Za-z0-9:/._-])/webui/(webui\.css|native_local\.js)(?=[?#'\"\s<]|$)", r"/ios/server/webui/\1", text)
 
     @staticmethod
     def _header(headers, name, default=""):
         value = next((value for key, value in headers.items() if key.lower() == name.lower()), default)
         value = value[0] if isinstance(value, list) and value else value
         if not isinstance(value, str) or len(value) > 2048 or "\r" in value or "\n" in value:
-            raise ManagementError("INVALID_WEBUI_HEADERS", "The admin page returned invalid response headers.", 502)
+            raise ManagementError("INVALID_WEBUI_HEADERS", "The account/admin page returned invalid response headers.", 502)
         return value
 
+    def _spool_directory(self, create=False):
+        path = self.data / self.SPOOL_NAME
+        if create:
+            try:
+                path.mkdir(mode=0o700)
+            except FileExistsError:
+                pass
+        metadata = path.lstat()
+        if (not stat.S_ISDIR(metadata.st_mode) or (metadata.st_mode & 0o777) != 0o700
+                or path.resolve(strict=True) != path or metadata.st_uid != os.getuid()):
+            raise ManagementError("UNSAFE_WEBUI_SPOOL", "The private management spool must be an app-owned regular 0700 directory.", 500)
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
+            os.close(descriptor)
+            raise ManagementError("UNSAFE_WEBUI_SPOOL", "The private management spool directory changed during access.", 500)
+        return path, descriptor
+
+    def _discard_spool(self, value, *, requests=False):
+        if value is None:
+            return
+        path = Path(value)
+        with self._lock:
+            owned = self._owned_requests if requests else self._owned_responses
+            if path not in owned:
+                return  # Never unlink a caller-selected or unvalidated path.
+            identity = owned[path]
+            try:
+                root, descriptor = self._spool_directory()
+                try:
+                    if path.parent != root:
+                        return
+                    parent = os.fstat(descriptor)
+                    current = os.stat(path.name, dir_fd=descriptor, follow_symlinks=False)
+                    if (not stat.S_ISREG(current.st_mode) or current.st_nlink != 1
+                            or (current.st_dev, current.st_ino, current.st_ctime_ns, parent.st_dev, parent.st_ino) != identity):
+                        owned.pop(path, None)
+                        self._log("[management] Transfer ownership changed; the replacement file was left untouched.")
+                        return
+                    os.unlink(path.name, dir_fd=descriptor)
+                finally:
+                    os.close(descriptor)
+            except FileNotFoundError:
+                pass
+            except OSError as error:
+                self._log("[management] Could not remove an owned transfer spool: " + str(error))
+                return
+            except ManagementError as error:
+                self._log("[management] " + str(error))
+                return
+            owned.pop(path, None)
+
+    def _request_spool(self, source, length):
+        root, directory = self._spool_directory(create=True)
+        path = root / ("request-" + secrets.token_hex(16) + ".body")
+        descriptor = None
+        try:
+            descriptor = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                                 0o600, dir_fd=directory)
+            os.fchmod(descriptor, 0o600)
+            with self._lock:
+                metadata, parent = os.fstat(descriptor), os.fstat(directory)
+                self._owned_requests[path] = (metadata.st_dev, metadata.st_ino, metadata.st_ctime_ns, parent.st_dev, parent.st_ino)
+            with os.fdopen(descriptor, "wb") as target:
+                descriptor = None
+                try:
+                    remaining = length
+                    while remaining:
+                        if self._closed:
+                            raise ManagementError("CLOSED", "The management runtime closed before this import was admitted.", 409)
+                        block = source.read(min(64 * 1024, remaining))
+                        if not block or not isinstance(block, bytes) or len(block) > remaining:
+                            raise ManagementError("INVALID_BODY", "The account/admin form was truncated before reaching the server.")
+                        target.write(block)
+                        remaining -= len(block)
+                    target.flush()
+                    os.fsync(target.fileno())
+                finally:
+                    try:
+                        target.flush()
+                    finally:
+                        # Capture the opened writer, including truncated/error
+                        # paths; never adopt a replacement at the same pathname.
+                        with self._lock:
+                            metadata, parent = os.fstat(target.fileno()), os.fstat(directory)
+                            self._owned_requests[path] = (metadata.st_dev, metadata.st_ino, metadata.st_ctime_ns, parent.st_dev, parent.st_ino)
+            return path
+        except BaseException:
+            if descriptor is not None:
+                os.close(descriptor)
+            self._discard_spool(path, requests=True)
+            raise
+        finally:
+            os.close(directory)
+
+    def _open_response_spool(self, response, *, register=False):
+        value, size = response.get("body_file"), response.get("body_bytes")
+        if not isinstance(value, str) or type(size) is not int or not 0 <= size <= self.MAX_PROXY_RESPONSE:
+            raise ManagementError("INVALID_WEBUI_SPOOL", "The server returned an invalid transfer file size or path.", 502)
+        path = Path(value)
+        root, directory = self._spool_directory()
+        try:
+            if (not path.is_absolute() or path.parent != root or not re.fullmatch(r"response-[A-Za-z0-9_-]{1,96}\.body", path.name)):
+                raise ManagementError("INVALID_WEBUI_SPOOL", "The server response is outside its private transfer directory.", 502)
+            descriptor = os.open(path.name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0), dir_fd=directory)
+            try:
+                metadata = os.fstat(descriptor)
+                named = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+                if (not stat.S_ISREG(metadata.st_mode) or not stat.S_ISREG(named.st_mode)
+                        or metadata.st_nlink != 1 or metadata.st_uid != os.getuid() or (metadata.st_mode & 0o777) != 0o600
+                        or metadata.st_size != size or (metadata.st_dev, metadata.st_ino) != (named.st_dev, named.st_ino)):
+                    raise ManagementError("INVALID_WEBUI_SPOOL", "The server transfer file changed, is shared, or has an invalid size or mode.", 502)
+                parent = os.fstat(directory)
+                identity = (metadata.st_dev, metadata.st_ino, metadata.st_ctime_ns, parent.st_dev, parent.st_ino)
+                with self._lock:
+                    previous = self._owned_responses.get(path)
+                    if previous is not None and previous != identity:
+                        raise ManagementError("INVALID_WEBUI_SPOOL", "The response file was replaced after validation.", 502)
+                    if register:
+                        self._owned_responses[path] = identity
+                return path, os.fdopen(descriptor, "rb")
+            except BaseException:
+                os.close(descriptor)
+                raise
+        finally:
+            os.close(directory)
+
     def _proxy(self, handler, parsed):
-        prefix = "/ios/server/webui/admin/"
         if handler.command not in ("GET", "POST"):
-            raise ManagementError("METHOD_NOT_ALLOWED", "Admin pages accept only GET and POST.", 405)
+            raise ManagementError("METHOD_NOT_ALLOWED", "Account/admin pages accept only GET and POST.", 405)
         if len(handler.path) > 4096 or parsed.fragment or parsed.netloc or parsed.scheme:
-            raise ManagementError("INVALID_WEBUI_PATH", "Invalid local admin page URL.")
+            raise ManagementError("INVALID_WEBUI_PATH", "Invalid local account/admin page URL.")
         decoded = unquote(parsed.path)
         if (decoded != parsed.path or "\\" in decoded or "\0" in decoded
                 or any(part in (".", "..") for part in decoded.split("/"))):
-            raise ManagementError("INVALID_WEBUI_PATH", "Encoded paths and traversal are not accepted by the admin proxy.")
-        path = "/webui/admin/" + parsed.path[len(prefix):]
+            raise ManagementError("INVALID_WEBUI_PATH", "Encoded paths and traversal are not accepted by the account/admin proxy.")
+        path = parsed.path[len("/ios/server"):]
         if parsed.query:
             path += "?" + parsed.query
-        command = {"method": handler.command, "path": path}
+        command = {"method": handler.command, "path": path, "spool_response": True}
+        length, content_type = 0, ""
         if handler.command == "POST":
             if handler.headers.get("Transfer-Encoding"):
-                raise ManagementError("INVALID_BODY", "Chunked admin forms are not accepted.")
+                raise ManagementError("INVALID_BODY", "Chunked account/admin forms are not accepted.")
             content_type = handler.headers.get("Content-Type", "")
             media_type = content_type.split(";", 1)[0].strip().lower()
             if media_type not in ("application/x-www-form-urlencoded", "multipart/form-data"):
-                raise ManagementError("FORM_REQUIRED", "The existing admin page requires a form submission.", 415)
+                raise ManagementError("FORM_REQUIRED", "The existing account/admin page requires a form submission.", 415)
             try:
                 length = int(handler.headers.get("Content-Length", "0"))
             except ValueError:
                 raise ManagementError("INVALID_BODY", "Content-Length must be a valid integer.") from None
-            if not 0 <= length <= self.MAX_BODY or len(content_type) > 256 or "\r" in content_type or "\n" in content_type:
-                raise ManagementError("BODY_TOO_LARGE", "Admin forms are limited to 256 KiB.", 413)
-            raw = handler.rfile.read(length)
-            if len(raw) != length:
-                raise ManagementError("INVALID_BODY", "The admin form was truncated.")
-            try:
-                command.update(body=raw.decode("utf-8"), content_type=content_type)
-            except UnicodeError:
-                raise ManagementError("INVALID_FORM", "Admin form fields must be valid UTF-8.") from None
+            if not 0 <= length <= self.MAX_PROXY_REQUEST or len(content_type) > 256 or "\r" in content_type or "\n" in content_type:
+                raise ManagementError("BODY_TOO_LARGE", "Account/admin forms and imports are limited to 256 MiB.", 413)
         with self._lock:
             if self._proxy_waiter is not None:
-                raise ManagementError("BUSY", "Another admin page request is still completing. Wait before retrying.", 409)
-            submitted = self._submit("proxy_get" if handler.command == "GET" else "proxy_post", command)
-            identifier, worker = submitted["job"]["id"], self._thread
-            self._proxy_waiter = identifier
-            record = self._job
-        worker.join(timeout=180)
-        with self._lock:
-            response = self._proxy_responses.pop(identifier, None)
-            self._proxy_waiter = None
-            job = {key: value for key, value in record.items() if key != "object"}
-        if worker.is_alive():
-            raise ManagementError("WEBUI_TIMEOUT", "The admin operation is still closing safely. Return to Management to view its status; do not resubmit the form.", 504)
-        if response is None:
-            raise ManagementError("WEBUI_FAILED", job.get("error") or job.get("message") or "The admin operation did not return a page.", 409)
-        content_type = self._header(response["headers"], "Content-Type", "text/html; charset=utf-8")
+                raise ManagementError("BUSY", "Another account/admin request is still completing. Wait before retrying.", 409)
+            self._proxy_waiter = "upload-" + secrets.token_hex(8)
+        request, submitted, identifier, response = None, False, None, None
+        try:
+            if handler.command == "POST":
+                request = self._request_spool(handler.rfile, length)
+                command.update(body_file=str(request), content_type=content_type)
+            else:
+                self._spool_directory_create()
+            with self._lock:
+                submitted_job = self._submit("proxy_get" if handler.command == "GET" else "proxy_post", command)
+                identifier, worker = submitted_job["job"]["id"], self._thread
+                self._proxy_waiter = identifier
+                record, submitted = self._job, True
+            worker.join(timeout=180)
+            with self._lock:
+                response = self._proxy_responses.pop(identifier, None)
+                self._proxy_waiter = None
+                job = {key: value for key, value in record.items() if key != "object"}
+            if worker.is_alive():
+                raise ManagementError("WEBUI_TIMEOUT", "The account/admin operation is still closing safely. Return to Management to view its status; do not resubmit the form.", 504)
+            if response is None:
+                raise ManagementError("WEBUI_FAILED", job.get("error") or job.get("message") or "The account/admin operation did not return a page.", 409)
+            try:
+                self._send_proxy_response(handler, response)
+            finally:
+                self._discard_spool(response["body_file"])
+        finally:
+            if response is not None:
+                self._discard_spool(response.get("body_file"))
+            with self._lock:
+                if self._proxy_waiter == identifier or (identifier is None and str(self._proxy_waiter).startswith("upload-")):
+                    self._proxy_waiter = None
+            if not submitted:
+                self._discard_spool(request, requests=True)
+
+    def _spool_directory_create(self):
+        _, descriptor = self._spool_directory(create=True)
+        os.close(descriptor)
+
+    def _send_proxy_response(self, handler, response):
+        content_type = self._header(response["headers"], "Content-Type", "application/octet-stream")
+        disposition = self._header(response["headers"], "Content-Disposition")
         location = self._header(response["headers"], "Location")
         if location:
             target = urlsplit(location)
-            if target.scheme or target.netloc or not (target.path == "/webui/admin" or target.path.startswith("/webui/admin/")):
-                raise ManagementError("INVALID_WEBUI_REDIRECT", "The admin page attempted to redirect outside its local proxy.", 502)
+            if (target.scheme or target.netloc or target.fragment
+                    or not any(target.path == "/webui/" + group or target.path.startswith("/webui/" + group + "/")
+                               for group in ("admin", "user"))
+                    or unquote(target.path) != target.path or "\\" in target.path
+                    or any(part in (".", "..") for part in target.path.split("/"))):
+                raise ManagementError("INVALID_WEBUI_REDIRECT", "The account/admin page attempted to redirect outside its local proxy.", 502)
             location = "/ios/server" + location
-            if target.path == "/webui/admin":
-                location = "/ios/server/webui/admin/" + ("?" + target.query if target.query else "")
-        body = self._rewrite_webui(response["body"])
-        if content_type.lower().startswith("text/html"):
-            link = '<nav style="margin:8px"><a href="/ios/">Management / 관리 / 管理</a></nav>'
-            body, count = re.subn(r"(<body\b[^>]*>)", lambda match: match[0] + link, body, count=1, flags=re.IGNORECASE)
-            if not count:
-                body = link + body
-        raw = body.encode("utf-8")
-        if len(raw) > self.MAX_RESPONSE:
-            raise ManagementError("WEBUI_RESPONSE_TOO_LARGE", "The rewritten admin page exceeds the 1 MiB proxy limit.", 413)
-        handler.send_response(response["status"])
-        handler.send_header("Content-Type", content_type)
-        handler.send_header("Content-Length", str(len(raw)))
-        if location:
-            handler.send_header("Location", location)
-        handler.end_headers()
-        handler.wfile.write(raw)
+            if target.path in ("/webui/admin", "/webui/user"):
+                location = "/ios/server" + target.path + "/" + ("?" + target.query if target.query else "")
+        additional = {name: self._header(response["headers"], name) for name in ("Content-Description", "Content-Transfer-Encoding")}
+        _, source = self._open_response_spool(response)
+        with source:
+            media_type = content_type.split(";", 1)[0].strip().lower()
+            attachment = bool(disposition)
+            interface = media_type in ("text/html", "text/css", "application/javascript", "text/javascript") and not attachment
+            small_json = media_type == "application/json" and not attachment
+            raw = None
+            if interface or small_json:
+                if response["body_bytes"] > self.MAX_RESPONSE:
+                    raise ManagementError("WEBUI_RESPONSE_TOO_LARGE", "The account/admin interface exceeds the 1 MiB limit.", 413)
+                raw = source.read(self.MAX_RESPONSE + 1)
+                if len(raw) != response["body_bytes"]:
+                    raise ManagementError("INVALID_WEBUI_SPOOL", "The response file changed while reading.", 502)
+                # JSON is data, including exported paths/tokens. Never rewrite
+                # it, even if it contains strings resembling interface URLs.
+                if interface:
+                    try:
+                        body = self._rewrite_webui(raw.decode("utf-8"))
+                    except UnicodeError:
+                        raise ManagementError("INVALID_WEBUI_ENCODING", "The account/admin interface is not valid UTF-8.", 502) from None
+                    if media_type == "text/html":
+                        link = '<nav style="margin:8px"><a href="/ios/">Management / 관리 / 管理</a></nav>'
+                        body, count = re.subn(r"(<body\b[^>]*>)", lambda match: match[0] + link, body, count=1, flags=re.IGNORECASE)
+                        if not count:
+                            body = link + body
+                    raw = body.encode("utf-8")
+                    if len(raw) > self.MAX_RESPONSE:
+                        raise ManagementError("WEBUI_RESPONSE_TOO_LARGE", "The rewritten account/admin interface exceeds 1 MiB.", 413)
+            handler.send_response(response["status"])
+            handler.send_header("Content-Type", content_type)
+            handler.send_header("Content-Length", str(len(raw) if raw is not None else response["body_bytes"]))
+            for name, value in (("Content-Disposition", disposition), ("Location", location), *additional.items()):
+                if value:
+                    handler.send_header(name, value)
+            handler.end_headers()
+            if raw is not None:
+                handler.wfile.write(raw)
+            else:
+                remaining = response["body_bytes"]
+                while remaining:
+                    block = source.read(min(64 * 1024, remaining))
+                    if not block:
+                        raise OSError("The account transfer response ended before its declared size.")
+                    handler.wfile.write(block)
+                    remaining -= len(block)
 
     def _proxy_css(self, handler, parsed):
         if handler.command != "GET" or parsed.query:
-            raise ManagementError("METHOD_NOT_ALLOWED", "The shared admin stylesheet accepts a plain GET only.", 405)
+            raise ManagementError("METHOD_NOT_ALLOWED", "Shared account/admin assets accept a plain GET only.", 405)
+        assets = {"/ios/server/webui/webui.css": ("webui.css", "text/css; charset=utf-8"),
+                  "/ios/server/webui/native_local.js": ("native_local.js", "application/javascript; charset=utf-8")}
+        name, content_type = assets[parsed.path]
         seed = Path(self.config.get("seed_root") or Path(self.config["payload_root"]).parent / "payload")
-        path = seed / "webui/webui.css"
+        path = seed / "webui" / name
         metadata = path.lstat()
         if (not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size <= 256 * 1024
                 or not path.resolve().is_relative_to(seed.resolve())):
-            raise ManagementError("INVALID_WEBUI_CSS", "The bundled admin stylesheet is not a regular bounded file.", 500)
-        handler._send_bytes(path.read_bytes(), "text/css; charset=utf-8")
+            raise ManagementError("INVALID_WEBUI_CSS", "The bundled account/admin asset is not a regular bounded file.", 500)
+        raw = path.read_bytes()
+        if name.endswith(".js"):
+            raw = self._rewrite_webui(raw.decode("utf-8")).encode("utf-8")
+        handler._send_bytes(raw, content_type)
 
     def handle(self, handler):
         """Handle only authenticated API routes; return False for other paths."""
@@ -684,17 +895,17 @@ class Management:
                 if (len(handler.path) > 4096 or parsed.fragment or parsed.netloc or parsed.scheme
                         or any(ord(character) < 32 or ord(character) == 127 for character in handler.path)):
                     raise ManagementError("INVALID_WEBUI_PATH", "Invalid local admin page URL.")
-                if parsed.path == "/ios/server/webui/admin" and handler.command == "GET":
+                if parsed.path in ("/ios/server/webui/admin", "/ios/server/webui/user") and handler.command == "GET":
                     handler.send_response(303)
-                    handler.send_header("Location", "/ios/server/webui/admin/" + ("?" + parsed.query if parsed.query else ""))
+                    handler.send_header("Location", parsed.path + "/" + ("?" + parsed.query if parsed.query else ""))
                     handler.send_header("Content-Length", "0")
                     handler.end_headers()
-                elif parsed.path == "/ios/server/webui/webui.css":
+                elif parsed.path in ("/ios/server/webui/webui.css", "/ios/server/webui/native_local.js"):
                     self._proxy_css(handler, parsed)
-                elif parsed.path.startswith("/ios/server/webui/admin/"):
+                elif parsed.path.startswith(("/ios/server/webui/admin/", "/ios/server/webui/user/")):
                     self._proxy(handler, parsed)
                 else:
-                    raise ManagementError("WEBUI_PATH_DENIED", "Only existing admin pages and the shared stylesheet are available through this proxy.", 404)
+                    raise ManagementError("WEBUI_PATH_DENIED", "Only existing account/admin pages and their exact shared assets are available through this proxy.", 404)
                 return True
             query = parse_qs(parsed.query, keep_blank_values=True)
             if handler.command == "GET" and parsed.path == "/ios/api/state":
@@ -734,6 +945,8 @@ class Management:
                     raise ManagementError("METHOD_NOT_ALLOWED", "This management route does not accept that method.", 405)
             if len(json.dumps(result).encode("utf-8")) > self.MAX_RESPONSE:
                 raise ManagementError("RESPONSE_TOO_LARGE", "Management response exceeded its size limit; narrow the request.", 413)
+        except (BrokenPipeError, ConnectionResetError):
+            return True  # The client left; transfer ownership was still cleaned.
         except ManagementError as error:
             result, status = {"error": self._safe(error), "code": error.code}, error.status
         except Exception as error:

@@ -27,6 +27,7 @@ STAGE_SECONDS = {
 }
 DETAILS = {
     'native_start': {'payload_prepare', 'go_start', 'tool_dependencies'},
+    'native_backend': {'go_start', 'tool_dependencies'},
     'tools': {'dependencies', 'registries', 'texture_codecs', 'model_glb'},
 }
 FIELDS = {'schema', 'probe_kind', 'launch_number', 'sequence', 'stage', 'detail',
@@ -38,8 +39,18 @@ def stage_budgets(require_parity_ui=False):
     # Historical full/core paths retain their exact original ordered phases.
     if not require_parity_ui:
         return dict(STAGE_SECONDS)
-    return {**{name: budget for name, budget in STAGE_SECONDS.items() if name != 'complete'},
-            'management_ui': 120, 'complete': STAGE_SECONDS['complete']}
+    budgets = {}
+    for name, budget in STAGE_SECONDS.items():
+        budgets[name] = budget
+        # Actual A first install spent216.234s in data preparation; Go began
+        # at224.618s, leaving only15.382s of240 for its separate DB startup.
+        # B retains the data cap and adds a real go_start boundary, not a
+        # heartbeat extension. The600s absolute cap remains unchanged.
+        if name == 'native_start':
+            budgets['native_backend'] = 90
+        if name == 'web_tools':
+            budgets['management_ui'] = 120
+    return budgets
 
 
 def read_progress(path):

@@ -63,6 +63,8 @@ def _event(phase, **values):
 
 
 def _prepare_data(config):
+    preparation_started = time.monotonic()
+    timings = {}
     root = Path(config["data_root"])
     if not root.is_absolute():
         raise ValueError("data_root must be absolute")
@@ -72,11 +74,32 @@ def _prepare_data(config):
     from elichika_ios.payload import install_payload, install_tool_data, ensure_config
     library = Path(config.get("packs_root") or root / "sukusta/packs").parent
     library.mkdir(parents=True, exist_ok=True)
+    payload_started = time.monotonic()
+    payload_stage = [None, payload_started]
+    substages = {}
+    def payload_progress(stage, completed, total, current=""):
+        now = time.monotonic()
+        if stage != payload_stage[0]:
+            if payload_stage[0] is not None:
+                previous = payload_stage[0]
+                substages[previous] = substages.get(previous, 0) + now - payload_stage[1]
+            payload_stage[:] = [stage, now]
+        _event("installing", stage=stage, completed=completed, total=total)
     install_payload(seed.parent, root,
-                    progress=lambda stage, completed, total, current="": _event("installing", stage=stage, completed=completed, total=total),
+                    progress=payload_progress,
                     memory_budget_bytes=config.get("memory_budget_bytes"), cancelled=_cancel.is_set)
+    payload_finished = time.monotonic()
+    if payload_stage[0] is not None:
+        previous = payload_stage[0]
+        substages[previous] = substages.get(previous, 0) + payload_finished - payload_stage[1]
+    timings["payload_seconds"] = round(payload_finished - payload_started, 6)
+    timings["payload_stages_seconds"] = {key: round(value, 6) for key, value in substages.items()}
+    tools_started = time.monotonic()
     install_tool_data(seed.parent, root)
+    timings["tool_data_seconds"] = round(time.monotonic() - tools_started, 6)
+    config_started = time.monotonic()
     ensure_config(root, library, config.get("language", "en"))
+    timings["configuration_seconds"] = round(time.monotonic() - config_started, 6)
     required = ("config.json", "assets/db/gl/masterdata.db", "assets/db/jp/masterdata.db", "publickey.pem", "privatekey.pem")
     missing = [name for name in required if not (root / name).is_file()]
     if missing:
@@ -84,6 +107,9 @@ def _prepare_data(config):
     if (hashlib.sha256((root / "publickey.pem").read_bytes()).digest()
             != hashlib.sha256((seed / "publickey.pem").read_bytes()).digest()):
         raise ValueError("The existing server RSA key differs from this game's signed client key. Import the matching installation before starting.")
+    timings["total_seconds"] = round(time.monotonic() - preparation_started, 6)
+    with _lock:
+        _state["preparation_timings"] = timings
     return root
 
 
@@ -269,6 +295,7 @@ def start(config_json):
             _scope.facades["os"].environ["SIFAS_LANG"] = _scope.language
         _cancel.clear()
         _state.update(phase="preparing", ready=False, error="", admin_url="", tools_url="", core_only=bool(config.get("core_only", False)),
+                      preparation_timings={},
                       simulator_probe_only=bool(config.get("simulator_probe_only", False)),
                       experimental_device=config.get("experimental_device") is True,
                       archive_publication_pending=config.get("experimental_device") is True)
@@ -323,6 +350,7 @@ def probe():
     """Native SimulatorProbe evidence: actual NSURLSession TLS plus modules."""
     runtime = json.loads(status())
     safe_runtime = {key: runtime[key] for key in ("phase", "ready", "core_only", "error") if key in runtime}
+    safe_runtime["preparation_timings"] = runtime.get("preparation_timings", {})
     safe_runtime["server"] = {key: runtime.get("server", {})[key] for key in
                               ("phase", "ready", "state", "endpoint", "error") if key in runtime.get("server", {})}
     result = {"schema": 1, "tls_probe": False, "tls_error": "", "runtime": safe_runtime}

@@ -6,16 +6,17 @@ namespace elichika {
 struct ProbeStage { const char *name; double seconds; };
 inline constexpr ProbeStage probeStages[]={{"native_start",240},{"native_health",20},{"tls",30},{"tools",60},
     {"go_stop",30},{"config_read",90},{"go_restart",90},{"python_complete",10},{"web_admin",45},{"web_tools",45},{"complete",5}};
-inline constexpr ProbeStage parityProbeStages[]={{"native_start",240},{"native_health",20},{"tls",30},{"tools",60},
+inline constexpr ProbeStage parityProbeStages[]={{"native_start",240},{"native_backend",90},{"native_health",20},{"tls",30},{"tools",60},
     {"go_stop",30},{"config_read",90},{"go_restart",90},{"python_complete",10},{"web_admin",45},{"web_tools",45},
     {"management_ui",120},{"complete",5}};
 inline int probeStageIndex(const char *name,bool parity=false) {
     if (!name) return -1;
-    if (!std::strcmp(name,"payload_prepare") || !std::strcmp(name,"go_start") || !std::strcmp(name,"tool_dependencies")) return 0;
+    if (!std::strcmp(name,"payload_prepare")) return 0;
+    if (!std::strcmp(name,"go_start") || !std::strcmp(name,"tool_dependencies")) return parity ? 1 : 0;
     if (!std::strcmp(name,"dependencies") || !std::strcmp(name,"registries") ||
-        !std::strcmp(name,"texture_codecs") || !std::strcmp(name,"model_glb")) return 3;
+        !std::strcmp(name,"texture_codecs") || !std::strcmp(name,"model_glb")) return parity ? 4 : 3;
     const auto *stages=parity ? parityProbeStages : probeStages;
-    for (int i=0;i<(parity ? 12 : 11);++i) if (!std::strcmp(name,stages[i].name)) return i;
+    for (int i=0;i<(parity ? 13 : 11);++i) if (!std::strcmp(name,stages[i].name)) return i;
     return -1;
 }
 /* Test-only monotonic deadline policy. Alias/detail transitions and repeated
@@ -31,6 +32,9 @@ public:
     bool advance(const char *name,double now) {
         const int next=probeStageIndex(name,parity_);
         if (sealed_ || next<index_ || next<0 || now<event_ || expired(now)) return false;
+        // Only the actual worker's go_start callback can separate completed
+        // payload preparation from backend initialization in the parity probe.
+        if (parity_ && index_==0 && next==1 && std::strcmp(name,"go_start")) return false;
         if (next!=index_) {
             const bool allowed=coreOnly_ ? ((index_==0 && next==1) || (index_==1 && next==2) ||
                 (index_==2 && next==7) || (index_==7 && next==10)) : next==index_+1;

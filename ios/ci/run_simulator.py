@@ -71,6 +71,10 @@ def validate_reply(value, core_only, *, launch_number=None, require_parity_ui=Fa
     expected_stages = (['native_start', 'native_health', 'tls', 'python_complete', 'complete']
                        if core_only else list(budgets))
     require(stages == expected_stages, 'Native probe did not complete its exact ordered stage history')
+    if require_parity_ui:
+        backend_events = [event for event in events if event['stage'] == 'native_backend']
+        require(backend_events and backend_events[0]['detail'] == 'go_start',
+                'Native backend budget must begin at the actual go_start boundary')
     if not core_only:
         runtime = value.get('runtime_probe', {})
         tools = runtime.get('tools_probe', {})
@@ -109,7 +113,8 @@ def validate_reply(value, core_only, *, launch_number=None, require_parity_ui=Fa
                     'Native probe did not enable the required fresh management UI path')
             ui = value.get('management_ui_probe', {})
             for key in ('ready', 'actual_management_webview', 'page_loaded', 'javascript_ready',
-                        'state_fetch', 'controls_present', 'native_binding', 'go_stopped', 'server_restarted'):
+                        'state_fetch', 'controls_present', 'native_binding', 'go_stopped', 'server_restarted',
+                        'offline_accounts'):
                 require(ui.get(key) is True, 'Actual current management WebView gate failed: ' + key)
             error = ui.get('error')
             require(error is None or error is False or error == '', 'Actual management WebView probe reported an error')
