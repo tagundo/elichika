@@ -28,6 +28,13 @@ static BOOL ELExperimentalArchivePending;
 static BOOL ELStorageError;
 #if ELICHIKA_SIMULATOR_PROBE
 static void (^ELProbeStageHandler)(NSString *stage,NSTimeInterval entered);
+static NSString *ELProbeJavaScriptFailure(NSString *context,NSError *error) {
+    if (!error) return context;
+    id exception=error.userInfo[@"WKJavaScriptExceptionMessage"];
+    NSString *detail=[exception isKindOfClass:NSString.class] ? exception : error.localizedDescription;
+    if (detail.length>512) detail=[detail substringToIndex:512];
+    return [NSString stringWithFormat:@"%@ (%@ %ld): %@",context,error.domain,(long)error.code,detail ?: @""];
+}
 #endif
 static NSTimer *ELPollTimer;
 static UIWindow *ELPanelWindow;
@@ -437,7 +444,7 @@ static void ELHidePanel(void) {
     [web evaluateJavaScript:script completionHandler:^(id value,NSError *error) {
         if (!self.storageProbeReply || self.storageProbeGeneration!=generation) return;
         if (error || ![value isKindOfClass:NSDictionary.class]) {
-            [self finishStorageProbe:[self failedStorageProbe:@"Management localStorage evaluation failed."]]; return;
+            [self finishStorageProbe:[self failedStorageProbe:ELProbeJavaScriptFailure(@"Management localStorage evaluation failed.",error)]]; return;
         }
         BOOL persisted=[value[@"persisted"] boolValue],seeded=[value[@"seeded"] boolValue];
         BOOL ready=[value[@"origin_matches"] boolValue] && web.configuration.websiteDataStore.persistent &&
@@ -477,16 +484,16 @@ static void ELHidePanel(void) {
     NSString *check=[NSString stringWithFormat:@"(()=>{const a=%@,p=window.__elichikaRetentionProbe,f=document.getElementById('elichika-retention-draft');return{same:!!p&&p.token===a.token&&p.pagehide===0&&p.undo.length===1&&p.undo[0].after===2&&p.selection.join(',')==='7,11'&&!!f&&f.value==='unsaved draft',reply:!!p&&p.reply===true};})()",ELJSON(arguments)];
     [manage evaluateJavaScript:seed completionHandler:^(id value,NSError *error) {
         if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
-        if (error || ![value isEqual:@YES]) { [self finishManagementProbe:@"Could not seed the actual management document's unsaved state."]; return; }
+        if (error || ![value isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Could not seed the actual management document's unsaved state.",error)]; return; }
         [content evaluateJavaScript:seed completionHandler:^(id contentSeed,NSError *contentError) {
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
-            if (contentError || ![contentSeed isEqual:@YES]) { [self finishManagementProbe:@"Could not seed the actual Content document's unsaved state."]; return; }
+            if (contentError || ![contentSeed isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Could not seed the actual Content document's unsaved state.",contentError)]; return; }
         self.sections.selectedSegmentIndex=3; [self openSection];
         if (self.web!=tools) { [self finishManagementProbe:@"Revisiting Tools replaced its retained WebView."]; return; }
-        NSString *toolSeed=[seed stringByAppendingString:@"window.ElichikaIOS.request('__probe_deferred_status').then(v=>{window.__elichikaRetentionProbe.reply=v.returned_to_origin===true&&v.other_tab_active===true});true;"];
+        NSString *toolSeed=[seed stringByAppendingString:@";window.ElichikaIOS.request('__probe_deferred_status').then(v=>{window.__elichikaRetentionProbe.reply=v.returned_to_origin===true&&v.other_tab_active===true});true;"];
         [tools evaluateJavaScript:toolSeed completionHandler:^(id seeded,NSError *seedError) {
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
-            if (seedError || ![seeded isEqual:@YES]) { [self finishManagementProbe:@"Could not seed the actual Tools document and deferred native request."]; return; }
+            if (seedError || ![seeded isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Could not seed the actual Tools document and deferred native request.",seedError)]; return; }
             self.sections.selectedSegmentIndex=0; [self openSection];
             if (self.web!=manage) { [self finishManagementProbe:@"Revisiting Manage replaced its retained WebView."]; return; }
             self.sections.selectedSegmentIndex=2; [self openSection];
@@ -513,7 +520,7 @@ static void ELHidePanel(void) {
     [tools evaluateJavaScript:check completionHandler:^(id retained,NSError *error) {
         if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
         if (error || ![retained isKindOfClass:NSDictionary.class] || ![retained[@"same"] isEqual:@YES]) {
-            [self finishManagementProbe:@"Tools lost its unsaved document state while another tab was active."]; return;
+            [self finishManagementProbe:ELProbeJavaScriptFailure(@"Tools lost its unsaved document state while another tab was active.",error)]; return;
         }
         if (![retained[@"reply"] isEqual:@YES]) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/4),dispatch_get_main_queue(),^{
@@ -525,20 +532,20 @@ static void ELHidePanel(void) {
         [tools evaluateJavaScript:check completionHandler:^(id visible,NSError *visibleError) {
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
             if (visibleError || ![visible isKindOfClass:NSDictionary.class] || ![visible[@"same"] isEqual:@YES] || ![visible[@"reply"] isEqual:@YES]) {
-                [self finishManagementProbe:@"Revisiting Tools discarded its document state or deferred native reply."]; return;
+                [self finishManagementProbe:ELProbeJavaScriptFailure(@"Revisiting Tools discarded its document state or deferred native reply.",visibleError)]; return;
             }
             self.sections.selectedSegmentIndex=0; [self openSection];
             if (self.web!=manage) { [self finishManagementProbe:@"The management document was recreated after revisiting other tabs."]; return; }
             [manage evaluateJavaScript:check completionHandler:^(id preserved,NSError *preservedError) {
                 if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
                 if (preservedError || ![preserved isKindOfClass:NSDictionary.class] || ![preserved[@"same"] isEqual:@YES]) {
-                    [self finishManagementProbe:@"Manage lost its unsaved document state after tab switching."]; return;
+                    [self finishManagementProbe:ELProbeJavaScriptFailure(@"Manage lost its unsaved document state after tab switching.",preservedError)]; return;
                 }
                 WKWebView *content=self.sectionWebViews[@2];
                 [content evaluateJavaScript:check completionHandler:^(id contentState,NSError *contentError) {
                     if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
                     if (contentError || ![contentState isKindOfClass:NSDictionary.class] || ![contentState[@"same"] isEqual:@YES]) {
-                        [self finishManagementProbe:@"Content lost its unsaved document state after tab switching."]; return;
+                        [self finishManagementProbe:ELProbeJavaScriptFailure(@"Content lost its unsaved document state after tab switching.",contentError)]; return;
                     }
                     self.retentionProbeRunning=NO; self.retainedDocumentsChecked=YES;
                     [self pollManagementProbe];
@@ -558,7 +565,7 @@ static void ELHidePanel(void) {
     NSString *seed=[NSString stringWithFormat:@"(()=>{const a=%@,f=document.createElement('input');f.hidden=true;f.id='elichika-retention-account-draft';f.value='unsaved account draft';document.body.appendChild(f);window.__elichikaAccountRetention={token:a.token,pagehide:0};window.addEventListener('pagehide',()=>++window.__elichikaAccountRetention.pagehide);return true;})()",ELJSON(arguments)];
     [accounts evaluateJavaScript:seed completionHandler:^(id value,NSError *error) {
         if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
-        if (error || ![value isEqual:@YES]) { [self finishManagementProbe:@"Could not seed the actual Accounts document's unsaved form state."]; return; }
+        if (error || ![value isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Could not seed the actual Accounts document's unsaved form state.",error)]; return; }
         for (NSNumber *section in @[@0,@2,@3,@1]) {
             WKWebView *retained=self.sectionWebViews[section];
             self.sections.selectedSegmentIndex=section.integerValue; [self openSection];
@@ -567,7 +574,7 @@ static void ELHidePanel(void) {
         NSString *check=[NSString stringWithFormat:@"(()=>{const a=%@,p=window.__elichikaAccountRetention,f=document.getElementById('elichika-retention-account-draft');return !!p&&p.token===a.token&&p.pagehide===0&&!!f&&f.value==='unsaved account draft';})()",ELJSON(arguments)];
         [accounts evaluateJavaScript:check completionHandler:^(id retained,NSError *retainedError) {
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
-            if (retainedError || ![retained isEqual:@YES]) { [self finishManagementProbe:@"Accounts lost its unsaved form state after visiting the other three tabs."]; return; }
+            if (retainedError || ![retained isEqual:@YES]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"Accounts lost its unsaved form state after visiting the other three tabs.",retainedError)]; return; }
             self.sections.selectedSegmentIndex=0; [self openSection];
             if (!self.web || self.web!=self.sectionWebViews[@0] || !self.retainedDocumentsChecked) {
                 [self finishManagementProbe:@"Could not return to retained management after the offline Accounts check."]; return;
@@ -607,7 +614,7 @@ static void ELHidePanel(void) {
         [origin callAsyncJavaScript:script arguments:arguments inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:^(id value,NSError *error){
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
             if (self.web!=origin) { [self finishManagementProbe:@"The active management document changed during its API probe."]; return; }
-            if (error || ![value isKindOfClass:NSDictionary.class] || [value[@"error"] boolValue]) { [self finishManagementProbe:@"The actual management JavaScript/API probe failed."]; return; }
+            if (error || ![value isKindOfClass:NSDictionary.class] || [value[@"error"] boolValue]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"The actual management JavaScript/API probe failed.",error)]; return; }
             if (![value[@"waiting"] boolValue]) {
                 if (self.managementProbeStep==2) {
                     if (![value[@"offline_accounts"] isEqual:@YES] || ELCore().ready() || !ELPanelReady() || !self.sections.enabled) {
