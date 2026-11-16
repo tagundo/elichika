@@ -411,7 +411,10 @@ static NSURL *ELAccountsURL(void) {
     NSDictionary *server=[ELRuntimeStatus[@"server"] isKindOfClass:NSDictionary.class] ? ELRuntimeStatus[@"server"] : nil;
     if ([server[@"ready"] boolValue]) return [NSURL URLWithString:@"http://127.0.0.1:8080/webui/user"];
     NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
-    parts.path=@"/ios/server/webui/user/"; parts.fragment=nil;
+    // The signed-out root first loads a page that navigates to the account
+    // picker. Each stopped-server proxy request initializes a scoped Go
+    // runtime; enter the picker directly and avoid that redundant read.
+    parts.path=@"/ios/server/webui/user/login"; parts.fragment=nil;
     return parts.URL;
 }
 static void ELHidePanel(void) {
