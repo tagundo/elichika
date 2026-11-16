@@ -141,6 +141,11 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
     encoder->_video=[AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
     encoder->_audio=[AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:audioSettings];
     encoder->_video.mediaTimeScale=c.fpsNumerator;
+    // A framework-selected chunk may need a longer audio lead than the bounded
+    // offline pump supplies. Request small chunks on both tracks so mux
+    // interleaving cannot wait for a default multi-frame/second-sized chunk.
+    encoder->_video.preferredMediaChunkDuration=CMTimeMake(1,10);
+    encoder->_audio.preferredMediaChunkDuration=CMTimeMake(1,10);
     encoder->_video.expectsMediaDataInRealTime=NO; encoder->_audio.expectsMediaDataInRealTime=NO;
     if (![encoder->_writer canAddInput:encoder->_video] || ![encoder->_writer canAddInput:encoder->_audio])
         return reject(ELMVError(11,@"The MP4 writer could not attach its video and AAC tracks."));
