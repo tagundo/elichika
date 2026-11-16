@@ -15,10 +15,12 @@ namespace {
 const uint8_t kUUID[16] = {0x10,0xdf,0xf3,0xf5,0xcf,0xc3,0x3b,0xe8,0xaa,0xaa,0x3c,0x38,0xa9,0x9d,0x17,0x17};
 intptr_t slide;
 bool installed, active, advancing, sceneAbandoned, finalCameraObserved, resolutionRequested, resolutionReady;
+bool springSnapshotReady, clockSnapshotValid, clockMutated, sceneMutated;
 SIFASMVBindingOriginals original = {};
 SIFASMVBindingConfiguration config = {};
 SIFASMVBindingCallbacks callbacks = {};
 void *director, *observedOverlay, *sessionOverlay, *clockManager, *timeline, *music, *members;
+void *sceneCameraManager;
 void *readbackTexture;
 void *overlayCamera;
 uint32_t directorRoot, overlayRoot, readbackRoot, observedDirectorRoot, observedOverlayRoot;
@@ -39,14 +41,26 @@ NSString *phase=@"idle";
 struct Vector3 { float x,y,z; };
 struct Quaternion { float x,y,z,w; };
 struct BoneSnapshot {
-    void *bone, *transform;
+    void *bone, *transform, *child, *parent;
     uint8_t scalar[96];
     Quaternion rotation;
 };
 std::vector<BoneSnapshot> boneSnapshots;
-struct ManagerSnapshot { void *manager; uint8_t paused; };
+struct ManagerSnapshot {
+    void *manager, *bones;
+    size_t firstBone;
+    uintptr_t boneCount;
+    uint8_t paused;
+};
 std::vector<ManagerSnapshot> managerSnapshots;
+struct SnapshotRoot { void *object; uint32_t handle; };
+constexpr size_t kMaxSnapshotRoots=32768;
+constexpr size_t kMaxSolverCopyBytes=32U*1024U*1024U;
+std::vector<SnapshotRoot> snapshotRoots;
 std::vector<uint8_t> boneBufferSnapshot, colliderBufferSnapshot;
+void *savedManagersArray, *savedJobArrays[2];
+uintptr_t savedManagerCount;
+uint8_t savedNativeArrays[4][16];
 void *savedBoneBuffer, *savedColliderBuffer;
 int32_t savedBoneCount, savedColliderCount, savedJobIndex, savedSafetyCounter;
 uint8_t savedKneeWork[24];
@@ -115,6 +129,32 @@ void releaseManaged(uint32_t &handle) {
     if (handle) fn<RootFree>(0x103a95fb0)(static_cast<int32_t>(handle),nullptr);
     handle=0;
 }
+bool retainSnapshot(void *object) {
+    if (!object || snapshotRoots.size()>=kMaxSnapshotRoots) return false;
+    /* Reserve the complete bounded ledger before allocating its first handle,
+     * so appending an allocated handle cannot lose it to std::bad_alloc. */
+    if (snapshotRoots.capacity()<kMaxSnapshotRoots) snapshotRoots.reserve(kMaxSnapshotRoots);
+    const uint32_t handle=retainManaged(object);
+    if (!handle) return false;
+    snapshotRoots.push_back({object,handle});
+    return true;
+}
+bool snapshotRootsValid() {
+    for (const auto &entry : snapshotRoots)
+        if (!entry.handle || fn<RootTarget>(0x103a95da0)(static_cast<int32_t>(entry.handle),nullptr)!=entry.object) return false;
+    return true;
+}
+bool releaseSnapshotRoots() noexcept {
+    size_t retained=0;
+    for (auto entry : snapshotRoots) {
+        try { releaseManaged(entry.handle); }
+        catch (...) { snapshotRoots[retained++]=entry; }
+    }
+    /* Failed frees remain in the same bounded ledger for a later retry. No
+     * new setup is permitted while this quarantine is nonempty. */
+    snapshotRoots.resize(retained);
+    return retained==0;
+}
 void observeDirector(void *value) {
     if (director==value && observedDirectorRoot) return;
     const uint32_t replacement=retainManaged(value);
@@ -129,21 +169,53 @@ void observeOverlay(void *value) {
     releaseManaged(observedOverlayRoot);
     observedOverlayRoot=replacement; observedOverlay=replacement ? value : nullptr;
 }
+bool ownedSnapshotValid() {
+    if (!springSnapshotReady || !snapshotRootsValid() || !members || !alive(members) ||
+        !load<uint8_t>(members,0x28)) return false; /* Term clears setupGroupData after disposal. */
+    if (load<void *>(members,0x20)!=savedManagersArray) return false;
+    for (size_t i=0;i<4;i++)
+        if (std::memcmp(static_cast<uint8_t *>(members)+0x30+i*16,savedNativeArrays[i],16)) return false;
+    for (size_t i=0;i<2;i++) {
+        void *array=load<void *>(members,0xa8+i*8);
+        if (array!=savedJobArrays[i] || (!array && savedBoneCount)) return false;
+        if (array && load<uintptr_t>(array,0x18)!=2) return false;
+    }
+    if (!savedManagersArray) return savedManagerCount==0 && boneSnapshots.empty();
+    if (load<uintptr_t>(savedManagersArray,0x18)!=savedManagerCount || managerSnapshots.size()!=savedManagerCount) return false;
+    for (size_t i=0;i<managerSnapshots.size();i++) {
+        const auto &manager=managerSnapshots[i];
+        if (load<void *>(savedManagersArray,0x20+i*sizeof(void *))!=manager.manager || !alive(manager.manager) ||
+            load<void *>(manager.manager,0x50)!=manager.bones) return false;
+        if (!manager.bones) { if (manager.boneCount) return false; continue; }
+        if (load<uintptr_t>(manager.bones,0x18)!=manager.boneCount ||
+            manager.firstBone>boneSnapshots.size() || manager.boneCount>boneSnapshots.size()-manager.firstBone) return false;
+        for (uintptr_t j=0;j<manager.boneCount;j++) {
+            const auto &bone=boneSnapshots[manager.firstBone+j];
+            if (load<void *>(manager.bones,0x20+j*sizeof(void *))!=bone.bone || !alive(bone.bone) ||
+                load<void *>(bone.bone,0x98)!=bone.transform || load<void *>(bone.bone,0x20)!=bone.child ||
+                load<void *>(bone.bone,0xa8)!=bone.parent || !alive(bone.transform) || !alive(bone.child) || !alive(bone.parent)) return false;
+        }
+    }
+    return true;
+}
+void requireOwnedSnapshot() {
+    if (!ownedSnapshotValid()) { sceneAbandoned=true; throw 4; }
+}
 bool sceneValidUnchecked() {
-    if (!directorRoot || !overlayRoot ||
+    if (!directorRoot || !overlayRoot || !snapshotRootsValid() ||
         fn<RootTarget>(0x103a95da0)(static_cast<int32_t>(directorRoot),nullptr)!=director ||
         fn<RootTarget>(0x103a95da0)(static_cast<int32_t>(overlayRoot),nullptr)!=sessionOverlay ||
         !alive(director) || !load<uint8_t>(director,0x20)) return false;
     if (load<void *>(director,0x40)!=timeline || load<void *>(director,0x68)!=music ||
-        load<void *>(director,0x50)!=members) return false;
+        load<void *>(director,0x50)!=members || load<void *>(director,0x48)!=sceneCameraManager) return false;
     /* Compare the retained owner's fields before touching a formerly-owned
      * managed wrapper: replacing a field can make its previous target collectible. */
     if (!alive(timeline) || !alive(music) || !alive(members) || !alive(sessionOverlay) || !alive(overlayCamera)) return false;
-    void *manager=load<void *>(director,0x48);
+    void *manager=sceneCameraManager;
     if (!alive(manager)) return false;
     void *final=load<void *>(manager,0x58);
     if (!final) final=load<void *>(manager,0x48);
-    return final==sessionOverlay && sessionOverlay==observedOverlay && load<void *>(sessionOverlay,0x48)==overlayCamera;
+    return final==sessionOverlay && sessionOverlay==observedOverlay && load<void *>(sessionOverlay,0x48)==overlayCamera && ownedSnapshotValid();
 }
 bool sceneValid() noexcept {
     try { return sceneValidUnchecked(); } catch (...) { return false; }
@@ -157,9 +229,11 @@ NSString *managedString(void *object) {
 }
 void freezeDeltas() {
     if (!clockManager) return;
+    if (active && clockSnapshotValid) clockMutated=true;
     for (size_t offset : {size_t(0x78),size_t(0x7c),size_t(0xa8),size_t(0xac)}) put<float>(clockManager,offset,0);
 }
 void completeJobs() {
+    if (springSnapshotReady) requireOwnedSnapshot();
     if (!members) return;
     /* Both managed JobHandle[] buffers, exact SZARRAY layout and 16-byte
      * JobHandle value size are verified in UpdateMultiThread's machine code. */
@@ -176,8 +250,9 @@ void completeJobs() {
     }
 }
 bool snapshotSprings() {
-    completeJobs();
+    springSnapshotReady=false;
     boneSnapshots.clear(); managerSnapshots.clear(); boneBufferSnapshot.clear(); colliderBufferSnapshot.clear();
+    if (!members || !load<uint8_t>(members,0x28)) return false;
     savedBoneBuffer=load<void *>(members,0x30);
     savedBoneCount=load<int32_t>(members,0x38);
     savedColliderBuffer=load<void *>(members,0x50);
@@ -186,37 +261,54 @@ bool snapshotSprings() {
     savedSafetyCounter=load<int32_t>(members,0xa0);
     std::memcpy(savedKneeWork,static_cast<uint8_t *>(members)+0x78,sizeof(savedKneeWork));
     if (savedBoneCount<0 || savedBoneCount>100000 || savedColliderCount<0 || savedColliderCount>100000 ||
-        (savedBoneCount && !savedBoneBuffer) || (savedColliderCount && !savedColliderBuffer)) return false;
-    void *managers=load<void *>(members,0x20);
-    if (!managers) return savedBoneCount==0;
-    const uintptr_t count=load<uintptr_t>(managers,0x18);
-    if (count>128) return false;
+        (savedBoneCount && !savedBoneBuffer) || (savedColliderCount && !savedColliderBuffer) ||
+        static_cast<size_t>(savedBoneCount)*96+static_cast<size_t>(savedColliderCount)*64>kMaxSolverCopyBytes) return false;
+    for (size_t i=0;i<4;i++) std::memcpy(savedNativeArrays[i],static_cast<uint8_t *>(members)+0x30+i*16,16);
+    savedManagersArray=load<void *>(members,0x20);
+    savedManagerCount=savedManagersArray ? load<uintptr_t>(savedManagersArray,0x18) : 0;
+    if (savedManagerCount>128 || (!savedManagersArray && savedBoneCount) ||
+        static_cast<size_t>(savedBoneCount)*4+savedManagerCount*2+snapshotRoots.size()+3>kMaxSnapshotRoots) return false;
+    if (savedManagersArray && !retainSnapshot(savedManagersArray)) return false;
+    for (size_t i=0;i<2;i++) {
+        savedJobArrays[i]=load<void *>(members,0xa8+i*8);
+        if (!savedJobArrays[i]) { if(savedBoneCount) return false; continue; }
+        if (!retainSnapshot(savedJobArrays[i]) || load<uintptr_t>(savedJobArrays[i],0x18)!=2) return false;
+    }
     boneSnapshots.reserve(static_cast<size_t>(savedBoneCount));
-    for (uintptr_t i=0;i<count;i++) {
-        void *manager=load<void *>(managers,0x20+i*sizeof(void *));
-        if (!manager) return false;
-        managerSnapshots.push_back({manager,load<uint8_t>(manager,0x63)});
+    managerSnapshots.reserve(static_cast<size_t>(savedManagerCount));
+    for (uintptr_t i=0;i<savedManagerCount;i++) {
+        void *manager=load<void *>(savedManagersArray,0x20+i*sizeof(void *));
+        if (!retainSnapshot(manager) || !alive(manager)) return false;
         void *bones=load<void *>(manager,0x50); /* GetSwingBones0x10183e110 */
-        if (!bones) continue;
-        const uintptr_t length=load<uintptr_t>(bones,0x18);
-        if (length>static_cast<uintptr_t>(savedBoneCount)) return false;
+        const uintptr_t length=bones ? load<uintptr_t>(bones,0x18) : 0;
+        if (bones && !retainSnapshot(bones)) return false;
+        if (length>static_cast<uintptr_t>(savedBoneCount) || boneSnapshots.size()+length>static_cast<size_t>(savedBoneCount)) return false;
+        managerSnapshots.push_back({manager,bones,boneSnapshots.size(),length,load<uint8_t>(manager,0x63)});
         for (uintptr_t j=0;j<length;j++) {
             void *bone=load<void *>(bones,0x20+j*sizeof(void *));
-            if (!bone) return false;
-            void *transform=load<void *>(bone,0x98);
-            if (!transform || !load<void *>(bone,0x20)) return false;
-            BoneSnapshot item={}; item.bone=bone; item.transform=transform;
-            std::memcpy(item.scalar,static_cast<uint8_t *>(bone)+0xb0,sizeof(item.scalar));
-            item.rotation=fn<Quaternion (*)(void *,const void *)>(0x10397392c)(transform,nullptr);
+            if (!retainSnapshot(bone) || !alive(bone)) return false;
+            void *transform=load<void *>(bone,0x98), *child=load<void *>(bone,0x20), *parent=load<void *>(bone,0xa8);
+            if (!retainSnapshot(transform) || !retainSnapshot(child) || !retainSnapshot(parent) ||
+                !alive(transform) || !alive(child) || !alive(parent)) return false;
+            BoneSnapshot item={}; item.bone=bone; item.transform=transform; item.child=child; item.parent=parent;
             boneSnapshots.push_back(item);
         }
     }
     if (boneSnapshots.size()!=static_cast<size_t>(savedBoneCount)) return false;
+    springSnapshotReady=true;
+    requireOwnedSnapshot();
+    completeJobs();
+    requireOwnedSnapshot();
+    for (auto &item : boneSnapshots) {
+        std::memcpy(item.scalar,static_cast<uint8_t *>(item.bone)+0xb0,sizeof(item.scalar));
+        item.rotation=fn<Quaternion (*)(void *,const void *)>(0x10397392c)(item.transform,nullptr);
+    }
     if (savedBoneCount) boneBufferSnapshot.assign(static_cast<uint8_t *>(savedBoneBuffer),static_cast<uint8_t *>(savedBoneBuffer)+static_cast<size_t>(savedBoneCount)*96);
     if (savedColliderCount) colliderBufferSnapshot.assign(static_cast<uint8_t *>(savedColliderBuffer),static_cast<uint8_t *>(savedColliderBuffer)+static_cast<size_t>(savedColliderCount)*64);
     return true;
 }
 void resetSpringsToInitialPose() {
+    requireOwnedSnapshot();
     /* This reproduces SetSwingBones' initial-tip assignment without calling
      * its allocator or its manager-initialized early-return path. */
     for (const auto &item : managerSnapshots) fn<void (*)(void *,bool,const void *)>(0x10183b550)(item.manager,false,nullptr);
@@ -225,14 +317,17 @@ void resetSpringsToInitialPose() {
         std::memcpy(&rotation,item.scalar,sizeof(rotation));
         fn<void (*)(void *,Quaternion,const void *)>(0x103973a04)(item.transform,rotation,nullptr);
     }
+    requireOwnedSnapshot();
     fn<void (*)(void *,bool,const void *)>(0x101522e24)(director,false,nullptr);
+    requireOwnedSnapshot();
     fn<SetTime>(0x10397c6c8)(timeline,0,nullptr);
     fn<InstanceVoid>(0x10397c81c)(timeline,nullptr);
+    requireOwnedSnapshot();
     fn<InstanceVoid>(0x10148a204)(members,nullptr); /* collect initial animated transforms */
+    requireOwnedSnapshot();
     for (size_t i=0;i<boneSnapshots.size();i++) {
         const auto &item=boneSnapshots[i];
-        void *child=load<void *>(item.bone,0x20);
-        Vector3 tip=fn<Vector3 (*)(void *,const void *)>(0x103973314)(child,nullptr);
+        Vector3 tip=fn<Vector3 (*)(void *,const void *)>(0x103973314)(item.child,nullptr);
         uint8_t *buffer=static_cast<uint8_t *>(savedBoneBuffer)+i*96;
         std::memcpy(buffer+0x48,&tip,sizeof(tip));
         std::memcpy(buffer+0x54,&tip,sizeof(tip));
@@ -243,8 +338,9 @@ void resetSpringsToInitialPose() {
     fn<InstanceVoid>(0x10148a000)(members,nullptr); /* RequestAllSafeCorrect: two initial correction ticks */
 }
 void restoreSprings() {
-    if (!members) return;
+    requireOwnedSnapshot();
     completeJobs();
+    requireOwnedSnapshot();
     if (load<void *>(members,0x30)!=savedBoneBuffer || load<int32_t>(members,0x38)!=savedBoneCount ||
         load<void *>(members,0x50)!=savedColliderBuffer || load<int32_t>(members,0x58)!=savedColliderCount)
         throw 1; /* Scene resource ownership changed; never write a stale buffer. */
@@ -257,17 +353,36 @@ void restoreSprings() {
         fn<void (*)(void *,Quaternion,const void *)>(0x103973a04)(item.transform,item.rotation,nullptr);
     }
     for (const auto &item : managerSnapshots) fn<void (*)(void *,bool,const void *)>(0x10183b550)(item.manager,item.paused!=0,nullptr);
+}
+bool clearOwnedSetup() noexcept {
+    springSnapshotReady=false;
     boneSnapshots.clear(); managerSnapshots.clear(); boneBufferSnapshot.clear(); colliderBufferSnapshot.clear();
+    bool released=releaseSnapshotRoots();
+    for (uint32_t *handle : {&directorRoot,&overlayRoot,&overlayCameraRoot,&readbackRoot}) {
+        try { releaseManaged(*handle); } catch (...) { released=false; }
+    }
+    timeline=nullptr; music=nullptr; members=nullptr; sessionOverlay=nullptr; overlayCamera=nullptr; sceneCameraManager=nullptr;
+    readbackTexture=nullptr; clockManager=nullptr; screenManager=nullptr;
+    savedManagersArray=nullptr; savedJobArrays[0]=nullptr; savedJobArrays[1]=nullptr;
+    savedBoneBuffer=nullptr; savedColliderBuffer=nullptr; savedManagerCount=0;
+    resolutionRequested=false; resolutionReady=false; clockSnapshotValid=false; clockMutated=false; sceneMutated=false;
+    captureIndex=-1; captured=false; haveTick=false; advancing=false;
+    callbacks={};
+    return released;
 }
 void restore() {
-    if (!active) return;
-    const bool restoreScene=!sceneAbandoned && sceneValid();
+    if (!active) {
+        if (!clearOwnedSetup()) { lastFailure=@"MV managed-root cleanup is incomplete; setup must be retried before exporting."; phase=@"cleanup-incomplete"; }
+        return;
+    }
+    bool restoreScene=!sceneAbandoned && sceneMutated && sceneValid();
     active=false; advancing=false;
     bool restorationFailed=false;
     auto attempt=[&](auto operation) { try { operation(); } catch (...) { restorationFailed=true; } };
     if (restoreScene) attempt([&] { completeJobs(); });
-    if (clockManager) {
+    if (clockSnapshotValid && clockMutated && clockManager) {
         attempt([&] {
+            if (fn<void *(*)()>(0x10081498c)()!=clockManager) throw 5;
             const double elapsed=fn<double (*)()>(0x100a91d70)()-wallStart;
             std::memcpy(static_cast<uint8_t *>(clockManager)+0x30,clockSnapshot,sizeof(clockSnapshot));
             /* Rebase anchors so the next normal frame cannot absorb the
@@ -280,13 +395,16 @@ void restore() {
         if (!restoreScene || !timeline || !alive(timeline)) return;
         fn<SetTime>(0x10397c6c8)(timeline,savedTimelineTime,nullptr);
         fn<InstanceVoid>(0x10397c81c)(timeline,nullptr);
+        if (!sceneValid()) { restoreScene=false; sceneAbandoned=true; throw 4; }
         fn<SetMode>(0x10397c64c)(timeline,savedUpdateMode,nullptr);
         if (savedPlayState==1) fn<InstanceVoid>(0x10397c9cc)(timeline,nullptr);
         else fn<InstanceVoid>(0x10397c960)(timeline,nullptr);
     });
     attempt([&] {
         if (!restoreScene || !music || !alive(music)) return;
+        if (!sceneValid()) { restoreScene=false; sceneAbandoned=true; throw 4; }
         fn<void (*)(void *,int32_t,const void *)>(0x10149dc74)(music,savedMusicTime,nullptr);
+        if (!sceneValid()) { restoreScene=false; sceneAbandoned=true; throw 4; }
         put<int32_t>(music,0x1c,savedMusicTime);
         void *sound=fn<void *(*)(void *)>(0x1035bc074)(*reinterpret_cast<void **>(0x1058f1550ULL+slide));
         if (sound && savedMusicPlaying) {
@@ -301,15 +419,7 @@ void restore() {
             fn<SetResolution>(0x10396462c)(savedWidth,savedHeight,savedFullScreenMode,savedRefreshRate,nullptr);
     });
     attempt([&] { if (readbackTexture && alive(readbackTexture)) fn<SetObject>(0x103953490)(readbackTexture,nullptr); });
-    readbackTexture=nullptr;
-    attempt([&] { releaseManaged(readbackRoot); });
-    attempt([&] { releaseManaged(directorRoot); });
-    attempt([&] { releaseManaged(overlayRoot); });
-    attempt([&] { releaseManaged(overlayCameraRoot); });
-    boneSnapshots.clear(); managerSnapshots.clear(); boneBufferSnapshot.clear(); colliderBufferSnapshot.clear();
-    timeline=nullptr; music=nullptr; members=nullptr; sessionOverlay=nullptr; overlayCamera=nullptr;
-    resolutionRequested=false; resolutionReady=false;
-    captureIndex=-1; captured=false; haveTick=false;
+    if (!clearOwnedSetup()) restorationFailed=true;
     if (restorationFailed) lastFailure=@"One or more game resources rejected MV state restoration.";
     phase=restorationFailed ? @"restore-incomplete" : @"idle";
 }
@@ -343,8 +453,15 @@ BOOL SIFASMVBindingsInstallOriginals(const SIFASMVBindingOriginals *value, NSErr
 }
 
 NSDictionary *SIFASMVBindingsStatus(void) {
+    bool observed=false;
+    if (installed && observedDirectorRoot && [NSThread isMainThread]) {
+        try {
+            observed=fn<RootTarget>(0x103a95da0)(static_cast<int32_t>(observedDirectorRoot),nullptr)==director &&
+                     alive(director) && load<uint8_t>(director,0x20)!=0;
+        } catch (...) { observed=false; }
+    }
     return @{ @"profile":@"GL-3.12.0-071607a0", @"installed":@(installed),
-              @"active":@(active), @"liveDirectorObserved":@(director!=nullptr),
+              @"active":@(active), @"liveDirectorObserved":@(observed),
               @"finalOverlayObserved":@(finalCameraObserved),
               @"simulationTick":@(tick), @"phase":phase,
               @"lastFailure":lastFailure ?: @"" };
@@ -361,7 +478,10 @@ NSDictionary *SIFASMVBindingsSongSnapshot(void) {
         NSString *sheet=managedString(load<void *>(cue,0x10));
         NSString *name=managedString(load<void *>(cue,0x18));
         if (!sheet.length || !name.length) return @{};
+        const int32_t identity=fn<InstanceInt>(0x103952b08)(director,nullptr);
+        if (!identity) return @{};
         return @{ @"sheet":sheet, @"cue":name,
+                  @"scene_identity":@(identity),
                   @"music_length_ms":@(load<int32_t>(machine,0x40)),
                   @"current_time_ms":@(load<int32_t>(machine,0x1c)),
                   @"start_time_ms":@0, @"source_offset_ms":@0,
@@ -372,25 +492,37 @@ NSDictionary *SIFASMVBindingsSongSnapshot(void) {
 
 BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallbacks sink, NSError **out) {
     if (!onMain(out)) return NO;
+    if (!active) restore(); /* Retry any prior bounded root quarantine first. */
+    if (!snapshotRoots.empty() || directorRoot || overlayRoot || overlayCameraRoot || readbackRoot) {
+        if(out)*out=error(@"Managed roots from the previous export could not be released."); return NO;
+    }
     if (!installed || active || !director || !observedDirectorRoot || !sink.nextStep || !sink.frame || !sink.failed ||
         value.width<16 || value.height<16 || value.width>4096 || value.height>4096 ||
         value.simulationHz!=60) {
         if (out) *out=error(@"Load a 3D MV before exporting with supported dimensions and simulation rate.");
         return NO;
     }
+    struct BeginRollback {
+        bool committed=false;
+        ~BeginRollback() { if (!committed) restore(); }
+    } rollback;
     try {
         phase=@"snapshot-live-director";
         if (fn<RootTarget>(0x103a95da0)(static_cast<int32_t>(observedDirectorRoot),nullptr)!=director || !alive(director)) { if(out)*out=error(@"The MV scene has closed."); return NO; }
         timeline=load<void *>(director,0x40); music=load<void *>(director,0x68);
         members=load<void *>(director,0x50);
-        if (!timeline || !music || load<uint8_t>(music,0x18)) { if(out)*out=error(@"The MV is still loading."); return NO; }
         void *manager=load<void *>(director,0x48);
+        sceneCameraManager=manager;
+        if (!retainSnapshot(timeline) || !retainSnapshot(music) || !retainSnapshot(members) || !retainSnapshot(manager)) {
+            if(out)*out=error(@"Cannot retain the MV's timeline, song, member and camera managers."); return NO;
+        }
+        if (!alive(timeline) || !alive(music) || !alive(members) || load<uint8_t>(music,0x18)) { if(out)*out=error(@"The MV is still loading."); return NO; }
         if (!alive(manager)) { if(out)*out=error(@"The MV camera manager is no longer valid."); return NO; }
         sessionOverlay=load<void *>(manager,0x58);
         if (!sessionOverlay) sessionOverlay=load<void *>(manager,0x48);
-        if (!alive(sessionOverlay)) { if(out)*out=error(@"The MV final overlay is no longer valid."); return NO; }
+        if (!retainSnapshot(sessionOverlay) || !alive(sessionOverlay)) { if(out)*out=error(@"The MV final overlay is no longer valid."); return NO; }
         overlayCamera=load<void *>(sessionOverlay,0x48);
-        if (!alive(overlayCamera)) { if(out)*out=error(@"The MV final camera is no longer valid."); return NO; }
+        if (!retainSnapshot(overlayCamera) || !alive(overlayCamera)) { if(out)*out=error(@"The MV final camera is no longer valid."); return NO; }
         if (fn<bool (*)(void *,const void *)>(0x103930014)(sessionOverlay,nullptr)) {
             if(out)*out=error(@"Resume the MV before exporting; its pause or blur effect is active."); return NO;
         }
@@ -433,6 +565,7 @@ BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallb
         phase=@"snapshot-spring-buffers";
         if (!members || !snapshotSprings()) { if(out)*out=error(@"The MV spring buffers differ from the verified game layout."); return NO; }
         std::memcpy(clockSnapshot,static_cast<uint8_t *>(clockManager)+0x30,sizeof(clockSnapshot));
+        clockSnapshotValid=true;
         clockEpoch=load<double>(clockManager,0x60);
         unscaledEpoch=load<double>(clockManager,0x70);
         wallStart=fn<double (*)()>(0x100a91d70)();
@@ -444,8 +577,11 @@ BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallb
         overlayCameraRoot=retainManaged(overlayCamera);
         if (!overlayCameraRoot) { fail(@"Cannot retain the MV final camera."); return NO; }
         phase=@"manual-timeline-mode";
+        requireOwnedSnapshot();
+        sceneMutated=true;
         fn<SetMode>(0x10397c64c)(timeline,3,nullptr); /* DirectorUpdateMode.Manual */
         fn<InstanceVoid>(0x10397c9cc)(timeline,nullptr);
+        requireOwnedSnapshot();
         put<uint32_t>(music,0x50,1); /* playing, no pause/fade/finish flags; CRI is paused below */
         phase=@"reset-initial-pose-and-springs";
         resetSpringsToInitialPose();
@@ -462,6 +598,7 @@ BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallb
         if (!readbackRoot) { fail(@"Cannot retain the export readback texture."); return NO; }
         phase=@"allocate-readable-rgba32-texture";
         fn<NewTexture>(0x10396e1d0)(readbackTexture,value.width,value.height,4,false,nullptr); /* RGBA32, no mips */
+        clockMutated=true;
         put<int32_t>(clockManager,0xd8,static_cast<int32_t>(value.simulationHz));
         put<float>(clockManager,0xfc,1.f);
         freezeDeltas();
@@ -470,6 +607,7 @@ BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallb
         fn<SetResolution>(0x10396462c)(value.width,value.height,savedFullScreenMode,savedRefreshRate,nullptr);
         lastFailure=nil;
         phase=@"waiting-native-rendering-resolution";
+        rollback.committed=true;
         return YES;
     } catch (...) {
         NSString *failedPhase=phase;
@@ -523,6 +661,7 @@ extern "C" void SIFASMVTimeUpdate(void *manager) {
         phase=@"evaluate-live-timeline";
         fn<SetTime>(0x10397c6c8)(timeline,seconds,nullptr);
         fn<InstanceVoid>(0x10397c81c)(timeline,nullptr);
+        if (!sceneValid()) { sceneAbandoned=true; fail(@"The MV resources changed while evaluating an offline frame."); }
     } catch (...) { fail(@"Unity failed to advance an offline MV frame."); }
 }
 
@@ -644,11 +783,12 @@ extern "C" void SIFASMVCameraPostRender(void *camera, const void *methodInfo) {
         fn<ReadPixels>(0x103970088)(readbackTexture,{0,0,static_cast<float>(config.width),static_cast<float>(config.height)},0,0,false,nullptr);
         fn<SetObject>(0x10395fac8)(previous,nullptr); restoreActive=false;
         const uint64_t needed=static_cast<uint64_t>(config.width)*config.height*4;
-        const uint64_t bytes=fn<uint64_t (*)(void *,const void *)>(0x10396eea4)(readbackTexture,nullptr);
+        const int64_t bytes=fn<int64_t (*)(void *,const void *)>(0x10396eea4)(readbackTexture,nullptr);
         const uint8_t *rgba=fn<const uint8_t *(*)(void *,int32_t,const void *)>(0x10396ee28)(readbackTexture,0,nullptr);
-        if (!rgba || bytes<needed) { fail(@"Unity returned an incomplete final MV render."); return; }
+        if (!rgba || bytes<=0 || static_cast<uint64_t>(bytes)!=needed) { fail(@"Unity returned an incomplete final MV render."); return; }
         NSMutableData *data=[NSMutableData dataWithLength:static_cast<NSUInteger>(needed)];
         uint8_t *bgra=static_cast<uint8_t *>(data.mutableBytes);
+        if (!data || !bgra) { fail(@"There is not enough memory for the final MV frame."); return; }
         const size_t rowBytes=static_cast<size_t>(config.width)*4;
         for (uint32_t y=0;y<config.height;y++) {
             const uint8_t *row=rgba+(config.height-1-y)*rowBytes;

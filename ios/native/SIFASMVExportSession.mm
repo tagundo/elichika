@@ -76,6 +76,10 @@ static NSString *ELMVPhase(NSString *phase) {
     NSTimer *_watchdog;
     NSDictionary *_lastStatus;
     NSURL *_completedURL;
+    __weak UIWindow *_gameWindow;
+    UIView *_inputBlocker;
+    NSDictionary *_pendingNotice;
+    NSTimer *_noticeTimer;
 }
 + (instancetype)shared;
 - (NSDictionary *)status;
@@ -89,6 +93,9 @@ static NSString *ELMVPhase(NSString *phase) {
 - (void)schedulePump:(ELMVExportRun *)run;
 - (void)cleanup:(ELMVExportRun *)run terminal:(NSString *)terminal message:(NSString *)message;
 - (void)finishCleanup:(ELMVExportRun *)run;
+- (BOOL)installInputBlocker;
+- (void)removeInputBlocker;
+- (void)showPendingNotice;
 @end
 
 static bool ELMVNext(void *context, uint64_t *tick, int64_t *capture) {
@@ -157,12 +164,71 @@ static NSString *ELMVReadiness(void) {
         [center addObserver:self selector:@selector(background:) name:UIApplicationDidEnterBackgroundNotification object:nil];
         [center addObserver:self selector:@selector(memoryWarning:) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
         [center addObserver:self selector:@selector(sceneClosed:) name:UISceneDidDisconnectNotification object:nil];
+        [center addObserver:self selector:@selector(becameActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
     }
     return self;
 }
 - (void)background:(NSNotification *)note { [self cancelWithReason:ELMVText(@"Export cancelled because the app entered the background.",@"앱이 백그라운드로 전환되어 내보내기가 취소되었습니다.",@"アプリがバックグラウンドに移ったため、書き出しをキャンセルしました。")]; }
 - (void)memoryWarning:(NSNotification *)note { [self cancelWithReason:ELMVText(@"Export cancelled because iOS reported low memory. Try a lower resolution.",@"iOS의 메모리 부족 경고로 내보내기가 취소되었습니다. 해상도를 낮춰 보세요.",@"iOSのメモリ不足警告により、書き出しをキャンセルしました。解像度を下げてお試しください。")]; }
-- (void)sceneClosed:(NSNotification *)note { [self cancelWithReason:ELMVText(@"Export cancelled because the app scene closed.",@"앱 화면이 닫혀 내보내기가 취소되었습니다.",@"アプリの画面が閉じられたため、書き出しをキャンセルしました。")]; }
+- (void)sceneClosed:(NSNotification *)note {
+    if (!_gameWindow || note.object==_gameWindow.windowScene)
+        [self cancelWithReason:ELMVText(@"Export cancelled because the app scene closed.",@"앱 화면이 닫혀 내보내기가 취소되었습니다.",@"アプリの画面が閉じられたため、書き出しをキャンセルしました。")];
+}
+- (void)becameActive:(NSNotification *)note { [self showPendingNotice]; }
+- (BOOL)installInputBlocker {
+    if (!ElichikaHostShowGame()) return NO;
+    UIWindow *window=ElichikaHostPresenter().view.window;
+    UIView *gameView=window.rootViewController.view;
+    if (!window || !gameView || window.hidden) return NO;
+    _gameWindow=window;
+    _inputBlocker=[[UIView alloc] initWithFrame:gameView.bounds];
+    _inputBlocker.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+    _inputBlocker.backgroundColor=UIColor.clearColor; _inputBlocker.userInteractionEnabled=YES;
+    _inputBlocker.accessibilityIdentifier=@"Elichika.MVExport.InputBlocker";
+    UILabel *hint=[UILabel new]; hint.translatesAutoresizingMaskIntoConstraints=NO;
+    hint.text=ELMVText(@"Exporting MP4 · Hold the upper-right corner for 2 seconds for progress or cancel.",@"MP4 내보내는 중 · 오른쪽 위를 2초간 길게 누르면 진행 상황 확인 또는 취소가 가능합니다.",@"MP4を書き出し中 · 右上を2秒間長押しすると進行状況の確認やキャンセルができます。");
+    hint.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
+    hint.textColor=UIColor.whiteColor; hint.backgroundColor=[UIColor.blackColor colorWithAlphaComponent:.65];
+    hint.textAlignment=NSTextAlignmentCenter; hint.numberOfLines=0;
+    hint.layer.cornerRadius=6; hint.clipsToBounds=YES;
+    [_inputBlocker addSubview:hint]; [gameView addSubview:_inputBlocker];
+    [NSLayoutConstraint activateConstraints:@[
+        [hint.centerXAnchor constraintEqualToAnchor:_inputBlocker.centerXAnchor],
+        [hint.bottomAnchor constraintEqualToAnchor:_inputBlocker.safeAreaLayoutGuide.bottomAnchor constant:-12],
+        [hint.widthAnchor constraintLessThanOrEqualToAnchor:_inputBlocker.widthAnchor constant:-32],
+        [hint.widthAnchor constraintLessThanOrEqualToConstant:560]]];
+    // Host's menu button belongs to the UIWindow; refresh it above the game
+    // view. Its window long-press still sees touches on this descendant view.
+    ElichikaHostShowGame(); return YES;
+}
+- (void)removeInputBlocker { [_inputBlocker removeFromSuperview]; _inputBlocker=nil; _gameWindow=nil; }
+- (void)showPendingNotice {
+    if (!_pendingNotice || _run) return;
+    if (UIApplication.sharedApplication.applicationState!=UIApplicationStateActive) {
+        [_noticeTimer invalidate]; _noticeTimer=nil; return;
+    }
+    UIViewController *presenter=ElichikaHostPresenter();
+    UIViewController *visible=[presenter isKindOfClass:UINavigationController.class] ? ((UINavigationController *)presenter).visibleViewController : presenter;
+    const BOOL dismissing=presenter.isBeingDismissed || visible.isBeingDismissed;
+    if (!dismissing && [visible isKindOfClass:NSClassFromString(@"ELMVExportController")]) {
+        _pendingNotice=nil; [_noticeTimer invalidate]; _noticeTimer=nil; return;
+    }
+    UIWindowScene *scene=presenter.view.window.windowScene;
+    if (!presenter || !presenter.view.window || (scene && scene.activationState!=UISceneActivationStateForegroundActive) ||
+        presenter.presentingViewController || presenter.presentedViewController || dismissing) {
+        if (!_noticeTimer) {
+            __weak ELMVExportCoordinator *weakSelf=self;
+            _noticeTimer=[NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(__unused NSTimer *timer) { [weakSelf showPendingNotice]; }];
+        }
+        return;
+    }
+    NSDictionary *notice=_pendingNotice; _pendingNotice=nil; [_noticeTimer invalidate]; _noticeTimer=nil;
+    NSString *message=[NSString stringWithFormat:@"%@\n\n%@",notice[@"message"] ?: @"",
+        ELMVText(@"Hold the upper-right corner for 2 seconds to reopen MP4 export.",@"MP4 내보내기를 다시 열려면 오른쪽 위를 2초간 길게 누르세요.",@"MP4書き出しを再度開くには、右上を2秒間長押ししてください。")];
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:ELMVPhase(notice[@"phase"]) message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:ELMVText(@"OK",@"확인",@"OK") style:UIAlertActionStyleDefault handler:nil]];
+    [presenter presentViewController:alert animated:YES completion:nil];
+}
 - (NSURL *)completedURL { return _completedURL; }
 - (NSDictionary *)status {
     NSAssert(NSThread.isMainThread,@"MV status belongs to main");
@@ -193,9 +259,11 @@ static NSString *ELMVReadiness(void) {
     NSString *readiness=ELMVReadiness();
     if (readiness.length) { _lastStatus=@{@"phase":@"failed",@"busy":@NO,@"message":readiness}; return; }
     int64_t milliseconds=0;
-    NSDictionary *song=ELMVValidatedSong(SIFASMVBindingsSongSnapshot(),&milliseconds);
-    if (!song) {
-        _lastStatus=@{@"phase":@"failed",@"busy":@NO,@"message":ELMVText(@"The MV song snapshot is incomplete or invalid (cue sheet, cue, gain or timing). Wait for loading to finish.",@"MV 음원 정보(큐 시트, 큐, 음량 또는 시간)가 누락되었거나 올바르지 않습니다. 로딩이 끝날 때까지 기다려 주세요.",@"MVの楽曲情報（キューシート、キュー、音量、再生時間）が不足しているか無効です。読み込みの完了をお待ちください。")}; return;
+    NSDictionary *initialSnapshot=SIFASMVBindingsSongSnapshot();
+    NSDictionary *song=ELMVValidatedSong(initialSnapshot,&milliseconds);
+    int64_t sceneIdentity=0;
+    if (!song || !ELMVInteger(initialSnapshot[@"scene_identity"],INT32_MIN,INT32_MAX,&sceneIdentity) || !sceneIdentity) {
+        _lastStatus=@{@"phase":@"failed",@"busy":@NO,@"message":ELMVText(@"The MV song snapshot is incomplete or invalid (scene, cue sheet, cue, gain or timing). Wait for loading to finish.",@"MV 음원 정보(장면, 큐 시트, 큐, 음량 또는 시간)가 누락되었거나 올바르지 않습니다. 로딩이 끝날 때까지 기다려 주세요.",@"MVの楽曲情報（シーン、キューシート、キュー、音量、再生時間）が不足しているか無効です。読み込みの完了をお待ちください。")}; return;
     }
     if (![@[@30,@60] containsObject:@(fps)] || ![@[@720,@1080,@2160] containsObject:@(MIN(width,height))] ||
         width>4096 || height>4096 || ![@[@"hevc",@"h264"] containsObject:codec]) return;
@@ -207,7 +275,11 @@ static NSString *ELMVReadiness(void) {
     c.videoBitRate=base*(fps/30); c.audioBitRate=192000;
     run->configuration=c; run->clock=std::make_unique<elichika::MVExportClock>(c.frameCount,fps,60,run->generation);
     _run=run;
+    _pendingNotice=nil; [_noticeTimer invalidate]; _noticeTimer=nil;
     _watchdog=[NSTimer scheduledTimerWithTimeInterval:.25 target:self selector:@selector(watch:) userInfo:nil repeats:YES];
+    if (![self installInputBlocker]) {
+        [self fail:ELMVText(@"The game window is unavailable. Reopen the MV and try again.",@"게임 화면을 사용할 수 없습니다. MV를 다시 열고 시도하세요.",@"ゲーム画面を使用できません。MVを開き直してお試しください。") run:run]; return;
+    }
     NSString *trustedRoot=ElichikaHostConfiguration()[@"data_root"];
     // Filesystem validation and disk preflight run before freezing Unity.
     dispatch_async(_worker, ^{
@@ -243,6 +315,11 @@ static NSString *ELMVReadiness(void) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (_run!=run || run->stopped.load()) return;
                 if (failure) { [self fail:failure run:run]; return; }
+                NSDictionary *fresh=SIFASMVBindingsSongSnapshot(); int64_t freshIdentity=0;
+                if (!ELMVInteger(fresh[@"scene_identity"],INT32_MIN,INT32_MAX,&freshIdentity) || !freshIdentity || freshIdentity!=sceneIdentity ||
+                    ![fresh[@"sheet"] isEqual:song[@"sheet"]] || ![fresh[@"cue"] isEqual:song[@"cue"]]) {
+                    [self fail:ELMVText(@"The loaded MV changed during export preparation. Open the intended MV and start again.",@"내보내기를 준비하는 동안 MV가 변경되었습니다. 원하는 MV를 열고 다시 시작하세요.",@"書き出しの準備中にMVが変更されました。目的のMVを開いて再度開始してください。") run:run]; return;
+                }
                 run->phase=@"snapshot-and-freeze"; run->bindingsActive=YES;
                 SIFASMVBindingConfiguration binding={(uint32_t)width,(uint32_t)height,60};
                 SIFASMVBindingCallbacks callbacks={(__bridge void *)run,ELMVNext,ELMVFrame,ELMVFailed}; NSError *error=nil;
@@ -431,7 +508,10 @@ static NSString *ELMVReadiness(void) {
                   @"videoFrames":@(run->videoCount.load()),@"audioSamples":@(run->audioCount.load()),
                   @"frameCount":@(c.frameCount),@"sampleCount":@(c.audioSampleCount),@"codec":c.codec ?: @"",
                   @"width":@(c.width),@"height":@(c.height),@"fps":@(c.fpsNumerator)};
-    _run=nil; [_watchdog invalidate]; _watchdog=nil;
+    _run=nil; [_watchdog invalidate]; _watchdog=nil; [self removeInputBlocker];
+    if ([run->terminalPhase isEqual:@"completed"] || [run->terminalPhase isEqual:@"failed"]) {
+        _pendingNotice=_lastStatus; [self showPendingNotice];
+    }
 }
 @end
 
@@ -457,7 +537,7 @@ static NSString *ELMVReadiness(void) {
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated]; [self refresh];
     __weak ELMVExportController *weakSelf=self;
-    self.refreshTimer=[NSTimer scheduledTimerWithTimeInterval:.25 repeats:YES block:^(NSTimer *timer) { [weakSelf refresh]; }];
+    self.refreshTimer=[NSTimer scheduledTimerWithTimeInterval:.25 repeats:YES block:^(__unused NSTimer *timer) { [weakSelf refresh]; }];
 }
 - (void)viewWillDisappear:(BOOL)animated { [super viewWillDisappear:animated]; [self.refreshTimer invalidate]; self.refreshTimer=nil; }
 - (void)done { [self dismissViewControllerAnimated:YES completion:nil]; }
@@ -535,6 +615,9 @@ static NSString *ELMVReadiness(void) {
             NSUInteger shortSide=[@[@720,@1080,@2160][self.resolution.selectedSegmentIndex] unsignedIntegerValue];
             NSUInteger longSide=shortSide*16/9;
             [[ELMVExportCoordinator shared] startWidth:self.landscape ? longSide : shortSide height:self.landscape ? shortSide : longSide fps:self.rate.selectedSegmentIndex==0 ? 30 : 60 codec:self.codec.selectedSegmentIndex==0 ? @"hevc" : @"h264"];
+            if ([SIFASMVExportStatus()[@"busy"] boolValue]) {
+                [self dismissViewControllerAnimated:YES completion:^{ ElichikaHostShowGame(); }];
+            }
         }
         [self refresh];
     } else if (path.section==3) {
@@ -555,7 +638,11 @@ static NSString *ELMVReadiness(void) {
 
 void ElichikaPresentMVExportMenu(UIViewController *presenter) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ ElichikaPresentMVExportMenu(presenter); }); return; }
-    if (!presenter) return;
+    if (!ElichikaHostShowGame()) return;
+    presenter=ElichikaHostPresenter();
+    if (!presenter || presenter.isBeingDismissed) return;
+    UIViewController *visible=[presenter isKindOfClass:UINavigationController.class] ? ((UINavigationController *)presenter).visibleViewController : presenter;
+    if ([visible isKindOfClass:ELMVExportController.class] || presenter.presentedViewController || presenter.presentingViewController) return;
     ELMVExportController *controller=[[ELMVExportController alloc] initWithStyle:UITableViewStyleInsetGrouped];
     CGSize size=presenter.view.window.bounds.size;
     if (size.width<=0 || size.height<=0) size=UIScreen.mainScreen.bounds.size;

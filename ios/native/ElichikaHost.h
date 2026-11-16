@@ -8,6 +8,7 @@ FOUNDATION_EXPORT __attribute__((visibility("default"))) void ElichikaHostReport
 FOUNDATION_EXPORT __attribute__((visibility("default"))) NSString *ElichikaHostDiagnosticsJSON(void);
 FOUNDATION_EXPORT NSDictionary *ElichikaHostConfiguration(void);
 FOUNDATION_EXPORT UIViewController * _Nullable ElichikaHostPresenter(void);
+FOUNDATION_EXPORT BOOL ElichikaHostShowGame(void);
 FOUNDATION_EXPORT NSString * _Nullable ElichikaHostImportDocument(NSArray<NSString *> *types, NSError **error);
 FOUNDATION_EXPORT NSArray<NSString *> * _Nullable ElichikaHostImportDocuments(NSArray<NSString *> *types, BOOL multiple, NSError **error);
 FOUNDATION_EXPORT BOOL ElichikaHostExportDocument(NSString *path, NSError **error);

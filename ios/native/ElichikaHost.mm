@@ -418,6 +418,13 @@ static void ELHidePanel(void) {
     ELPanelWindow.hidden=YES;
     UIWindow *window=ELGameWindow ?: ELFindGameWindow(); [window makeKeyWindow];
 }
+BOOL ElichikaHostShowGame(void) {
+    if (!NSThread.isMainThread || !ELCore().started()) return NO;
+    UIWindow *window=ELGameWindow ?: ELFindGameWindow();
+    if (!window) return NO;
+    ELGameWindow=window; ELHidePanel(); ELRefreshMenu();
+    return YES;
+}
 @implementation ELPanelController
 - (void)viewDidLoad {
     [super viewDidLoad]; self.view.backgroundColor=UIColor.systemBackgroundColor;
@@ -1219,6 +1226,11 @@ static void ELHidePanel(void) {
 
 void ElichikaHostShowManagement(void) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(),^{ ElichikaHostShowManagement(); }); return; }
+    if ([SIFASMVExportStatus()[@"busy"] boolValue]) {
+        ElichikaHostShowGame();
+        ElichikaPresentMVExportMenu(ElichikaHostPresenter());
+        return;
+    }
     ELGameWindow=ELFindGameWindow();
     if (!ELPanelWindow) {
         UIWindowScene *scene=ELGameWindow.windowScene;
