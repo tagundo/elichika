@@ -479,7 +479,7 @@ class VisibilityRecoveryTests(unittest.TestCase):
         with mock.patch.object(c,'VISIBILITY_RECOVERY',self.pin):
             return c.validate_visibility_recovery(self.source,self.inv,self.plan)
 
-    def test_exact_recovery_preserves_raw_acks_original_halt_and_fresh_trace_boundary(self):
+    def test_historical_visibility_import_is_preserved_but_is_not_the_current_seed(self):
         gh,_=self.github();(self.root/'runner').mkdir();work=c.initialize_bootstrap_evidence(self.root/'runner')
         with mock.patch.object(c,'VISIBILITY_RECOVERY',self.pin):
             result=c.import_visibility_recovery(gh,self.current,self.root/'incoming',work,self.inv,self.plan,Public(self.records))
@@ -488,15 +488,15 @@ class VisibilityRecoveryTests(unittest.TestCase):
             meta={'id':123,'name':ref['artifact_name'],'expired':False,'size_in_bytes':len(raw),
                 'digest':'sha256:'+c.digest(raw),'workflow_run':{'id':self.current['run_id'],'head_sha':self.current['source_sha']}}
             ref['artifact_sha256']=c.digest(raw)
-            c.prepare_segment(GithubArtifact(raw,meta),self.current,ref,1,self.root/'next-in',self.root/'next-work',self.root/'lineage',self.inv,self.plan)
+            with self.assertRaises(c.ChainError):
+                c.prepare_segment(GithubArtifact(raw,meta),self.current,ref,1,self.root/'next-in',self.root/'next-work',self.root/'lineage',self.inv,self.plan)
         self.assertEqual(result['status'],'VISIBILITY_HALT_IMPORTED')
         self.assertEqual(result['account_writes'],0)
         self.assertEqual(c.raw_journals(work),self.pin['raw_journal_sha256'])
         self.assertEqual(c.file_sha(work/'recovered-segment.json'),self.pin['receipt_sha256'])
         self.assertEqual(c.read_json(work/'recovered-segment.json')['status'],'HALTED')
         self.assertEqual(c.file_sha(work/'recovered-slice-transfer-events.jsonl'),self.pin['transfer_events_sha256'])
-        self.assertEqual(set(p.name for p in (self.root/'next-work').iterdir()),set(c.JOURNALS))
-        self.assertEqual(c.raw_journals(self.root/'next-work'),self.pin['raw_journal_sha256'])
+        self.assertFalse((self.root/'next-work').exists())
 
     def test_recovery_run_source_workflow_job_and_artifact_binding_are_exact(self):
         for table,key,value in (('run','head_sha','f'*40),('run','workflow_id',1),('run','status','in_progress'),

@@ -67,8 +67,51 @@ MAX_TOTAL = 256 * 1024**2
 JOURNALS = ('journal.json', 'journal.events.jsonl')
 TRACE = 'slice-transfer-events.jsonl'
 RECEIPT = 'segment.json'
+# Only this latest, drained HALT can be reconciled into a new bootstrap.
+# Its original receipt/journals/trace are immutable, never relabeled PAUSED.
+HALT_RECOVERY = {'run_id': 43757544497,
+ 'run_attempt': 1,
+ 'source_sha': '5ee47d61583ea34fa574e318128d52a84962c3d5',
+ 'workflow_id': 419149617,
+ 'job_id': 133128906585,
+ 'segment': 3,
+ 'artifact_id': 14221348304,
+ 'artifact_name': 'archive-upload-segment-03-43757544497-a1',
+ 'artifact_bytes': 3845806,
+ 'artifact_sha256': '674b299d7884d234cbe7b6cdcf984fd02a6b33b9efd8d0a8571ff707fe898553',
+ 'receipt_sha256': '0a9e47b5d70c3359fc9fa876ddb448261fc88e3977f3630ad96ccde81195ab69',
+ 'raw_journal_sha256': {'journal.events.jsonl': 'df83f07262012983a60bbda22dad78e30ac5aaa4bbdb77ebd1b067571bc01156',
+                        'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee'},
+ 'transfer_events_sha256': '6d9cf24139bf2bd13a11694f54e7d6329d79c7724419b4a3cd0c2dc5d6dd739c',
+ 'file_bytes': {'journal.events.jsonl': 19272077,
+                'segment.json': 1832,
+                'journal.json': 1160,
+                'slice-transfer-events.jsonl': 2498013},
+ 'counts': {'PUT_ACKNOWLEDGED': 127,
+            'REMOTE_METADATA_VERIFIED': 22854,
+            'STAGED': 3,
+            'journal_objects': 22984,
+            'total': 42830},
+ 'parent': {'artifact_id': 14201879965,
+            'artifact_name': 'archive-upload-segment-02-43757544497-a1',
+            'artifact_sha256': '6fb2a2187554282d2f9f83af1905b552ddd1e05c1fa90c98c20aec34faaa8dfc',
+            'raw_journal_sha256': {'journal.events.jsonl': 'ab7527d38a5e24d7d875b807a5014cc861ccf28555996181e375a8ecee175a39',
+                                   'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee'},
+            'receipt_sha256': 'd20ae34fdc85b64653159d2ade4d533bc545ffef6148b69f94ef6801728adc19',
+            'run_attempt': 1,
+            'run_id': 43757544497,
+            'source_sha': '5ee47d61583ea34fa574e318128d52a84962c3d5'},
+ 'unresolved_put': {'item': 'elichika-assets-20261115-e316340d-fa6f6031-b01',
+                    'md5': '14fd372e4bcbf5bc40c02292678c4051',
+                    'path': 'packs/iwbf95',
+                    'sha256': '42bb94692d7040adc19d567a8c3d8e1409925e4945d66bb03692f259977d3415',
+                    'size': 1040173},
+ 'never_submitted_staged': ['jzpao2', 'k0jfna']}
+HALT_AUDIT = {name: 'recovered-halt-' + name for name in (*JOURNALS, RECEIPT, TRACE)}
+RESOLUTION_AUDIT = 'halt-resolution.json'
 ADDITIVE_PATHS = {
     'tools/archive_resume/chain_control.py', 'tools/archive_resume/test_chain_control.py',
+    'tools/archive_resume/test_halt_recovery.py',
     'tools/archive_resume/resumable_publisher.py', 'tools/archive_resume/test_resumable_publisher.py',
     '.github/workflows/archive-upload-resume.yml', '.github/workflows/archive-upload-segment.yml', QA_WORKFLOW,
     'tools/archive_inventory/test_owned_publisher.py', 'tools/archive_inventory/activation.json',
@@ -798,6 +841,291 @@ def import_visibility_recovery(github, identity, incoming, work, inventory, plan
     return receipt
 
 
+
+def halt_recovery_provenance(github, identity):
+    """One new task-branch chain may consume only the exact latest HALT."""
+    pin = HALT_RECOVERY
+    require(identity.get('repository') == REPOSITORY and identity.get('workflow_path') == WORKFLOW and
+            identity.get('run_attempt') == 1 and positive(identity.get('run_id')) and
+            valid_sha(identity.get('source_sha'), 40), 'Latest HALT recovery requires one exact first-attempt current chain')
+    row = github.api(f'/repos/{REPOSITORY}/actions/runs/{pin["run_id"]}')
+    require(row.get('id') == pin['run_id'] and row.get('run_attempt') == pin['run_attempt'] and
+            row.get('head_sha') == pin['source_sha'] and row.get('workflow_id') == pin['workflow_id'] and
+            row.get('path') == WORKFLOW and row.get('head_branch') == BRANCH and row.get('event') == 'workflow_dispatch' and
+            row.get('head_repository', {}).get('full_name') == REPOSITORY and
+            row.get('status') == 'completed' and row.get('conclusion') == 'failure',
+            'The exact latest halted upload run differs')
+    values = github.api(f'/repos/{REPOSITORY}/actions/workflows/archive-upload-resume.yml/runs?'
+        'branch=codex%2Fasset-upload-resume-20261115&event=workflow_dispatch&per_page=100')
+    rows = values.get('workflow_runs', [])
+    require(type(values.get('total_count')) is int and values['total_count'] <= 100 and
+            isinstance(rows, list) and len(rows) == values['total_count'] and
+            all(positive(r.get('id')) for r in rows), 'Recovery chronology query is incomplete or unbounded')
+    successors = [r for r in rows if r['id'] > pin['run_id']]
+    require(identity['run_id'] > pin['run_id'] and len(successors) == 1 and
+            successors[0].get('id') == identity['run_id'] and successors[0].get('run_attempt') == 1 and
+            successors[0].get('head_sha') == identity['source_sha'] and successors[0].get('path') == WORKFLOW and
+            successors[0].get('head_branch') == BRANCH and successors[0].get('event') == 'workflow_dispatch' and
+            successors[0].get('head_repository', {}).get('full_name') == REPOSITORY,
+            'Recovery seed already has another production successor; newest checkpoint review is required')
+    job = github.api(f'/repos/{REPOSITORY}/actions/jobs/{pin["job_id"]}')
+    require(job.get('id') == pin['job_id'] and job.get('run_id') == pin['run_id'] and
+            job.get('head_sha') == pin['source_sha'] and job.get('run_attempt') == pin['run_attempt'] and
+            job.get('name') == f'segment_{pin["segment"]:02d} / Upload segment {pin["segment"]}' and
+            job.get('status') == 'completed' and job.get('conclusion') == 'failure',
+            'The exact latest halted upload job differs')
+    meta = github.api(f'/repos/{REPOSITORY}/actions/artifacts/{pin["artifact_id"]}')
+    validate_artifact(meta, pin['run_id'], pin['source_sha'], pin['artifact_name'], pin['artifact_sha256'])
+    require(meta.get('id') == pin['artifact_id'] and meta.get('size_in_bytes') == pin['artifact_bytes'],
+            'The exact latest halted artifact differs')
+    return meta
+
+
+def _halt_receipt_valid(receipt):
+    pin = HALT_RECOVERY
+    lineage = {'repository': REPOSITORY, 'run_id': pin['run_id'], 'run_attempt': pin['run_attempt'],
+               'source_sha': pin['source_sha'], 'workflow_path': WORKFLOW,
+               'segment': pin['segment'], 'parent': pin['parent']}
+    require(receipt.get('schema') == 1 and receipt.get('status') == 'HALTED' and receipt.get('phase') == 'data' and
+            receipt.get('halt_reason') == {'exception_class': 'Failure', 'phase': 'data',
+                'public_message': 'Unresolved begun PUT prevents automatic continuation'} and
+            receipt.get('lineage') == lineage and receipt.get('identity_sha256') == IDENTITY_SHA and
+            receipt.get('all_workers_reaped') is True and type(receipt.get('active_workers')) is int and
+            receipt['active_workers'] == 0 and type(receipt.get('active_puts')) is int and receipt['active_puts'] == 0 and
+            receipt.get('unresolved_puts') == [pin['unresolved_put']] and
+            receipt.get('never_submitted_staged') == pin['never_submitted_staged'] and
+            receipt.get('never_submitted_index_staged') == [] and receipt.get('counts') == pin['counts'] and
+            receipt.get('credentials_in_receipt') is False and
+            receipt.get('raw_journal_sha256') == pin['raw_journal_sha256'] and
+            receipt.get('transfer_events_sha256') == pin['transfer_events_sha256'],
+            'Checkpoint is not the exact drained single-unresolved-PUT HALT')
+    validate_reference(lineage['parent'])
+
+
+def _record_counts(records):
+    counts = {'total': 42830, 'journal_objects': len(records['objects'])}
+    for row in records['objects'].values():
+        counts[row['status']] = counts.get(row['status'], 0) + 1
+    return counts
+
+
+def _halt_trace_valid(receipt, trace, records):
+    """This exception proves the ONE unresolved finish; the general audit stays strict."""
+    begins, finishes, unresolved, ever = {}, set(), {}, set()
+    with Path(trace).open('rb') as stream:
+        while True:
+            line = stream.readline(8193)
+            if not line: break
+            require(len(line) <= 8192 and line.endswith(b'\n'), 'Recovery transfer audit is incomplete')
+            event = json.loads(line); kind = event.get('type')
+            require(kind in ('put_begin', 'put_ack', 'put_unresolved', 'put_public_md5') and
+                    set(event) == ({'type', 'item', 'path', 'size', 'sha256', 'md5'} |
+                        (set() if kind == 'put_public_md5' else {'attempt'})), 'Recovery transfer event differs')
+            row = {key: event[key] for key in ('item', 'path', 'size', 'sha256', 'md5')}
+            require(row['item'] in layout.ITEMS and isinstance(row['path'], str) and row['path'].startswith('packs/') and
+                    type(row['size']) is int and valid_sha(row['sha256']) and valid_sha(row['md5'], 32),
+                    'Recovery transfer identity differs')
+            record = records['objects'].get(row['path'][6:])
+            require(record is not None and all(record.get(k) == v for k, v in row.items()),
+                    'Recovery transfer event lacks its exact source journal')
+            key = (row['item'], row['path'])
+            if kind == 'put_begin':
+                attempt = event['attempt']
+                require(positive(attempt) and attempt == len(begins) + 1 and attempt not in begins and
+                        (key not in unresolved or unresolved[key] == row), 'Recovery BEGIN is duplicate or reordered')
+                begins[attempt] = row; unresolved[key] = row; ever.add(key)
+            elif kind in ('put_ack', 'put_unresolved'):
+                attempt = event['attempt']
+                require(attempt in begins and attempt not in finishes and begins[attempt] == row,
+                        'Recovery ACK/result has no unique matching BEGIN')
+                finishes.add(attempt)
+                if kind == 'put_ack': unresolved.pop(key, None)
+            else:
+                require(unresolved.get(key) == row, 'Recovery public resolution has no matching unresolved PUT')
+                unresolved.pop(key)
+    target = HALT_RECOVERY['unresolved_put']; key = (target['item'], target['path'])
+    require(set(begins) == finishes and unresolved == {key: target},
+            'Recovery trace is not drained with the exact sole unresolved PUT')
+    name = target['path'][6:]
+    require(records['objects'].get(name) == {**target, 'status': 'STAGED'} and
+            sorted(n for n, r in records['objects'].items() if r['status'] == 'STAGED') ==
+                sorted([name, *HALT_RECOVERY['never_submitted_staged']]) and
+            all((records['objects'][n]['item'], records['objects'][n]['path']) not in ever
+                for n in HALT_RECOVERY['never_submitted_staged']) and
+            _record_counts(records) == receipt['counts'],
+            'Recovery STAGED/ACK counts or never-submitted identities differ')
+
+
+def _halt_final_event(path):
+    path = Path(path)
+    with path.open('rb') as stream:
+        stream.seek(max(0, path.stat().st_size - 8193))
+        lines = stream.read(8193).splitlines()
+    try:
+        last = json.loads(lines[-1]) if lines else None
+    except (ValueError, UnicodeError):
+        raise ChainError('Immutable recovered journal has an invalid final status') from None
+    require(last == {'type': 'status', 'status': 'SEGMENT_HALTED'},
+            'Immutable recovered journal does not end with its actual HALTED status')
+
+
+def validate_halt_recovery(directory, inventory, plan):
+    directory = Path(directory); pin = HALT_RECOVERY
+    expected = {**pin['raw_journal_sha256'], TRACE: pin['transfer_events_sha256'], RECEIPT: pin['receipt_sha256']}
+    require({p.name for p in directory.iterdir()} == set(expected), 'Latest HALT recovery evidence scope differs')
+    for name, sha in expected.items():
+        path = directory / name
+        require(path.is_file() and not path.is_symlink() and path.stat().st_size == pin['file_bytes'][name] and
+                file_sha(path) == sha, 'Pinned latest HALT raw evidence differs')
+    receipt = read_json(directory / RECEIPT, u.CHUNK); _halt_receipt_valid(receipt)
+    records = replay_journal(directory, inventory, plan, allow_torn_tail=False)
+    _halt_final_event(directory / JOURNALS[1])
+    require(not records['index_objects'] and records['legacy_continuation_markers'] == 1,
+            'Latest HALT has unexpected index or legacy continuation history')
+    _halt_trace_valid(receipt, directory / TRACE, records)
+    return records
+
+
+def check_halt_recovery_public(records, public=None):
+    """Anonymous reads only, including a bounded complete SHA256 of the one file."""
+    public = public or scope.BoundedPublic(); target = HALT_RECOVERY['unresolved_put']; checked = 0; found = None
+    for item in layout.ITEMS:
+        remote = public.metadata(item, attempts=1)
+        require(remote is not None, 'Owned recovery destination is absent')
+        files = u.owned_metadata(remote, item, EXPECTED_IDENTITY['session'],
+                                 EXPECTED_IDENTITY['inventory_sha256'], EXPECTED_IDENTITY['account'])
+        for key, file in files.items():
+            if not key.startswith('packs/'): continue
+            record = records['objects'].get(key[6:])
+            require(record is not None and record['item'] == item and record['path'] == key,
+                    'Visible recovery file has no exact durable reference')
+            require(u.remote_equal(file, record['size'], record['md5']), 'Recovery public size/MD5 conflicts')
+            checked += 1
+        if item == target['item']: found = files.get(target['path'])
+    require(u.remote_equal(found, target['size'], target['md5']), 'The sole unresolved PUT is not publicly size/MD5 verified')
+    url = 'https://archive.org/download/' + target['item'] + '/' + urllib.parse.quote(target['path'], safe='/')
+    sha, md5, count, deadline = hashlib.sha256(), hashlib.md5(), 0, time.monotonic() + 180
+    with public.open(url) as response:
+        require(response.status == 200 and response.headers.get('Content-Encoding', 'identity').lower() == 'identity',
+                'Recovery public file is not a complete identity response')
+        length = response.headers.get('Content-Length')
+        require(length is None or (isinstance(length, str) and length.isdigit() and int(length) == target['size']),
+                'Recovery public Content-Length differs')
+        while True:
+            require(time.monotonic() < deadline, 'Recovery public full-file verification timed out')
+            block = response.read(min(u.CHUNK, target['size'] - count + 1))
+            if not block: break
+            count += len(block); require(count <= target['size'], 'Recovery public file exceeds exact size')
+            sha.update(block); md5.update(block)
+    require(count == target['size'] and sha.hexdigest() == target['sha256'] and md5.hexdigest() == target['md5'],
+            'Recovery public full-file SHA256/MD5 differs')
+    return {'owned_items_checked': len(layout.ITEMS), 'visible_exact_size_md5_checked': checked,
+            'missing_ack_allows_reput': False, 'unresolved_identity': target,
+            'public_metadata_size_md5_verified': True, 'full_body_bytes': count,
+            'full_body_sha256': sha.hexdigest(), 'full_body_md5': md5.hexdigest(), 'account_writes': 0}
+
+
+def _halt_public_checks_valid(checks):
+    target = HALT_RECOVERY['unresolved_put']
+    require(isinstance(checks, dict) and set(checks) == {'owned_items_checked', 'visible_exact_size_md5_checked',
+        'missing_ack_allows_reput', 'unresolved_identity', 'public_metadata_size_md5_verified',
+        'full_body_bytes', 'full_body_sha256', 'full_body_md5', 'account_writes'} and
+        checks['owned_items_checked'] == len(layout.ITEMS) and type(checks['visible_exact_size_md5_checked']) is int and
+        1 <= checks['visible_exact_size_md5_checked'] <= HALT_RECOVERY['counts']['journal_objects'] and
+        checks['missing_ack_allows_reput'] is False and checks['unresolved_identity'] == target and
+        checks['public_metadata_size_md5_verified'] is True and checks['full_body_bytes'] == target['size'] and
+        checks['full_body_sha256'] == target['sha256'] and checks['full_body_md5'] == target['md5'] and
+        type(checks['account_writes']) is int and checks['account_writes'] == 0,
+        'Recovery public resolution proof differs')
+
+
+def _halt_promotion():
+    target = HALT_RECOVERY['unresolved_put']
+    return u.canonical({'type': 'objects', 'name': target['path'][6:],
+                        'record': {**target, 'status': 'REMOTE_METADATA_VERIFIED'}})
+
+
+def _halt_resolution(identity, checks):
+    _halt_public_checks_valid(checks)
+    return {'schema': 1, 'kind': 'EXACT_PUBLIC_MD5_AND_FULL_SHA256_RESOLUTION',
+            'current_identity': identity, 'original_recovery': HALT_RECOVERY,
+            'public_checks': checks, 'journal_status': 'REMOTE_METADATA_VERIFIED',
+            'original_halt_status_preserved': True, 'credentials_in_receipt': False, 'account_writes': 0}
+
+
+def _halt_bootstrap(identity, hashes, audit_sha, checks):
+    counts = dict(HALT_RECOVERY['counts']); counts['STAGED'] -= 1
+    if not counts['STAGED']: counts.pop('STAGED')
+    counts['REMOTE_METADATA_VERIFIED'] = counts.get('REMOTE_METADATA_VERIFIED', 0) + 1
+    return {'schema': 1, 'status': 'RESOLVED_PUT_HALT_IMPORTED', 'current_identity': identity,
+            'policy': 'ONE_EXACT_LATEST_HALT_PUBLIC_MD5_FULL_SHA256', 'recovery': HALT_RECOVERY,
+            'original_halt_status_preserved': True, 'original_raw_journal_sha256': HALT_RECOVERY['raw_journal_sha256'],
+            'raw_journal_sha256': hashes, 'resolution_audit_sha256': audit_sha, 'public_checks': checks,
+            'counts_at_import': counts, 'unresolved_staged': [],
+            'never_submitted_staged': HALT_RECOVERY['never_submitted_staged'],
+            'credentials_in_receipt': False, 'account_writes': 0}
+
+
+def validate_halt_bootstrap(directory, receipt, identity, inventory, plan):
+    """Independently check immutable originals plus exactly ONE appended promotion."""
+    directory = Path(directory); pin = HALT_RECOVERY
+    expected = {**pin['raw_journal_sha256'], TRACE: pin['transfer_events_sha256'], RECEIPT: pin['receipt_sha256']}
+    for name, sha in expected.items():
+        path = directory / HALT_AUDIT[name]
+        require(path.is_file() and not path.is_symlink() and path.stat().st_size == pin['file_bytes'][name] and
+                file_sha(path) == sha, 'Immutable recovered HALT evidence is missing or changed')
+    original = read_json(directory / HALT_AUDIT[RECEIPT], u.CHUNK); _halt_receipt_valid(original)
+    _halt_final_event(directory / HALT_AUDIT[JOURNALS[1]])
+    require(file_sha(directory / JOURNALS[0]) == pin['raw_journal_sha256'][JOURNALS[0]],
+            'Recovery working journal header changed')
+    append = _halt_promotion(); working = directory / JOURNALS[1]
+    require(working.is_file() and not working.is_symlink() and
+            working.stat().st_size == pin['file_bytes'][JOURNALS[1]] + len(append),
+            'Recovery working events are not exactly one appended promotion')
+    with (directory / HALT_AUDIT[JOURNALS[1]]).open('rb') as old_events, working.open('rb') as new_events:
+        while block := old_events.read(u.CHUNK):
+            require(new_events.read(len(block)) == block, 'Recovery changed the original event prefix')
+        require(new_events.read(len(append) + 1) == append, 'Recovery appended an unexpected journal event')
+    records = replay_journal(directory, inventory, plan, allow_torn_tail=False)
+    name = pin['unresolved_put']['path'][6:]
+    require(records['objects'].get(name) == {**pin['unresolved_put'], 'status': 'REMOTE_METADATA_VERIFIED'},
+            'Recovered file did not receive its sole allowed promotion')
+    previous = {**records, 'objects': {**records['objects'], name: {**pin['unresolved_put'], 'status': 'STAGED'}}}
+    _halt_trace_valid(original, directory / HALT_AUDIT[TRACE], previous)
+    audit = read_json(directory / RESOLUTION_AUDIT, u.CHUNK); checks = audit.get('public_checks')
+    require(audit == _halt_resolution(identity, checks), 'Recovery resolution audit differs')
+    expected_receipt = _halt_bootstrap(identity, raw_journals(directory), file_sha(directory / RESOLUTION_AUDIT), checks)
+    require(receipt == expected_receipt and _record_counts(records) == receipt['counts_at_import'] and
+            not records['index_objects'], 'Recovery bootstrap or promoted progress differs')
+    return records
+
+
+def import_halt_recovery(github, identity, incoming, work, inventory, plan, public=None):
+    meta = halt_recovery_provenance(github, identity)
+    download_artifact(github, meta, incoming, (*JOURNALS, RECEIPT, TRACE),
+                      expected_digest=HALT_RECOVERY['artifact_sha256'])
+    records = validate_halt_recovery(incoming, inventory, plan)
+    checks = check_halt_recovery_public(records, public)
+    copy_journals(incoming, work, bootstrap_evidence=True)
+    # Originals remain immutable under separate names. Neither the original
+    # HALT nor its transfer trace is opened for writing or relabeled PAUSED.
+    for source, destination in HALT_AUDIT.items():
+        shutil.copyfile(Path(incoming) / source, Path(work) / destination)
+        (Path(work) / destination).chmod(0o600)
+    target = HALT_RECOVERY['unresolved_put']
+    locked = u.Work(work)
+    try:
+        journal = u.Journal(locked, EXPECTED_IDENTITY)
+        try: journal.record(target['path'][6:], {**target, 'status': 'REMOTE_METADATA_VERIFIED'})
+        finally: journal.close()
+    finally: locked.close()
+    u.atomic_json(Path(work) / RESOLUTION_AUDIT, _halt_resolution(identity, checks))
+    receipt = _halt_bootstrap(identity, raw_journals(work), file_sha(Path(work) / RESOLUTION_AUDIT), checks)
+    validate_halt_bootstrap(work, receipt, identity, inventory, plan)
+    u.atomic_json(Path(work) / 'bootstrap.json', receipt)
+    return receipt
+
+
 def validate_segment(receipt, directory, reference, identity, segment, inventory=None, plan=None):
     require(type(segment) is int and 2 <= segment <= MAX_SEGMENTS + 1,
             'Segment validation context is outside the finite chain')
@@ -839,22 +1167,16 @@ def prepare_segment(github, identity, reference, segment, incoming, work, lineag
     meta = github.api(f'/repos/{REPOSITORY}/actions/artifacts/{reference["artifact_id"]}')
     require(meta.get('id') == reference['artifact_id'], 'Predecessor artifact API returned a different exact ID')
     validate_artifact(meta, identity['run_id'], identity['source_sha'], reference['artifact_name'], reference['artifact_sha256'])
-    required = (*JOURNALS, 'bootstrap.json') if segment == 1 else (*JOURNALS, RECEIPT, TRACE)
+    required = (*JOURNALS, 'bootstrap.json', *HALT_AUDIT.values(), RESOLUTION_AUDIT) if segment == 1 else (*JOURNALS, RECEIPT, TRACE)
     hashes = download_artifact(github, meta, incoming, required,
-        ('publication.json', 'recovered-segment.json', 'recovered-slice-transfer-events.jsonl') if segment == 1 else ('publication.json',),
+        ('publication.json',),
         reference['artifact_sha256'])
     name = 'bootstrap.json' if segment == 1 else RECEIPT
     require(hashes[name] == reference['receipt_sha256'] and
             {n: hashes[n] for n in JOURNALS} == reference['raw_journal_sha256'], 'Parent receipt/raw file pins differ')
     receipt = read_json(Path(incoming) / name, u.CHUNK)
     if segment == 1:
-        require(receipt.get('status') == 'VISIBILITY_HALT_IMPORTED' and receipt.get('schema') == 1 and
-                receipt.get('current_identity') == identity and receipt.get('raw_journal_sha256') == reference['raw_journal_sha256'] and
-                receipt.get('raw_journal_sha256') == VISIBILITY_RECOVERY['raw_journal_sha256'] and
-                receipt.get('recovery') == VISIBILITY_RECOVERY and receipt.get('unresolved_staged') == [] and
-                hashes.get('recovered-segment.json') == VISIBILITY_RECOVERY['receipt_sha256'] and
-                hashes.get('recovered-slice-transfer-events.jsonl') == VISIBILITY_RECOVERY['transfer_events_sha256'],
-                'Bootstrap is not the exact checked visibility-only transition')
+        validate_halt_bootstrap(incoming, receipt, identity, inventory, plan)
     else:
         validate_segment(receipt, incoming, reference, identity, segment, inventory, plan)
     replay_journal(incoming, inventory, plan, allow_torn_tail=False)
@@ -948,7 +1270,7 @@ def execute(args):
     require(file_sha(inventory_path) == EXPECTED_IDENTITY['inventory_sha256'], 'Prepared complete inventory SHA differs')
     plan = scope.load_plan(BASE.parent / 'archive_inventory/five-owned-layout.json.gz')
     if args.command == 'bootstrap':
-        import_visibility_recovery(github, identity, temporary / 'archive-resume-visibility-recovery',
+        import_halt_recovery(github, identity, temporary / 'archive-resume-latest-halt-recovery',
             temporary / 'elichika-ia-upload-work', inventory, plan)
         emit_outputs({'status': 'CONTINUE'})
     elif args.command == 'prepare':

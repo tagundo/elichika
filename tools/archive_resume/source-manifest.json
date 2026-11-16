@@ -1,14 +1,15 @@
 {
   "files": {
     ".github/workflows/archive-resume-source-qa.yml": "6d98ff3601cbf74ddd93f503ce545593be3ea985f7770cb251d54b0881a4b6f5",
-    ".github/workflows/archive-upload-resume.yml": "dc00092c040943a997b360f730e54021bfabf23b291b695b56c45348c261ef9f",
+    ".github/workflows/archive-upload-resume.yml": "43310f8b420e58c8d022fe1da57b5ea78124fec1a2c73f5676905ee076b5634f",
     ".github/workflows/archive-upload-segment.yml": "c1f559da24365146a609d682ed2ac1b034998ebe437f06e8e67b960cbfc167b0",
     "tools/archive_inventory/activation.json": "bc47fbf5c5dd3ed2f1c9793c8bfc07fed28570dc5deabd5b8c67d58aaef71017",
     "tools/archive_inventory/source-files.json": "b3846891a36131f80d3b0bd1d53f482df02259c0e9d9f48f2744e42ec0adee46",
     "tools/archive_inventory/test_owned_publisher.py": "435873a6a447c485ed4c56f1b838602e8169158d47f31487a15f07dbfcbff945",
-    "tools/archive_resume/chain_control.py": "a79af8c5b1266c9261abb6c002e862d6882544acfea8c3c9952c253b235f8ab0",
+    "tools/archive_resume/chain_control.py": "ac17696ad27ad3dde8680660cb9b553ef8dc634750fab8d901de8e9b469774dd",
     "tools/archive_resume/resumable_publisher.py": "a6911dccf10a08314732fd60817feedb80e365687774d8ca3baf8978a9352f15",
-    "tools/archive_resume/test_chain_control.py": "82d5bddd79a37344b71d8e9a388254621f45b099e7c77c4b4734e26c61690f00",
+    "tools/archive_resume/test_chain_control.py": "07f3a6509be716b4ae08ddfede213267bbe2d82a5dcd5974cb6eebdba7768e49",
+    "tools/archive_resume/test_halt_recovery.py": "6dfaf698c85ffaea650b641fd990c6afb073cf1a72609c0764737e08e8cd88b2",
     "tools/archive_resume/test_resumable_publisher.py": "1fa65931b56f7f68e15320ce631c9873f6c1b4be5436dd60c39ae55f1a4474f8"
   },
   "hard_seconds": 20400,

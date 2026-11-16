@@ -57,13 +57,13 @@ jobs:
         timeout-minutes: 5
         working-directory: tools/archive_inventory
         run: python3 -B ci_prepare.py prepare
-      - name: Import the one exact drained visibility-only checkpoint without any retransmission
+      - name: Reconcile the exact latest halted PUT with public MD5 and full SHA256 before continuation
         id: importer
         timeout-minutes: 20
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 -B tools/archive_resume/chain_control.py bootstrap
-      - name: Preserve checked visibility recovery, original HALT audit and halted bootstrap evidence
+      - name: Preserve latest HALT originals, exact journal promotion, resolution audit and bootstrap evidence
         id: archive
         if: always()
         uses: actions/upload-artifact@v4
@@ -74,8 +74,11 @@ jobs:
             ${{ runner.temp }}/elichika-ia-upload-work/journal.json
             ${{ runner.temp }}/elichika-ia-upload-work/journal.events.jsonl
             ${{ runner.temp }}/elichika-ia-upload-work/bootstrap.json
-            ${{ runner.temp }}/elichika-ia-upload-work/recovered-segment.json
-            ${{ runner.temp }}/elichika-ia-upload-work/recovered-slice-transfer-events.jsonl
+            ${{ runner.temp }}/elichika-ia-upload-work/recovered-halt-segment.json
+            ${{ runner.temp }}/elichika-ia-upload-work/recovered-halt-slice-transfer-events.jsonl
+            ${{ runner.temp }}/elichika-ia-upload-work/recovered-halt-journal.json
+            ${{ runner.temp }}/elichika-ia-upload-work/recovered-halt-journal.events.jsonl
+            ${{ runner.temp }}/elichika-ia-upload-work/halt-resolution.json
             ${{ runner.temp }}/elichika-ia-upload-work/publication.json
           if-no-files-found: warn
           retention-days: 30
