@@ -45,7 +45,7 @@ bool verify(intptr_t &slide) {
                     segment->maxprot!=protections || segment->initprot!=protections || segment->nsects!=1) return false;
                 const auto *section=reinterpret_cast<const section_64 *>(segment+1);
                 if (section->addr!=preferred || section->offset!=fileOffset ||
-                    section->size!=(executable?512:256) || section->align!=4 ||
+                    section->size!=(executable?kSIFASMVRXSize:kSIFASMVSidecarSize) || section->align!=4 ||
                     std::strncmp(section->segname,segment->segname,16) ||
                     std::strncmp(section->sectname,executable?"__text":"__data",16) ||
                     section->flags!=(executable?0x80000400u:0u)) return false;
@@ -64,9 +64,9 @@ bool verify(intptr_t &slide) {
     const auto *rxBytes=reinterpret_cast<const uint8_t *>(kSIFASMVRX+slide);
     const auto *rwBytes=reinterpret_cast<const uint8_t *>(kSIFASMVRW+slide);
     if (std::memcmp(rxBytes,kSIFASMVRXBytes,sizeof(kSIFASMVRXBytes)) ||
-        !zero(rxBytes+512,16384-512) ||
+        !zero(rxBytes+kSIFASMVRXSize,16384-kSIFASMVRXSize) ||
         std::memcmp(rwBytes,kSIFASMVSidecar,sizeof(kSIFASMVSidecar)) ||
-        !zero(rwBytes+256,16384-256)) return false;
+        !zero(rwBytes+kSIFASMVSidecarSize,16384-kSIFASMVSidecarSize)) return false;
     for (size_t i=0;i<kSIFASMVHookCount;i++) {
         const auto &pin=kSIFASMVHooks[i];
         const auto *code=reinterpret_cast<const uint8_t *>(pin.va+slide);
@@ -94,6 +94,7 @@ void install() {
     originals.screenWidth=trampoline<decltype(originals.screenWidth)>(5,slide);
     originals.screenHeight=trampoline<decltype(originals.screenHeight)>(6,slide);
     originals.memberLateUpdate=trampoline<decltype(originals.memberLateUpdate)>(7,slide);
+    originals.cameraPostRender=trampoline<decltype(originals.cameraPostRender)>(8,slide);
     NSError *error=nil;
     if (!SIFASMVBindingsInstallOriginals(&originals,&error)) {
         NSLog(@"Elichika MV shims inactive: %@",error.localizedDescription);
@@ -103,12 +104,12 @@ void install() {
         reinterpret_cast<uintptr_t>(&SIFASMVLiveUpdate),reinterpret_cast<uintptr_t>(&SIFASMVMusicUpdate),
         reinterpret_cast<uintptr_t>(&SIFASMVMemberUpdate),reinterpret_cast<uintptr_t>(&SIFASMVOverlayRender),
         reinterpret_cast<uintptr_t>(&SIFASMVScreenWidth),reinterpret_cast<uintptr_t>(&SIFASMVScreenHeight),
-        reinterpret_cast<uintptr_t>(&SIFASMVMemberLateUpdate)};
+        reinterpret_cast<uintptr_t>(&SIFASMVMemberLateUpdate),reinterpret_cast<uintptr_t>(&SIFASMVCameraPostRender)};
     static_assert(sizeof(callbacks)/sizeof(callbacks[0])==kSIFASMVHookCount,"hook contract differs");
     // Only the dedicated RW callback cells are published. Executable pages
     // remain unchanged; null cells always tail into the offline trampoline.
     for (size_t i=0;i<kSIFASMVHookCount;i++)
-        __atomic_store_n(reinterpret_cast<uintptr_t *>(kSIFASMVRW+128+i*8+slide),callbacks[i],__ATOMIC_RELEASE);
+        __atomic_store_n(reinterpret_cast<uintptr_t *>(kSIFASMVRW+kSIFASMVCallbackOffset+i*8+slide),callbacks[i],__ATOMIC_RELEASE);
 }
 }
 

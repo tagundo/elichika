@@ -35,6 +35,7 @@ typedef struct {
     int32_t (*screenWidth)(const void *methodInfo);
     int32_t (*screenHeight)(const void *methodInfo);
     void (*memberLateUpdate)(void *memberManager, const void *methodInfo);
+    void (*cameraPostRender)(void *camera, const void *methodInfo);
 } SIFASMVBindingOriginals;
 
 FOUNDATION_EXPORT BOOL SIFASMVBindingsInstallOriginals(const SIFASMVBindingOriginals *originals, NSError **error);
@@ -56,6 +57,7 @@ void SIFASMVOverlayRender(void *overlay, void *source, void *destination, const 
 int32_t SIFASMVScreenWidth(const void *methodInfo);
 int32_t SIFASMVScreenHeight(const void *methodInfo);
 void SIFASMVMemberLateUpdate(void *memberManager, const void *methodInfo);
+void SIFASMVCameraPostRender(void *camera, const void *methodInfo);
 #ifdef __cplusplus
 }
 #endif

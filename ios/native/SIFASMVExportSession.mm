@@ -139,7 +139,7 @@ static NSDictionary *ELMVValidatedSong(NSDictionary *snapshot, int64_t *millisec
 static NSString *ELMVReadiness(void) {
     NSDictionary *native=SIFASMVBindingsStatus();
     if (![native[@"installed"] boolValue]) return ELMVText(@"This installation has no verified offline MV renderer. Install the matching GL 3.12.0 export build.",@"이 설치에는 검증된 오프라인 MV 렌더러가 없습니다. GL 3.12.0용 내보내기 빌드를 설치하세요.",@"検証済みのオフラインMVレンダラーがありません。対応するGL 3.12.0の書き出しビルドをインストールしてください。");
-    if (![native[@"liveDirectorObserved"] boolValue] || ![native[@"finalOverlayObserved"] boolValue])
+    if (![native[@"liveDirectorObserved"] boolValue])
         return ELMVText(@"Load and play a 3D MV until the complete stage is visible, then open MP4 export.",@"3D MV를 재생하여 무대 전체가 표시된 후 MP4 내보내기를 여세요.",@"3D MVを再生し、ステージ全体が表示されてからMP4書き出しを開いてください。");
     return @"";
 }

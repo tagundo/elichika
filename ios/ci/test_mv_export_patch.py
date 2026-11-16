@@ -15,17 +15,20 @@ import mv_export_patch as patch
 
 class OfflineMVTests(unittest.TestCase):
     def setUp(self):
-        self.profile = json.loads(patch.PROFILE.read_text())
+        self.profile = patch.load_profile()
 
     def test_generated_native_contract_is_exact(self):
         path = Path(__file__).resolve().parents[1]/'native/SIFASMVExportPatchProfile.h'
         self.assertEqual(path.read_text(), patch.generated_header(self.profile))
-        self.assertEqual(len(self.profile['hooks']), 8)
+        self.assertEqual(len(self.profile['hooks']), 9)
         sidecar = patch.sidecar(self.profile)
-        self.assertEqual(sidecar[128:192], bytes(64))
+        self.assertEqual(len(sidecar), 384)
+        self.assertEqual(patch.U32(sidecar, 8), 2)
+        self.assertEqual(sidecar[128:256], bytes(128))
         self.assertEqual(sidecar[48:80].hex(), patch.contract(self.profile))
-        for i in range(8):
-            self.assertEqual(patch.U64(sidecar, 192+8*i), patch.RX_VA+64*i+16)
+        for i in range(9):
+            self.assertEqual(patch.U64(sidecar, 256+8*i), patch.RX_VA+64*i+16)
+        self.assertEqual(sidecar[256+9*8:], bytes(384-256-9*8))
 
     def test_all_entry_shims_preserve_arguments_and_lr(self):
         for index, hook in enumerate(self.profile['hooks']):
@@ -108,10 +111,10 @@ class OfflineMVTests(unittest.TestCase):
                     size += len(block)
                 self.assertEqual(size, patch.SOURCE_SIZE+32768)
                 self.assertTrue(all(p['segment_indices'] == [2] for p in prepared['proof']['dyld_streams'].values()))
-                self.assertEqual(len(prepared['proof']['hooks']), 8)
+                self.assertEqual(len(prepared['proof']['hooks']), 9)
                 # Deterministic complete transformed stream, including old
                 # signature bytes (which packaging must subsequently replace).
-                self.assertEqual(digest.hexdigest(), '1fe0de47ab4378fabe4b2c75ccdef82df791f8786063ec0846267e23fb18bbf5')
+                self.assertEqual(digest.hexdigest(), '823709f1a99cc7f687c60ee9b2abfa0ea45e5a77690a2895f8ea984e84db84d6')
 
 
 if __name__ == '__main__':

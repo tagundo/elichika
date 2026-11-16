@@ -317,6 +317,12 @@ jobs:
               ios/native/SIFASMVExportSession.mm \
               2>&1 | tee "$RUNNER_TEMP/mv-export-evidence/$mv_sdk-compile.txt"
           done
+      - name: Check fixed-frame ownership and exact offline shims
+        run: |
+          set -euo pipefail
+          xcrun clang++ -std=c++17 -Wall -Wextra -Werror -pedantic ios/native/tests/MVExportClockTests.cpp -o "$RUNNER_TEMP/mv-export-clock-tests"
+          "$RUNNER_TEMP/mv-export-clock-tests"
+          python3 -B -m unittest discover -s ios/ci -p test_mv_export_patch.py -v
       - name: Encode and independently decode actual MP4 video and AAC audio
         run: |
           set -euo pipefail
@@ -330,7 +336,7 @@ jobs:
         run: |
           python3 - <<'PYCODE'
           import pathlib,json,hashlib,os
-          root=pathlib.Path('.');paths=['ios/native/ElichikaMVEncoder.h','ios/native/ElichikaMVEncoder.mm','ios/native/tests/MVEncoderIntegration.mm','ios/native/tests/run_mv_encoder_integration.py']
+          root=pathlib.Path('.');paths=['ios/native/ElichikaMVEncoder.h','ios/native/ElichikaMVEncoder.mm','ios/native/tests/MVEncoderIntegration.mm','ios/native/tests/run_mv_encoder_integration.py','ios/native/SIFASMVExportBindings.h','ios/native/SIFASMVExportBindings.mm','ios/native/SIFASMVExportBootstrap.mm','ios/native/SIFASMVExportPatchProfile.h','ios/native/SIFASMVExportSession.h','ios/native/SIFASMVExportSession.mm','ios/native/MVExportClock.hpp','ios/build/mv_export_patch.py','ios/build/mv_export_profile.json']
           r={'source':os.environ['MV_SOURCE'],'run':os.environ['MV_RUN'],'scope':'Actual Apple encoder and independent decode; actual SIFAS MV stepping/render/audio NOT established','AV1_supported':False,'sources':{p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in paths}}
           out=pathlib.Path(os.environ['RUNNER_TEMP'])/'mv-export-evidence';out.mkdir(exist_ok=True);(out/'source-and-scope.json').write_text(json.dumps(r,indent=2)+'\n')
           PYCODE

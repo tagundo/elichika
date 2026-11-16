@@ -15,6 +15,12 @@ import struct
 
 CHUNK = 1024 * 1024
 PAGE = 16384
+HOOK_COUNT = 9
+RX_SIZE = HOOK_COUNT * 64
+CONTRACT_VERSION = 2
+SIDECAR_SIZE = 384
+CALLBACK_OFFSET = 128
+ORIGINAL_OFFSET = 256
 INSERTION = 91455488
 RX_VA = 0x105b80000
 RW_VA = RX_VA + PAGE
@@ -70,24 +76,28 @@ def contract(profile):
 
 def load_profile():
     profile = json.loads(PROFILE.read_text())
-    require(profile['schema'] == 1 and profile['source_main_sha256'] == SOURCE_SHA256 and
-            profile['source_uuid'] == UUID.hex() and len(profile['hooks']) == 8,
+    require(profile['schema'] == CONTRACT_VERSION and profile['source_main_sha256'] == SOURCE_SHA256 and
+            profile['source_uuid'] == UUID.hex() and len(profile['hooks']) == HOOK_COUNT,
             'MV generated profile identity differs')
+    require(profile['shim_layout'] == {'version': CONTRACT_VERSION, 'hook_capacity': 16,
+            'callback_slots_offset': CALLBACK_OFFSET, 'original_slots_offset': ORIGINAL_OFFSET,
+            'sidecar_bytes': SIDECAR_SIZE, 'rx_bytes': RX_SIZE}, 'MV sidecar layout differs')
     require([h['key'] for h in profile['hooks']] == ['timeUpdate', 'liveUpdate', 'musicUpdate',
-            'memberUpdate', 'overlayRender', 'screenWidth', 'screenHeight', 'memberLateUpdate'],
+            'memberUpdate', 'overlayRender', 'screenWidth', 'screenHeight', 'memberLateUpdate',
+            'cameraPostRender'],
             'MV typed callback order differs')
     for index, hook in enumerate(profile['hooks']):
         require(hook['preferred_rva'] == hook['va']-0x100000000 and
                 hook['patched_first_word'] == branch(hook['va'], RX_VA+index*64) and
                 hook['shim_preferred_rva'] == RX_VA+index*64-0x100000000 and
                 hook['trampoline_preferred_rva'] == RX_VA+index*64+16-0x100000000 and
-                hook['callback_slot_preferred_rva'] == RW_VA+128+index*8-0x100000000,
+                hook['callback_slot_preferred_rva'] == RW_VA+CALLBACK_OFFSET+index*8-0x100000000,
                 'MV profile preferred RVA/branch binding differs')
     return profile
 
 
 def shim(hook, index):
-    start, slot = RX_VA+index*64, RW_VA+128+index*8
+    start, slot = RX_VA+index*64, RW_VA+CALLBACK_OFFSET+index*8
     pages = (slot >> 12)-(start >> 12)
     require(-(1 << 20) <= pages < (1 << 20), 'ADRP target out of range')
     adrp = 0x90000010 | ((pages & 3) << 29) | (((pages >> 2) & 0x7ffff) << 5)
@@ -107,14 +117,14 @@ def shim(hook, index):
 
 
 def sidecar(profile):
-    data = bytearray(256)
-    struct.pack_into('<QII3QII', data, 0, 0x31564d5341464953, 1, 256,
+    data = bytearray(SIDECAR_SIZE)
+    struct.pack_into('<QII3QII', data, 0, 0x31564d5341464953, CONTRACT_VERSION, SIDECAR_SIZE,
                      0x100000000, RX_VA, RW_VA, len(profile['hooks']), 0)
     data[48:80] = bytes.fromhex(contract(profile))
     data[80:96] = UUID
     data[96:128] = bytes.fromhex(SOURCE_SHA256)
     for index, hook in enumerate(profile['hooks']):
-        struct.pack_into('<Q', data, 192+index*8, RX_VA+index*64+16)
+        struct.pack_into('<Q', data, ORIGINAL_OFFSET+index*8, RX_VA+index*64+16)
     return bytes(data)
 
 
@@ -318,8 +328,8 @@ def prepare(reader, *, add_host=False):
             if name == '__LINKEDIT':
                 require((va, vm, fo, fs, nsects) == (RX_VA, 3293184, INSERTION, 3290176, 0),
                         'Original LINKEDIT layout differs')
-                rewritten += [segment('__SIFASMVX', '__text', RX_VA, INSERTION, 512, 5, 0x80000400),
-                              segment('__SIFASMVD', '__data', RW_VA, INSERTION+PAGE, 256, 3, 0)]
+                rewritten += [segment('__SIFASMVX', '__text', RX_VA, INSERTION, RX_SIZE, 5, 0x80000400),
+                              segment('__SIFASMVD', '__data', RW_VA, INSERTION+PAGE, SIDECAR_SIZE, 3, 0)]
                 struct.pack_into('<Q', block, 24, va+2*PAGE)
                 struct.pack_into('<Q', block, 40, fo+2*PAGE)
             else:
@@ -407,8 +417,10 @@ def prepare(reader, *, add_host=False):
                 'Overlapping MV patch mutation')
         end = offset+len(before)
     rx = b''.join(shim(hook, index) for index, hook in enumerate(profile['hooks']))
-    pages = rx+bytes(PAGE-len(rx))+sidecar(profile)+bytes(PAGE-256)
+    pages = rx+bytes(PAGE-len(rx))+sidecar(profile)+bytes(PAGE-SIDECAR_SIZE)
     proof = {'schema': 1, 'profile_sha256': contract(profile), 'source_sha256': SOURCE_SHA256,
+             'patch_contract_version': CONTRACT_VERSION, 'hook_count': HOOK_COUNT,
+             'RX_payload_bytes': RX_SIZE, 'RW_payload_bytes': SIDECAR_SIZE,
              'hooks': hook_proofs, 'insertion': {'offset': INSERTION, 'bytes': 2*PAGE,
              'sha256': sha(pages), 'RX_va': hex(RX_VA), 'RW_va': hex(RW_VA)},
              'load_command_before_sha256': HEADER_SHA256, 'load_command_after_sha256': sha(rebuilt),
@@ -480,9 +492,13 @@ def generated_header(profile):
              'static constexpr uintptr_t kSIFASMVRX=0x%xULL;' % RX_VA,
              'static constexpr uintptr_t kSIFASMVRW=0x%xULL;' % RW_VA,
              'static constexpr size_t kSIFASMVHookCount=%d;' % len(profile['hooks']),
+             'static constexpr size_t kSIFASMVRXSize=%d;' % RX_SIZE,
+             'static constexpr size_t kSIFASMVSidecarSize=%d;' % SIDECAR_SIZE,
+             'static constexpr size_t kSIFASMVCallbackOffset=%d;' % CALLBACK_OFFSET,
+             'static constexpr size_t kSIFASMVOriginalOffset=%d;' % ORIGINAL_OFFSET,
              'static const uint8_t kSIFASMVUUID[16]={%s};' % array(UUID),
-             'static const uint8_t kSIFASMVSidecar[256]={%s};' % array(sidecar(profile)),
-             'static const uint8_t kSIFASMVRXBytes[512]={%s};' % array(b''.join(shim(h, i) for i, h in enumerate(profile['hooks']))),
+             'static const uint8_t kSIFASMVSidecar[%d]={%s};' % (SIDECAR_SIZE, array(sidecar(profile))),
+             'static const uint8_t kSIFASMVRXBytes[%d]={%s};' % (RX_SIZE, array(b''.join(shim(h, i) for i, h in enumerate(profile['hooks'])))),
              'struct SIFASMVHookPin { uintptr_t va; uint32_t branch; uint8_t original[32]; };',
              'static const SIFASMVHookPin kSIFASMVHooks[]={']
     for index, hook in enumerate(profile['hooks']):

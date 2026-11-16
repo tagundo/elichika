@@ -29,3 +29,13 @@ The experimental Archive-pending device channel is explicit and separate from or
 Successful compilation or this simulator probe does not establish physical iPhone/iPad gameplay, background behavior, or full editing-tool parity. Those require exact-artifact device validation.
 
 The preserved dated client source uses `SIFASFOVMinimum=0.75`, `SIFASFOVMaximum=1.0`, `SIFASFastIntro=NO`, and `SIFASOrientation=0` as its defaults. Game-view reset changes only these four preferences. It does not reset connection credentials, user data, asset paths, or either standalone overlay preference.
+
+## MV export
+
+Game settings opens the native MP4 form. The initial implementation selects H.264 or HEVC with AAC song audio, 30 or 60 output frames per second, and a 60 Hz game simulation. AV1 is excluded. The game adapter uses the original full MV camera pipeline, requests a real rendering resolution, and reads the final camera's backbuffer; it does not record the operating-system display. Stage, lights, props, postprocessing, facial animation and spring/collider updates remain in the original game loop.
+
+`mv_export_patch.py` verifies the complete immutable GL 3.12.0 main and installs nine offline entry shims with separate RX/RW segments. The runtime checks the exact generated contract before publishing callbacks. Unsupported profiles, scene changes, active pause/blur effects and rejected render sizes produce a specific error. No executable pages are modified at runtime. Packaging reconstructs this exact transformation from the original before applying the existing strict signature comparison.
+
+`SIFASMVExportSession` owns one pending image and one bounded PCM chunk. Encoder backpressure stops the simulation grant; audio follows its own writer readiness to avoid mux starvation. Cancellation restores the owned game state and removes only unfinished output. Completed files can be saved or shared. The native-only audio bridge resolves the exact selected local CRI cue; it does not infer a song from the first AWB entry or a playback handle. The initial audio path exports the song stream, not a separate runtime SE/voice mix.
+
+The production encoder has passed actual Apple H.264/HEVC MP4 generation, independent frame/PTS/pixel/AAC decoding, retry and cancellation tests. Those tests do not establish actual SIFAS MV rendering, device resolution support, visual fidelity or complete scene restoration; these require an actual game run.

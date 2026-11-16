@@ -139,7 +139,10 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
     NSURL *url=[directory URLByAppendingPathComponent:[codec stringByAppendingPathExtension:@"mp4"]];
     NSError *error=nil;
     ELMVEncoder *encoder=[ELMVEncoder encoderWithConfiguration:c outputURL:url error:&error];
-    if (!encoder && !required) return @{ @"codec":codec,@"status":@"UNAVAILABLE",@"error":error.localizedDescription ?: @"Encoder unavailable" };
+    BOOL codecUnavailable=[error.domain isEqual:@"ElichikaMVEncoder"] && (error.code==9 || error.code==27);
+    if (!encoder && !required && codecUnavailable)
+        return @{ @"codec":codec,@"status":@"UNAVAILABLE",@"error":error.localizedDescription,
+            @"error_domain":error.domain,@"error_code":@(error.code) };
     Require(encoder!=nil,error.localizedDescription);
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(45);
     NSUInteger retries=0;

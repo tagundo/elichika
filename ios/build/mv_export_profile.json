@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "source_main_sha256": "071607a0b7e4d4e080af68ce9ce7c84cf279bf8e73e70ec9dc8cf1f3be1cd4dd",
   "source_uuid": "10dff3f5cfc33be8aaaa3c38a99d1717",
   "instruction_policy": "exact first instruction, only Music.Update plain B is relocated",
@@ -99,6 +99,26 @@
       "shim_preferred_rva": 95945152,
       "trampoline_preferred_rva": 95945168,
       "callback_slot_preferred_rva": 95961272
+    },
+    {
+      "key": "cameraPostRender",
+      "method": "UnityEngine.Camera.FireOnPostRender",
+      "va": 4354964684,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa74f000b088ea4b39e8000037e87200b0",
+      "first_instruction": 2847821812,
+      "preferred_rva": 59997388,
+      "patched_first_word": 344531277,
+      "shim_preferred_rva": 95945216,
+      "trampoline_preferred_rva": 95945232,
+      "callback_slot_preferred_rva": 95961280
     }
-  ]
+  ],
+  "shim_layout": {
+    "version": 2,
+    "hook_capacity": 16,
+    "callback_slots_offset": 128,
+    "original_slots_offset": 256,
+    "sidecar_bytes": 384,
+    "rx_bytes": 576
+  }
 }

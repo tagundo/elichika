@@ -14,15 +14,18 @@ namespace {
  * deliberately not a pattern scanner or an assumed exported IL2CPP API. */
 const uint8_t kUUID[16] = {0x10,0xdf,0xf3,0xf5,0xcf,0xc3,0x3b,0xe8,0xaa,0xaa,0x3c,0x38,0xa9,0x9d,0x17,0x17};
 intptr_t slide;
-bool installed, active, advancing, sceneAbandoned;
+bool installed, active, advancing, sceneAbandoned, finalCameraObserved, resolutionRequested, resolutionReady;
 SIFASMVBindingOriginals original = {};
 SIFASMVBindingConfiguration config = {};
 SIFASMVBindingCallbacks callbacks = {};
 void *director, *observedOverlay, *sessionOverlay, *clockManager, *timeline, *music, *members;
-void *exportTarget, *readbackTexture;
-void *overlayCamera, *savedOverlayTarget;
-uint32_t directorRoot, overlayRoot, renderRoot, readbackRoot, observedDirectorRoot, observedOverlayRoot;
-uint32_t overlayCameraRoot, savedOverlayTargetRoot;
+void *readbackTexture;
+void *overlayCamera;
+uint32_t directorRoot, overlayRoot, readbackRoot, observedDirectorRoot, observedOverlayRoot;
+uint32_t overlayCameraRoot;
+int32_t savedWidth, savedHeight;
+int32_t savedFullScreenMode, savedRefreshRate;
+void *screenManager;
 uint64_t tick;
 int64_t captureIndex = -1;
 bool haveTick, captured;
@@ -65,12 +68,10 @@ using SetTime = void (*)(void *, double, const void *);
 using SetMode = void (*)(void *, int32_t, const void *);
 using StaticObject = void *(*)(const void *);
 using SetObject = void (*)(void *, const void *);
-using Blit = void (*)(void *, void *, const void *);
-using SetTargetTexture = void (*)(void *,void *,const void *);
 struct Rect { float x,y,width,height; };
 using ReadPixels = void (*)(void *, Rect, int32_t, int32_t, bool, const void *);
 using NewTexture = void (*)(void *, int32_t, int32_t, int32_t, bool, const void *);
-using TemporaryRT = void *(*)(int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,bool,const void *);
+using SetResolution = void (*)(int32_t,int32_t,int32_t,int32_t,const void *);
 
 NSError *error(NSString *message) {
     return [NSError errorWithDomain:@"ElichikaMVGameBindings" code:1
@@ -120,6 +121,7 @@ void observeDirector(void *value) {
     releaseManaged(observedDirectorRoot); releaseManaged(observedOverlayRoot);
     observedDirectorRoot=replacement; director=replacement ? value : nullptr;
     observedOverlay=nullptr;
+    finalCameraObserved=false;
 }
 void observeOverlay(void *value) {
     if (observedOverlay==value && observedOverlayRoot) return;
@@ -131,9 +133,12 @@ bool sceneValidUnchecked() {
     if (!directorRoot || !overlayRoot ||
         fn<RootTarget>(0x103a95da0)(static_cast<int32_t>(directorRoot),nullptr)!=director ||
         fn<RootTarget>(0x103a95da0)(static_cast<int32_t>(overlayRoot),nullptr)!=sessionOverlay ||
-        !alive(director) || !alive(timeline) || !alive(music) || !alive(members) || !alive(sessionOverlay) || !alive(overlayCamera)) return false;
+        !alive(director) || !load<uint8_t>(director,0x20)) return false;
     if (load<void *>(director,0x40)!=timeline || load<void *>(director,0x68)!=music ||
         load<void *>(director,0x50)!=members) return false;
+    /* Compare the retained owner's fields before touching a formerly-owned
+     * managed wrapper: replacing a field can make its previous target collectible. */
+    if (!alive(timeline) || !alive(music) || !alive(members) || !alive(sessionOverlay) || !alive(overlayCamera)) return false;
     void *manager=load<void *>(director,0x48);
     if (!alive(manager)) return false;
     void *final=load<void *>(manager,0x58);
@@ -292,21 +297,18 @@ void restore() {
     });
     attempt([&] { if (restoreScene && members && alive(members)) restoreSprings(); });
     attempt([&] {
-        if (!restoreScene || !alive(overlayCamera)) return;
-        if (savedOverlayTarget && !alive(savedOverlayTarget)) throw 3;
-        fn<SetTargetTexture>(0x103934410)(overlayCamera,savedOverlayTarget,nullptr);
+        if (resolutionRequested && fn<void *(*)()>(0x1008f85d8)()==screenManager)
+            fn<SetResolution>(0x10396462c)(savedWidth,savedHeight,savedFullScreenMode,savedRefreshRate,nullptr);
     });
-    attempt([&] { if (exportTarget && alive(exportTarget)) fn<SetObject>(0x10395ff58)(exportTarget,nullptr); });
     attempt([&] { if (readbackTexture && alive(readbackTexture)) fn<SetObject>(0x103953490)(readbackTexture,nullptr); });
-    exportTarget=nullptr; readbackTexture=nullptr;
-    attempt([&] { releaseManaged(renderRoot); });
+    readbackTexture=nullptr;
     attempt([&] { releaseManaged(readbackRoot); });
     attempt([&] { releaseManaged(directorRoot); });
     attempt([&] { releaseManaged(overlayRoot); });
     attempt([&] { releaseManaged(overlayCameraRoot); });
-    attempt([&] { releaseManaged(savedOverlayTargetRoot); });
     boneSnapshots.clear(); managerSnapshots.clear(); boneBufferSnapshot.clear(); colliderBufferSnapshot.clear();
-    timeline=nullptr; music=nullptr; members=nullptr; sessionOverlay=nullptr; overlayCamera=nullptr; savedOverlayTarget=nullptr;
+    timeline=nullptr; music=nullptr; members=nullptr; sessionOverlay=nullptr; overlayCamera=nullptr;
+    resolutionRequested=false; resolutionReady=false;
     captureIndex=-1; captured=false; haveTick=false;
     if (restorationFailed) lastFailure=@"One or more game resources rejected MV state restoration.";
     phase=restorationFailed ? @"restore-incomplete" : @"idle";
@@ -325,7 +327,7 @@ void fail(NSString *message) {
 BOOL SIFASMVBindingsInstallOriginals(const SIFASMVBindingOriginals *value, NSError **out) {
     if (!value || !value->timeUpdate || !value->liveUpdate || !value->musicUpdate ||
         !value->memberUpdate || !value->overlayRender || !value->screenWidth || !value->screenHeight ||
-        !value->memberLateUpdate || !profileValid()) {
+        !value->memberLateUpdate || !value->cameraPostRender || !profileValid()) {
         if (out) *out=error(@"This MP4 renderer requires the verified GL 3.12.0 offline export shims.");
         return NO;
     }
@@ -343,7 +345,7 @@ BOOL SIFASMVBindingsInstallOriginals(const SIFASMVBindingOriginals *value, NSErr
 NSDictionary *SIFASMVBindingsStatus(void) {
     return @{ @"profile":@"GL-3.12.0-071607a0", @"installed":@(installed),
               @"active":@(active), @"liveDirectorObserved":@(director!=nullptr),
-              @"finalOverlayObserved":@(observedOverlay!=nullptr),
+              @"finalOverlayObserved":@(finalCameraObserved),
               @"simulationTick":@(tick), @"phase":phase,
               @"lastFailure":lastFailure ?: @"" };
 }
@@ -370,7 +372,7 @@ NSDictionary *SIFASMVBindingsSongSnapshot(void) {
 
 BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallbacks sink, NSError **out) {
     if (!onMain(out)) return NO;
-    if (!installed || active || !director || !observedDirectorRoot || !observedOverlayRoot || !observedOverlay || !sink.nextStep || !sink.frame || !sink.failed ||
+    if (!installed || active || !director || !observedDirectorRoot || !sink.nextStep || !sink.frame || !sink.failed ||
         value.width<16 || value.height<16 || value.width>4096 || value.height>4096 ||
         value.simulationHz!=60) {
         if (out) *out=error(@"Load a 3D MV before exporting with supported dimensions and simulation rate.");
@@ -386,15 +388,35 @@ BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallb
         if (!alive(manager)) { if(out)*out=error(@"The MV camera manager is no longer valid."); return NO; }
         sessionOverlay=load<void *>(manager,0x58);
         if (!sessionOverlay) sessionOverlay=load<void *>(manager,0x48);
-        if (!alive(sessionOverlay) || sessionOverlay!=observedOverlay) {
-            if(out)*out=error(@"The loaded MV has not rendered its final overlay yet."); return NO;
-        }
+        if (!alive(sessionOverlay)) { if(out)*out=error(@"The MV final overlay is no longer valid."); return NO; }
         overlayCamera=load<void *>(sessionOverlay,0x48);
         if (!alive(overlayCamera)) { if(out)*out=error(@"The MV final camera is no longer valid."); return NO; }
-        savedOverlayTarget=fn<void *(*)(void *,const void *)>(0x1039343a4)(overlayCamera,nullptr);
+        if (fn<bool (*)(void *,const void *)>(0x103930014)(sessionOverlay,nullptr)) {
+            if(out)*out=error(@"Resume the MV before exporting; its pause or blur effect is active."); return NO;
+        }
+        if (fn<void *(*)(void *,const void *)>(0x1039343a4)(overlayCamera,nullptr)) {
+            if(out)*out=error(@"The MV final camera uses an unsupported custom target."); return NO;
+        }
+        observeOverlay(sessionOverlay);
         clockManager=fn<void *(*)()>(0x10081498c)();
         if (!clockManager) { if(out)*out=error(@"Unity's simulation clock is unavailable."); return NO; }
         config=value; callbacks=sink; tick=0; haveTick=false; captured=false; captureIndex=-1; sceneAbandoned=false;
+        resolutionRequested=false; resolutionReady=false;
+        savedWidth=original.screenWidth(nullptr); savedHeight=original.screenHeight(nullptr);
+        if (savedWidth<=0 || savedHeight<=0) { if(out)*out=error(@"Unity has no valid rendering surface."); return NO; }
+        /* The exact iOS ScreenManager vtable exposes the current mode and
+         * refresh getters even though the managed getters were stripped.
+         * Preserve the enum, including its native -1 keep-current sentinel;
+         * a Boolean fullscreen overload would discard the original mode. */
+        screenManager=fn<void *(*)()>(0x1008f85d8)();
+        if (!screenManager || load<uintptr_t>(screenManager,0)!=0x10525bb00ULL+slide) {
+            if(out)*out=error(@"The native rendering-surface manager differs from the verified game ABI."); return NO;
+        }
+        savedFullScreenMode=fn<int32_t (*)(void *)>(0x100a92490)(screenManager);
+        savedRefreshRate=fn<int32_t (*)(void *)>(0x100a92498)(screenManager);
+        if (savedFullScreenMode < -1 || savedFullScreenMode > 3 || savedRefreshRate<0 || savedRefreshRate>1000) {
+            if(out)*out=error(@"Unity returned an invalid rendering-surface mode."); return NO;
+        }
         savedTimelineTime=fn<InstanceDouble>(0x10397c744)(timeline,nullptr);
         savedPlayState=fn<InstanceInt>(0x10397c230)(timeline,nullptr);
         /* Native setter chain0x10077666c ->0x10071743c validates that the
@@ -420,8 +442,7 @@ BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallb
         if (!overlayRoot) { releaseManaged(directorRoot); if(out)*out=error(@"Cannot retain the MV final overlay."); return NO; }
         active=true;
         overlayCameraRoot=retainManaged(overlayCamera);
-        savedOverlayTargetRoot=retainManaged(savedOverlayTarget);
-        if (!overlayCameraRoot || (savedOverlayTarget && !savedOverlayTargetRoot)) { fail(@"Cannot retain the MV final camera target."); return NO; }
+        if (!overlayCameraRoot) { fail(@"Cannot retain the MV final camera."); return NO; }
         phase=@"manual-timeline-mode";
         fn<SetMode>(0x10397c64c)(timeline,3,nullptr); /* DirectorUpdateMode.Manual */
         fn<InstanceVoid>(0x10397c9cc)(timeline,nullptr);
@@ -434,29 +455,21 @@ BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration value, SIFASMVBindingCallb
         void *sound=fn<void *(*)(void *)>(0x1035bc074)(*reinterpret_cast<void **>(0x1058f1550ULL+slide));
         if (!sound) { fail(@"The selected MV song player is unavailable."); return NO; }
         fn<void (*)(void *,int32_t,const void *)>(0x10165b35c)(sound,load<int32_t>(music,0x80),nullptr);
-        /* Explicit sRGB target reproduces the final backbuffer transfer. */
-        phase=@"allocate-final-srgb-render-target";
-        exportTarget=fn<TemporaryRT>(0x103960130)(value.width,value.height,0,0,2,1,0,0,false,nullptr);
-        renderRoot=retainManaged(exportTarget);
-        if (!renderRoot) { fail(@"Cannot retain the final MV render target."); return NO; }
-        /* Setting the final overlay camera's target makes Unity allocate its
-         * image-effect source at export dimensions. Redirecting only the
-         * OnRenderImage destination could upscale a physical-screen source.
-         * Main cameras retain their original explicit color/depth buffers. */
-        phase=@"bind-export-resolution-final-camera";
-        fn<SetTargetTexture>(0x103934410)(overlayCamera,exportTarget,nullptr);
         void *white=fn<StaticObject>(0x10396e548)(nullptr);
         if (!white) { fail(@"Unity cannot create the export readback texture."); return NO; }
         readbackTexture=fn<void *(*)(void *)>(0x101014950)(load<void *>(white,0));
         readbackRoot=retainManaged(readbackTexture);
-        if (!renderRoot || !readbackRoot) { fail(@"Cannot retain the export textures."); return NO; }
+        if (!readbackRoot) { fail(@"Cannot retain the export readback texture."); return NO; }
         phase=@"allocate-readable-rgba32-texture";
         fn<NewTexture>(0x10396e1d0)(readbackTexture,value.width,value.height,4,false,nullptr); /* RGBA32, no mips */
         put<int32_t>(clockManager,0xd8,static_cast<int32_t>(value.simulationHz));
         put<float>(clockManager,0xfc,1.f);
         freezeDeltas();
+        phase=@"request-native-rendering-resolution";
+        resolutionRequested=true;
+        fn<SetResolution>(0x10396462c)(value.width,value.height,savedFullScreenMode,savedRefreshRate,nullptr);
         lastFailure=nil;
-        phase=@"ready";
+        phase=@"waiting-native-rendering-resolution";
         return YES;
     } catch (...) {
         NSString *failedPhase=phase;
@@ -479,6 +492,16 @@ extern "C" void SIFASMVTimeUpdate(void *manager) {
         phase=@"advance-native-clock";
         if (!sceneValid()) { fail(@"The MV scene or final camera changed during export."); original.timeUpdate(manager); return; }
         if (manager!=clockManager) { fail(@"Unity replaced its simulation clock during export."); original.timeUpdate(manager); return; }
+        const int32_t actualWidth=original.screenWidth(nullptr), actualHeight=original.screenHeight(nullptr);
+        if (actualWidth!=static_cast<int32_t>(config.width) || actualHeight!=static_cast<int32_t>(config.height)) {
+            advancing=false;
+            freezeDeltas();
+            phase=@"waiting-native-rendering-resolution";
+            if (resolutionReady || fn<double (*)()>(0x100a91d70)()-wallStart>15.0)
+                fail([NSString stringWithFormat:@"Unity could not create the requested %ux%u render surface (actual %dx%d).",config.width,config.height,actualWidth,actualHeight]);
+            return;
+        }
+        resolutionReady=true;
         uint64_t next=0; int64_t image=-1;
         advancing=callbacks.nextStep(callbacks.context,&next,&image);
         if (!active) { original.timeUpdate(manager); return; }
@@ -505,7 +528,10 @@ extern "C" void SIFASMVTimeUpdate(void *manager) {
 
 extern "C" void SIFASMVLiveUpdate(void *value, const void *methodInfo) {
     if (!installed) return;
-    if (!active) { observeDirector(value); original.liveUpdate(value,methodInfo); return; }
+    if (!active) {
+        try { observeDirector(value); } catch (...) { director=nullptr; observedOverlay=nullptr; finalCameraObserved=false; }
+        original.liveUpdate(value,methodInfo); return;
+    }
     if (value!=director) {
         sceneAbandoned=true;
         fail(@"A different MV scene started during export.");
@@ -542,39 +568,79 @@ extern "C" void SIFASMVMemberUpdate(void *value, const void *methodInfo) {
 
 extern "C" void SIFASMVMemberLateUpdate(void *value, const void *methodInfo) {
     if (!installed) return;
-    if (!active || value!=members || (advancing && tick>0)) original.memberLateUpdate(value,methodInfo);
+    if (!active || value!=members) { original.memberLateUpdate(value,methodInfo); return; }
+    if (!advancing || tick==0) return;
+    try { original.memberLateUpdate(value,methodInfo); }
+    catch (...) { fail(@"The game's skirt safety correction failed during an offline physics tick."); }
 }
 
 extern "C" int32_t SIFASMVScreenWidth(const void *methodInfo) {
-    return active ? static_cast<int32_t>(config.width) : (original.screenWidth ? original.screenWidth(methodInfo) : 0);
+    /* The real engine surface owns these values. Never advertise a size that
+     * Unity has not allocated; camera/postFX targets follow the actual size. */
+    return original.screenWidth ? original.screenWidth(methodInfo) : 0;
 }
 extern "C" int32_t SIFASMVScreenHeight(const void *methodInfo) {
-    return active ? static_cast<int32_t>(config.height) : (original.screenHeight ? original.screenHeight(methodInfo) : 0);
+    return original.screenHeight ? original.screenHeight(methodInfo) : 0;
 }
 
 extern "C" void SIFASMVOverlayRender(void *overlay, void *source, void *destination, const void *methodInfo) {
     if (!installed) return;
-    if (!active) { observeOverlay(overlay); original.overlayRender(overlay,source,destination,methodInfo); return; }
-    if (!sceneValid()) {
-        fail(@"The MV scene or final camera changed before frame capture.");
-        observeOverlay(overlay);
-        original.overlayRender(overlay,source,destination,methodInfo); return;
+    /* Preserve the game's original shared backbuffer pipeline. Normal MV
+     * rendering has this effect disabled; pause/blur is outside this path. */
+    original.overlayRender(overlay,source,destination,methodInfo);
+    if (!active) { try { observeOverlay(overlay); } catch (...) { finalCameraObserved=false; } return; }
+    if (overlay==sessionOverlay) fail(@"The MV pause or blur effect became active during export.");
+}
+
+extern "C" void SIFASMVCameraPostRender(void *camera, const void *methodInfo) {
+    if (!installed) return;
+    original.cameraPostRender(camera,methodInfo);
+    if (![NSThread isMainThread]) {
+        if (active) dispatch_async(dispatch_get_main_queue(), ^{
+            if (active) fail(@"Unity dispatched the final render callback outside its main thread.");
+        });
+        return;
     }
-    if (overlay!=sessionOverlay || !advancing || captureIndex<0 || captured) {
-        original.overlayRender(overlay,source,destination,methodInfo); return;
+    if (!active) {
+        try {
+            if (!director || !observedDirectorRoot || !alive(director)) return;
+            void *manager=load<void *>(director,0x48);
+            if (!alive(manager)) return;
+            void *overlay=load<void *>(manager,0x58);
+            if (!overlay) overlay=load<void *>(manager,0x48);
+            if (alive(overlay) && load<void *>(overlay,0x48)==camera) {
+                observeOverlay(overlay); finalCameraObserved=true;
+            }
+        } catch (...) { /* No export owns resources; readiness stays false. */ }
+        return;
     }
+    if (!sceneValid()) { fail(@"The MV scene or final camera changed before frame capture."); return; }
+    if (camera!=overlayCamera || !advancing || captureIndex<0 || captured) return;
     void *previous=nullptr;
     bool restoreActive=false;
     try {
-        phase=@"render-final-overlay";
+        phase=@"validate-final-camera-backbuffer";
+        if (!resolutionReady || original.screenWidth(nullptr)!=static_cast<int32_t>(config.width) ||
+            original.screenHeight(nullptr)!=static_cast<int32_t>(config.height) ||
+            fn<bool (*)(void *,const void *)>(0x103930014)(sessionOverlay,nullptr) ||
+            fn<void *(*)(void *,const void *)>(0x1039343a4)(overlayCamera,nullptr)) {
+            fail(@"The final MV backbuffer changed or a pause/blur effect became active."); return;
+        }
+        const int32_t viewportWidth=fn<InstanceInt>(0x1039341f4)(overlayCamera,nullptr);
+        const int32_t viewportHeight=fn<InstanceInt>(0x103934260)(overlayCamera,nullptr);
+        if (viewportWidth<=0 || viewportHeight<=0 || viewportWidth>static_cast<int32_t>(config.width) ||
+            viewportHeight>static_cast<int32_t>(config.height)) {
+            fail(@"Unity returned an invalid final MV camera viewport."); return;
+        }
+        finalCameraObserved=true;
         completeJobs();
-        original.overlayRender(overlay,source,exportTarget,methodInfo);
-        if (destination!=exportTarget)
-            fn<Blit>(0x10394258c)(exportTarget,destination,nullptr);
         previous=fn<StaticObject>(0x10395fac4)(nullptr);
         restoreActive=true;
-        fn<SetObject>(0x10395fac8)(exportTarget,nullptr);
-        phase=@"read-final-render-pixels";
+        /* The final overlay camera has no active image effect. All original
+         * main cameras/postFX and its overlay geometry have already rendered
+         * into Unity's shared native backbuffer; UIKit is a separate layer. */
+        fn<SetObject>(0x10395fac8)(nullptr,nullptr);
+        phase=@"read-complete-game-backbuffer";
         fn<ReadPixels>(0x103970088)(readbackTexture,{0,0,static_cast<float>(config.width),static_cast<float>(config.height)},0,0,false,nullptr);
         fn<SetObject>(0x10395fac8)(previous,nullptr); restoreActive=false;
         const uint64_t needed=static_cast<uint64_t>(config.width)*config.height*4;
