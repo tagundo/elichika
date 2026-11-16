@@ -1,5 +1,6 @@
 """Synthetic ownership/boundary tests; no actual Simulator evidence is produced."""
 import json
+import ctypes
 import datetime
 import inspect
 import os
@@ -42,6 +43,9 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
         self.ps_count=0
         self.start_wall=float(int(time.time())-9)
         self.launch_wall=self.start_wall-1
+        kernel=patch.object(diagnostics,'kernel_executable',side_effect=lambda pid:
+                            (self.app/'ElichikaSimulatorProbe').resolve())
+        kernel.start();self.addCleanup(kernel.stop)
 
     def command(self, args, *, timeout=None, tail=False):
         self.calls.append(args)
@@ -112,7 +116,8 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
             self.assertGreaterEqual(row['started_wall'],self.launch_wall-2)
             self.match=False
             self.assertIsNone(diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,lambda a,s:self.command(a,timeout=s)))
-            for mode in ('wrong-uid','wrong-executable','wrong-pid','stale-start','future-start','truncated','timed-out'):
+            for mode in ('wrong-uid','wrong-executable','wrong-pid','stale-start','future-start','truncated','timed-out',
+                         'zombie','exited'):
                 self.match=True
                 def invoke(args, seconds):
                     row=self.command(args,timeout=seconds)
@@ -125,10 +130,95 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
                         fields[2:7]=datetime.datetime.fromtimestamp(at).strftime('%a %b %d %H:%M:%S %Y').split()
                     if mode=='truncated':row['truncated']=True
                     if mode=='timed-out':row['timed_out']=True
+                    if mode=='zombie':fields[7]='Z'
+                    if mode=='exited':fields[7]='X'
                     row['text']=' '.join(fields)+'\n'
                     return row
                 with self.subTest(mode=mode):
                     self.assertIsNone(diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,invoke))
+
+    def test_missing_console_discovers_only_unique_verified_kernel_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);self.app=app_fixture(root);out=root/'evidence';out.mkdir()
+            console=root/'empty-console.txt';console.write_text('')
+            def command(args, **kwargs):
+                if args[0]=='pgrep':
+                    self.calls.append(args)
+                    self.assertEqual(args[1],'-f')
+                    self.assertIn('/ElichikaSimulatorProbe([[:space:]]|$)',args[2])
+                    self.assertNotIn(r'\-',args[2])
+                    return response(str(PID)+'\n')
+                return self.command(args,**kwargs)
+            with patch.object(diagnostics,'bounded_command',side_effect=command), \
+                    patch.object(diagnostics,'owned_crashes',return_value=[]):
+                row=diagnostics.capture_owned_diagnostics(out,'iPad',DEVICE,self.app,self.launch_wall,
+                                                         console_log=console,prelaunch_verified=True)
+            self.assertIsNone(row['console_pid_candidate'])
+            self.assertTrue(row['kernel_discovery_without_console'])
+            self.assertEqual(row['process']['pid'],PID)
+            self.assertTrue(row['process_identity_revalidated_before_sample'])
+            self.assertTrue(row['process_identity_revalidated_after_sample'])
+            self.assertEqual(next(a for a in self.calls if a[0]=='sample'),
+                             ['sample',str(PID),'1','10','-mayDie'])
+            self.assertFalse(any('pgrep' in p.read_text() for p in out.glob('*identity*.txt')))
+            self.assertEqual([x['stage'] for x in row['identity_checks']],
+                             ['initial','before-sample','after-sample'])
+
+    def test_kernel_hints_never_authorize_foreign_or_ambiguous_processes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.app=app_fixture(Path(directory))
+            for mode in ('foreign','ambiguous','too-many','invalid','truncated','timeout','missing'):
+                calls=[]
+                def invoke(args, seconds):
+                    calls.append(args)
+                    if args[0]=='pgrep':
+                        text=(str(PID)+'\n'+str(PID+1)+'\n') if mode=='ambiguous' else str(PID)+'\n'
+                        if mode=='too-many':text='\n'.join(str(PID+i) for i in range(9))+'\n'
+                        if mode=='invalid':text='not a PID\n'
+                        r=response(text)
+                        if mode=='truncated':r['truncated']=True
+                        if mode=='timeout':r['timed_out']=True
+                        if mode=='missing':r=response('',1)
+                        return r
+                    r=self.command(args,timeout=seconds)
+                    fields=r['text'].split(None,11)
+                    fields[0]=args[3]
+                    if mode=='foreign':fields[11]=str(self.app.parent/'Foreign.app/ElichikaSimulatorProbe')
+                    r['text']=' '.join(fields)+'\n';return r
+                with self.subTest(mode=mode):
+                    self.assertIsNone(diagnostics.discover_owned_process(DEVICE,self.app,self.launch_wall,invoke))
+                    if mode in ('too-many','invalid','truncated','timeout','missing'):
+                        self.assertFalse(any(c[0]=='ps' for c in calls))
+                    self.assertFalse(any(c[0]=='sample' for c in calls))
+
+    def test_argv_spoof_and_unreadable_kernel_identity_never_authorize_sample(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.app=app_fixture(Path(directory))
+            for value in (None, Path(directory)/'ForeignExecutable'):
+                with self.subTest(value=value), patch.object(diagnostics,'kernel_executable',return_value=value):
+                    row=diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,
+                                                      lambda a,s:self.command(a,timeout=s))
+                    self.assertIsNone(row)
+
+    def test_longer_sample_stays_inside_original_total_capture_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);self.app=app_fixture(root);out=root/'evidence';out.mkdir()
+            elapsed=[100.0];calls=[]
+            def command(args, *, timeout, tail=False):
+                calls.append((args,timeout,elapsed[0]-100))
+                elapsed[0]+=timeout
+                if args[0]=='pgrep':return response(str(PID)+'\n')
+                return self.command(args,timeout=timeout,tail=tail)
+            with patch.object(diagnostics.time,'monotonic',side_effect=lambda:elapsed[0]), \
+                    patch.object(diagnostics,'bounded_command',side_effect=command), \
+                    patch.object(diagnostics,'owned_crashes',return_value=[]):
+                row=diagnostics.capture_owned_diagnostics(out,'iPad',DEVICE,self.app,self.launch_wall,
+                                                         prelaunch_verified=True)
+            self.assertEqual(row['command_capture_budget_seconds'],25)
+            self.assertLessEqual(row['capture_elapsed_seconds'],25)
+            self.assertEqual(next(t for a,t,_ in calls if a[0]=='sample'),15)
+            self.assertTrue(all(t<=25-at for _,t,at in calls))
+            self.assertFalse(any(a[0] in ('kill','killall','pkill') for a,_,_ in calls))
 
     def test_sample_requires_identity_before_and_after_and_never_trusts_console_pid(self):
         for mode in ('good','missing','changed-before','changed-after'):
@@ -174,9 +264,9 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
                 diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,lambda a,s:self.command(a,timeout=s))
             self.assertFalse(self.sampled)
 
-    def test_runner_passes_prelaunch_inventory_anchor_and_flushed_log_after_expiry(self):
+    def test_runner_passes_prelaunch_inventory_anchor_and_launcher_log_after_expiry(self):
         source=inspect.getsource(execute)
-        self.assertLess(source.index('Simulator installation changed signed bundle bytes'),source.index('subprocess.Popen'))
+        self.assertLess(source.index('Simulator installation changed signed bundle bytes'),source.index('launch_owned('))
         self.assertLess(source.index('output.flush()'),source.index('retain_failure('))
         self.assertIn('console_log=log',source)
         retained=inspect.getsource(retain_failure)
@@ -248,6 +338,35 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
                 self.assertTrue(reply.is_file(),'the late-PASS negative must actually write its receipt')
                 self.assertNotIn('NEVER_COPY',json.dumps(row))
                 watchdog.observe.assert_not_called();watchdog.can_read_receipt.assert_not_called()
+
+
+class KernelExecutableTests(unittest.TestCase):
+    def test_real_current_process_image_is_read_without_process_signals(self):
+        if not (sys.platform=='darwin' or sys.platform.startswith('linux')):
+            self.skipTest('Kernel image API is implemented for production Darwin and test Linux')
+        self.assertEqual(diagnostics.kernel_executable(os.getpid()),Path(sys.executable).resolve())
+
+    def test_non_application_pid_values_are_rejected_before_native_lookup(self):
+        with patch.object(ctypes,'CDLL',side_effect=AssertionError('must not load')):
+            for value in (None,True,0,1,-1,2**31,'4242'):
+                self.assertIsNone(diagnostics.kernel_executable(value))
+
+    def test_darwin_kernel_path_uses_bounded_libproc_buffer_not_argv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'native executable';path.write_bytes(b'fixture')
+            library=Mock()
+            def lookup(pid,buffer,size):
+                self.assertEqual(pid,PID);self.assertEqual(size,4096)
+                value=os.fsencode(path)+b'\0';ctypes.memmove(buffer,value,len(value));return len(value)-1
+            library.proc_pidpath.side_effect=lookup
+            with patch.object(diagnostics.sys,'platform','darwin'),patch.object(diagnostics,'_LIBPROC',None), \
+                    patch.object(ctypes,'CDLL',return_value=library) as load:
+                self.assertEqual(diagnostics.kernel_executable(PID),path.resolve())
+                load.assert_called_once_with('/usr/lib/libproc.dylib',use_errno=True)
+            for count in (0,-1,4096,5000):
+                library.proc_pidpath.side_effect=None;library.proc_pidpath.return_value=count
+                with patch.object(diagnostics.sys,'platform','darwin'),patch.object(diagnostics,'_LIBPROC',library):
+                    self.assertIsNone(diagnostics.kernel_executable(PID))
 
 
 if __name__=='__main__':

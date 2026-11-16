@@ -19,31 +19,18 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import inventory, require, run, write_json
 from probe_watchdog import DETAILS, STAGE_SECONDS, ProbeWatchdog, read_progress, stage_budgets
-from probe_console import ProbeConsole
+from probe_launch import launch_owned, launch_command as probe_launch_command
 from simulator_diagnostics import capture_owned_diagnostics
 
 BUNDLE = 'org.elichika.simulator-probe'
 PORTS = (8080, 8770, 8772)
 
 
-def probe_launch_command(identifier, launch_number, *, core_only, require_parity_ui):
-    # Launch1 uses a newly created device. Launch2 follows our verified explicit
-    # termination below. Asking FrontBoard to terminate a never-running fresh
-    # install again can stall its launch transaction before main is entered.
-    command = ['xcrun', 'simctl', 'launch', '--console-pty', identifier, BUNDLE,
-               '--elichika-probe-launch=' + str(launch_number)]
-    if core_only:
-        command.append('--elichika-core-probe')
-    if require_parity_ui:
-        command.append('--elichika-parity-probe')
-    return command
-
-
-def cleanup_owned_probe(identifier, process=None):
-    """Bound only our device/console cleanup, preserving any original failure."""
+def cleanup_owned_probe(identifier, process=None, *, terminate_only=False):
+    """Bound only our device/application cleanup, preserving any original failure."""
     original_failure = sys.exc_info()[0] is not None
     errors = []
-    operations = [('terminate', identifier, BUNDLE)] if process is not None else [
+    operations = [('terminate', identifier, BUNDLE)] if process is not None or terminate_only else [
         ('shutdown', identifier), ('delete', identifier)]
     for arguments in operations:
         try:
@@ -56,20 +43,10 @@ def cleanup_owned_probe(identifier, process=None):
     if process is not None:
         try:
             process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            # This handle owns simctl, never an unverified game PID.
-            try:
-                process.terminate()
-                process.wait(timeout=10)
-            except (OSError, subprocess.SubprocessError):
-                errors.append('console_termination_failed')
-                try:
-                    process.kill()
-                    process.wait(timeout=5)
-                except (OSError, subprocess.SubprocessError):
-                    errors.append('console_exit_failed')
-        except (OSError, subprocess.SubprocessError):
-            errors.append('console_wait_failed')
+        except (OSError, subprocess.SubprocessError, ValueError):
+            # The app is a verified nonchild process. Only simctl may terminate
+            # the exact owned bundle; never signal a potentially reused PID.
+            errors.append('owned_application_exit_failed')
     if errors:
         message = 'Owned Simulator cleanup failed: ' + ','.join(errors)
         if original_failure:
@@ -215,7 +192,7 @@ def retain_failure(evidence, label, identifier, process, watchdog, error, reply_
     """Capture small owned-probe diagnostics before termination/sandbox deletion."""
     diagnostics = {'schema': 1, 'status': 'FAIL_SIMULATOR_PROBE',
                    'error_type': type(error).__name__, 'error': str(error)[:512],
-                   'process_exit_code': process.poll(),
+                   'process_liveness': process.poll() if process is not None else None,
                    'owned_loopback_ports_listening': {str(port): port_open(port) for port in PORTS},
                    'watchdog': watchdog.snapshot(time.monotonic()),
                    'all_final_readiness_gates_still_required': True}
@@ -278,18 +255,22 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                 progress_file = sandbox / 'Documents/elichika-simulator-progress.json'
                 progress_file.unlink(missing_ok=True)
                 label = model['name'].replace('/', '-') + '-launch-' + str(launch_number)
-                log = evidence / (label + '.txt')
-                with log.open('wb', buffering=0) as output, ProbeConsole(output) as console:
-                    command = probe_launch_command(identifier, launch_number, core_only=core_only,
-                                                   require_parity_ui=require_parity_ui)
+                log = evidence / (label + '-launch.txt')
+                stdout_log = evidence / (label + '-stdout.txt')
+                stderr_log = evidence / (label + '-stderr.txt')
+                with (evidence / (label + '-protocol.txt')).open('wb', buffering=0) as output:
                     launch_wall = time.time()
                     began = time.monotonic()
-                    process = subprocess.Popen(command, stdout=console.slave, stderr=subprocess.STDOUT)
-                    console.start()
                     watchdog = ProbeWatchdog(launch_number, began, require_parity_ui=require_parity_ui)
+                    process = None
                     try:
+                        process = launch_owned(identifier, installed, launch_number,
+                            stdout_log, stderr_log, log, core_only=core_only,
+                            require_parity_ui=require_parity_ui, launch_wall=launch_wall,
+                            timeout=min(15, 60 - (time.monotonic() - began)))
                         while True:
-                            console.check()
+                            require(process.poll() is None, process.last_error or
+                                    'Owned probe application exited before readiness')
                             now = time.monotonic()
                             watchdog.check(now)
                             if progress_file.exists():
@@ -297,7 +278,6 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                             watchdog.check(now)
                             if reply_file.is_file() and watchdog.can_read_receipt(now):
                                 break
-                            require(process.poll() is None, 'Probe process exited before its real-backend readiness receipt')
                             time.sleep(.5)
                         write_json(evidence / (label + '-progress.json'), watchdog.snapshot(time.monotonic()))
                         require(reply_file.stat().st_size <= 1024*1024, 'Probe receipt exceeds bound')
@@ -334,13 +314,16 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                         subprocess.run(['xcrun', 'simctl', 'io', identifier, 'screenshot', evidence / ('probe-' + str(len(results)) + '.png')],
                                        check=True, timeout=min(15, watchdog.remaining(time.monotonic())))
                         watchdog.remaining(time.monotonic())
+                        require(process.poll() is None, process.last_error or
+                                'Owned probe application exited during final verification')
+                        watchdog.remaining(time.monotonic())
                     except Exception as error:
                         output.flush()
                         retain_failure(evidence, label, identifier, process, watchdog, error, reply_file,
                                        installed=installed, launch_wall=launch_wall, console_log=log)
                         raise
                     finally:
-                        cleanup_owned_probe(identifier, process)
+                        cleanup_owned_probe(identifier, process, terminate_only=True)
                 await_closed()
         finally:
             if identifier:

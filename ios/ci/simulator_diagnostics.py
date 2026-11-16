@@ -16,6 +16,7 @@ import re
 import selectors
 import stat
 import subprocess
+import sys
 import time
 import uuid
 
@@ -23,6 +24,7 @@ BUNDLE = 'org.elichika.simulator-probe'
 MAX_CAPTURE_SECONDS = 25
 MAX_COMMAND_BYTES = 128 * 1024
 MAX_CRASH_BYTES = 1024 * 1024
+_LIBPROC = None
 SENSITIVE = re.compile(r'(?i)token|password|secret|authorization|cookie|session|account|'
                        r'user[_ -]?(?:id|name)|private[_ -]?key|request[_ -]?body|response[_ -]?body')
 
@@ -140,6 +142,34 @@ def console_pid_candidate(path):
     return next(iter(values)) if len(values) == 1 else None
 
 
+def kernel_executable(pid):
+    """Read the process's executable vnode path, never argv or an app signal."""
+    if type(pid) is not int or not 1 < pid < 2**31:
+        return None
+    try:
+        if sys.platform == 'darwin':
+            import ctypes
+            global _LIBPROC
+            if _LIBPROC is None:
+                library = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
+                library.proc_pidpath.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32)
+                library.proc_pidpath.restype = ctypes.c_int
+                _LIBPROC = library
+            buffer = ctypes.create_string_buffer(4096)
+            count = _LIBPROC.proc_pidpath(pid, buffer, ctypes.sizeof(buffer))
+            if not 0 < count < ctypes.sizeof(buffer):
+                return None
+            value = buffer.value.decode('utf-8')
+        elif sys.platform.startswith('linux'):
+            value = os.readlink('/proc/' + str(pid) + '/exe')
+        else:
+            return None
+        path = Path(value)
+        return path.resolve(strict=True) if path.is_absolute() else None
+    except (OSError, ValueError, AttributeError, UnicodeError):
+        return None
+
+
 def process_identity(candidate, identifier, app, launch_wall, invoke):
     """Independently bind a console candidate to the pinned owned executable."""
     if type(candidate) is not int or not 1 < candidate < 2**31:
@@ -162,6 +192,8 @@ def process_identity(candidate, identifier, app, launch_wall, invoke):
         started = datetime.datetime.strptime(start, '%a %b %d %H:%M:%S %Y').timestamp()
         if (int(fields[0]) != candidate or int(fields[1]) != os.geteuid()
                 or Path(fields[11]).resolve() != expected
+                or kernel_executable(candidate) != expected
+                or any(value in fields[7] for value in ('Z', 'X'))
                 or not launch_wall - 2 <= started <= time.time() + 2):
             return None
         return dict(pid=candidate, uid=int(fields[1]), start=start, started_wall=started,
@@ -169,6 +201,31 @@ def process_identity(candidate, identifier, app, launch_wall, invoke):
                     rss_kib=int(fields[10]), executable=str(expected))
     except (ValueError, OSError):
         return None
+
+
+def discover_owned_process(identifier, app, launch_wall, invoke):
+    """Find PID hints without a console, then independently verify one owner.
+
+    Darwin short process names truncate ElichikaSimulatorProbe. Match the full
+    argv only for candidate discovery; never use an argv match as identity and
+    never retain other processes' command lines or environment.
+    """
+    expected = executable(Path(app))
+    # Escape POSIX ERE operators only. Python re.escape also escapes UUID
+    # hyphens/spaces, whose escaped interpretation is not portable to BSD.
+    escaped = ''.join('\\' + c if c in r'\.^$|?*+()[]{}' else c for c in str(expected))
+    pattern = '^' + escaped + '([[:space:]]|$)'
+    found = invoke(['pgrep', '-f', pattern], 2)
+    if (found.get('returncode') not in (0, 1) or found.get('truncated')
+            or found.get('timed_out')):
+        return None
+    rows = found.get('text', '').splitlines()
+    if len(rows) > 8 or any(not re.fullmatch(r'[0-9]{1,10}', row.strip()) for row in rows):
+        return None
+    candidates = {int(row.strip()) for row in rows if 1 < int(row.strip()) < 2**31}
+    identities = [value for candidate in sorted(candidates)
+                  if (value := process_identity(candidate, identifier, app, launch_wall, invoke))]
+    return identities[0] if len(identities) == 1 else None
 
 
 def crash_summary(data, expected, *, pid=None):
@@ -261,12 +318,15 @@ def capture_owned_diagnostics(evidence, label, identifier, app, launch_wall, *,
 
     def invoke(args, seconds, *, tail=False):
         remaining = MAX_CAPTURE_SECONDS - (time.monotonic() - began)
-        result = bounded_command(args, timeout=min(seconds, max(0, remaining)), tail=tail)
-        if args[0] == 'ps':
-            name = 'ps'
-            report['identity_checks'].append(dict(command=name, **save(
-                'identity-' + str(len(report['identity_checks']) + 1), result)))
-        return result
+        # pgrep and ps rows are untrusted discovery inputs. Persist no foreign
+        # process rows, arguments or environment, even when a hint is rejected.
+        return bounded_command(args, timeout=min(seconds, max(0, remaining)), tail=tail)
+
+    def record_identity(stage, value):
+        row = dict(stage=stage, verified=value is not None)
+        if value:
+            row.update({key: value[key] for key in ('pid', 'uid', 'started_wall')})
+        report['identity_checks'].append(row)
 
     def save(name, result):
         encoded = redacted(result.get('text', ''), app).encode('utf-8')
@@ -282,15 +342,27 @@ def capture_owned_diagnostics(evidence, label, identifier, app, launch_wall, *,
     candidate = console_pid_candidate(console_log)
     report['console_pid_candidate'] = candidate
     identity = process_identity(candidate, identifier, app, launch_wall, invoke)
+    report['kernel_discovery_without_console'] = False
+    if identity is None:
+        identity = discover_owned_process(identifier, app, launch_wall, invoke)
+        report['kernel_discovery_without_console'] = identity is not None
+        candidate = identity['pid'] if identity else None
+    report['kernel_executable_api'] = 'libproc.proc_pidpath' if sys.platform == 'darwin' else 'procfs-exe'
+    record_identity('initial', identity)
     if identity:
         report['process_identity_verified'] = True
         report['process'] = {key: value for key, value in identity.items() if key != 'executable'}
         before = process_identity(candidate, identifier, app, launch_wall, invoke)
+        record_identity('before-sample', before)
         keys = ('pid', 'uid', 'started_wall', 'executable')
         if before and all(before[key] == identity[key] for key in keys):
             report['process_identity_revalidated_before_sample'] = True
-            sample = invoke(['sample', str(identity['pid']), '1', '1', '-mayDie'], 5)
+            # One second at 10ms avoids the old 1ms sampling overhead. Allow
+            # bounded symbolication time; the complete capture still has its
+            # unchanged 25-second absolute budget.
+            sample = invoke(['sample', str(identity['pid']), '1', '10', '-mayDie'], 15)
             after = process_identity(candidate, identifier, app, launch_wall, invoke)
+            record_identity('after-sample', after)
             if after and all(after[key] == identity[key] for key in keys):
                 report['process_identity_revalidated_after_sample'] = True
                 report['sample'] = save('owned-app-sample', sample)

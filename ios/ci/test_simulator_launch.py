@@ -2,6 +2,7 @@
 import contextlib
 import inspect
 import io
+from pathlib import Path
 import subprocess
 import unittest
 from unittest.mock import Mock, patch
@@ -15,13 +16,13 @@ DEVICE = '12345678-1234-1234-1234-123456789abc'
 class OwnedLaunchTests(unittest.TestCase):
     def test_launch_has_no_redundant_frontboard_termination_or_second_launch(self):
         for number in (1, 2):
-            command = probe_launch_command(DEVICE, number, core_only=False, require_parity_ui=True)
-            self.assertEqual(command, ['xcrun', 'simctl', 'launch', '--console-pty', DEVICE, BUNDLE,
+            command = probe_launch_command(DEVICE, number, Path('/owned/stdout'), Path('/owned/stderr'), core_only=False, require_parity_ui=True)
+            self.assertEqual(command, ['xcrun', 'simctl', 'launch', '--stdout=/owned/stdout', '--stderr=/owned/stderr', DEVICE, BUNDLE,
                                        '--elichika-probe-launch=' + str(number), '--elichika-parity-probe'])
-        self.assertEqual(probe_launch_command(DEVICE, 1, core_only=True, require_parity_ui=False)[-1],
+        self.assertEqual(probe_launch_command(DEVICE, 1, Path('/owned/stdout'), Path('/owned/stderr'), core_only=True, require_parity_ui=False)[-1],
                          '--elichika-core-probe')
 
-    def test_successful_cleanup_requires_explicit_owned_termination_and_console_exit(self):
+    def test_successful_cleanup_requires_explicit_owned_termination_and_actual_app_exit(self):
         process = Mock()
         with patch('run_simulator.subprocess.run', return_value=subprocess.CompletedProcess([], 0)) as call:
             cleanup_owned_probe(DEVICE, process)
@@ -51,20 +52,28 @@ class OwnedLaunchTests(unittest.TestCase):
         self.assertEqual([x[0][2] for x in calls], ['shutdown', 'delete'])
         self.assertTrue(all(x[1]['timeout'] == 15 for x in calls))
 
-    def test_stuck_owned_console_has_bounded_signal_and_exit_waits(self):
-        process = Mock(); process.wait.side_effect = [subprocess.TimeoutExpired('simctl', 10),
-                                                     subprocess.TimeoutExpired('simctl', 10), None]
+    def test_stuck_owned_app_blocks_cold_gate_without_signaling_a_nonchild_pid(self):
+        process = Mock(); process.wait.side_effect = subprocess.TimeoutExpired('owned app', 10)
         with patch('run_simulator.subprocess.run', return_value=subprocess.CompletedProcess([], 0)):
-            with self.assertRaisesRegex(ValueError, 'console_termination_failed'):
+            with self.assertRaisesRegex(ValueError, 'owned_application_exit_failed'):
                 cleanup_owned_probe(DEVICE, process)
-        self.assertEqual([x.kwargs['timeout'] for x in process.wait.call_args_list], [10, 10, 5])
-        process.terminate.assert_called_once_with(); process.kill.assert_called_once_with()
+        process.wait.assert_called_once_with(timeout=10)
+        process.terminate.assert_not_called(); process.kill.assert_not_called()
+
+    def test_launcher_failure_still_terminates_only_our_bundle_then_deletes_our_device(self):
+        with patch('run_simulator.subprocess.run', return_value=subprocess.CompletedProcess([], 0)) as call:
+            cleanup_owned_probe(DEVICE, None, terminate_only=True)
+        self.assertEqual(call.call_args.args[0], ['xcrun', 'simctl', 'terminate', DEVICE, BUNDLE])
 
     def test_all_four_cold_probes_and_original_deadlines_are_preserved(self):
         code = inspect.getsource(execute)
         self.assertIn('for launch_number in (1, 2):', code)
         self.assertIn("require(len(results) == 4", code)
-        self.assertLess(code.index('cleanup_owned_probe(identifier, process)'), code.index('await_closed()'))
+        self.assertLess(code.index('cleanup_owned_probe(identifier, process, terminate_only=True)'), code.index('await_closed()'))
+        self.assertLess(code.index('began = time.monotonic()'), code.index('process = launch_owned('))
+        self.assertLess(code.index('require(process.poll() is None'), code.index('if reply_file.is_file()'))
+        self.assertLess(code.index('Owned probe application exited during final verification'),
+                        code.index('cleanup_owned_probe(identifier, process, terminate_only=True)'))
         self.assertEqual(FIRST_PROGRESS_SECONDS, 60)
         self.assertEqual(ABSOLUTE_SECONDS, 600)
 
