@@ -384,7 +384,7 @@ jobs:
           BuildVersion.parse(os.environ['CLIENT_BUILD'])
           PYCODE
           python3 -B -m unittest -v test_build_android_mv
-          python3 -B -m unittest discover -s metadata/tests -v
+          PYTHONPATH=metadata python3 -B -m unittest discover -s metadata/tests -v
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
