@@ -148,7 +148,7 @@ def choose_runtime_and_types(*, ipad_first=False):
 
 
 def retain_failure(evidence, label, identifier, process, watchdog, error, reply_file,
-                   *, installed=None, launch_wall=None):
+                   *, installed=None, launch_wall=None, console_log=None):
     """Capture small owned-probe diagnostics before termination/sandbox deletion."""
     diagnostics = {'schema': 1, 'status': 'FAIL_SIMULATOR_PROBE',
                    'error_type': type(error).__name__, 'error': str(error)[:512],
@@ -159,7 +159,8 @@ def retain_failure(evidence, label, identifier, process, watchdog, error, reply_
     if installed is not None and launch_wall is not None:
         try:
             diagnostics['startup_diagnostics'] = capture_owned_diagnostics(
-                evidence, label, identifier, installed, launch_wall)
+                evidence, label, identifier, installed, launch_wall,
+                console_log=console_log, prelaunch_verified=True)
         except Exception as diagnostic_error:
             # Evidence capture is not a retry/readiness path. Even a late native
             # PASS written during capture cannot revive the original failure.
@@ -275,7 +276,7 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                     except Exception as error:
                         output.flush()
                         retain_failure(evidence, label, identifier, process, watchdog, error, reply_file,
-                                       installed=installed, launch_wall=launch_wall)
+                                       installed=installed, launch_wall=launch_wall, console_log=log)
                         raise
                     finally:
                         subprocess.run(['xcrun', 'simctl', 'terminate', identifier, BUNDLE], check=False,

@@ -1,5 +1,7 @@
 """Synthetic ownership/boundary tests; no actual Simulator evidence is produced."""
 import json
+import datetime
+import inspect
 import os
 from pathlib import Path
 import plistlib
@@ -11,7 +13,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import simulator_diagnostics as diagnostics
-from run_simulator import retain_failure
+from run_simulator import execute, retain_failure
 
 DEVICE = '12345678-1234-1234-1234-123456789abc'
 PID = 4242
@@ -35,17 +37,20 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
         self.calls=[]
         self.sampled=False
         self.change_identity=False
+        self.change_before=False
         self.match=True
+        self.ps_count=0
+        self.start_wall=float(int(time.time())-9)
+        self.launch_wall=self.start_wall-1
 
-    def command(self, args, *, timeout=None):
+    def command(self, args, *, timeout=None, tail=False):
         self.calls.append(args)
-        if 'get_app_container' in args:
-            return response(str(self.app)+'\n')
-        if 'launchctl' in args:
-            return response(f'{PID}\t0\tUIKitApplication:{diagnostics.BUNDLE}[abc]\n' if self.match else '')
         if args[0]=='ps':
-            at='11:13:00' if self.sampled and self.change_identity else '11:12:00'
-            return response(f'{PID} Mon Nov 16 {at} 2026 S 1.0 0.5 64000 {self.app}/ElichikaSimulatorProbe\n')
+            self.ps_count+=1
+            if not self.match:return response('',1)
+            changed=(self.sampled and self.change_identity) or (self.change_before and self.ps_count>=2)
+            at=datetime.datetime.fromtimestamp(self.start_wall+int(changed)).strftime('%a %b %d %H:%M:%S %Y')
+            return response(f'{PID} {os.geteuid()} {at} S 1.0 0.5 64000 {self.app}/ElichikaSimulatorProbe\n')
         if args[0]=='sample':
             self.sampled=True
             return response('Sample of ElichikaSimulatorProbe\n0 main\n')
@@ -60,37 +65,86 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
         self.assertTrue(row['timed_out'])
         self.assertLess(time.monotonic()-started,1.5)
 
-    def test_owned_device_container_label_executable_and_start_are_required(self):
+    def test_tail_buffer_drains_past_oldest_cap_and_preserves_latest_launch_message(self):
+        row=diagnostics.bounded_command([sys.executable,'-c',
+            'print("old-noise\\n"*3000+"OWNED_LAUNCH_FINAL",flush=True)'],timeout=2,cap=512,tail=True)
+        self.assertEqual(row['returncode'],0)
+        self.assertTrue(row['truncated'])
+        self.assertEqual(row['retained_buffer'],'tail')
+        self.assertLessEqual(len(row['text'].encode()),512)
+        self.assertGreater(row['received_bytes'],512)
+        self.assertTrue(row['text'].endswith('OWNED_LAUNCH_FINAL\n'))
+
+    def test_console_pid_is_only_a_bounded_untrusted_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.app=app_fixture(Path(directory))
-            row=diagnostics.process_identity(DEVICE,self.app,lambda a,s:self.command(a,timeout=s))
+            p=Path(directory)/'console.txt'
+            p.write_text('ELICHIKA_SIMULATOR_STARTUP main_entry\n'+diagnostics.BUNDLE+f': {PID}\n')
+            self.assertEqual(diagnostics.console_pid_candidate(p),PID)
+            for text in ('unowned: 4242\n',diagnostics.BUNDLE+': 1\n',
+                         diagnostics.BUNDLE+': 4242\n'+diagnostics.BUNDLE+': 5555\n',
+                         'x'*8192+'\n'+diagnostics.BUNDLE+': 4242\n'):
+                p.write_text(text);self.assertIsNone(diagnostics.console_pid_candidate(p))
+            p.unlink();p.symlink_to(Path(directory)/'missing')
+            self.assertIsNone(diagnostics.console_pid_candidate(p))
+
+    def test_truncated_tail_drops_sensitive_suffix_when_its_prefix_is_outside_buffer(self):
+        for prefix in ('Authorization: Bearer ','HTTPS://private.example/'):
+            for suffix in ('','\nSAFE_STARTUP_EVENT\n'):
+                with self.subTest(prefix=prefix,suffix=suffix):
+                    value=prefix+'PRIVATE_VALUE_'*1000+suffix
+                    row=diagnostics.bounded_command([sys.executable,'-c',
+                        'import sys;sys.stdout.write('+repr(value)+');sys.stdout.flush()'],
+                        timeout=2,cap=512,tail=True)
+                    self.assertTrue(row['truncated'])
+                    self.assertTrue(row['partial_first_line_dropped'])
+                    self.assertNotIn('PRIVATE_VALUE',row['text'])
+                    clean=diagnostics.redacted(row['text'],Path('/owned/app'))
+                    self.assertNotIn('PRIVATE_VALUE',clean)
+                    if suffix:self.assertIn('SAFE_STARTUP_EVENT',clean)
+                    else:self.assertEqual(clean,'')
+
+    def test_owned_device_exact_executable_current_uid_and_kernel_start_are_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.app=app_fixture(Path(directory)/'parent with spaces')
+            row=diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,lambda a,s:self.command(a,timeout=s))
             self.assertEqual(row['pid'],PID)
-            self.assertEqual(row['start'],'Mon Nov 16 11:12:00 2026')
+            self.assertEqual(row['uid'],os.geteuid())
+            self.assertGreaterEqual(row['started_wall'],self.launch_wall-2)
             self.match=False
-            self.assertIsNone(diagnostics.process_identity(DEVICE,self.app,lambda a,s:self.command(a,timeout=s)))
-            for mode in ('wrong-container','wrong-executable','ambiguous-label','lookalike-bundle'):
+            self.assertIsNone(diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,lambda a,s:self.command(a,timeout=s)))
+            for mode in ('wrong-uid','wrong-executable','wrong-pid','stale-start','future-start','truncated','timed-out'):
                 self.match=True
                 def invoke(args, seconds):
                     row=self.command(args,timeout=seconds)
-                    if mode=='wrong-container' and 'get_app_container' in args:row['text']=str(self.app.parent/'Other.app')
-                    if mode=='wrong-executable' and args[0]=='ps':row['text']=row['text'].replace('/Probe.app/','/Other.app/')
-                    if mode=='ambiguous-label' and 'launchctl' in args:row['text']+=f'5555 0 UIKitApplication:{diagnostics.BUNDLE}[other]\n'
-                    if mode=='lookalike-bundle' and 'launchctl' in args:row['text']=row['text'].replace(diagnostics.BUNDLE,diagnostics.BUNDLE+'-unowned')
+                    fields=row['text'].split(None,11)
+                    if mode=='wrong-uid':fields[1]=str(os.geteuid()+1)
+                    if mode=='wrong-executable':fields[11]=str(self.app.parent/'Other.app/ElichikaSimulatorProbe')
+                    if mode=='wrong-pid':fields[0]=str(PID+1)
+                    if mode in ('stale-start','future-start'):
+                        at=self.launch_wall-10 if mode=='stale-start' else time.time()+60
+                        fields[2:7]=datetime.datetime.fromtimestamp(at).strftime('%a %b %d %H:%M:%S %Y').split()
+                    if mode=='truncated':row['truncated']=True
+                    if mode=='timed-out':row['timed_out']=True
+                    row['text']=' '.join(fields)+'\n'
                     return row
                 with self.subTest(mode=mode):
-                    self.assertIsNone(diagnostics.process_identity(DEVICE,self.app,invoke))
+                    self.assertIsNone(diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,invoke))
 
     def test_sample_requires_identity_before_and_after_and_never_trusts_console_pid(self):
-        for match,changed in ((True,False),(False,False),(True,True)):
-            with self.subTest(match=match,changed=changed), tempfile.TemporaryDirectory() as directory:
+        for mode in ('good','missing','changed-before','changed-after'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
                 root=Path(directory);self.app=app_fixture(root);out=root/'evidence';out.mkdir()
-                self.calls=[];self.sampled=False;self.match=match;self.change_identity=changed
+                console=root/'console.txt';console.write_text(diagnostics.BUNDLE+f': {PID}\n')
+                self.calls=[];self.sampled=False;self.ps_count=0;self.match=mode!='missing'
+                self.change_identity=mode=='changed-after';self.change_before=mode=='changed-before'
                 with patch.object(diagnostics,'bounded_command',side_effect=self.command), \
                         patch.object(diagnostics,'owned_crashes',return_value=[]):
-                    row=diagnostics.capture_owned_diagnostics(out,'iPad-launch-1',DEVICE,self.app,time.time()-60)
+                    row=diagnostics.capture_owned_diagnostics(out,'iPad-launch-1',DEVICE,self.app,self.launch_wall,
+                                                             console_log=console,prelaunch_verified=True)
                 samples=[args for args in self.calls if args[0]=='sample']
-                self.assertEqual(len(samples),int(match))
-                if match and not changed:
+                self.assertEqual(len(samples),int(mode in ('good','changed-after')))
+                if mode=='good':
+                    self.assertTrue(row['process_identity_revalidated_before_sample'])
                     self.assertTrue(row['process_identity_revalidated_after_sample'])
                     self.assertTrue((out/row['sample']['file']).is_file())
                 else:
@@ -100,6 +154,10 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
                 self.assertTrue(row['original_failure_unchanged'])
                 self.assertFalse(any(args[0] in ('kill','killall','pkill') or 'terminate' in args or 'launch' in args
                                      for args in self.calls))
+                self.assertFalse(any('get_app_container' in args or 'launchctl' in args for args in self.calls))
+                log_args=next(args for args in self.calls if 'log' in args)
+                self.assertIn('--start',log_args);self.assertNotIn('--last',log_args)
+                self.assertIn(diagnostics.BUNDLE,log_args[-1]);self.assertNotIn('SpringBoard',log_args[-1])
                 log=(out/row['device_log']['file']).read_text()
                 self.assertIn('ELICHIKA_SIMULATOR_STARTUP main_entry',log)
                 self.assertNotIn('private-value',log)
@@ -109,10 +167,21 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
             root=Path(directory);self.app=app_fixture(root);out=root/'evidence';out.mkdir()
             with self.assertRaises(ValueError):
                 diagnostics.capture_owned_diagnostics(out,'x','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',self.app,time.time())
+            with self.assertRaisesRegex(ValueError,'prelaunch'):
+                diagnostics.capture_owned_diagnostics(out,'x',DEVICE,self.app,self.launch_wall)
             binary=self.app/'ElichikaSimulatorProbe';binary.unlink();binary.symlink_to('/bin/sh')
             with self.assertRaises(ValueError):
-                diagnostics.process_identity(DEVICE,self.app,lambda a,s:self.command(a,timeout=s))
+                diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,lambda a,s:self.command(a,timeout=s))
             self.assertFalse(self.sampled)
+
+    def test_runner_passes_prelaunch_inventory_anchor_and_flushed_log_after_expiry(self):
+        source=inspect.getsource(execute)
+        self.assertLess(source.index('Simulator installation changed signed bundle bytes'),source.index('subprocess.Popen'))
+        self.assertLess(source.index('output.flush()'),source.index('retain_failure('))
+        self.assertIn('console_log=log',source)
+        retained=inspect.getsource(retain_failure)
+        self.assertIn('prelaunch_verified=True',retained)
+        self.assertIn('console_log=console_log',retained)
 
     def test_crash_report_requires_exact_owned_executable_bundle_pid_and_fresh_regular_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -162,7 +231,8 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
                 original=ValueError('Simulator probe did not produce initial progress within 60 seconds')
                 watchdog=Mock();watchdog.snapshot.return_value={'last_progress':None}
                 process=Mock();process.poll.return_value=None
-                def capture(*args):
+                def capture(*args,**kwargs):
+                    self.assertTrue(kwargs['prelaunch_verified'])
                     reply.write_text(json.dumps({'probe_pass':True}))
                     if broken:raise OSError('capture failed token=NEVER_COPY')
                     return {'diagnostic_only_not_readiness':True}
@@ -175,6 +245,7 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
                 self.assertEqual(row['status'],'FAIL_SIMULATOR_PROBE')
                 self.assertEqual(row['error'],str(original))
                 self.assertTrue(row['all_final_readiness_gates_still_required'])
+                self.assertTrue(reply.is_file(),'the late-PASS negative must actually write its receipt')
                 self.assertNotIn('NEVER_COPY',json.dumps(row))
                 watchdog.observe.assert_not_called();watchdog.can_read_receipt.assert_not_called()
 

@@ -1,11 +1,13 @@
 """Bounded failure-only evidence for one owned Simulator probe.
 
 Diagnostic capture never changes a readiness result, relaunches the app, or
-signals an app process. A console-reported PID is deliberately not an input.
+signals an app process. A console PID is only a candidate: host kernel identity
+must independently match the prelaunch-verified installed probe before sampling.
 """
 from __future__ import annotations
 
 import hashlib
+import datetime
 import json
 import os
 from pathlib import Path
@@ -38,14 +40,16 @@ def redacted(text, app):
     return '\n'.join(lines) + ('\n' if lines else '')
 
 
-def bounded_command(arguments, *, timeout, cap=MAX_COMMAND_BYTES):
+def bounded_command(arguments, *, timeout, cap=MAX_COMMAND_BYTES, tail=False):
     """Drain only a bounded pipe and stop only this diagnostic child on expiry."""
-    result = dict(returncode=None, timed_out=False, truncated=False, text='')
+    result = dict(returncode=None, timed_out=False, truncated=False, text='',
+                  partial_first_line_dropped=False)
     if timeout <= 0:
         result['timed_out'] = True
         return result
     process = None
     data = bytearray()
+    received = 0
     try:
         process = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    env=dict(os.environ, LC_ALL='C'))
@@ -59,16 +63,20 @@ def bounded_command(arguments, *, timeout, cap=MAX_COMMAND_BYTES):
                     break
                 events = selector.select(min(.05, remaining))
                 if events:
-                    chunk = os.read(process.stdout.fileno(), min(4096, cap + 1 - len(data)))
+                    chunk = os.read(process.stdout.fileno(), 4096 if tail else min(4096, cap + 1 - len(data)))
                     if not chunk:
                         break
                     data.extend(chunk)
+                    received += len(chunk)
                     if len(data) > cap:
                         result['truncated'] = True
-                        break
+                        if tail:
+                            del data[:-cap]
+                        else:
+                            break
                 elif process.poll() is not None:
                     break
-        if process.poll() is None and not (result['timed_out'] or result['truncated']):
+        if process.poll() is None and not (result['timed_out'] or (result['truncated'] and not tail)):
             try:
                 process.wait(timeout=min(.25, max(0, deadline - time.monotonic())))
             except subprocess.TimeoutExpired:
@@ -90,7 +98,16 @@ def bounded_command(arguments, *, timeout, cap=MAX_COMMAND_BYTES):
                 pass
             if process.stdout is not None:
                 process.stdout.close()
-    result['text'] = bytes(data[:cap]).decode('utf-8', errors='replace')
+    retained = bytes(data[:cap])
+    if tail and result['truncated']:
+        # A ring can begin after a sensitive field's key or URL scheme. Do not
+        # present such a suffix to the line redactor as a standalone safe line.
+        newline = retained.find(b'\n')
+        retained = retained[newline + 1:] if newline >= 0 else b''
+        result['partial_first_line_dropped'] = True
+    result['text'] = retained.decode('utf-8', errors='replace')
+    result['received_bytes'] = received
+    result['retained_buffer'] = 'tail' if tail else 'head'
     return result
 
 
@@ -106,39 +123,50 @@ def executable(app):
     return path.resolve(strict=True)
 
 
-def process_identity(identifier, app, invoke):
-    """Bind a PID to the owned launchd and the exact installed executable."""
+def console_pid_candidate(path):
+    """Bounded, untrusted launch-console hint; this alone permits no sampling."""
+    if path is None:
+        return None
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        return None
+    with path.open('rb') as stream:
+        text = stream.read(8192).decode('utf-8', errors='replace')
+    values = set()
+    for line in text.splitlines():
+        match = re.fullmatch(re.escape(BUNDLE) + r': ([0-9]{1,10})', line.strip())
+        if match and 1 < int(match[1]) < 2**31:
+            values.add(int(match[1]))
+    return next(iter(values)) if len(values) == 1 else None
+
+
+def process_identity(candidate, identifier, app, launch_wall, invoke):
+    """Independently bind a console candidate to the pinned owned executable."""
+    if type(candidate) is not int or not 1 < candidate < 2**31:
+        return None
+    if (str(uuid.UUID(identifier)).lower() != identifier.lower()
+            or identifier.lower() not in {part.lower() for part in app.parts}):
+        return None
     expected = executable(app)
-    container = invoke(['xcrun', 'simctl', 'get_app_container', identifier, BUNDLE, 'app'], 2)
-    if container.get('returncode') != 0 or container.get('truncated') or container.get('timed_out'):
-        return None
-    if Path(container['text'].strip()).resolve() != app:
-        return None
-    listed = invoke(['xcrun', 'simctl', 'spawn', identifier, 'launchctl', 'list'], 2)
-    if listed.get('returncode') != 0 or listed.get('truncated') or listed.get('timed_out'):
-        return None
-    label = re.compile(r'^(?:(?:UIKitApplication:)|(?:application\.))?' + re.escape(BUNDLE) + r'(?:$|[.\[])')
-    candidates = []
-    for line in listed['text'].splitlines():
-        fields = line.split(None, 2)
-        if len(fields) == 3 and fields[0].isdigit() and int(fields[0]) > 1 and label.match(fields[2]):
-            candidates.append(int(fields[0]))
-    if len(set(candidates)) != 1:
-        return None
-    pid = candidates[0]
-    snapshot = invoke(['ps', '-ww', '-p', str(pid), '-o', 'pid=,lstart=,stat=,pcpu=,pmem=,rss=,comm='], 2)
+    snapshot = invoke(['ps', '-ww', '-p', str(candidate), '-o',
+                       'pid=,uid=,lstart=,stat=,pcpu=,pmem=,rss=,comm='], 2)
     if snapshot.get('returncode') != 0 or snapshot.get('truncated') or snapshot.get('timed_out'):
         return None
-    rows = [line.split(None, 10) for line in snapshot['text'].splitlines() if line.strip()]
-    if len(rows) != 1 or len(rows[0]) != 11:
+    rows = [line.split(None, 11) for line in snapshot['text'].splitlines() if line.strip()]
+    if len(rows) != 1 or len(rows[0]) != 12:
         return None
     fields = rows[0]
     try:
-        if int(fields[0]) != pid or Path(fields[10]).resolve() != expected:
+        start = ' '.join(fields[2:7])
+        # ps lstart uses the host's local wall clock, with C locale above.
+        started = datetime.datetime.strptime(start, '%a %b %d %H:%M:%S %Y').timestamp()
+        if (int(fields[0]) != candidate or int(fields[1]) != os.geteuid()
+                or Path(fields[11]).resolve() != expected
+                or not launch_wall - 2 <= started <= time.time() + 2):
             return None
-        return dict(pid=pid, start=' '.join(fields[1:6]), state=fields[6],
-                    cpu_percent=float(fields[7]), memory_percent=float(fields[8]),
-                    rss_kib=int(fields[9]), executable=str(expected))
+        return dict(pid=candidate, uid=int(fields[1]), start=start, started_wall=started,
+                    state=fields[7], cpu_percent=float(fields[8]), memory_percent=float(fields[9]),
+                    rss_kib=int(fields[10]), executable=str(expected))
     except (ValueError, OSError):
         return None
 
@@ -212,33 +240,38 @@ def owned_crashes(directory, app, launch_wall, now_wall, *, pid=None, deadline=N
     return rows
 
 
-def capture_owned_diagnostics(evidence, label, identifier, app, launch_wall):
+def capture_owned_diagnostics(evidence, label, identifier, app, launch_wall, *,
+                              console_log=None, prelaunch_verified=False):
     """Failure-only capture. Exceptions here must never replace the original failure."""
     if str(uuid.UUID(identifier)).lower() != identifier.lower():
         raise ValueError('diagnostics require an exact owned Simulator UUID')
     app = Path(app).resolve(strict=True)
     if identifier.lower() not in {part.lower() for part in app.parts}:
         raise ValueError('installed probe path does not belong to the owned device')
+    if prelaunch_verified is not True:
+        raise ValueError('prelaunch container and signed bundle inventory must be verified')
     evidence = Path(evidence)
     began = time.monotonic()
     report = dict(schema=1, diagnostic_only_not_readiness=True, original_failure_unchanged=True,
                   no_application_signals_or_relaunch=True, command_capture_budget_seconds=MAX_CAPTURE_SECONDS,
                   owned_device=identifier, bundle_identifier=BUNDLE, process_identity_verified=False,
-                  identity_method='owned-device-launchctl+revalidated-container+canonical-executable+start-time',
+                  prelaunch_container_inventory_verified=True,
+                  identity_method='pinned-prelaunch-owned-container+kernel-UID+canonical-executable+start-window',
                   identity_checks=[])
 
-    def invoke(args, seconds):
+    def invoke(args, seconds, *, tail=False):
         remaining = MAX_CAPTURE_SECONDS - (time.monotonic() - began)
-        result = bounded_command(args, timeout=min(seconds, max(0, remaining)))
-        if args[0] == 'ps' or 'launchctl' in args or 'get_app_container' in args:
-            name = args[0] if args[0] == 'ps' else ('launchctl' if 'launchctl' in args else 'get_app_container')
+        result = bounded_command(args, timeout=min(seconds, max(0, remaining)), tail=tail)
+        if args[0] == 'ps':
+            name = 'ps'
             report['identity_checks'].append(dict(command=name, **save(
                 'identity-' + str(len(report['identity_checks']) + 1), result)))
         return result
 
     def save(name, result):
         encoded = redacted(result.get('text', ''), app).encode('utf-8')
-        text = encoded[:MAX_COMMAND_BYTES].decode('utf-8', errors='ignore')
+        retained = encoded[-MAX_COMMAND_BYTES:] if result.get('retained_buffer') == 'tail' else encoded[:MAX_COMMAND_BYTES]
+        text = retained.decode('utf-8', errors='ignore')
         path = evidence / (label + '-' + name + '.txt')
         path.write_text(text)
         summary = {key: value for key, value in result.items() if key != 'text'}
@@ -246,26 +279,39 @@ def capture_owned_diagnostics(evidence, label, identifier, app, launch_wall):
         return dict(file=path.name, bytes=path.stat().st_size,
                     sha256=hashlib.sha256(path.read_bytes()).hexdigest(), **summary)
 
-    identity = process_identity(identifier, app, invoke)
+    candidate = console_pid_candidate(console_log)
+    report['console_pid_candidate'] = candidate
+    identity = process_identity(candidate, identifier, app, launch_wall, invoke)
     if identity:
         report['process_identity_verified'] = True
         report['process'] = {key: value for key, value in identity.items() if key != 'executable'}
-        sample = invoke(['sample', str(identity['pid']), '1', '1', '-mayDie'], 5)
-        after = process_identity(identifier, app, invoke)
-        if after and all(after[key] == identity[key] for key in ('pid', 'start', 'executable')):
-            report['process_identity_revalidated_after_sample'] = True
-            report['sample'] = save('owned-app-sample', sample)
+        before = process_identity(candidate, identifier, app, launch_wall, invoke)
+        keys = ('pid', 'uid', 'started_wall', 'executable')
+        if before and all(before[key] == identity[key] for key in keys):
+            report['process_identity_revalidated_before_sample'] = True
+            sample = invoke(['sample', str(identity['pid']), '1', '1', '-mayDie'], 5)
+            after = process_identity(candidate, identifier, app, launch_wall, invoke)
+            if after and all(after[key] == identity[key] for key in keys):
+                report['process_identity_revalidated_after_sample'] = True
+                report['sample'] = save('owned-app-sample', sample)
+            else:
+                report['sample_discarded_identity_changed'] = True
         else:
-            report['sample_discarded_identity_changed'] = True
+            report['sample_skipped_identity_changed_before_sample'] = True
     else:
         report['unverified_process_not_sampled'] = True
     # All log reads execute inside this newly-created owned Simulator. No host
     # global log archive and no other device's process is sampled.
-    predicate = ('process == "SpringBoard" OR process == "runningboardd" OR process == "launchd" '
-                 'OR process == "ReportCrash" OR process == "' + executable(app).name + '"')
+    name = executable(app).name
+    predicate = (f'process == "{name}" OR eventMessage CONTAINS[c] "{BUNDLE}" '
+                 f'OR eventMessage CONTAINS[c] "{name}" '
+                 'OR eventMessage CONTAINS "ELICHIKA_SIMULATOR_STARTUP"')
+    log_start = datetime.datetime.fromtimestamp(launch_wall - 2).strftime('%Y-%m-%d %H:%M:%S')
+    report['device_log_start_local'] = log_start
+    report['device_log_retained_buffer'] = 'bounded-tail'
     report['device_log'] = save('owned-device-log', invoke(
-        ['xcrun', 'simctl', 'spawn', identifier, 'log', 'show', '--last', '3m', '--style', 'compact',
-         '--predicate', predicate], 6))
+        ['xcrun', 'simctl', 'spawn', identifier, 'log', 'show', '--start', log_start,
+         '--style', 'compact', '--predicate', predicate], 6, tail=True))
     crashes = (owned_crashes(Path.home() / 'Library/Logs/DiagnosticReports', app,
                             launch_wall, time.time(), pid=identity['pid'] if identity else None,
                             deadline=began + MAX_CAPTURE_SECONDS)
