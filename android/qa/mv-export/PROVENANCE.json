@@ -1,0 +1,16 @@
+{
+  "scope": "Frozen Java Android encoder backend diagnostic closure; synthetic input only, no game/MV/render/native integration claim",
+  "productionSource": "../android-client-source/android/",
+  "productionEncoderAbi": {
+    "config": "AndroidMVEncoder.Config(String,int,int,int,int,long,int,int,int,long)",
+    "producer": ["offerVideo(long,ByteBuffer):boolean", "offerAudio(long,ByteBuffer):boolean"],
+    "lifecycle": ["finish():void", "cancel():void", "awaitCompletion(long,TimeUnit):File", "matchesConfig(int,int,int,long,int,int,long):boolean"]
+  },
+  "sourceHashFile": "SOURCE_SHA256SUMS",
+  "allowedVideoMimes": ["video/avc", "video/hevc"],
+  "audioMime": "audio/mp4a-latm",
+  "qaRuntimeResult": "NOT_RUN_LOCALLY_NO_ADB_TARGET",
+  "qaRuntimeRequired": "Actual API34 x86_64 Android emulator via bounded workflow; compile success is not a codec pass",
+  "input": {"width":1280,"height":720,"fps":30,"frames":60,"sampleRate":48000,"channels":2,"pcmFrames":96000,"toneOnsetSample":12000},
+  "evidence": ["report.json", "status.txt", "MP4 outputs", "screenshot.png", "ui-tree.xml", "logcat.txt", "logcat-crash.txt", "device-properties.txt"]
+}
