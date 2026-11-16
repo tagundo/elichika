@@ -6,7 +6,7 @@ on:
       mode:
         description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
         type: choice
-        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, experimental-parity, full-candidate]
+        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, experimental-parity, full-candidate, mv-export-native]
         default: sdk-compile
       version:
         description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   apple-sdk:
+    if: ${{ inputs.mode != 'mv-export-native' }}
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -290,4 +291,54 @@ jobs:
           name: elichika-ios-${{ inputs.mode }}-evidence-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ios-evidence/
           if-no-files-found: warn
+          retention-days: 7
+
+  mv-export-native:
+    if: ${{ inputs.mode == 'mv-export-native' }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact MP4 encoder implementation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Compile actual iOS device and Simulator encoder sources
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/mv-export-evidence"
+          for mv_sdk in iphoneos iphonesimulator; do
+            mv_target=arm64-apple-ios13.0
+            if [ "$mv_sdk" = iphonesimulator ]; then mv_target=arm64-apple-ios13.0-simulator; fi
+            xcrun --sdk "$mv_sdk" clang++ -target "$mv_target" -isysroot "$(xcrun --sdk "$mv_sdk" --show-sdk-path)" \
+              -std=c++17 -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-deprecated-declarations \
+              -Wno-nullability-completeness -fsyntax-only ios/native/ElichikaMVEncoder.mm \
+              2>&1 | tee "$RUNNER_TEMP/mv-export-evidence/$mv_sdk-compile.txt"
+          done
+      - name: Encode and independently decode actual MP4 video and AAC audio
+        run: |
+          set -euo pipefail
+          python3 -B ios/native/tests/run_mv_encoder_integration.py --out "$RUNNER_TEMP/mv-export-runtime" \
+            2>&1 | tee "$RUNNER_TEMP/mv-export-evidence/runtime.txt"
+      - name: Record exact encoder source and test scope
+        if: always()
+        env:
+          MV_SOURCE: ${{ github.sha }}
+          MV_RUN: ${{ github.run_id }}
+        run: |
+          python3 - <<'PYCODE'
+          import pathlib,json,hashlib,os
+          root=pathlib.Path('.');paths=['ios/native/ElichikaMVEncoder.h','ios/native/ElichikaMVEncoder.mm','ios/native/tests/MVEncoderIntegration.mm','ios/native/tests/run_mv_encoder_integration.py']
+          r={'source':os.environ['MV_SOURCE'],'run':os.environ['MV_RUN'],'scope':'Actual Apple encoder and independent decode; actual SIFAS MV stepping/render/audio NOT established','AV1_supported':False,'sources':{p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in paths}}
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'mv-export-evidence';out.mkdir(exist_ok=True);(out/'source-and-scope.json').write_text(json.dumps(r,indent=2)+'\n')
+          PYCODE
+      - name: Preserve actual encoder compilation and MP4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mv-export-native-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/mv-export-evidence
+            ${{ runner.temp }}/mv-export-runtime
+          if-no-files-found: error
           retention-days: 7
