@@ -244,8 +244,10 @@ def main():
         need(digest(debug[0])==DEBUG_RESOURCE['sha256'],'Nonruntime debug bytes changed during signing')
         sdk=run(['/usr/bin/xcrun','--sdk','macosx','--show-sdk-path'],evidence,'mac-sdk.json')['stdout'].strip()
         helper=work/'python-native-probe'
-        run(['/usr/bin/xcrun','clang','-target','arm64-apple-ios13.1-macabi','-isysroot',sdk,
-            '-I'+str(app/'Frameworks/Python.framework/Headers'),'-F'+str(app/'Frameworks'),'-framework','Python',
+        run(['/usr/bin/xcrun','clang','-x','objective-c','-target','arm64-apple-ios13.1-macabi','-isysroot',sdk,
+            '-I'+str(app/'Frameworks/Python.framework/Headers'),'-F'+str(app/'Frameworks'),
+            '-F'+str(Path(sdk)/'System/iOSSupport/System/Library/Frameworks'),
+            '-framework','Python','-framework','Foundation','-framework','UIKit',
             '-Wl,-rpath,'+str(app/'Frameworks'),OWN/'PlayCoverPythonImportProbe.c','-o',helper],evidence,'embedding-compile.json',90)
         run(['/usr/bin/codesign','--force','--sign','-',helper],evidence,'sign-embedding.json',15)
         env=os.environ.copy();env.update(OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1')

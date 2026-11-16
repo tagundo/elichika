@@ -1,4 +1,6 @@
 /* External diagnostic only: never package this executable in a client. */
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #include <Python.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,12 +42,39 @@ static void python_error(const char *where) {
 }
 int main(int argc, char **argv) {
     if (argc != 5) return 2;
+    @autoreleasepool {
     const char *app = argv[1], *script = argv[2];
     char buffer[8192];
     if (snprintf(buffer, sizeof(buffer), "%s.c-stages.txt", argv[4]) >= (int)sizeof(buffer)) return 2;
     stages = fopen(buffer, "wx");
     if (!stages) { perror("Create C stage evidence"); return 2; }
     stage("entry");
+    stage("before_real_UIKit_context");
+    UIDevice *device = [UIDevice currentDevice];
+    NSString *systemName = device.systemName;
+    NSString *systemVersion = device.systemVersion;
+    NSString *model = device.model;
+    BOOL ready = NSClassFromString(@"UIDevice") != Nil && device != nil &&
+        systemName.length > 0 && systemVersion.length > 0 && model.length > 0;
+    NSDictionary *context = @{@"schema":@1, @"source":@"actual UIKit UIDevice API",
+        @"UIDevice_class_present":@(NSClassFromString(@"UIDevice") != Nil),
+        @"currentDevice_present":@(device != nil), @"systemName":systemName ?: @"",
+        @"systemVersion":systemVersion ?: @"", @"model":model ?: @"",
+        @"ready":@(ready), @"mocked_values":@NO, @"UIApplicationMain_called":@NO};
+    NSData *contextData = [NSJSONSerialization dataWithJSONObject:context options:NSJSONWritingSortedKeys error:NULL];
+    if (!contextData || contextData.length > 8192 ||
+        snprintf(buffer, sizeof(buffer), "%s.uikit-context.json", argv[4]) >= (int)sizeof(buffer)) return 2;
+    FILE *contextFile = fopen(buffer, "wx");
+    if (!contextFile) { perror("Create UIKit context evidence"); return 2; }
+    size_t contextWritten = fwrite(contextData.bytes, 1, contextData.length, contextFile);
+    fclose(contextFile);
+    if (contextWritten != contextData.length) return 2;
+    if (!ready) {
+        stage("real_UIKit_context_unavailable");
+        fputs("Actual UIDevice systemName/systemVersion/model is unavailable\n", stderr);
+        fflush(stderr); fclose(stages); return 3;
+    }
+    stage("after_real_UIKit_context");
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);
     config.install_signal_handlers = 0;
@@ -100,4 +129,5 @@ int main(int argc, char **argv) {
     if (Py_FinalizeEx() < 0 && status == 0) status = 120;
     if (stages) { fprintf(stages, "final_return=%d\n", status); fclose(stages); }
     return status == 0 ? 0 : 1;
+    }
 }
