@@ -143,17 +143,18 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
     Require(encoder!=nil,error.localizedDescription);
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(45);
     NSUInteger retries=0;
+    int64_t maximumAudioLead=0;
     NSData *pixels=nil; NSData *pcm=nil;
     NSString *videoRetry=nil; NSString *audioRetry=nil;
     while (encoder.acceptedVideoFrames<c.frameCount || encoder.acceptedAudioSamples<c.audioSampleCount) {
         @autoreleasepool {
             BOOL progressed=NO;
             int64_t frame=encoder.acceptedVideoFrames;
-            // AAC priming must not be starved while a retained video frame is
-            // waiting. Keep at most a quarter-second PCM lead, independently
-            // trying both tracks on every turn rather than waiting on either.
-            int64_t audioEnd=MIN(c.audioSampleCount,
-                ((frame+1)*c.fpsDenominator*c.audioSampleRate+c.fpsNumerator-1)/c.fpsNumerator+c.audioSampleRate/4);
+            // Each input advertises its own demand. A video-relative lead cap
+            // starves AAC/mux interleaving despite audio.ready remaining true.
+            // Keep only one PCM chunk and one final image in the producer;
+            // append Retry is the backpressure signal for either track.
+            int64_t audioEnd=c.audioSampleCount;
             if (frame<c.frameCount) {
                 if (!pixels) pixels=Frame(c,frame);
                 ELMVAppendResult result=[encoder appendBGRA:pixels rowBytes:c.width*4+16 frameIndex:frame];
@@ -178,10 +179,12 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
                     Require(encoder.acceptedAudioSamples==first,@"Retry consumed PCM samples.");
                 }
             }
+            int64_t videoSamples=(encoder.acceptedVideoFrames*c.fpsDenominator*c.audioSampleRate+c.fpsNumerator-1)/c.fpsNumerator;
+            maximumAudioLead=MAX(maximumAudioLead,encoder.acceptedAudioSamples-videoSamples);
             Require(std::chrono::steady_clock::now()<deadline,
-                [NSString stringWithFormat:@"Writer stalled: codec=%@ frames=%lld/%lld audio=%lld/%lld videoRetry=%@ audioRetry=%@.",
-                    codec,(long long)encoder.acceptedVideoFrames,(long long)c.frameCount,
-                    (long long)encoder.acceptedAudioSamples,(long long)c.audioSampleCount,videoRetry,audioRetry]);
+                [NSString stringWithFormat:@"Writer stalled: codec=%@ status=%@ frames=%lld/%lld audio=%lld/%lld maxAudioLead=%lld videoRetry=%@ audioRetry=%@.",
+                    codec,encoder.writerStatus,(long long)encoder.acceptedVideoFrames,(long long)c.frameCount,
+                    (long long)encoder.acceptedAudioSamples,(long long)c.audioSampleCount,(long long)maximumAudioLead,videoRetry,audioRetry]);
             if (!progressed) Yield();
         }
     }
@@ -195,6 +198,8 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
     Require(![NSFileManager.defaultManager fileExistsAtPath:encoder.partialURL.path],@"Successful export left its partial file.");
     NSMutableDictionary *report=[Inspect(completed,c) mutableCopy];
     report[@"status"]=@"PASS"; report[@"retry_count"]=@(retries);
+    report[@"maximum_audio_lead_samples"]=@(maximumAudioLead);
+    report[@"writer_status"]=encoder.writerStatus;
     // Existing completed output must survive cancellation/recreation attempts.
     Require(![ELMVEncoder encoderWithConfiguration:c outputURL:url error:&error],@"An existing MP4 was accepted for overwrite.");
     [encoder cancel]; Require([NSFileManager.defaultManager fileExistsAtPath:url.path],@"Cancel removed a completed MP4.");

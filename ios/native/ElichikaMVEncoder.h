@@ -26,13 +26,15 @@ typedef NS_ENUM(NSInteger, ELMVAppendResult) {
 
 // Confine create/append/finish/cancel to one serial non-main worker. No method
 // waits for encoder readiness. A Retry consumes neither bytes nor an index:
-// retain that frame/chunk and yield before trying again. Interleave audio/video
-// near their rational presentation times so one track cannot starve the other.
+// retain that frame/chunk and yield before trying again. Independently attempt
+// both tracks: the writer's readiness determines demand. A video-relative audio
+// lead limit can starve the muxer even while its audio input requests more data.
 @interface ELMVEncoder : NSObject
 @property(nonatomic,readonly) int64_t acceptedVideoFrames;
 @property(nonatomic,readonly) int64_t acceptedAudioSamples;
 @property(nonatomic,readonly,nullable) NSError *failure;
 @property(nonatomic,readonly,nullable) NSString *backpressureReason;
+@property(nonatomic,readonly) NSString *writerStatus;
 @property(nonatomic,readonly) NSURL *outputURL;
 @property(nonatomic,readonly) NSURL *partialURL;
 

@@ -74,6 +74,18 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
 - (int64_t)acceptedAudioSamples { @synchronized(self) { return _acceptedAudioSamples; } }
 - (NSError *)failure { @synchronized(self) { return _failure; } }
 - (NSString *)backpressureReason { @synchronized(self) { return _backpressureReason; } }
+- (NSString *)writerStatus {
+    @synchronized(self) {
+        switch (_writer.status) {
+            case AVAssetWriterStatusUnknown: return @"unknown";
+            case AVAssetWriterStatusWriting: return @"writing";
+            case AVAssetWriterStatusCompleted: return @"completed";
+            case AVAssetWriterStatusFailed: return @"failed";
+            case AVAssetWriterStatusCancelled: return @"cancelled";
+        }
+    }
+    return @"unrecognized";
+}
 - (NSURL *)outputURL { return _outputURL; }
 - (NSURL *)partialURL { return _partialURL; }
 
