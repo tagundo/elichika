@@ -20,7 +20,8 @@ import zipfile
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "build"))
-from common import codesign, inventory, macho, require, run, safe_name, sha256, write_json
+from common import codesign, inventory, macho, macho_bytes, require, run, safe_name, sha256, write_json
+from framework_layout import framework_binary_path, native_executable_name
 
 # These two archives are NumPy's development/link inputs, never Python runtime
 # imports. Both SDK variants were inspected in the exact pinned BeeWare wheels.
@@ -96,6 +97,21 @@ def normalize_arm64(path, target):
             "action": "lipo-thin-arm64" if slices is not None else "already-thin-arm64",
             "selected_architecture": "arm64", "selected_platform": selected["version"]["platform"],
             "selected_sha256_before_relink_and_sign": sha256(path)}
+
+
+def arm64_metadata(path, target):
+    """Read the selected SDK identity without moving or thinning an input."""
+    platform = 2 if target == "device" else 7
+    slices = slice_inventory(path)
+    if slices is None:
+        return macho(path, platform=platform, kind=6)
+    selected = [row for row in slices if row["cpu"] == 0x100000c and (row["subtype"] & 0xffffff) == 0]
+    require(len(selected) == 1, "Native runtime input must contain exactly one arm64 slice")
+    row = selected[0]
+    with path.open("rb") as stream:
+        stream.seek(row["offset"])
+        raw = stream.read(min(row["bytes"], 256 * 1024))
+    return macho_bytes(raw, platform=platform, kind=6)
 
 
 def download(row, cache):
@@ -218,47 +234,85 @@ def unpack_wheel(path, destination, target, omitted_build_archives=None):
 
 
 def framework_extensions(output, target, normalizations=None):
-    mappings, libraries = {}, {}
+    mappings, aliases, leaves = {}, {}, {}
     stdlib = output / "ElichikaResources/python/lib/python3.13"
     framework_root = output / "Frameworks"
+    directories, executables, plans = {}, {}, []
+
+    def claim(names, name, owner, label):
+        folded = name.casefold()
+        require(folded not in names, label + " casefold collision: " + name)
+        names[folded] = owner
+
+    def alias(name, binary):
+        folded = name.casefold()
+        require(folded not in aliases or aliases[folded] == binary, "Ambiguous native dependency reference: " + name)
+        aliases[folded] = binary
+
+    # Preflight names across the whole closure before moving any source module.
+    # The replacement is not injective (a.b and a_b), and Apple filesystems can
+    # be case-insensitive even when the build host's filesystem is not.
+    for framework in sorted(framework_root.iterdir()):
+        if framework.name.casefold().endswith(".framework"):
+            binary = framework_binary_path(framework)
+            require(binary.name == native_executable_name(binary.name), "Existing framework needs executable-name repair: " + framework.name)
+            claim(directories, framework.name, framework, "Framework directory")
+            claim(executables, binary.name, binary, "Framework executable")
+            alias("@rpath/" + framework.name + "/" + binary.name, binary)
+            old_id = arm64_metadata(binary, target).get("install_name")
+            if old_id:
+                alias(old_id, binary)
     for binary in sorted(list(stdlib.rglob("*.so")) + list(stdlib.rglob("*.dylib"))):
         relative = binary.relative_to(stdlib)
         module = binary.name.split(".")[0] if binary.suffix == ".so" else binary.stem
         owner = ".".join(relative.parts[:-1])
         name = re.sub(r"[^A-Za-z0-9_.-]", "_", "py." + owner + "." + module)
         framework = framework_root / (name + ".framework")
+        executable = native_executable_name(name)
+        moved = framework / executable
+        claim(directories, framework.name, framework, "Framework directory")
+        claim(executables, executable, moved, "Framework executable")
+        claim(leaves, binary.name, moved, "Native dependency leaf")
+        alias(binary.name, moved)
+        alias(name, moved)
+        alias("@rpath/" + framework.name + "/" + name, moved)
+        alias("@rpath/" + framework.name + "/" + executable, moved)
+        old_id = arm64_metadata(binary, target).get("install_name")
+        if old_id:
+            alias(old_id, moved)
+        plans.append((binary, relative, name, framework, executable, moved))
+
+    for binary, relative, name, framework, executable, moved in plans:
         require(not framework.exists(), "Native framework name collision")
         framework.mkdir()
-        moved = framework / name
         shutil.move(binary, moved)
         moved.chmod(0o755)
         normalization = normalize_arm64(moved, target)
         if normalizations is not None:
             normalization["source_path"] = (stdlib / relative).relative_to(output).as_posix()
             normalizations[moved.relative_to(output).as_posix()] = normalization
-        run(["xcrun", "install_name_tool", "-id", "@rpath/" + name + ".framework/" + name, moved])
+        run(["xcrun", "install_name_tool", "-id", "@rpath/" + framework.name + "/" + executable, moved])
         (framework / "Info.plist").write_bytes(plistlib.dumps({
-            "CFBundleExecutable": name, "CFBundleIdentifier": "org.elichika.python." + re.sub(r"[^A-Za-z0-9.-]", "-", name),
+            "CFBundleExecutable": executable, "CFBundleIdentifier": "org.elichika.python." + re.sub(r"[^A-Za-z0-9.-]", "-", name),
             "CFBundleName": name, "CFBundlePackageType": "FMWK", "CFBundleVersion": "1",
             "CFBundleShortVersionString": "1.0", "MinimumOSVersion": "13.0",
             "CFBundleSupportedPlatforms": ["iPhoneOS" if target == "device" else "iPhoneSimulator"]}))
         if binary.suffix == ".so":
             stub = binary.with_suffix(".fwork")
             stub.write_text(moved.relative_to(output).as_posix() + "\n")
-            origin = framework / (name + ".origin")
+            origin = framework / (executable + ".origin")
             origin.write_text(stub.relative_to(output).as_posix() + "\n")
             mappings[relative.as_posix()] = {"fwork": stub.relative_to(output).as_posix(),
                                            "binary": moved.relative_to(output).as_posix(),
                                            "origin": origin.relative_to(output).as_posix()}
-        require(binary.name not in libraries, "Ambiguous native dependency name")
-        libraries[binary.name] = moved
-    for framework in framework_root.glob("*.framework"):
-        binary = framework / framework.stem
+    for framework in sorted(framework_root.glob("*.framework")):
+        binary = framework_binary_path(framework)
         for load in macho(binary, platform=2 if target == "device" else 7, kind=6)["loads"]:
-            if Path(load).name in libraries:
-                dependency = libraries[Path(load).name]
-                run(["xcrun", "install_name_tool", "-change", load,
-                     "@rpath/" + dependency.parent.name + "/" + dependency.name, binary])
+            dependency = aliases.get(load.casefold()) or leaves.get(Path(load).name.casefold())
+            if dependency is not None:
+                updated = "@rpath/" + dependency.parent.name + "/" + dependency.name
+                if updated != load:
+                    run(["xcrun", "install_name_tool", "-change", load, updated, binary])
             else:
                 require(load.startswith(("/System/Library/", "/usr/lib/", "@rpath/Python.framework/")),
                         "Unresolved runtime dylib dependency: " + load)

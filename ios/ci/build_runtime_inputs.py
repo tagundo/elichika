@@ -16,6 +16,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import ROOT, inventory, macho, require, run, safe_name, sha256, source_identity, write_json
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'runtime'))
+from framework_layout import framework_binary_path
 
 
 def stage_target(source, codecs, destination, target, source_lock_sha256):
@@ -50,7 +52,7 @@ def stage_target(source, codecs, destination, target, source_lock_sha256):
     actual.pop('codec-report.json')
     require(actual == codec_report['files'], 'Codec framework bytes differ from actual compiler receipt')
     for framework in codecs.glob('*.framework'):
-        macho(framework / framework.stem, platform=2 if target == 'device' else 7, kind=6)
+        macho(framework_binary_path(framework), platform=2 if target == 'device' else 7, kind=6)
         run(['codesign', '--verify', '--strict', framework])
     shutil.copytree(codecs, destination / 'codecs')
     staged['producer_original_built_lock_sha256'] = sha256(original_lock)
