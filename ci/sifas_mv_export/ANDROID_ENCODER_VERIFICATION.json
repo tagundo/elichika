@@ -1,0 +1,54 @@
+{
+  "schema": 2,
+  "status": "FULL_ANDROID_MV_CANDIDATE_SOURCE_IMPLEMENTED_CODEC_VALIDATED_GAME_RUNTIME_PENDING",
+  "protected_bases_edited": false,
+  "UI_and_DEX_integrated": true,
+  "automatic_selected_cue_PCM_provider": true,
+  "codecs": [
+    "H264",
+    "HEVC capability checked",
+    "AAC-LC"
+  ],
+  "AV1": false,
+  "actual_codec_QA1": "FAILED: AAC truncation and priming; retained original evidence",
+  "actual_codec_QA2": {
+    "run_id": 43937660066,
+    "job_id": 133546426016,
+    "artifact_id": 14260644053,
+    "H264": "PASS:60 decoded frames, exact PTS, barcode pixels/orientation",
+    "AAC": "PASS Android presented decoder96000;99328 raw\u22122048 priming\u22121280 padding",
+    "tone_onset_samples": 11904,
+    "expected_onset_samples": 12000,
+    "allowed_onset_error": 256,
+    "HEVC": "SKIPPED: requested flexible-YUV capability unsupported on emulator",
+    "cancellation": "PASS"
+  },
+  "actual_game_MV_runtime": "NOT_RUN",
+  "actual_HEVC_runtime": "NOT_RUN",
+  "final_small_native_check": {
+    "bytes": 227672,
+    "sha256": "d14699944b53eb4d6a47f45772ca8535a431827fe99f7d0308c2a4e3517e2381",
+    "needed": [
+      "liblog.so",
+      "libdl.so",
+      "libm.so",
+      "libc.so"
+    ],
+    "64KiB_LOADs": true,
+    "foreign_CXX_runtime": false
+  },
+  "final_small_checks": {
+    "five_product_Java_compile": "PASS",
+    "synthetic_DEX_assertions": 65,
+    "MP4_structural_checks": 31,
+    "archive_scope_tests": 5,
+    "portable_provider_tests": 8,
+    "new_ARM64_Unicorn_paths": 288,
+    "managed_method_contracts_per_region": 52
+  },
+  "encoder_sha256": "73bd83318e26224158a07b476cee6ffb84db426aaf80bd158bf3de89eece8a22",
+  "gapless_sha256": "a8b60766452f6c52428ac152e065ec5de651ae61899196bbc5861822c6524ae2",
+  "full_game_APK": "NOT_BUILT_BY_SUBAGENT",
+  "signing": "ROOT_ONLY_OUTSIDE_CI",
+  "publishing": "NOT_PERFORMED"
+}

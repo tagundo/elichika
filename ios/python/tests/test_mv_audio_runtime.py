@@ -4,6 +4,7 @@ import copy
 import json
 from pathlib import Path
 import sys
+import tempfile
 import threading
 from types import SimpleNamespace
 import unittest
@@ -136,6 +137,62 @@ class NativeMVAudioTests(unittest.TestCase):
             runtime.cancel()
         self.assertEqual(self.read(session)["error"]["code"], "MV_AUDIO_SESSION_MISSING")
         self.assertEqual(self.prepare()["error"]["code"], "MV_AUDIO_NOT_READY")
+
+    def test_trusted_root_alias_prepares_real_pcm_and_cleans_its_canonical_temp(self):
+        alias = self.fixture.root / "host-root-alias"
+        alias.symlink_to(self.fixture.root.resolve(), target_is_directory=True)
+        with patch.object(runtime._scope, "data_root", alias):
+            prepared = self.prepare()
+            self.assertTrue(prepared["ok"], prepared)
+            session = prepared["session_id"]
+            self.assertEqual(base64.b64decode(self.read(session)["pcm_base64"]),
+                             self.fixture.source_pcm.ljust(368 * 4, b"\0"))
+            self.assertTrue(self.close(session)["closed"])
+        self.assertEqual(list((self.fixture.root / ".tmp/mv-export-audio").iterdir()), [])
+
+    def test_catalog_directory_link_is_rejected_without_outside_reads_or_temp(self):
+        outside = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+        target = outside / self.fixture.catalog.name
+        target.write_bytes(self.fixture.catalog.read_bytes())
+        before = target.read_bytes()
+        directory = self.fixture.catalog.parent
+        self.fixture.catalog.unlink()
+        directory.rmdir()
+        directory.symlink_to(outside, target_is_directory=True)
+        with patch.object(mv_audio, "prepare_audio") as decode:
+            self.assertEqual(self.prepare()["error"]["code"], "MV_AUDIO_CATALOG_MISSING")
+            decode.assert_not_called()
+        self.assertEqual({path.name: path.read_bytes() for path in outside.iterdir()}, {target.name: before})
+        self.assertFalse((self.fixture.root / ".tmp").exists())
+
+    def test_catalog_leaf_link_cannot_select_an_external_database(self):
+        outside = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+        target = outside / self.fixture.catalog.name
+        target.write_bytes(self.fixture.catalog.read_bytes())
+        before = target.read_bytes()
+        self.fixture.catalog.unlink()
+        self.fixture.catalog.symlink_to(target)
+        with patch.object(mv_audio, "prepare_audio") as decode:
+            self.assertEqual(self.prepare()["error"]["code"], "MV_AUDIO_CATALOG_MISSING")
+            decode.assert_not_called()
+        self.assertEqual({path.name: path.read_bytes() for path in outside.iterdir()}, {target.name: before})
+        self.assertFalse((self.fixture.root / ".tmp").exists())
+
+    def test_private_temp_descendant_links_are_rejected_without_outside_writes(self):
+        outside = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+        (outside / "keep.txt").write_bytes(b"keep")
+        for component in (".tmp", ".tmp/mv-export-audio"):
+            with self.subTest(component=component):
+                linked = self.fixture.root / component
+                linked.parent.mkdir(parents=True, exist_ok=True)
+                linked.symlink_to(outside, target_is_directory=True)
+                try:
+                    with patch.object(mv_audio, "prepare_audio") as decode:
+                        self.assertEqual(self.prepare()["error"]["code"], "MV_AUDIO_NOT_READY")
+                        decode.assert_not_called()
+                    self.assertEqual({path.name: path.read_bytes() for path in outside.iterdir()}, {"keep.txt": b"keep"})
+                finally:
+                    linked.unlink()
 
 
 if __name__ == "__main__":

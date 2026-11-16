@@ -430,16 +430,26 @@ def _mv_audio_context():
                 or _state.get("core_only") or _cancel.is_set()):
             raise _MVAudioError("MV_AUDIO_NOT_READY", "Start the full game tool runtime before preparing MV audio.")
         scope = _scope
+        data_root = scope.data_root
         region = _management.config.get("region", "gl")
         language = scope.language
     if region not in ("gl", "jp") or language not in ("en", "ja", "ko", "zh"):
         raise _MVAudioError("MV_AUDIO_NOT_READY", "The selected game audio region or language is unavailable.")
-    return scope, region, language
+    try:
+        # Host-owned roots may contain the legitimate macOS /var alias. Only
+        # this authority is normalized: linked catalog/tmp descendants below
+        # its canonical location remain prohibited.
+        data_root = Path(data_root).resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise _MVAudioError("MV_AUDIO_NOT_READY", "The private MV audio data directory is unavailable.") from None
+    if not data_root.is_dir():
+        raise _MVAudioError("MV_AUDIO_NOT_READY", "The private MV audio data directory is unavailable.")
+    return data_root, region, language
 
 
-def _mv_audio_catalog(scope, region, language, sheet):
+def _mv_audio_catalog(data_root, region, language, sheet):
     """Use this installation's selected iOS catalog, with its usual language fallback."""
-    directory = scope.data_root / "assets/db" / region
+    directory = data_root / "assets/db" / region
     if directory.resolve() != directory:
         raise _MVAudioError("MV_AUDIO_CATALOG_MISSING", "The local iOS song catalog directory is unavailable.")
     catalogs = sorted(directory.glob("asset_i_*.db"), key=lambda path:
@@ -486,7 +496,7 @@ def mv_export_audio_prepare(args_json):
             _clock(video["frame_count"], video["fps_numerator"], video["fps_denominator"])
         except ValueError as error:
             raise _MVAudioError("MV_AUDIO_INVALID_ARGUMENT", str(error)) from None
-        scope, region, language = _mv_audio_context()
+        data_root, region, language = _mv_audio_context()
         acquired = _mv_audio_prepare_lock.acquire(blocking=False)
         if not acquired:
             raise _MVAudioError("MV_AUDIO_BUSY", "Another native MV song preparation is still running.")
@@ -494,14 +504,14 @@ def mv_export_audio_prepare(args_json):
         event = threading.Event()
         with _mv_audio_lock:
             _mv_audio_pending = event
-        catalog = _mv_audio_catalog(scope, region, language, song["sheet"])
-        temporary = scope.data_root / ".tmp" / "mv-export-audio"
-        if temporary.is_symlink() or (scope.data_root / ".tmp").is_symlink():
+        catalog = _mv_audio_catalog(data_root, region, language, song["sheet"])
+        temporary = data_root / ".tmp" / "mv-export-audio"
+        if temporary.is_symlink() or (data_root / ".tmp").is_symlink():
             raise _MVAudioError("MV_AUDIO_NOT_READY", "The private MV audio temporary directory is unavailable.")
         temporary.mkdir(parents=True, exist_ok=True)
-        if not temporary.resolve().is_relative_to(scope.data_root):
+        if not temporary.resolve().is_relative_to(data_root):
             raise _MVAudioError("MV_AUDIO_NOT_READY", "The private MV audio temporary directory is unavailable.")
-        prepared = prepare_audio(repo_root=scope.data_root, catalog_path=catalog,
+        prepared = prepare_audio(repo_root=data_root, catalog_path=catalog,
             selection=MusicSelection(sheet=song["sheet"], cue=song["cue"], gain=song["gain"],
                                      start_time=Fraction(song["start_time_ms"], 1000), source_offset=Fraction(song["source_offset_ms"], 1000)),
             temporary_root=temporary.resolve(), video_frame_count=video["frame_count"],

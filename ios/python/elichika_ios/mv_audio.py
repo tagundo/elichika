@@ -223,7 +223,15 @@ def prepare_audio(*, repo_root: Path, catalog_path: Path, selection: MusicSelect
             or not catalog.name.startswith(("asset_a_", "asset_i_")) or catalog.suffix != ".db" or not catalog.is_file()):
         raise ValueError("The MV song catalog is outside the selected runtime.")
     temporary_root = Path(temporary_root)
-    if temporary_root.is_symlink() or temporary_root.resolve() != temporary_root or not temporary_root.is_dir():
+    if temporary_root.is_symlink():
+        raise ValueError("MV audio needs an existing private temporary directory.")
+    try:
+        # The host may use macOS's /var spelling of /private/var. Resolve
+        # trusted ancestor aliases once; a linked temporary leaf is refused.
+        temporary_root = temporary_root.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise ValueError("MV audio needs an existing private temporary directory.") from None
+    if not temporary_root.is_dir():
         raise ValueError("MV audio needs an existing private temporary directory.")
     if not _SLOT.acquire(blocking=False):
         raise ValueError("Another MV song is being prepared.")

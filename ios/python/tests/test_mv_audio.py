@@ -169,6 +169,30 @@ class MVAudioTests(unittest.TestCase):
             self.prepare(start=Fraction(1))
         self.assertEqual(list(self.output.iterdir()), [])
 
+    def test_trusted_ancestor_alias_keeps_exact_pcm_and_owned_cleanup(self):
+        alias = self.root / "host-root-alias"
+        alias.symlink_to(self.root.resolve(), target_is_directory=True)
+        with mv_audio.prepare_audio(repo_root=alias,
+                catalog_path=alias / "assets/db/gl/asset_a_en.db",
+                selection=mv_audio.MusicSelection("selected-sheet", "selected-arrangement", 0, 0, 1),
+                temporary_root=alias / "temporary", video_frame_count=1,
+                fps_numerator=120) as prepared:
+            self.assertEqual(prepared.read_chunk(0, 368), self.source_pcm.ljust(368 * 4, b"\0"))
+        self.assertEqual(list(self.output.iterdir()), [])
+
+    def test_temporary_leaf_link_is_rejected_without_decoding_or_outside_writes(self):
+        linked = self.root / "linked-temporary"
+        linked.symlink_to(self.output.resolve(), target_is_directory=True)
+        sentinel = self.output / "keep.txt"
+        sentinel.write_bytes(b"keep")
+        with patch("elichika_ios.codecs.decode_cue") as decode:
+            with self.assertRaisesRegex(ValueError, "private temporary directory"):
+                mv_audio.prepare_audio(repo_root=self.root, catalog_path=self.catalog,
+                    selection=mv_audio.MusicSelection("selected-sheet", "selected-arrangement", 0, 0, 1),
+                    temporary_root=linked, video_frame_count=1, fps_numerator=120)
+            decode.assert_not_called()
+        self.assertEqual({path.name: path.read_bytes() for path in self.output.iterdir()}, {"keep.txt": b"keep"})
+
 
 if __name__ == "__main__":
     unittest.main()
