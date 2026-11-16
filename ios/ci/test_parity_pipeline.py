@@ -87,7 +87,11 @@ class ParityDataTests(unittest.TestCase):
         tagged = [args for args in commands if '-tags=elichika_inprocess' in args]
         normal = [args for args in commands if not any(arg.startswith('-tags') for arg in args)]
         self.assertTrue(any('./clientdb' in args for args in tagged))
-        self.assertTrue(any('./clientdb' in args and './config' in args for args in normal))
+        self.assertTrue(any('./config' in args for args in normal))
+        self.assertFalse(any('./clientdb' in args for args in normal),
+                         'normal package tests need the real eager-init fixture cwd')
+        self.assertIn('python3 -B ios/ci/run_normal_clientdb.py --repo .', primary)
+        self.assertIn('--output "$RUNNER_TEMP/ios-evidence/go-normal-clientdb-tests.json"', primary)
 
     def test_exact_data_only_policy_accepts_reviewed_go_consumers_not_data_producers(self):
         original = dict(assets_sha='a', assets_tree='at', modtools_sha='m', modtools_tree='mt')

@@ -106,8 +106,13 @@ jobs:
           set -euo pipefail
           go test -p 1 -timeout 120s -count=1 -tags=elichika_inprocess -v ./iosbridge ./runtimeinit ./db ./router ./handler/asset ./nativeaccess ./clientdb \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-inprocess-tests.txt"
-          go test -p 1 -timeout 120s -count=1 -v ./config ./clientdb \
+          go test -p 1 -timeout 120s -count=1 -v ./config \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-legacy-config-tests.txt"
+          # Standalone clientdb initializes before TestMain/tests; supply its
+          # actual relative assets in a disposable cwd, never alter package init.
+          python3 -B ios/ci/run_normal_clientdb.py --repo . \
+            --work "$RUNNER_TEMP/ios-normal-clientdb-tests" \
+            --output "$RUNNER_TEMP/ios-evidence/go-normal-clientdb-tests.json"
 
       - name: Require actual portable and Go outcomes before expensive parity SDK builds
         if: ${{ inputs.mode == 'experimental-parity' }}
