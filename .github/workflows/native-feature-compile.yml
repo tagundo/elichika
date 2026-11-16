@@ -104,9 +104,9 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          go test -p 1 -timeout 120s -count=1 -tags=elichika_inprocess -v ./iosbridge ./runtimeinit ./db ./router ./handler/asset ./nativeaccess \
+          go test -p 1 -timeout 120s -count=1 -tags=elichika_inprocess -v ./iosbridge ./runtimeinit ./db ./router ./handler/asset ./nativeaccess ./clientdb \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-inprocess-tests.txt"
-          go test -count=1 -v ./config \
+          go test -p 1 -timeout 120s -count=1 -v ./config ./clientdb \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/go-legacy-config-tests.txt"
 
       - name: Require actual portable and Go outcomes before expensive parity SDK builds
@@ -197,6 +197,13 @@ jobs:
             --work "$RUNNER_TEMP/ios-parity-Mac-copy" \
             --evidence "$RUNNER_TEMP/ios-evidence/playcover-native" \
             2>&1 | tee "$RUNNER_TEMP/ios-evidence/playcover-native.log"
+          python3 -B ios/ci/verify_playcover_native_imports.py --repo . \
+            --converter-variant nightly-1633 \
+            --app "$RUNNER_TEMP/ios-build/ipa-stage/Payload/global.app" \
+            --native-build-report "$RUNNER_TEMP/ios-evidence/native-device.json" \
+            --work "$RUNNER_TEMP/ios-parity-Mac-1633-copy" \
+            --evidence "$RUNNER_TEMP/ios-evidence/playcover-native-1633" \
+            2>&1 | tee "$RUNNER_TEMP/ios-evidence/playcover-native-1633.log"
           python3 -B ios/ci/finalize_parity_candidate.py --repo . \
             --work "$RUNNER_TEMP/ios-build" --evidence "$RUNNER_TEMP/ios-evidence" \
             --delivery "$RUNNER_TEMP/ios-candidate"

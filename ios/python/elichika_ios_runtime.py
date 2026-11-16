@@ -8,6 +8,12 @@ import importlib
 import hashlib
 import json
 import mimetypes
+from elichika_ios.mime_bootstrap import configure as _configure_mime
+
+# The embedded app cannot read macOS Apache/system MIME databases. Establish
+# the built-in tables before HTTP handlers or bundled tools can initialize it.
+_configure_mime()
+
 from pathlib import Path
 import shutil
 import threading
@@ -141,6 +147,7 @@ def _serve(server):
 def _start(config):
     global _scope, _management
     try:
+        _configure_mime()
         payload = Path(config["payload_root"]).resolve(strict=True)
         root = Path(config["data_root"])
         if not root.is_absolute():

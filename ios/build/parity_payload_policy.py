@@ -12,6 +12,16 @@ LOCK_SHA256 = 'a28a43df471fc587348834661ac8405fd806a6c1d59cffe4ebe5d7009b5d441d'
 POLICY = 'fresh-parity-runtime-exact-source9-data-v1'
 PRODUCERS = {'ios/build/build_payload.py', 'ios/build/common.py'}
 GO_CONSUMERS = {'handler/asset/bulk.go', 'handler/asset/cache.go'}
+# The one reviewed C runtime-only verification cache. Normal builds use the
+# hash-bound no-op implementation, and no SQL/assets/retained payload change.
+# Any future edit requires a new explicit review, never a clientdb/ prefix rule.
+RUNTIME_REKEY_INPUTS = {
+    'clientdb/rekey.go': 'c3004443fbc897f21b472546f6c2783f819398aa623cda58dd55a9bc3230d10f',
+    'clientdb/verified_cache_inprocess.go': 'ff9dfda3c0d7f6998b3dd86b9aead6991328c250b592ea148dec6a80ede8f519',
+    'clientdb/verified_cache_normal.go': 'dabd1d29c2d81f6d80205ba9c32115365dbbd630cbea7495acf16af3f23cd8cb',
+    'clientdb/verified_cache_inprocess_test.go': '4baffefbd29dbc57820661374b4bc49880dc83c20801391faddaf1823afb4e31',
+    'clientdb/verified_cache_normal_test.go': '98c3c4d2e5b1c44c12b1f9f3d755bda7aacd79302f2e22605c717e99fab8bb9a',
+}
 
 
 def verify_lock(repo, lock):
@@ -19,6 +29,14 @@ def verify_lock(repo, lock):
     require(path.is_file() and not path.is_symlink() and sha256(path) == LOCK_SHA256,
             'Parity data reuse requires the one canonical Source 9 payload lock')
     require(json.loads(path.read_text()) == lock, 'Parity payload lock was substituted')
+    for name, expected in RUNTIME_REKEY_INPUTS.items():
+        runtime = Path(repo) / name
+        require(runtime.is_file() and not runtime.is_symlink() and sha256(runtime) == expected,
+                'Unreviewed runtime-only rekey consumer source: ' + name)
+    for name, tag in (('verified_cache_inprocess.go', '//go:build elichika_inprocess'),
+                      ('verified_cache_normal.go', '//go:build !elichika_inprocess')):
+        require((Path(repo) / 'clientdb' / name).read_text().splitlines()[0] == tag,
+                'Runtime rekey cache must remain disabled in normal data producer builds')
 
 
 def validate_source_scope(original, current, changed_paths, dirty):
@@ -28,6 +46,9 @@ def validate_source_scope(original, current, changed_paths, dirty):
             'Parity official data/assets/modtools producer inputs changed')
     for name in changed_paths:
         safe_name(name)
+        if name.startswith('clientdb/'):
+            require(name in RUNTIME_REKEY_INPUTS, 'Unlisted client database producer source changed: ' + name)
+            continue
         consumer = (name.startswith(('ios/', '.github/', 'iosbridge/', 'cmd/elichika_ios_carchive/'))
                     or name in GO_CONSUMERS or name.endswith('_test.go')
                     or (name.startswith('tests/test_') and name.endswith('.py')))

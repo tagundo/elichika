@@ -100,6 +100,7 @@ type rekeyCipherReader struct {
 	input  io.Reader
 	key    hwdecrypt.HwdKeyset
 	digest hash.Hash
+	strong hash.Hash
 	count  int64
 }
 
@@ -107,15 +108,37 @@ func (reader *rekeyCipherReader) Read(output []byte) (int, error) {
 	n, err := reader.input.Read(output)
 	if n > 0 {
 		reader.digest.Write(output[:n])
+		if reader.strong != nil {
+			reader.strong.Write(output[:n])
+		}
 		reader.count += int64(n)
 		hwdecrypt.DecryptBuffer(&reader.key, output[:n])
 	}
 	return n, err
 }
 
-// Always decode the full cached output against the authoritative clear hash.
+// A proof is private to this process and is created from the SAME ciphertext
+// stream that passed full decode, clear SHA/size/header, and EOF validation.
+// It contains no live database handle or lease and is never persisted.
+type rekeyVerifiedProof struct {
+	valid        bool
+	clearSHA     string
+	clearSize    int64
+	key          hwdecrypt.HwdKeyset
+	cipherSHA256 [32]byte
+	encryptedSHA string
+	size         int64
+	identity     os.FileInfo
+}
+
 // ByteReader preserves the exact DEFLATE boundary, including trailing bytes.
+// In-process warm proofs still rehash EVERY ciphertext byte before reuse.
+// Normal builds keep the original full decode on every invocation.
 func reuseRekeyed(inPath, outPath string, fromFile *FileReference, keySpec hwdecrypt.HwdKeyset) bool {
+	return verifyRekeyed(inPath, outPath, fromFile, keySpec, nil)
+}
+
+func verifyRekeyed(inPath, outPath string, fromFile *FileReference, keySpec hwdecrypt.HwdKeyset, proof *rekeyVerifiedProof) bool {
 	source, err := os.Stat(inPath)
 	if err != nil || !source.Mode().IsRegular() || source.Size() < int64(len(sqliteSignature)) {
 		return false
@@ -130,7 +153,11 @@ func reuseRekeyed(inPath, outPath string, fromFile *FileReference, keySpec hwdec
 	if err != nil || !info.Mode().IsRegular() || info.Size() > limit || info.Size() < 1 {
 		return false
 	}
-	cipher := &rekeyCipherReader{input: io.LimitReader(input, limit+1), key: fromFile.getKey(keySpec), digest: sha1.New()}
+	if reuseVerifiedCipher(input, outPath, fromFile, keySpec, source.Size(), info, proof) {
+		return true
+	}
+	derivedKey := fromFile.getKey(keySpec)
+	cipher := &rekeyCipherReader{input: io.LimitReader(input, limit+1), key: derivedKey, digest: sha1.New(), strong: newVerifiedCipherDigest()}
 	compressed := bufio.NewReaderSize(cipher, clientDBBufferSize)
 	reader := flate.NewReader(compressed)
 	defer reader.Close()
@@ -157,6 +184,10 @@ func reuseRekeyed(inPath, outPath string, fromFile *FileReference, keySpec hwdec
 	}
 	fromFile.EncryptedSHA = hex.EncodeToString(cipher.digest.Sum(nil))
 	fromFile.Size = int(cipher.count)
+	if proof != nil && cipher.strong != nil {
+		*proof = rekeyVerifiedProof{valid: true, clearSHA: fromFile.SHA, clearSize: source.Size(), key: derivedKey, encryptedSHA: fromFile.EncryptedSHA, size: cipher.count, identity: after}
+		copy(proof.cipherSHA256[:], cipher.strong.Sum(nil))
+	}
 	return true
 }
 
@@ -179,7 +210,8 @@ func rekeyFile(inPath, outPath string, fromFile *FileReference, keySpec hwdecryp
 		return fmt.Errorf("invalid SQLite source hash: %s", inPath)
 	}
 	verified := *fromFile
-	if reuseRekeyed(inPath, outPath, &verified, keySpec) {
+	proof := rekeyVerifiedProof{}
+	if verifyRekeyed(inPath, outPath, &verified, keySpec, &proof) {
 		current, _, err := hashSQLiteFile(inPath)
 		if err != nil {
 			return err
@@ -188,6 +220,7 @@ func rekeyFile(inPath, outPath string, fromFile *FileReference, keySpec hwdecryp
 			return fmt.Errorf("clear database changed while verifying cached client data: %s", inPath)
 		}
 		*fromFile = verified
+		rememberVerifiedCipher(outPath, fromFile, keySpec, proof)
 		return nil
 	}
 	source, err := os.Open(inPath)
@@ -236,13 +269,16 @@ func rekeyFile(inPath, outPath string, fromFile *FileReference, keySpec hwdecryp
 	if err = output.Close(); err != nil {
 		return err
 	}
-	if !reuseRekeyed(inPath, output.Name(), &verified, keySpec) || verified.Size != int(cipher.count) || verified.EncryptedSHA != hex.EncodeToString(cipherHash.Sum(nil)) {
+	if !verifyRekeyed(inPath, output.Name(), &verified, keySpec, &proof) || verified.Size != int(cipher.count) || verified.EncryptedSHA != hex.EncodeToString(cipherHash.Sum(nil)) {
 		return fmt.Errorf("generated client data failed full verification: %s", inPath)
 	}
 	if err = os.Rename(output.Name(), outPath); err != nil {
 		return err
 	}
 	*fromFile = verified
+	// Only a successful atomic publication can seed the canonical output key.
+	// The proof's inode is checked after rename; its next hit rehashes all bytes.
+	rememberVerifiedCipher(outPath, fromFile, keySpec, proof)
 	return nil
 }
 

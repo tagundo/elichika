@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import struct
 import subprocess
 import sys
@@ -17,15 +18,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import ROOT, sha256, write_json
 from fetch_official_payload import verify_consumer_source
 from package_experimental_ipa import simulator_gates
-from parity_payload_policy import POLICY, validate_source_scope, verify_consumption, verify_lock
+from parity_payload_policy import POLICY, RUNTIME_REKEY_INPUTS, validate_source_scope, verify_consumption, verify_lock
 from probe_watchdog import ProbeWatchdog, STAGE_SECONDS, stage_budgets
 from run_simulator import validate_reply
 from test_probe_watchdog import progress
 from test_simulator_proof import fixture as historical_fixture
-from verify_playcover_native_imports import DEBUG_RESOURCE, fresh_debug_resource, headers, split_code_and_debug
+from verify_playcover_native_imports import (DEBUG_RESOURCE, SOURCE as STABLE_CONVERTER_SOURCE,
+    NIGHTLY1633_SOURCE, NIGHTLY1633_PINS, fresh_debug_resource, headers, split_code_and_debug)
 
 UI_KEYS = ('ready','actual_management_webview','page_loaded','javascript_ready',
-           'state_fetch','controls_present','native_binding','go_stopped','server_restarted','offline_accounts')
+           'state_fetch','controls_present','native_binding','go_stopped','server_restarted','offline_accounts','retained_panels')
 
 
 def aggregate(root, parity=True):
@@ -54,10 +56,39 @@ def canonical_repo(root):
     path = root / 'ios/build/official-payload.lock.json'
     path.parent.mkdir(parents=True)
     shutil.copy2(ROOT / 'ios/build/official-payload.lock.json', path)
+    for name in RUNTIME_REKEY_INPUTS:
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / name, target)
     return json.loads(path.read_text())
 
 
 class ParityDataTests(unittest.TestCase):
+    def test_only_frozen_runtime_rekey_cache_files_extend_data_reuse(self):
+        original = dict(assets_sha='a', assets_tree='at', modtools_sha='m', modtools_tree='mt')
+        validate_source_scope(original, original, list(RUNTIME_REKEY_INPUTS), '')
+        for name in ('clientdb/unlisted.go', 'clientdb/unreviewed_test.go', 'clientdb/new-data.sql'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                validate_source_scope(original, original, [name], '')
+        for name in RUNTIME_REKEY_INPUTS:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                repo = Path(directory); lock = canonical_repo(repo)
+                verify_lock(repo, lock)
+                with (repo/name).open('a') as changed:
+                    changed.write('\n// unreviewed runtime change\n')
+                with self.assertRaisesRegex(ValueError, 'rekey consumer source'):
+                    verify_lock(repo, lock)
+
+    def test_client_database_runtime_cache_is_tested_in_both_go_build_modes(self):
+        primary = (ROOT/'.github/workflows/ios-unified.yml').read_text()
+        self.assertEqual(primary, (ROOT/'.github/workflows/native-feature-compile.yml').read_text())
+        commands = [shlex.split(line.strip().rstrip(chr(92))) for line in primary.splitlines()
+                    if line.strip().startswith('go test ')]
+        tagged = [args for args in commands if '-tags=elichika_inprocess' in args]
+        normal = [args for args in commands if not any(arg.startswith('-tags') for arg in args)]
+        self.assertTrue(any('./clientdb' in args for args in tagged))
+        self.assertTrue(any('./clientdb' in args and './config' in args for args in normal))
+
     def test_exact_data_only_policy_accepts_reviewed_go_consumers_not_data_producers(self):
         original = dict(assets_sha='a', assets_tree='at', modtools_sha='m', modtools_tree='mt')
         validate_source_scope(original, original, ['iosbridge/logs.go', 'cmd/elichika_ios_carchive/main.go',
@@ -110,6 +141,20 @@ class ParityDataTests(unittest.TestCase):
 
 
 class ParitySimulatorTests(unittest.TestCase):
+    def test_retained_panel_document_proof_cannot_be_missing_or_false(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reply = aggregate(Path(directory))['results'][0]['reply']
+            for missing in (True, False):
+                value = copy.deepcopy(reply)
+                if missing:
+                    value['management_ui_probe'].pop('retained_panels')
+                else:
+                    value['management_ui_probe']['retained_panels'] = False
+                self.assertIs(value['management_ui_probe']['ready'], True)
+                self.assertIs(value['management_ui_probe']['offline_accounts'], True)
+                with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, 'retained_panels'):
+                    validate_reply(value, False, launch_number=1, require_parity_ui=True)
+
     def test_backend_phase_has_its_own_90_seconds_after_real_data_preparation(self):
         self.assertEqual(list(stage_budgets(True))[:3], ['native_start','native_backend','native_health'])
         self.assertEqual(len(stage_budgets(True)),13)
@@ -274,6 +319,9 @@ class FinalSealTests(unittest.TestCase):
         evidence=root/'evidence';delivery=root/'delivery';work=root/'work'
         (evidence/'playcover-native').mkdir(parents=True);delivery.mkdir();work.mkdir()
         current={'source_sha':'current'};proof={'unit_fixture':'fresh-simulator-proof'}
+        mime_source=root/'ios/python/elichika_ios/mime_bootstrap.py'
+        mime_source.parent.mkdir(parents=True)
+        shutil.copy2(ROOT/'ios/python/elichika_ios/mime_bootstrap.py',mime_source)
         ipa=delivery/'unit-fixture-NOT-IPA.bin';ipa.write_bytes(b'unit data, never installable')
         write_json(evidence/'native-device.json',{'unit_fixture':'not an actual compiler proof'})
         manifest={'source':current,'fresh_simulator_execution_claimed':True,'full_tools_simulator_evidence':proof,
@@ -281,6 +329,7 @@ class FinalSealTests(unittest.TestCase):
         write_json(delivery/'candidate-manifest.json',manifest);write_json(evidence/'result.json',{'unit_fixture':True})
         mac={'status':'ACTUAL_PLAYCOVER_CONVERSION_AND_NATIVE_IMPORTS_PASS','fresh_native_build_source':current,
             'fresh_native_build_report_sha256':sha256(evidence/'native-device.json'),'code_images':99,
+            'frameworks':92,'PlayCover_converter_source':STABLE_CONVERTER_SOURCE,
             'mapped_extensions':87,'codec_count':8,'actual_gameplay':False,'actual_iPhone_iPad_execution':False,'actual_GUI_install':False}
         write_json(evidence/'playcover-native/result.json',mac)
         mappings=[{'binary':'unit-leaf-'+str(n),'kind':'python_extension' if n<87 else 'codec'} for n in range(89)]
@@ -288,7 +337,36 @@ class FinalSealTests(unittest.TestCase):
         imports={'status':'ACTUAL_CONVERTED_NATIVE_IMPORTS_PASS','math_sqrt_81':9,'numpy_dot':31,'native_leaf_count':87,
             'mapped_framework_loads':[r['binary'] for r in mappings],
             'codec_roundtrips':dict.fromkeys(('DXT1','DXT5','BC4','BC5','BC7','ETC_RGB4','ETC2_RGBA8','ASTC_RGBA_4x4'),{})}
+        imports['mime_bootstrap']={'ready':True,'host_files_used':False,'host_file_attempts':0,
+            'cold_start':True,'helper_sha256':sha256(mime_source),
+            'reinitialized':True,'mode':'packaged-helper-blocked-host-mime','types':{
+                '.js':'application/javascript','.mjs':'application/javascript','.css':'text/css',
+                '.png':'image/png','.svg':'image/svg+xml','.json':'application/json',
+                  '.html':'text/html','.webp':'image/webp','.unity':'application/octet-stream',
+                  '.bin':'application/octet-stream','.woff':'font/woff','.woff2':'font/woff2',
+                '.glb':'model/gltf-binary','.gltf':'model/gltf+json','.wasm':'application/wasm',
+                '.unity3d':'application/octet-stream','.bundle':'application/octet-stream',
+                '.assetbundle':'application/octet-stream','.db':'application/octet-stream'}}
         write_json(evidence/'playcover-native/actual-native-imports.json',imports)
+        directory=evidence/'playcover-native-1633';directory.mkdir()
+        write_json(directory/'actual-native-imports.json',imports)
+        write_json(directory/'framework-mappings.json',mappings)
+        code=[r['binary'] for r in mappings]+['global']+['unit-core-'+str(n) for n in range(9)]
+        debug=dict(DEBUG_RESOURCE,bytes=1,sha256='d'*64)
+        before={name:{'kind':2 if name=='global' else 6} for name in code}
+        before[debug['path']]={'kind':10}
+        write_json(directory/'platforms-before.json',before)
+        nightly=copy.deepcopy(mac)
+        nightly.update(converter_variant='nightly-1633',PlayCover_converter_source=NIGHTLY1633_SOURCE,
+            preserved_debug_resources=[debug],actual_resolver={'source_sha':NIGHTLY1633_SOURCE,
+                'source_pins':NIGHTLY1633_PINS,'actual_Foundation_enumeration':True,
+                'actual_Installer_resolveValidMachOs':True,'code_closure_matches':True,
+                'selected_code_count':99,'nonruntime_debug_selected':False,'selected_paths':code,
+                'nonruntime_debug_pin':debug},optional_alias_launch={
+                'status':'PUBLIC_LAUNCH_COMPLETION','terminatedAtCompletion':False,'terminatedAfterThreeSeconds':False,
+                'executableMatches':True,'actual_source_alias_creation':True,'alias_source':NIGHTLY1633_SOURCE,
+                'alias_content_identity_verified':True,'owned_alias_removed':True,'launchedProcessTerminated':True})
+        write_json(directory/'result.json',nightly)
         return evidence,delivery,work,current,proof,ipa
 
     def test_final_seal_changes_only_external_receipt_after_independent_gates(self):
@@ -302,6 +380,57 @@ class FinalSealTests(unittest.TestCase):
                 check.assert_called_once_with(e/'simulator/result.json',current,require_parity_ui=True)
             self.assertEqual(ipa.read_bytes(),before)
             self.assertIs(json.loads((d/'candidate-manifest.json').read_text())['actual_Mac_native_imports_verified'],True)
+            self.assertIs(json.loads((d/'candidate-manifest.json').read_text())['actual_PlayCover_1633_verified'],True)
+
+    def test_exact_1633_resolver_imports_and_returned_alias_executable_are_mandatory(self):
+        from finalize_parity_candidate import finalize
+        for case in ('stable-in-nightly','missing-resolver','debug-selected','missing-code','wrong-pin',
+                     'wrong-executable','early-exit','missing-alias-source','cleanup-failed','missing-nightly-leaf'):
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);e,d,w,current,proof,ipa=self.make_case(root)
+                path=e/'playcover-native-1633/result.json';value=json.loads(path.read_text())
+                if case=='stable-in-nightly':value['PlayCover_converter_source']=STABLE_CONVERTER_SOURCE
+                elif case=='missing-resolver':value.pop('actual_resolver')
+                elif case=='debug-selected':value['actual_resolver']['nonruntime_debug_selected']=True
+                elif case=='missing-code':value['actual_resolver']['selected_paths'].pop()
+                elif case=='wrong-pin':value['actual_resolver']['source_pins'][next(iter(NIGHTLY1633_PINS))]='0'*64
+                elif case=='wrong-executable':value['optional_alias_launch']['executableMatches']=False
+                elif case=='early-exit':value['optional_alias_launch']['terminatedAfterThreeSeconds']=True
+                elif case=='missing-alias-source':value['optional_alias_launch']['actual_source_alias_creation']=False
+                elif case=='cleanup-failed':value['optional_alias_launch']['launchedProcessTerminated']=False
+                else:
+                    leaf=e/'playcover-native-1633/actual-native-imports.json'
+                    data=json.loads(leaf.read_text());data['mapped_framework_loads'].pop();write_json(leaf,data)
+                write_json(path,value)
+                with patch('finalize_parity_candidate.source_identity',return_value=current), \
+                     patch('finalize_parity_candidate.simulator_gates',return_value=proof), \
+                     patch('finalize_parity_candidate.run'):
+                    with self.assertRaises(ValueError):finalize(root,w,e,d)
+                self.assertNotIn('actual_Mac_native_imports_verified',json.loads((d/'candidate-manifest.json').read_text()))
+
+    def test_both_mac_profiles_require_real_builtin_only_mime_without_system_file_fallback(self):
+        from finalize_parity_candidate import finalize
+        for profile in ('playcover-native','playcover-native-1633'):
+            for case in ('missing','host-attempt','host-used','not-reinitialized','wrong-type','warm-start','wrong-helper','changed-repo-helper'):
+                with self.subTest(profile=profile,case=case),tempfile.TemporaryDirectory() as directory:
+                    root=Path(directory);e,d,w,current,proof,ipa=self.make_case(root)
+                    path=e/profile/'actual-native-imports.json';v=json.loads(path.read_text())
+                    if case=='missing':v.pop('mime_bootstrap')
+                    elif case=='host-attempt':v['mime_bootstrap']['host_file_attempts']=1
+                    elif case=='host-used':v['mime_bootstrap']['host_files_used']=True
+                    elif case=='not-reinitialized':v['mime_bootstrap']['reinitialized']=False
+                    elif case=='warm-start':v['mime_bootstrap']['cold_start']=False
+                    elif case=='wrong-helper':v['mime_bootstrap']['helper_sha256']='0'*64
+                    elif case=='changed-repo-helper':
+                        with (root/'ios/python/elichika_ios/mime_bootstrap.py').open('a') as changed:
+                            changed.write('\n# unreviewed fixture change\n')
+                    else:v['mime_bootstrap']['types']['.glb']='application/octet-stream'
+                    write_json(path,v)
+                    with patch('finalize_parity_candidate.source_identity',return_value=current), \
+                         patch('finalize_parity_candidate.simulator_gates',return_value=proof), \
+                         patch('finalize_parity_candidate.run'):
+                        with self.assertRaisesRegex(ValueError,'MIME'):finalize(root,w,e,d)
+                    self.assertNotIn('actual_Mac_native_imports_verified',json.loads((d/'candidate-manifest.json').read_text()))
 
     def test_changed_ipa_stale_source_and_missing_native_leaf_cannot_be_finalized(self):
         from finalize_parity_candidate import finalize

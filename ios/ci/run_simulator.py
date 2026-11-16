@@ -114,7 +114,7 @@ def validate_reply(value, core_only, *, launch_number=None, require_parity_ui=Fa
             ui = value.get('management_ui_probe', {})
             for key in ('ready', 'actual_management_webview', 'page_loaded', 'javascript_ready',
                         'state_fetch', 'controls_present', 'native_binding', 'go_stopped', 'server_restarted',
-                        'offline_accounts'):
+                        'offline_accounts', 'retained_panels'):
                 require(ui.get(key) is True, 'Actual current management WebView gate failed: ' + key)
             error = ui.get('error')
             require(error is None or error is False or error == '', 'Actual management WebView probe reported an error')

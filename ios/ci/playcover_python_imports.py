@@ -15,10 +15,51 @@ def _checkpoint(stage):
 
 try:
     _checkpoint('script_entry')
+    _checkpoint('mime_bootstrap_cold_start')
+    import os
+    import mimetypes
+    if mimetypes._db is not None or mimetypes.inited:
+        raise RuntimeError('The MIME regression probe requires an uninitialized database')
+    _host_mime_files = frozenset(os.path.normpath(path) for path in mimetypes.knownfiles)
+    _mime_file_attempts = [0]
+    def _deny_host_mime_open(event, args):
+        if event != 'open' or not args or not isinstance(args[0], (str, bytes, os.PathLike)):
+            return
+        path = os.path.normpath(os.fsdecode(args[0]))
+        if path in _host_mime_files or os.path.basename(path) == 'mime.types':
+            _mime_file_attempts[0] += 1
+            raise PermissionError(1, 'Host MIME files are forbidden in the packaged-helper probe', path)
+    sys.addaudithook(_deny_host_mime_open)
+    from elichika_ios import mime_bootstrap
+    _mime_helper_path = os.path.realpath(mime_bootstrap.__file__)
+    if _mime_helper_path != os.path.realpath(os.path.join(sys.argv[1], 'ElichikaResources', 'python-app', 'elichika_ios', 'mime_bootstrap.py')):
+        raise RuntimeError('The MIME helper did not come from the actual packaged app')
+    mime_bootstrap.configure()
+    mimetypes.add_type('application/javascript', '.js')
+    _mime_types = {}
+    for _initialize in (None, mimetypes.init, lambda: mimetypes.init(files=[])):
+        if _initialize is not None:
+            _initialize()
+        if mimetypes.knownfiles:
+            raise RuntimeError('The packaged MIME helper retained host search paths')
+        _database = mimetypes.MimeTypes()
+        for _extension, _expected in mime_bootstrap.APP_TYPES.items():
+            _actual = mimetypes.guess_type('asset' + _extension)
+            if _actual != (_expected, None) or _database.guess_type('asset' + _extension) != (_expected, None):
+                raise RuntimeError('The packaged MIME mapping differs: ' + _extension)
+            _mime_types[_extension] = _actual[0]
+    if _mime_file_attempts[0]:
+        raise RuntimeError('The packaged MIME bootstrap attempted a host MIME file')
+    _mime_receipt = {'ready':True, 'host_files_used':False, 'host_file_attempts':0,
+        'mode':'packaged-helper-blocked-host-mime', 'types':_mime_types, 'reinitialized':True,
+        'cold_start':True}
+    _checkpoint('mime_bootstrap_ready')
     _checkpoint('import_ctypes')
     import ctypes
     _checkpoint('import_hashlib')
     import hashlib
+    with _io.open(_mime_helper_path, 'rb') as _mime_source:
+        _mime_receipt['helper_sha256'] = hashlib.sha256(_mime_source.read()).hexdigest()
     _checkpoint('import_importlib')
     import importlib
     _checkpoint('import_json')
@@ -41,7 +82,7 @@ try:
         "python_version":sys.version, "sys_executable":sys.executable,
         "math_sqrt_81":math.sqrt(81), "ssl_version":ssl.OPENSSL_VERSION,
         "codec_roundtrips":{}, "mapped_framework_loads":[], "actual_gameplay":False,
-        "actual_iPhone_iPad_execution":False}
+        "actual_iPhone_iPad_execution":False, "mime_bootstrap":_mime_receipt}
     if sys.platform != "ios" or Path(sys.executable) != app / "global" or math.sqrt(81) != 9:
         raise RuntimeError("The embedded iOS Python identity differs")
     _checkpoint('import_numpy')
@@ -79,6 +120,8 @@ try:
         result["mapped_framework_loads"].append(row["binary"])
     result.update(status="ACTUAL_CONVERTED_NATIVE_IMPORTS_PASS", codec_count=len(result["codec_roundtrips"]),
                   native_leaf_count=sum(row["kind"]=="python_extension" for row in rows))
+    if _mime_file_attempts[0]:
+        raise RuntimeError('A later native import attempted a forbidden host MIME file')
     _checkpoint('write_success_evidence')
     with output.open("x") as stream:
         json.dump(result,stream,indent=2);stream.write("\n")

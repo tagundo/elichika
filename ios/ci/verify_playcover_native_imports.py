@@ -24,6 +24,24 @@ PINS={
     'PlayCover/Utils/Macho.swift':'7a1f716b2d80e7341782637cb879a53f2f6edfb93c0761e04154b63c5785fb9a',
     'PlayCover/Utils/Extensions/DataExtensions.swift':'025ce2140d916fe5c8e142bf64b09e3ee4568e1ae3de67afab423671c663ec70',
 }
+NIGHTLY1633_SOURCE='a7b1693d4fa4310367990cd35d4ebafb20e5c965'
+NIGHTLY1633_PINS={
+    'PlayCover/Utils/Macho.swift':'7a1f716b2d80e7341782637cb879a53f2f6edfb93c0761e04154b63c5785fb9a',
+    'PlayCover/Utils/Extensions/DataExtensions.swift':'099f657497c07efad693e4525b7b113bfba437d31ea2a442b485a71551ecc5b7',
+    'PlayCover/AppInstaller/Installer.swift':'588e772d45531550f59451c3c4d52aa2d4e31e68ffebea33e0ad72cfff0d7009',
+    'PlayCover/Utils/Extensions/URLExtensions.swift':'eef84014d5915d2517c6de22e39ead8aa600286b0986e6f73366981de0bdedea',
+    'PlayCover/Utils/Extensions/PlayAppExtensions.swift':'38757ad16f425a6c7e57de955d5bf0e8def345854f9b9b160acfa35f919483c2',
+}
+MIME_HELPER_SHA256='05ac5c019c675de3467233153def4208f4753c9503373538807e15ad03db7a7c'
+MIME_TYPES={
+    '.js':'application/javascript','.mjs':'application/javascript','.html':'text/html',
+    '.css':'text/css','.json':'application/json','.png':'image/png','.svg':'image/svg+xml',
+    '.webp':'image/webp','.glb':'model/gltf-binary','.gltf':'model/gltf+json',
+    '.unity':'application/octet-stream','.unity3d':'application/octet-stream',
+    '.bundle':'application/octet-stream','.assetbundle':'application/octet-stream',
+    '.db':'application/octet-stream','.bin':'application/octet-stream','.wasm':'application/wasm',
+    '.woff':'font/woff','.woff2':'font/woff2',
+}
 MAGIC=(b'\xcf\xfa\xed\xfe',b'\xca\xfe\xba\xbe',b'\xca\xfe\xba\xbf')
 CHUNK=1024*1024
 DEADLINE=None
@@ -188,10 +206,12 @@ def framework_rows(app):
     need(len(rows)<=128,'Unexpected framework count')
     return rows
 
-def converter(work,evidence):
-    for relative,expected in PINS.items():
+def converter(work,evidence,variant='stable'):
+    source,pins=(SOURCE,PINS) if variant=='stable' else (NIGHTLY1633_SOURCE,NIGHTLY1633_PINS)
+    need(variant in ('stable','nightly-1633'),'Unknown converter variant')
+    for relative,expected in pins.items():
         need(expected is not None,'Source pins were not frozen')
-        url='https://raw.githubusercontent.com/PlayCover/PlayCover/'+SOURCE+'/'+relative
+        url='https://raw.githubusercontent.com/PlayCover/PlayCover/'+source+'/'+relative
         with urllib.request.urlopen(url,timeout=bounded_timeout(30)) as r:raw=r.read(65537)
         need(len(raw)<=65536 and hashlib.sha256(raw).hexdigest()==expected,'Pinned converter source differs')
         (work/Path(relative).name).write_bytes(raw)
@@ -208,26 +228,192 @@ for path in paths { try Macho.convertMacho(URL(fileURLWithPath:path)) }
     run(['/usr/bin/xcrun','swiftc','-import-objc-header',header,work/'Macho.swift',work/'DataExtensions.swift',main,'-o',exe],evidence,'converter-compile.json',90)
     return exe
 
-def optional_alias_probe(app,work,evidence):
+def pinned_method(work,filename,start,end):
+    'Slice an unmodified declaration from an already SHA-pinned source file.'
+    text=(work/filename).read_text()
+    need(text.count(start)==1 and text.count(end)==1,'Pinned method boundary differs')
+    _before,tail=text.split(start,1)
+    need(end in tail,'Pinned method order differs')
+    method=start+tail.split(end,1)[0]
+    need(method.rstrip().endswith('}'),'Pinned method is incomplete')
+    return method
+
+
+def nightly_resolver_sources(work):
+    for relative,expected in NIGHTLY1633_PINS.items():
+        path=work/Path(relative).name
+        need(path.is_file() and not path.is_symlink() and digest(path)==expected,
+             'Nightly source changed before exact method extraction')
+    enumeration=pinned_method(work,'URLExtensions.swift','    func enumerateContents(',
+        '    func appendingEscapedPathComponent(')
+    resolver=pinned_method(work,'Installer.swift','    static func resolveValidMachOs(',
+        '    /// Wrapper for codesign,')
+    alias=pinned_method(work,'PlayAppExtensions.swift','    func createAlias()',
+        '    func removeAlias()')
+    return enumeration,resolver,alias
+
+
+def resolver_closure(app,reply,code,debug_resource):
+    paths=reply.get('paths')
+    need(reply.get('schema')==1 and reply.get('actual_Foundation_enumeration') is True
+         and reply.get('actual_Installer_resolveValidMachOs') is True
+         and isinstance(paths,list) and 0<len(paths)<=128,'Actual resolver receipt is invalid')
+    need(all(isinstance(v,str) and v and not v.startswith('/') and '\\' not in v
+             and all(p not in ('','.','..') for p in v.split('/')) for v in paths),
+         'Actual resolver returned an unsafe path')
+    need(len(paths)==len(set(paths)),'Actual resolver returned duplicate paths')
+    expected={p.relative_to(app).as_posix() for p in code}
+    return {'actual_Foundation_enumeration':True,'actual_Installer_resolveValidMachOs':True,
+        'source_sha':NIGHTLY1633_SOURCE,'code_closure_matches':set(paths)==expected,
+        'selected_code_count':len(set(paths)&expected),'nonruntime_debug_selected':debug_resource['path'] in paths,
+        'selected_paths':sorted(paths),'nonruntime_debug_pin':debug_resource,
+        'source_pins':NIGHTLY1633_PINS}
+
+
+def actual_nightly_resolver(app,work,evidence,code,debug_resource):
+    enumeration,resolver,_alias=nightly_resolver_sources(work)
+    directory=work/'actual-resolver';directory.mkdir()
+    swift=directory/'main.swift'
+    swift.write_text('import Foundation\n'+
+        'final class BaseApp { let url:URL; var validMachOs:[URL]?; init(_ url:URL){self.url=url} }\n'+
+        'extension URL {\n'+enumeration+'\n}\nclass Installer {\n'+resolver+'\n}\n'+
+        '''guard CommandLine.arguments.count==3 else {exit(2)}
+let app=URL(fileURLWithPath:CommandLine.arguments[1],isDirectory:true).standardizedFileURL
+let output=URL(fileURLWithPath:CommandLine.arguments[2])
+guard !FileManager.default.fileExists(atPath:output.path) else {exit(2)}
+let prefix=app.path+"/"
+let selected=Installer.resolveValidMachOs(BaseApp(app))
+var paths:[String]=[]
+for url in selected {
+    let path=url.standardizedFileURL.path
+    guard path.hasPrefix(prefix) else {exit(3)}
+    paths.append(String(path.dropFirst(prefix.count)))
+}
+let reply:[String:Any]=["schema":1,"paths":paths.sorted(),"actual_Foundation_enumeration":true,"actual_Installer_resolveValidMachOs":true]
+let data=try JSONSerialization.data(withJSONObject:reply,options:[.sortedKeys])
+guard data.count<=65536 else {exit(4)}
+try data.write(to:output,options:.withoutOverwriting)
+''')
+    executable=directory/'resolver';output=evidence/'actual-resolver-selection.json'
+    run(['/usr/bin/xcrun','swiftc',swift,'-o',executable],evidence,'actual-resolver-compile.json',60)
+    run([executable,app,output],evidence,'actual-resolver-run.json',30)
+    need(output.stat().st_size<=65536,'Actual resolver output is oversized')
+    proof=resolver_closure(app,json.loads(output.read_text()),code,debug_resource)
+    write(evidence/'actual-resolver.json',proof)
+    # Never silently drop an MH_DSYM selected by the real installer. The exact
+    # resource was identified separately, and the actual traversal must exclude
+    # it while selecting every runtime image before conversion can be a PASS.
+    need(proof['nonruntime_debug_selected'] is False,'Actual nightly resolver selected the nonruntime MH_DSYM resource')
+    need(proof['code_closure_matches'] is True and proof['selected_code_count']==99,
+         'Actual nightly resolver does not select the complete 99-code-image closure')
+    return proof
+
+
+def actual_nightly_alias(app,alias,work,evidence):
+    enumeration,_resolver,method=nightly_resolver_sources(work)
+    directory=work/'actual-alias';directory.mkdir()
+    swift=directory/'main.swift'
+    swift.write_text('import Foundation\n'+
+        'final class Log { static let shared=Log();func log(_ text:String){print(text)} }\n'+
+        'extension URL {\n'+enumeration+'\n}\nclass PlayApp {let url:URL;let aliasURL:URL;'+
+        'init(_ url:URL,_ aliasURL:URL){self.url=url;self.aliasURL=aliasURL}\n'+method+'\n}\n'+
+        '''guard CommandLine.arguments.count==3 else {exit(2)}
+let app=URL(fileURLWithPath:CommandLine.arguments[1],isDirectory:true)
+let alias=URL(fileURLWithPath:CommandLine.arguments[2],isDirectory:true)
+guard !FileManager.default.fileExists(atPath:alias.path) else {exit(3)}
+PlayApp(app,alias).createAlias()
+''')
+    executable=directory/'alias-builder'
+    run(['/usr/bin/xcrun','swiftc',swift,'-o',executable],evidence,'actual-alias-compile.json',60)
+    run([executable,app,alias],evidence,'actual-alias-create.json',30)
+
+
+def verify_alias_contents(app,alias):
+    need(alias.is_dir() and not alias.is_symlink(),'Alias is not an ordinary directory')
+    expected={p.name:p for p in app.iterdir()}
+    actual={p.name:p for p in alias.iterdir()}
+    need(set(actual)==set(expected),'Alias top-level entries differ')
+    for name,entry in expected.items():
+        path=actual[name]
+        if name=='Info.plist':
+            need(path.is_file() and not path.is_symlink() and digest(path)==digest(entry),
+                 'Alias Info.plist is not a current ordinary copy')
+        else:
+            need(path.is_symlink() and path.readlink()==entry,'Alias symlink target differs')
+    return {'directory':(alias.stat().st_dev,alias.stat().st_ino),
+        'entries':{name:(path.lstat().st_dev,path.lstat().st_ino,stat.S_IFMT(path.lstat().st_mode))
+                   for name,path in actual.items()}}
+
+
+def remove_owned_alias(app,alias,identity):
+    need(identity is not None and not alias.is_symlink() and alias.is_dir()
+         and (alias.stat().st_dev,alias.stat().st_ino)==identity['directory'],'Owned alias identity changed')
+    need(verify_alias_contents(app,alias)==identity,'Owned alias entry identity changed')
+    # Unlink only the exact entries created above, never a link's destination.
+    for entry in alias.iterdir():entry.unlink()
+    alias.rmdir()
+
+
+def require_mime_bootstrap(reply):
+    mime=reply.get('mime_bootstrap',{})
+    need(mime.get('ready') is True and mime.get('host_files_used') is False
+         and type(mime.get('host_file_attempts')) is int and mime['host_file_attempts']==0
+         and mime.get('mode')=='packaged-helper-blocked-host-mime'
+         and mime.get('reinitialized') is True and mime.get('cold_start') is True
+         and mime.get('helper_sha256')==MIME_HELPER_SHA256 and mime.get('types')==MIME_TYPES,
+         'Actual packaged MIME bootstrap proof is incomplete or used host MIME files')
+
+
+def require_nightly_consumer(result):
+    proof=result.get('actual_resolver',{});alias=result.get('optional_alias_launch',{})
+    need(result.get('converter_variant')=='nightly-1633' and result.get('PlayCover_converter_source')==NIGHTLY1633_SOURCE,
+         'Nightly consumer identity differs')
+    need(proof.get('source_sha')==NIGHTLY1633_SOURCE and proof.get('source_pins')==NIGHTLY1633_PINS
+         and proof.get('actual_Foundation_enumeration') is True and proof.get('actual_Installer_resolveValidMachOs') is True
+         and proof.get('code_closure_matches') is True and proof.get('selected_code_count')==99
+         and proof.get('nonruntime_debug_selected') is False
+         and isinstance(proof.get('selected_paths'),list) and len(proof['selected_paths'])==99
+         and len(set(proof['selected_paths']))==99,'Nightly actual resolver proof is incomplete')
+    need(alias.get('status')=='PUBLIC_LAUNCH_COMPLETION' and alias.get('terminatedAtCompletion') is False
+         and alias.get('terminatedAfterThreeSeconds') is False and alias.get('executableMatches') is True
+         and alias.get('actual_source_alias_creation') is True and alias.get('alias_source')==NIGHTLY1633_SOURCE
+         and alias.get('alias_content_identity_verified') is True and alias.get('owned_alias_removed') is True
+         and alias.get('launchedProcessTerminated') is True,
+         'Nightly exact alias launch or executable identity proof is incomplete')
+
+
+def optional_alias_probe(app,work,evidence,variant='stable'):
     """Observe OS launch separately; any error remains auxiliary evidence."""
     outcome={'actual_GUI_install':False,'gameplay_pass_claimed':False}
+    alias=None;identity=None
     try:
         info=plistlib.loads((app/'Info.plist').read_bytes())
         name=info.get('CFBundleDisplayName') or info['CFBundleName']
         need(isinstance(name,str) and '/' not in name and '\\' not in name,'Unsafe alias display name')
         alias=Path.home()/'Applications/PlayCover'/(name+'.app')
         need(not alias.exists() and not alias.is_symlink(),'A preexisting user alias prevents optional probe')
-        alias.mkdir(parents=True,exist_ok=False)
-        for entry in app.iterdir():
-            target=alias/entry.name
-            if entry.name=='Info.plist':shutil.copy2(entry,target)
-            else:target.symlink_to(entry,target_is_directory=entry.is_dir())
+        if variant=='nightly-1633':
+            actual_nightly_alias(app,alias,work,evidence)
+            outcome.update(actual_source_alias_creation=True,alias_source=NIGHTLY1633_SOURCE)
+        else:
+            alias.mkdir(parents=True,exist_ok=False)
+            for entry in app.iterdir():
+                target=alias/entry.name
+                if entry.name=='Info.plist':shutil.copy2(entry,target)
+                else:target.symlink_to(entry,target_is_directory=entry.is_dir())
+        identity=verify_alias_contents(app,alias);outcome['alias_content_identity_verified']=True
         exe=work/'alias-launch-probe'
         run(['/usr/bin/xcrun','swiftc',OWN/'PlayCoverAliasLaunchProbe.swift','-o',exe],evidence,'optional-alias-compile.json',60)
         run([exe,alias,info['CFBundleIdentifier'],evidence/'optional-alias-nserror.json'],evidence,'optional-alias-launch.json',40)
         outcome.update(json.loads((evidence/'optional-alias-nserror.json').read_text()))
     except Exception as e:
         outcome.update(status='OPTIONAL_ALIAS_DIAGNOSTIC_INCOMPLETE',error_class=type(e).__name__,public_error=str(e)[:512])
+    finally:
+        if identity is not None:
+            try:
+                remove_owned_alias(app,alias,identity);outcome['owned_alias_removed']=True
+            except Exception as error:
+                outcome.update(owned_alias_removed=False,alias_cleanup_error=str(error)[:512])
     write(evidence/'optional-alias-outcome.json',outcome)
     return outcome
 
@@ -236,6 +422,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--app',type=Path,required=True);p.add_argument('--work',type=Path,required=True);p.add_argument('--evidence',type=Path,required=True)
     p.add_argument('--native-build-report',type=Path)
+    p.add_argument('--converter-variant',choices=('stable','nightly-1633'),default='stable')
     p.add_argument('--repo',type=Path,default=OWN.parents[1])
     args=p.parse_args();need(sys.platform=='darwin' and os.environ.get('GITHUB_ACTIONS')=='true','Disposable Mac Actions runner required')
     root=Path(os.environ['RUNNER_TEMP']).resolve()
@@ -243,7 +430,9 @@ def main():
     args.work.mkdir(parents=True,exist_ok=False);args.evidence.mkdir(parents=True,exist_ok=False)
     DEADLINE=time.monotonic()+420
     work,evidence=args.work,args.evidence
-    result={'schema':1,'status':'RUNNING','PlayCover_converter_source':SOURCE,'actual_gameplay':False,'actual_iPhone_iPad_execution':False,'actual_GUI_install':False}
+    source=SOURCE if args.converter_variant=='stable' else NIGHTLY1633_SOURCE
+    result={'schema':1,'status':'RUNNING','converter_variant':args.converter_variant,
+        'PlayCover_converter_source':source,'actual_gameplay':False,'actual_iPhone_iPad_execution':False,'actual_GUI_install':False}
     try:
         original=args.app.resolve();need(original.is_dir() and original.suffix=='.app','Fixed staged app required')
         app=work/'converted.app';shutil.copytree(original,app,symlinks=True)
@@ -275,8 +464,11 @@ def main():
         write(evidence/'filter-acceptance.json',{'filter':'regular file, suffix empty or dylib, FAT/arm64 magic','traversal':'explicit recursive native closure; GUI traversal not claimed',
             'accepted':[f.relative_to(app).as_posix() for f in accepted],'excluded_code':[f.relative_to(app).as_posix() for f in code if f not in accepted],
             'preserved_nonruntime_MH_DSYM':debug_resource})
+        exe=converter(work,evidence,args.converter_variant)
+        if args.converter_variant=='nightly-1633':
+            result['actual_resolver']=actual_nightly_resolver(app,work,evidence,code,debug_resource)
         paths=work/'convert-paths.json';paths.write_text(json.dumps([str(f) for f in accepted]))
-        exe=converter(work,evidence);run([exe,paths],evidence,'actual-playcover-convert.json',120)
+        run([exe,paths],evidence,'actual-playcover-convert.json',120)
         (app/'global').chmod(0o755)
         after={f.relative_to(app).as_posix():headers(f) for f in natives};write(evidence/'platforms-after.json',after)
         for path in code:
@@ -303,9 +495,13 @@ def main():
         run([helper,app,OWN/'playcover_python_imports.py',evidence/'framework-mappings.json',evidence/'actual-native-imports.json'],evidence,'actual-embedded-imports.json',120,env)
         reply=json.loads((evidence/'actual-native-imports.json').read_text())
         need(reply['status']=='ACTUAL_CONVERTED_NATIVE_IMPORTS_PASS' and reply['codec_count']==8,'Native import proof did not pass')
+        require_mime_bootstrap(reply)
         result.update(status='ACTUAL_PLAYCOVER_CONVERSION_AND_NATIVE_IMPORTS_PASS',native_headers=len(natives),code_images=len(code),preserved_debug_resources=[debug_resource],frameworks=len(frameworks),mapped_extensions=reply['native_leaf_count'],codec_count=8,
                       qualification='Real converted packaged CPython/math/SSL/ctypes/NumPy/eight texture codecs and all mapped AOT dyld loads. No game/MV, GUI install or physical iOS execution.')
-        result['optional_alias_launch']=optional_alias_probe(app,work,evidence)
+        result['optional_alias_launch']=optional_alias_probe(app,work,evidence,args.converter_variant)
+        need(result['optional_alias_launch'].get('launchedProcessTerminated') is not False,
+             'The exact launched consumer process did not terminate within its bounded cleanup')
+        if args.converter_variant=='nightly-1633':require_nightly_consumer(result)
     except Exception as e:
         result.update(status='FAILED',error_class=type(e).__name__,public_error=str(e)[:512]);raise
     finally:write(evidence/'result.json',result)

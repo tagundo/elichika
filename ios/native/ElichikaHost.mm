@@ -99,11 +99,27 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
                     @"generation":@(core.generation()),@"error":ELHookError ?: [NSString stringWithUTF8String:core.error().c_str()]});
 }
 
+// A content controller retains its message handler. Keep that edge weak so
+// retaining several documents does not create a controller/WebView cycle.
+@interface ELPanelMessageHandler : NSObject <WKScriptMessageHandler>
+@property(nonatomic,weak) id<WKScriptMessageHandler> target;
+@end
+@implementation ELPanelMessageHandler
+- (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
+    [self.target userContentController:controller didReceiveScriptMessage:message];
+}
+@end
+
 @interface ELPanelController : UIViewController <WKNavigationDelegate,WKScriptMessageHandler,WKUIDelegate,WKDownloadDelegate>
 @property(nonatomic,strong) UILabel *statusLabel;
 @property(nonatomic,strong) UIActivityIndicatorView *spinner;
 @property(nonatomic,strong) UISegmentedControl *sections;
 @property(nonatomic,strong) WKWebView *web;
+@property(nonatomic,strong) UIView *webContainer;
+@property(nonatomic,strong) NSMutableDictionary<NSNumber *,WKWebView *> *sectionWebViews;
+@property(nonatomic,strong) NSMutableDictionary<NSNumber *,NSString *> *sectionTargets;
+@property(nonatomic,strong) NSHashTable<WKWebView *> *failedPanels;
+@property(nonatomic,strong) NSMapTable<WKWebView *,NSString *> *panelErrors;
 @property(nonatomic,strong) UIButton *retry;
 @property(nonatomic,strong) UIButton *storageRecovery;
 @property(nonatomic,strong) UIBarButtonItem *buttonVisibility;
@@ -124,9 +140,12 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 @property(nonatomic,assign) NSUInteger managementProbeGeneration;
 @property(nonatomic,assign) NSInteger managementProbeStep;
 @property(nonatomic,assign) NSInteger managementProbeHTTPStatus;
+@property(nonatomic,assign) BOOL retentionProbeRunning;
+@property(nonatomic,assign) BOOL retainedDocumentsChecked;
 - (void)probeStorageService:(NSString *)service port:(NSInteger)port launch:(NSUInteger)launch completion:(void (^)(NSDictionary *reply))completion;
 - (void)probeManagement:(void (^)(NSDictionary *reply))completion;
 #endif
+- (WKWebView *)activateSection:(NSInteger)section;
 - (WKNavigation *)loadPanelURL:(NSURL *)target;
 - (void)refresh;
 @end
@@ -188,12 +207,9 @@ static void ELHidePanel(void) {
     _candidateLabel.text=ELButtonText(@"Experimental · Archive pending · Device untested\nFiles: Elichika/packs",
         @"실험 빌드 · Archive 게시 대기 · 실기기 미검증\n파일: Elichika/packs",
         @"実験版 · Archive公開待ち · 実機未検証\nファイル: Elichika/packs");
-    WKWebViewConfiguration *configuration=[WKWebViewConfiguration new];
-    configuration.websiteDataStore=WKWebsiteDataStore.defaultDataStore;
-    [configuration.userContentController addScriptMessageHandler:self name:@"elichika"];
-    NSString *script=@"(()=>{const p=new Map();let n=0;window.ElichikaIOS=Object.freeze({request:(action,options={})=>new Promise((resolve,reject)=>{const id=String(++n);p.set(id,{resolve,reject});window.webkit.messageHandlers.elichika.postMessage({id,action,...options});})});window.addEventListener('elichika-native-result',e=>{const x=e.detail,j=p.get(x.id);if(j){p.delete(x.id);x.error?j.reject(Error(x.error)):j.resolve(x.result)}})})();";
-    [configuration.userContentController addUserScript:[[WKUserScript alloc] initWithSource:script injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
-    _web=[[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration]; _web.navigationDelegate=self; _web.UIDelegate=self;
+    _sectionWebViews=[NSMutableDictionary new]; _sectionTargets=[NSMutableDictionary new];
+    _failedPanels=NSHashTable.weakObjectsHashTable; _panelErrors=[NSMapTable weakToStrongObjectsMapTable];
+    _webContainer=[UIView new];
     _downloads=[NSMapTable strongToStrongObjectsMapTable];
     _storageRecovery=[UIButton buttonWithType:UIButtonTypeSystem];
     [_storageRecovery setTitle:ELButtonText(@"Use default asset folder",@"기본 에셋 폴더 사용",@"既定の保存先を使用") forState:UIControlStateNormal];
@@ -203,20 +219,23 @@ static void ELHidePanel(void) {
     [_spinner setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     UIStackView *head=[[UIStackView alloc] initWithArrangedSubviews:@[statusRow,_candidateLabel,_retry,_storageRecovery,guidance,_sections]];
     head.axis=UILayoutConstraintAxisVertical; head.spacing=6;
-    head.translatesAutoresizingMaskIntoConstraints=NO; _web.translatesAutoresizingMaskIntoConstraints=NO;
-    [self.view addSubview:head]; [self.view addSubview:_web];
+    head.translatesAutoresizingMaskIntoConstraints=NO; _webContainer.translatesAutoresizingMaskIntoConstraints=NO;
+    [self.view addSubview:head]; [self.view addSubview:_webContainer];
     UILayoutGuide *safe=self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
         [head.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
         [head.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
         [head.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],
-        [_web.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:8],
-        [_web.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
-        [_web.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
-        [_web.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor]]];
-    [self refresh];
+        [_webContainer.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:8],
+        [_webContainer.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [_webContainer.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        [_webContainer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor]]];
+    [self activateSection:0]; [self refresh];
 }
-- (void)dealloc { [_web.configuration.userContentController removeScriptMessageHandlerForName:@"elichika"]; }
+- (void)dealloc {
+    for (WKWebView *web in _sectionWebViews.allValues)
+        [web.configuration.userContentController removeScriptMessageHandlerForName:@"elichika"];
+}
 - (void)close { if (ELCore().started()) ELHidePanel(); }
 - (void)toggleServerButton {
     ELButtonPolicy().toggle();
@@ -224,6 +243,15 @@ static void ELHidePanel(void) {
     ELRefreshMenu(); [self refresh];
 }
 - (void)retrySetup {
+    if ([_failedPanels containsObject:_web]) {
+        NSNumber *section=@(_sections.selectedSegmentIndex); NSString *entry=_sectionTargets[section];
+        NSURL *target=_web.URL ?: [NSURL URLWithString:entry ?: @""];
+        if (ELIsPanelURL(target)) {
+            [_failedPanels removeObject:_web]; [self loadPanelURL:target];
+            if (entry) _sectionTargets[section]=entry; [self refresh];
+        }
+        return;
+    }
     if (!ELProfileSupported || !ELRoutingPrepared) return;
     [self.retry setEnabled:NO];
     ElichikaPythonCall(@"status",^(NSDictionary *status) {
@@ -264,7 +292,16 @@ static void ELHidePanel(void) {
     else _statusLabel.text=ELProgress ?: @"Preparing your local server and tools…";
     BOOL busy=!ELCore().ready() && !error.length && !(ELCore().started() && ELPanelReady());
     if (busy) [_spinner startAnimating]; else [_spinner stopAnimating];
-    _retry.hidden=!error.length; _retry.enabled=ELProfileSupported && ELRoutingPrepared;
+    BOOL pageFailed=[_failedPanels containsObject:_web];
+    if (pageFailed) {
+        _statusLabel.numberOfLines=0;
+        NSString *notice=ELButtonText(@"This page stopped. Unsaved edits may be lost; retry reloads this page only.",
+            @"이 페이지가 중지되었습니다. 저장 전 편집은 사라졌을 수 있습니다. 다시 시도하면 이 페이지만 새로 엽니다.",
+            @"ページが停止しました。未保存の編集は失われた可能性があります。再試行でこのページだけを開き直します。");
+        _statusLabel.text=[NSString stringWithFormat:@"%@\n%@",notice,[_panelErrors objectForKey:_web] ?: @""];
+    }
+    [_retry setTitle:pageFailed ? ELButtonText(@"Reload page",@"페이지 다시 열기",@"ページを再読み込み") : @"Retry setup" forState:UIControlStateNormal];
+    _retry.hidden=!error.length && !pageFailed; _retry.enabled=ELProfileSupported && ELRoutingPrepared;
     _storageRecovery.hidden=!ELStorageError;
     _sections.enabled=elichika::managementAvailable(ELCore().started(),ELCore().ready(),ELPanelReady())
         && ![ELConfiguration[@"core_only"] boolValue];
@@ -281,13 +318,78 @@ static void ELHidePanel(void) {
     else if (_sections.selectedSegmentIndex==2) url=ELRuntimeStatus[@"admin_url"];
     else url=ELRuntimeStatus[@"tools_url"];
     NSURL *target=[NSURL URLWithString:url ?: @""];
-    [self loadPanelURL:target];
+    if (!ELIsPanelURL(target)) return;
+    NSInteger section=_sections.selectedSegmentIndex;
+    WKWebView *web=[self activateSection:section]; if (!web) return;
+    // Internal navigation belongs to this retained document. Comparing its
+    // original entry URL (including auth/origin) avoids reloading editors when
+    // a tab is revisited, while a server-origin change still gets a fresh page.
+    if (![_sectionTargets[@(section)] isEqual:target.absoluteString]) [self loadPanelURL:target];
+    [self refresh];
+}
+- (WKWebView *)activateSection:(NSInteger)section {
+    if (section<0 || section>3) return nil;
+    NSNumber *key=@(section); WKWebView *web=_sectionWebViews[key];
+    if (!web) {
+        WKWebViewConfiguration *configuration=[WKWebViewConfiguration new];
+        configuration.websiteDataStore=WKWebsiteDataStore.defaultDataStore;
+        ELPanelMessageHandler *handler=[ELPanelMessageHandler new]; handler.target=self;
+        [configuration.userContentController addScriptMessageHandler:handler name:@"elichika"];
+        // A reply also carries this document's nonce: navigating the same WK
+        // while a picker is open cannot resolve a newer document's request ID.
+        NSString *script=@"(()=>{const p=new Map();let n=0;const d=(globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now())+'-'+Math.random();window.__elichikaNativeDocument=d;window.ElichikaIOS=Object.freeze({request:(action,options={})=>new Promise((resolve,reject)=>{const id=String(++n);p.set(id,{resolve,reject});window.webkit.messageHandlers.elichika.postMessage({...options,id,action,document:d});})});window.addEventListener('elichika-native-result',e=>{const x=e.detail;if(!x||x.document!==d)return;const j=p.get(x.id);if(j){p.delete(x.id);x.error?j.reject(Error(x.error)):j.resolve(x.result)}})})();";
+        [configuration.userContentController addUserScript:[[WKUserScript alloc] initWithSource:script injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
+        web=[[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
+        web.navigationDelegate=self; web.UIDelegate=self; web.translatesAutoresizingMaskIntoConstraints=NO;
+        _sectionWebViews[key]=web; [_webContainer addSubview:web];
+        [NSLayoutConstraint activateConstraints:@[[web.topAnchor constraintEqualToAnchor:_webContainer.topAnchor],
+            [web.leadingAnchor constraintEqualToAnchor:_webContainer.leadingAnchor],
+            [web.trailingAnchor constraintEqualToAnchor:_webContainer.trailingAnchor],
+            [web.bottomAnchor constraintEqualToAnchor:_webContainer.bottomAnchor]]];
+    }
+    // Lazy, bounded to four documents. Hidden views stay attached and retain
+    // JS/undo/form state; WebKit need not paint their layers while hidden.
+    for (WKWebView *other in _sectionWebViews.allValues) other.hidden=(other!=web);
+    _web=web; [_webContainer bringSubviewToFront:web];
+    return web;
 }
 - (WKNavigation *)loadPanelURL:(NSURL *)target {
     if (!ELIsPanelURL(target)) return nil;
+    NSInteger section=_sections.selectedSegmentIndex;
+    WKWebView *web=[self activateSection:section]; if (!web) return nil;
+    _sectionTargets[@(section)]=target.absoluteString; [_failedPanels removeObject:web]; [_panelErrors removeObjectForKey:web];
     NSMutableURLRequest *request=[NSMutableURLRequest requestWithURL:target];
     [request setValue:ELConfiguration[@"token"] forHTTPHeaderField:@"X-Elichika-Local-Access"];
-    return [_web loadRequest:request];
+    return [web loadRequest:request];
+}
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)web {
+    if (![_sectionWebViews.allValues containsObject:web]) return;
+    [_failedPanels addObject:web];
+    [_panelErrors setObject:ELButtonText(@"WebKit ended the page's content process.",@"WebKit이 페이지의 웹 프로세스를 종료했습니다.",@"WebKitがページのコンテンツプロセスを終了しました。") forKey:web];
+    if (web==_web) [self refresh];
+}
+- (void)webView:(WKWebView *)web didStartProvisionalNavigation:(WKNavigation *)navigation {
+    [_failedPanels removeObject:web]; [_panelErrors removeObjectForKey:web];
+#if ELICHIKA_SIMULATOR_PROBE
+    if (web==_web && _managementProbeReply && _managementProbeStep==2) _managementProbeNavigation=navigation;
+#endif
+}
+- (void)webView:(WKWebView *)web didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (!([error.domain isEqual:NSURLErrorDomain] && error.code==NSURLErrorCancelled)) {
+        [_failedPanels addObject:web];
+        [_panelErrors setObject:[NSString stringWithFormat:@"%@ (%ld): %@",error.domain,(long)error.code,error.localizedDescription] forKey:web];
+        if (web==_web) [self refresh];
+    }
+#if ELICHIKA_SIMULATOR_PROBE
+    if (web==_web && _managementProbeReply && _managementProbeStep==2 &&
+        [error.domain isEqual:NSURLErrorDomain] && error.code==NSURLErrorCancelled) return;
+    if (web==_web && _managementProbeReply && navigation==_managementProbeNavigation) { [self finishManagementProbe:@"Management navigation failed."]; return; }
+    if (web==_web && _storageProbeReply && navigation==_storageProbeNavigation)
+        [self finishStorageProbe:[self failedStorageProbe:@"Management navigation failed."]];
+#endif
+}
+- (void)webView:(WKWebView *)web didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    [self webView:web didFailNavigation:navigation withError:error];
 }
 #if ELICHIKA_SIMULATOR_PROBE
 - (void)finishStorageProbe:(NSDictionary *)reply {
@@ -319,9 +421,6 @@ static void ELHidePanel(void) {
             [self finishStorageProbe:[self failedStorageProbe:@"Management WebView storage probe timed out."]];
     });
 }
-- (void)webView:(WKWebView *)web didStartProvisionalNavigation:(WKNavigation *)navigation {
-    if (web==_web && _managementProbeReply && _managementProbeStep==2) _managementProbeNavigation=navigation;
-}
 - (void)webView:(WKWebView *)web didFinishNavigation:(WKNavigation *)navigation {
     if (web==_web && _managementProbeReply && navigation==_managementProbeNavigation) {
         // The existing Accounts hub redirects to its login picker in JavaScript
@@ -335,13 +434,13 @@ static void ELHidePanel(void) {
     NSDictionary *arguments=@{@"origin":_storageProbeOrigin,@"service":_storageProbeService,@"launch":@(_storageProbeLaunch)};
     NSString *script=[NSString stringWithFormat:@"(()=>{const a=%@,k='elichika.simulator.preferences-persistence.v1',v=a.service+'-v1',p=localStorage.getItem(k);let seeded=false;if(a.launch===1){localStorage.setItem(k,v);seeded=localStorage.getItem(k)===v;}return{origin_matches:location.origin===a.origin,prior_present:p!==null,persisted:a.launch===2&&p===v,seeded};})()",ELJSON(arguments)];
     NSUInteger generation=_storageProbeGeneration;
-    [_web evaluateJavaScript:script completionHandler:^(id value,NSError *error) {
+    [web evaluateJavaScript:script completionHandler:^(id value,NSError *error) {
         if (!self.storageProbeReply || self.storageProbeGeneration!=generation) return;
         if (error || ![value isKindOfClass:NSDictionary.class]) {
             [self finishStorageProbe:[self failedStorageProbe:@"Management localStorage evaluation failed."]]; return;
         }
         BOOL persisted=[value[@"persisted"] boolValue],seeded=[value[@"seeded"] boolValue];
-        BOOL ready=[value[@"origin_matches"] boolValue] && self.web.configuration.websiteDataStore.persistent &&
+        BOOL ready=[value[@"origin_matches"] boolValue] && web.configuration.websiteDataStore.persistent &&
             (self.storageProbeLaunch==1 ? seeded && ![value[@"prior_present"] boolValue] : persisted);
         NSDictionary *reply=@{@"ready":@(ready),@"persisted":@(persisted),@"seeded":@(seeded),
             @"origin_port":@([NSURL URLWithString:self.storageProbeOrigin].port.integerValue)};
@@ -352,27 +451,138 @@ static void ELHidePanel(void) {
         });
     }];
 }
-- (void)webView:(WKWebView *)web didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    if (web==_web && _managementProbeReply && _managementProbeStep==2 &&
-        [error.domain isEqual:NSURLErrorDomain] && error.code==NSURLErrorCancelled) return;
-    if (web==_web && _managementProbeReply && navigation==_managementProbeNavigation) { [self finishManagementProbe:@"Management navigation failed."]; return; }
-    if (web==_web && _storageProbeReply && navigation==_storageProbeNavigation)
-        [self finishStorageProbe:[self failedStorageProbe:@"Management navigation failed."]];
-}
-- (void)webView:(WKWebView *)web didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    [self webView:web didFailNavigation:navigation withError:error];
-}
 - (void)finishManagementProbe:(NSString *)error {
     void (^completion)(NSDictionary *)=_managementProbeReply; if (!completion) return;
-    _managementProbeReply=nil; _managementProbeNavigation=nil; ++_managementProbeGeneration;
+    _managementProbeReply=nil; _managementProbeNavigation=nil; _retentionProbeRunning=NO; ++_managementProbeGeneration;
     _managementProof[@"error"]=error.length ? (id)error : (id)@NO;
     BOOL ready=!error.length;
-    for (NSString *key in @[@"actual_management_webview",@"page_loaded",@"javascript_ready",@"state_fetch",@"controls_present",@"native_binding",@"go_stopped",@"offline_accounts",@"server_restarted"])
+    for (NSString *key in @[@"actual_management_webview",@"page_loaded",@"javascript_ready",@"state_fetch",@"controls_present",@"native_binding",@"retained_panels",@"go_stopped",@"offline_accounts",@"server_restarted"])
         ready=ready && [_managementProof[key] boolValue];
     _managementProof[@"ready"]=@(ready); completion([_managementProof copy]);
 }
+- (void)probeRetainedPanels {
+    // This is a real WK document-lifetime and reply-routing check, not a 3D
+    // render test. Storage probing already visited the Content and Tools pages.
+    NSUInteger generation=_managementProbeGeneration;
+    WKWebView *manage=_sectionWebViews[@0],*content=_sectionWebViews[@2],*tools=_sectionWebViews[@3];
+    if (_web!=manage || !manage || !content || !tools || manage==content || manage==tools || content==tools ||
+        manage.loading || content.loading || tools.loading || !ELIsPanelURL(manage.URL) ||
+        !ELIsPanelURL(content.URL) || !ELIsPanelURL(tools.URL)) {
+        [self finishManagementProbe:@"The lazy retained management documents were unavailable."]; return;
+    }
+    _retentionProbeRunning=YES;
+    NSString *token=NSUUID.UUID.UUIDString;
+    NSDictionary *arguments=@{@"token":token};
+    NSString *seed=[NSString stringWithFormat:@"(()=>{const a=%@,field=document.createElement('textarea');field.id='elichika-retention-draft';field.hidden=true;field.value='unsaved draft';document.body.appendChild(field);const p={token:a.token,undo:[{vertex:7,before:1,after:2}],selection:[7,11],pagehide:0,reply:false};window.__elichikaRetentionProbe=p;window.addEventListener('pagehide',()=>++p.pagehide);return true;})()",ELJSON(arguments)];
+    NSString *check=[NSString stringWithFormat:@"(()=>{const a=%@,p=window.__elichikaRetentionProbe,f=document.getElementById('elichika-retention-draft');return{same:!!p&&p.token===a.token&&p.pagehide===0&&p.undo.length===1&&p.undo[0].after===2&&p.selection.join(',')==='7,11'&&!!f&&f.value==='unsaved draft',reply:!!p&&p.reply===true};})()",ELJSON(arguments)];
+    [manage evaluateJavaScript:seed completionHandler:^(id value,NSError *error) {
+        if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+        if (error || ![value isEqual:@YES]) { [self finishManagementProbe:@"Could not seed the actual management document's unsaved state."]; return; }
+        [content evaluateJavaScript:seed completionHandler:^(id contentSeed,NSError *contentError) {
+            if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+            if (contentError || ![contentSeed isEqual:@YES]) { [self finishManagementProbe:@"Could not seed the actual Content document's unsaved state."]; return; }
+        self.sections.selectedSegmentIndex=3; [self openSection];
+        if (self.web!=tools) { [self finishManagementProbe:@"Revisiting Tools replaced its retained WebView."]; return; }
+        NSString *toolSeed=[seed stringByAppendingString:@"window.ElichikaIOS.request('__probe_deferred_status').then(v=>{window.__elichikaRetentionProbe.reply=v.returned_to_origin===true&&v.other_tab_active===true});true;"];
+        [tools evaluateJavaScript:toolSeed completionHandler:^(id seeded,NSError *seedError) {
+            if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+            if (seedError || ![seeded isEqual:@YES]) { [self finishManagementProbe:@"Could not seed the actual Tools document and deferred native request."]; return; }
+            self.sections.selectedSegmentIndex=0; [self openSection];
+            if (self.web!=manage) { [self finishManagementProbe:@"Revisiting Manage replaced its retained WebView."]; return; }
+            self.sections.selectedSegmentIndex=2; [self openSection];
+            if (self.web!=content) { [self finishManagementProbe:@"Revisiting Content replaced its retained WebView."]; return; }
+            ELHidePanel(); ElichikaHostShowManagement();
+            if (self.web!=content || ![content isDescendantOfView:self.view] || content.hidden || ELPanelWindow.hidden) {
+                [self finishManagementProbe:@"Hiding and reopening management replaced the active document."]; return;
+            }
+            // The deferred native reply must reach hidden Tools, while Content
+            // is active, rather than the current alias or a different document.
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC/5),dispatch_get_main_queue(),^{
+                if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+                [self pollRetainedTools:tools manage:manage script:check generation:generation];
+            });
+        }];
+        }];
+    }];
+}
+- (void)pollRetainedTools:(WKWebView *)tools manage:(WKWebView *)manage script:(NSString *)check generation:(NSUInteger)generation {
+    if (!_managementProbeReply || _managementProbeGeneration!=generation) return;
+    // Keep Content active until the delayed reply reaches hidden Tools. Poll
+    // under the original management deadline; a busy WebKit queue cannot turn
+    // a fixed sleep into either a false PASS or an unnecessary failure.
+    [tools evaluateJavaScript:check completionHandler:^(id retained,NSError *error) {
+        if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+        if (error || ![retained isKindOfClass:NSDictionary.class] || ![retained[@"same"] isEqual:@YES]) {
+            [self finishManagementProbe:@"Tools lost its unsaved document state while another tab was active."]; return;
+        }
+        if (![retained[@"reply"] isEqual:@YES]) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/4),dispatch_get_main_queue(),^{
+                [self pollRetainedTools:tools manage:manage script:check generation:generation];
+            }); return;
+        }
+        self.sections.selectedSegmentIndex=3; [self openSection];
+        if (self.web!=tools) { [self finishManagementProbe:@"Tools was recreated after hiding and reopening management."]; return; }
+        [tools evaluateJavaScript:check completionHandler:^(id visible,NSError *visibleError) {
+            if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+            if (visibleError || ![visible isKindOfClass:NSDictionary.class] || ![visible[@"same"] isEqual:@YES] || ![visible[@"reply"] isEqual:@YES]) {
+                [self finishManagementProbe:@"Revisiting Tools discarded its document state or deferred native reply."]; return;
+            }
+            self.sections.selectedSegmentIndex=0; [self openSection];
+            if (self.web!=manage) { [self finishManagementProbe:@"The management document was recreated after revisiting other tabs."]; return; }
+            [manage evaluateJavaScript:check completionHandler:^(id preserved,NSError *preservedError) {
+                if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+                if (preservedError || ![preserved isKindOfClass:NSDictionary.class] || ![preserved[@"same"] isEqual:@YES]) {
+                    [self finishManagementProbe:@"Manage lost its unsaved document state after tab switching."]; return;
+                }
+                WKWebView *content=self.sectionWebViews[@2];
+                [content evaluateJavaScript:check completionHandler:^(id contentState,NSError *contentError) {
+                    if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+                    if (contentError || ![contentState isKindOfClass:NSDictionary.class] || ![contentState[@"same"] isEqual:@YES]) {
+                        [self finishManagementProbe:@"Content lost its unsaved document state after tab switching."]; return;
+                    }
+                    self.retentionProbeRunning=NO; self.retainedDocumentsChecked=YES;
+                    [self pollManagementProbe];
+                }];
+            }];
+        }];
+    }];
+}
+- (void)probeRetainedAccounts {
+    NSUInteger generation=_managementProbeGeneration;
+    WKWebView *accounts=_sectionWebViews[@1];
+    if (!accounts || accounts!=_web || accounts.loading || ![accounts.URL.path isEqual:@"/ios/server/webui/user/login"]) {
+        [self finishManagementProbe:@"The stopped-server Accounts document was unavailable for retention verification."]; return;
+    }
+    NSString *token=NSUUID.UUID.UUIDString;
+    NSDictionary *arguments=@{@"token":token};
+    NSString *seed=[NSString stringWithFormat:@"(()=>{const a=%@,f=document.createElement('input');f.hidden=true;f.id='elichika-retention-account-draft';f.value='unsaved account draft';document.body.appendChild(f);window.__elichikaAccountRetention={token:a.token,pagehide:0};window.addEventListener('pagehide',()=>++window.__elichikaAccountRetention.pagehide);return true;})()",ELJSON(arguments)];
+    [accounts evaluateJavaScript:seed completionHandler:^(id value,NSError *error) {
+        if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+        if (error || ![value isEqual:@YES]) { [self finishManagementProbe:@"Could not seed the actual Accounts document's unsaved form state."]; return; }
+        for (NSNumber *section in @[@0,@2,@3,@1]) {
+            WKWebView *retained=self.sectionWebViews[section];
+            self.sections.selectedSegmentIndex=section.integerValue; [self openSection];
+            if (self.web!=retained) { [self finishManagementProbe:@"A management tab was recreated during the Accounts retention check."]; return; }
+        }
+        NSString *check=[NSString stringWithFormat:@"(()=>{const a=%@,p=window.__elichikaAccountRetention,f=document.getElementById('elichika-retention-account-draft');return !!p&&p.token===a.token&&p.pagehide===0&&!!f&&f.value==='unsaved account draft';})()",ELJSON(arguments)];
+        [accounts evaluateJavaScript:check completionHandler:^(id retained,NSError *retainedError) {
+            if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+            if (retainedError || ![retained isEqual:@YES]) { [self finishManagementProbe:@"Accounts lost its unsaved form state after visiting the other three tabs."]; return; }
+            self.sections.selectedSegmentIndex=0; [self openSection];
+            if (!self.web || self.web!=self.sectionWebViews[@0] || !self.retainedDocumentsChecked) {
+                [self finishManagementProbe:@"Could not return to retained management after the offline Accounts check."]; return;
+            }
+            self.managementProof[@"retained_panels"]=@YES; self.managementProbeNavigation=nil;
+            [self pollManagementProbe];
+        }];
+    }];
+}
 - (void)pollManagementProbe {
     if (!_managementProbeReply) return;
+    if (_managementProbeStep==0 && !_retainedDocumentsChecked) {
+        if (!_retentionProbeRunning) [self probeRetainedPanels];
+        return;
+    }
     NSUInteger generation=_managementProbeGeneration;
     BOOL nativeStopped=ELCore().started() && !ELCore().ready() && ELPanelReady() && _sections.enabled;
     NSDictionary *arguments=@{@"step":@(_managementProbeStep),@"allowStart":@(nativeStopped)};
@@ -393,8 +603,10 @@ static void ELHidePanel(void) {
         "else if(step===3){if(r.server_ready||s.server_state!=='stopped'||!allowStart)return{waiting:true};const b=document.getElementById('server-start');if(!b||b.disabled)return{waiting:true};b.click();r.requested='start';}"
         "return r;";
     if (@available(iOS 14.0,*)) {
-        [_web callAsyncJavaScript:script arguments:arguments inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:^(id value,NSError *error){
+        WKWebView *origin=_web;
+        [origin callAsyncJavaScript:script arguments:arguments inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:^(id value,NSError *error){
             if (!self.managementProbeReply || self.managementProbeGeneration!=generation) return;
+            if (self.web!=origin) { [self finishManagementProbe:@"The active management document changed during its API probe."]; return; }
             if (error || ![value isKindOfClass:NSDictionary.class] || [value[@"error"] boolValue]) { [self finishManagementProbe:@"The actual management JavaScript/API probe failed."]; return; }
             if (![value[@"waiting"] boolValue]) {
                 if (self.managementProbeStep==2) {
@@ -402,11 +614,7 @@ static void ELHidePanel(void) {
                         [self finishManagementProbe:@"The stopped-server Accounts page or native account directory was unavailable."]; return;
                     }
                     self.managementProof[@"offline_accounts"]=@YES; self.managementProbeStep=3;
-                    NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
-                    parts.path=@"/ios/"; parts.fragment=nil; self.sections.selectedSegmentIndex=0;
-                    self.managementProbeHTTPStatus=0; self.managementProbeNavigation=[self loadPanelURL:parts.URL];
-                    if (!self.managementProbeNavigation) [self finishManagementProbe:@"Could not return to management after the offline Accounts check."];
-                    return;
+                    [self probeRetainedAccounts]; return;
                 }
                 for (NSString *key in @[@"javascript_ready",@"state_fetch",@"controls_present",@"native_binding"]) {
                     if (![value[key] boolValue]) { [self finishManagementProbe:@"Management controls or native binding were unavailable."]; return; }
@@ -433,9 +641,9 @@ static void ELHidePanel(void) {
 - (void)probeManagement:(void (^)(NSDictionary *))completion {
     if (_managementProbeReply || _storageProbeReply) { completion(@{@"ready":@NO,@"error":@"A management WebView probe is already running."}); return; }
     _managementProbeReply=[completion copy]; NSUInteger generation=++_managementProbeGeneration;
-    _managementProbeStep=0; _managementProbeHTTPStatus=0;
+    _managementProbeStep=0; _managementProbeHTTPStatus=0; _retainedDocumentsChecked=NO; _retentionProbeRunning=NO;
     _managementProof=[@{@"schema":@1,@"ready":@NO,@"actual_management_webview":@(_web && [_web isDescendantOfView:self.view] && _web.navigationDelegate==self),
-        @"page_loaded":@NO,@"javascript_ready":@NO,@"state_fetch":@NO,@"controls_present":@NO,@"native_binding":@NO,@"go_stopped":@NO,@"offline_accounts":@NO,@"server_restarted":@NO,@"error":@NO} mutableCopy];
+        @"page_loaded":@NO,@"javascript_ready":@NO,@"state_fetch":@NO,@"controls_present":@NO,@"native_binding":@NO,@"retained_panels":@NO,@"go_stopped":@NO,@"offline_accounts":@NO,@"server_restarted":@NO,@"error":@NO} mutableCopy];
     NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];
     parts.path=@"/ios/"; parts.fragment=nil; _sections.selectedSegmentIndex=0;
     _managementProbeNavigation=[self loadPanelURL:parts.URL];
@@ -539,55 +747,66 @@ static void ELHidePanel(void) {
         });
     } else completion(nil);
 }
-- (void)reply:(NSString *)identifier result:(id)result error:(NSString *)error {
-    NSDictionary *value=@{@"id":identifier,@"result":result ?: NSNull.null,@"error":error ?: @""};
-    NSString *javascript=[NSString stringWithFormat:@"window.dispatchEvent(new CustomEvent('elichika-native-result',{detail:%@}));",ELJSON(value)];
-    [_web evaluateJavaScript:javascript completionHandler:nil];
+- (void)reply:(NSString *)identifier inWebView:(WKWebView *)web document:(NSString *)document result:(id)result error:(NSString *)error {
+    if (!web || ![_sectionWebViews.allValues containsObject:web]) return;
+    NSDictionary *value=@{@"id":identifier,@"document":document,@"result":result ?: NSNull.null,@"error":error ?: @""};
+    NSString *javascript=[NSString stringWithFormat:@"(()=>{const v=%@;if(window.__elichikaNativeDocument===v.document)window.dispatchEvent(new CustomEvent('elichika-native-result',{detail:v}));})();",ELJSON(value)];
+    [web evaluateJavaScript:javascript completionHandler:nil];
 }
 - (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
     (void)controller;
     if (!message.frameInfo.isMainFrame || !ELIsPanelURL(message.frameInfo.request.URL) || ![message.body isKindOfClass:NSDictionary.class]) return;
+    WKWebView *source=message.webView;
+    if (!source || ![_sectionWebViews.allValues containsObject:source]) return;
     NSDictionary *request=message.body;
-    NSString *identifier=request[@"id"],*action=request[@"action"];
-    if (![identifier isKindOfClass:NSString.class] || identifier.length>64 || ![action isKindOfClass:NSString.class]) return;
+    NSString *identifier=request[@"id"],*action=request[@"action"],*document=request[@"document"];
+    if (![identifier isKindOfClass:NSString.class] || identifier.length>64 || ![action isKindOfClass:NSString.class] ||
+        ![document isKindOfClass:NSString.class] || !document.length || document.length>128) return;
+#if ELICHIKA_SIMULATOR_PROBE
+    if ([action isEqual:@"__probe_deferred_status"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/5),dispatch_get_main_queue(),^{
+            [self reply:identifier inWebView:source document:document result:@{@"returned_to_origin":@YES,@"other_tab_active":@(self.web!=source)} error:nil];
+        }); return;
+    }
+#endif
     if ([action isEqual:@"status"]) {
-        [self reply:identifier result:[NSJSONSerialization JSONObjectWithData:[ElichikaHostDiagnosticsJSON() dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL] error:nil]; return;
+        [self reply:identifier inWebView:source document:document result:[NSJSONSerialization JSONObjectWithData:[ElichikaHostDiagnosticsJSON() dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL] error:nil]; return;
     }
     if ([action isEqual:@"chooseAssetDirectory"]) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
             NSError *error=nil; NSDictionary *result=ELChooseAssetDirectory(&error);
             dispatch_async(dispatch_get_main_queue(),^{
-                if (error.code==2 && [error.domain isEqual:@"ElichikaDocument"]) [self reply:identifier result:@{@"cancelled":@YES} error:nil];
-                else [self reply:identifier result:result error:error.localizedDescription];
+                if (error.code==2 && [error.domain isEqual:@"ElichikaDocument"]) [self reply:identifier inWebView:source document:document result:@{@"cancelled":@YES} error:nil];
+                else [self reply:identifier inWebView:source document:document result:result error:error.localizedDescription];
             });
         }); return;
     }
     if ([action isEqual:@"restoreDefaultAssetDirectory"]) {
-        [self reply:identifier result:ELRestoreAssetDirectory() error:nil]; return;
+        [self reply:identifier inWebView:source document:document result:ELRestoreAssetDirectory() error:nil]; return;
     }
     if ([action isEqual:@"import"]) {
         NSArray *types=[request[@"types"] isKindOfClass:NSArray.class] ? request[@"types"] : @[@"public.data"];
         BOOL multiple=[request[@"multiple"] boolValue];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
-            NSError *error; NSArray *paths=ElichikaHostImportDocuments(types,multiple,&error);
+            NSError *error=nil; NSArray *paths=ElichikaHostImportDocuments(types,multiple,&error);
             id result=multiple ? paths : paths.firstObject;
             dispatch_async(dispatch_get_main_queue(),^{
-                if (error.code==2 && [error.domain isEqual:@"ElichikaDocument"]) [self reply:identifier result:@{@"cancelled":@YES} error:nil];
-                else [self reply:identifier result:result error:error.localizedDescription];
+                if (error.code==2 && [error.domain isEqual:@"ElichikaDocument"]) [self reply:identifier inWebView:source document:document result:@{@"cancelled":@YES} error:nil];
+                else [self reply:identifier inWebView:source document:document result:result error:error.localizedDescription];
             });
         }); return;
     }
     if ([action isEqual:@"export"] && [request[@"path"] isKindOfClass:NSString.class]) {
         NSString *path=request[@"path"];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
-            NSError *error; BOOL done=ElichikaHostExportDocument(path,&error);
+            NSError *error=nil; BOOL done=ElichikaHostExportDocument(path,&error);
             dispatch_async(dispatch_get_main_queue(),^{
-                if (error.code==2 && [error.domain isEqual:@"ElichikaDocument"]) [self reply:identifier result:@{@"cancelled":@YES} error:nil];
-                else [self reply:identifier result:@(done) error:error.localizedDescription];
+                if (error.code==2 && [error.domain isEqual:@"ElichikaDocument"]) [self reply:identifier inWebView:source document:document result:@{@"cancelled":@YES} error:nil];
+                else [self reply:identifier inWebView:source document:document result:@(done) error:error.localizedDescription];
             });
         }); return;
     }
-    [self reply:identifier result:nil error:@"Unknown native action."];
+    [self reply:identifier inWebView:source document:document result:nil error:@"Unknown native action."];
 }
 @end
 
