@@ -26,6 +26,58 @@ BUNDLE = 'org.elichika.simulator-probe'
 PORTS = (8080, 8770, 8772)
 
 
+def probe_launch_command(identifier, launch_number, *, core_only, require_parity_ui):
+    # Launch1 uses a newly created device. Launch2 follows our verified explicit
+    # termination below. Asking FrontBoard to terminate a never-running fresh
+    # install again can stall its launch transaction before main is entered.
+    command = ['xcrun', 'simctl', 'launch', '--console-pty', identifier, BUNDLE,
+               '--elichika-probe-launch=' + str(launch_number)]
+    if core_only:
+        command.append('--elichika-core-probe')
+    if require_parity_ui:
+        command.append('--elichika-parity-probe')
+    return command
+
+
+def cleanup_owned_probe(identifier, process=None):
+    """Bound only our device/console cleanup, preserving any original failure."""
+    original_failure = sys.exc_info()[0] is not None
+    errors = []
+    operations = [('terminate', identifier, BUNDLE)] if process is not None else [
+        ('shutdown', identifier), ('delete', identifier)]
+    for arguments in operations:
+        try:
+            result = subprocess.run(['xcrun', 'simctl', *arguments], check=False,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+            if result.returncode != 0:
+                errors.append(arguments[0] + '_failed')
+        except (OSError, subprocess.SubprocessError):
+            errors.append(arguments[0] + '_failed')
+    if process is not None:
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            # This handle owns simctl, never an unverified game PID.
+            try:
+                process.terminate()
+                process.wait(timeout=10)
+            except (OSError, subprocess.SubprocessError):
+                errors.append('console_termination_failed')
+                try:
+                    process.kill()
+                    process.wait(timeout=5)
+                except (OSError, subprocess.SubprocessError):
+                    errors.append('console_exit_failed')
+        except (OSError, subprocess.SubprocessError):
+            errors.append('console_wait_failed')
+    if errors:
+        message = 'Owned Simulator cleanup failed: ' + ','.join(errors)
+        if original_failure:
+            print(message, file=sys.stderr)
+        else:
+            raise ValueError(message)
+
+
 def port_open(port):
     with socket.socket() as connection:
         connection.settimeout(.2)
@@ -228,12 +280,8 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                 label = model['name'].replace('/', '-') + '-launch-' + str(launch_number)
                 log = evidence / (label + '.txt')
                 with log.open('wb', buffering=0) as output, ProbeConsole(output) as console:
-                    command = ['xcrun', 'simctl', 'launch', '--console-pty', '--terminate-running-process', identifier, BUNDLE]
-                    command.append('--elichika-probe-launch=' + str(launch_number))
-                    if core_only:
-                        command.append('--elichika-core-probe')
-                    if require_parity_ui:
-                        command.append('--elichika-parity-probe')
+                    command = probe_launch_command(identifier, launch_number, core_only=core_only,
+                                                   require_parity_ui=require_parity_ui)
                     launch_wall = time.time()
                     began = time.monotonic()
                     process = subprocess.Popen(command, stdout=console.slave, stderr=subprocess.STDOUT)
@@ -292,20 +340,11 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                                        installed=installed, launch_wall=launch_wall, console_log=log)
                         raise
                     finally:
-                        subprocess.run(['xcrun', 'simctl', 'terminate', identifier, BUNDLE], check=False,
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        try:
-                            process.wait(timeout=10)
-                        except subprocess.TimeoutExpired:
-                            process.terminate()
-                            process.wait(timeout=10)
+                        cleanup_owned_probe(identifier, process)
                 await_closed()
         finally:
             if identifier:
-                subprocess.run(['xcrun', 'simctl', 'shutdown', identifier], check=False,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                subprocess.run(['xcrun', 'simctl', 'delete', identifier], check=False,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                cleanup_owned_probe(identifier)
     require(len(results) == 4, 'Both iPhone and iPad must pass two launches')
     require(inventory(app) == before, 'Runtime changed source application bundle bytes')
     report = {'schema': 1, 'status': 'PASS_REAL_BACKEND_SIMULATOR_PROBE', 'core_only': core_only,
