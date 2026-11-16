@@ -19,6 +19,7 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import inventory, require, run, write_json
 from probe_watchdog import DETAILS, STAGE_SECONDS, ProbeWatchdog, read_progress, stage_budgets
+from probe_console import ProbeConsole
 from simulator_diagnostics import capture_owned_diagnostics
 
 BUNDLE = 'org.elichika.simulator-probe'
@@ -226,7 +227,7 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                 progress_file.unlink(missing_ok=True)
                 label = model['name'].replace('/', '-') + '-launch-' + str(launch_number)
                 log = evidence / (label + '.txt')
-                with log.open('w') as output:
+                with log.open('wb', buffering=0) as output, ProbeConsole(output) as console:
                     command = ['xcrun', 'simctl', 'launch', '--console-pty', '--terminate-running-process', identifier, BUNDLE]
                     command.append('--elichika-probe-launch=' + str(launch_number))
                     if core_only:
@@ -235,10 +236,12 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                         command.append('--elichika-parity-probe')
                     launch_wall = time.time()
                     began = time.monotonic()
-                    process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT, text=True)
+                    process = subprocess.Popen(command, stdout=console.slave, stderr=subprocess.STDOUT)
+                    console.start()
                     watchdog = ProbeWatchdog(launch_number, began, require_parity_ui=require_parity_ui)
                     try:
                         while True:
+                            console.check()
                             now = time.monotonic()
                             watchdog.check(now)
                             if progress_file.exists():
