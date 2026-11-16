@@ -355,13 +355,8 @@ jobs:
     if: ${{ inputs.mode == 'mv-export-android-game' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        region: [GL, JP]
     env:
       CLIENT_BUILD: ${{ inputs.version }}
-      MV_REGION: ${{ matrix.region }}
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - name: Check out exact full-game Android implementation
@@ -377,45 +372,84 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Verify exact source closure and packaging scope
+      - name: Verify exact source closure and packaging scope once
         working-directory: ci/sifas_mv_export
         run: |
-          python3 -B -c 'import build_android_mv; build_android_mv.verify_source_lock()'
+          python3 -B - <<'PYCODE'
+          import os,sys
+          import build_android_mv
+          build_android_mv.verify_source_lock()
+          sys.path.insert(0,'metadata')
+          from client_build_version import BuildVersion
+          BuildVersion.parse(os.environ['CLIENT_BUILD'])
+          PYCODE
           python3 -B -m unittest -v test_build_android_mv
           python3 -B -m unittest discover -s metadata/tests -v
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - name: Install exact Android SDK and NDK tools
+      - name: Install exact Android SDK and NDK tools once
         run: sdkmanager "cmdline-tools;12.0" "platforms;android-34" "build-tools;34.0.0" "ndk;28.2.13676358"
-      - name: Fetch only the exact reviewed original APK
+      - name: Fetch only the exact reviewed GL and JP original APKs
         run: |
           python3 -B - <<'PYCODE'
           import os,pathlib,urllib.request,hashlib,json,sys
           sys.path.insert(0,'ci/sifas_mv_export');import build_android_mv as build
-          region=os.environ['MV_REGION'];pin=build.BASELINES[region];out=pathlib.Path(os.environ['RUNNER_TEMP'])/('original-'+region+'.apk')
-          url='https://github.com/tagundo/elichika/releases/download/v2026.11.14.1/LLAS_'+region+'_FOVMOD_b25.apk'
-          h=hashlib.sha256();count=0
-          with urllib.request.urlopen(urllib.request.Request(url,headers={'Accept-Encoding':'identity'}),timeout=60) as response,out.open('xb') as target:
-              while chunk:=response.read(1024*1024):
-                  count+=len(chunk)
-                  if count>pin['bytes']:raise RuntimeError('Original APK size exceeded its pin')
-                  h.update(chunk);target.write(chunk)
-          if count!=pin['bytes'] or h.hexdigest()!=pin['sha256']:raise RuntimeError('Original APK full hash differs')
-          print(json.dumps({'region':region,'bytes':count,'sha256':h.hexdigest(),'source':url}))
+          for region in ('GL','JP'):
+              pin=build.BASELINES[region]
+              out=pathlib.Path(os.environ['RUNNER_TEMP'])/('original-'+region+'.apk')
+              url='https://github.com/tagundo/elichika/releases/download/v2026.11.14.1/LLAS_'+region+'_FOVMOD_b25.apk'
+              h=hashlib.sha256();count=0
+              with urllib.request.urlopen(urllib.request.Request(url,headers={'Accept-Encoding':'identity'}),timeout=60) as response,out.open('xb') as target:
+                  while chunk:=response.read(1024*1024):
+                      count+=len(chunk)
+                      if count>pin['bytes']:raise RuntimeError('Original '+region+' APK size exceeded its pin')
+                      h.update(chunk);target.write(chunk)
+              if count!=pin['bytes'] or h.hexdigest()!=pin['sha256']:raise RuntimeError('Original '+region+' APK full hash differs')
+              print(json.dumps({'region':region,'bytes':count,'sha256':h.hexdigest(),'source':url}))
           PYCODE
-      - name: Build unsigned full-game APK and prove every retained member
+      - name: Build GL then JP and prove every retained member
         run: |
-          python3 -B ci/sifas_mv_export/build_android_mv.py --execute --region "$MV_REGION"             --input-apk "$RUNNER_TEMP/original-$MV_REGION.apk" --sdk "$ANDROID_HOME"             --work "$RUNNER_TEMP/android-mv-$MV_REGION" --build "$CLIENT_BUILD"
-      - name: Preserve exact unsigned APK and complete source/native/payload proofs
+          for mv_region in GL JP; do
+            python3 -B ci/sifas_mv_export/build_android_mv.py --execute --region "$mv_region" \
+              --input-apk "$RUNNER_TEMP/original-$mv_region.apk" --sdk "$ANDROID_HOME" \
+              --work "$RUNNER_TEMP/android-mv-$mv_region" --build "$CLIENT_BUILD"
+          done
+      - name: Stage only two unsigned APKs, two proofs and combined checksums
+        run: |
+          python3 -B - <<'PYCODE'
+          import os,pathlib,hashlib,json,shutil
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          delivery=root/'android-mv-delivery'
+          delivery.mkdir(mode=0o700)
+          version=os.environ['CLIENT_BUILD'];sums=[];expected=set()
+          for region in ('GL','JP'):
+              work=root/('android-mv-'+region)
+              name='LLAS_'+region+'_FOVMOD_'+version+'-unsigned.apk'
+              apk=work/name;proof=work/(name+'.proof.json')
+              if any(not p.is_file() or p.is_symlink() for p in (apk,proof)):raise RuntimeError('Missing ordinary '+region+' candidate/proof')
+              if proof.stat().st_size>8*1024*1024:raise RuntimeError('Candidate proof exceeds its bound')
+              record=json.loads(proof.read_text())
+              if record.get('status')!='UNSIGNED_FULL_MV_CANDIDATE_NOT_DEVICE_VALIDATED' or record.get('region')!=region or record.get('build')!=version:raise RuntimeError('Candidate proof identity differs')
+              h=hashlib.sha256();count=0
+              with apk.open('rb') as source:
+                  while block:=source.read(1024*1024):h.update(block);count+=len(block)
+              if count!=record['output']['bytes'] or h.hexdigest()!=record['output']['sha256'] or pathlib.Path(record['output']['path']).resolve()!=apk.resolve():raise RuntimeError('Candidate bytes differ from proof')
+              for source in (apk,proof):
+                  target=delivery/source.name
+                  if target.exists():raise RuntimeError('Delivery filename collision')
+                  shutil.copyfile(source,target);expected.add(target.name)
+              sums.append(h.hexdigest()+'  '+name+'\n')
+          (delivery/'SHA256SUMS').write_text(''.join(sums));expected.add('SHA256SUMS')
+          if {p.name for p in delivery.iterdir()}!=expected or len(expected)!=5:raise RuntimeError('Unreviewed delivery output')
+          print(json.dumps({'unsigned_only':True,'files':sorted(expected),'regions':['GL','JP'],'signing':False}))
+          PYCODE
+      - name: Preserve exact unsigned APKs and complete source/native/payload proofs
         uses: actions/upload-artifact@v4
         with:
-          name: android-mv-full-UNSIGNED-${{ matrix.region }}-${{ inputs.version }}-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/android-mv-${{ matrix.region }}/LLAS_*-unsigned.apk
-            ${{ runner.temp }}/android-mv-${{ matrix.region }}/LLAS_*-unsigned.apk.proof.json
-            ${{ runner.temp }}/android-mv-${{ matrix.region }}/SHA256SUMS
+          name: android-mv-full-UNSIGNED-${{ inputs.version }}-${{ github.sha }}
+          path: ${{ runner.temp }}/android-mv-delivery/
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -423,11 +457,15 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-mv-failure-${{ matrix.region }}-${{ github.sha }}
+          name: android-mv-failure-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/android-mv-${{ matrix.region }}/*.stdout
-            ${{ runner.temp }}/android-mv-${{ matrix.region }}/*.stderr
-            ${{ runner.temp }}/android-mv-${{ matrix.region }}/dex/*.stdout
-            ${{ runner.temp }}/android-mv-${{ matrix.region }}/dex/*.stderr
+            ${{ runner.temp }}/android-mv-GL/*.stdout
+            ${{ runner.temp }}/android-mv-GL/*.stderr
+            ${{ runner.temp }}/android-mv-GL/dex/*.stdout
+            ${{ runner.temp }}/android-mv-GL/dex/*.stderr
+            ${{ runner.temp }}/android-mv-JP/*.stdout
+            ${{ runner.temp }}/android-mv-JP/*.stderr
+            ${{ runner.temp }}/android-mv-JP/dex/*.stdout
+            ${{ runner.temp }}/android-mv-JP/dex/*.stderr
           if-no-files-found: warn
           retention-days: 7
