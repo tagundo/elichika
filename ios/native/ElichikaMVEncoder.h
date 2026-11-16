@@ -32,6 +32,7 @@ typedef NS_ENUM(NSInteger, ELMVAppendResult) {
 @property(nonatomic,readonly) int64_t acceptedVideoFrames;
 @property(nonatomic,readonly) int64_t acceptedAudioSamples;
 @property(nonatomic,readonly,nullable) NSError *failure;
+@property(nonatomic,readonly,nullable) NSString *backpressureReason;
 @property(nonatomic,readonly) NSURL *outputURL;
 @property(nonatomic,readonly) NSURL *partialURL;
 

@@ -47,10 +47,13 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
     int64_t _acceptedVideoFrames;
     int64_t _acceptedAudioSamples;
     NSError *_failure;
+    NSString *_backpressureReason;
     NSURL *_outputURL;
     NSURL *_partialURL;
     BOOL _finishing;
     BOOL _completed;
+    BOOL _videoFinished;
+    BOOL _audioFinished;
     dispatch_queue_t _callbackQueue;
     void (^_completion)(NSURL *,NSError *);
 }
@@ -70,6 +73,7 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
 - (int64_t)acceptedVideoFrames { @synchronized(self) { return _acceptedVideoFrames; } }
 - (int64_t)acceptedAudioSamples { @synchronized(self) { return _acceptedAudioSamples; } }
 - (NSError *)failure { @synchronized(self) { return _failure; } }
+- (NSString *)backpressureReason { @synchronized(self) { return _backpressureReason; } }
 - (NSURL *)outputURL { return _outputURL; }
 - (NSURL *)partialURL { return _partialURL; }
 
@@ -192,11 +196,11 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
             [self failLocked:ELMVError(16,@"A video frame had an invalid index, row stride or byte length, or arrived on the UI thread.")];
             return ELMVAppendFailed;
         }
-        if (!_video.readyForMoreMediaData) return ELMVAppendRetry;
+        if (!_video.readyForMoreMediaData) { _backpressureReason=@"video-input-not-ready"; return ELMVAppendRetry; }
         CVPixelBufferRef pixel=NULL;
         CVReturn status=CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(kCFAllocatorDefault,_adaptor.pixelBufferPool,
             (__bridge CFDictionaryRef)@{(id)kCVPixelBufferPoolAllocationThresholdKey:@3},&pixel);
-        if (status==kCVReturnWouldExceedAllocationThreshold) return ELMVAppendRetry;
+        if (status==kCVReturnWouldExceedAllocationThreshold) { _backpressureReason=@"three-video-buffers-retained"; return ELMVAppendRetry; }
         if (status!=kCVReturnSuccess || !pixel) {
             [self failLocked:ELMVError(17,[NSString stringWithFormat:@"Could not allocate a video buffer (%d).",(int)status])];
             return ELMVAppendFailed;
@@ -225,7 +229,9 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
             [self failLocked:ELMVError(19,@"The video encoder rejected a complete rendered frame.",_writer.error)];
             return ELMVAppendFailed;
         }
-        ++_acceptedVideoFrames; return ELMVAppendAccepted;
+        ++_acceptedVideoFrames; _backpressureReason=nil;
+        if (_acceptedVideoFrames==_configuration.frameCount) { [_video markAsFinished]; _videoFinished=YES; }
+        return ELMVAppendAccepted;
     }
     }
 }
@@ -241,7 +247,7 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
             [self failLocked:ELMVError(20,@"A PCM chunk had an invalid sample index, byte length or size, or arrived on the UI thread.")];
             return ELMVAppendFailed;
         }
-        if (!_audio.readyForMoreMediaData) return ELMVAppendRetry;
+        if (!_audio.readyForMoreMediaData) { _backpressureReason=@"audio-input-not-ready"; return ELMVAppendRetry; }
         CMBlockBufferRef block=NULL; CMSampleBufferRef buffer=NULL;
         OSStatus status=CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault,NULL,data.length,kCFAllocatorDefault,NULL,0,data.length,0,&block);
         if (status==noErr) status=CMBlockBufferReplaceDataBytes(data.bytes,block,0,data.length);
@@ -258,7 +264,9 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
         if (!appended) {
             [self failLocked:ELMVError(22,@"The AAC encoder rejected a PCM audio chunk.",_writer.error)]; return ELMVAppendFailed;
         }
-        _acceptedAudioSamples+=(int64_t)samples; return ELMVAppendAccepted;
+        _acceptedAudioSamples+=(int64_t)samples; _backpressureReason=nil;
+        if (_acceptedAudioSamples==_configuration.audioSampleCount) { [_audio markAsFinished]; _audioFinished=YES; }
+        return ELMVAppendAccepted;
     }
     }
 }
@@ -274,7 +282,8 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
             [self failLocked:ELMVError(24,@"MP4 finalization requires every planned video frame and PCM sample on the export worker.")]; return;
         }
         _finishing=YES;
-        [_video markAsFinished]; [_audio markAsFinished];
+        if (!_videoFinished) { [_video markAsFinished]; _videoFinished=YES; }
+        if (!_audioFinished) { [_audio markAsFinished]; _audioFinished=YES; }
         [_writer endSessionAtSourceTime:CMTimeMake(_configuration.frameCount*_configuration.fpsDenominator,_configuration.fpsNumerator)];
         [_writer finishWritingWithCompletionHandler:^{
             @synchronized(self) {

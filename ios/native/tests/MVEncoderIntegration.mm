@@ -143,34 +143,46 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
     Require(encoder!=nil,error.localizedDescription);
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(45);
     NSUInteger retries=0;
-    for (int64_t frame=0;frame<c.frameCount;frame++) {
+    NSData *pixels=nil; NSData *pcm=nil;
+    NSString *videoRetry=nil; NSString *audioRetry=nil;
+    while (encoder.acceptedVideoFrames<c.frameCount || encoder.acceptedAudioSamples<c.audioSampleCount) {
         @autoreleasepool {
-        NSData *pixels=Frame(c,frame);
-        ELMVAppendResult result;
-        do {
-            result=[encoder appendBGRA:pixels rowBytes:c.width*4+16 frameIndex:frame];
-            Require(result!=ELMVAppendFailed,encoder.failure.localizedDescription);
-            if (result==ELMVAppendRetry) {
-                ++retries; Require(encoder.acceptedVideoFrames==frame,@"Retry consumed a frame index."); Yield();
-            }
-            Require(std::chrono::steady_clock::now()<deadline,@"Video writer backpressure exceeded its test deadline.");
-        } while (result==ELMVAppendRetry);
-        // Deliberately slow the producer after acceptance. Export timing must
-        // still derive solely from frame/sample indices.
-        if (frame%7==0) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        int64_t audioEnd=MIN(c.audioSampleCount,((frame+1)*c.fpsDenominator*c.audioSampleRate+c.fpsNumerator-1)/c.fpsNumerator);
-        while (encoder.acceptedAudioSamples<audioEnd) {
-            int64_t first=encoder.acceptedAudioSamples;
-            NSData *pcm=Audio(c,first,(NSUInteger)MIN((int64_t)8192,audioEnd-first));
-            do {
-                result=[encoder appendPCM16:pcm firstSample:first];
+            BOOL progressed=NO;
+            int64_t frame=encoder.acceptedVideoFrames;
+            // AAC priming must not be starved while a retained video frame is
+            // waiting. Keep at most a quarter-second PCM lead, independently
+            // trying both tracks on every turn rather than waiting on either.
+            int64_t audioEnd=MIN(c.audioSampleCount,
+                ((frame+1)*c.fpsDenominator*c.audioSampleRate+c.fpsNumerator-1)/c.fpsNumerator+c.audioSampleRate/4);
+            if (frame<c.frameCount) {
+                if (!pixels) pixels=Frame(c,frame);
+                ELMVAppendResult result=[encoder appendBGRA:pixels rowBytes:c.width*4+16 frameIndex:frame];
                 Require(result!=ELMVAppendFailed,encoder.failure.localizedDescription);
-                if (result==ELMVAppendRetry) {
-                    ++retries; Require(encoder.acceptedAudioSamples==first,@"Retry consumed PCM samples."); Yield();
+                if (result==ELMVAppendAccepted) {
+                    pixels=nil; progressed=YES; videoRetry=nil;
+                    // A slow producer must not change the planned timestamps.
+                    if (frame%7==0) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                } else {
+                    ++retries; videoRetry=encoder.backpressureReason;
+                    Require(encoder.acceptedVideoFrames==frame,@"Retry consumed a frame index.");
                 }
-                Require(std::chrono::steady_clock::now()<deadline,@"Audio writer backpressure exceeded its test deadline.");
-            } while (result==ELMVAppendRetry);
-        }
+            }
+            int64_t first=encoder.acceptedAudioSamples;
+            if (first<audioEnd) {
+                if (!pcm) pcm=Audio(c,first,(NSUInteger)MIN((int64_t)8192,audioEnd-first));
+                ELMVAppendResult result=[encoder appendPCM16:pcm firstSample:first];
+                Require(result!=ELMVAppendFailed,encoder.failure.localizedDescription);
+                if (result==ELMVAppendAccepted) { pcm=nil; progressed=YES; audioRetry=nil; }
+                else {
+                    ++retries; audioRetry=encoder.backpressureReason;
+                    Require(encoder.acceptedAudioSamples==first,@"Retry consumed PCM samples.");
+                }
+            }
+            Require(std::chrono::steady_clock::now()<deadline,
+                [NSString stringWithFormat:@"Writer stalled: codec=%@ frames=%lld/%lld audio=%lld/%lld videoRetry=%@ audioRetry=%@.",
+                    codec,(long long)encoder.acceptedVideoFrames,(long long)c.frameCount,
+                    (long long)encoder.acceptedAudioSamples,(long long)c.audioSampleCount,videoRetry,audioRetry]);
+            if (!progressed) Yield();
         }
     }
     dispatch_semaphore_t finished=dispatch_semaphore_create(0);
