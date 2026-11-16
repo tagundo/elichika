@@ -12,6 +12,9 @@ LOCK_SHA256 = 'a28a43df471fc587348834661ac8405fd806a6c1d59cffe4ebe5d7009b5d441d'
 POLICY = 'fresh-parity-runtime-exact-source9-data-v1'
 PRODUCERS = {'ios/build/build_payload.py', 'ios/build/common.py'}
 GO_CONSUMERS = {'handler/asset/bulk.go', 'handler/asset/cache.go'}
+ANDROID_MV_PREFIX = 'ci/sifas_mv_export/'
+ANDROID_MV_MANIFEST = Path(__file__).with_name('android-mv-consumer.lock.json')
+ANDROID_MV_MANIFEST_SHA256 = 'ee14252df977fb18ed21bdf7cd22fab81c96da84131f53ea1cd398b88b57cb04'
 # The one reviewed C runtime-only verification cache. Normal builds use the
 # hash-bound no-op implementation, and no SQL/assets/retained payload change.
 # Any future edit requires a new explicit review, never a clientdb/ prefix rule.
@@ -39,13 +42,53 @@ def verify_lock(repo, lock):
                 'Runtime rekey cache must remain disabled in normal data producer builds')
 
 
-def validate_source_scope(original, current, changed_paths, dirty):
+def _android_consumer_pins():
+    # This is a reviewed build/test consumer closure, not an open-ended ci/
+    # exemption. Pin the manifest itself so changing code and its local build
+    # lock together cannot silently extend official-data reuse.
+    require(ANDROID_MV_MANIFEST.is_file() and not ANDROID_MV_MANIFEST.is_symlink()
+            and ANDROID_MV_MANIFEST.stat().st_size <= 32768
+            and sha256(ANDROID_MV_MANIFEST) == ANDROID_MV_MANIFEST_SHA256,
+            'Unreviewed Android MV consumer manifest')
+    document = json.loads(ANDROID_MV_MANIFEST.read_text())
+    require(document.get('schema') == 1
+            and document.get('kind') == 'reviewed-android-mv-non-data-consumers'
+            and document.get('prefix') == ANDROID_MV_PREFIX
+            and isinstance(document.get('files'), dict) and len(document['files']) == 69,
+            'Invalid Android MV consumer manifest')
+    for name in document['files']:
+        safe_name(name)
+        require(name.startswith(ANDROID_MV_PREFIX), 'Android MV consumer escaped its reviewed directory')
+    return document['files']
+
+
+def _verify_android_consumers(repo, pins):
+    require(repo is not None, 'Android MV consumers require the actual committed repository')
+    root = Path(repo).resolve()
+    for name, pin in pins.items():
+        path = root / name
+        require(all(not parent.is_symlink() for parent in (path, *path.parents)
+                    if parent == root or root in parent.parents),
+                'Linked Android MV consumer input: ' + name)
+        verify_file(path, pin)
+
+
+def validate_source_scope(original, current, changed_paths, dirty, *, repo=None):
     require(not dirty, 'Parity data reuse requires a clean committed checkout and submodules')
     require(all(current[key] == original[key] for key in
                 ('assets_sha', 'assets_tree', 'modtools_sha', 'modtools_tree')),
             'Parity official data/assets/modtools producer inputs changed')
     for name in changed_paths:
         safe_name(name)
+    android = None
+    if any(name.startswith(ANDROID_MV_PREFIX) for name in changed_paths):
+        android = _android_consumer_pins()
+        _verify_android_consumers(repo, android)
+    for name in changed_paths:
+        safe_name(name)
+        if name.startswith(ANDROID_MV_PREFIX):
+            require(name in android, 'Unlisted Android MV consumer source changed: ' + name)
+            continue
         if name.startswith('clientdb/'):
             require(name in RUNTIME_REKEY_INPUTS, 'Unlisted client database producer source changed: ' + name)
             continue

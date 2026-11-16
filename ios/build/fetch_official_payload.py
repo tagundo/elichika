@@ -61,7 +61,7 @@ def verify_consumer_source(repo, lock, *, parity=False):
     paths = changed.rstrip('\0').split('\0') if changed else []
     if parity:
         from parity_payload_policy import validate_source_scope as parity_scope
-        parity_scope(original, current, paths, dirty)
+        parity_scope(original, current, paths, dirty, repo=repo)
     else:
         validate_source_scope(original, current, paths, dirty)
     return current, paths
