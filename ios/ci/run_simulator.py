@@ -41,7 +41,86 @@ def exact_owned_uuid(value):
         return False
 
 
-def prepare_simulator_environment(identifier, receipt_path):
+def bundle_executable(bundle, expected_id, *, mac=False):
+    info = bundle / ('Contents/Info.plist' if mac else 'Info.plist')
+    require(info.is_file() and not info.is_symlink() and info.stat().st_size <= 128 * 1024,
+            'Simulator environment preflight bundle metadata differs')
+    value = plistlib.loads(info.read_bytes())
+    name = value.get('CFBundleExecutable')
+    require(value.get('CFBundleIdentifier') == expected_id and isinstance(name, str)
+            and re.fullmatch(r'[A-Za-z0-9_.-]+', name) and name not in ('.', '..'),
+            'Simulator environment preflight bundle identity differs')
+    executable = (bundle / ('Contents/MacOS' if mac else '') / name).resolve(strict=True)
+    require(executable.is_file() and executable.is_relative_to(bundle) and os.access(executable, os.X_OK),
+            'Simulator environment preflight executable differs')
+    return executable
+
+
+def selected_simulator_app(command):
+    # xcrun selects the active Xcode, including a DEVELOPER_DIR override.
+    text = command(['xcrun', '--find', 'simctl'], 15, 'selected_xcode')
+    selected = Path(text)
+    require(selected.is_absolute() and '\n' not in text and '\0' not in text
+            and selected.name == 'simctl' and selected.parent.name == 'bin'
+            and selected.parent.parent.name == 'usr',
+            'Simulator environment preflight selected tool path differs')
+    developer = selected.parents[2].resolve(strict=True)
+    require(selected.resolve(strict=True).is_relative_to(developer),
+            'Simulator environment preflight selected tool escapes Xcode')
+    simulator = (developer / 'Applications/Simulator.app').resolve(strict=True)
+    require(simulator.is_relative_to(developer),
+            'Simulator environment preflight GUI escapes selected Xcode')
+    bundle_executable(simulator, 'com.apple.iphonesimulator', mac=True)
+    return simulator
+
+
+def request_simulator_gui(identifier, receipt_path):
+    """Best-effort GUI request; never a prerequisite for real app execution."""
+    require(exact_owned_uuid(identifier), 'Simulator GUI request requires an exact owned UUID')
+    began = time.monotonic()
+    deadline = began + 30
+    receipt = {'schema': 1, 'optional_diagnostic_only': True, 'owned_device_uuid': identifier,
+               'aggregate_budget_seconds': 30, 'gui_request_accepted': False,
+               'gui_window_proven': False, 'app_or_MV_readiness_proven': False,
+               'system_app_launch_attempts': 0, 'commands': []}
+    stage = 'selected_xcode'
+
+    def command(arguments, limit, name):
+        nonlocal stage
+        stage = name
+        budget = min(limit, deadline-time.monotonic())
+        require(budget > 0, 'Optional Simulator GUI request aggregate expired')
+        result = diagnostics.bounded_command([str(part) for part in arguments], timeout=budget, cap=8192)
+        row = {'stage': name, 'budget_seconds': budget, 'returncode': result.get('returncode'),
+               'timed_out': bool(result.get('timed_out')), 'truncated': bool(result.get('truncated'))}
+        receipt['commands'].append(row)
+        if (result.get('returncode') != 0 or result.get('timed_out') or result.get('truncated')
+                or time.monotonic() >= deadline):
+            raw = result.get('text', '').encode('utf-8')[:8192].decode('utf-8', errors='ignore')
+            safe = diagnostics.redacted(raw, Path(__file__).resolve().parents[2]).encode('utf-8')
+            row.update(failure_output=safe[:8192].decode('utf-8', errors='ignore'),
+                       failure_output_truncated=bool(result.get('truncated')) or len(safe) > 8192)
+            raise ValueError('Optional Simulator GUI request command failed: '+name)
+        return result.get('text', '').strip()
+
+    try:
+        simulator = selected_simulator_app(command)
+        receipt['selected_simulator_app'] = str(simulator)
+        command(['open', '-n', '-a', simulator, '--args', '-CurrentDeviceUDID', identifier],
+                15, 'simulator_gui_request')
+        receipt.update(status='ACCEPTED_OPTIONAL_SIMULATOR_GUI_REQUEST_ONLY', gui_request_accepted=True)
+    except Exception as error:
+        receipt.update(status='FAILED_OPTIONAL_SIMULATOR_GUI_REQUEST_ONLY', failed_stage=stage,
+                       error_type=type(error).__name__)
+    receipt['elapsed_seconds'] = time.monotonic()-began
+    try:
+        write_json(receipt_path, receipt)
+    except OSError:
+        receipt['receipt_write_failed'] = True
+    return receipt
+
+
+def prepare_simulator_environment(identifier, receipt_path, runtime):
     """Check the owned destination's UIKit launch service before probe install.
 
     GUI-backed setup is standard but optional, not an established explanation
@@ -53,6 +132,7 @@ def prepare_simulator_environment(identifier, receipt_path):
     require(exact_owned_uuid(identifier),
             'Simulator environment preflight requires an exact owned UUID')
     began = time.monotonic()
+    began_wall = time.time()
     deadline = began + ENVIRONMENT_SECONDS
     receipt = {'schema': 1, 'status': 'STARTED_SIMULATOR_ENVIRONMENT_PREFLIGHT',
                'owned_device_uuid': identifier, 'aggregate_budget_seconds': ENVIRONMENT_SECONDS,
@@ -100,45 +180,72 @@ def prepare_simulator_environment(identifier, receipt_path):
             raise
         return result.get('text', '').strip()
 
-    def bundle_executable(bundle, expected_id, *, mac=False):
-        info = bundle / ('Contents/Info.plist' if mac else 'Info.plist')
-        require(info.is_file() and not info.is_symlink() and info.stat().st_size <= 128 * 1024,
-                'Simulator environment preflight bundle metadata differs')
-        value = plistlib.loads(info.read_bytes())
-        name = value.get('CFBundleExecutable')
-        require(value.get('CFBundleIdentifier') == expected_id and isinstance(name, str)
-                and re.fullmatch(r'[A-Za-z0-9_.-]+', name) and name not in ('.', '..'),
-                'Simulator environment preflight bundle identity differs')
-        executable = (bundle / ('Contents/MacOS' if mac else '') / name).resolve(strict=True)
-        require(executable.is_file() and executable.is_relative_to(bundle) and os.access(executable, os.X_OK),
-                'Simulator environment preflight executable differs')
-        return executable
+    def capture_host_failure():
+        # Read the host service's bounded failure context without asking the
+        # stalled device to spawn anything. Shared service rows are diagnostic
+        # context, never a verified process/device or readiness observation.
+        row = {'diagnostic_only_not_readiness': True, 'original_failure_unchanged': True,
+               'shared_host_service_context_not_owned_device_proof': True,
+               'no_application_signals_or_relaunch': True}
+        receipt['host_service_diagnostics'] = row
+        budget = min(10, max(0, deadline - time.monotonic()))
+        if budget <= 0:
+            row.update(status='SKIPPED', reason='ENVIRONMENT_AGGREGATE_EXHAUSTED')
+            return
+        predicate = ('(process == "com.apple.CoreSimulator.CoreSimulatorService" OR '
+                     'process == "CoreSimulatorService" OR process == "Simulator" OR process == "simctl") AND '
+                     f'(eventMessage CONTAINS[c] "{identifier}" OR '
+                     'eventMessage CONTAINS[c] "com.apple.Preferences" OR eventMessage CONTAINS[c] "error" OR '
+                     'eventMessage CONTAINS[c] "failed" OR eventMessage CONTAINS[c] "timeout" OR '
+                     'eventMessage CONTAINS[c] "timed out")')
+        start = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(began_wall - 2))
+        end = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+        row.update(budget_seconds=budget, start_local=start, end_local=end,
+                   retained_buffer='bounded_tail_redacted', max_retained_bytes=64*1024)
+        try:
+            result = diagnostics.bounded_command(
+                ['/usr/bin/log', 'show', '--start', start, '--end', end, '--style', 'compact',
+                 '--info', '--debug', '--predicate', predicate], timeout=budget, cap=64*1024, tail=True)
+            safe = diagnostics.redacted(result.get('text', ''), Path(__file__).resolve().parents[2]).encode('utf-8')
+            row.update(status='CAPTURE_ATTEMPTED', returncode=result.get('returncode'),
+                       timed_out=bool(result.get('timed_out')),
+                       truncated=bool(result.get('truncated')) or len(safe) > 64*1024,
+                       text=safe[-64*1024:].decode('utf-8', errors='ignore'))
+            if result.get('error_type'):
+                row['error_type'] = result['error_type']
+        except Exception as capture_error:
+            row.update(status='CAPTURE_FAILED', error_type=type(capture_error).__name__)
 
     try:
-        # xcrun selects the active Xcode, including a DEVELOPER_DIR override.
-        text = command(['xcrun', '--find', 'simctl'], 15, 'selected_xcode')
-        selected = Path(text)
-        require(selected.is_absolute() and '\n' not in text and '\0' not in text
-                and selected.name == 'simctl' and selected.parent.name == 'bin'
-                and selected.parent.parent.name == 'usr',
-                'Simulator environment preflight selected tool path differs')
-        developer = selected.parents[2].resolve(strict=True)
-        require(selected.resolve(strict=True).is_relative_to(developer),
-                'Simulator environment preflight selected tool escapes Xcode')
-        simulator = (developer / 'Applications/Simulator.app').resolve(strict=True)
-        require(simulator.is_relative_to(developer),
-                'Simulator environment preflight GUI escapes selected Xcode')
-        bundle_executable(simulator, 'com.apple.iphonesimulator', mac=True)
+        simulator = selected_simulator_app(command)
         receipt['selected_simulator_app'] = str(simulator)
         command(['open', '-n', '-a', simulator, '--args', '-CurrentDeviceUDID', identifier],
                 15, 'simulator_gui_request')
         receipt['gui_request_accepted'] = True
-        text = command(['xcrun', 'simctl', 'get_app_container', identifier, SYSTEM_BUNDLE, 'app'],
-                       60, 'system_app_container')
-        require(Path(text).is_absolute() and '\n' not in text and '\0' not in text,
-                'Simulator environment preflight system app path differs')
-        system_app = Path(text).resolve(strict=True)
+        stage = 'system_app_runtime_image'
+        path = runtime.get('bundlePath') if isinstance(runtime, dict) else None
+        require(isinstance(path, str) and len(path) <= 4096 and not re.search(r'[\x00-\x1f\x7f]', path)
+                and Path(path).is_absolute() and Path(path).suffix == '.simruntime'
+                and runtime.get('isAvailable') is True and isinstance(runtime.get('identifier'), str)
+                and re.fullmatch(r'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9]+(?:-[0-9]+)*', runtime['identifier']),
+                'Simulator environment preflight selected runtime metadata differs')
+        runtime_bundle = Path(path).resolve(strict=True)
+        require(runtime_bundle.is_dir(), 'Simulator environment preflight runtime bundle differs')
+        runtime_root = (runtime_bundle / 'Contents/Resources/RuntimeRoot').resolve(strict=True)
+        require(runtime_root.is_dir() and runtime_root.is_relative_to(runtime_bundle),
+                'Simulator environment preflight runtime root escapes selected runtime')
+        applications = (runtime_root / 'Applications').resolve(strict=True)
+        require(applications.is_dir() and applications.is_relative_to(runtime_root),
+                'Simulator environment preflight system applications escape selected runtime')
+        system_app = (applications / 'Preferences.app').resolve(strict=True)
+        require(system_app.is_dir() and system_app.is_relative_to(applications),
+                'Simulator environment preflight system app escapes selected runtime')
         expected = bundle_executable(system_app, SYSTEM_BUNDLE)
+        receipt.update(system_app_image_source='SELECTED_RUNTIME_READONLY_IMAGE',
+                       selected_runtime_identifier=runtime['identifier'], selected_runtime_bundle_path=str(runtime_bundle),
+                       system_app_expected_executable=str(expected),
+                       readonly_image_is_not_device_installation_or_readiness_proof=True)
+        remaining(1)
         launch_wall = time.time()
         launch_requested = True
         text = command(['xcrun', 'simctl', 'launch', identifier, SYSTEM_BUNDLE], 60, 'system_app_launch')
@@ -203,6 +310,12 @@ def prepare_simulator_environment(identifier, receipt_path):
                         15, 'system_app_failure_cleanup')
             except Exception:
                 receipt['system_app_failure_cleanup_incomplete'] = True
+        try:
+            capture_host_failure()
+        except Exception as capture_error:
+            receipt.setdefault('host_service_diagnostics', {}).update(
+                status='CAPTURE_FAILED', error_type=type(capture_error).__name__,
+                diagnostic_only_not_readiness=True, original_failure_unchanged=True)
         receipt.update(status='FAIL_SIMULATOR_ENVIRONMENT_PREFLIGHT_ONLY', failed_stage=failed_stage,
                        error_type=type(error).__name__, elapsed_seconds=time.monotonic() - began)
         try:
@@ -563,7 +676,7 @@ def execute_environment_only(evidence):
                 require(deadline-time.monotonic() > ENVIRONMENT_SECONDS+ENVIRONMENT_CLEANUP_RESERVE,
                         'Simulator environment-only aggregate has no complete preflight and cleanup budget remaining')
                 destination = prepare_simulator_environment(identifier,
-                    evidence / (model['name'].replace('/', '-') + '-environment.json'))
+                    evidence / (model['name'].replace('/', '-') + '-environment.json'), runtime)
                 attempt['setup_complete'] = True
             finally:
                 if identifier:
@@ -606,7 +719,7 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
     before = inventory(app)
     runtime, devices = choose_runtime_and_types(ipad_first=require_parity_ui,
                                                selection_path=evidence / 'runtime-selection.json')
-    results, environment_preflights = [], []
+    results, gui_requests = [], []
     for model in devices:
         identifier = None
         try:
@@ -616,8 +729,8 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
             identifier = created
             run(['xcrun', 'simctl', 'boot', identifier])
             run(['xcrun', 'simctl', 'bootstatus', identifier, '-b'])
-            environment_preflights.append(prepare_simulator_environment(
-                identifier, evidence / (model['name'].replace('/', '-') + '-environment.json')))
+            gui_requests.append(request_simulator_gui(
+                identifier, evidence / (model['name'].replace('/', '-') + '-optional-gui-request.json')))
             run(['xcrun', 'simctl', 'install', identifier, app])
             installed = Path(run(['xcrun', 'simctl', 'get_app_container', identifier, BUNDLE, 'app'], capture=True).strip())
             require(inventory(installed) == before, 'Simulator installation changed signed bundle bytes')
@@ -715,7 +828,7 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
               'results': results, 'all_owned_ports_closed_after_termination': True,
               'signed_bundle_readonly_and_unchanged': True, 'actual_SIFAS_game_executed': False,
               'physical_iPhone_iPad_execution': False, 'probe_not_a_device_IPA_input': True}
-    report['simulator_environment_preflights'] = environment_preflights
+    report['optional_simulator_gui_requests'] = gui_requests
     report['actual_execution_order'] = [{'model': row['model'], 'launch_number': row['launch_number']}
                                         for row in results]
     write_json(evidence / 'result.json', report)

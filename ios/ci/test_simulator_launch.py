@@ -13,7 +13,8 @@ from unittest.mock import Mock, patch
 
 from run_simulator import (BUNDLE, ENVIRONMENT_SECONDS, SYSTEM_BUNDLE, cleanup_owned_probe,
                            choose_runtime_and_types, execute, execute_environment_only,
-                           main as simulator_main, prepare_simulator_environment, probe_launch_command)
+                           main as simulator_main, prepare_simulator_environment, probe_launch_command,
+                           request_simulator_gui)
 from probe_watchdog import ABSOLUTE_SECONDS, FIRST_PROGRESS_SECONDS
 
 DEVICE = '12345678-1234-1234-1234-123456789abc'
@@ -73,6 +74,8 @@ class OwnedLaunchTests(unittest.TestCase):
 
     def test_all_four_cold_probes_and_original_deadlines_are_preserved(self):
         code = inspect.getsource(execute)
+        self.assertNotIn('prepare_simulator_environment(', code)
+        self.assertIn('request_simulator_gui(', code)
         self.assertIn('for launch_number in (1, 2):', code)
         self.assertIn("require(len(results) == 4", code)
         self.assertLess(code.index('cleanup_owned_probe(identifier, process, terminate_only=True)'), code.index('await_closed()'))
@@ -94,7 +97,11 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         self.simctl.parent.mkdir(parents=True)
         self.simctl.write_bytes(b'fixture')
         self.simulator = self.developer / 'Applications/Simulator.app'
-        self.system_app = self.root / 'iOSRuntime/Applications/Preferences.app'
+        self.runtime_bundle = self.root / 'iOS 18.5.simruntime'
+        self.runtime_root = self.runtime_bundle / 'Contents/Resources/RuntimeRoot'
+        self.system_app = self.runtime_root / 'Applications/Preferences.app'
+        self.runtime = {'identifier': 'com.apple.CoreSimulator.SimRuntime.iOS-18-5',
+                        'isAvailable': True, 'version': '18.5', 'bundlePath': str(self.runtime_bundle)}
         self.make_bundle(self.simulator, 'com.apple.iphonesimulator', 'Simulator', mac=True)
         self.make_bundle(self.system_app, SYSTEM_BUNDLE, 'Preferences')
         self.receipt = self.root / 'environment.json'
@@ -138,6 +145,16 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         self.calls.append((command, kwargs))
         self.assertGreater(kwargs['timeout'], 0)
         self.assertLessEqual(kwargs['timeout'], 60)
+        if command[:2] == ['/usr/bin/log', 'show']:
+            self.assertLessEqual(kwargs['timeout'], 10)
+            self.assertEqual(kwargs['cap'], 64*1024)
+            self.assertTrue(kwargs['tail'])
+            predicate = command[command.index('--predicate')+1]
+            for name in ('CoreSimulatorService', 'Simulator', 'simctl', DEVICE, SYSTEM_BUNDLE):
+                self.assertIn(name, predicate)
+            self.assertIn('--start', command); self.assertIn('--end', command)
+            value = self.overrides.get('host_log', {'returncode': 0, 'text': 'host service fixture\n'})
+            return value(command, kwargs) if callable(value) else value
         self.assertEqual(kwargs['cap'], 8192)
         self.clock += .05
         key = command[2] if command[:2] == ['xcrun', 'simctl'] else command[0]
@@ -149,9 +166,6 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         elif command[:3] == ['open', '-n', '-a']:
             self.assertEqual(command, ['open', '-n', '-a', str(self.simulator), '--args', '-CurrentDeviceUDID', DEVICE])
             text = ''
-        elif key == 'get_app_container':
-            self.assertEqual(command, ['xcrun', 'simctl', 'get_app_container', DEVICE, SYSTEM_BUNDLE, 'app'])
-            text = str(self.system_app)
         elif key == 'launch':
             self.assertEqual(command, ['xcrun', 'simctl', 'launch', DEVICE, SYSTEM_BUNDLE])
             text = SYSTEM_BUNDLE + ': ' + str(self.pid)
@@ -163,7 +177,7 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         return {'returncode': 0, 'timed_out': False, 'truncated': False, 'text': text}
 
     def run_setup(self):
-        return prepare_simulator_environment(DEVICE, self.receipt)
+        return prepare_simulator_environment(DEVICE, self.receipt, self.runtime)
 
     def assert_failed(self, stage):
         with self.assertRaisesRegex(ValueError, 'Simulator environment preflight failed at ' + stage):
@@ -188,9 +202,15 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         self.assertEqual(value['probe_launch_attempts'], 0)
         self.assertEqual(value['aggregate_budget_seconds'], 120)
         self.assertEqual([x['stage'] for x in value['commands']],
-                         ['selected_xcode', 'simulator_gui_request', 'system_app_container',
-                          'system_app_launch', 'system_app_terminate'])
-        self.assertEqual([x['budget_seconds'] for x in value['commands']], [15, 15, 60, 60, 15])
+                         ['selected_xcode', 'simulator_gui_request', 'system_app_launch', 'system_app_terminate'])
+        self.assertEqual([x['budget_seconds'] for x in value['commands']], [15, 15, 60, 15])
+        self.assertEqual(value['system_app_image_source'], 'SELECTED_RUNTIME_READONLY_IMAGE')
+        self.assertEqual(value['selected_runtime_identifier'], self.runtime['identifier'])
+        self.assertEqual(value['selected_runtime_bundle_path'], str(self.runtime_bundle))
+        self.assertEqual(value['system_app_expected_executable'], str(self.system_app / 'Preferences'))
+        self.assertTrue(value['readonly_image_is_not_device_installation_or_readiness_proof'])
+        self.assertNotIn('host_service_diagnostics', value)
+        self.assertFalse(any('get_app_container' in command for command, _ in self.calls))
         self.assertEqual(value['system_app_device_binding'], 'UUID_SCOPED_SIMCTL_REQUEST_AND_PID_REPLY')
         self.assertFalse(any(BUNDLE in command for command, _ in self.calls))
         self.assertEqual(self.native_call.call_count, 1)
@@ -200,11 +220,11 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         (self.simulator / 'Contents/Info.plist').unlink()
         self.make_bundle(self.simulator, 'com.apple.iphonesimulator', 'Simulator')
         self.assert_failed('selected_xcode')
-        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(len([command for command, _ in self.calls if command[0] != '/usr/bin/log']), 1)
 
     def test_selected_tool_and_system_bundle_must_have_the_exact_expected_identity(self):
         self.make_bundle(self.system_app, 'com.example.foreign', 'Preferences')
-        self.assert_failed('system_app_container')
+        self.assert_failed('system_app_runtime_image')
         self.assertFalse(any(command[2:3] == ['launch'] for command, _ in self.calls))
 
     def test_simulator_gui_cannot_escape_the_active_developer_root_through_a_symlink(self):
@@ -214,12 +234,12 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         self.simulator.rename(original)
         self.simulator.symlink_to(other, target_is_directory=True)
         self.assert_failed('selected_xcode')
-        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(len([command for command, _ in self.calls if command[0] != '/usr/bin/log']), 1)
 
     def test_malformed_uuid_is_rejected_before_any_command(self):
         for value in ('booted', DEVICE + ' ', '{' + DEVICE + '}', None):
             with self.subTest(value=value), self.assertRaises(ValueError):
-                prepare_simulator_environment(value, self.receipt)
+                prepare_simulator_environment(value, self.receipt, self.runtime)
         self.command.assert_not_called()
 
     def test_launch_timeout_is_not_retried_and_only_preferences_in_owned_device_are_terminated(self):
@@ -299,39 +319,133 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         self.assert_failed('simulator_gui_request')
         self.assertFalse(any(command[2:3] in (['launch'], ['terminate']) for command, _ in self.calls))
 
-    def test_system_app_container_allowance_is_clamped_and_late_success_cannot_revive_aggregate(self):
+    def test_host_failure_log_allowance_is_clamped_to_remaining_original_aggregate(self):
         def delayed_gui(command, kwargs):
-            self.clock += 90
-            return {'returncode': 0, 'text': ''}
-        def late_container(command, kwargs):
-            self.assertAlmostEqual(kwargs['timeout'], 29.9)
+            self.clock += 116
+            return {'returncode': 1, 'text': 'GUI request failed'}
+        def bounded_log(command, kwargs):
+            self.assertAlmostEqual(kwargs['timeout'], 3.9)
             self.clock += kwargs['timeout']
-            return {'returncode': 0, 'text': str(self.system_app)}
+            return {'returncode': -9, 'timed_out': True, 'text': 'host query timed out'}
         self.overrides['open'] = delayed_gui
-        self.overrides['get_app_container'] = late_container
-        self.assert_failed('system_app_container')
-        self.assertEqual(sum(command[2:3] == ['get_app_container'] for command, _ in self.calls), 1)
+        self.overrides['host_log'] = bounded_log
+        value = self.assert_failed('simulator_gui_request')
+        self.assertTrue(value['host_service_diagnostics']['timed_out'])
+        self.assertEqual(sum(command[:2] == ['/usr/bin/log', 'show'] for command, _ in self.calls), 1)
         self.assertFalse(any(command[2:3] in (['launch'], ['terminate']) for command, _ in self.calls))
 
-    def test_environment_failure_stays_before_install_and_native_clocks_with_owned_device_cleanup(self):
+    def test_selected_runtime_path_rejects_relative_control_and_wrong_bundle_metadata(self):
+        for change in ({'bundlePath': 'relative.simruntime'},
+                       {'bundlePath': str(self.runtime_bundle)+'\n'},
+                       {'bundlePath': str(self.root)}, {'isAvailable': False},
+                       {'identifier': 'com.example.runtime'}):
+            with self.subTest(change=change):
+                self.runtime.update(change)
+                self.assert_failed('system_app_runtime_image')
+                self.runtime = {'identifier': 'com.apple.CoreSimulator.SimRuntime.iOS-18-5',
+                                'isAvailable': True, 'version': '18.5', 'bundlePath': str(self.runtime_bundle)}
+        self.assertFalse(any(command[2:3] == ['launch'] for command, _ in self.calls))
+
+    def test_runtime_root_and_system_app_symlinks_cannot_escape_selected_image(self):
+        for path in (self.runtime_root, self.runtime_root/'Applications', self.system_app):
+            with self.subTest(path=path):
+                original = path.with_name(path.name+'-original')
+                path.rename(original)
+                outside = self.root/'foreign-image'
+                outside.mkdir(exist_ok=True)
+                path.symlink_to(outside, target_is_directory=True)
+                self.assert_failed('system_app_runtime_image')
+                path.unlink(); original.rename(path)
+        self.assertFalse(any(command[2:3] == ['launch'] for command, _ in self.calls))
+
+    def test_expected_system_executable_cannot_escape_preferences_bundle(self):
+        executable = self.system_app/'Preferences'
+        executable.unlink()
+        executable.symlink_to(self.simctl)
+        self.assert_failed('system_app_runtime_image')
+        self.assertFalse(any(command[2:3] == ['launch'] for command, _ in self.calls))
+
+    def test_host_logs_are_failure_only_bounded_redacted_shared_service_context(self):
+        self.overrides['launch'] = {'returncode': 1, 'text': 'launch denied'}
+        self.overrides['host_log'] = {'returncode': 0, 'truncated': True,
+            'text': 'CoreSimulator failed\npassword=secret-value\nhttps://private.example/path\n'
+                    '/Users/private-person/folder\n'+'token=x\n'*6000+'\nNEWEST HOST FAILURE\n'}
+        value = self.assert_failed('system_app_launch')
+        host = value['host_service_diagnostics']
+        self.assertLessEqual(len(host['text'].encode('utf-8')), 64*1024)
+        self.assertTrue(host['truncated'])
+        self.assertTrue(host['diagnostic_only_not_readiness'])
+        self.assertTrue(host['original_failure_unchanged'])
+        self.assertTrue(host['shared_host_service_context_not_owned_device_proof'])
+        self.assertIn('NEWEST HOST FAILURE', host['text'])
+        for secret in ('secret-value', 'private.example', '/Users/private-person'):
+            self.assertNotIn(secret, host['text'])
+        self.assertEqual(value['failed_stage'], 'system_app_launch')
+
+    def test_host_capture_failure_or_expired_budget_never_replaces_original_failure(self):
+        self.overrides['launch'] = {'returncode': 1, 'text': 'launch denied'}
+        self.overrides['host_log'] = lambda command, kwargs: (_ for _ in ()).throw(OSError('host log unavailable'))
+        value = self.assert_failed('system_app_launch')
+        self.assertEqual(value['host_service_diagnostics']['status'], 'CAPTURE_FAILED')
+        self.calls.clear()
+        self.overrides['open'] = lambda command, kwargs: (setattr(self, 'clock', self.clock+120) or
+                                                         {'returncode': 0, 'text': ''})
+        value = self.assert_failed('simulator_gui_request')
+        self.assertEqual(value['host_service_diagnostics']['reason'], 'ENVIRONMENT_AGGREGATE_EXHAUSTED')
+        self.assertFalse(any(command[:2] == ['/usr/bin/log', 'show'] for command, _ in self.calls))
+
+    def test_optional_gui_request_acceptance_never_claims_window_or_app_readiness(self):
+        value = request_simulator_gui(DEVICE, self.receipt)
+        self.assertEqual(value['status'], 'ACCEPTED_OPTIONAL_SIMULATOR_GUI_REQUEST_ONLY')
+        self.assertTrue(value['optional_diagnostic_only'])
+        self.assertTrue(value['gui_request_accepted'])
+        self.assertFalse(value['gui_window_proven'])
+        self.assertFalse(value['app_or_MV_readiness_proven'])
+        self.assertEqual(value['system_app_launch_attempts'], 0)
+        self.assertEqual([row['budget_seconds'] for row in value['commands']], [15, 15])
+        self.assertEqual(value['aggregate_budget_seconds'], 30)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_optional_gui_command_failure_returns_bounded_redacted_receipt_without_raising(self):
+        self.overrides['open'] = {'returncode': -9, 'timed_out': True, 'truncated': True,
+                                 'text': 'GUI failed\npassword=secret-value\nhttps://private.example/path\n'
+                                         '/Users/private-person/folder\n'+'\ufffd'*4000}
+        value = request_simulator_gui(DEVICE, self.receipt)
+        self.assertEqual(value['status'], 'FAILED_OPTIONAL_SIMULATOR_GUI_REQUEST_ONLY')
+        self.assertEqual(value['failed_stage'], 'simulator_gui_request')
+        self.assertFalse(value['gui_request_accepted'])
+        self.assertEqual(value['system_app_launch_attempts'], 0)
+        failure = value['commands'][-1]
+        self.assertLessEqual(len(failure['failure_output'].encode('utf-8')), 8192)
+        self.assertIn('GUI failed', failure['failure_output'])
+        for secret in ('secret-value', 'private.example', '/Users/private-person'):
+            self.assertNotIn(secret, failure['failure_output'])
+        self.assertEqual(len(self.calls), 2)
+
+    def test_full_parity_continues_to_real_install_despite_optional_gui_failure_without_preferences(self):
         calls = []
         def run(command, **kwargs):
             calls.append(command)
+            if command[2:3] == ['install']:
+                raise RuntimeError('reached actual probe install')
             return DEVICE if command[2:3] == ['create'] else ''
         with patch('run_simulator.port_open', return_value=False), \
                 patch('run_simulator.inventory', return_value={}), \
                 patch('run_simulator.choose_runtime_and_types', return_value=({'identifier': 'runtime'}, [{'name': 'iPad', 'identifier': 'model'}])), \
                 patch('run_simulator.run', side_effect=run), \
-                patch('run_simulator.prepare_simulator_environment', side_effect=ValueError('environment failed')) as setup, \
+                patch('run_simulator.request_simulator_gui', return_value={
+                    'status': 'FAILED_OPTIONAL_SIMULATOR_GUI_REQUEST_ONLY', 'gui_request_accepted': False}) as gui, \
+                patch('run_simulator.prepare_simulator_environment') as setup, \
                 patch('run_simulator.cleanup_owned_probe') as cleanup, \
                 patch('run_simulator.launch_owned') as launch, \
                 patch('run_simulator.ProbeWatchdog') as watchdog:
-            with self.assertRaisesRegex(ValueError, 'environment failed'):
-                execute(self.root, self.root / 'evidence', core_only=False)
-        setup.assert_called_once()
+            with self.assertRaisesRegex(RuntimeError, 'reached actual probe install'):
+                execute(self.root, self.root / 'evidence', core_only=False, require_parity_ui=True)
+        gui.assert_called_once()
+        setup.assert_not_called()
         cleanup.assert_called_once_with(DEVICE)
         launch.assert_not_called(); watchdog.assert_not_called()
-        self.assertFalse(any(command[2:3] == ['install'] for command in calls))
+        self.assertTrue(any(command[2:3] == ['install'] for command in calls))
 
     def test_malformed_create_output_cannot_become_a_global_cleanup_selector(self):
         with patch('run_simulator.port_open', return_value=False), \
@@ -518,7 +632,7 @@ class EnvironmentOnlyDriverTests(unittest.TestCase):
         with patch('run_simulator.choose_runtime_and_types', side_effect=self.choose), \
                 patch('run_simulator.diagnostics.bounded_command', side_effect=invoke or self.invoke), \
                 patch('run_simulator.prepare_simulator_environment', side_effect=preflight or
-                      (lambda identifier, path: {'status': 'PASS_SIMULATOR_ENVIRONMENT_PREFLIGHT_ONLY'})) as setup, \
+                      (lambda identifier, path, runtime: {'status': 'PASS_SIMULATOR_ENVIRONMENT_PREFLIGHT_ONLY'})) as setup, \
                 patch('run_simulator.cleanup_owned_probe', side_effect=cleanup_effect) as cleanup, \
                 patch('run_simulator.inventory') as inventory, \
                 patch('run_simulator.launch_owned') as launch, \
@@ -536,6 +650,7 @@ class EnvironmentOnlyDriverTests(unittest.TestCase):
         self.assertEqual(value['status'], 'PASS_CORE_SIMULATOR_ENVIRONMENT_ONLY')
         self.assertEqual(len(value['destinations']), 2)
         self.assertEqual(setup.call_count, 2)
+        self.assertTrue(all(call.args[2] is self.runtime for call in setup.call_args_list))
         self.assertEqual([call.args[0] for call in cleanup.call_args_list], self.identifiers)
         self.assertEqual(value['source']['workflow_source_sha'], 'a'*40)
         self.assertEqual(value['source']['workflow_run'], '12345')
@@ -549,7 +664,7 @@ class EnvironmentOnlyDriverTests(unittest.TestCase):
 
     def test_preflight_failure_retains_owned_uuid_and_still_cleans_only_that_device(self):
         with self.assertRaisesRegex(ValueError, 'UIKit destination failed'):
-            self.run_driver(lambda identifier, path: (_ for _ in ()).throw(ValueError('UIKit destination failed')))
+            self.run_driver(lambda identifier, path, runtime: (_ for _ in ()).throw(ValueError('UIKit destination failed')))
         value = json.loads((self.root / 'environment-only-result.json').read_text())
         self.assertEqual(value['status'], 'FAIL_CORE_SIMULATOR_ENVIRONMENT_ONLY')
         self.assertEqual(value['owned_destination_attempts'][0]['owned_device_uuid'], DEVICE)
@@ -601,7 +716,7 @@ class EnvironmentOnlyDriverTests(unittest.TestCase):
             result = self.invoke(command, **kwargs)
             clock[0] += kwargs['timeout'] if command[2] == 'bootstatus' else 1
             return result
-        def preflight(identifier, path):
+        def preflight(identifier, path, runtime):
             clock[0] += 120
             return {'status': 'PASS_SIMULATOR_ENVIRONMENT_PREFLIGHT_ONLY'}
         def cleanup(identifier):
