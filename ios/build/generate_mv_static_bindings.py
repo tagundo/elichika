@@ -201,6 +201,32 @@ def arguments(text):
     return [x.strip() for x in re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)(?![^()]*\))', text)]
 
 
+def branch_target(address, word, link=False):
+    assert word >> 26 == (0b100101 if link else 0b000101)
+    displacement = word & 0x03ffffff
+    if displacement & 0x02000000:
+        displacement -= 0x04000000
+    return address + displacement * 4
+
+
+def annotate_job_handle_abi(method, read_at):
+    """The method table names boxed adjustors; job arrays hold unboxed values."""
+    assert method['ownerFullName'] == 'Unity.Jobs.JobHandle'
+    boxed = int(method['va'], 16)
+    prefix = read_at(boxed, 8)
+    add, branch = struct.unpack('<II', prefix)
+    assert add == 0x91004000, 'Expected boxed JobHandle this+16 adjustor'
+    body = branch_target(boxed + 4, branch)
+    assert body == 0x10392B49C
+    assert prefix == bytes.fromhex(method['first32hex'])[:8]
+    calls = []
+    for call in (0x101489B24, 0x101489B64):
+        word = struct.unpack('<I', read_at(call, 4))[0]
+        assert branch_target(call, word, link=True) == body
+        calls.append(dict(va=hex(call), instruction=hex(word)))
+    method.update(unboxed_call_va=hex(body), unboxed_first32hex=read_at(body, 32).hex(), boxed_adjustor_this_bytes=16, original_member_unboxed_calls=calls)
+
+
 def generate(image, metadata, contract):
     r = Registry(image, metadata)
     init = contract[contract.index('bool init_runtime()'):contract.index('bool complete_jobs()')]
@@ -267,6 +293,8 @@ def generate(image, metadata, contract):
     methods['pause_dispatch'] = r.closed_method('KLab.MessageBuses.DeferredMessageBus`1', 'Dispatch', 'LLAS.MBus.Live.PauseMessage')
     used = set(owners.values()) | {row['ownerFullName'] for row in methods.values()} | {row['ownerFullName'] for row in fields.values()} | {'UnityEngine.Rendering.RenderTargetIdentifier', 'Unity.Jobs.JobHandle', 'LLAS.MBus.Live.PauseMessage'}
     classes = {name: r.class_row(r.by_name[name]) for name in sorted(used)}
+    assert classes['Unity.Jobs.JobHandle']['value_size'] == 16
+    annotate_job_handle_abi(methods['job_complete'], lambda address, size: image[r.off(address):r.off(address) + size])
     native = {}
     for name, va in [('initialize_metadata', 0x101037C34), ('object_new', 0x101014950), ('type_from_handle', 0x103B9BAD0), ('is_instance', 0x103AF6D4C)]:
         native[name] = dict(va=hex(va), first32hex=image[r.off(va):r.off(va) + 32].hex())

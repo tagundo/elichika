@@ -26,7 +26,7 @@ for key,row in d['methods'].items():
  args.append('const void *');info='nullptr'
  if 'method_info_cell_va' in row:info='*reinterpret_cast<const void **>(%sULL+slide)'%row['method_info_cell_va']
  values.append(info)
- call='native<%s (*)(%s)>(%sULL)(%s)'%(ret,','.join(args),row['va'],','.join(values))
+ call='native<%s (*)(%s)>(%sULL)(%s)'%(ret,','.join(args),row.get('unboxed_call_va',row['va']),','.join(values))
  body=call+';' if ret=='void' else '*reinterpret_cast<%s *>(result)=%s;'%(ret,call)
  out.append('static void call_%s([[maybe_unused]] void *self,[[maybe_unused]] void **args,[[maybe_unused]] void *result) { %s }'%(ident,body))
 # Closed generic MethodInfo cells are populated by the engine's own metadata
@@ -44,6 +44,9 @@ out+=['static bool loadStaticProfile() {']
 for key,row in list(d['methods'].items())+list(d['native'].items()):
  b=bytes.fromhex(row['first32hex']);skip=4 if key.startswith('hook[') else 0
  out.append('    { static const uint8_t expected[]={%s};if(std::memcmp(reinterpret_cast<const void *>(%sULL+slide+%d),expected,sizeof(expected)))return false; }'%(','.join(hex(x) for x in b[skip:]),row['va'],skip))
+ if 'unboxed_call_va' in row:
+  b=bytes.fromhex(row['unboxed_first32hex'])
+  out.append('    { static const uint8_t expected[]={%s};if(std::memcmp(reinterpret_cast<const void *>(%sULL+slide),expected,sizeof(expected)))return false; }'%(','.join(hex(x) for x in b),row['unboxed_call_va']))
 for key,row in d['methods'].items():
  ident=re.sub('[^a-zA-Z0-9_]','_',key);ret,size=cpp(row['return_type']);ref=ret=='void *';size=0 if ret=='void' else size
  out.append('    m.%s={%s,&%s,%d,%s,%s,&call_%s};'%(key,json.dumps(row['method_name']),names[row['ownerFullName']],size,str(ref).lower(),str(row['is_static']).lower(),ident))

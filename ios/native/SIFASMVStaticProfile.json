@@ -950,7 +950,20 @@
       "ownerFullName": "Unity.Jobs.JobHandle",
       "method_name": "Complete",
       "metadata_index": 23632,
-      "first32hex": "00400091f26ade1400400091256bde14f657bda9f44f01a9fd7b02a9fd830091"
+      "first32hex": "00400091f26ade1400400091256bde14f657bda9f44f01a9fd7b02a9fd830091",
+      "unboxed_call_va": "0x10392b49c",
+      "unboxed_first32hex": "f44fbea9fd7b01a9fd430091f30300aad4f0009088227739e8000037087400b0",
+      "boxed_adjustor_this_bytes": 16,
+      "original_member_unboxed_calls": [
+        {
+          "va": "0x101489b24",
+          "instruction": "0x9492865e"
+        },
+        {
+          "va": "0x101489b64",
+          "instruction": "0x9492864e"
+        }
+      ]
     },
     "apply_transform": {
       "va": "0x10148a204",

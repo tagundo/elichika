@@ -555,6 +555,11 @@ jobs:
           set -euo pipefail
           python3 -B ios/native/tests/run_mv_menu_probe.py --out "$RUNNER_TEMP/standalone-evidence/menu-probe"
 
+      - name: Check JobHandle ABI against the exact original game
+        env:
+          SIFAS_MV_SOURCE_IPA: ${{ runner.temp }}/standalone-game.ipa
+        run: python3 -B -m unittest discover -s ios/ci -p test_mv_job_handle_abi.py -v
+
       - name: Compile standalone native MP4 export and package fresh IPA
         env:
           SIFAS_BUILD_VERSION: ${{ inputs.version }}
