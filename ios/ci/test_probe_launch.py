@@ -1,5 +1,6 @@
 """Detached launch and pinned nonchild liveness, without an Apple runtime."""
 from pathlib import Path
+import inspect
 import plistlib
 import subprocess
 import tempfile
@@ -59,6 +60,46 @@ class DetachedLaunchTests(unittest.TestCase):
         self.assertIn(str(PID), self.logs[2].read_text())
         self.assertEqual(self.logs[0].read_bytes(), b'')
         self.assertEqual(self.logs[1].read_bytes(), b'')
+
+    def test_slow_launcher_uses_remaining_original_first_progress_budget(self):
+        began=100.0;clock=[100.25]
+        remaining=launch.FIRST_PROGRESS_SECONDS-(clock[0]-began)
+        def delayed(command, *, timeout, cap):
+            self.assertEqual(timeout,59.75);self.assertEqual(cap,launch.MAX_CLI_LOG)
+            clock[0]+=22  # Cold FrontBoard acknowledgement exceeds the old 15s gate.
+            return self.cli_result()
+        with patch.object(launch.time,'monotonic',side_effect=lambda:clock[0]), \
+                patch.object(launch.diagnostics,'bounded_command',side_effect=delayed), \
+                patch.object(launch.diagnostics,'process_identity',return_value=self.identity):
+            owner=self.start(timeout=remaining)
+            self.assertIsNone(owner.poll())
+        self.assertGreater(clock[0]-began,15)
+        self.assertLess(clock[0]-began,launch.FIRST_PROGRESS_SECONDS)
+
+    def test_expired_remaining_first_progress_budget_cannot_identify_an_app_or_retry(self):
+        remaining=.25
+        def expired(command, *, timeout, cap):
+            self.assertEqual(timeout,remaining)
+            result=self.cli_result();result.update(returncode=-9,timed_out=True)
+            return result
+        with patch.object(launch.diagnostics,'bounded_command',side_effect=expired) as command, \
+                patch.object(launch.diagnostics,'process_identity') as identity, \
+                patch.object(launch.diagnostics,'discover_owned_process') as discover:
+            with self.assertRaisesRegex(ValueError,'launch command timed out'):
+                self.start(timeout=remaining)
+            command.assert_called_once();identity.assert_not_called();discover.assert_not_called()
+
+    def test_caller_starts_original_clock_before_request_and_never_resets_its_budget(self):
+        from run_simulator import execute
+        code=inspect.getsource(execute)
+        self.assertLess(code.index('began = time.monotonic()'),code.index('process = launch_owned('))
+        self.assertIn('timeout=FIRST_PROGRESS_SECONDS - (time.monotonic() - began)',code)
+        self.assertEqual(launch.FIRST_PROGRESS_SECONDS,60)
+        for timeout in (0,-1,60.01):
+            with self.subTest(timeout=timeout),patch.object(launch.diagnostics,'bounded_command') as command:
+                with self.assertRaisesRegex(ValueError,'launch command budget differs'):
+                    self.start(timeout=timeout)
+                command.assert_not_called()
 
     def test_printed_pid_must_match_exact_verified_kernel_identity(self):
         with patch.object(launch.diagnostics, 'bounded_command', return_value=self.cli_result()), \

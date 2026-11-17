@@ -16,6 +16,7 @@ import subprocess
 import time
 
 import simulator_diagnostics as diagnostics
+from probe_watchdog import FIRST_PROGRESS_SECONDS
 
 BUNDLE = diagnostics.BUNDLE
 MAX_APP_LOG = 8 * 1024 * 1024
@@ -132,7 +133,7 @@ class OwnedProbeLaunch:
 def launch_owned(identifier, app, launch_number, stdout_path, stderr_path, cli_log, *,
                  core_only, require_parity_ui, launch_wall, timeout):
     """Launch once; caller starts its original 60/600s clocks before this call."""
-    need(0 < timeout <= 15, 'Detached launch command budget differs')
+    need(0 < timeout <= FIRST_PROGRESS_SECONDS, 'Detached launch command budget differs')
     app = Path(app).resolve(strict=True)
     # Validates the exact bundle/executable and the owned Simulator UUID before
     # requesting any process. Readiness itself is never inferred from launch.

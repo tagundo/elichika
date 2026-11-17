@@ -18,7 +18,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 from common import inventory, require, run, write_json
-from probe_watchdog import DETAILS, STAGE_SECONDS, ProbeWatchdog, read_progress, stage_budgets
+from probe_watchdog import DETAILS, FIRST_PROGRESS_SECONDS, STAGE_SECONDS, ProbeWatchdog, read_progress, stage_budgets
 from probe_launch import launch_owned, launch_command as probe_launch_command
 from simulator_diagnostics import capture_owned_diagnostics
 
@@ -267,7 +267,7 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
                         process = launch_owned(identifier, installed, launch_number,
                             stdout_log, stderr_log, log, core_only=core_only,
                             require_parity_ui=require_parity_ui, launch_wall=launch_wall,
-                            timeout=min(15, 60 - (time.monotonic() - began)))
+                            timeout=FIRST_PROGRESS_SECONDS - (time.monotonic() - began))
                         while True:
                             require(process.poll() is None, process.last_error or
                                     'Owned probe application exited before readiness')
