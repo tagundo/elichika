@@ -2,6 +2,7 @@
 import json
 import ctypes
 import datetime
+import errno
 import inspect
 import os
 from pathlib import Path
@@ -35,6 +36,8 @@ def response(text='', code=0):
 
 class SimulatorDiagnosticsTests(unittest.TestCase):
     def setUp(self):
+        platform=patch.object(diagnostics.sys,'platform','linux')
+        platform.start();self.addCleanup(platform.stop)
         self.calls=[]
         self.sampled=False
         self.change_identity=False
@@ -340,7 +343,136 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
                 watchdog.observe.assert_not_called();watchdog.can_read_receipt.assert_not_called()
 
 
+class DarwinProcessIdentityTests(unittest.TestCase):
+    def setUp(self):
+        temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
+        self.app=app_fixture(Path(temporary.name)/'parent with spaces')
+        self.image=(self.app/'ElichikaSimulatorProbe').resolve()
+        self.sec=int(time.time())-2;self.usec=123456;self.launch_wall=self.sec-1
+        self.values=[]
+        self.library=Mock()
+        self.library.proc_pidinfo.side_effect=self.read_bsd
+        self.library.proc_pidpath.side_effect=self.read_path
+        for guard in (patch.object(diagnostics.sys,'platform','darwin'),
+                      patch.object(diagnostics,'_LIBPROC',self.library)):
+            guard.start();self.addCleanup(guard.stop)
+
+    def native_value(self,**changes):
+        value=diagnostics._DarwinBSDInfo()
+        fields=dict(pid=PID,uid=os.geteuid(),status=3,flags=0,start_sec=self.sec,start_usec=self.usec)
+        fields.update(changes)
+        for key,item in fields.items():
+            setattr(value,key,item)
+        return value
+
+    def read_bsd(self,pid,flavor,arg,buffer,size):
+        self.assertEqual((pid,flavor,arg,size),(PID,3,1,136))
+        value=self.values.pop(0) if self.values else self.native_value()
+        if isinstance(value,tuple):
+            count,error=value;ctypes.set_errno(error);return count
+        ctypes.memmove(buffer,ctypes.byref(value),136);return 136
+
+    def read_path(self,pid,buffer,size):
+        self.assertEqual((pid,size),(PID,4096))
+        value=os.fsencode(self.image)+b'\0';ctypes.memmove(buffer,value,len(value));return len(value)-1
+
+    def observation(self):
+        return diagnostics.darwin_owned_process(PID,DEVICE,self.app,self.launch_wall)
+
+    def test_exact_public_abi_and_typed_libproc_symbols(self):
+        self.assertEqual(ctypes.sizeof(diagnostics._DarwinBSDInfo),136)
+        for key,offset in [('status',4),('pid',12),('uid',20),('start_sec',120),('start_usec',128)]:
+            self.assertEqual(getattr(diagnostics._DarwinBSDInfo,key).offset,offset)
+        with patch.object(diagnostics,'_LIBPROC',None),patch.object(ctypes,'CDLL',return_value=self.library):
+            self.assertEqual(self.observation()['state'],'alive')
+        self.assertEqual(self.library.proc_pidinfo.argtypes,
+                         (ctypes.c_int,ctypes.c_int,ctypes.c_uint64,ctypes.c_void_p,ctypes.c_int))
+        self.assertEqual(self.library.proc_pidinfo.restype,ctypes.c_int)
+
+    def test_darwin_live_identity_needs_two_kernel_births_and_no_ps_child(self):
+        with patch.object(diagnostics,'bounded_command',side_effect=AssertionError('no child')):
+            row=diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,
+                lambda *args:(_ for _ in ()).throw(AssertionError('no ps')))
+        self.assertEqual((row['pid'],row['uid'],row['start_sec'],row['start_usec']),
+                         (PID,os.geteuid(),self.sec,self.usec))
+        self.assertEqual(row['executable'],str(self.image))
+        self.assertIsNone(row['cpu_percent']);self.assertIsNone(row['memory_percent']);self.assertIsNone(row['rss_kib'])
+        self.assertEqual(self.library.proc_pidinfo.call_count,2)
+        self.assertEqual(self.library.proc_pidpath.call_count,1)
+
+    def test_only_zero_esrch_with_zombie_lookup_confirms_absence(self):
+        for count,error,expected in [(0,errno.ESRCH,'gone'),(0,errno.EPERM,'invalid'),
+                (0,errno.EACCES,'invalid'),(0,0,'invalid'),(80,0,'invalid'),(-1,errno.ESRCH,'invalid')]:
+            with self.subTest(count=count,error=error):
+                self.values=[(count,error)]
+                self.assertEqual(self.observation()['state'],expected)
+        self.values=[self.native_value(),(0,errno.ESRCH)]
+        self.assertEqual(self.observation()['state'],'gone')
+
+    def test_kernel_unavailability_or_path_failure_never_falls_back_to_ps_or_gone(self):
+        self.library.proc_pidpath.side_effect=None;self.library.proc_pidpath.return_value=0
+        with patch.object(diagnostics,'bounded_command',side_effect=AssertionError('no fallback')):
+            self.assertEqual(self.observation()['state'],'invalid')
+        self.values=[(0,errno.EPERM)]
+        self.assertEqual(self.observation()['state'],'invalid')
+
+    def test_birth_reuse_during_path_lookup_is_rejected_at_microsecond_precision(self):
+        self.values=[self.native_value(),self.native_value(start_usec=self.usec+1)]
+        self.assertEqual(self.observation()['state'],'invalid')
+        self.values=[self.native_value(),self.native_value(uid=os.geteuid()+1)]
+        self.assertEqual(self.observation()['state'],'invalid')
+
+    def test_foreign_uid_image_birth_window_and_device_never_authorize(self):
+        for change in [dict(uid=os.geteuid()+1),dict(start_sec=int(self.launch_wall)-10),
+                       dict(start_sec=int(time.time())+60),dict(pid=PID+1),dict(start_usec=1000000),dict(status=0)]:
+            with self.subTest(change=change):
+                value=self.native_value(**change);self.values=[value,value]
+                self.assertEqual(self.observation()['state'],'invalid');self.values=[]
+        with patch.object(diagnostics,'kernel_executable',return_value=self.app.parent/'ForeignExecutable'):
+            self.assertEqual(self.observation()['state'],'invalid')
+        with patch.object(diagnostics,'_darwin_process_snapshot') as native:
+            other='22345678-1234-1234-1234-123456789abc'
+            self.assertEqual(diagnostics.darwin_owned_process(PID,other,self.app,self.launch_wall)['state'],'invalid')
+            for candidate in (None,True,0,1,-1,2**31,'4242'):
+                self.assertEqual(diagnostics.darwin_owned_process(candidate,DEVICE,self.app,self.launch_wall)['state'],'invalid')
+            native.assert_not_called()
+
+    def test_zombie_and_exit_flag_never_authorize_readiness_or_sampling(self):
+        self.values=[self.native_value(status=5),self.native_value(status=5)]
+        observed=self.observation();self.assertEqual(observed['state'],'exiting')
+        self.assertIsNone(observed['identity']['executable'])
+        self.library.proc_pidpath.assert_not_called()
+        self.values=[self.native_value(status=5),self.native_value(status=5)]
+        self.assertIsNone(diagnostics.process_identity(PID,DEVICE,self.app,self.launch_wall,
+            lambda *args:(_ for _ in ()).throw(AssertionError('no ps'))))
+        self.values=[self.native_value(flags=4),self.native_value(flags=4)]
+        self.assertEqual(self.observation()['state'],'exiting')
+        self.values=[self.native_value(flags=4),self.native_value(flags=0)]
+        self.assertEqual(self.observation()['state'],'invalid')
+        self.values=[self.native_value(status=1),self.native_value(status=1)]
+        self.assertEqual(self.observation()['state'],'invalid')
+
+
 class KernelExecutableTests(unittest.TestCase):
+    def test_real_darwin_pid_uid_birth_and_image_match_one_independent_host_snapshot(self):
+        if sys.platform!='darwin':
+            self.assertEqual(diagnostics._darwin_bsd_snapshot(os.getpid())['kind'],'unavailable')
+            return
+        row=diagnostics._darwin_process_snapshot(os.getpid())
+        self.assertEqual(row['kind'],'alive')
+        self.assertEqual(row['pid'],os.getpid());self.assertEqual(row['uid'],os.geteuid())
+        self.assertTrue(0<=row['start_usec']<1000000)
+        # One preflight command, never a recurring application liveness poll.
+        result=diagnostics.bounded_command(['ps','-ww','-p',str(os.getpid()),'-o',
+            'pid=,uid=,lstart=,comm='],timeout=10,cap=8192)
+        self.assertEqual(result['returncode'],0)
+        self.assertFalse(result['timed_out']);self.assertFalse(result['truncated'])
+        fields=result['text'].strip().split(None,7);self.assertEqual(len(fields),8)
+        self.assertEqual((int(fields[0]),int(fields[1])),(row['pid'],row['uid']))
+        at=datetime.datetime.strptime(' '.join(fields[2:7]),'%a %b %d %H:%M:%S %Y').timestamp()
+        self.assertEqual(int(at),row['start_sec'])
+        self.assertEqual(Path(fields[7]).resolve(strict=True),Path(row['executable']))
+
     def assert_current_process_image_matches_independent_reference(self):
         if not (sys.platform=='darwin' or sys.platform.startswith('linux')):
             self.skipTest('Kernel image API is implemented for production Darwin and test Linux')

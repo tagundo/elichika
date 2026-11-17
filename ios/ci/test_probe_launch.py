@@ -16,6 +16,8 @@ PID = 12345
 
 class DetachedLaunchTests(unittest.TestCase):
     def setUp(self):
+        platform=patch.object(launch.diagnostics.sys,'platform','linux')
+        platform.start();self.addCleanup(platform.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
@@ -192,6 +194,50 @@ class DetachedLaunchTests(unittest.TestCase):
         self.logs[0].write_bytes(b'')
         self.assertIsNotNone(owner.poll())
         self.assertIn('identity', owner.last_error)
+
+
+class DarwinOwnedLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
+        self.root=Path(temporary.name)
+        self.identity=dict(pid=PID,uid=501,start_sec=1794874714,start_usec=123456,
+            started_wall=1794874714.123456,executable='/owned/Probe.app/ElichikaSimulatorProbe')
+        logs=launch._new_logs(tuple(self.root/name for name in ('out','err','cli')))
+        self.owner=launch.OwnedProbeLaunch(self.identity,DEVICE,Path('/owned/Probe.app'),time.time(),logs)
+        platform=patch.object(launch.diagnostics.sys,'platform','darwin')
+        platform.start();self.addCleanup(platform.stop)
+
+    def test_confirmed_native_owner_passes_even_if_ps_subprocess_is_unavailable(self):
+        with patch.object(launch.diagnostics,'darwin_owned_process',return_value=dict(state='alive',identity=self.identity)), \
+                patch.object(launch.diagnostics,'bounded_command',side_effect=AssertionError('no ps')) as child, \
+                patch.object(launch.diagnostics,'process_identity',side_effect=AssertionError('no ps identity')):
+            self.assertIsNone(self.owner.poll());child.assert_not_called()
+
+    def test_reused_or_foreign_native_identity_never_passes(self):
+        for key,value in [('pid',PID+1),('uid',502),('start_sec',1794874715),('start_usec',123457),
+                          ('executable','/foreign/app')]:
+            with self.subTest(key=key),patch.object(launch.diagnostics,'darwin_owned_process',
+                    return_value=dict(state='alive',identity=dict(self.identity,**{key:value}))):
+                self.assertIsNotNone(self.owner.poll())
+                with self.assertRaisesRegex(ValueError,'identity'):self.owner.wait(1)
+
+    def test_unavailable_native_identity_cannot_be_alive_or_confirmed_absence(self):
+        with patch.object(launch.diagnostics,'darwin_owned_process',return_value=dict(state='invalid')):
+            self.assertIsNotNone(self.owner.poll())
+            with self.assertRaisesRegex(ValueError,'kernel identity'):self.owner.wait(1)
+
+    def test_zombie_only_waits_for_kernel_confirmed_absence(self):
+        zombie=dict(self.identity,executable=None)
+        with patch.object(launch.diagnostics,'darwin_owned_process',side_effect=[
+                dict(state='exiting',identity=zombie),dict(state='gone')]) as reader, \
+                patch.object(launch.diagnostics,'bounded_command',side_effect=AssertionError('no ps')), \
+                patch.object(launch.time,'sleep'):
+            self.assertEqual(self.owner.wait(1),0);self.assertEqual(reader.call_count,2)
+        with patch.object(launch.diagnostics,'darwin_owned_process',return_value=dict(state='exiting',identity=zombie)):
+            self.assertIsNotNone(self.owner.poll())
+        with patch.object(launch.diagnostics,'darwin_owned_process',return_value=dict(state='exiting',
+                identity=dict(zombie,start_usec=zombie['start_usec']+1))):
+            with self.assertRaisesRegex(ValueError,'identity'):self.owner.wait(1)
 
 
 if __name__ == '__main__':

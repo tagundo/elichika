@@ -81,6 +81,25 @@ class OwnedProbeLaunch:
             except (OSError, ValueError) as error:
                 self.last_error = str(error)
                 return 'invalid'
+        if diagnostics.sys.platform == 'darwin':
+            observed = diagnostics.darwin_owned_process(
+                self.pid, self.identifier, self.app, self.launch_wall)
+            if observed['state'] == 'gone':
+                return 'gone'
+            current = observed.get('identity')
+            if current and observed['state'] in ('alive', 'exiting'):
+                # A zombie has no executable vnode path. Matching the prior
+                # PID/UID/precise birth permits only waiting for absence; it
+                # can never become a live/readiness or sampling result.
+                keys = ('pid', 'uid', 'start_sec', 'start_usec', 'executable')
+                if observed['state'] == 'exiting' and current['executable'] is None:
+                    keys = keys[:-1]
+                if all(current[key] == self.identity[key] for key in keys):
+                    return observed['state']
+                self.last_error = 'Owned application process identity changed'
+            else:
+                self.last_error = 'Owned application native kernel identity could not be revalidated'
+            return 'invalid'
         observed = {}
 
         def invoke(args, seconds):

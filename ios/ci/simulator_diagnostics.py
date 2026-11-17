@@ -7,7 +7,9 @@ must independently match the prelaunch-verified installed probe before sampling.
 from __future__ import annotations
 
 import hashlib
+import ctypes
 import datetime
+import errno
 import json
 import os
 from pathlib import Path
@@ -25,6 +27,107 @@ MAX_CAPTURE_SECONDS = 25
 MAX_COMMAND_BYTES = 128 * 1024
 MAX_CRASH_BYTES = 1024 * 1024
 _LIBPROC = None
+# Public Darwin proc_bsdinfo ABI (Apple XNU bsd/sys/proc_info.h). The exact
+# layout is checked before every native BSD lookup and by the host preflight.
+class _DarwinBSDInfo(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_uint32) for name in (
+        'flags', 'status', 'xstatus', 'pid', 'ppid', 'uid', 'gid', 'ruid',
+        'rgid', 'svuid', 'svgid', 'reserved')] + [
+        ('comm', ctypes.c_char * 16), ('name', ctypes.c_char * 32)] + [
+        (name, ctypes.c_uint32) for name in ('nfiles', 'pgid', 'pjobc', 'tdev', 'tpgid')] + [
+        ('nice', ctypes.c_int32), ('start_sec', ctypes.c_uint64),
+        ('start_usec', ctypes.c_uint64)]
+
+
+def _libproc():
+    global _LIBPROC
+    if _LIBPROC is None:
+        library = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
+        library.proc_pidpath.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32)
+        library.proc_pidpath.restype = ctypes.c_int
+        library.proc_pidinfo.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+                                        ctypes.c_void_p, ctypes.c_int)
+        library.proc_pidinfo.restype = ctypes.c_int
+        _LIBPROC = library
+    return _LIBPROC
+
+
+def _darwin_bsd_snapshot(pid):
+    """Read PID/effective UID/birth/state, including zombies, without a child."""
+    if (type(pid) is not int or not 1 < pid < 2**31 or sys.platform != 'darwin'
+            or ctypes.sizeof(_DarwinBSDInfo) != 136
+            or any(getattr(_DarwinBSDInfo, key).offset != offset for key, offset in
+                   (('status', 4), ('pid', 12), ('uid', 20), ('start_sec', 120),
+                    ('start_usec', 128)))):
+        return dict(kind='unavailable')
+    try:
+        value = _DarwinBSDInfo()
+        ctypes.set_errno(0)
+        # PROC_PIDTBSDINFO=3. arg=1 asks XNU to include zombies: ESRCH then
+        # means neither a normal process nor its zombie remains for this PID.
+        count = _libproc().proc_pidinfo(pid, 3, 1, ctypes.byref(value), ctypes.sizeof(value))
+        error = ctypes.get_errno()
+        if count == 0 and error == errno.ESRCH:
+            return dict(kind='gone')
+        if (count != ctypes.sizeof(value) or value.pid != pid
+                or value.status not in (1, 2, 3, 4, 5)
+                or value.start_sec <= 0 or not 0 <= value.start_usec < 1000000):
+            return dict(kind='unavailable')
+        return dict(kind='present', pid=value.pid, uid=value.uid, status=value.status, flags=value.flags,
+                    start_sec=value.start_sec, start_usec=value.start_usec)
+    except (OSError, ValueError, AttributeError, TypeError):
+        return dict(kind='unavailable')
+
+
+def _darwin_process_snapshot(pid):
+    """Bind the executable path between two matching native birth snapshots."""
+    before = _darwin_bsd_snapshot(pid)
+    if before['kind'] != 'present':
+        return before
+    image = kernel_executable(pid) if before['status'] != 5 else None
+    after = _darwin_bsd_snapshot(pid)
+    if after['kind'] != 'present':
+        return after
+    keys = ('pid', 'uid', 'start_sec', 'start_usec')
+    if any(before[key] != after[key] for key in keys):
+        return dict(kind='unavailable')
+    if after['status'] == 5 or after['flags'] & 4:  # PROC_FLAG_INEXIT
+        # proc_pidpath cannot resolve a zombie. Its exact prior PID/UID/birth
+        # may authorize waiting for absence, never readiness or sampling.
+        return dict(after, kind='exiting', executable=str(image) if image else None)
+    if (before['status'] == 5 or before['flags'] & 4 or before['status'] == 1
+            or after['status'] == 1 or image is None):
+        return dict(kind='unavailable')
+    return dict(after, kind='alive', executable=str(image))
+
+
+def darwin_owned_process(candidate, identifier, app, launch_wall):
+    """Fail-closed Darwin ownership observation, independent of ps latency."""
+    if type(candidate) is not int or not 1 < candidate < 2**31:
+        return dict(state='invalid')
+    if (str(uuid.UUID(identifier)).lower() != identifier.lower()
+            or identifier.lower() not in {part.lower() for part in app.parts}):
+        return dict(state='invalid')
+    expected = executable(app)
+    snapshot = _darwin_process_snapshot(candidate)
+    if snapshot['kind'] == 'gone':
+        return dict(state='gone')
+    if snapshot['kind'] not in ('alive', 'exiting'):
+        return dict(state='invalid')
+    started = snapshot['start_sec'] + snapshot['start_usec'] / 1000000
+    image = snapshot['executable']
+    if (snapshot['uid'] != os.geteuid() or not launch_wall - 2 <= started <= time.time() + 2
+            or (image is not None and Path(image) != expected)):
+        return dict(state='invalid')
+    identity = dict(pid=candidate, uid=snapshot['uid'], started_wall=started,
+                    start_sec=snapshot['start_sec'], start_usec=snapshot['start_usec'],
+                    start=' '.join(time.ctime(snapshot['start_sec']).split()),
+                    state=('Z' if snapshot['status'] == 5 else 'X') if snapshot['kind'] == 'exiting'
+                          else {2: 'R', 3: 'S', 4: 'T'}[snapshot['status']],
+                    executable=image, cpu_percent=None, memory_percent=None, rss_kib=None)
+    return dict(state=snapshot['kind'], identity=identity)
+
+
 SENSITIVE = re.compile(r'(?i)token|password|secret|authorization|cookie|session|account|'
                        r'user[_ -]?(?:id|name)|private[_ -]?key|request[_ -]?body|response[_ -]?body')
 
@@ -148,15 +251,8 @@ def kernel_executable(pid):
         return None
     try:
         if sys.platform == 'darwin':
-            import ctypes
-            global _LIBPROC
-            if _LIBPROC is None:
-                library = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
-                library.proc_pidpath.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32)
-                library.proc_pidpath.restype = ctypes.c_int
-                _LIBPROC = library
             buffer = ctypes.create_string_buffer(4096)
-            count = _LIBPROC.proc_pidpath(pid, buffer, ctypes.sizeof(buffer))
+            count = _libproc().proc_pidpath(pid, buffer, ctypes.sizeof(buffer))
             if not 0 < count < ctypes.sizeof(buffer):
                 return None
             value = buffer.value.decode('utf-8')
@@ -172,6 +268,9 @@ def kernel_executable(pid):
 
 def process_identity(candidate, identifier, app, launch_wall, invoke):
     """Independently bind a console candidate to the pinned owned executable."""
+    if sys.platform == 'darwin':
+        observation = darwin_owned_process(candidate, identifier, app, launch_wall)
+        return observation.get('identity') if observation['state'] == 'alive' else None
     if type(candidate) is not int or not 1 < candidate < 2**31:
         return None
     if (str(uuid.UUID(identifier)).lower() != identifier.lower()
@@ -354,7 +453,8 @@ def capture_owned_diagnostics(evidence, label, identifier, app, launch_wall, *,
         report['process'] = {key: value for key, value in identity.items() if key != 'executable'}
         before = process_identity(candidate, identifier, app, launch_wall, invoke)
         record_identity('before-sample', before)
-        keys = ('pid', 'uid', 'started_wall', 'executable')
+        keys = (('pid', 'uid', 'start_sec', 'start_usec', 'executable') if sys.platform == 'darwin'
+                else ('pid', 'uid', 'started_wall', 'executable'))
         if before and all(before[key] == identity[key] for key in keys):
             report['process_identity_revalidated_before_sample'] = True
             # One second at 10ms avoids the old 1ms sampling overhead. Allow
