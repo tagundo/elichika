@@ -50,6 +50,7 @@ struct Engine {
     uintptr_t (*array_length)(void *); void *(*thread_current)();
     int32_t (*string_length)(void *); const uint16_t *(*string_chars)(void *);
     unsigned char (*type_is_byref)(const void *);
+    void (*format_exception)(void *,char *,int32_t);
 } e;
 struct Method { const void *info; void *owner; bool is_static; };
 struct Field { size_t offset; void *owner; size_t size; };
@@ -72,6 +73,7 @@ struct Methods {
     Method command_clear,command_blit,target_identifier,camera_commands,camera_clear_get,camera_clear_set;
     Method resume_broadcast,resume_dispatch,pause_broadcast,pause_dispatch,pause_se_voices;
     Method dm_pause_get,dm_pause_set,dm_wait_get,dm_wait_set;
+    Method state_instance,live_state;
     Method texture_width,texture_height;
     Method cri_sheet,cri_waveform;
 } m;
@@ -126,6 +128,8 @@ bool pending_pixels,frame_ready;
 struct CameraSnapshot {void *camera;uint32_t handle;uint8_t enabled,render_enabled;};
 void *pause_mediator,*pause_bus,*resume_bus;uint32_t pause_mediator_root,pause_bus_root,resume_bus_root;
 int32_t saved_pause_state;uint8_t saved_dm_pause,saved_tutorial_wait;bool common_resume_sent;
+void *pause_state_owner,*pause_live_state;uint32_t pause_state_owner_root,pause_live_state_root;
+char managed_failure[192];
 CameraSnapshot render_cameras[132];uint32_t render_camera_count;
 void *quality,*saved_capture,*saved_final_target,*internal_targets[4];
 uint32_t quality_root,saved_capture_root,saved_final_target_root,internal_roots[4];
@@ -241,6 +245,11 @@ Result invoke(const Method &method,void *self,void **args=nullptr) {
             !e.class_is_assignable_from(method.owner,e.object_get_class(self))))) return {false,nullptr};
     void *exception=nullptr;
     void *value=e.runtime_invoke(method.info,method.is_static?nullptr:self,args,&exception);
+    if(exception){char description[160]={};e.format_exception(exception,description,sizeof(description));
+        if(char *line=strchr(description,'\n'))*line=0;
+        const char *operation=e.method_get_name(method.info);
+        if(!managed_failure[0])snprintf(managed_failure,sizeof(managed_failure),"%s: %s",operation,description[0]?description:"managed exception without formatted details");
+        __android_log_print(ANDROID_LOG_ERROR,"SIFAS-MV","%s: %s",operation,description);}
     return {!exception,value};
 }
 bool invoke_void(const Method &method,void *self,void **args=nullptr) {
@@ -326,6 +335,8 @@ bool init_runtime() {
     M(dm_pause_set,klass("LLAS.DM","LiveGamePauseDM"),"SetPause",true,"System.Void",1,b);
     M(dm_wait_get,klass("LLAS.DM","LiveGamePauseDM"),"get_IsWaitingTutorialAction",true,"System.Boolean",0,nullptr);
     M(dm_wait_set,klass("LLAS.DM","LiveGamePauseDM"),"SetWaitingTutorialAction",true,"System.Void",1,b);
+    M(state_instance,klass("DotUnder","State"),"get_Inst",true,"DotUnder.StateObject",0,nullptr);
+    M(live_state,klass("DotUnder","StateObject"),"get_LiveState",false,"DotUnder.LiveState.LiveState",0,nullptr);
     M(cri_sheet,klass("","CriAtom"),"GetCueSheet",true,"CriAtomCueSheet",1,sheet_args);
     M(find_objects,obj,"FindObjectsOfType",true,"UnityEngine.Object[]",1,type);
     M(timeline,ld,"get_TimelineDirector",false,"UnityEngine.Playables.PlayableDirector",0,nullptr);
@@ -626,7 +637,8 @@ void dispatch_terminal() {
 void end_notification(const AmvGameCallbacks &callback,bool success,const char *path,const char *message) {
     terminal={};terminal.pending=true;terminal.success=success;terminal.callback=callback;
     if(path)snprintf(terminal.path,sizeof(terminal.path),"%s",path);
-    if(message)snprintf(terminal.message,sizeof(terminal.message),"%s",message);
+    if(message){if(!success&&managed_failure[0])snprintf(terminal.message,sizeof(terminal.message),"%s | %s",managed_failure,message);
+        else snprintf(terminal.message,sizeof(terminal.message),"%s",message);}
     dispatch_terminal();
 }
 void fail(const char *message) {
@@ -747,6 +759,7 @@ void observe(void *value) {
 }
 void release_pause_snapshot() {
     release(&pause_mediator_root);release(&pause_bus_root);release(&resume_bus_root);
+    release(&pause_state_owner_root);release(&pause_live_state_root);pause_state_owner=pause_live_state=nullptr;
     pause_mediator=pause_bus=resume_bus=nullptr;common_resume_sent=false;
 }
 bool snapshot_pause_state() {
@@ -766,12 +779,29 @@ bool snapshot_pause_state() {
         return setup_rejected("The current MV PauseMessage is not the verified one-byte Boolean value type");
     if(!value(m.dm_pause_get,nullptr,&saved_dm_pause)||!value(m.dm_wait_get,nullptr,&saved_tutorial_wait))
         return setup_rejected("Could not snapshot the current MV pause/tutorial state");
+    Result state=invoke(m.state_instance,nullptr);if(!state.ok||!state.value)return setup_rejected("The current MV has no readable DotUnder state owner");
+    pause_state_owner=state.value;pause_state_owner_root=root(pause_state_owner);
+    Result live=invoke(m.live_state,pause_state_owner);if(!live.ok)return setup_rejected("Could not inspect whether a gameplay LiveState exists for tutorial flags");
+    pause_live_state=live.value;pause_live_state_root=root(pause_live_state);
+    if(!pause_state_owner_root||(pause_live_state&&!pause_live_state_root))return setup_rejected("Could not retain the current MV/gameplay state ownership");
+    if(!pause_live_state&&saved_tutorial_wait)return setup_rejected("Tutorial waiting is set without a gameplay LiveState");
     return true;
 }
+bool set_waiting_flag(uint8_t *waiting) {
+    // Original getter treats absent gameplay LiveState as false; its setter
+    // dereferences that state unconditionally. MV-only scenes have no such
+    // state to mutate. Never create a gameplay state just to write this flag.
+    if(!pause_live_state)return true;
+    Result state=invoke(m.state_instance,nullptr),live=state.ok&&state.value==pause_state_owner?invoke(m.live_state,state.value):Result{false,nullptr};
+    if(!state.ok||state.value!=pause_state_owner||!live.ok||live.value!=pause_live_state||
+       e.gchandle_get_target(pause_state_owner_root)!=pause_state_owner||e.gchandle_get_target(pause_live_state_root)!=pause_live_state){
+        if(!managed_failure[0])snprintf(managed_failure,sizeof(managed_failure),"SetWaitingTutorialAction: original gameplay LiveState ownership changed");return false;}
+    void *args[]={waiting};return invoke_void(m.dm_wait_set,nullptr,args);
+}
 bool restore_pause_flags() {
-    void *paused[]={&saved_dm_pause},*waiting[]={&saved_tutorial_wait};
+    void *paused[]={&saved_dm_pause};
     bool ok=invoke_void(m.dm_pause_set,nullptr,paused);
-    return invoke_void(m.dm_wait_set,nullptr,waiting)&&ok;
+    return set_waiting_flag(&saved_tutorial_wait)&&ok;
 }
 bool resume_pause_state() {
     if(saved_pause_state!=2)return true;
@@ -781,7 +811,7 @@ bool resume_pause_state() {
     common_resume_sent=true;
     uint8_t no=0;void *clear_flags[]={&no};
     bool cleared=invoke_void(m.dm_pause_set,nullptr,clear_flags);
-    cleared=invoke_void(m.dm_wait_set,nullptr,clear_flags)&&cleared;
+    cleared=set_waiting_flag(&no)&&cleared;
     if(!cleared){restore_pause_flags();return setup_rejected("Could not clear the current MV pause/tutorial flags before resuming its receivers");}
     if(!invoke_void(m.resume_broadcast,resume_bus)||!invoke_void(m.resume_dispatch,resume_bus)||
        load<int32_t>(pause_mediator,f.mediator_state.offset)!=0){restore_pause_flags();return setup_rejected("The current MV registered resume handlers did not complete");}
@@ -958,7 +988,7 @@ bool restore_render_state() {
     cameras_suspended=false;return ok;
 }
 bool begin(const Request &begin_request) {
-    setup_failure[0]=0;
+    setup_failure[0]=0;managed_failure[0]=0;
     config=begin_request.config; sink=begin_request.sink; encoder=begin_request.encoder; vm=begin_request.vm;
     if (!runtime_ready) return setup_rejected("MV export interfaces have not initialized; reopen a 3D MV");
     if (!director || !observed_director_root) return setup_rejected("No loaded 3D MV director is available");
@@ -1326,6 +1356,7 @@ bool exports(void *library) {
     E(gchandle_free,"gchandle_free");E(array_length,"array_length");E(thread_current,"thread_current");
     E(string_length,"string_length");E(string_chars,"string_chars");
     E(type_is_byref,"type_is_byref");
+    E(format_exception,"format_exception");
 #undef E
     return true;
 }

@@ -1,7 +1,6 @@
 package com.klab.lovelive.allstars.fovmod;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -12,19 +11,11 @@ import android.os.Looper;
 import android.text.InputType;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.view.Gravity;
-import android.view.KeyEvent;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.File;
@@ -66,7 +57,7 @@ public final class AndroidMVExport {
     private static PendingQuery pendingQuery;
     private static String pendingNotice;
     private static boolean pendingNoticeError;
-    private static AlertDialog setupDialog;
+    private static View setupPanel;
 
     private AndroidMVExport() {}
 
@@ -109,8 +100,8 @@ public final class AndroidMVExport {
         }
         if (game.get()!=activity) return;
         gameResumed=false;
-        if (setupDialog!=null) {
-            setupDialog.dismiss(); setupDialog=null;
+        if (setupPanel!=null) {
+            FovMod.dismissGamePanel(setupPanel); setupPanel=null;
             try { nativeCancel(); } catch (Throwable ignored) {}
         }
         if (querying) { generation++; querying=false; }
@@ -146,6 +137,20 @@ public final class AndroidMVExport {
         }
     }
 
+    /** In-game controls stay in the existing Activity and window. */
+    static void installInGameButtons(final Activity activity,LinearLayout parent,final Runnable close) {
+        Button export=new Button(activity); export.setText("Export MP4"); parent.addView(export);
+        export.setOnClickListener(new View.OnClickListener() { public void onClick(View view) {
+            if (!foreground(activity)) return;
+            close.run(); openWhenResumed=false; saveWhenResumed=false; pendingNotice=null; completedWaiting=false; requestSetup(activity);
+        } });
+        final File previous=findCompleted(activity);
+        if (previous!=null) {
+            Button save=new Button(activity); save.setText("Save last completed MP4"); parent.addView(save);
+            save.setOnClickListener(new View.OnClickListener() { public void onClick(View view) { close.run(); offerSave(activity,previous); } });
+        }
+    }
+
     /** The corner settings gesture remains inactive while an export owns the MV. */
     public static boolean isBusy() { return current!=null || querying || saving; }
 
@@ -156,30 +161,18 @@ public final class AndroidMVExport {
     private static int dp(Context context,int value) { return (int)(value*context.getResources().getDisplayMetrics().density+0.5f); }
     private static void toast(Context context,String text) { Toast.makeText(context,text,Toast.LENGTH_LONG).show(); }
     private static void removePanel() {
-        if (panel!=null && panel.getParent() instanceof ViewGroup) ((ViewGroup)panel.getParent()).removeView(panel);
+        FovMod.dismissGamePanel(panel);
         panel=null; status=null; progress=null;
     }
     private static void overlay(Activity activity,String message,final Runnable cancel) {
         removePanel();
-        FrameLayout cover=new FrameLayout(activity); cover.setBackgroundColor(0xb0000000); cover.setClickable(true);
-        cover.setFocusableInTouchMode(true);
-        cover.setOnKeyListener(new View.OnKeyListener() { public boolean onKey(View ignored,int keyCode,KeyEvent event) {
-            if (keyCode!=KeyEvent.KEYCODE_BACK) return false;
-            if (event.getAction()==KeyEvent.ACTION_UP) cancel.run();
-            return true;
-        } });
         LinearLayout box=new LinearLayout(activity); box.setOrientation(LinearLayout.VERTICAL);
-        int pad=dp(activity,24); box.setPadding(pad,pad,pad,pad); box.setBackgroundColor(0xff20242a);
-        TextView title=new TextView(activity); title.setText("Export MP4"); title.setTextColor(0xffffffff); title.setTextSize(20); box.addView(title);
+        int pad=dp(activity,24);
         status=new TextView(activity); status.setTextColor(0xffffffff); status.setPadding(0,pad/2,0,pad/2); status.setText(message); box.addView(status);
         progress=new ProgressBar(activity,null,android.R.attr.progressBarStyleHorizontal); progress.setIndeterminate(true); box.addView(progress,new LinearLayout.LayoutParams(-1,-2));
         Button button=new Button(activity); button.setText("Cancel"); box.addView(button);
         button.setOnClickListener(new View.OnClickListener() { public void onClick(View ignored) { cancel.run(); } });
-        FrameLayout.LayoutParams layout=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER); layout.leftMargin=pad; layout.rightMargin=pad;
-        cover.addView(box,layout);
-        View decor=activity.getWindow().getDecorView();
-        if (!(decor instanceof ViewGroup)) throw new IllegalStateException("Game window is unavailable");
-        ((ViewGroup)decor).addView(cover,new ViewGroup.LayoutParams(-1,-1)); cover.requestFocus(); panel=cover;
+        panel=FovMod.showGamePanel(activity,"Export MP4",box,cancel);
     }
 
     private static void requestSetup(final Activity activity) {
@@ -241,12 +234,7 @@ public final class AndroidMVExport {
         catch (UnsatisfiedLinkError error) { request.onFailed("This client does not include the MP4 export backend."); }
         catch (Throwable error) { request.onFailed(message(error)); }
     }
-    private static Spinner spinner(Context context,String[] entries) {
-        Spinner value=new Spinner(context);
-        ArrayAdapter<String> adapter=new ArrayAdapter<String>(context,android.R.layout.simple_spinner_item,entries);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); value.setAdapter(adapter); return value;
-    }
-    private static void label(LinearLayout parent,String text) { TextView view=new TextView(parent.getContext()); view.setText(text); parent.addView(view); }
+    private static void label(LinearLayout parent,String text) { TextView view=new TextView(parent.getContext()); view.setText(text); view.setTextColor(0xffffffff); parent.addView(view); }
     private static int pixelDimension(String text) {
         int value=Integer.parseInt(text.trim());
         if (value<16||value>32768||(value&1)!=0) throw new IllegalArgumentException("Use even pixels from 16 to 32768.");
@@ -276,17 +264,17 @@ public final class AndroidMVExport {
         final SharedPreferences preferences=activity.getSharedPreferences("mv_export",Context.MODE_PRIVATE);
         int legacyResolution=Math.max(0,Math.min(WIDTHS.length-1,preferences.getInt("resolution",0)));
         label(form,"Width (pixels; even)"); final EditText widthPixels=new EditText(activity);
-        widthPixels.setInputType(InputType.TYPE_CLASS_NUMBER); widthPixels.setSingleLine(true);
+        widthPixels.setInputType(InputType.TYPE_CLASS_NUMBER); widthPixels.setSingleLine(true); widthPixels.setTextColor(0xffffffff);
         widthPixels.setText(Integer.toString(preferences.getInt("width",WIDTHS[legacyResolution]))); form.addView(widthPixels);
         label(form,"Height (pixels; even)"); final EditText heightPixels=new EditText(activity);
-        heightPixels.setInputType(InputType.TYPE_CLASS_NUMBER); heightPixels.setSingleLine(true);
+        heightPixels.setInputType(InputType.TYPE_CLASS_NUMBER); heightPixels.setSingleLine(true); heightPixels.setTextColor(0xffffffff);
         heightPixels.setText(Integer.toString(preferences.getInt("height",HEIGHTS[legacyResolution]))); form.addView(heightPixels);
-        label(form,"Frame rate"); final Spinner rate=spinner(activity,new String[]{"30 FPS","60 FPS","120 FPS"}); form.addView(rate);
-        label(form,"Video codec"); final Spinner codec=spinner(activity,new String[]{"H.264 · broad compatibility","HEVC · device support required"}); form.addView(codec);
+        label(form,"Frame rate"); final FovMod.InlineChoice rate=new FovMod.InlineChoice(activity,new String[]{"30 FPS","60 FPS","120 FPS"}); form.addView(rate);
+        label(form,"Video codec"); final FovMod.InlineChoice codec=new FovMod.InlineChoice(activity,new String[]{"H.264 · broad compatibility","HEVC · device support required"}); form.addView(codec);
         label(form,"Offline export may encode slower than the selected FPS. Device reports are advisory; actual encoder startup decides. MV graphics quality uses the current game settings.");
         rate.setSelection(Math.max(0,Math.min(RATES.length-1,preferences.getInt("rate",0))));
         codec.setSelection(Math.max(0,Math.min(1,preferences.getInt("codec",0))));
-        final TextView advisory=new TextView(activity); form.addView(advisory);
+        final TextView advisory=new TextView(activity); advisory.setTextColor(0xffffffff); form.addView(advisory);
         final Runnable updateAdvisory=new Runnable() { public void run() {
             try {
                 int width=pixelDimension(widthPixels.getText().toString()),height=pixelDimension(heightPixels.getText().toString());
@@ -294,11 +282,7 @@ public final class AndroidMVExport {
                 advisory.setText(AndroidMVEncoder.videoEncoderAdvisory(codec.getSelectedItemPosition()==0?AndroidMVEncoder.AVC:AndroidMVEncoder.HEVC,width,height));
             } catch (IllegalArgumentException error) { advisory.setText("Width and height must each be even pixel counts from 16 to 32768. Any aspect ratio is allowed."); }
         } };
-        AdapterView.OnItemSelectedListener selection=new AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(AdapterView<?> parent,View view,int position,long id) { updateAdvisory.run(); }
-            public void onNothingSelected(AdapterView<?> parent) {}
-        };
-        codec.setOnItemSelectedListener(selection);
+        codec.setOnSelectionChanged(updateAdvisory);
         TextWatcher sizeChanged=new TextWatcher() {
             public void beforeTextChanged(CharSequence text,int start,int count,int after) {}
             public void onTextChanged(CharSequence text,int start,int before,int count) { updateAdvisory.run(); }
@@ -306,7 +290,7 @@ public final class AndroidMVExport {
         };
         widthPixels.addTextChangedListener(sizeChanged); heightPixels.addTextChangedListener(sizeChanged); updateAdvisory.run();
         label(form,"Video bitrate (Mbps)"); final EditText bitrate=new EditText(activity);
-        bitrate.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL); bitrate.setSingleLine(true); bitrate.setText(preferences.getString("bitrate_mbps","5")); form.addView(bitrate);
+        bitrate.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL); bitrate.setSingleLine(true); bitrate.setTextColor(0xffffffff); bitrate.setText(preferences.getString("bitrate_mbps","5")); form.addView(bitrate);
         Button recommendation=new Button(activity); recommendation.setText("Use recommended bitrate"); form.addView(recommendation);
         recommendation.setOnClickListener(new View.OnClickListener() { public void onClick(View ignored) {
             try {
@@ -318,14 +302,11 @@ public final class AndroidMVExport {
         final File previous=findCompleted(activity);
         if (previous!=null) { Button save=new Button(activity); save.setText("Save previous MP4"); form.addView(save);
             save.setOnClickListener(new View.OnClickListener() { public void onClick(View ignored) { offerSave(activity,previous); } }); }
-        ScrollView scroll=new ScrollView(activity); scroll.addView(form);
-        final AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Export MP4").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Export",null).create();
-        setupDialog=dialog;
-        dialog.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() { public void onDismiss(android.content.DialogInterface ignored) {
-            if (setupDialog==dialog) setupDialog=null;
-        } });
-        dialog.setOnShowListener(new android.content.DialogInterface.OnShowListener() { public void onShow(android.content.DialogInterface ignored) {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() { public void onClick(View view) {
+        final Runnable close=new Runnable() { public void run() { FovMod.dismissGamePanel(setupPanel); setupPanel=null; } };
+        Button cancel=new Button(activity); cancel.setText("Cancel"); form.addView(cancel);
+        cancel.setOnClickListener(new View.OnClickListener() { public void onClick(View view) { close.run(); } });
+        Button export=new Button(activity); export.setText("Export"); form.addView(export);
+        export.setOnClickListener(new View.OnClickListener() { public void onClick(View view) {
                 final int width,height;
                 try { int[] size=dimensions(widthPixels,heightPixels); width=size[0]; height=size[1]; }
                 catch (IllegalArgumentException error) { return; }
@@ -339,9 +320,9 @@ public final class AndroidMVExport {
                 } catch (Throwable error) { bitrate.setError("Enter a positive bitrate up to 2147.483647 Mbps (whole bits/sec)."); return; }
                 preferences.edit().putInt("width",width).putInt("height",height).putInt("rate",rate.getSelectedItemPosition())
                     .putInt("codec",codec.getSelectedItemPosition()).putString("bitrate_mbps",bitrate.getText().toString().trim()).apply();
-                dialog.dismiss(); MAIN.postDelayed(new Runnable() { public void run() { start(activity,width,height,fps,mime,bits); } },150);
-            } });
-        } }); dialog.show();
+                close.run(); start(activity,width,height,fps,mime,bits);
+        } });
+        setupPanel=FovMod.showGamePanel(activity,"Export MP4",form,close);
     }
 
     private static final class Session {
@@ -360,8 +341,7 @@ public final class AndroidMVExport {
         try { session=new Session(activity,width,height,fps,mime,bitrate); }
         catch (Throwable error) { showError(activity,message(error)); return; }
         current=session; showProgress(activity,session);
-        // Query again after the configuration dialog closes. Its window may
-        // pause Unity, and its earlier selection may have changed meanwhile.
+        // Refresh the selection after configuration without changing windows.
         query(new SongCallback() {
             public void onSong(final String json) { MAIN.post(new Runnable() { public void run() {
                 if (current!=session) return;
@@ -454,15 +434,22 @@ public final class AndroidMVExport {
     private static void offerSave(final Activity activity,final File source) {
         if (!foreground(activity)||!source.isFile()||source.length()==0) return;
         completedWaiting=false;
-        new AlertDialog.Builder(activity).setTitle("MP4 export complete").setMessage("Save the MP4 to a folder or document provider. The private copy stays available until saving succeeds.")
-            .setNegativeButton("Later",null).setPositiveButton("Save MP4",new android.content.DialogInterface.OnClickListener() { public void onClick(android.content.DialogInterface ignored,int which) {
+        LinearLayout form=new LinearLayout(activity); form.setOrientation(LinearLayout.VERTICAL);
+        label(form,"Save the MP4 to a folder or document provider. The private copy stays available until saving succeeds.");
+        final View[] choice=new View[1]; final Runnable close=new Runnable() { public void run() { FovMod.dismissGamePanel(choice[0]); } };
+        Button later=new Button(activity); later.setText("Later"); form.addView(later);
+        later.setOnClickListener(new View.OnClickListener() { public void onClick(View view) { close.run(); } });
+        Button save=new Button(activity); save.setText("Save MP4"); form.addView(save);
+        save.setOnClickListener(new View.OnClickListener() { public void onClick(View view) {
                 if (saving||pendingSave!=null) { toast(activity,"A save request is already open."); return; }
                 Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("video/mp4");
                 intent.putExtra(Intent.EXTRA_TITLE,source.getName()); intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 pendingSave=new SaveRequest(activity,source);
+                close.run();
                 try { activity.startActivityForResult(intent,SAVE_REQUEST); }
                 catch (Throwable error) { pendingSave=null; showError(activity,"No document picker is available. The MP4 is kept for saving later."); }
-            } }).show();
+        } });
+        choice[0]=FovMod.showGamePanel(activity,"MP4 export complete",form,close);
     }
     /** Actual game Activity override forwards only our SAF result here. */
     public static boolean handleActivityResult(final Activity activity,int requestCode,int resultCode,Intent data) {
@@ -504,6 +491,12 @@ public final class AndroidMVExport {
         String text=error.getMessage(); return text==null||text.length()==0?error.getClass().getSimpleName():text;
     }
     private static void showError(Activity activity,String reason) {
-        if (usable(activity)) new AlertDialog.Builder(activity).setTitle("MP4 export").setMessage(reason==null?"The export could not be completed.":reason).setPositiveButton("OK",null).show();
+        if (!usable(activity)) return;
+        LinearLayout form=new LinearLayout(activity); form.setOrientation(LinearLayout.VERTICAL);
+        label(form,reason==null?"The export could not be completed.":reason);
+        final View[] error=new View[1]; final Runnable close=new Runnable() { public void run() { FovMod.dismissGamePanel(error[0]); } };
+        Button ok=new Button(activity); ok.setText("OK"); form.addView(ok);
+        ok.setOnClickListener(new View.OnClickListener() { public void onClick(View view) { close.run(); } });
+        error[0]=FovMod.showGamePanel(activity,"MP4 export",form,close);
     }
 }
