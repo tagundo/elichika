@@ -688,7 +688,7 @@ bool restore_particle_culling() {
 bool warmup_springs() {
     if (!clock_manager || (simulation_hz!=60 && simulation_hz!=120) ||
         !spring_owners_valid() || !complete_jobs()) return false;
-    // Settle one second of the original spring path against the already
+    // Settle three seconds of the original spring path against the already
     // evaluated first pose. No PlayerLoop, graph seek, or music/particle tick
     // runs here; only spring transforms and their native buffers may advance.
     const double dt=1.0/simulation_hz;
@@ -702,7 +702,7 @@ bool warmup_springs() {
     put<double>(clock_manager,0x68,load<double>(clock_manager,0x60)-dt);
     put<double>(clock_manager,0x98,load<double>(clock_manager,0x90)-dt);
     bool ok=true;
-    for (uint32_t step=0;step<simulation_hz && ok;step++) {
+    for (uint32_t step=0;step<simulation_hz*3u && ok;step++) {
         ok=original_call(MEMBER,members);
         // Drain even when an invocation fails after scheduling some jobs.
         if (!complete_jobs()) ok=false;

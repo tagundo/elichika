@@ -241,10 +241,9 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
         uint8_t *destination=(uint8_t *)CVPixelBufferGetBaseAddress(pixel);
         const uint8_t *source=(const uint8_t *)data.bytes;
         size_t destinationStride=CVPixelBufferGetBytesPerRow(pixel);
+        // The BGRA contract already supplies the final opaque composite.
         for (NSUInteger y=0;y<_configuration.height;y++) {
             memcpy(destination+y*destinationStride,source+y*rowBytes,packed);
-            // MP4 has no alpha. Capture supplies the final opaque composite.
-            for (NSUInteger x=3;x<packed;x+=4) destination[y*destinationStride+x]=255;
         }
         CVBufferSetAttachment(pixel,kCVImageBufferColorPrimariesKey,kCVImageBufferColorPrimaries_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
         CVBufferSetAttachment(pixel,kCVImageBufferTransferFunctionKey,kCVImageBufferTransferFunction_sRGB,kCVAttachmentMode_ShouldPropagate);

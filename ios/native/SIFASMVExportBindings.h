@@ -13,7 +13,8 @@ typedef struct {
      * captureIndex=-1 requests an intermediate physics frame. Tick zero is
      * the initial image, before the first positive simulation delta. */
     bool (*nextStep)(void *context, uint64_t *simulationTick, int64_t *captureIndex);
-    /* Owns a single immutable top-to-bottom BGRA8 copy. The caller must stop
+    /* Owns one top-to-bottom opaque BGRA8 frame, immutable until acceptance.
+     * Storage may be reused after the encoder has copied and accepted it. The caller must stop
      * granting steps until its bounded encoder queue accepts this frame. */
     void (*frame)(void *context, NSData *pixels, NSUInteger rowBytes, int64_t captureIndex);
     void (*failed)(void *context, NSString *message);

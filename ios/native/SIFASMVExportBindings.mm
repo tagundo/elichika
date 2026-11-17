@@ -10,6 +10,7 @@
 #include <cstdarg>
 #include <initializer_list>
 #include <atomic>
+#include "MVPixelConvert.hpp"
 #include "../../ci/sifas_mv_export/android/android_mv_audio_provider.h"
 #include "../../ci/sifas_mv_export/android/mv_capture_camera.h"
 #include "../../ci/sifas_mv_export/android/mv_particle_culling.h"
@@ -90,6 +91,7 @@ Bone *bones; Manager *managers; uint32_t manager_count,bone_count;
 int32_t saved_job_index,saved_safety;
 uint8_t saved_knees[24];
 uint8_t *pixels;
+NSMutableData *capture_image;
 uint64_t tick,accepted_frames,audio_index,pending_frame;
 uint32_t simulation_hz;
 bool capture_after_overlay;
@@ -217,7 +219,7 @@ void free_snapshot() {
     for(uint32_t i=0;i<manager_count;i++)if(managers){release(&managers[i].object_root);release(&managers[i].array_root);}
     release(&managers_array_root);managers_array=nullptr;
     free(bones); free(managers); free(bone_bytes); free(collider_bytes); free(pixels);
-    bones=nullptr; managers=nullptr; bone_bytes=collider_bytes=nullptr; pixels=nullptr;
+    bones=nullptr; managers=nullptr; bone_bytes=collider_bytes=nullptr; pixels=nullptr;capture_image=nil;
     bone_count=manager_count=0;
 }
 bool snapshot_springs() {
@@ -422,7 +424,7 @@ bool restore_particle_culling() {
 bool warmup_springs() {
     if (!clock_manager || (simulation_hz!=60 && simulation_hz!=120) ||
         !spring_owners_valid() || !complete_jobs()) return false;
-    // Settle one second of the original spring path against the already
+    // Settle three seconds of the original spring path against the already
     // evaluated first pose. No PlayerLoop, graph seek, or music/particle tick
     // runs here; only spring transforms and their native buffers may advance.
     const double dt=1.0/simulation_hz;
@@ -436,7 +438,7 @@ bool warmup_springs() {
     put<double>(clock_manager,0x68,load<double>(clock_manager,0x60)-dt);
     put<double>(clock_manager,0x98,load<double>(clock_manager,0x90)-dt);
     bool ok=true;
-    for (uint32_t step=0;step<simulation_hz && ok;step++) {
+    for (uint32_t step=0;step<simulation_hz*3u && ok;step++) {
         ok=original_call(MEMBER,members);
         // Drain even when an invocation fails after scheduling some jobs.
         if (!complete_jobs()) ok=false;
@@ -1032,13 +1034,16 @@ void capture_frame(void *target) {
     if(!read||!restored||!value(m.image_size,texture,&bytes)||!value(m.image_pointer,texture,&pointer,mip)||
         !pointer||bytes!=(int64_t)config.width*config.height*4){fail("Unity returned an unexpected MV readback layout");return;}
     const size_t row_bytes=static_cast<size_t>(config.width)*4;
-    NSMutableData *image=[NSMutableData dataWithLength:static_cast<NSUInteger>(bytes)];
-    if(!image){fail("Not enough memory for the complete export frame");return;}
-    auto *bgra=static_cast<uint8_t *>(image.mutableBytes);
-    for(uint32_t y=0;y<config.height;y++) {
-        const auto *rgba=reinterpret_cast<const uint8_t *>(pointer)+(config.height-1-y)*row_bytes;
-        auto *row=bgra+y*row_bytes;
-        for(uint32_t x=0;x<config.width;x++){row[x*4]=rgba[x*4+2];row[x*4+1]=rgba[x*4+1];row[x*4+2]=rgba[x*4];row[x*4+3]=255;}
+    // Exactly one pending frame is permitted by the grant/accepted clock.
+    // Reuse storage only after the prior encoder append has copied its bytes
+    // into its own retained IOSurface; Retry never grants the next capture.
+    NSMutableData *image=capture_image;
+    if(!image||image.length!=static_cast<NSUInteger>(bytes)){
+        image=[[NSMutableData alloc] initWithLength:static_cast<NSUInteger>(bytes)];capture_image=image;
+    }
+    if(!image||!elichika::rgbaToOpaqueBGRA(reinterpret_cast<const uint8_t *>(pointer),static_cast<size_t>(bytes),
+            config.width,config.height,static_cast<uint8_t *>(image.mutableBytes),image.length,row_bytes)){
+        fail("The complete MV frame could not be converted to the original opaque BGRA layout");return;
     }
     awaiting_capture=false;frame_ready=false;
     sink.frame(sink.context,image,row_bytes,static_cast<int64_t>(pending_frame));

@@ -12,6 +12,7 @@
 #import "ElichikaHost.h"
 #endif
 #include "MVExportClock.hpp"
+#include "MVWorkerHandoff.hpp"
 #include <atomic>
 #include <cmath>
 #include <memory>
@@ -97,6 +98,7 @@ static NSString *ELMVPhase(NSString *phase) {
 - (void)cancelWithReason:(NSString *)reason;
 - (BOOL)grant:(ELMVExportRun *)run tick:(uint64_t *)tick capture:(int64_t *)capture;
 - (void)frame:(NSData *)pixels rowBytes:(NSUInteger)rowBytes index:(int64_t)index run:(ELMVExportRun *)run;
+- (void)acceptedFrameIndex:(int64_t)index run:(ELMVExportRun *)run;
 - (void)fail:(NSString *)message run:(ELMVExportRun *)run;
 - (void)pump:(ELMVExportRun *)run;
 - (void)schedulePump:(ELMVExportRun *)run;
@@ -405,22 +407,59 @@ static NSString *ELMVReadiness(void) {
     *tick=next; *capture=index; run->lastProgress=CFAbsoluteTimeGetCurrent(); return YES;
 }
 - (void)frame:(NSData *)pixels rowBytes:(NSUInteger)rowBytes index:(int64_t)index run:(ELMVExportRun *)run {
+    NSAssert(NSThread.isMainThread,@"MV frames belong to main");
     if (_run!=run || run->stopped.load() || run->cleaning) return;
     if (!run->clock->received(run->generation,index) || rowBytes<run->configuration.width*4 ||
         run->configuration.height>NSUIntegerMax/rowBytes || pixels.length<rowBytes*run->configuration.height) {
         [self fail:ELMVText(@"The final Unity overlay delivered an invalid or repeated BGRA frame.",@"Unity 최종 합성 화면의 BGRA 프레임이 올바르지 않거나 중복되었습니다.",@"Unityの最終合成映像で無効または重複したBGRAフレームを受信しました。") run:run]; return;
     }
-    dispatch_async(_worker, ^{
-        if (run->stopped.load()) return;
-        if (run->pendingFrame) { dispatch_async(dispatch_get_main_queue(), ^{ [self fail:ELMVText(@"The renderer exceeded its one-frame export queue.",@"렌더러가 내보내기 대기열의 한 프레임 제한을 초과했습니다.",@"レンダラーが書き出し待ちの1フレーム制限を超えました。") run:run]; }); return; }
-        run->pendingFrame=pixels; run->pendingRowBytes=rowBytes; run->pendingFrameIndex=index;
-        [self pump:run];
+    // Try one append on the encoder's serial owner, without waiting for writer
+    // readiness. dispatch_sync can execute on its caller, so an async handoff
+    // guarantees a non-main append. Wait only for that attempt, then acknowledge
+    // a ready writer before this Unity boundary grants its next tick. Worker
+    // never synchronously calls main; audio/finalization stay in the async pump.
+    __block ELMVAppendResult result=ELMVAppendRetry;
+    __block NSString *failure=nil;
+    elichika::MVWorkerHandoff(_worker, ^{
+        @autoreleasepool {
+            if (!run->stopped.load()) {
+                if (run->pendingFrame) {
+                    failure=ELMVText(@"The renderer exceeded its one-frame export queue.",@"렌더러가 내보내기 대기열의 한 프레임 제한을 초과했습니다.",@"レンダラーが書き出し待ちの1フレーム制限を超えました。");
+                    result=ELMVAppendFailed;
+                } else {
+                    ELMVEncoder *writer=run->encoder;
+                    if (!writer || run->finishing) {
+                        failure=ELMVText(@"Video input failed.",@"영상 입력에 실패했습니다.",@"映像入力に失敗しました。");
+                        result=ELMVAppendFailed;
+                    } else {
+                        result=[writer appendBGRA:pixels rowBytes:rowBytes frameIndex:index];
+                        if (result==ELMVAppendAccepted) {
+                            run->videoCount=writer.acceptedVideoFrames; run->lastProgress=CFAbsoluteTimeGetCurrent();
+                        } else if (result==ELMVAppendRetry) {
+                            run->pendingFrame=pixels; run->pendingRowBytes=rowBytes; run->pendingFrameIndex=index;
+                        } else {
+                            failure=writer.failure.localizedDescription ?: ELMVText(@"Video input failed.",@"영상 입력에 실패했습니다.",@"映像入力に失敗しました。");
+                        }
+                        if (result!=ELMVAppendFailed) [self schedulePump:run];
+                    }
+                }
+            }
+        }
     });
+    if (_run!=run || run->stopped.load()) return;
+    if (result==ELMVAppendFailed) { [self fail:failure run:run]; return; }
+    if (result==ELMVAppendAccepted) [self acceptedFrameIndex:index run:run];
+}
+- (void)acceptedFrameIndex:(int64_t)index run:(ELMVExportRun *)run {
+    if (_run!=run || run->stopped.load()) return;
+    if (!run->clock->accepted(run->generation,index)) { [self fail:ELMVText(@"The video encoder acknowledged a discontinuous frame index.",@"영상 인코더의 프레임 순서가 연속되지 않습니다.",@"映像エンコーダーのフレーム番号が連続していません。") run:run]; return; }
+    if (run->clock->complete()) run->phase=@"finishing-audio";
 }
 - (void)schedulePump:(ELMVExportRun *)run {
     if (run->stopped.load() || run->finishing || run->pumpScheduled) return;
     run->pumpScheduled=YES;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_MSEC),_worker, ^{
+    const int64_t retryMilliseconds=(run->pendingFrame || run->pendingPCM) ? 1 : 10;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,retryMilliseconds*NSEC_PER_MSEC),_worker, ^{
         run->pumpScheduled=NO; [self pump:run];
     });
 }
@@ -474,9 +513,7 @@ static NSString *ELMVReadiness(void) {
             if (result==ELMVAppendAccepted) {
                 run->pendingFrame=nil; run->pendingFrameIndex=-1; run->videoCount=writer.acceptedVideoFrames; run->lastProgress=CFAbsoluteTimeGetCurrent();
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (_run!=run || run->stopped.load()) return;
-                    if (!run->clock->accepted(run->generation,index)) { [self fail:ELMVText(@"The video encoder acknowledged a discontinuous frame index.",@"영상 인코더의 프레임 순서가 연속되지 않습니다.",@"映像エンコーダーのフレーム番号が連続していません。") run:run]; return; }
-                    if (run->clock->complete()) run->phase=@"finishing-audio";
+                    [self acceptedFrameIndex:index run:run];
                 });
             }
         }

@@ -570,6 +570,14 @@ jobs:
       - name: Check deferred particle destruction before frame zero
         run: python3 -B ci/sifas_mv_export/android/test_mv_particle_owner_lifecycle.py
 
+      - name: Check exact export pixels and native worker frame order
+        run: |
+          set -euo pipefail
+          xcrun clang++ -std=c++11 -O2 -Wall -Wextra -Werror -pedantic ios/ci/test_mv_pixel_convert.cpp -o "$RUNNER_TEMP/mv-pixel-convert-test"
+          "$RUNNER_TEMP/mv-pixel-convert-test"
+          xcrun clang++ -std=c++17 -fobjc-arc -fblocks -I ios/native ios/ci/test_mv_worker_handoff.mm -framework Foundation -o "$RUNNER_TEMP/mv-worker-handoff-test"
+          "$RUNNER_TEMP/mv-worker-handoff-test"
+
       - name: Check JobHandle ABI against the exact original game
         env:
           SIFAS_MV_SOURCE_IPA: ${{ runner.temp }}/standalone-game.ipa
