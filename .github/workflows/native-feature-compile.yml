@@ -13,6 +13,12 @@ on:
         required: false
         default: ''
 
+      skip_menu_probe:
+        description: Skip optional Simulator UI probe when its environment is unavailable
+        type: boolean
+        required: false
+        default: false
+
 permissions:
   contents: read
   actions: read
@@ -544,6 +550,7 @@ jobs:
             --report "$RUNNER_TEMP/standalone-evidence/input-provenance.json"
 
       - name: Exercise the actual MP4 menu after UIKit alert dismissal
+        if: ${{ !inputs.skip_menu_probe }}
         run: |
           set -euo pipefail
           python3 -B ios/native/tests/run_mv_menu_probe.py --out "$RUNNER_TEMP/standalone-evidence/menu-probe"
