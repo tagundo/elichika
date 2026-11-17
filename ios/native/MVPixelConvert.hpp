@@ -15,8 +15,9 @@ inline bool rgbaToOpaqueBGRA(const uint8_t *source,size_t sourceBytes,
                              uint8_t *destination,size_t destinationBytes,
                              size_t destinationStride) {
     const size_t maximum=std::numeric_limits<size_t>::max();
-    if(!source||!destination||!width||!height||width>maximum/4)return false;
+    if(!source||!destination||!width||!height)return false;
     const size_t packed=size_t(width)*4;
+    if(packed/4!=size_t(width))return false;
     if(packed>maximum/height||destinationStride<packed||destinationStride>maximum/height||
        sourceBytes<packed*height||destinationBytes<destinationStride*height)return false;
     const uintptr_t a=reinterpret_cast<uintptr_t>(source),b=reinterpret_cast<uintptr_t>(destination);
