@@ -10,6 +10,8 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -245,6 +247,21 @@ public final class AndroidMVExport {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); value.setAdapter(adapter); return value;
     }
     private static void label(LinearLayout parent,String text) { TextView view=new TextView(parent.getContext()); view.setText(text); parent.addView(view); }
+    private static int pixelDimension(String text) {
+        int value=Integer.parseInt(text.trim());
+        if (value<16||value>32768||(value&1)!=0) throw new IllegalArgumentException("Use even pixels from 16 to 32768.");
+        return value;
+    }
+    private static int[] dimensions(EditText width,EditText height) {
+        final int w,h;
+        try { w=pixelDimension(width.getText().toString()); }
+        catch (IllegalArgumentException error) { width.setError("Use even pixels from 16 to 32768."); throw error; }
+        try { h=pixelDimension(height.getText().toString()); }
+        catch (IllegalArgumentException error) { height.setError("Use even pixels from 16 to 32768."); throw error; }
+        MVExportContract.i420Bytes(w,h);
+        if ((long)w*h>Integer.MAX_VALUE/4) { width.setError("Dimensions exceed the RGBA buffer integer range."); throw new IllegalArgumentException("RGBA buffer integer range exceeded"); }
+        return new int[]{w,h};
+    }
     private static boolean ready(JSONObject song) {
         Object value=song.opt("ready"); return Boolean.TRUE.equals(value) || value instanceof Number && ((Number)value).intValue()==1;
     }
@@ -256,30 +273,47 @@ public final class AndroidMVExport {
         long duration=song.optLong("music_length_ms",0)/1000;
         label(form,"Export the complete loaded MV with audio. The MV restarts from the beginning.");
         if (duration>0) label(form,String.format(Locale.US,"Duration: %d:%02d",duration/60,duration%60));
-        label(form,"Resolution"); final Spinner resolution=spinner(activity,new String[]{"720p · 1280 × 720","1080p · 1920 × 1080","4K · 3840 × 2160"}); form.addView(resolution);
+        final SharedPreferences preferences=activity.getSharedPreferences("mv_export",Context.MODE_PRIVATE);
+        int legacyResolution=Math.max(0,Math.min(WIDTHS.length-1,preferences.getInt("resolution",0)));
+        label(form,"Width (pixels; even)"); final EditText widthPixels=new EditText(activity);
+        widthPixels.setInputType(InputType.TYPE_CLASS_NUMBER); widthPixels.setSingleLine(true);
+        widthPixels.setText(Integer.toString(preferences.getInt("width",WIDTHS[legacyResolution]))); form.addView(widthPixels);
+        label(form,"Height (pixels; even)"); final EditText heightPixels=new EditText(activity);
+        heightPixels.setInputType(InputType.TYPE_CLASS_NUMBER); heightPixels.setSingleLine(true);
+        heightPixels.setText(Integer.toString(preferences.getInt("height",HEIGHTS[legacyResolution]))); form.addView(heightPixels);
         label(form,"Frame rate"); final Spinner rate=spinner(activity,new String[]{"30 FPS","60 FPS","120 FPS"}); form.addView(rate);
         label(form,"Video codec"); final Spinner codec=spinner(activity,new String[]{"H.264 · broad compatibility","HEVC · device support required"}); form.addView(codec);
         label(form,"Offline export may encode slower than the selected FPS. Device reports are advisory; actual encoder startup decides. MV graphics quality uses the current game settings.");
-        final SharedPreferences preferences=activity.getSharedPreferences("mv_export",Context.MODE_PRIVATE);
-        resolution.setSelection(Math.max(0,Math.min(WIDTHS.length-1,preferences.getInt("resolution",0))));
         rate.setSelection(Math.max(0,Math.min(RATES.length-1,preferences.getInt("rate",0))));
         codec.setSelection(Math.max(0,Math.min(1,preferences.getInt("codec",0))));
         final TextView advisory=new TextView(activity); form.addView(advisory);
         final Runnable updateAdvisory=new Runnable() { public void run() {
-            advisory.setText(AndroidMVEncoder.videoEncoderAdvisory(codec.getSelectedItemPosition()==0?AndroidMVEncoder.AVC:AndroidMVEncoder.HEVC,
-                    WIDTHS[resolution.getSelectedItemPosition()],HEIGHTS[resolution.getSelectedItemPosition()]));
+            try {
+                int width=pixelDimension(widthPixels.getText().toString()),height=pixelDimension(heightPixels.getText().toString());
+                MVExportContract.i420Bytes(width,height);
+                advisory.setText(AndroidMVEncoder.videoEncoderAdvisory(codec.getSelectedItemPosition()==0?AndroidMVEncoder.AVC:AndroidMVEncoder.HEVC,width,height));
+            } catch (IllegalArgumentException error) { advisory.setText("Width and height must each be even pixel counts from 16 to 32768. Any aspect ratio is allowed."); }
         } };
         AdapterView.OnItemSelectedListener selection=new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> parent,View view,int position,long id) { updateAdvisory.run(); }
             public void onNothingSelected(AdapterView<?> parent) {}
         };
-        resolution.setOnItemSelectedListener(selection); codec.setOnItemSelectedListener(selection); updateAdvisory.run();
+        codec.setOnItemSelectedListener(selection);
+        TextWatcher sizeChanged=new TextWatcher() {
+            public void beforeTextChanged(CharSequence text,int start,int count,int after) {}
+            public void onTextChanged(CharSequence text,int start,int before,int count) { updateAdvisory.run(); }
+            public void afterTextChanged(Editable text) {}
+        };
+        widthPixels.addTextChangedListener(sizeChanged); heightPixels.addTextChangedListener(sizeChanged); updateAdvisory.run();
         label(form,"Video bitrate (Mbps)"); final EditText bitrate=new EditText(activity);
         bitrate.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL); bitrate.setSingleLine(true); bitrate.setText(preferences.getString("bitrate_mbps","5")); form.addView(bitrate);
         Button recommendation=new Button(activity); recommendation.setText("Use recommended bitrate"); form.addView(recommendation);
         recommendation.setOnClickListener(new View.OnClickListener() { public void onClick(View ignored) {
-            String[][] recommended={{"5","7.5","15"},{"8","12","24"},{"35","53","100"}};
-            bitrate.setText(recommended[resolution.getSelectedItemPosition()][rate.getSelectedItemPosition()]);
+            try {
+                int[] size=dimensions(widthPixels,heightPixels);
+                double mbps=(double)size[0]*size[1]*RATES[rate.getSelectedItemPosition()]*(codec.getSelectedItemPosition()==0?0.14:0.09)/1000000.0;
+                bitrate.setText(String.format(Locale.US,"%.2f",Math.min(Integer.MAX_VALUE/1000000.0,Math.max(0.25,mbps))));
+            } catch (IllegalArgumentException error) { return; }
         } });
         final File previous=findCompleted(activity);
         if (previous!=null) { Button save=new Button(activity); save.setText("Save previous MP4"); form.addView(save);
@@ -292,7 +326,9 @@ public final class AndroidMVExport {
         } });
         dialog.setOnShowListener(new android.content.DialogInterface.OnShowListener() { public void onShow(android.content.DialogInterface ignored) {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() { public void onClick(View view) {
-                final int width=WIDTHS[resolution.getSelectedItemPosition()],height=HEIGHTS[resolution.getSelectedItemPosition()];
+                final int width,height;
+                try { int[] size=dimensions(widthPixels,heightPixels); width=size[0]; height=size[1]; }
+                catch (IllegalArgumentException error) { return; }
                 final int fps=RATES[rate.getSelectedItemPosition()]; final String mime=codec.getSelectedItemPosition()==0?AndroidMVEncoder.AVC:AndroidMVEncoder.HEVC;
                 final int bits;
                 try {
@@ -301,7 +337,7 @@ public final class AndroidMVExport {
                     if (Double.isNaN(mbps)||Double.isInfinite(mbps)||mbps<=0||rounded<1||rounded>Integer.MAX_VALUE) throw new IllegalArgumentException();
                     bits=(int)rounded;
                 } catch (Throwable error) { bitrate.setError("Enter a positive bitrate up to 2147.483647 Mbps (whole bits/sec)."); return; }
-                preferences.edit().putInt("resolution",resolution.getSelectedItemPosition()).putInt("rate",rate.getSelectedItemPosition())
+                preferences.edit().putInt("width",width).putInt("height",height).putInt("rate",rate.getSelectedItemPosition())
                     .putInt("codec",codec.getSelectedItemPosition()).putString("bitrate_mbps",bitrate.getText().toString().trim()).apply();
                 dialog.dismiss(); MAIN.postDelayed(new Runnable() { public void run() { start(activity,width,height,fps,mime,bits); } },150);
             } });

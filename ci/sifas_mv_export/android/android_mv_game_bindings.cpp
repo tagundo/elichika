@@ -846,7 +846,8 @@ bool submit() {
 extern "C" int amv_game_request_begin(JNIEnv *env,jobject object,const AmvGameConfig *cfg,const AmvGameCallbacks *callbacks,jthrowable *error) {
     if(error)*error=nullptr;
     if(!env||!object||!cfg||!callbacks||!callbacks->pcm||!callbacks->failed||!callbacks->finished ||
-        (cfg->fps!=30&&cfg->fps!=60&&cfg->fps!=120)||cfg->width<16||cfg->height<16||cfg->width>3840||cfg->height>2160 ||
+        (cfg->fps!=30&&cfg->fps!=60&&cfg->fps!=120)||cfg->width<16||cfg->height<16||
+        (uint64_t)cfg->width*cfg->height>(uint64_t)INT32_MAX/4 ||
         (cfg->width&1)||(cfg->height&1)||cfg->channels<1||cfg->channels>2||cfg->sample_rate<8000||cfg->sample_rate>96000 ||
         !cfg->video_frames||!cfg->audio_frames||cfg->video_frames>INT64_MAX||cfg->audio_frames>INT64_MAX)return -1;
     pthread_mutex_lock(&guard);
@@ -900,7 +901,9 @@ extern "C" void amv_game_time_update(void *manager) {
     using Dimension=int32_t(*)(const void*);
     int32_t actual_width=((Dimension)original.entry[WIDTH])(nullptr),actual_height=((Dimension)original.entry[HEIGHT])(nullptr);
     if(actual_width!=(int32_t)config.width||actual_height!=(int32_t)config.height){freeze();
-        if(resolution_ready||now()-wall_start>15)fail("Unity did not allocate the requested real render resolution");return;}
+        if(resolution_ready||now()-wall_start>15){char message[256];
+            snprintf(message,sizeof(message),"Unity could not allocate the requested %u x %u render size; actual size is %d x %d. Try a size supported in the current device orientation",config.width,config.height,actual_width,actual_height);
+            fail(message);}return;}
     resolution_ready=true;
     if(pending_pixels&&!submit()){if(active){freeze();if(now()>capture_deadline)fail("MV encoder backpressure exceeded its deadline");}return;}
     if(finishing) {
