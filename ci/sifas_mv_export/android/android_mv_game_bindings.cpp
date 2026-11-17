@@ -71,6 +71,7 @@ struct Methods {
     Method overlay_camera,behaviour_enabled,behaviour_set_enabled,overlay_paused,camera_target,camera_set_target,camera_width,camera_height;
     Method camera_update,camera_resume,core_camera,cutin_camera,quality_get,quality_set,quality_post_effect,rt_created;
     Method command_clear,command_blit,command_target,target_identifier,builtin_identifier,camera_commands,camera_clear_get,camera_clear_set;
+    Method camera_render;
     Method resume_broadcast,resume_dispatch,pause_broadcast,pause_dispatch,pause_se_voices;
     Method dm_pause_get,dm_pause_set,dm_wait_get,dm_wait_set;
     Method state_instance,live_state;
@@ -125,7 +126,7 @@ uint32_t simulation_hz;
 bool capture_after_overlay;
 char setup_failure[256];
 bool pending_pixels,frame_ready;
-struct CameraSnapshot {void *camera;uint32_t handle;uint8_t enabled,render_enabled;};
+struct CameraSnapshot {void *camera;uint32_t handle;uint8_t enabled,render_enabled;bool stage_source;};
 void *pause_mediator,*pause_bus,*resume_bus;uint32_t pause_mediator_root,pause_bus_root,resume_bus_root;
 int32_t saved_pause_state;uint8_t saved_dm_pause,saved_tutorial_wait;bool common_resume_sent;
 void *pause_state_owner,*pause_live_state;uint32_t pause_state_owner_root,pause_live_state_root;
@@ -331,6 +332,7 @@ bool init_runtime() {
     M(camera_commands,klass("UnityEngine","Camera"),"GetCommandBuffers",false,"UnityEngine.Rendering.CommandBuffer[]",1,event_arg);
     M(camera_clear_get,klass("UnityEngine","Camera"),"get_clearFlags",false,"UnityEngine.CameraClearFlags",0,nullptr);
     M(camera_clear_set,klass("UnityEngine","Camera"),"set_clearFlags",false,"System.Void",1,clear_arg);
+    M(camera_render,klass("UnityEngine","Camera"),"Render",false,"System.Void",0,nullptr);
     M(resume_broadcast,klass("KLab.MessageBuses","DeferredMessageBus"),"Broadcast",false,"System.Void",0,nullptr);
     M(resume_dispatch,klass("KLab.MessageBuses","DeferredMessageBus"),"Dispatch",false,"System.Void",0,nullptr);
     M(pause_se_voices,mu,"PauseSEAndVoices",false,"System.Void",0,nullptr);
@@ -844,11 +846,12 @@ bool restore_pause_state() {
        load<int32_t>(pause_mediator,f.mediator_state.offset)==saved_pause_state;
     return restore_pause_flags()&&restored;
 }
-bool remember_camera(void *camera) {
+bool remember_camera(void *camera,bool stage_source=false) {
     if(!alive(camera))return false;
-    for(uint32_t i=0;i<render_camera_count;i++)if(render_cameras[i].camera==camera)return true;
+    for(uint32_t i=0;i<render_camera_count;i++)if(render_cameras[i].camera==camera){
+        render_cameras[i].stage_source=render_cameras[i].stage_source||stage_source;return true;}
     if(render_camera_count>=sizeof(render_cameras)/sizeof(render_cameras[0]))return false;
-    CameraSnapshot &item=render_cameras[render_camera_count++];item={};item.camera=camera;item.handle=root(camera);
+    CameraSnapshot &item=render_cameras[render_camera_count++];item={};item.camera=camera;item.handle=root(camera);item.stage_source=stage_source;
     return item.handle&&value(m.behaviour_enabled,camera,&item.enabled);
 }
 bool suspend_rendering(bool suspend) {
@@ -892,9 +895,9 @@ bool snapshot_render_state() {
     saved_manager_height=load<int32_t>(camera_manager,f.camera_current_height.offset);
     void *list=load<void *>(camera_manager,f.camera_list.offset);uint32_t count=length(list,128);
     if(count==UINT32_MAX)return setup_rejected("MV camera list exceeds the verified camera snapshot bounds");
-    for(uint32_t i=0;i<count;i++)if(!remember_camera(reference(m.core_camera,element(list,i))))return setup_rejected("Could not snapshot MV camera %u",i);
+    for(uint32_t i=0;i<count;i++)if(!remember_camera(reference(m.core_camera,element(list,i)),true))return setup_rejected("Could not snapshot MV camera %u",i);
     void *cutin=load<void *>(camera_manager,f.camera_cutin.offset);
-    if(alive(cutin)&&!remember_camera(reference(m.cutin_camera,cutin)))return setup_rejected("Could not snapshot the MV cut-in camera");
+    if(alive(cutin)&&!remember_camera(reference(m.cutin_camera,cutin),true))return setup_rejected("Could not snapshot the MV cut-in camera");
     const Field *overlays[]={&f.camera_overlay,&f.camera_cutin_overlay};
     for(const Field *field:overlays){void *item=load<void *>(camera_manager,field->offset);
         if(alive(item)&&!remember_camera(reference(m.overlay_camera,item)))return setup_rejected("Could not snapshot an MV overlay camera");}
@@ -983,6 +986,12 @@ bool create_render_targets() {
     void *target[]={rt};if(!invoke_void(m.camera_set_target,overlay_camera,target))return setup_rejected("Could not attach the independent final MV RenderTexture");
     int32_t do_not_clear=4;void *clear_args[]={&do_not_clear};
     if(!invoke_void(m.camera_clear_set,overlay_camera,clear_args))return setup_rejected("Could not preserve the composed MV pixels for its final overlay camera");
+    // A targetTexture camera can run in Unity's offscreen-camera phase before
+    // the base cameras' final copies. Compose this original stage-overlay
+    // camera explicitly after the completed base frame, exactly once.
+    uint8_t disabled=0;void *disable_args[]={&disabled};
+    if(!invoke_void(m.behaviour_set_enabled,overlay_camera,disable_args))
+        return setup_rejected("Could not reserve the original stage-overlay camera for final composition");
     uint8_t effect=0;if(!value(m.behaviour_enabled,session_overlay,&effect))return setup_rejected("Could not read the original MV compositor after target construction");
     capture_after_overlay=effect!=0;resolution_ready=true;return true;
 }
@@ -1133,6 +1142,11 @@ void capture_frame(void *target) {
             "MV playback frame time mismatch: rendered %.6f s, requested %.6f s (frame %llu); frame was not encoded",
             actual_time,expected_time,(unsigned long long)pending_frame);fail(reason);return;
     }
+    // This callback runs at the next native frame boundary, after all core
+    // post-FX/final-copy commands. Render the existing overlay camera now,
+    // outside every camera callback, so stage layer 20 cannot be overwritten.
+    if(!invoke_void(m.camera_render,overlay_camera)){
+        fail("The original stage-overlay camera failed during final MV composition");return;}
     amv_render_report_sample();
     Result old=invoke(m.rt_active_get,nullptr);void *previous=old.value;
     void *select[]={target};bool selected=old.ok&&invoke_void(m.rt_active_set,nullptr,select);
@@ -1323,8 +1337,6 @@ extern "C" void amv_game_overlay_render(void *self,void *source,void *destinatio
     if(!active){fallback(self,source,destination,mi);return;}
     void *args[]={source,destination};
     if(!original_call(OVERLAY,self,args)){fail("MV overlay effect failed");return;}
-    if(self==session_overlay&&capture_after_overlay&&awaiting_capture&&!pending_pixels)
-        frame_ready=true;
 }
 extern "C" void amv_game_camera_post_render(void *camera,const void *mi) {
     using Fn=void(*)(void*,const void*);Fn fallback=(Fn)original.entry[POST];if(!fallback)return;
@@ -1341,8 +1353,12 @@ extern "C" void amv_game_camera_post_render(void *camera,const void *mi) {
     }
     void *args[]={camera};
     if(!original_call(POST,nullptr,args)){fail("Original camera post-render delegate failed");return;}
-    if(camera!=overlay_camera||capture_after_overlay||!awaiting_capture||pending_pixels)return;
-    frame_ready=true;
+    if(!awaiting_capture||pending_pixels)return;
+    // Any owned core/cut-in callback acknowledges this Unity render frame.
+    // Readback waits for the next boundary, after ALL cameras have finished;
+    // the disabled overlay is composed once there, not used as readiness.
+    for(uint32_t i=0;i<render_camera_count;i++)
+        if(render_cameras[i].stage_source&&render_cameras[i].camera==camera){frame_ready=true;break;}
 }
 
 namespace {
