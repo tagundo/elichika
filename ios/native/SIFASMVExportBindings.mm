@@ -613,7 +613,6 @@ bool snapshot_render_state() {
     if(!remember_camera(overlay_camera))return setup_rejected("Could not snapshot the final MV camera");
     render_state_saved=true;return true;
 }
-#include "android_mv_render_report.h"
 
 bool target_allocated(void *target) {
     int32_t width=0,height=0;uint8_t created=0;
