@@ -17,8 +17,8 @@
       "sha256": "eac1be47151d68f1b30dde0746a1795b0223ca28503fbc47e1d721713dea37b3"
     },
     "android/AndroidMVEncoder.java": {
-      "bytes": 32053,
-      "sha256": "3bce442a2e04d42c87b1f7c2c403c29777041d3d18da4da2a0a1cfd2a1d0e856"
+      "bytes": 31181,
+      "sha256": "2bc62000f188f42d6da6d2f28ce33a56620d1a8edf032e724ab0dfe5c4f4f7e5"
     },
     "android/AndroidMVEncoderDeviceTest.java": {
       "bytes": 5674,
@@ -29,12 +29,12 @@
       "sha256": "c9ea1f113d181dd5e20d231a3cd8c6c746be7b3dfd713eef3be29542ee719ae1"
     },
     "android/FovMod.java": {
-      "bytes": 21606,
-      "sha256": "abd3f8ab4375ae8ec46eb4eb60a2761f2cd569f112f808c234686f0b91a18b76"
+      "bytes": 23778,
+      "sha256": "3470c67911ca909eed5374f739e37f1844ea70a1c9ba43d594430d382b7166e1"
     },
     "android/GestureStateTest.java": {
-      "bytes": 4470,
-      "sha256": "117c96eb650a842957aecdc3b1a74b5f3e51ea83db20565f66519e8b0e3d766c"
+      "bytes": 4648,
+      "sha256": "0481d5dd2329ad34aed48306b1b486204528eafada1fb20bbf520e31a1f07fe9"
     },
     "android/MP4Gapless.java": {
       "bytes": 15304,
@@ -81,8 +81,8 @@
       "sha256": "994843ccce220e78912c76283b90d9347a4924aa67cb7550ada72e390cbf2f15"
     },
     "android/android_mv_game_bindings.cpp": {
-      "bytes": 78586,
-      "sha256": "25afaf4376238a53df350e307afda6cc342da4851a321e34801364f57f39a3b8"
+      "bytes": 95089,
+      "sha256": "2e8c73e87fef56843baaa209aa70af98a54ef1cda6013803eb7027f236361030"
     },
     "android/android_mv_game_bindings.h": {
       "bytes": 3491,

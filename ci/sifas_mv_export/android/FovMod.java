@@ -18,6 +18,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.Charset;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.WeakHashMap;
 import java.util.Locale;
 
@@ -155,7 +156,7 @@ public final class FovMod {
         return "In game, hold the top-right corner for 2 seconds to open FOV settings. Save returns to the current game.";
     }
 
-    /** Android-independent state machine; ordinary touches remain unconsumed. */
+    /** Android-independent recognition state; a corner DOWN reserves its stream. */
     static final class CornerHold {
         static final long HOLD_MS = 2000;
         private static final int IDLE = 0, TRACKING = 1, CONSUMING = 2;
@@ -182,7 +183,7 @@ public final class FovMod {
                     state = TRACKING; downX = lastX = x; downY = lastY = y;
                     startedAt = now; slop = Math.max(0, touchSlop);
                 }
-                return false;
+                return state == TRACKING;
             }
             if (state == CONSUMING) {
                 if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) cancel();
@@ -199,7 +200,7 @@ public final class FovMod {
                 double dx = x - downX, dy = y - downY;
                 if (!inCorner(x, y, width, edge) || dx * dx + dy * dy > (double)slop * slop) cancel();
             }
-            return false;
+            return state == TRACKING;
         }
         boolean onTimeout(long now, int width, float edge) {
             if (state != TRACKING) return false;
@@ -211,12 +212,12 @@ public final class FovMod {
     }
 
     private static final class GameGesture implements Runnable {
+        private static final int MAX_BUFFERED_EVENTS = 512;
         final WeakReference<Activity> activity;
         final WeakReference<View> decor;
         final CornerHold hold = new CornerHold();
-        boolean sendingCancel;
-        long downTime;
-        float lastX, lastY;
+        final ArrayList<MotionEvent> buffered = new ArrayList<MotionEvent>();
+        boolean replaying, discarding;
         GameGesture(Activity owner, View view) {
             activity = new WeakReference<Activity>(owner);
             decor = new WeakReference<View>(view);
@@ -225,31 +226,75 @@ public final class FovMod {
         void cancel() {
             View view = decor.get();
             if (view != null) view.removeCallbacks(this);
+            // No event from a reserved stream has reached Unity. Swallow its
+            // remainder after pause/destroy rather than delivering an orphan UP.
+            if (hold.tracking() || hold.consuming() || !buffered.isEmpty()) discarding = true;
             hold.cancel();
+            clearBuffer();
+        }
+        void clearBuffer() {
+            for (MotionEvent event : buffered) event.recycle();
+            buffered.clear();
+        }
+        void replay(Activity owner, MotionEvent tail) {
+            MotionEvent[] events = buffered.toArray(new MotionEvent[buffered.size()]);
+            buffered.clear(); hold.cancel();
+            View view = decor.get(); if (view != null) view.removeCallbacks(this);
+            MotionEvent last = tail != null ? tail : events[events.length - 1];
+            boolean ended = last.getActionMasked() == MotionEvent.ACTION_UP || last.getActionMasked() == MotionEvent.ACTION_CANCEL;
+            replaying = true;
+            try {
+                for (MotionEvent event : events) owner.dispatchTouchEvent(event);
+                if (tail != null) owner.dispatchTouchEvent(tail);
+            } catch (RuntimeException error) {
+                Log.e(TAG, "Buffered game touch replay failed", error);
+                MotionEvent cancelled = MotionEvent.obtain(last); cancelled.setAction(MotionEvent.ACTION_CANCEL);
+                try { owner.dispatchTouchEvent(cancelled); }
+                catch (RuntimeException ignored) {}
+                finally { cancelled.recycle(); }
+                discarding = !ended;
+            } finally {
+                replaying = false;
+                for (MotionEvent event : events) event.recycle();
+            }
         }
         boolean onTouch(MotionEvent event) {
-            if (sendingCancel) return false; // Forward our one synthetic CANCEL through the original engine chain.
+            if (replaying) return false; // Run each saved event through the original dispatch chain once.
             int action = event.getActionMasked();
-            if (action != MotionEvent.ACTION_DOWN && !hold.tracking() && !hold.consuming()) return false;
+            if (action == MotionEvent.ACTION_DOWN) {
+                cancel(); discarding = false;
+            } else if (discarding) {
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) discarding = false;
+                return true;
+            }
             if (action != MotionEvent.ACTION_DOWN && hold.consuming())
                 return hold.onEvent(action, 0, 0, 0, 0, 0, 0, 0);
+            if (action != MotionEvent.ACTION_DOWN && !hold.tracking()) return false;
             Activity owner = activity.get(); View view = decor.get();
-            if (owner == null || view == null) { cancel(); return false; }
-            lastX = event.getX(); lastY = event.getY();
+            if (owner == null || view == null) {
+                boolean reserved = hold.tracking(); cancel();
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) discarding = false;
+                return reserved;
+            }
+            float x = event.getX(), y = event.getY();
             float edge = edge(owner);
             int slop = 0;
             if (action == MotionEvent.ACTION_DOWN) {
-                cancel();
-                if (event.getPointerCount() != 1 || !CornerHold.inCorner(lastX, lastY, view.getWidth(), edge)) return false;
+                if (event.getPointerCount() != 1 || !CornerHold.inCorner(x, y, view.getWidth(), edge)) return false;
                 slop = ViewConfiguration.get(owner).getScaledTouchSlop();
             }
-            boolean consumed = hold.onEvent(action, event.getPointerCount(), lastX, lastY,
+            if (buffered.size() >= MAX_BUFFERED_EVENTS) {
+                // Release a complete ordered prefix and this event before normal
+                // passthrough resumes; never drop an UP or pointer transition.
+                replay(owner,event); return true;
+            }
+            buffered.add(MotionEvent.obtain(event));
+            hold.onEvent(action, event.getPointerCount(), x, y,
                 view.getWidth(), edge, slop, SystemClock.uptimeMillis());
             if (action == MotionEvent.ACTION_DOWN) {
-                view.removeCallbacks(this); downTime = event.getDownTime();
                 if (hold.tracking()) view.postDelayed(this, CornerHold.HOLD_MS);
-            } else if (!hold.tracking()) view.removeCallbacks(this);
-            return consumed;
+            } else if (!hold.tracking()) replay(owner,null);
+            return true;
         }
         @Override public void run() {
             Activity owner = activity.get(); View view = decor.get();
@@ -258,20 +303,12 @@ public final class FovMod {
             long now = SystemClock.uptimeMillis();
             if (!hold.onTimeout(now, view.getWidth(), edge(owner))) {
                 if (hold.tracking()) view.postDelayed(this, hold.remaining(now));
+                else if (!buffered.isEmpty()) replay(owner,null);
                 return;
             }
-            MotionEvent cancelled = MotionEvent.obtain(downTime, now, MotionEvent.ACTION_CANCEL, lastX, lastY, 0);
-            sendingCancel = true;
-            try {
-                owner.dispatchTouchEvent(cancelled);
-            } catch (RuntimeException error) {
-                Log.e(TAG, "Game touch cancellation failed; FOV menu was not opened", error);
-                hold.cancel();
-                return;
-            } finally {
-                sendingCancel = false;
-                cancelled.recycle();
-            }
+            // The reserved hold never reaches Unity, so opening the menu cannot
+            // first toggle the game's tap-to-pause control.
+            clearBuffer();
             if (owner.isFinishing() || owner.isDestroyed() || !owner.hasWindowFocus()) return;
             Intent intent = new Intent().setClassName(owner.getPackageName(),
                 "com.klab.lovelive.allstars.fovmod.FovSettingsActivity").putExtra(FROM_GAME, true);

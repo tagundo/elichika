@@ -34,7 +34,7 @@ public final class AndroidMVEncoder {
     private static final int SLOTS = 3;
     private static final int AUDIO_PACKET_FRAMES = 4096;
     private static final int MAX_PENDING_ENCODED_BYTES = 8 * 1024 * 1024;
-    private static final long STALL_NS = TimeUnit.SECONDS.toNanos(30);
+    // Offline work has no wall-time throughput deadline. Cancellation and codec errors remain terminal.
 
     public static final class Config {
         public final String mime;
@@ -315,30 +315,24 @@ public final class AndroidMVEncoder {
             else audioOutputEOS=true;
             muxer=new MediaMuxer(partial.getPath(),MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
             boolean inputEOS=false;
-            long producerDeadline=System.nanoTime()+STALL_NS;
             while (!inputEOS) {
                 checkCancelled();
                 Packet packet=queue.poll(5,TimeUnit.MILLISECONDS);
                 if (packet != null) {
                     try { feed(packet); }
                     finally { (packet.audio?audioPool:videoPool).add(packet.bytes); }
-                    producerDeadline=System.nanoTime()+STALL_NS;
                 } else {
                     synchronized (guard) { inputEOS=finishing && queue.isEmpty(); }
-                    if (!inputEOS && System.nanoTime()>producerDeadline)
-                        throw new IOException("MV frame/audio producer stalled");
                 }
                 drain(false); drain(true);
             }
             feedEOS(false);
             if(config.hasAudio())feedAudioFlush();
             if (config.hasAudio()) feedEOS(true);
-            long deadline=System.nanoTime()+STALL_NS;
             while (!videoOutputEOS || !audioOutputEOS) {
                 checkCancelled();
                 boolean progress=drain(false)|drain(true);
-                if (progress) deadline=System.nanoTime()+STALL_NS;
-                else { if (System.nanoTime()>deadline) throw new IOException("Encoder EOS stalled"); Thread.sleep(2); }
+                if (!progress) Thread.sleep(2);
             }
             if (!muxStarted || !pending.isEmpty() || outputVideoFrames != config.videoFrames)
                 throw new IOException("Encoded frame count or tracks are incomplete");
@@ -374,14 +368,12 @@ public final class AndroidMVEncoder {
     private void feed(Packet packet) throws Exception {
         MediaCodec codec=packet.audio?audioCodec:videoCodec;
         int consumed=0;
-        long deadline=System.nanoTime()+STALL_NS;
         do {
             checkCancelled();
             int index=codec.dequeueInputBuffer(0);
             if (index < 0) {
                 boolean progress=drain(false)|drain(true);
-                if (progress) deadline=System.nanoTime()+STALL_NS;
-                else { if (System.nanoTime()>deadline) throw new IOException("Encoder input stalled"); Thread.sleep(2); }
+                if (!progress) Thread.sleep(2);
                 continue;
             }
             int length;
@@ -405,13 +397,11 @@ public final class AndroidMVEncoder {
             }
             codec.queueInputBuffer(index,0,length,pts,0);
             consumed+=length;
-            deadline=System.nanoTime()+STALL_NS;
             drain(false); drain(true);
         } while (consumed<packet.count);
     }
     private void feedEOS(boolean audio) throws Exception {
         MediaCodec codec=audio?audioCodec:videoCodec;
-        long deadline=System.nanoTime()+STALL_NS;
         for (;;) {
             checkCancelled();
             int index=codec.dequeueInputBuffer(0);
@@ -422,8 +412,7 @@ public final class AndroidMVEncoder {
                 codec.queueInputBuffer(index,0,0,pts,MediaCodec.BUFFER_FLAG_END_OF_STREAM); return;
             }
             boolean progress=drain(false)|drain(true);
-            if (progress) deadline=System.nanoTime()+STALL_NS;
-            else { if (System.nanoTime()>deadline) throw new IOException("Encoder EOS input stalled"); Thread.sleep(2); }
+            if (!progress) Thread.sleep(2);
         }
     }
     private void feedAudioFlush() throws Exception {
