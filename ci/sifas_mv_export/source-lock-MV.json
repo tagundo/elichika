@@ -81,8 +81,8 @@
       "sha256": "994843ccce220e78912c76283b90d9347a4924aa67cb7550ada72e390cbf2f15"
     },
     "android/android_mv_game_bindings.cpp": {
-      "bytes": 106764,
-      "sha256": "ebcec6aec0301e586f8a5fb697c3ef9d80be4fb0c422d2c826e38c52f6b42548"
+      "bytes": 107602,
+      "sha256": "7d8074097af963d4984df36047719e4fe3916b349d9142591b5a016ac40391df"
     },
     "android/android_mv_game_bindings.h": {
       "bytes": 4614,
@@ -109,8 +109,8 @@
       "sha256": "ca2247b72dcaff77db89eb32341389161103344c4ab78b14f8ffe2604ee40d0a"
     },
     "android/android_mv_render_report.h": {
-      "bytes": 10805,
-      "sha256": "36119762ae1bd5c3ad79a38b98f210923231091262510774db1e1bca6181f9d6"
+      "bytes": 11076,
+      "sha256": "24b758ec072fc741461df3b714d7b58485740a1b311a344497c173655f1cbc1c"
     },
     "android/audit_mv_game_bindings.py": {
       "bytes": 6180,

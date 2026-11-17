@@ -507,9 +507,8 @@ bool snapshot_springs() {
     if(collider_size)memcpy(collider_bytes,saved_colliders.data,collider_size);
     return true;
 }
-// Manual export must finish evaluating the requested time before a camera
-// callback can qualify that output frame. DeferredEvaluate only enqueues work;
-// a rendered camera callback is not an acknowledgement of that queue.
+// Immediate seeking is confined to fresh-graph initialization/restoration.
+// Output frames use the original playing graph and controlled engine clock.
 bool set_time(double seconds) { void *args[]={&seconds}; return invoke_void(m.time_set,timeline,args)&&invoke_void(m.evaluate,timeline); }
 bool restart_timeline_graph() {
     // No-seek mixers keep started/completed clip indices across backward time
@@ -1085,8 +1084,11 @@ bool begin(const Request &begin_request) {
     active=true; abandoned=false; have_tick=false; accepted_frames=audio_index=0;
     advancing=awaiting_capture=finishing=pending_pixels=frame_ready=false;
     if(!resume_pause_state())return false;
-    int32_t manual=3; void *mode[]={&manual};
-    if (!invoke_void(m.mode_set,timeline,mode))return setup_rejected("Unity rejected manual MV timeline update mode");
+    // Preserve normal Unity playback evaluation for control/particle/stage
+    // effects. The owned native TimeManager supplies deterministic game time;
+    // encoder backpressure freezes that same clock instead of seeking clips.
+    int32_t game_time=1; void *mode[]={&game_time};
+    if (!invoke_void(m.mode_set,timeline,mode))return setup_rejected("Unity rejected the fixed-clock MV playback mode");
     if (!restart_timeline_graph())return setup_rejected("Could not rebuild the MV timeline and reset its original lip/light/effect clip progression");
     if (!reset_springs())return setup_rejected("The original MV spring reset/initial timeline evaluation failed");
     // Build/reroute targets only after the original baseline reset and fresh
@@ -1123,6 +1125,14 @@ void capture_frame(void *target) {
     if(target&&(!value(m.texture_width,target,&width)||!value(m.texture_height,target,&height)||
         width!=(int32_t)config.width||height!=(int32_t)config.height)){
         fail("Final MV compositor output texture does not match the requested frame size");return;}
+    double actual_time=0,expected_time=(double)pending_frame/config.fps;
+    if(!value(m.time_get,timeline,&actual_time)||!isfinite(actual_time)){
+        fail("The playing MV timeline could not report its rendered frame time");return;}
+    if(fabs(actual_time-expected_time)>0.002){
+        char reason[256];snprintf(reason,sizeof(reason),
+            "MV playback frame time mismatch: rendered %.6f s, requested %.6f s (frame %llu); frame was not encoded",
+            actual_time,expected_time,(unsigned long long)pending_frame);fail(reason);return;
+    }
     amv_render_report_sample();
     Result old=invoke(m.rt_active_get,nullptr);void *previous=old.value;
     void *select[]={target};bool selected=old.ok&&invoke_void(m.rt_active_set,nullptr,select);
@@ -1259,7 +1269,9 @@ extern "C" void amv_game_time_update(void *manager) {
     for(size_t off:{size_t(0x78),size_t(0x7c),size_t(0xa8),size_t(0xac)})put<float>(manager,off,(float)dt);
     put<int32_t>(music,f.music_time.offset,(int32_t)(tick*1000/simulation_hz));
     advancing=true;
-    if(!set_time((double)tick/simulation_hz)){fail("MV timeline evaluation did not complete before rendering");return;}
+    // Unity's original DirectorUpdate phase advances the playing graph from
+    // this clock before rendering. Do not replace it with repeated seek/
+    // Evaluate calls: those do not reproduce normal control/particle playback.
     uint64_t divisor=simulation_hz/config.fps;
     if(tick%divisor==0){pending_frame=tick/divisor;awaiting_capture=true;}
     publish();

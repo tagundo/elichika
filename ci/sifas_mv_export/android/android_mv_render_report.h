@@ -135,6 +135,9 @@ static void amv_render_report_sample() {
     else if(seconds>=30&&!(amv_report_samples&4))bit=4;
     if(!bit)return;amv_report_samples|=bit;AmvReportFailureGuard preserve;
     amv_report_add("\nOutput sample at %.6f s; tick=%llu frame=%llu\n",seconds,(unsigned long long)tick,(unsigned long long)pending_frame);
+    double timeline_time=-1;int32_t play_state=-1;
+    value(m.time_get,timeline,&timeline_time);value(m.state_get,timeline,&play_state);
+    amv_report_add("Original playback mode=GameTime; timeline=%.6f s playState=%d (native fixed clock)\n",timeline_time,play_state);
     amv_report_quality();amv_report_cameras();amv_report_shafts();
 }
 static void amv_render_report_write(const char *path,bool restored) {
