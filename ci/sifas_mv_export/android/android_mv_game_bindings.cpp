@@ -40,7 +40,7 @@ struct Engine {
     void *(*method_get_class)(const void *); void *(*runtime_invoke)(const void *,void *,void **,void **);
     char *(*type_get_name)(const void *); void (*free_memory)(void *);
     void *(*class_from_type)(const void *); const void *(*class_get_type)(void *);
-    void *(*type_get_object)(const void *); void *(*object_get_class)(void *);
+    void *(*type_get_object)(const void *); void *(*object_get_class)(void *); void *(*class_get_parent)(void *);
     unsigned char (*class_is_assignable_from)(void *,void *); void *(*object_unbox)(void *);
     void *(*object_new)(void *); uint32_t (*class_instance_size)(void *);
     int32_t (*class_value_size)(void *,uint32_t *); void *(*class_get_field_from_name)(void *,const char *);
@@ -70,6 +70,8 @@ struct Methods {
     Method overlay_camera,behaviour_enabled,behaviour_set_enabled,overlay_paused,camera_target,camera_set_target,camera_width,camera_height;
     Method camera_update,camera_resume,core_camera,cutin_camera,quality_get,quality_set,quality_post_effect,rt_created;
     Method command_clear,command_blit,target_identifier,camera_commands,camera_clear_get,camera_clear_set;
+    Method resume_broadcast,resume_dispatch,pause_broadcast,pause_dispatch,pause_se_voices;
+    Method dm_pause_get,dm_pause_set,dm_wait_get,dm_wait_set;
     Method texture_width,texture_height;
     Method cri_sheet,cri_waveform;
 } m;
@@ -82,6 +84,7 @@ struct Fields {
     Field camera_quality,camera_buffers[4],camera_list,camera_cutin,camera_current_width,camera_current_height;
     Field camera_overlay,camera_cutin_overlay,core_command_buffers,core_quality;
     Field camera_pause_step,camera_live_blur,camera_skill_pause,camera_msaa_changed,camera_buffer_write;
+    Field scene_mediator,mediator_state,mediator_pause_bus,mediator_resume_bus;
     Field cri_acb,cri_acb_path,cri_awb_path,wave_id,wave_rate,wave_channels,wave_samples,wave_streaming;
 } f;
 struct Original { uintptr_t entry[9]; } original;
@@ -119,8 +122,10 @@ uint64_t tick,accepted_frames,audio_index,pending_frame;
 uint32_t simulation_hz;
 bool capture_after_overlay;
 char setup_failure[256];
-bool pending_pixels;
+bool pending_pixels,frame_ready;
 struct CameraSnapshot {void *camera;uint32_t handle;uint8_t enabled,render_enabled;};
+void *pause_mediator,*pause_bus,*resume_bus;uint32_t pause_mediator_root,pause_bus_root,resume_bus_root;
+int32_t saved_pause_state;uint8_t saved_dm_pause,saved_tutorial_wait;bool common_resume_sent;
 CameraSnapshot render_cameras[132];uint32_t render_camera_count;
 void *quality,*saved_capture,*saved_final_target,*internal_targets[4];
 uint32_t quality_root,saved_capture_root,saved_final_target_root,internal_roots[4];
@@ -314,6 +319,13 @@ bool init_runtime() {
     M(camera_commands,klass("UnityEngine","Camera"),"GetCommandBuffers",false,"UnityEngine.Rendering.CommandBuffer[]",1,event_arg);
     M(camera_clear_get,klass("UnityEngine","Camera"),"get_clearFlags",false,"UnityEngine.CameraClearFlags",0,nullptr);
     M(camera_clear_set,klass("UnityEngine","Camera"),"set_clearFlags",false,"System.Void",1,clear_arg);
+    M(resume_broadcast,klass("KLab.MessageBuses","DeferredMessageBus"),"Broadcast",false,"System.Void",0,nullptr);
+    M(resume_dispatch,klass("KLab.MessageBuses","DeferredMessageBus"),"Dispatch",false,"System.Void",0,nullptr);
+    M(pause_se_voices,mu,"PauseSEAndVoices",false,"System.Void",0,nullptr);
+    M(dm_pause_get,klass("LLAS.DM","LiveGamePauseDM"),"get_IsPause",true,"System.Boolean",0,nullptr);
+    M(dm_pause_set,klass("LLAS.DM","LiveGamePauseDM"),"SetPause",true,"System.Void",1,b);
+    M(dm_wait_get,klass("LLAS.DM","LiveGamePauseDM"),"get_IsWaitingTutorialAction",true,"System.Boolean",0,nullptr);
+    M(dm_wait_set,klass("LLAS.DM","LiveGamePauseDM"),"SetWaitingTutorialAction",true,"System.Void",1,b);
     M(cri_sheet,klass("","CriAtom"),"GetCueSheet",true,"CriAtomCueSheet",1,sheet_args);
     M(find_objects,obj,"FindObjectsOfType",true,"UnityEngine.Object[]",1,type);
     M(timeline,ld,"get_TimelineDirector",false,"UnityEngine.Playables.PlayableDirector",0,nullptr);
@@ -389,6 +401,10 @@ bool init_runtime() {
     F(camera_pause_step,cm,"cameraPauseStep",nullptr,4);
     F(camera_live_blur,cm,"isLiveEndBlur","System.Boolean",1);F(camera_skill_pause,cm,"isSkillCutinPause","System.Boolean",1);
     F(camera_msaa_changed,cm,"isMSAALevelChanged","System.Boolean",1);F(camera_buffer_write,cm,"<BufferWrite>k__BackingField","System.Boolean",1);
+    F(scene_mediator,scene,"pauseMediator",nullptr,8);
+    F(mediator_state,klass("LLAS.Scene.Live","LivePauseMediator"),"currentState",nullptr,4);
+    F(mediator_pause_bus,klass("LLAS.Scene.Live","LivePauseMediator"),"pauseMBus",nullptr,8);
+    F(mediator_resume_bus,klass("LLAS.Scene.Live","LivePauseMediator"),"resumeMBus",nullptr,8);
     F(cri_acb,klass("","CriAtomCueSheet"),"acb","CriAtomExAcb",8);
     F(cri_acb_path,klass("","CriAtomCueSheet"),"acbFile","System.String",8);
     F(cri_awb_path,klass("","CriAtomCueSheet"),"awbFile","System.String",8);
@@ -423,7 +439,10 @@ bool complete_jobs() {
     }
     return true;
 }
+void release_pause_snapshot();
+bool restore_pause_state();
 void free_snapshot() {
+    release_pause_snapshot();
     for(uint32_t i=0;i<bone_count;i++){release(&bones[i].bone_root);release(&bones[i].transform_root);release(&bones[i].child_root);}
     for(uint32_t i=0;i<manager_count;i++)if(managers){release(&managers[i].object_root);release(&managers[i].array_root);}
     release(&managers_array_root);managers_array=nullptr;
@@ -501,7 +520,10 @@ bool scene_valid() {
         reference(m.final_overlay,camera_manager)==session_overlay && !load<uint8_t>(music,f.loading.offset)&&
         load<void *>(music,f.sound.offset)==sound&&
         overlay_camera_root&&e.gchandle_get_target(overlay_camera_root)==overlay_camera&&alive(overlay_camera)&&
-        reference(m.overlay_camera,session_overlay)==overlay_camera;
+        reference(m.overlay_camera,session_overlay)==overlay_camera&&pause_mediator_root&&pause_bus_root&&resume_bus_root&&
+        e.gchandle_get_target(pause_mediator_root)==pause_mediator&&e.gchandle_get_target(pause_bus_root)==pause_bus&&
+        e.gchandle_get_target(resume_bus_root)==resume_bus&&load<void *>(mv_scene,f.scene_mediator.offset)==pause_mediator&&
+        load<void *>(pause_mediator,f.mediator_pause_bus.offset)==pause_bus&&load<void *>(pause_mediator,f.mediator_resume_bus.offset)==resume_bus;
 }
 bool spring_owners_valid() {
     NativeArray b=load<NativeArray>(members,f.bone_array.offset),c=load<NativeArray>(members,f.collider_array.offset);
@@ -551,10 +573,13 @@ bool restore_scene() {
     }
     if (clock_manager) {
         double elapsed=now()-wall_start;
-        memcpy((uint8_t *)clock_manager+0x30,clock_snapshot,sizeof(clock_snapshot));
+        // Restore only fields explicitly controlled by offline simulation.
+        // Engine frame counters (+c8/+d0), one-shot flags (+c0/+c1) and other
+        // normal Update state must keep advancing; rewinding them invalidates
+        // gaze/lighting frame caches after returning to regular MV playback.
+        amv_restore_offline_clock(clock_manager,clock_snapshot,elapsed,safe,(int32_t)simulation_hz);
         // Verified startup-wallclock anchors: prevent the next normal frame
         // from absorbing all encoder wall time as one simulation delta.
-        for (size_t offset:{size_t(0xe0),size_t(0xe8)}) put<double>(clock_manager,offset,load<double>(clock_manager,offset)+elapsed);
     }
     if (safe) {
         ok=set_time(saved_time)&&ok;
@@ -578,6 +603,7 @@ bool restore_scene() {
         const Field *flags[]={&f.playing,&f.pausing,&f.paused,&f.finished};
         for (unsigned i=0;i<4;i++) put<uint8_t>(music,flags[i]->offset,saved_music_flags[i]);
         void *paused[]={&saved_sound_pause}; ok=invoke_void(m.sound_pause,sound,paused)&&ok;
+        ok=restore_pause_state()&&ok;
         // Timeline evaluation can change camera tracks. Restore the original
         // paused camera/blur/enabled state only after that evaluation.
         ok=restore_render_state()&&ok;
@@ -588,7 +614,7 @@ bool restore_scene() {
     rt=texture=nullptr;
     if(!quarantined){release(&session_director_root); release(&session_overlay_root); release(&scene_root);release(&overlay_camera_root);
         release_session_roots();session_overlay=mv_scene=nullptr;free_snapshot();release_render_state();}
-    pending_pixels=awaiting_capture=finishing=false; publish(); return ok;
+    pending_pixels=awaiting_capture=finishing=frame_ready=false; publish(); return ok;
 }
 void dispatch_terminal() {
     if(!terminal.pending)return;
@@ -718,6 +744,59 @@ void observe(void *value) {
     snprintf(snapshot.phase,sizeof(snapshot.phase),"%s",cached.phase);
     snprintf(snapshot.failure,sizeof(snapshot.failure),"%s",cached.failure); cached=snapshot;
     pthread_mutex_unlock(&guard);
+}
+void release_pause_snapshot() {
+    release(&pause_mediator_root);release(&pause_bus_root);release(&resume_bus_root);
+    pause_mediator=pause_bus=resume_bus=nullptr;common_resume_sent=false;
+}
+bool snapshot_pause_state() {
+    pause_mediator=load<void *>(mv_scene,f.scene_mediator.offset);pause_mediator_root=root(pause_mediator);
+    if(!pause_mediator_root||!field_object(pause_mediator,f.mediator_state))return setup_rejected("Could not retain the current MV pause mediator");
+    saved_pause_state=load<int32_t>(pause_mediator,f.mediator_state.offset);
+    if(saved_pause_state!=0&&saved_pause_state!=2)return setup_rejected("The MV pause/resume transition is still in progress (state %d); wait for it to finish before exporting",saved_pause_state);
+    pause_bus=load<void *>(pause_mediator,f.mediator_pause_bus.offset);resume_bus=load<void *>(pause_mediator,f.mediator_resume_bus.offset);
+    pause_bus_root=root(pause_bus);resume_bus_root=root(resume_bus);
+    if(!pause_bus_root||!resume_bus_root)return setup_rejected("Could not retain the current MV registered pause/resume buses");
+    void *parent=e.class_get_parent(e.object_get_class(pause_bus));const char *types[]={"LLAS.MBus.Live.PauseMessage"};
+    if(!method(&m.pause_broadcast,parent,"Broadcast",false,"System.Void",1,types)||
+       !method(&m.pause_dispatch,parent,"Dispatch",false,"System.Void",0,nullptr))return setup_rejected("The current MV pause bus does not match the original PauseMessage/Dispatch interfaces");
+    void *message=e.class_from_type(e.method_get_param(m.pause_broadcast.info,0));uint32_t alignment=0;Field waiting{};
+    if(!message||e.class_value_size(message,&alignment)!=1||
+       !field(&waiting,message,"<IsWaitingTutorialAction>k__BackingField","System.Boolean",1)||waiting.offset!=16)
+        return setup_rejected("The current MV PauseMessage is not the verified one-byte Boolean value type");
+    if(!value(m.dm_pause_get,nullptr,&saved_dm_pause)||!value(m.dm_wait_get,nullptr,&saved_tutorial_wait))
+        return setup_rejected("Could not snapshot the current MV pause/tutorial state");
+    return true;
+}
+bool restore_pause_flags() {
+    void *paused[]={&saved_dm_pause},*waiting[]={&saved_tutorial_wait};
+    bool ok=invoke_void(m.dm_pause_set,nullptr,paused);
+    return invoke_void(m.dm_wait_set,nullptr,waiting)&&ok;
+}
+bool resume_pause_state() {
+    if(saved_pause_state!=2)return true;
+    // Use this MV's original registered receiver graph, including stage cameras,
+    // mixers, heads/eyes, shafts, thread sleeper, SE/voices and time-scale owner.
+    // Broadcast is deferred, so synchronously drain this same retained bus.
+    common_resume_sent=true;
+    uint8_t no=0;void *clear_flags[]={&no};
+    bool cleared=invoke_void(m.dm_pause_set,nullptr,clear_flags);
+    cleared=invoke_void(m.dm_wait_set,nullptr,clear_flags)&&cleared;
+    if(!cleared){restore_pause_flags();return setup_rejected("Could not clear the current MV pause/tutorial flags before resuming its receivers");}
+    if(!invoke_void(m.resume_broadcast,resume_bus)||!invoke_void(m.resume_dispatch,resume_bus)||
+       load<int32_t>(pause_mediator,f.mediator_state.offset)!=0){restore_pause_flags();return setup_rejected("The current MV registered resume handlers did not complete");}
+    uint8_t yes=1;void *args[]={&yes};
+    if(!invoke_void(m.pause_se_voices,music)||!invoke_void(m.sound_pause,sound,args)){
+        restore_pause_flags();return setup_rejected("Could not silence the original MV music/SE/voices after resuming its render components");}
+    return true;
+}
+bool restore_pause_state() {
+    if(!common_resume_sent)return true;
+    if(!restore_pause_flags())return false;
+    uint8_t message=saved_tutorial_wait;void *args[]={&message};
+    bool restored=invoke_void(m.pause_broadcast,pause_bus,args)&&invoke_void(m.pause_dispatch,pause_bus)&&
+       load<int32_t>(pause_mediator,f.mediator_state.offset)==saved_pause_state;
+    return restore_pause_flags()&&restored;
 }
 bool remember_camera(void *camera) {
     if(!alive(camera))return false;
@@ -944,13 +1023,15 @@ bool begin(const Request &begin_request) {
     for(unsigned i=0;i<4;i++) saved_music_flags[i]=load<uint8_t>(music,flags[i]->offset);
     if (!snapshot_springs()) return setup_failure[0]?false:setup_rejected("Could not snapshot original MV spring jobs or bone buffers");
     if (!snapshot_render_state())return false;
+    if (!snapshot_pause_state())return false;
     session_director_root=root(director); session_overlay_root=root(session_overlay);overlay_camera_root=root(overlay_camera);
     if (!session_director_root||!session_overlay_root||!scene_root||!overlay_camera_root)return setup_rejected("Could not retain the final MV render session");
     memcpy(clock_snapshot,(uint8_t *)clock_manager+0x30,sizeof(clock_snapshot));
     clock_epoch=load<double>(clock_manager,0x60); unscaled_epoch=load<double>(clock_manager,0x70); wall_start=now();
     if (!isfinite(clock_epoch)||!isfinite(unscaled_epoch))return setup_rejected("Unity's MV clock contains a non-finite time value");
     active=true; abandoned=false; have_tick=false; accepted_frames=audio_index=0;
-    advancing=awaiting_capture=finishing=pending_pixels=false;
+    advancing=awaiting_capture=finishing=pending_pixels=frame_ready=false;
+    if(!resume_pause_state())return false;
     if(!create_render_targets())return false;
     int32_t manual=3; void *mode[]={&manual};
     if (!invoke_void(m.mode_set,timeline,mode))return setup_rejected("Unity rejected manual MV timeline update mode");
@@ -997,10 +1078,7 @@ void capture_frame(void *target) {
         !pointer||bytes!=(int64_t)config.width*config.height*4){fail("Unity returned an unexpected MV readback layout");return;}
     if(!amv_rgba_bottom_up_to_i420((const uint8_t *)pointer,(size_t)bytes,config.width,config.height,
             pixels,(size_t)config.width*config.height*3/2)){fail("MV readback color conversion rejected its bounds");return;}
-    pending_pixels=true;awaiting_capture=false;
-    if(!suspend_rendering(true)){fail("Could not suspend the owned MV cameras while the encoder accepts its frame");return;}
-    // Submission happens at the next TimeManager callback, after the final
-    // compositor has completed and outside the camera's render callback.
+    pending_pixels=true;awaiting_capture=false;frame_ready=false;
 }
 
 bool submit() {
@@ -1087,8 +1165,15 @@ extern "C" void amv_game_time_update(void *manager) {
     put<int32_t>(camera_manager,f.camera_current_width.offset,actual_width);
     put<int32_t>(camera_manager,f.camera_current_height.offset,actual_height);
     if(!render_targets_valid()){fail("Owned offline MV render targets changed or lost their GPU allocation");return;}
-    if(pending_pixels&&!submit()){if(active)freeze();return;}
+    // Camera callbacks can run before AfterEverything command buffers and
+    // post-processing have finished. Read only at the next frame boundary;
+    // never disable a camera or read its target inside its render callback.
+    if(awaiting_capture&&frame_ready){capture_frame(rt);if(!active)return;}
+    if(pending_pixels&&!submit()){if(active){
+        if(!suspend_rendering(true)){fail("Could not suspend owned MV cameras during encoder backpressure");return;}
+        freeze();}return;}
     if(finishing) {
+        if(!suspend_rendering(true)){fail("Could not suspend owned MV cameras during encoder finalization");return;}
         freeze();JNIEnv *env=environment();jthrowable error=nullptr;
         jstring path=env?amv_encoder_completed_path(env,encoder,&error):nullptr;
         if(error){env->DeleteLocalRef(error);fail("MP4 encoder finalization failed");return;}
@@ -1168,8 +1253,8 @@ extern "C" void amv_game_overlay_render(void *self,void *source,void *destinatio
     if(!active){fallback(self,source,destination,mi);return;}
     void *args[]={source,destination};
     if(!original_call(OVERLAY,self,args)){fail("MV overlay effect failed");return;}
-    if(self==session_overlay&&capture_after_overlay&&advancing&&awaiting_capture&&!pending_pixels)
-        capture_frame(destination);
+    if(self==session_overlay&&capture_after_overlay&&awaiting_capture&&!pending_pixels)
+        frame_ready=true;
 }
 extern "C" void amv_game_camera_post_render(void *camera,const void *mi) {
     using Fn=void(*)(void*,const void*);Fn fallback=(Fn)original.entry[POST];if(!fallback)return;
@@ -1186,8 +1271,8 @@ extern "C" void amv_game_camera_post_render(void *camera,const void *mi) {
     }
     void *args[]={camera};
     if(!original_call(POST,nullptr,args)){fail("Original camera post-render delegate failed");return;}
-    if(camera!=overlay_camera||capture_after_overlay||!advancing||!awaiting_capture||pending_pixels)return;
-    capture_frame(rt);
+    if(camera!=overlay_camera||capture_after_overlay||!awaiting_capture||pending_pixels)return;
+    frame_ready=true;
 }
 
 namespace {
@@ -1234,7 +1319,7 @@ bool exports(void *library) {
     E(method_get_param_count,"method_get_param_count");E(method_get_param,"method_get_param");E(method_get_return_type,"method_get_return_type");
     E(method_get_flags,"method_get_flags");E(method_get_class,"method_get_class");E(runtime_invoke,"runtime_invoke");
     E(type_get_name,"type_get_name");E(free_memory,"free");E(class_from_type,"class_from_type");E(class_get_type,"class_get_type");
-    E(type_get_object,"type_get_object");E(object_get_class,"object_get_class");E(class_is_assignable_from,"class_is_assignable_from");
+    E(type_get_object,"type_get_object");E(object_get_class,"object_get_class");E(class_get_parent,"class_get_parent");E(class_is_assignable_from,"class_is_assignable_from");
     E(object_unbox,"object_unbox");E(object_new,"object_new");E(class_instance_size,"class_instance_size");E(class_value_size,"class_value_size");
     E(class_get_field_from_name,"class_get_field_from_name");E(field_get_offset,"field_get_offset");E(field_get_type,"field_get_type");
     E(field_get_flags,"field_get_flags");E(gchandle_new,"gchandle_new");E(gchandle_get_target,"gchandle_get_target");

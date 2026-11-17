@@ -81,12 +81,12 @@
       "sha256": "994843ccce220e78912c76283b90d9347a4924aa67cb7550ada72e390cbf2f15"
     },
     "android/android_mv_game_bindings.cpp": {
-      "bytes": 95089,
-      "sha256": "2e8c73e87fef56843baaa209aa70af98a54ef1cda6013803eb7027f236361030"
+      "bytes": 101772,
+      "sha256": "3f75621fd546aead19c5a503e667defdde3a4c5ff19318d688262ee9eeae814e"
     },
     "android/android_mv_game_bindings.h": {
-      "bytes": 3491,
-      "sha256": "be7e173fd218252bf4091c3667812e4288393d5dc33c3706c4ac350937ea7b0f"
+      "bytes": 4614,
+      "sha256": "fad771f082fa78aa094b0f51c46fa6385c435ccadf8c7324cef543eb0f85917d"
     },
     "android/android_mv_patch_plan.json": {
       "bytes": 73335,
@@ -197,8 +197,8 @@
       "sha256": "3628a2f97bac054da67696c87a61ec494e5b57a7948958933a1d8fd4d616aa75"
     },
     "android/native/material_android_binding.cc": {
-      "bytes": 7343,
-      "sha256": "eb18005f6786d14614585716d8b0c59f66b07bc39b9ac736e14574951830e404"
+      "bytes": 7685,
+      "sha256": "5518d96ff76021deb0e2004cfc09fe33e13c497b398a3c1aea3b3e35baef8565"
     },
     "android/native/material_android_binding.h": {
       "bytes": 3583,
@@ -267,6 +267,14 @@
     "test_build_android_mv.py": {
       "bytes": 5634,
       "sha256": "7b961f9c5f4a72546b3f4099ce9697df4ce72315c08896bdf3943949c90b166e"
+    },
+    "android/test_material_android_binding.cpp": {
+      "bytes": 6926,
+      "sha256": "792c4f7331a19d5c012e8db0888a308dc06f48a490dbe22e45a61c98352c3bdf"
+    },
+    "android/test_clock_restore.cpp": {
+      "bytes": 2024,
+      "sha256": "0bb6dcaeae807b0c0c78e5af0fcb70902f8f107f0e0e697cbc71b2f8f9632c82"
     }
   },
   "kind": "FROZEN_FULL_ANDROID_MV_BUILD_AND_TEST_INPUTS",

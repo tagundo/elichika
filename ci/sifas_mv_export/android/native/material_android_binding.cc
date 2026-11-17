@@ -104,7 +104,12 @@ int find_material_sidecar(dl_phdr_info *info, size_t, void *opaque) {
     name=name ? name+1 : info->dlpi_name;
     if (!name || strcmp(name,"libil2cpp.so")) return 0;
     attempt.result=MI_ANDROID_UNSUPPORTED_IMAGE;
-    if (!info->dlpi_phdr || info->dlpi_phnum != 12) return 1;
+    /* The offline MV extension preserves the original material loads/hooks
+     * and adds one RX and one RW load, moving the PHDR table from 12 to 14
+     * entries. Its presence must not disable material isolation in normal MV.
+     * Both layouts still pass the exact sidecar and code checks below. */
+    if (!info->dlpi_phdr ||
+        (info->dlpi_phnum != 12 && info->dlpi_phnum != 14)) return 1;
     for (const auto &layout : layouts) {
         for (ElfW(Half) i=0; i<info->dlpi_phnum; ++i) {
             const auto &p=info->dlpi_phdr[i];
