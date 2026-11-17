@@ -89,7 +89,8 @@ def source_inputs(repo):
     inputs = sources + sorted(native.glob('*.h')) + sorted(native.glob('*.hpp'))
     inputs += [decoder, decoder.with_name('clhca.h'), decoder.with_name('clhca_data.h'),
                decoder.parent.parent / 'android_mv_audio_provider.cpp',
-               decoder.parent.parent / 'android_mv_audio_provider.h']
+               decoder.parent.parent / 'android_mv_audio_provider.h',
+               decoder.parent.parent / 'mv_capture_camera.h']
     require(all(p.is_file() and not p.is_symlink() for p in inputs),
             'Standalone native source closure is incomplete')
     require((native / 'SIFASMVExportPatchProfile.h').read_text() == generated_header(load_profile()),

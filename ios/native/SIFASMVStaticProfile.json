@@ -1450,6 +1450,24 @@
       "type_index": 151560,
       "field_name": "liveQualitySetting"
     },
+    "camera_split": {
+      "offset": 104,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "LLAS.Scene.Live.Components.LiveSplitScreenEffect",
+      "metadata_index": 66645,
+      "type_index": 154243,
+      "field_name": "<SplitScreenEffect>k__BackingField"
+    },
+    "split_cameras": {
+      "offset": 40,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveSplitScreenEffect",
+      "type": "UnityEngine.Camera[]",
+      "metadata_index": 67080,
+      "type_index": 147699,
+      "field_name": "cameras"
+    },
     "camera_buffers[0]": {
       "offset": 120,
       "size": 8,
@@ -1932,6 +1950,15 @@
       "instance_size": 136,
       "native_size": 4294967295,
       "parent": "LLAS.MonoSingleton`1<LLAS.Scene.Live.Components.LiveMusicMachine>"
+    },
+    "LLAS.Scene.Live.Components.LiveSplitScreenEffect": {
+      "type_index": 14854,
+      "il2cpp_type_index": 85258,
+      "raw_type_va": "0x104803100",
+      "value_size": null,
+      "instance_size": 104,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
     },
     "LLAS.Scene.Live.LiveDirectorBase": {
       "type_index": 14304,

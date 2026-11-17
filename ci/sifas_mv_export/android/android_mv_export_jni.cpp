@@ -262,7 +262,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_klab_lovelive_allstars_fovmod_Android
 }
 extern "C" JNIEXPORT jlong JNICALL Java_com_klab_lovelive_allstars_fovmod_AndroidMVExport_nativePrepare(
         JNIEnv *env,jclass,jstring json,jstring root,jint fps) {
-    if((fps!=30&&fps!=60)||!json||!root){throw_io(env,"Invalid MV audio preparation request");return 0;}
+    if((fps!=30&&fps!=60&&fps!=120)||!json||!root){throw_io(env,"Invalid MV audio preparation request (supported fps: 30, 60, 120)");return 0;}
     uint64_t id=0;if(!parse_selection_id(env,json,&id)){throw_io(env,"Invalid native MV selection token");return 0;}
     Source selected{};uint64_t epoch=cancellation.load();
     pthread_mutex_lock(&registry_guard);

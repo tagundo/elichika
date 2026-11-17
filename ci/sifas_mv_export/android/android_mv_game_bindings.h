@@ -3,11 +3,26 @@
 #include "android_mv_encoder_bridge.h"
 #include "android_mv_audio_provider.h"
 #include <stdint.h>
+#include <string.h>
+/* Snapshot begins at TimeManager+0x30. Keep live engine counters/flags intact. */
+static inline void amv_restore_offline_clock(void *manager,const uint8_t *snapshot,double elapsed,int same_scene,int32_t owned_capture_fps) {
+    if(!same_scene){int32_t capture_fps=0;memcpy(&capture_fps,(uint8_t *)manager+0xd8,4);
+        if(capture_fps==owned_capture_fps)memcpy((uint8_t *)manager+0xd8,snapshot+0xd8-0x30,4);
+        return;}
+    static const size_t doubles[]={0x60,0x68,0x70,0x90,0x98,0xa0};
+    static const size_t singles[]={0x78,0x7c,0xa8,0xac};
+    for(size_t i=0;i<sizeof(doubles)/sizeof(doubles[0]);i++)
+        memcpy((uint8_t *)manager+doubles[i],snapshot+doubles[i]-0x30,8);
+    for(size_t i=0;i<sizeof(singles)/sizeof(singles[0]);i++)
+        memcpy((uint8_t *)manager+singles[i],snapshot+singles[i]-0x30,4);
+    memcpy((uint8_t *)manager+0xd8,snapshot+0xd8-0x30,4);memcpy((uint8_t *)manager+0xfc,snapshot+0xfc-0x30,4);
+    for(size_t offset=0xe0;offset<=0xe8;offset+=8){double origin=0;memcpy(&origin,snapshot+offset-0x30,8);origin+=elapsed;memcpy((uint8_t *)manager+offset,&origin,8);}
+}
 #ifdef __cplusplus
 extern "C" {
 #endif
 typedef struct {
-    uint32_t width,height,fps; /* fps30/60; simulation is always60Hz. */
+    uint32_t width,height,fps; /* fps30/60/120; deterministic simulation=max(60,fps)Hz. */
     uint32_t sample_rate,channels;
     uint64_t video_frames,audio_frames;
     uint64_t song_fingerprint; /* Returned by the Unity-thread song query. */

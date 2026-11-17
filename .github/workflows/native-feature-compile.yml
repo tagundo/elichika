@@ -555,6 +555,12 @@ jobs:
           set -euo pipefail
           python3 -B ios/native/tests/run_mv_menu_probe.py --out "$RUNNER_TEMP/standalone-evidence/menu-probe"
 
+      - name: Check normal-to-split camera frame acknowledgments
+        run: |
+          set -euo pipefail
+          xcrun clang++ -std=c++11 -Wall -Wextra -Werror -pedantic ci/sifas_mv_export/android/test_mv_capture_camera.cpp -o "$RUNNER_TEMP/mv-capture-camera-test"
+          "$RUNNER_TEMP/mv-capture-camera-test"
+
       - name: Check JobHandle ABI against the exact original game
         env:
           SIFAS_MV_SOURCE_IPA: ${{ runner.temp }}/standalone-game.ipa

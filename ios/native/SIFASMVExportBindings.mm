@@ -11,6 +11,7 @@
 #include <initializer_list>
 #include <atomic>
 #include "../../ci/sifas_mv_export/android/android_mv_audio_provider.h"
+#include "../../ci/sifas_mv_export/android/mv_capture_camera.h"
 namespace {
 using std::isfinite;
 enum Slot { TIME,LIVE,MUSIC,MEMBER,OVERLAY,WIDTH,HEIGHT,LATE,POST,SLOTS };
@@ -50,6 +51,7 @@ struct Fields {
     Field child,transform,scalar_first,scalar_end,current_tip,previous_tip,correct_adjust,ratio;
     Field scene_pre_final,scene_post_final,scene_paused,overlay_blur;
     Field camera_quality,camera_buffers[4],camera_list,camera_cutin,camera_current_width,camera_current_height;
+    Field camera_split,split_cameras;
     Field camera_overlay,camera_cutin_overlay,core_command_buffers,core_quality;
     Field camera_pause_step,camera_live_blur,camera_skill_pause,camera_msaa_changed,camera_buffer_write;
     Field scene_mediator,mediator_state,mediator_pause_bus,mediator_resume_bus;
@@ -96,8 +98,10 @@ void *pause_mediator,*pause_bus,*resume_bus;uint32_t pause_mediator_root,pause_b
 int32_t saved_pause_state;uint8_t saved_dm_pause,saved_tutorial_wait;bool common_resume_sent;
 void *pause_state_owner,*pause_live_state;uint32_t pause_state_owner_root,pause_live_state_root;
 char managed_failure[192];
-CameraSnapshot render_cameras[132];uint32_t render_camera_count;
+CameraSnapshot render_cameras[sifas_mv_capture_camera_capacity];uint32_t render_camera_count;
 void *quality,*saved_capture,*saved_final_target,*internal_targets[4];
+void *split_effect_snapshot,*split_camera_array_snapshot,*split_camera_snapshot[4];
+uint32_t split_effect_root,split_camera_array_root;
 uint32_t quality_root,saved_capture_root,saved_final_target_root,internal_roots[4];
 int32_t saved_quality_resolution,saved_camera_pause_step,saved_manager_width,saved_manager_height,saved_overlay_clear;
 uint8_t saved_scene_paused,saved_overlay_blur,saved_overlay_effect,saved_camera_live_blur,saved_camera_skill_pause,saved_camera_msaa_changed,saved_buffer_write;
@@ -563,6 +567,39 @@ bool remember_camera(void *camera,bool stage_source=false) {
     CameraSnapshot &item=render_cameras[render_camera_count++];item={};item.camera=camera;item.handle=root(camera);item.stage_source=stage_source;
     return item.handle&&value(m.behaviour_enabled,camera,&item.enabled);
 }
+// The original split effect owns four serialized cameras even while their
+// GameObjects are inactive. Full-split clips disable the base camera, so these
+// callbacks must also acknowledge the output frame and obey backpressure.
+bool snapshot_split_cameras() {
+    split_effect_snapshot=load<void *>(camera_manager,f.camera_split.offset);
+    if(!split_effect_snapshot)return true;
+    if(!alive(split_effect_snapshot)||!field_object(split_effect_snapshot,f.split_cameras))
+        return setup_rejected("The original MV split-screen effect has an invalid owner");
+    split_camera_array_snapshot=load<void *>(split_effect_snapshot,f.split_cameras.offset);
+    if(length(split_camera_array_snapshot,4)!=4)
+        return setup_rejected("The original MV split-screen camera array must contain four cameras");
+    split_effect_root=root(split_effect_snapshot);split_camera_array_root=root(split_camera_array_snapshot);
+    if(!split_effect_root||!split_camera_array_root)
+        return setup_rejected("Could not retain the original MV split-screen camera owners");
+    for(uint32_t i=0;i<4;i++) {
+        split_camera_snapshot[i]=element(split_camera_array_snapshot,i);
+        if(!remember_camera(split_camera_snapshot[i],true))
+            return setup_rejected("Could not snapshot original MV split-screen camera %u",i);
+    }
+    return true;
+}
+bool split_camera_owners_valid() {
+    if(load<void *>(camera_manager,f.camera_split.offset)!=split_effect_snapshot)return false;
+    if(!split_effect_snapshot)return true;
+    if(!split_effect_root||e.gchandle_get_target(split_effect_root)!=split_effect_snapshot||
+        !alive(split_effect_snapshot)||!split_camera_array_root||
+        e.gchandle_get_target(split_camera_array_root)!=split_camera_array_snapshot||
+        load<void *>(split_effect_snapshot,f.split_cameras.offset)!=split_camera_array_snapshot||
+        length(split_camera_array_snapshot,4)!=4)return false;
+    for(uint32_t i=0;i<4;i++)
+        if(element(split_camera_array_snapshot,i)!=split_camera_snapshot[i]||!alive(split_camera_snapshot[i]))return false;
+    return true;
+}
 bool suspend_rendering(bool suspend) {
     if(suspend==cameras_suspended)return true;
     bool ok=true;
@@ -581,6 +618,9 @@ void release_render_state() {
     for(uint32_t i=0;i<render_camera_count;i++)release(&render_cameras[i].handle);
     for(uint32_t i=0;i<4;i++){release(&internal_roots[i]);internal_targets[i]=nullptr;}
     release(&quality_root);release(&saved_capture_root);release(&saved_final_target_root);
+    release(&split_effect_root);release(&split_camera_array_root);
+    split_effect_snapshot=split_camera_array_snapshot=nullptr;
+    for(void *&camera:split_camera_snapshot)camera=nullptr;
     render_camera_count=0;quality=saved_capture=saved_final_target=nullptr;
     render_state_saved=render_chain_rebuilt=cameras_suspended=resolution_ready=false;
 }
@@ -611,6 +651,7 @@ bool snapshot_render_state() {
     for(const Field *field:overlays){void *item=load<void *>(camera_manager,field->offset);
         if(alive(item)&&!remember_camera(reference(m.overlay_camera,item)))return setup_rejected("Could not snapshot an MV overlay camera");}
     if(!remember_camera(overlay_camera))return setup_rejected("Could not snapshot the final MV camera");
+    if(!snapshot_split_cameras())return false;
     render_state_saved=true;return true;
 }
 
@@ -625,7 +666,7 @@ bool render_targets_valid() {
     Result target=invoke(m.camera_target,overlay_camera);if(!target.ok||target.value!=rt)return false;
     for(uint32_t i=0;i<4;i++)if(load<void *>(camera_manager,f.camera_buffers[i].offset)!=internal_targets[i]||
         (internal_targets[i]&&(!internal_roots[i]||e.gchandle_get_target(internal_roots[i])!=internal_targets[i])))return false;
-    return true;
+    return split_camera_owners_valid();
 }
 bool route_final_blits() {
     RenderTargetIdentifier destination{},current{};void *target_args[]={rt};
@@ -1016,6 +1057,5 @@ extern "C" void SIFASMVCameraPostRender(void *camera,const void *mi) {
     // Any owned core/cut-in callback acknowledges this Unity render frame.
     // Readback waits for the next boundary, after ALL cameras have finished;
     // the disabled overlay is composed once there, not used as readiness.
-    for(uint32_t i=0;i<render_camera_count;i++)
-        if(render_cameras[i].stage_source&&render_cameras[i].camera==camera){frame_ready=true;break;}
+    if(sifas_mv_capture_camera_acknowledges(render_cameras,render_camera_count,camera))frame_ready=true;
 }

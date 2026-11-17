@@ -11,7 +11,8 @@ public final class GestureStateTest {
     }
     static FovMod.CornerHold down(long time) {
         FovMod.CornerHold h = new FovMod.CornerHold();
-        require(!event(h, 0, 1, 950, 50, time), "Initial down must reach the game");
+        require(event(h, 0, 1, 950, 50, time), "Corner down is reserved before it reaches the game");
+        require(h.tracking(), "A reserved down starts the hold timer");
         return h;
     }
     public static void main(String[] args) {
@@ -22,7 +23,7 @@ public final class GestureStateTest {
 
         h = down(100);
         require(!h.onTimeout(2099, 1000, 100), "No early menu");
-        require(!event(h, 1, 1, 950, 50, 2099), "A short tap reaches the game");
+        require(!event(h, 1, 1, 950, 50, 2099), "A short tap releases the buffered stream for replay");
         require(!h.onTimeout(2100, 1000, 100), "Lift cancels the pending hold");
 
         h = down(100);
@@ -38,7 +39,7 @@ public final class GestureStateTest {
         require(!h.onTimeout(2000, 1000, 100), "Returning after a drag cannot revive the hold");
 
         h = down(0);
-        event(h, 2, 1, 956, 54, 1000);
+        require(event(h, 2, 1, 956, 54, 1000), "Small moves remain reserved without reaching the game");
         require(h.onTimeout(2000, 1000, 100), "Small finger jitter is tolerated");
 
         h = down(0);
