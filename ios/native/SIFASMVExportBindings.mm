@@ -386,12 +386,26 @@ bool snapshot_particle_culling() {
 }
 bool particle_owners_valid() {
     for(uint32_t i=0;i<particle_count;i++){
-        const ParticleSnapshot &entry=particle_snapshots[i];
-        if(e.gchandle_get_target(entry.handle)!=entry.object||!alive(entry.object)||
-            !sifas_mv_particles::valid(entry.policy,load<void *>(entry.object,f.particle_native.offset)))return false;
+        ParticleSnapshot &entry=particle_snapshots[i];
+        if(!entry.handle)continue;
+        if(e.gchandle_get_target(entry.handle)!=entry.object)
+            return setup_rejected("MV particle managed owner changed at cached index %u",i);
+        // Stop/Play queues old PrefabControlPlayable clones for deferred
+        // Destroy. They can be discovered during setup and vanish at the end
+        // of the first frame. Retire them exactly as restoration does; never
+        // read their now-destroyed native parameter or simulation blocks.
+        if(!alive(entry.object)){release(&entry.handle);entry={};continue;}
+        void *object=load<void *>(entry.object,f.particle_native.offset);
+        if(!sifas_mv_particles::valid(entry.policy,object)){
+            const char *reason=object!=entry.policy.native?"native owner":
+                load<void *>(object,0x40)!=entry.policy.parameters?"parameter block":
+                load<void *>(object,0x48)!=entry.policy.state?"simulation state":"culling policy";
+            return setup_rejected("MV particle %s changed at cached index %u",reason,i);
+        }
     }
     return true;
 }
+
 bool restore_particle_culling() {
     bool ok=true;
     for(uint32_t i=0;i<particle_count;i++){
@@ -1080,7 +1094,7 @@ extern "C" void SIFASMVTimeUpdate(void *manager) {
     if(!active){fallback(manager);return;}
     if(!scene_valid()){abandoned=true;fail("MV scene changed during export");fallback(manager);return;}
     if(!spring_owners_valid()){fail("MV spring resource ownership changed during export");return;}
-    if(!particle_owners_valid()){fail("MV particle ownership or culling policy changed during export");return;}
+    if(!particle_owners_valid()){fail(setup_failure[0]?setup_failure:"MV particle validation failed during export");return;}
     using Dimension=int32_t(*)(const void *);
     put<int32_t>(camera_manager,f.camera_current_width.offset,reinterpret_cast<Dimension>(original.entry[WIDTH])(nullptr));
     put<int32_t>(camera_manager,f.camera_current_height.offset,reinterpret_cast<Dimension>(original.entry[HEIGHT])(nullptr));

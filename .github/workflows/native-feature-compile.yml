@@ -567,6 +567,9 @@ jobs:
           xcrun clang++ -std=c++11 -Wall -Wextra -Werror -pedantic ci/sifas_mv_export/android/test_mv_particle_culling.cpp -o "$RUNNER_TEMP/mv-particle-culling-test"
           "$RUNNER_TEMP/mv-particle-culling-test"
 
+      - name: Check deferred particle destruction before frame zero
+        run: python3 -B ci/sifas_mv_export/android/test_mv_particle_owner_lifecycle.py
+
       - name: Check JobHandle ABI against the exact original game
         env:
           SIFAS_MV_SOURCE_IPA: ${{ runner.temp }}/standalone-game.ipa

@@ -81,8 +81,8 @@
       "sha256": "994843ccce220e78912c76283b90d9347a4924aa67cb7550ada72e390cbf2f15"
     },
     "android/android_mv_game_bindings.cpp": {
-      "bytes": 119882,
-      "sha256": "9538ef2007264f415b3e289fbbff7b875d633719c1886a3367882202716551c3"
+      "bytes": 120751,
+      "sha256": "4816823a465e8479273d61041a526d32b4ab6e907eed2e7fe03fb70cdbe8df90"
     },
     "android/android_mv_game_bindings.h": {
       "bytes": 4614,
@@ -267,6 +267,10 @@
     "android/test_mv_particle_culling.cpp": {
       "bytes": 1932,
       "sha256": "cf065a62d97eb1d75f234409623cb299d23a7a66caee491a0c910407c495072c"
+    },
+    "android/test_mv_particle_owner_lifecycle.py": {
+      "bytes": 5327,
+      "sha256": "1da52fe31bcc7c6a5b1bd73a8dac2e914ad0966d0cc40962d6bb080cd2f51f61"
     },
     "android/test_mv_pixel_convert.c": {
       "bytes": 1366,
