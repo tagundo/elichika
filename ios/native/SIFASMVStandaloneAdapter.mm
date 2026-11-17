@@ -30,12 +30,18 @@ void SIFASMVStandaloneSetPresenter(UIViewController *presenter) {
 UIViewController *SIFASMVStandalonePresenter(void) {
     UIViewController *presenter=SIFASMVPresenter;
     if (presenter.viewIfLoaded.window && !presenter.view.window.hidden) return presenter;
+    UIWindow *visible=nil;
     for (UIWindow *window in UIApplication.sharedApplication.windows) {
-        if (window.isKeyWindow && !window.hidden && window.rootViewController) {
-            SIFASMVPresenter=window.rootViewController; return SIFASMVPresenter;
-        }
+        UIViewController *root=window.rootViewController;
+        if (window.hidden || window.alpha<=0 || window.windowLevel!=UIWindowLevelNormal ||
+            !root || [root isKindOfClass:UIAlertController.class]) continue;
+        if (window.windowScene && (window.windowScene.activationState==UISceneActivationStateBackground ||
+            window.windowScene.activationState==UISceneActivationStateUnattached)) continue;
+        if (window.isKeyWindow) { SIFASMVPresenter=root; return root; }
+        if (!visible) visible=window;
     }
-    return nil;
+    SIFASMVPresenter=visible.rootViewController;
+    return SIFASMVPresenter;
 }
 BOOL SIFASMVStandaloneShowGame(void) {
     return UIApplication.sharedApplication.applicationState==UIApplicationStateActive && SIFASMVStandalonePresenter()!=nil;

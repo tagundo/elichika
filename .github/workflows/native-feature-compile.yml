@@ -543,6 +543,11 @@ jobs:
             --output "$RUNNER_TEMP/standalone-game.ipa" \
             --report "$RUNNER_TEMP/standalone-evidence/input-provenance.json"
 
+      - name: Exercise the actual MP4 menu after UIKit alert dismissal
+        run: |
+          set -euo pipefail
+          python3 -B ios/native/tests/run_mv_menu_probe.py --out "$RUNNER_TEMP/standalone-evidence/menu-probe"
+
       - name: Compile standalone native MP4 export and package fresh IPA
         env:
           SIFAS_BUILD_VERSION: ${{ inputs.version }}

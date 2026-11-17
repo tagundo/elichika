@@ -822,7 +822,10 @@ void ElichikaPresentMVExportMenu(UIViewController *presenter) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ ElichikaPresentMVExportMenu(presenter); }); return; }
     if (presenter) SIFASMVStandaloneSetPresenter(presenter);
     presenter=SIFASMVStandalonePresenter(); if (!presenter || !SIFASMVStandaloneShowGame()) return;
-    if (SIFASMVCurrentPanel.window) { [SIFASMVCurrentPanel refresh]; return; }
+    if (SIFASMVCurrentPanel.window) {
+        [SIFASMVCurrentPanel.window bringSubviewToFront:SIFASMVCurrentPanel];
+        [SIFASMVCurrentPanel refresh]; return;
+    }
     SIFASMVStandalonePanel *panel=[[SIFASMVStandalonePanel alloc] initWithPresenter:presenter];
     [presenter.view.window addSubview:panel]; SIFASMVCurrentPanel=panel;
 }
