@@ -382,10 +382,10 @@ def choose_runtime_and_types(*, ipad_first=False, selection_path=None, aggregate
         if selection_path is not None:
             write_json(selection_path, receipt)
 
-    def query(arguments, name):
+    def query(arguments, name, limit=15):
         nonlocal stage, last_command
         stage = name
-        budget = 15 if aggregate_deadline is None else min(15, aggregate_deadline-time.monotonic())
+        budget = limit if aggregate_deadline is None else min(limit, aggregate_deadline-time.monotonic())
         require(budget > 0, 'Simulator runtime selection aggregate deadline expired')
         result = diagnostics.bounded_command(arguments, timeout=budget, cap=2*1024*1024)
         row = {'stage': name, 'budget_seconds': budget, 'returncode': result.get('returncode'),
@@ -403,7 +403,9 @@ def choose_runtime_and_types(*, ipad_first=False, selection_path=None, aggregate
         sdk_version = ios_version(sdk)
         receipt['active_iphonesimulator_sdk'] = sdk
         receipt['active_sdk_major_minor'] = list(sdk_version[:2]); save()
-        runtimes = json.loads(query(['xcrun', 'simctl', 'list', 'runtimes', '--json'], 'runtime_inventory'))['runtimes']
+        # Bound cold CoreSimulator inventory separately from the SDK lookup
+        # and all Elichika app deadlines; this does not retry either request.
+        runtimes = json.loads(query(['xcrun', 'simctl', 'list', 'runtimes', '--json'], 'runtime_inventory', 120))['runtimes']
         require(isinstance(runtimes, list) and len(runtimes) <= 128 and all(isinstance(row, dict) for row in runtimes),
                 'Simulator runtime inventory exceeds its bounded schema')
         ios = [row for row in runtimes if isinstance(row.get('identifier'), str)
@@ -423,7 +425,7 @@ def choose_runtime_and_types(*, ipad_first=False, selection_path=None, aggregate
                                        else 'highest_older_sdk_major_minor')
         receipt['selected_runtime'] = {key: runtime[key] for key in keys if key in runtime}
         save()
-        types = json.loads(query(['xcrun', 'simctl', 'list', 'devicetypes', '--json'], 'device_type_inventory'))['devicetypes']
+        types = json.loads(query(['xcrun', 'simctl', 'list', 'devicetypes', '--json'], 'device_type_inventory', 120))['devicetypes']
         require(isinstance(types, list) and len(types) <= 1024 and all(isinstance(row, dict) for row in types),
                 'Simulator device-type inventory exceeds its bounded schema')
         candidates = [row for row in types if isinstance(row.get('name'), str)

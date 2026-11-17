@@ -353,7 +353,8 @@ class RuntimeSelectionTests(unittest.TestCase):
 
     def invoke(self, arguments, **kwargs):
         self.calls.append(arguments)
-        self.assertGreater(kwargs['timeout'], 0); self.assertLessEqual(kwargs['timeout'], 15)
+        self.assertGreater(kwargs['timeout'], 0)
+        self.assertEqual(kwargs['timeout'], 15 if arguments[1:2] == ['--sdk'] else 120)
         self.assertEqual(kwargs['cap'], 2*1024*1024)
         if arguments == ['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version']:
             text = self.sdk
@@ -381,6 +382,7 @@ class RuntimeSelectionTests(unittest.TestCase):
         self.assertEqual(value['unavailable_iOS_runtimes'][0]['version'], '18.5.2')
         self.assertTrue(value['selection_before_device_creation'])
         self.assertEqual(len(value['device_types_considered']), 3)
+        self.assertEqual([row['budget_seconds'] for row in value['commands']], [15, 120, 120])
 
     def test_highest_older_major_minor_is_used_when_exact_is_absent(self):
         self.runtimes = [self.runtime('26.2'), self.runtime('18.4.2'), self.runtime('18.2.1')]
@@ -439,6 +441,33 @@ class RuntimeSelectionTests(unittest.TestCase):
             choose_runtime_and_types(selection_path=self.receipt, aggregate_deadline=105)
         self.assertEqual(command.call_count, 1)
         self.assertEqual(json.loads(self.receipt.read_text())['status'], 'FAIL_SIMULATOR_RUNTIME_SELECTION_ONLY')
+
+    def test_cold_service_inventory_allowance_cannot_exceed_remaining_aggregate(self):
+        clock, budgets = [100.0], []
+        def late(arguments, **kwargs):
+            budgets.append(kwargs['timeout'])
+            if arguments[1:2] == ['--sdk']:
+                clock[0] += 3
+                return {'returncode': 0, 'text': '18.5'}
+            clock[0] += 28
+            return {'returncode': 0, 'text': json.dumps({'runtimes': self.runtimes})}
+        with patch('run_simulator.time.monotonic', side_effect=lambda: clock[0]), \
+                patch('run_simulator.diagnostics.bounded_command', side_effect=late) as command, \
+                self.assertRaisesRegex(ValueError, 'runtime_inventory'):
+            choose_runtime_and_types(selection_path=self.receipt, aggregate_deadline=130)
+        self.assertEqual(budgets, [15, 27])
+        self.assertEqual(command.call_count, 2)
+        self.assertNotIn('selected_runtime', json.loads(self.receipt.read_text()))
+
+    def test_expired_aggregate_starts_no_metadata_command(self):
+        with patch('run_simulator.time.monotonic', return_value=105), \
+                patch('run_simulator.diagnostics.bounded_command') as command, \
+                self.assertRaisesRegex(ValueError, 'active_sdk'):
+            choose_runtime_and_types(selection_path=self.receipt, aggregate_deadline=105)
+        command.assert_not_called()
+        value = json.loads(self.receipt.read_text())
+        self.assertEqual(value['commands'], [])
+        self.assertEqual(value['status'], 'FAIL_SIMULATOR_RUNTIME_SELECTION_ONLY')
 
 
 class EnvironmentOnlyDriverTests(unittest.TestCase):
