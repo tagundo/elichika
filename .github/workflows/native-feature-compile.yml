@@ -6,7 +6,7 @@ on:
       mode:
         description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
         type: choice
-        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, experimental-parity, full-candidate, mv-export-native, mv-export-android-game, simulator-environment-only]
+        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, experimental-parity, full-candidate, mv-export-native, mv-export-android-game, mv-export-standalone, simulator-environment-only]
         default: sdk-compile
       version:
         description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   apple-sdk:
-    if: ${{ inputs.mode != 'mv-export-native' && inputs.mode != 'mv-export-android-game' && inputs.mode != 'simulator-environment-only' }}
+    if: ${{ inputs.mode != 'mv-export-standalone' && inputs.mode != 'mv-export-native' && inputs.mode != 'mv-export-android-game' && inputs.mode != 'simulator-environment-only' }}
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -515,4 +515,60 @@ jobs:
             ${{ runner.temp }}/android-mv-JP/dex/*.stdout
             ${{ runner.temp }}/android-mv-JP/dex/*.stderr
           if-no-files-found: warn
+          retention-days: 7
+
+  standalone:
+    if: ${{ inputs.mode == 'mv-export-standalone' }}
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - name: Check out the exact workflow source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Set up build Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Fetch and verify the immutable GL Local input
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/standalone-evidence" "$RUNNER_TEMP/standalone-delivery"
+          python3 -B ios/build/fetch_game.py \
+            --output "$RUNNER_TEMP/standalone-game.ipa" \
+            --report "$RUNNER_TEMP/standalone-evidence/input-provenance.json"
+
+      - name: Compile standalone native MP4 export and package fresh IPA
+        env:
+          SIFAS_BUILD_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 -B ios/build/build_standalone_mv.py \
+            --input-ipa "$RUNNER_TEMP/standalone-game.ipa" \
+            --work "$RUNNER_TEMP/standalone-build" \
+            --version "$SIFAS_BUILD_VERSION" \
+            --output "$RUNNER_TEMP/standalone-delivery/SIFAS_GL_Local_3.12.0_PlayCover_${SIFAS_BUILD_VERSION}.ipa" \
+            --report "$RUNNER_TEMP/standalone-delivery/build-proof.json" \
+            2>&1 | tee "$RUNNER_TEMP/standalone-evidence/build.log"
+
+      - name: Upload standalone IPA, checksum and preservation proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-ios-gl-mv-${{ inputs.version }}
+          path: ${{ runner.temp }}/standalone-delivery/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload bounded build diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-ios-gl-mv-diagnostics-${{ inputs.version }}
+          path: ${{ runner.temp }}/standalone-evidence/
+          if-no-files-found: ignore
           retention-days: 7
