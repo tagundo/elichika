@@ -96,11 +96,22 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
     ELMVEncoderConfiguration *c=[configuration copy];
     if (!c || ![@[@"h264",@"hevc"] containsObject:c.codec])
         return reject(ELMVError(2,@"Choose H.264 or HEVC for MP4 export."));
-    if (c.width<16 || c.height<16 || c.width>7680 || c.height>4320 || c.width%2 || c.height%2 ||
+    if (c.width<16 || c.height<16 || c.width%2 || c.height%2 ||
+#if defined(SIFAS_STANDALONE)
+        c.width>INT32_MAX || c.height>INT32_MAX || c.width>NSUInteger(INT32_MAX)/4/c.height ||
+#else
+        c.width>7680 || c.height>4320 ||
+#endif
         c.fpsNumerator<=0 || c.fpsDenominator<=0 ||
+#if !defined(SIFAS_STANDALONE)
         (double)c.fpsNumerator/c.fpsDenominator>120 ||
+#endif
         c.frameCount<=0 || c.frameCount>INT64_MAX/c.fpsDenominator ||
+#if defined(SIFAS_STANDALONE)
+        !c.videoBitRate || c.videoBitRate>NSUInteger(INT64_MAX) ||
+#else
         c.videoBitRate<10000 || c.videoBitRate>200000000 ||
+#endif
         (c.audioSampleRate!=44100 && c.audioSampleRate!=48000) ||
         (c.audioChannels!=1 && c.audioChannels!=2) || c.audioSampleCount<=0 ||
         c.audioBitRate<32000 || c.audioBitRate>512000)

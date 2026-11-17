@@ -1,8 +1,16 @@
 #import "SIFASMVExportSession.h"
 #import "SIFASMVExportBindings.h"
 #import "ElichikaMVEncoder.h"
+#if defined(SIFAS_STANDALONE)
+#import "SIFASMVStandaloneAdapter.h"
+#define ElichikaHostConfiguration SIFASMVStandaloneConfiguration
+#define ElichikaHostShowGame SIFASMVStandaloneShowGame
+#define ElichikaHostPresenter SIFASMVStandalonePresenter
+#define ElichikaPythonCallWithArguments SIFASMVStandaloneAudioCall
+#else
 #import "ElichikaPythonRuntime.h"
 #import "ElichikaHost.h"
+#endif
 #include "MVExportClock.hpp"
 #include <atomic>
 #include <cmath>
@@ -85,6 +93,7 @@ static NSString *ELMVPhase(NSString *phase) {
 - (NSDictionary *)status;
 - (NSURL *)completedURL;
 - (void)startWidth:(NSUInteger)width height:(NSUInteger)height fps:(int32_t)fps codec:(NSString *)codec;
+- (void)startWidth:(NSUInteger)width height:(NSUInteger)height fps:(int32_t)fps codec:(NSString *)codec bitrate:(NSUInteger)bitrate;
 - (void)cancelWithReason:(NSString *)reason;
 - (BOOL)grant:(ELMVExportRun *)run tick:(uint64_t *)tick capture:(int64_t *)capture;
 - (void)frame:(NSData *)pixels rowBytes:(NSUInteger)rowBytes index:(int64_t)index run:(ELMVExportRun *)run;
@@ -207,6 +216,10 @@ static NSString *ELMVReadiness(void) {
     if (UIApplication.sharedApplication.applicationState!=UIApplicationStateActive) {
         [_noticeTimer invalidate]; _noticeTimer=nil; return;
     }
+#if defined(SIFAS_STANDALONE)
+    _pendingNotice=nil; [_noticeTimer invalidate]; _noticeTimer=nil;
+    ElichikaPresentMVExportMenu(SIFASMVStandalonePresenter()); return;
+#else
     UIViewController *presenter=ElichikaHostPresenter();
     UIViewController *visible=[presenter isKindOfClass:UINavigationController.class] ? ((UINavigationController *)presenter).visibleViewController : presenter;
     const BOOL dismissing=presenter.isBeingDismissed || visible.isBeingDismissed;
@@ -228,6 +241,7 @@ static NSString *ELMVReadiness(void) {
     UIAlertController *alert=[UIAlertController alertControllerWithTitle:ELMVPhase(notice[@"phase"]) message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:ELMVText(@"OK",@"확인",@"OK") style:UIAlertActionStyleDefault handler:nil]];
     [presenter presentViewController:alert animated:YES completion:nil];
+#endif
 }
 - (NSURL *)completedURL { return _completedURL; }
 - (NSDictionary *)status {
@@ -247,13 +261,22 @@ static NSString *ELMVReadiness(void) {
              @"codec":c.codec ?: @"",@"width":@(c.width),@"height":@(c.height),@"fps":@(c.fpsNumerator)};
 }
 - (void)watch:(NSTimer *)timer {
+#if defined(SIFAS_STANDALONE)
+    (void)timer; // Offline rendering waits for GPU/encoder readiness without a speed limit.
+    return;
+#else
     ELMVExportRun *run=_run;
     if (!run || run->cleaning) return;
     const double idle=CFAbsoluteTimeGetCurrent()-run->lastProgress.load();
     const double limit=run->preparePending ? 180.0 : ([run->phase isEqual:@"finalizing"] ? 120.0 : 45.0);
     if (idle>limit) [self fail:[NSString stringWithFormat:ELMVText(@"No export progress for %.0f seconds. The last native stage was %@.",@"%.0f초 동안 내보내기가 진행되지 않았습니다. 마지막 네이티브 단계: %@.",@"%.0f秒間、書き出しが進行していません。最後のネイティブ処理段階: %@。"),limit,SIFASMVBindingsStatus()[@"phase"] ?: @"unknown"] run:run];
+#endif
 }
 - (void)startWidth:(NSUInteger)width height:(NSUInteger)height fps:(int32_t)fps codec:(NSString *)codec {
+    const NSUInteger base=MIN(width,height)>=2160 ? 48000000 : (MIN(width,height)>=1080 ? 16000000 : 8000000);
+    [self startWidth:width height:height fps:fps codec:codec bitrate:base*(fps/30)];
+}
+- (void)startWidth:(NSUInteger)width height:(NSUInteger)height fps:(int32_t)fps codec:(NSString *)codec bitrate:(NSUInteger)bitrate {
     NSAssert(NSThread.isMainThread,@"MV start belongs to main");
     if (_run) return;
     NSString *readiness=ELMVReadiness();
@@ -265,15 +288,24 @@ static NSString *ELMVReadiness(void) {
     if (!song || !ELMVInteger(initialSnapshot[@"scene_identity"],INT32_MIN,INT32_MAX,&sceneIdentity) || !sceneIdentity) {
         _lastStatus=@{@"phase":@"failed",@"busy":@NO,@"message":ELMVText(@"The MV song snapshot is incomplete or invalid (scene, cue sheet, cue, gain or timing). Wait for loading to finish.",@"MV 음원 정보(장면, 큐 시트, 큐, 음량 또는 시간)가 누락되었거나 올바르지 않습니다. 로딩이 끝날 때까지 기다려 주세요.",@"MVの楽曲情報（シーン、キューシート、キュー、音量、再生時間）が不足しているか無効です。読み込みの完了をお待ちください。")}; return;
     }
+#if defined(SIFAS_STANDALONE)
+    if (![@[@30,@60,@120] containsObject:@(fps)] || width<16 || height<16 || width%2 || height%2 ||
+        width>INT32_MAX || height>INT32_MAX || width>NSUInteger(INT32_MAX)/4/height ||
+        !bitrate || bitrate>NSUInteger(INT64_MAX) || ![@[@"hevc",@"h264"] containsObject:codec]) {
+        _lastStatus=@{@"phase":@"failed",@"busy":@NO,@"message":@"Use positive even pixel dimensions (minimum16), a representable RGBA frame, 30/60/120 FPS and a positive bitrate."}; return;
+    }
+    const uint32_t simulationHz=uint32_t(MAX(60,fps));
+#else
     if (![@[@30,@60] containsObject:@(fps)] || ![@[@720,@1080,@2160] containsObject:@(MIN(width,height))] ||
         width>4096 || height>4096 || ![@[@"hevc",@"h264"] containsObject:codec]) return;
+    const uint32_t simulationHz=60;
+#endif
     ELMVExportRun *run=[ELMVExportRun new]; run->generation=++_generation;
     ELMVEncoderConfiguration *c=[ELMVEncoderConfiguration new];
     c.width=width; c.height=height; c.fpsNumerator=fps; c.fpsDenominator=1;
     c.frameCount=(milliseconds*fps+999)/1000; c.codec=codec;
-    const NSUInteger base=MIN(width,height)>=2160 ? 48000000 : (MIN(width,height)>=1080 ? 16000000 : 8000000);
-    c.videoBitRate=base*(fps/30); c.audioBitRate=192000;
-    run->configuration=c; run->clock=std::make_unique<elichika::MVExportClock>(c.frameCount,fps,60,run->generation);
+    c.videoBitRate=bitrate; c.audioBitRate=192000;
+    run->configuration=c; run->clock=std::make_unique<elichika::MVExportClock>(c.frameCount,fps,simulationHz,run->generation);
     _run=run;
     _pendingNotice=nil; [_noticeTimer invalidate]; _noticeTimer=nil;
     _watchdog=[NSTimer scheduledTimerWithTimeInterval:.25 target:self selector:@selector(watch:) userInfo:nil repeats:YES];
@@ -302,7 +334,12 @@ static NSString *ELMVReadiness(void) {
             if (!failure) {
                 NSDictionary *attributes=[fm attributesOfFileSystemForPath:root.path error:NULL];
                 const uint64_t durationSeconds=(milliseconds+999)/1000;
+#if defined(SIFAS_STANDALONE)
+                const __uint128_t estimate=__uint128_t(durationSeconds)*(c.videoBitRate/8+192000/8+48000*4)*5/4+128*1024*1024;
+                const uint64_t needed=estimate>UINT64_MAX ? UINT64_MAX : uint64_t(estimate);
+#else
                 const uint64_t needed=durationSeconds*(c.videoBitRate/8+192000/8+48000*4)*5/4+128*1024*1024;
+#endif
                 if (!attributes[NSFileSystemFreeSize] || [attributes[NSFileSystemFreeSize] unsignedLongLongValue]<needed)
                     failure=[NSString stringWithFormat:ELMVText(@"Not enough free app storage. This export needs approximately %.1f GB including its temporary audio.",@"앱 저장 공간이 부족합니다. 임시 오디오를 포함하여 약 %.1f GB가 필요합니다.",@"アプリの空き容量が不足しています。一時音声を含め約%.1f GBが必要です。"),double(needed)/1000000000.0];
             }
@@ -321,7 +358,7 @@ static NSString *ELMVReadiness(void) {
                     [self fail:ELMVText(@"The loaded MV changed during export preparation. Open the intended MV and start again.",@"내보내기를 준비하는 동안 MV가 변경되었습니다. 원하는 MV를 열고 다시 시작하세요.",@"書き出しの準備中にMVが変更されました。目的のMVを開いて再度開始してください。") run:run]; return;
                 }
                 run->phase=@"snapshot-and-freeze"; run->bindingsActive=YES;
-                SIFASMVBindingConfiguration binding={(uint32_t)width,(uint32_t)height,60};
+                SIFASMVBindingConfiguration binding={(uint32_t)width,(uint32_t)height,simulationHz,(uint32_t)fps};
                 SIFASMVBindingCallbacks callbacks={(__bridge void *)run,ELMVNext,ELMVFrame,ELMVFailed}; NSError *error=nil;
                 if (!SIFASMVBindingsBegin(binding,callbacks,&error)) {
                     [self fail:error.localizedDescription ?: ELMVText(@"The native MV scene rejected offline rendering.",@"MV 장면에서 오프라인 렌더링을 시작할 수 없습니다.",@"MVシーンでオフラインレンダリングを開始できません。") run:run]; return;
@@ -413,8 +450,12 @@ static NSString *ELMVReadiness(void) {
                         run->audioRequestPending=NO;
                         if (run->stopped.load()) return;
                         int64_t responseFirst=0, responseCount=0;
+#if defined(SIFAS_STANDALONE)
+                        NSData *pcm=[reply[@"pcm_data"] isKindOfClass:NSData.class] ? reply[@"pcm_data"] : nil;
+#else
                         NSString *base64=[reply[@"pcm_base64"] isKindOfClass:NSString.class] ? reply[@"pcm_base64"] : nil;
                         NSData *pcm=base64 ? [[NSData alloc] initWithBase64EncodedString:base64 options:0] : nil;
+#endif
                         if (![reply[@"ok"] boolValue] || ![reply[@"session_id"] isEqual:run->audioSession] ||
                             !ELMVInteger(reply[@"first_sample"],0,run->configuration.audioSampleCount,&responseFirst) || responseFirst!=first ||
                             !ELMVInteger(reply[@"frame_count"],1,maximum,&responseCount) ||
@@ -515,6 +556,7 @@ static NSString *ELMVReadiness(void) {
 }
 @end
 
+#if !defined(SIFAS_STANDALONE)
 @interface ELMVExportController : UITableViewController
 @property(nonatomic,strong) UISegmentedControl *resolution;
 @property(nonatomic,strong) UISegmentedControl *rate;
@@ -651,6 +693,140 @@ void ElichikaPresentMVExportMenu(UIViewController *presenter) {
     navigation.modalPresentationStyle=UIModalPresentationFormSheet;
     [presenter presentViewController:navigation animated:YES completion:nil];
 }
+#else
+@interface SIFASMVStandalonePanel : UIView
+@property(nonatomic,strong) UITextField *widthField,*heightField,*bitrateField;
+@property(nonatomic,strong) UISegmentedControl *rate,*codec;
+@property(nonatomic,strong) UILabel *status;
+@property(nonatomic,strong) UIButton *exportButton,*cancelButton,*recommendButton,*saveButton,*shareButton;
+@property(nonatomic,strong) NSTimer *timer;
+@property(nonatomic,weak) UIViewController *presenter;
+@property(nonatomic,copy) NSString *inputError;
+- (void)refresh;
+@end
+static __weak SIFASMVStandalonePanel *SIFASMVCurrentPanel;
+@implementation SIFASMVStandalonePanel
+- (UILabel *)label:(NSString *)text stack:(UIStackView *)stack {
+    UILabel *label=[UILabel new]; label.text=text; label.textColor=UIColor.whiteColor; label.numberOfLines=0;
+    [stack addArrangedSubview:label]; return label;
+}
+- (UITextField *)field:(NSString *)text stack:(UIStackView *)stack {
+    UITextField *field=[UITextField new]; field.borderStyle=UITextBorderStyleRoundedRect;
+    field.keyboardType=UIKeyboardTypeDecimalPad; field.text=text; field.backgroundColor=UIColor.whiteColor; field.textColor=UIColor.blackColor;
+    [stack addArrangedSubview:field]; return field;
+}
+- (UIButton *)button:(NSString *)text action:(SEL)action stack:(UIStackView *)stack {
+    UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem]; [button setTitle:text forState:UIControlStateNormal];
+    button.backgroundColor=UIColor.whiteColor; button.layer.cornerRadius=5;
+    [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside]; [stack addArrangedSubview:button]; return button;
+}
+- (instancetype)initWithPresenter:(UIViewController *)presenter {
+    UIWindow *window=presenter.view.window;
+    if (!(self=[super initWithFrame:window.bounds])) return nil;
+    self.presenter=presenter; self.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+    self.backgroundColor=[UIColor.blackColor colorWithAlphaComponent:.88]; self.userInteractionEnabled=YES;
+    UIScrollView *scroll=[UIScrollView new]; scroll.translatesAutoresizingMaskIntoConstraints=NO;
+    scroll.keyboardDismissMode=UIScrollViewKeyboardDismissModeOnDrag; [self addSubview:scroll];
+    UIStackView *stack=[UIStackView new]; stack.axis=UILayoutConstraintAxisVertical; stack.spacing=10; stack.translatesAutoresizingMaskIntoConstraints=NO; [scroll addSubview:stack];
+    NSLayoutConstraint *preferredWidth=[scroll.widthAnchor constraintEqualToAnchor:self.widthAnchor constant:-32]; preferredWidth.priority=UILayoutPriorityDefaultHigh;
+    [NSLayoutConstraint activateConstraints:@[
+        [scroll.topAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.topAnchor constant:16],
+        [scroll.bottomAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.bottomAnchor constant:-16],
+        [scroll.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+        [scroll.widthAnchor constraintLessThanOrEqualToConstant:600],
+        preferredWidth,
+        [stack.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor],
+        [stack.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor],
+        [stack.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor]]];
+    [self label:@"MV → MP4" stack:stack];
+    [self label:ELMVText(@"Export the complete loaded MV with its selected song. Offline encoding may run slower than output FPS. The current game graphics settings are inherited.",@"현재 MV 전체와 선택된 음원을 내보냅니다. 오프라인 인코딩 속도는 출력 FPS보다 느릴 수 있습니다. 게임 그래픽 설정을 유지합니다.",@"読み込んだMV全体と選択された楽曲を書き出します。オフライン処理速度は出力FPSより遅い場合があります。ゲームの画質設定を使用します。") stack:stack];
+    NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+    [self label:@"Width (pixels; even, minimum 16)" stack:stack];
+    self.widthField=[self field:[defaults stringForKey:@"SIFASMVExportWidth"] ?: @"1280" stack:stack];
+    [self label:@"Height (pixels; even, minimum 16)" stack:stack];
+    self.heightField=[self field:[defaults stringForKey:@"SIFASMVExportHeight"] ?: @"720" stack:stack];
+    [self label:@"Frame rate" stack:stack]; self.rate=[[UISegmentedControl alloc] initWithItems:@[@"30 FPS",@"60 FPS",@"120 FPS"]];
+    NSInteger savedRate=[defaults integerForKey:@"SIFASMVExportFPS"]; self.rate.selectedSegmentIndex=savedRate==120?2:savedRate==60?1:0; [stack addArrangedSubview:self.rate];
+    [self label:@"Video codec" stack:stack]; self.codec=[[UISegmentedControl alloc] initWithItems:@[@"HEVC",@"H.264"]];
+    self.codec.selectedSegmentIndex=[[defaults stringForKey:@"SIFASMVExportCodec"] isEqual:@"h264"]?1:0; [stack addArrangedSubview:self.codec];
+    [self label:@"Video bitrate (Mbps)" stack:stack]; self.bitrateField=[self field:[defaults stringForKey:@"SIFASMVExportBitrate"] ?: @"8" stack:stack];
+    self.recommendButton=[self button:@"Use recommended bitrate" action:@selector(recommend) stack:stack];
+    for (UITextField *field in @[self.widthField,self.heightField,self.bitrateField])
+        [field addTarget:self action:@selector(inputChanged) forControlEvents:UIControlEventEditingChanged];
+    self.status=[self label:@"" stack:stack];
+    self.exportButton=[self button:@"Export MP4" action:@selector(start) stack:stack];
+    self.cancelButton=[self button:@"Cancel export" action:@selector(cancel) stack:stack];
+    self.saveButton=[self button:@"Save completed MP4" action:@selector(save) stack:stack];
+    self.shareButton=[self button:@"Share completed MP4" action:@selector(share) stack:stack];
+    [self button:@"Close" action:@selector(close) stack:stack];
+    __weak SIFASMVStandalonePanel *weakSelf=self;
+    self.timer=[NSTimer scheduledTimerWithTimeInterval:.25 repeats:YES block:^(__unused NSTimer *timer) { [weakSelf refresh]; }];
+    [self refresh]; return self;
+}
+- (void)dealloc { [_timer invalidate]; }
+- (void)inputChanged { self.inputError=nil; [self refresh]; }
+- (BOOL)dimensionsWidth:(NSUInteger *)width height:(NSUInteger *)height {
+    long long w=0,h=0; NSScanner *ws=[NSScanner scannerWithString:self.widthField.text ?: @""],*hs=[NSScanner scannerWithString:self.heightField.text ?: @""];
+    if (![ws scanLongLong:&w] || !ws.isAtEnd || ![hs scanLongLong:&h] || !hs.isAtEnd ||
+        w<16 || h<16 || w>INT32_MAX || h>INT32_MAX || (w&1) || (h&1) || uint64_t(w)>uint64_t(INT32_MAX)/4/uint64_t(h)) {
+        self.inputError=@"Enter positive even width and height (minimum16) with a representable RGBA frame. Any aspect ratio is allowed."; [self refresh]; return NO;
+    }
+    *width=NSUInteger(w); *height=NSUInteger(h); return YES;
+}
+- (void)recommend {
+    NSUInteger width=0,height=0; if (![self dimensionsWidth:&width height:&height]) return;
+    int fps=self.rate.selectedSegmentIndex==2?120:self.rate.selectedSegmentIndex==1?60:30;
+    double mbps=double(width)*height*fps*(self.codec.selectedSegmentIndex==0?.09:.14)/1000000.0;
+    self.bitrateField.text=[NSString stringWithFormat:@"%.3f",MAX(.25,mbps)];
+    self.inputError=nil; [self refresh];
+}
+- (void)start {
+    NSUInteger width=0,height=0; if (![self dimensionsWidth:&width height:&height]) return;
+    NSString *input=[(self.bitrateField.text ?: @"") stringByReplacingOccurrencesOfString:@"," withString:@"."];
+    NSScanner *scanner=[NSScanner scannerWithString:input]; double mbps=0;
+    if (![scanner scanDouble:&mbps] || !scanner.isAtEnd || !std::isfinite(mbps) || mbps<=0 || mbps*1000000.0>=double(INT64_MAX) || std::round(mbps*1000000.0)<1) {
+        self.inputError=@"Enter a positive Mbps bitrate representable as a signed64-bit bits/sec value."; [self refresh]; return;
+    }
+    int fps=self.rate.selectedSegmentIndex==2?120:self.rate.selectedSegmentIndex==1?60:30;
+    NSString *codec=self.codec.selectedSegmentIndex==0?@"hevc":@"h264";
+    NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+    [defaults setObject:self.widthField.text forKey:@"SIFASMVExportWidth"]; [defaults setObject:self.heightField.text forKey:@"SIFASMVExportHeight"];
+    [defaults setInteger:fps forKey:@"SIFASMVExportFPS"]; [defaults setObject:codec forKey:@"SIFASMVExportCodec"]; [defaults setObject:input forKey:@"SIFASMVExportBitrate"];
+    self.inputError=nil; [self endEditing:YES]; [[ELMVExportCoordinator shared] startWidth:width height:height fps:fps codec:codec bitrate:NSUInteger(std::round(mbps*1000000.0))]; [self refresh];
+}
+- (void)refresh {
+    NSDictionary *state=SIFASMVExportStatus(); BOOL busy=[state[@"busy"] boolValue];
+    self.status.text=self.inputError.length && !busy ? self.inputError : [NSString stringWithFormat:@"%@\n%@\n%@ / %@ frames",ELMVPhase(state[@"phase"] ?: @"idle"),state[@"message"] ?: state[@"readiness"] ?: @"",state[@"videoFrames"] ?: @0,state[@"frameCount"] ?: @0];
+    self.widthField.enabled=!busy; self.heightField.enabled=!busy; self.bitrateField.enabled=!busy; self.rate.enabled=!busy; self.codec.enabled=!busy;
+    self.recommendButton.enabled=!busy; self.exportButton.enabled=!busy; self.cancelButton.enabled=busy;
+    NSURL *output=[ELMVExportCoordinator shared].completedURL;
+    BOOL completed=output && [NSFileManager.defaultManager fileExistsAtPath:output.path]; self.saveButton.enabled=completed && !busy; self.shareButton.enabled=completed && !busy;
+}
+- (void)cancel { SIFASMVCancelExport(); [self refresh]; }
+- (void)close { [self endEditing:YES]; [self.timer invalidate]; self.timer=nil; [self removeFromSuperview]; }
+- (void)save {
+    NSURL *output=[ELMVExportCoordinator shared].completedURL; if (!output) return;
+    UIDocumentPickerViewController *picker=[[UIDocumentPickerViewController alloc] initWithURLs:@[output] inMode:UIDocumentPickerModeExportToService];
+    [self.presenter presentViewController:picker animated:YES completion:nil];
+}
+- (void)share {
+    NSURL *output=[ELMVExportCoordinator shared].completedURL; if (!output) return;
+    UIActivityViewController *share=[[UIActivityViewController alloc] initWithActivityItems:@[output] applicationActivities:nil];
+    share.popoverPresentationController.sourceView=self.shareButton; share.popoverPresentationController.sourceRect=self.shareButton.bounds;
+    [self.presenter presentViewController:share animated:YES completion:nil];
+}
+@end
+void ElichikaPresentMVExportMenu(UIViewController *presenter) {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ ElichikaPresentMVExportMenu(presenter); }); return; }
+    if (presenter) SIFASMVStandaloneSetPresenter(presenter);
+    presenter=SIFASMVStandalonePresenter(); if (!presenter || !SIFASMVStandaloneShowGame()) return;
+    if (SIFASMVCurrentPanel.window) { [SIFASMVCurrentPanel refresh]; return; }
+    SIFASMVStandalonePanel *panel=[[SIFASMVStandalonePanel alloc] initWithPresenter:presenter];
+    [presenter.view.window addSubview:panel]; SIFASMVCurrentPanel=panel;
+}
+#endif
 NSDictionary *SIFASMVExportStatus(void) {
     if (!NSThread.isMainThread) return @{@"phase":@"main-thread-required",@"busy":@NO};
     return [[ELMVExportCoordinator shared] status];

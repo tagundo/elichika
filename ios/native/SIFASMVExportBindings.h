@@ -21,7 +21,8 @@ typedef struct {
 
 typedef struct {
     uint32_t width, height;
-    uint32_t simulationHz; /* Initial supported path: 60, for 30/60 output. */
+    uint32_t simulationHz; /* max(60, fps), fixed game clock. */
+    uint32_t outputFps; /* 30, 60 or 120; no real-time throughput gate. */
 } SIFASMVBindingConfiguration;
 
 /* Original/trampoline entrypoints supplied by the SHA-pinned offline shim.
@@ -41,6 +42,7 @@ typedef struct {
 FOUNDATION_EXPORT BOOL SIFASMVBindingsInstallOriginals(const SIFASMVBindingOriginals *originals, NSError **error);
 FOUNDATION_EXPORT NSDictionary *SIFASMVBindingsStatus(void);
 FOUNDATION_EXPORT NSDictionary *SIFASMVBindingsSongSnapshot(void);
+FOUNDATION_EXPORT NSDictionary *SIFASMVBindingsAudioSelection(void);
 FOUNDATION_EXPORT BOOL SIFASMVBindingsBegin(SIFASMVBindingConfiguration configuration,
                                           SIFASMVBindingCallbacks callbacks, NSError **error);
 FOUNDATION_EXPORT void SIFASMVBindingsEnd(void);
